@@ -30,15 +30,15 @@ Status notation:
 
 ### 0.2. Supabase Project & Environments
 
-* [ ] Create Supabase project (dev environment).
-* [ ] Configure database connection and service role keys for backend.
+* [x] Create Supabase project (dev environment).
+* [x] Configure database connection and service role keys for backend.
 * [ ] Define environment strategy:
 
-  * [ ] `dev` Supabase
+  * [x] `dev` Supabase
   * [ ] `prod` Supabase (planned)
-* [ ] Document environment variables for:
+* [x] Document environment variables for:
 
-  * [ ] Supabase keys (service key, anon key)
+  * [x] Supabase keys (service key, anon key)
   * [ ] Finnhub API key
   * [ ] Massive API key
 
@@ -60,10 +60,10 @@ Status notation:
 
 ### 1.1. Database Schema (Core Tables)
 
-* [ ] Create migration for `symbols` table.
-* [ ] Create migration for `ohlc_bars` table.
-* [ ] Create migration for `quotes` table.
-* [ ] Verify indexes (e.g., `symbol_id + timeframe + ts` for `ohlc_bars`).
+* [x] Create migration for `symbols` table.
+* [x] Create migration for `ohlc_bars` table.
+* [x] Create migration for `quotes` table.
+* [x] Verify indexes (e.g., `symbol_id + timeframe + ts` for `ohlc_bars`).
 
 ### 1.2. Symbol Management
 
