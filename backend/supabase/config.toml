@@ -54,11 +54,11 @@ enable_confirmations = false
 enable_signup = false
 enable_confirmations = false
 
-# [functions]
+[functions]
 # Function-specific config uses [functions.function_name] sections
-# Example:
-# [functions.hello-world]
-# verify_jwt = true
+
+[functions.symbols-search]
+verify_jwt = false  # Allow unauthenticated access for search
 
 [analytics]
 enabled = false

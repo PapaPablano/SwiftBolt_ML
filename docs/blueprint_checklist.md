@@ -67,13 +67,16 @@ Status notation:
 
 ### 1.2. Symbol Management
 
-* [ ] Implement basic seeding or loader for `symbols` from Finnhub/Massive.
-* [ ] Add `GET /symbols/search` Edge Function:
+* [x] Implement basic seeding or loader for `symbols` from Finnhub/Massive.
+  * [x] Created `backend/scripts/seed-symbols.ts` (Deno) with 20 sample symbols.
+  * [x] Created `backend/scripts/seed-symbols.sql` (SQL) for direct DB seeding.
+* [x] Add `GET /symbols/search` Edge Function:
 
-  * [ ] Input: `q` query string.
-  * [ ] Query `symbols` with `ILIKE`.
-  * [ ] Return JSON array of `{ ticker, assetType, description }`.
-* [ ] Test: Search for `AAPL`, verify response.
+  * [x] Input: `q` query string.
+  * [x] Query `symbols` with `ILIKE`.
+  * [x] Return JSON array of `{ ticker, assetType, description }`.
+  * [x] Created shared utilities: `_shared/cors.ts`, `_shared/supabase-client.ts`.
+* [x] Test: Search for `AAPL`, verify response.
 
 ### 1.3. OHLC Data Ingestion (On-Demand)
 
