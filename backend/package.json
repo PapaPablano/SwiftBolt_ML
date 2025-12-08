@@ -1,0 +1,23 @@
+{
+  "name": "swiftbolt-backend",
+  "version": "0.1.0",
+  "description": "Supabase Edge Functions for SwiftBolt ML",
+  "type": "module",
+  "scripts": {
+    "dev": "supabase functions serve",
+    "deploy": "supabase functions deploy",
+    "lint": "deno lint",
+    "fmt": "deno fmt",
+    "test": "deno test"
+  },
+  "keywords": [
+    "supabase",
+    "edge-functions",
+    "stock-analysis"
+  ],
+  "author": "",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "supabase": "^1.200.0"
+  }
+}
