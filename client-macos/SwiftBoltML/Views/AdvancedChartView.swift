@@ -280,7 +280,8 @@ struct AdvancedChartView: View {
     }
 
     private func updateSelection(at location: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) {
-        let xPosition = location.x - geometry[proxy.plotFrame].origin.x
+        guard let plotFrame = proxy.plotFrame else { return }
+        let xPosition = location.x - geometry[plotFrame].origin.x
         guard let date: Date = proxy.value(atX: xPosition) else { return }
 
         selectedBar = bars.min(by: { abs($0.ts.timeIntervalSince(date)) < abs($1.ts.timeIntervalSince(date)) })
