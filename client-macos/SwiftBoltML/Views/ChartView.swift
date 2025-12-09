@@ -14,14 +14,20 @@ struct ChartView: View {
                 lastBar: chartViewModel.bars.last
             )
 
-            TimeframePicker(
-                selectedTimeframe: chartViewModel.timeframe,
-                onSelect: { timeframe in
-                    Task {
-                        await chartViewModel.setTimeframe(timeframe)
+            HStack {
+                TimeframePicker(
+                    selectedTimeframe: chartViewModel.timeframe,
+                    onSelect: { timeframe in
+                        Task {
+                            await chartViewModel.setTimeframe(timeframe)
+                        }
                     }
-                }
-            )
+                )
+
+                Spacer()
+
+                IndicatorToggleMenu(config: $chartViewModel.indicatorConfig)
+            }
             .padding(.horizontal)
             .padding(.top, 8)
 
@@ -36,8 +42,16 @@ struct ChartView: View {
             } else if chartViewModel.bars.isEmpty {
                 EmptyChartView()
             } else {
-                PriceChartView(bars: chartViewModel.bars)
-                    .padding()
+                AdvancedChartView(
+                    bars: chartViewModel.bars,
+                    sma20: chartViewModel.sma20,
+                    sma50: chartViewModel.sma50,
+                    ema9: chartViewModel.ema9,
+                    ema21: chartViewModel.ema21,
+                    rsi: chartViewModel.rsi,
+                    config: chartViewModel.indicatorConfig
+                )
+                .padding()
 
                 if let latestBar = chartViewModel.bars.last {
                     OHLCBarView(bar: latestBar)
@@ -235,6 +249,40 @@ struct EmptyChartView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+struct IndicatorToggleMenu: View {
+    @Binding var config: IndicatorConfig
+
+    var body: some View {
+        Menu {
+            Section("Moving Averages") {
+                Toggle("SMA(20)", isOn: $config.showSMA20)
+                Toggle("SMA(50)", isOn: $config.showSMA50)
+                Toggle("SMA(200)", isOn: $config.showSMA200)
+                Toggle("EMA(9)", isOn: $config.showEMA9)
+                Toggle("EMA(21)", isOn: $config.showEMA21)
+            }
+
+            Section("Oscillators") {
+                Toggle("RSI(14)", isOn: $config.showRSI)
+            }
+
+            Section("Display") {
+                Toggle("Volume", isOn: $config.showVolume)
+            }
+        } label: {
+            Label("Indicators", systemImage: "chart.line.uptrend.xyaxis")
+                .font(.caption)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.accentColor.opacity(0.1))
+                .foregroundStyle(.primary)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .menuStyle(.borderlessButton)
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 }
 

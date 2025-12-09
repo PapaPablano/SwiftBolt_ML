@@ -1,5 +1,9 @@
 // symbols-search: Search for symbols by ticker or description
 // GET /symbols-search?q=AAPL
+//
+// NOTE: This function queries the Postgres 'symbols' table directly.
+// It does NOT call external APIs (Finnhub/Massive).
+// Search uses ILIKE for case-insensitive partial matching on ticker and description.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { corsHeaders, handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";

@@ -1,18 +1,28 @@
-// news: Fetch news for a symbol or general market news
+// news: Fetch news for a symbol or general market news via ProviderRouter
 // GET /news?symbol=AAPL (company news)
 // GET /news (general market news)
+//
+// Uses the unified ProviderRouter with rate limiting, caching, and fallback logic.
+// DB persistence is used for long-term storage; ProviderRouter handles live fetching.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
-import { fetchCompanyNews, fetchMarketNews, type NewsItem } from "../_shared/finnhub-client.ts";
+import { getProviderRouter } from "../_shared/providers/factory.ts";
 
 // Cache staleness threshold (15 minutes)
 const CACHE_TTL_MS = 15 * 60 * 1000;
 
 interface NewsResponse {
   symbol?: string;
-  items: NewsItem[];
+  items: {
+    id: string;
+    title: string;
+    source: string;
+    url: string;
+    publishedAt: string;
+    summary?: string;
+  }[];
 }
 
 interface NewsRecord {
@@ -82,10 +92,21 @@ serve(async (req: Request): Promise<Response> => {
         }
       }
 
-      // Fetch fresh company news
-      console.log(`Cache miss for ${symbol} news, fetching from Finnhub`);
+      // Fetch fresh company news via ProviderRouter
+      console.log(`Cache miss for ${symbol} news, fetching via ProviderRouter`);
       try {
-        items = await fetchCompanyNews(symbol);
+        const router = getProviderRouter();
+        const routerNews = await router.getNews({ symbol, limit: 20 });
+
+        // Convert router NewsItem format to response format
+        items = routerNews.map((item) => ({
+          id: item.id,
+          title: item.headline,
+          source: item.source,
+          url: item.url,
+          publishedAt: new Date(item.publishedAt).toISOString(),
+          summary: item.summary,
+        }));
 
         // Cache results if we have a symbol_id
         if (symbolId && items.length > 0) {
@@ -116,7 +137,7 @@ serve(async (req: Request): Promise<Response> => {
           }
         }
       } catch (fetchError) {
-        console.error("Finnhub news fetch error:", fetchError);
+        console.error("Provider router news fetch error:", fetchError);
         return errorResponse("Failed to fetch news", 502);
       }
 
@@ -149,10 +170,21 @@ serve(async (req: Request): Promise<Response> => {
       return jsonResponse({ items } as NewsResponse);
     }
 
-    // Fetch fresh market news
-    console.log("Cache miss for market news, fetching from Finnhub");
+    // Fetch fresh market news via ProviderRouter
+    console.log("Cache miss for market news, fetching via ProviderRouter");
     try {
-      items = await fetchMarketNews("general");
+      const router = getProviderRouter();
+      const routerNews = await router.getNews({ limit: 20 });
+
+      // Convert router NewsItem format to response format
+      items = routerNews.map((item) => ({
+        id: item.id,
+        title: item.headline,
+        source: item.source,
+        url: item.url,
+        publishedAt: new Date(item.publishedAt).toISOString(),
+        summary: item.summary,
+      }));
 
       // Cache results
       if (items.length > 0) {
@@ -183,7 +215,7 @@ serve(async (req: Request): Promise<Response> => {
         }
       }
     } catch (fetchError) {
-      console.error("Finnhub market news fetch error:", fetchError);
+      console.error("Provider router market news fetch error:", fetchError);
       return errorResponse("Failed to fetch news", 502);
     }
 

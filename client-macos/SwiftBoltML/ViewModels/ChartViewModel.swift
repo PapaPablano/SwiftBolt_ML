@@ -9,9 +9,48 @@ final class ChartViewModel: ObservableObject {
     @Published private(set) var chartData: ChartResponse?
     @Published private(set) var isLoading: Bool = false
     @Published var errorMessage: String?
+    @Published var indicatorConfig = IndicatorConfig()
 
     var bars: [OHLCBar] {
         chartData?.bars ?? []
+    }
+
+    // MARK: - Computed Indicators
+
+    var sma20: [IndicatorDataPoint] {
+        guard !bars.isEmpty else { return [] }
+        let values = TechnicalIndicators.sma(bars: bars, period: 20)
+        return zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    var sma50: [IndicatorDataPoint] {
+        guard !bars.isEmpty else { return [] }
+        let values = TechnicalIndicators.sma(bars: bars, period: 50)
+        return zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    var sma200: [IndicatorDataPoint] {
+        guard !bars.isEmpty else { return [] }
+        let values = TechnicalIndicators.sma(bars: bars, period: 200)
+        return zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    var ema9: [IndicatorDataPoint] {
+        guard !bars.isEmpty else { return [] }
+        let values = TechnicalIndicators.ema(bars: bars, period: 9)
+        return zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    var ema21: [IndicatorDataPoint] {
+        guard !bars.isEmpty else { return [] }
+        let values = TechnicalIndicators.ema(bars: bars, period: 21)
+        return zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    var rsi: [IndicatorDataPoint] {
+        guard !bars.isEmpty else { return [] }
+        let values = TechnicalIndicators.rsi(bars: bars)
+        return zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
     }
 
     func loadChart() async {

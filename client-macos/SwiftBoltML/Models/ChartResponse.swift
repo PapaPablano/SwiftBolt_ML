@@ -8,7 +8,7 @@ struct ChartResponse: Codable {
 
     enum CodingKeys: String, CodingKey {
         case symbol
-        case assetType = "asset_type"
+        case assetType = "assetType"
         case timeframe
         case bars
     }

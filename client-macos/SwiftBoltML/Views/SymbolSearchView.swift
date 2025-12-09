@@ -98,6 +98,11 @@ struct SearchResultsList: View {
 struct SearchResultRow: View {
     let symbol: Symbol
     @State private var isHovered = false
+    @EnvironmentObject var appViewModel: AppViewModel
+
+    private var isWatched: Bool {
+        appViewModel.watchlistViewModel.isWatched(symbol)
+    }
 
     var body: some View {
         HStack {
@@ -111,6 +116,17 @@ struct SearchResultRow: View {
             }
 
             Spacer()
+
+            // Watchlist star button
+            Button {
+                appViewModel.watchlistViewModel.toggleSymbol(symbol)
+            } label: {
+                Image(systemName: isWatched ? "star.fill" : "star")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            .buttonStyle(.plain)
+            .help(isWatched ? "Remove from watchlist" : "Add to watchlist")
 
             Text(symbol.assetType.capitalized)
                 .font(.caption2)

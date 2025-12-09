@@ -25,6 +25,7 @@ const SEED_SYMBOLS: SeedSymbol[] = [
   { ticker: "NVDA", asset_type: "stock", description: "NVIDIA Corporation", primary_source: "finnhub" },
   { ticker: "META", asset_type: "stock", description: "Meta Platforms Inc.", primary_source: "finnhub" },
   { ticker: "TSLA", asset_type: "stock", description: "Tesla Inc.", primary_source: "finnhub" },
+  { ticker: "CRWD", asset_type: "stock", description: "CrowdStrike Holdings, Inc.", primary_source: "finnhub" },
 
   // Financials
   { ticker: "JPM", asset_type: "stock", description: "JPMorgan Chase & Co.", primary_source: "finnhub" },

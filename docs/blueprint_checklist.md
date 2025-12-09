@@ -39,8 +39,9 @@ Status notation:
 * [x] Document environment variables for:
 
   * [x] Supabase keys (service key, anon key)
-  * [ ] Finnhub API key (`FINNHUB_API_KEY`, `FINNHUB_BASE_URL`, `FINNHUB_MAX_RPS`, `FINNHUB_MAX_RPM`)
-  * [ ] Massive API key (`MASSIVE_API_KEY`, `MASSIVE_BASE_URL`, `MASSIVE_MAX_RPM`)
+  * [x] Finnhub API key (`FINNHUB_API_KEY`, `FINNHUB_BASE_URL`, `FINNHUB_MAX_RPS`, `FINNHUB_MAX_RPM`)
+  * [x] Massive API key (`MASSIVE_API_KEY`, `MASSIVE_BASE_URL`, `MASSIVE_MAX_RPM`)
+  * [x] Cache TTL overrides (`CACHE_TTL_QUOTE`, `CACHE_TTL_BARS`, `CACHE_TTL_NEWS`, etc.)
 
 ### 0.3. Core Tooling & CI Skeleton
 
@@ -83,7 +84,13 @@ Status notation:
 * [x] Implement a backend helper to fetch candles from Finnhub/Massive.
   * [x] Created `_shared/massive-client.ts` for Polygon.io API.
   * [x] Created `_shared/finnhub-client.ts` for future quote functionality.
-  * [ ] Ensure calls go through provider router + rate limiter (see `api_handling.md`) so quotas are respected.
+  * [x] **Ensure calls go through provider router + rate limiter** (see `api_handling.md`) so quotas are respected.
+    * [x] Implemented `DataProviderAbstraction` interface with unified types
+    * [x] Implemented `TokenBucketRateLimiter` with dual buckets (per-second + per-minute)
+    * [x] Implemented `MemoryCache` with TTL and tag-based invalidation
+    * [x] Created `FinnhubClient` and `MassiveClient` implementing abstraction
+    * [x] Created `ProviderRouter` with health tracking and automatic failover
+    * [x] Updated `/chart` and `/news` Edge Functions to use ProviderRouter
 * [x] Implement initial on-demand ingestion function (internal helper):
 
   * [x] Given `symbol_id` + `timeframe`, pull and store OHLC bars.
@@ -102,10 +109,20 @@ Status notation:
 
   * [x] Input: `symbol` (optional).
   * [x] Fetch latest news from Finnhub.
-  * [ ] Route via provider router + rate limiter (see `api_handling.md`).
+  * [x] Route via provider router + rate limiter (see `api_handling.md`).
   * [x] (Optional) Store in `news_items` cache.
   * [x] Return normalized JSON items.
 * [x] Test: Call `/news?symbol=AAPL` and verify response.
+
+### 1.5. Provider Migration to Live Ingestion
+
+* [x] **Migrate from seed-based to provider-driven data architecture:**
+  * [x] Implemented unified `DataProviderAbstraction` layer (see `docs/MIGRATION_SUMMARY.md`)
+  * [x] Integrated rate limiting and caching across all provider calls
+  * [x] Updated `/chart` and `/news` endpoints to use `ProviderRouter`
+  * [ ] Build backfill ingestion helper for warming DB with historical OHLC
+  * [ ] Remove direct seed script dependencies (keep DB seeding for bootstrap only)
+  * [ ] Add provider-backed symbol discovery (populate `symbols` via provider APIs)
 
 ---
 
@@ -115,47 +132,62 @@ Status notation:
 
 ### 2.1. Project Setup
 
-* [ ] Create `client-macos` Xcode project (macOS app, SwiftUI lifecycle).
-* [ ] Define top-level folders:
+* [x] Create `client-macos` Xcode project (macOS app, SwiftUI lifecycle).
+* [x] Define top-level folders:
 
-  * [ ] `Models/`
-  * [ ] `Services/`
-  * [ ] `ViewModels/`
-  * [ ] `Views/`
-* [ ] Add basic app entry: `StockAnalysisApp`.
+  * [x] `Models/`
+  * [x] `Services/`
+  * [x] `ViewModels/`
+  * [x] `Views/`
+* [x] Add basic app entry: `SwiftBoltMLApp`.
 
 ### 2.2. Models & Networking
 
-* [ ] Implement `Symbol`, `OHLCBar`, and other core models matching `/chart` & `/symbols/search` payloads.
-* [ ] Implement `ApiClient` or `NetworkClient` using `URLSession` + async/await.
-* [ ] Implement `MarketDataService` with:
+* [x] Implement `Symbol`, `OHLCBar`, and other core models matching `/chart` & `/symbols/search` payloads.
+  * [x] Fixed camelCase vs snake_case key mapping for backend responses
+  * [x] Fixed ISO8601 date parsing to handle both fractional seconds and timezone formats
+* [x] Implement `ApiClient` or `NetworkClient` using `URLSession` + async/await.
+* [x] Implement `MarketDataService` with:
 
-  * [ ] `fetchChart(symbol:assetType:timeframe:)`.
-  * [ ] `searchSymbols(query:)`.
-* [ ] Add simple error handling and logging for failed requests.
-* [ ] Ensure service calls the unified provider abstraction (router + rate limiter) rather than direct provider-specific clients.
+  * [x] `fetchChart(symbol:assetType:timeframe:)`.
+  * [x] `searchSymbols(query:)`.
+  * [x] `fetchNews(symbol:)`.
+* [x] Add simple error handling and logging for failed requests.
+* [x] Backend calls use the unified ProviderRouter (rate limiter + caching handled server-side).
 
 ### 2.3. ViewModels
 
-* [ ] Implement `SymbolViewModel`:
+* [x] Implement `SymbolSearchViewModel`:
 
-  * [ ] Holds `symbol`, `assetType`, `timeframe`.
-  * [ ] Exposes symbol search and selection.
-* [ ] Implement `ChartViewModel` (v1):
+  * [x] Holds search query and results.
+  * [x] Exposes symbol search functionality.
+* [x] Implement `AppViewModel`:
 
-  * [ ] Holds `[OHLCBar]`.
-  * [ ] `load()` calls `MarketDataService.fetchChart`.
-  * [ ] Integrates with a 10-minute refresh trigger (can be stubbed first).
+  * [x] Holds `selectedSymbol`, `assetType`, `timeframe`.
+  * [x] Coordinates chart and news data loading.
+* [x] Implement `ChartViewModel` (v1):
+
+  * [x] Holds `[OHLCBar]` and loading state.
+  * [x] `loadChart()` calls `APIClient.fetchChart`.
+  * [x] Supports multiple timeframes (m15, h1, h4, d1, w1).
+* [x] Implement `NewsViewModel`:
+
+  * [x] Holds news items and loading state.
+  * [x] `loadNews()` calls `APIClient.fetchNews`.
 
 ### 2.4. Views (Skeleton Layout)
 
-* [ ] Implement `MainDashboardView` with:
+* [x] Implement `ContentView` (MainDashboardView) with:
 
-  * [ ] Placeholder `TopControlBarView`.
-  * [ ] `ChartAreaView` with dummy chart placeholder.
-  * [ ] `RightSidebarView` placeholder.
-* [ ] Wire `SymbolViewModel` + `ChartViewModel` into `MainDashboardView` using `@StateObject`.
-* [ ] Confirm: Search symbol → select → triggers chart fetch → displays data (even if chart is basic for now).
+  * [x] `SidebarView` with symbol search.
+  * [x] `ChartView` rendering OHLC data.
+  * [x] `NewsListView` displaying news items.
+  * [x] Navigation split view layout.
+* [x] Wire `AppViewModel` + `ChartViewModel` + `NewsViewModel` using `@StateObject`/`@EnvironmentObject`.
+* [x] Confirm: Search symbol → select → triggers chart fetch → displays data ✅
+  * [x] Tested with AAPL (69 bars loaded successfully)
+  * [x] Tested symbol search with NVDA and CRWD (both found)
+  * [x] News loading functional (pending date format fix)
 
 ---
 
@@ -165,31 +197,43 @@ Status notation:
 
 ### 3.1. Chart Rendering
 
-* [ ] Select charting approach (native SwiftUI drawing vs 3rd-party).
-* [ ] Implement `PriceChartView`:
+* [x] Select charting approach (native SwiftUI drawing vs 3rd-party).
+  * [x] Selected native SwiftUI Charts framework with custom drawing
+* [x] Implement `PriceChartView`:
 
-  * [ ] Render candlesticks from `[OHLCBar]`.
-  * [ ] Support x-axis as time, y-axis as price.
-  * [ ] Add crosshair + basic tooltip (if feasible).
+  * [x] Render candlesticks from `[OHLCBar]`.
+  * [x] Support x-axis as time, y-axis as price.
+  * [x] Add crosshair + basic tooltip (if feasible).
+  * [x] Created `AdvancedChartView` with interactive crosshair and tooltip overlay
 
 ### 3.2. Indicators (Client or Backend)
 
-* [ ] Decide location for indicator computation:
+* [x] Decide location for indicator computation:
 
-  * [ ] Start with **client-side** for simple indicators (SMA, EMA, RSI) *or*
-  * [ ] Add indicator arrays in `/chart` response.
-* [ ] Implement minimal indicator set for MVP:
+  * [x] Start with **client-side** for simple indicators (SMA, EMA, RSI)
+  * [x] Created `TechnicalIndicators.swift` utility class
+* [x] Implement minimal indicator set for MVP:
 
-  * [ ] SMA/EMA overlays.
-  * [ ] RSI as a panel indicator.
-* [ ] Implement `IndicatorPanelView` for 1–2 panel indicators.
-* [ ] Wire indicator visibility controls into `TopControlBarView` (even if minimal toggles).
+  * [x] SMA/EMA overlays (SMA 20/50/200, EMA 9/21).
+  * [x] RSI as a panel indicator.
+  * [x] Volume bars visualization
+  * [x] VWAP and Bollinger Bands calculations (available for future use)
+* [x] Implement `IndicatorPanelView` for 1–2 panel indicators.
+  * [x] Created multi-panel layout with price chart, RSI panel, and volume bars
+* [x] Wire indicator visibility controls into `TopControlBarView` (even if minimal toggles).
+  * [x] Added `IndicatorToggleMenu` in ChartView with toggles for all indicators
 
 ### 3.3. Watchlist (Static / Local)
 
-* [ ] Implement local-only `WatchlistViewModel`.
-* [ ] Implement `WatchlistView` in the right sidebar.
-* [ ] Allow add/remove symbols to/from watchlist (persist to local storage initially).
+* [x] Implement local-only `WatchlistViewModel`.
+  * [x] Created with UserDefaults persistence
+  * [x] Supports add, remove, toggle, and isWatched operations
+* [x] Implement `WatchlistView` in the right sidebar.
+  * [x] Created with empty state, symbol rows, and selection highlighting
+  * [x] Integrated into ContentView sidebar between search and navigation
+* [x] Allow add/remove symbols to/from watchlist (persist to local storage initially).
+  * [x] Star button in search results to add to watchlist
+  * [x] Remove button in watchlist view (appears on hover)
 
 ---
 

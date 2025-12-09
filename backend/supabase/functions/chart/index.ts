@@ -1,19 +1,36 @@
-// chart: Fetch OHLC candle data for a symbol
+// chart: Fetch OHLC candle data for a symbol via ProviderRouter
 // GET /chart?symbol=AAPL&timeframe=d1
+//
+// Uses the unified ProviderRouter with rate limiting, caching, and fallback logic.
+// DB persistence is used for long-term storage; ProviderRouter handles live fetching.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
-import { fetchCandles, isValidTimeframe, type Timeframe, type OHLCBar } from "../_shared/massive-client.ts";
+import { getProviderRouter } from "../_shared/providers/factory.ts";
+import type { Timeframe } from "../_shared/providers/types.ts";
 
 // Cache staleness threshold (15 minutes)
 const CACHE_TTL_MS = 15 * 60 * 1000;
+
+const VALID_TIMEFRAMES: Timeframe[] = ["m1", "m5", "m15", "m30", "h1", "h4", "d1", "w1", "mn1"];
+
+function isValidTimeframe(value: string): value is Timeframe {
+  return VALID_TIMEFRAMES.includes(value as Timeframe);
+}
 
 interface ChartResponse {
   symbol: string;
   assetType: string;
   timeframe: string;
-  bars: OHLCBar[];
+  bars: {
+    ts: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  }[];
 }
 
 interface SymbolRecord {
@@ -54,7 +71,7 @@ serve(async (req: Request): Promise<Response> => {
 
     if (!isValidTimeframe(timeframe)) {
       return errorResponse(
-        "Invalid timeframe. Must be one of: m15, h1, h4, d1, w1",
+        `Invalid timeframe. Must be one of: ${VALID_TIMEFRAMES.join(", ")}`,
         400
       );
     }
@@ -115,25 +132,48 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    // 4. If cache is stale or empty, fetch from Polygon (Massive API)
+    // 4. If cache is stale or empty, fetch via ProviderRouter
     if (!cacheIsFresh) {
-      console.log(`Cache miss for ${ticker} ${timeframe}, fetching from Polygon`);
+      console.log(`Cache miss for ${ticker} ${timeframe}, fetching via ProviderRouter`);
 
       try {
-        const freshBars = await fetchCandles(ticker, timeframe as Timeframe, 100);
+        const router = getProviderRouter();
+
+        // Calculate time range for last 100 bars
+        const now = Math.floor(Date.now() / 1000);
+        const timeframeSeconds: Record<Timeframe, number> = {
+          m1: 60,
+          m5: 5 * 60,
+          m15: 15 * 60,
+          m30: 30 * 60,
+          h1: 60 * 60,
+          h4: 4 * 60 * 60,
+          d1: 24 * 60 * 60,
+          w1: 7 * 24 * 60 * 60,
+          mn1: 30 * 24 * 60 * 60,
+        };
+        const secondsPerBar = timeframeSeconds[timeframe];
+        const from = now - (100 * secondsPerBar);
+
+        const freshBars = await router.getHistoricalBars({
+          symbol: ticker,
+          timeframe: timeframe,
+          start: from,
+          end: now,
+        });
 
         if (freshBars.length > 0) {
           // 5. Upsert bars into database
           const barsToInsert = freshBars.map((bar) => ({
             symbol_id: symbolId,
             timeframe: timeframe,
-            ts: bar.ts,
+            ts: new Date(bar.timestamp).toISOString(),
             open: bar.open,
             high: bar.high,
             low: bar.low,
             close: bar.close,
             volume: bar.volume,
-            provider: "massive",
+            provider: "router", // Using router (could be finnhub or massive)
           }));
 
           const { error: upsertError } = await supabase
@@ -150,7 +190,15 @@ serve(async (req: Request): Promise<Response> => {
             console.log(`Cached ${freshBars.length} bars for ${ticker} ${timeframe}`);
           }
 
-          bars = freshBars;
+          // Convert router Bar format to response format
+          bars = freshBars.map((bar) => ({
+            ts: new Date(bar.timestamp).toISOString(),
+            open: bar.open,
+            high: bar.high,
+            low: bar.low,
+            close: bar.close,
+            volume: bar.volume,
+          }));
         } else if (cachedBars && cachedBars.length > 0) {
           // No fresh data, fall back to stale cache
           console.log(`No fresh data, using stale cache for ${ticker} ${timeframe}`);
@@ -164,11 +212,11 @@ serve(async (req: Request): Promise<Response> => {
           }));
         }
       } catch (fetchError) {
-        console.error("Polygon fetch error:", fetchError);
+        console.error("Provider router error:", fetchError);
 
         // Fall back to stale cache if available
         if (cachedBars && cachedBars.length > 0) {
-          console.log(`Polygon error, using stale cache for ${ticker} ${timeframe}`);
+          console.log(`Provider error, using stale cache for ${ticker} ${timeframe}`);
           bars = cachedBars.map((bar) => ({
             ts: bar.ts,
             open: Number(bar.open),

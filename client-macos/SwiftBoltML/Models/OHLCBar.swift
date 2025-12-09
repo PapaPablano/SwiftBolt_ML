@@ -10,6 +10,13 @@ struct OHLCBar: Codable, Identifiable {
 
     var id: Date { ts }
 
+    // Static formatter configured to handle fractional seconds
+    private static let iso8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
     enum CodingKeys: String, CodingKey {
         case ts, open, high, low, close, volume
     }
@@ -27,7 +34,7 @@ struct OHLCBar: Codable, Identifiable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
         let tsString = try container.decode(String.self, forKey: .ts)
-        guard let date = ISO8601DateFormatter().date(from: tsString) else {
+        guard let date = Self.iso8601Formatter.date(from: tsString) else {
             throw DecodingError.dataCorruptedError(
                 forKey: .ts,
                 in: container,
@@ -45,7 +52,7 @@ struct OHLCBar: Codable, Identifiable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(ISO8601DateFormatter().string(from: ts), forKey: .ts)
+        try container.encode(Self.iso8601Formatter.string(from: ts), forKey: .ts)
         try container.encode(open, forKey: .open)
         try container.encode(high, forKey: .high)
         try container.encode(low, forKey: .low)

@@ -15,6 +15,7 @@ VALUES
   ('TSLA', 'stock', 'Tesla Inc. - Electric vehicles and clean energy', 'finnhub'),
   ('NVDA', 'stock', 'NVIDIA Corporation - Graphics processing and AI computing', 'finnhub'),
   ('META', 'stock', 'Meta Platforms Inc. - Social media and virtual reality', 'finnhub'),
+  ('CRWD', 'stock', 'CrowdStrike Holdings, Inc. - Cybersecurity technology', 'finnhub'),
   ('JPM', 'stock', 'JPMorgan Chase & Co. - Global financial services and banking', 'finnhub'),
   ('V', 'stock', 'Visa Inc. - Global payments technology', 'finnhub'),
   ('WMT', 'stock', 'Walmart Inc. - Multinational retail corporation', 'finnhub')

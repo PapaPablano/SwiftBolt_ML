@@ -19,6 +19,14 @@ struct ContentView: View {
             print("[DEBUG] - New: \(newValue?.ticker ?? "nil")")
             print("[DEBUG] ========================================")
         }
+        #if DEBUG
+        .onAppear {
+            print("[DEBUG] ========================================")
+            print("[DEBUG] ContentView.onAppear - Bootstrapping with AAPL")
+            print("[DEBUG] ========================================")
+            appViewModel.bootstrapForDebug()
+        }
+        #endif
     }
 }
 
@@ -32,11 +40,14 @@ struct SidebarView: View {
 
             Divider()
 
+            WatchlistView()
+                .environmentObject(appViewModel)
+                .frame(maxHeight: .infinity)
+
+            Divider()
+
             List {
                 Section("Navigation") {
-                    NavigationLink(destination: Text("Watchlist")) {
-                        Label("Watchlist", systemImage: "star.fill")
-                    }
                     NavigationLink(destination: Text("Portfolio")) {
                         Label("Portfolio", systemImage: "chart.pie.fill")
                     }

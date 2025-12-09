@@ -8,9 +8,22 @@ struct NewsItem: Codable, Identifiable {
     let publishedAt: Date
     let summary: String?
 
+    // Static formatters to handle multiple ISO8601 formats
+    private static let iso8601FormatterWithFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let iso8601FormatterWithoutFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
     enum CodingKeys: String, CodingKey {
         case id, title, source, url
-        case publishedAt = "published_at"
+        case publishedAt = "publishedAt"
         case summary
     }
 
@@ -33,14 +46,19 @@ struct NewsItem: Codable, Identifiable {
         self.summary = try container.decodeIfPresent(String.self, forKey: .summary)
 
         let dateString = try container.decode(String.self, forKey: .publishedAt)
-        guard let date = ISO8601DateFormatter().date(from: dateString) else {
+
+        // Try with fractional seconds first, then without
+        if let date = Self.iso8601FormatterWithFractional.date(from: dateString) {
+            self.publishedAt = date
+        } else if let date = Self.iso8601FormatterWithoutFractional.date(from: dateString) {
+            self.publishedAt = date
+        } else {
             throw DecodingError.dataCorruptedError(
                 forKey: .publishedAt,
                 in: container,
                 debugDescription: "Invalid date format: \(dateString)"
             )
         }
-        self.publishedAt = date
     }
 
     func encode(to encoder: Encoder) throws {
@@ -50,6 +68,6 @@ struct NewsItem: Codable, Identifiable {
         try container.encode(source, forKey: .source)
         try container.encode(url, forKey: .url)
         try container.encode(summary, forKey: .summary)
-        try container.encode(ISO8601DateFormatter().string(from: publishedAt), forKey: .publishedAt)
+        try container.encode(Self.iso8601FormatterWithFractional.string(from: publishedAt), forKey: .publishedAt)
     }
 }
