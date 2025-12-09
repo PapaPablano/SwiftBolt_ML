@@ -98,14 +98,14 @@ Status notation:
 
 ### 1.4. News Endpoint (Optional Early Win)
 
-* [ ] Add `GET /news` Edge Function:
+* [x] Add `GET /news` Edge Function:
 
-  * [ ] Input: `symbol` (optional).
-  * [ ] Fetch latest news from Finnhub.
+  * [x] Input: `symbol` (optional).
+  * [x] Fetch latest news from Finnhub.
   * [ ] Route via provider router + rate limiter (see `api_handling.md`).
-  * [ ] (Optional) Store in `news_items` cache.
-  * [ ] Return normalized JSON items.
-* [ ] Test: Call `/news?symbol=AAPL` and verify response.
+  * [x] (Optional) Store in `news_items` cache.
+  * [x] Return normalized JSON items.
+* [x] Test: Call `/news?symbol=AAPL` and verify response.
 
 ---
 

@@ -114,3 +114,118 @@ export async function fetchCandles(
 export function isValidTimeframe(value: string): value is Timeframe {
   return ["m15", "h1", "h4", "d1", "w1"].includes(value);
 }
+
+// ============================================================================
+// NEWS API
+// ============================================================================
+
+interface FinnhubNewsItem {
+  category: string;
+  datetime: number;      // Unix timestamp
+  headline: string;
+  id: number;
+  image: string;
+  related: string;       // Ticker symbols
+  source: string;
+  summary: string;
+  url: string;
+}
+
+export interface NewsItem {
+  id: string;
+  title: string;
+  source: string;
+  url: string;
+  publishedAt: string;   // ISO8601
+  summary?: string;
+}
+
+/**
+ * Fetches company-specific news from Finnhub
+ * Docs: https://finnhub.io/docs/api/company-news
+ */
+export async function fetchCompanyNews(
+  symbol: string,
+  daysBack = 7
+): Promise<NewsItem[]> {
+  const apiKey = Deno.env.get("FINNHUB_API_KEY");
+  if (!apiKey) {
+    throw new Error("FINNHUB_API_KEY environment variable not set");
+  }
+
+  // Calculate date range (YYYY-MM-DD format)
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - daysBack);
+
+  const formatDate = (d: Date): string => d.toISOString().split("T")[0];
+
+  const url = new URL("https://finnhub.io/api/v1/company-news");
+  url.searchParams.set("symbol", symbol.toUpperCase());
+  url.searchParams.set("from", formatDate(from));
+  url.searchParams.set("to", formatDate(to));
+  url.searchParams.set("token", apiKey);
+
+  console.log(`Fetching company news from Finnhub: ${symbol}`);
+
+  const response = await fetch(url.toString());
+
+  if (!response.ok) {
+    throw new Error(`Finnhub API error: ${response.status} ${response.statusText}`);
+  }
+
+  const data: FinnhubNewsItem[] = await response.json();
+
+  // Transform to our NewsItem format
+  const items: NewsItem[] = data.slice(0, 20).map((item) => ({
+    id: item.id.toString(),
+    title: item.headline,
+    source: item.source,
+    url: item.url,
+    publishedAt: new Date(item.datetime * 1000).toISOString(),
+    summary: item.summary || undefined,
+  }));
+
+  console.log(`Fetched ${items.length} news items for ${symbol}`);
+  return items;
+}
+
+/**
+ * Fetches general market news from Finnhub
+ * Docs: https://finnhub.io/docs/api/market-news
+ */
+export async function fetchMarketNews(
+  category: "general" | "forex" | "crypto" | "merger" = "general"
+): Promise<NewsItem[]> {
+  const apiKey = Deno.env.get("FINNHUB_API_KEY");
+  if (!apiKey) {
+    throw new Error("FINNHUB_API_KEY environment variable not set");
+  }
+
+  const url = new URL("https://finnhub.io/api/v1/news");
+  url.searchParams.set("category", category);
+  url.searchParams.set("token", apiKey);
+
+  console.log(`Fetching market news from Finnhub: ${category}`);
+
+  const response = await fetch(url.toString());
+
+  if (!response.ok) {
+    throw new Error(`Finnhub API error: ${response.status} ${response.statusText}`);
+  }
+
+  const data: FinnhubNewsItem[] = await response.json();
+
+  // Transform to our NewsItem format
+  const items: NewsItem[] = data.slice(0, 20).map((item) => ({
+    id: item.id.toString(),
+    title: item.headline,
+    source: item.source,
+    url: item.url,
+    publishedAt: new Date(item.datetime * 1000).toISOString(),
+    summary: item.summary || undefined,
+  }));
+
+  console.log(`Fetched ${items.length} market news items`);
+  return items;
+}
