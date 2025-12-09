@@ -18,6 +18,17 @@
   "author": "",
   "license": "UNLICENSED",
   "devDependencies": {
+    "@babel/cli": "^7.25.0",
+    "@babel/core": "^7.25.0",
+    "@babel/plugin-transform-runtime": "^7.25.0",
+    "@babel/preset-env": "^7.25.0",
+    "@babel/register": "^7.25.0",
+    "mocha": "^10.4.0",
     "supabase": "^1.200.0"
+  },
+  "dependencies": {
+    "@babel/runtime": "^7.25.0",
+    "finnhub": "^2.0.12",
+    "node-fetch": "^3.3.2"
   }
 }

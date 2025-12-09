@@ -60,6 +60,9 @@ enable_confirmations = false
 [functions.symbols-search]
 verify_jwt = false  # Allow unauthenticated access for search
 
+[functions.chart]
+verify_jwt = false  # TODO: Enable JWT verification for production
+
 [analytics]
 enabled = false
 

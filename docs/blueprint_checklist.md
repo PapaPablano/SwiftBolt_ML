@@ -39,8 +39,8 @@ Status notation:
 * [x] Document environment variables for:
 
   * [x] Supabase keys (service key, anon key)
-  * [ ] Finnhub API key
-  * [ ] Massive API key
+  * [ ] Finnhub API key (`FINNHUB_API_KEY`, `FINNHUB_BASE_URL`, `FINNHUB_MAX_RPS`, `FINNHUB_MAX_RPM`)
+  * [ ] Massive API key (`MASSIVE_API_KEY`, `MASSIVE_BASE_URL`, `MASSIVE_MAX_RPM`)
 
 ### 0.3. Core Tooling & CI Skeleton
 
@@ -80,18 +80,21 @@ Status notation:
 
 ### 1.3. OHLC Data Ingestion (On-Demand)
 
-* [ ] Implement a backend helper to fetch candles from Finnhub/Massive.
-* [ ] Implement initial on-demand ingestion function (internal helper):
+* [x] Implement a backend helper to fetch candles from Finnhub/Massive.
+  * [x] Created `_shared/massive-client.ts` for Polygon.io API.
+  * [x] Created `_shared/finnhub-client.ts` for future quote functionality.
+  * [ ] Ensure calls go through provider router + rate limiter (see `api_handling.md`) so quotas are respected.
+* [x] Implement initial on-demand ingestion function (internal helper):
 
-  * [ ] Given `symbol_id` + `timeframe`, pull and store OHLC bars.
-  * [ ] Upsert into `ohlc_bars` with proper uniqueness constraints.
-* [ ] Add `GET /chart` Edge Function (v1: **no ML yet**):
+  * [x] Given `symbol_id` + `timeframe`, pull and store OHLC bars.
+  * [x] Upsert into `ohlc_bars` with proper uniqueness constraints.
+* [x] Add `GET /chart` Edge Function (v1: **no ML yet**):
 
-  * [ ] Input: `symbol`, `assetType`, `timeframe`.
-  * [ ] Resolve `symbol` → `symbol_id`.
-  * [ ] Read `ohlc_bars`; if insufficient/stale, call ingestion helper.
-  * [ ] Return JSON with `bars` only.
-* [ ] Test: Call `/chart` for `AAPL` and verify candles.
+  * [x] Input: `symbol`, `assetType`, `timeframe`.
+  * [x] Resolve `symbol` → `symbol_id`.
+  * [x] Read `ohlc_bars`; if insufficient/stale, call ingestion helper.
+  * [x] Return JSON with `bars` only.
+* [x] Test: Call `/chart` for `AAPL` and verify candles.
 
 ### 1.4. News Endpoint (Optional Early Win)
 
@@ -99,6 +102,7 @@ Status notation:
 
   * [ ] Input: `symbol` (optional).
   * [ ] Fetch latest news from Finnhub.
+  * [ ] Route via provider router + rate limiter (see `api_handling.md`).
   * [ ] (Optional) Store in `news_items` cache.
   * [ ] Return normalized JSON items.
 * [ ] Test: Call `/news?symbol=AAPL` and verify response.
@@ -129,6 +133,7 @@ Status notation:
   * [ ] `fetchChart(symbol:assetType:timeframe:)`.
   * [ ] `searchSymbols(query:)`.
 * [ ] Add simple error handling and logging for failed requests.
+* [ ] Ensure service calls the unified provider abstraction (router + rate limiter) rather than direct provider-specific clients.
 
 ### 2.3. ViewModels
 
@@ -306,7 +311,7 @@ Status notation:
 ### 7.2. Monitoring & Logging
 
 * [ ] Centralize logging for Edge Functions.
-* [ ] Add basic metrics (errors, latency, job success/failure).
+* [ ] Add basic metrics (errors, latency, job success/failure) plus per-provider usage and 429 rate-limit events (see `api_handling.md`).
 
 ### 7.3. Performance & UX Polish
 
