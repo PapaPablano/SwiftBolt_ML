@@ -27,6 +27,10 @@
 		A1000018233456780000018 /* NewsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000018233456780000018 /* NewsViewModel.swift */; };
 		A1000019233456780000019 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000019233456780000019 /* AppViewModel.swift */; };
 		A1000020233456780000020 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000022233456780000022 /* Assets.xcassets */; };
+		A1000021233456780000021 /* TechnicalIndicators.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000023233456780000023 /* TechnicalIndicators.swift */; };
+		A1000022233456780000022 /* WatchlistViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000024233456780000024 /* WatchlistViewModel.swift */; };
+		A1000023233456780000023 /* WatchlistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000025233456780000025 /* WatchlistView.swift */; };
+		A1000024233456780000024 /* AdvancedChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000026233456780000026 /* AdvancedChartView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -52,6 +56,10 @@
 		A2000020233456780000020 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A2000021233456780000021 /* SwiftBoltML.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SwiftBoltML.entitlements; sourceTree = "<group>"; };
 		A2000022233456780000022 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A2000023233456780000023 /* TechnicalIndicators.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TechnicalIndicators.swift; sourceTree = "<group>"; };
+		A2000024233456780000024 /* WatchlistViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchlistViewModel.swift; sourceTree = "<group>"; };
+		A2000025233456780000025 /* WatchlistView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchlistView.swift; sourceTree = "<group>"; };
+		A2000026233456780000026 /* AdvancedChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedChartView.swift; sourceTree = "<group>"; };
 		A3000001233456780000001 /* SwiftBoltML.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftBoltML.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -106,6 +114,8 @@
 				A2000005233456780000005 /* ChartView.swift */,
 				A2000006233456780000006 /* PriceChartView.swift */,
 				A2000007233456780000007 /* NewsListView.swift */,
+				A2000025233456780000025 /* WatchlistView.swift */,
+				A2000026233456780000026 /* AdvancedChartView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -117,6 +127,7 @@
 				A2000017233456780000017 /* ChartViewModel.swift */,
 				A2000018233456780000018 /* NewsViewModel.swift */,
 				A2000019233456780000019 /* AppViewModel.swift */,
+				A2000024233456780000024 /* WatchlistViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -139,6 +150,7 @@
 				A2000013233456780000013 /* APIClient.swift */,
 				A2000014233456780000014 /* Config.swift */,
 				A2000015233456780000015 /* KeychainService.swift */,
+				A2000023233456780000023 /* TechnicalIndicators.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -239,6 +251,10 @@
 				A1000017233456780000017 /* ChartViewModel.swift in Sources */,
 				A1000018233456780000018 /* NewsViewModel.swift in Sources */,
 				A1000019233456780000019 /* AppViewModel.swift in Sources */,
+				A1000021233456780000021 /* TechnicalIndicators.swift in Sources */,
+				A1000022233456780000022 /* WatchlistViewModel.swift in Sources */,
+				A1000023233456780000023 /* WatchlistView.swift in Sources */,
+				A1000024233456780000024 /* AdvancedChartView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
