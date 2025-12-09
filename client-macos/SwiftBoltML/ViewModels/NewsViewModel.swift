@@ -24,4 +24,9 @@ final class NewsViewModel: ObservableObject {
     func refresh(for symbol: String? = nil) async {
         await loadNews(for: symbol)
     }
+
+    func clearData() {
+        newsItems = []
+        errorMessage = nil
+    }
 }

@@ -39,25 +39,30 @@ struct ChartView: View {
                         await chartViewModel.loadChart()
                     }
                 }
-            } else if chartViewModel.bars.isEmpty {
-                EmptyChartView()
-            } else {
-                AdvancedChartView(
-                    bars: chartViewModel.bars,
-                    sma20: chartViewModel.sma20,
-                    sma50: chartViewModel.sma50,
-                    ema9: chartViewModel.ema9,
-                    ema21: chartViewModel.ema21,
-                    rsi: chartViewModel.rsi,
-                    config: chartViewModel.indicatorConfig
-                )
-                .padding()
+            } else if let chartData = chartViewModel.chartData {
+                if chartData.bars.isEmpty {
+                    EmptyChartView()
+                } else {
+                    AdvancedChartView(
+                        bars: chartViewModel.bars,
+                        sma20: chartViewModel.sma20,
+                        sma50: chartViewModel.sma50,
+                        ema9: chartViewModel.ema9,
+                        ema21: chartViewModel.ema21,
+                        rsi: chartViewModel.rsi,
+                        config: chartViewModel.indicatorConfig
+                    )
+                    .padding()
 
-                if let latestBar = chartViewModel.bars.last {
-                    OHLCBarView(bar: latestBar)
-                        .padding(.horizontal)
-                        .padding(.bottom)
+                    if let latestBar = chartViewModel.bars.last {
+                        OHLCBarView(bar: latestBar)
+                            .padding(.horizontal)
+                            .padding(.bottom)
+                    }
                 }
+            } else {
+                // No data loaded yet - show nothing or a placeholder
+                Color.clear
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))

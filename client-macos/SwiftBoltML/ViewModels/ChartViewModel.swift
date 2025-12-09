@@ -101,4 +101,9 @@ final class ChartViewModel: ObservableObject {
         selectedSymbol = symbol
         await loadChart()
     }
+
+    func clearData() {
+        chartData = nil
+        errorMessage = nil
+    }
 }

@@ -10,7 +10,7 @@ final class AppViewModel: ObservableObject {
     }
 
     @Published var chartViewModel: ChartViewModel
-    let newsViewModel: NewsViewModel
+    @Published var newsViewModel: NewsViewModel
     let searchViewModel: SymbolSearchViewModel
     let watchlistViewModel: WatchlistViewModel
 
@@ -40,8 +40,12 @@ final class AppViewModel: ObservableObject {
     func refreshData() async {
         print("[DEBUG] AppViewModel.refreshData() START")
         print("[DEBUG] - Symbol to load: \(selectedSymbol?.ticker ?? "nil")")
-        print("[DEBUG] - Setting chartViewModel.selectedSymbol...")
 
+        // Clear stale data immediately to show loading states
+        chartViewModel.clearData()
+        newsViewModel.clearData()
+
+        print("[DEBUG] - Setting chartViewModel.selectedSymbol...")
         chartViewModel.selectedSymbol = selectedSymbol
 
         print("[DEBUG] - chartViewModel.selectedSymbol set to: \(chartViewModel.selectedSymbol?.ticker ?? "nil")")
