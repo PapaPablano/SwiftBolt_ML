@@ -26,7 +26,7 @@ struct ChartView: View {
 
                 Spacer()
 
-                IndicatorToggleMenu(config: $chartViewModel.indicatorConfig)
+                IndicatorToggleMenu(config: $appViewModel.chartViewModel.indicatorConfig)
             }
             .padding(.horizontal)
             .padding(.top, 8)
