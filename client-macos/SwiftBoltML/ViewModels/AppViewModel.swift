@@ -9,7 +9,7 @@ final class AppViewModel: ObservableObject {
         }
     }
 
-    let chartViewModel: ChartViewModel
+    @Published var chartViewModel: ChartViewModel
     let newsViewModel: NewsViewModel
     let searchViewModel: SymbolSearchViewModel
     let watchlistViewModel: WatchlistViewModel
