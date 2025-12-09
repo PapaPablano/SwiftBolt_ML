@@ -131,7 +131,6 @@ struct CandlestickChartView: View {
                 }
             }
         }
-        .chartAngleSelection(value: $selectedBar)
         .chartOverlay { proxy in
             GeometryReader { geometry in
                 Rectangle()
@@ -156,7 +155,8 @@ struct CandlestickChartView: View {
     }
 
     private func updateSelection(at location: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) {
-        let xPosition = location.x - geometry[proxy.plotAreaFrame].origin.x
+        guard let plotFrame = proxy.plotFrame else { return }
+        let xPosition = location.x - geometry[plotFrame].origin.x
         guard let date: Date = proxy.value(atX: xPosition) else { return }
 
         // Find the closest bar to the selected date
