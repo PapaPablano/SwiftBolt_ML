@@ -265,11 +265,11 @@ struct AdvancedChartView: View {
     private var maxPrice: Double {
         // Include indicator values in range calculation
         var maxValue = bars.map(\.high).max() ?? 0
-        if config.showSMA20, let max = sma20.compactMap(\.value).max() {
-            maxValue = max(maxValue, max)
+        if config.showSMA20, let sma20Max = sma20.compactMap(\.value).max() {
+            maxValue = max(maxValue, sma20Max)
         }
-        if config.showSMA50, let max = sma50.compactMap(\.value).max() {
-            maxValue = max(maxValue, max)
+        if config.showSMA50, let sma50Max = sma50.compactMap(\.value).max() {
+            maxValue = max(maxValue, sma50Max)
         }
         return maxValue
     }
@@ -280,7 +280,7 @@ struct AdvancedChartView: View {
     }
 
     private func updateSelection(at location: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) {
-        let xPosition = location.x - geometry[proxy.plotAreaFrame].origin.x
+        let xPosition = location.x - geometry[proxy.plotFrame].origin.x
         guard let date: Date = proxy.value(atX: xPosition) else { return }
 
         selectedBar = bars.min(by: { abs($0.ts.timeIntervalSince(date)) < abs($1.ts.timeIntervalSince(date)) })
