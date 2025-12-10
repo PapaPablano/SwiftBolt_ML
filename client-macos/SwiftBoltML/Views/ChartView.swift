@@ -7,8 +7,30 @@ struct ChartView: View {
         appViewModel.chartViewModel
     }
 
+    private var debugDescription: String {
+        let isLoading = chartViewModel.isLoading
+        let error = chartViewModel.errorMessage ?? "nil"
+
+        let barCount: Int
+        if let data = chartViewModel.chartData {
+            barCount = data.bars.count
+        } else {
+            barCount = -1 // sentinel: no data set
+        }
+
+        return """
+        [DEBUG] ChartView.body
+        - isLoading: \(isLoading)
+        - error: \(error)
+        - chartData is \(chartViewModel.chartData == nil ? "nil" : "non-nil")
+        - barCount: \(barCount)
+        """
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
+        print(debugDescription)
+
+        return VStack(spacing: 0) {
             ChartHeader(
                 symbol: appViewModel.selectedSymbol,
                 lastBar: chartViewModel.bars.last
@@ -31,6 +53,7 @@ struct ChartView: View {
             .padding(.horizontal)
             .padding(.top, 8)
 
+            // Simplified conditional logic - check data directly
             if chartViewModel.isLoading {
                 LoadingChartView()
             } else if let error = chartViewModel.errorMessage {
@@ -39,12 +62,11 @@ struct ChartView: View {
                         await chartViewModel.loadChart()
                     }
                 }
-            } else if let chartData = chartViewModel.chartData {
-                if chartData.bars.isEmpty {
-                    EmptyChartView()
-                } else {
+            } else if let chartData = chartViewModel.chartData, !chartData.bars.isEmpty {
+                // ✅ Always render the chart if we have bars
+                VStack(spacing: 0) {
                     AdvancedChartView(
-                        bars: chartViewModel.bars,
+                        bars: chartData.bars,
                         sma20: chartViewModel.sma20,
                         sma50: chartViewModel.sma50,
                         ema9: chartViewModel.ema9,
@@ -54,14 +76,17 @@ struct ChartView: View {
                     )
                     .padding()
 
-                    if let latestBar = chartViewModel.bars.last {
+                    if let latestBar = chartData.bars.last {
                         OHLCBarView(bar: latestBar)
                             .padding(.horizontal)
                             .padding(.bottom)
                     }
                 }
+            } else if let chartData = chartViewModel.chartData, chartData.bars.isEmpty {
+                // Data loaded, but empty
+                EmptyChartView()
             } else {
-                // No data loaded yet - show nothing or a placeholder
+                // No request has been made yet (first launch & no symbol)
                 Color.clear
             }
         }

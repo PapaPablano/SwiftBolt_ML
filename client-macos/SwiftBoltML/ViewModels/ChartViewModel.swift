@@ -78,7 +78,10 @@ final class ChartViewModel: ObservableObject {
             )
             print("[DEBUG] ChartViewModel.loadChart() - SUCCESS!")
             print("[DEBUG] - Received \(response.bars.count) bars")
+            print("[DEBUG] - Setting chartData property...")
             chartData = response
+            print("[DEBUG] - chartData is now: \(chartData == nil ? "nil" : "non-nil with \(chartData!.bars.count) bars")")
+            errorMessage = nil
         } catch {
             print("[DEBUG] ChartViewModel.loadChart() - ERROR: \(error)")
             print("[DEBUG] - Error message: \(error.localizedDescription)")
@@ -88,6 +91,7 @@ final class ChartViewModel: ObservableObject {
 
         isLoading = false
         print("[DEBUG] ChartViewModel.loadChart() COMPLETED")
+        print("[DEBUG] - Final state: chartData=\(chartData == nil ? "nil" : "non-nil"), isLoading=\(isLoading), errorMessage=\(errorMessage ?? "nil")")
         print("[DEBUG] ========================================")
     }
 
