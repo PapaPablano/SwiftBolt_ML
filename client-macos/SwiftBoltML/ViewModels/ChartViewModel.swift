@@ -11,6 +11,8 @@ final class ChartViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var indicatorConfig = IndicatorConfig()
 
+    private var loadTask: Task<Void, Never>?
+
     var bars: [OHLCBar] {
         chartData?.bars ?? []
     }
@@ -54,6 +56,15 @@ final class ChartViewModel: ObservableObject {
     }
 
     func loadChart() async {
+        // Cancel any existing load operation
+        loadTask?.cancel()
+
+        // Prevent concurrent calls
+        guard !isLoading else {
+            print("[DEBUG] ChartViewModel.loadChart() - ALREADY LOADING, skipping duplicate call")
+            return
+        }
+
         print("[DEBUG] ========================================")
         print("[DEBUG] ChartViewModel.loadChart() CALLED")
         print("[DEBUG] ========================================")
@@ -61,6 +72,7 @@ final class ChartViewModel: ObservableObject {
         guard let symbol = selectedSymbol else {
             print("[DEBUG] ChartViewModel.loadChart() - NO SYMBOL SELECTED, returning")
             chartData = nil
+            loadTask = nil
             return
         }
 
@@ -71,28 +83,47 @@ final class ChartViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
 
-        do {
-            let response = try await APIClient.shared.fetchChart(
-                symbol: symbol.ticker,
-                timeframe: timeframe
-            )
-            print("[DEBUG] ChartViewModel.loadChart() - SUCCESS!")
-            print("[DEBUG] - Received \(response.bars.count) bars")
-            print("[DEBUG] - Setting chartData property...")
-            chartData = response
-            print("[DEBUG] - chartData is now: \(chartData == nil ? "nil" : "non-nil with \(chartData!.bars.count) bars")")
-            errorMessage = nil
-        } catch {
-            print("[DEBUG] ChartViewModel.loadChart() - ERROR: \(error)")
-            print("[DEBUG] - Error message: \(error.localizedDescription)")
-            errorMessage = error.localizedDescription
-            chartData = nil
+        // Create new task
+        loadTask = Task {
+            do {
+                let response = try await APIClient.shared.fetchChart(
+                    symbol: symbol.ticker,
+                    timeframe: timeframe
+                )
+
+                // Check if task was cancelled
+                guard !Task.isCancelled else {
+                    print("[DEBUG] ChartViewModel.loadChart() - CANCELLED")
+                    isLoading = false
+                    return
+                }
+
+                print("[DEBUG] ChartViewModel.loadChart() - SUCCESS!")
+                print("[DEBUG] - Received \(response.bars.count) bars")
+                print("[DEBUG] - Setting chartData property...")
+                chartData = response
+                print("[DEBUG] - chartData is now: \(chartData == nil ? "nil" : "non-nil with \(chartData!.bars.count) bars")")
+                errorMessage = nil
+            } catch {
+                guard !Task.isCancelled else {
+                    print("[DEBUG] ChartViewModel.loadChart() - CANCELLED (error path)")
+                    isLoading = false
+                    return
+                }
+
+                print("[DEBUG] ChartViewModel.loadChart() - ERROR: \(error)")
+                print("[DEBUG] - Error message: \(error.localizedDescription)")
+                errorMessage = error.localizedDescription
+                chartData = nil
+            }
+
+            isLoading = false
+            print("[DEBUG] ChartViewModel.loadChart() COMPLETED")
+            print("[DEBUG] - Final state: chartData=\(chartData == nil ? "nil" : "non-nil"), isLoading=\(isLoading), errorMessage=\(errorMessage ?? "nil")")
+            print("[DEBUG] ========================================")
         }
 
-        isLoading = false
-        print("[DEBUG] ChartViewModel.loadChart() COMPLETED")
-        print("[DEBUG] - Final state: chartData=\(chartData == nil ? "nil" : "non-nil"), isLoading=\(isLoading), errorMessage=\(errorMessage ?? "nil")")
-        print("[DEBUG] ========================================")
+        await loadTask?.value
     }
 
     func setTimeframe(_ newTimeframe: String) async {
@@ -107,7 +138,10 @@ final class ChartViewModel: ObservableObject {
     }
 
     func clearData() {
+        loadTask?.cancel()
+        loadTask = nil
         chartData = nil
         errorMessage = nil
+        isLoading = false
     }
 }

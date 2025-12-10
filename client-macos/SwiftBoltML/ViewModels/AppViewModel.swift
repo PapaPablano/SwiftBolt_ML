@@ -38,17 +38,25 @@ final class AppViewModel: ObservableObject {
     }
 
     func refreshData() async {
+        print("[DEBUG] ========================================")
         print("[DEBUG] AppViewModel.refreshData() START")
-        print("[DEBUG] - Symbol to load: \(selectedSymbol?.ticker ?? "nil")")
+        print("[DEBUG] - selectedSymbol (AppViewModel): \(selectedSymbol?.ticker ?? "nil")")
+        print("[DEBUG] - chartViewModel.selectedSymbol (BEFORE): \(chartViewModel.selectedSymbol?.ticker ?? "nil")")
 
         // Clear stale data immediately to show loading states
         chartViewModel.clearData()
         newsViewModel.clearData()
 
-        print("[DEBUG] - Setting chartViewModel.selectedSymbol...")
+        print("[DEBUG] - Setting chartViewModel.selectedSymbol to: \(selectedSymbol?.ticker ?? "nil")")
         chartViewModel.selectedSymbol = selectedSymbol
+        print("[DEBUG] - chartViewModel.selectedSymbol (AFTER): \(chartViewModel.selectedSymbol?.ticker ?? "nil")")
 
-        print("[DEBUG] - chartViewModel.selectedSymbol set to: \(chartViewModel.selectedSymbol?.ticker ?? "nil")")
+        guard selectedSymbol != nil else {
+            print("[DEBUG] - No symbol selected, skipping load")
+            print("[DEBUG] ========================================")
+            return
+        }
+
         print("[DEBUG] - Calling chartViewModel.loadChart() and newsViewModel.loadNews()...")
 
         async let chartLoad: () = chartViewModel.loadChart()
@@ -56,6 +64,7 @@ final class AppViewModel: ObservableObject {
 
         _ = await (chartLoad, newsLoad)
         print("[DEBUG] AppViewModel.refreshData() COMPLETED")
+        print("[DEBUG] ========================================")
     }
 
     func selectSymbol(_ symbol: Symbol) {

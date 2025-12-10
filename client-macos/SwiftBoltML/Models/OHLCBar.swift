@@ -10,10 +10,16 @@ struct OHLCBar: Codable, Identifiable {
 
     var id: Date { ts }
 
-    // Static formatter configured to handle fractional seconds
-    private static let iso8601Formatter: ISO8601DateFormatter = {
+    // Static formatters to handle multiple ISO8601 formats
+    private static let iso8601FormatterWithFractional: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let iso8601FormatterWithoutFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
         return formatter
     }()
 
@@ -34,14 +40,20 @@ struct OHLCBar: Codable, Identifiable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
         let tsString = try container.decode(String.self, forKey: .ts)
-        guard let date = Self.iso8601Formatter.date(from: tsString) else {
+
+        // Try with fractional seconds first (2025-09-02T04:00:00.000Z)
+        // then without (2025-12-05T14:00:00+00:00)
+        if let date = Self.iso8601FormatterWithFractional.date(from: tsString) {
+            self.ts = date
+        } else if let date = Self.iso8601FormatterWithoutFractional.date(from: tsString) {
+            self.ts = date
+        } else {
             throw DecodingError.dataCorruptedError(
                 forKey: .ts,
                 in: container,
-                debugDescription: "Invalid date format: \(tsString)"
+                debugDescription: "Invalid date format: \(tsString). Expected ISO8601 with or without fractional seconds."
             )
         }
-        self.ts = date
 
         self.open = try container.decode(Double.self, forKey: .open)
         self.high = try container.decode(Double.self, forKey: .high)
@@ -52,7 +64,7 @@ struct OHLCBar: Codable, Identifiable {
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(Self.iso8601Formatter.string(from: ts), forKey: .ts)
+        try container.encode(Self.iso8601FormatterWithFractional.string(from: ts), forKey: .ts)
         try container.encode(open, forKey: .open)
         try container.encode(high, forKey: .high)
         try container.encode(low, forKey: .low)
