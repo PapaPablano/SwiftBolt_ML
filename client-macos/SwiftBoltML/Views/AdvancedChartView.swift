@@ -13,23 +13,29 @@ struct AdvancedChartView: View {
     @State private var selectedBar: OHLCBar?
 
     var body: some View {
-        VStack(spacing: 0) {
+        print("[DEBUG] 🟡 AdvancedChartView.body rendering with \(bars.count) bars")
+
+        return VStack(spacing: 0) {
             // Main price chart with indicators
             priceChartView
                 .frame(height: config.showRSI ? 400 : 500)
+                .id("price-\(bars.count)-\(bars.first?.ts.timeIntervalSince1970 ?? 0)")
 
             if config.showRSI {
                 Divider()
                 rsiChartView
                     .frame(height: 120)
+                    .id("rsi-\(rsi.count)")
             }
 
             if config.showVolume {
                 Divider()
                 volumeChartView
                     .frame(height: 100)
+                    .id("volume-\(bars.count)")
             }
         }
+        .id("advanced-chart-\(bars.count)-\(bars.first?.ts.timeIntervalSince1970 ?? 0)")
     }
 
     // MARK: - Price Chart

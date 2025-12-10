@@ -59,6 +59,7 @@ struct PriceChartView: View {
                 }
             }
         }
+        .id("price-chart-\(bars.count)-\(bars.first?.ts.timeIntervalSince1970 ?? 0)")
     }
 
     private func formatPrice(_ price: Double) -> String {
@@ -152,6 +153,7 @@ struct CandlestickChartView: View {
                     .padding(8)
             }
         }
+        .id("candlestick-chart-\(bars.count)-\(bars.first?.ts.timeIntervalSince1970 ?? 0)")
     }
 
     private func updateSelection(at location: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) {
