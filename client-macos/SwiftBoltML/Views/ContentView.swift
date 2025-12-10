@@ -73,10 +73,39 @@ struct SidebarView: View {
 struct DetailView: View {
     @EnvironmentObject var appViewModel: AppViewModel
     @State private var selectedTab = 0
+    #if DEBUG
+    @State private var showDebugPanel = false
+    #endif
 
     var body: some View {
         if appViewModel.selectedSymbol != nil {
             VStack(spacing: 0) {
+                #if DEBUG
+                HStack {
+                    Spacer()
+                    Button {
+                        showDebugPanel.toggle()
+                    } label: {
+                        Label("Debug", systemImage: showDebugPanel ? "chevron.up" : "chevron.down")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                }
+
+                if showDebugPanel {
+                    ScrollView {
+                        DebugPanel()
+                            .environmentObject(appViewModel)
+                    }
+                    .frame(maxHeight: 300)
+                    .padding(.horizontal)
+
+                    Divider()
+                }
+                #endif
+
                 ChartView()
                     .environmentObject(appViewModel)
                     .frame(minHeight: 400)

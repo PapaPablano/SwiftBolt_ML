@@ -4,7 +4,13 @@ import Foundation
 final class ChartViewModel: ObservableObject {
     static let availableTimeframes = ["m15", "h1", "h4", "d1", "w1"]
 
-    @Published var selectedSymbol: Symbol?
+    @Published var selectedSymbol: Symbol? {
+        didSet {
+            print("[DEBUG] 🟢 ChartViewModel.selectedSymbol DIDSET TRIGGERED")
+            print("[DEBUG] - Old value: \(oldValue?.ticker ?? "nil")")
+            print("[DEBUG] - New value: \(selectedSymbol?.ticker ?? "nil")")
+        }
+    }
     @Published var timeframe: String = "d1"
     @Published private(set) var chartData: ChartResponse?
     @Published private(set) var isLoading: Bool = false

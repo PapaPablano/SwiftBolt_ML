@@ -23,6 +23,19 @@ struct OHLCBar: Codable, Identifiable {
         return formatter
     }()
 
+    // Additional fallback formatters for edge cases
+    private static let iso8601FormatterColonTimezone: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withColonSeparatorInTimeZone]
+        return formatter
+    }()
+
+    private static let iso8601FormatterColonTimezoneWithFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds, .withColonSeparatorInTimeZone]
+        return formatter
+    }()
+
     enum CodingKeys: String, CodingKey {
         case ts, open, high, low, close, volume
     }
@@ -41,20 +54,37 @@ struct OHLCBar: Codable, Identifiable {
 
         let tsString = try container.decode(String.self, forKey: .ts)
 
-        // Try with fractional seconds first (2025-09-02T04:00:00.000Z)
-        // then without (2025-12-05T14:00:00+00:00)
-        if let date = Self.iso8601FormatterWithFractional.date(from: tsString) {
-            self.ts = date
-        } else if let date = Self.iso8601FormatterWithoutFractional.date(from: tsString) {
-            self.ts = date
-        } else {
+        // Try multiple ISO8601 formats in order of likelihood:
+        // 1. With fractional seconds: 2025-09-02T04:00:00.000Z
+        // 2. Without fractional: 2025-12-05T14:00:00+00:00
+        // 3. With colon in timezone: 2025-12-05T14:00:00+00:00
+        // 4. With colon and fractional: 2025-12-05T14:00:00.000+00:00
+        let formatters = [
+            Self.iso8601FormatterWithFractional,
+            Self.iso8601FormatterWithoutFractional,
+            Self.iso8601FormatterColonTimezone,
+            Self.iso8601FormatterColonTimezoneWithFractional
+        ]
+
+        var parsedDate: Date?
+        for formatter in formatters {
+            if let date = formatter.date(from: tsString) {
+                parsedDate = date
+                break
+            }
+        }
+
+        guard let date = parsedDate else {
+            print("[DEBUG] ⚠️ FAILED TO PARSE DATE: '\(tsString)'")
+            print("[DEBUG] Tried all ISO8601 formatters")
             throw DecodingError.dataCorruptedError(
                 forKey: .ts,
                 in: container,
-                debugDescription: "Invalid date format: \(tsString). Expected ISO8601 with or without fractional seconds."
+                debugDescription: "Invalid date format: '\(tsString)'. Tried multiple ISO8601 formats."
             )
         }
 
+        self.ts = date
         self.open = try container.decode(Double.self, forKey: .open)
         self.high = try container.decode(Double.self, forKey: .high)
         self.low = try container.decode(Double.self, forKey: .low)

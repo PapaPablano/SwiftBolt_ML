@@ -32,7 +32,7 @@ struct ChartView: View {
 
         return VStack(spacing: 0) {
             ChartHeader(
-                symbol: appViewModel.selectedSymbol,
+                symbol: chartViewModel.selectedSymbol,
                 lastBar: chartViewModel.bars.last
             )
 
@@ -99,7 +99,9 @@ struct ChartHeader: View {
     let lastBar: OHLCBar?
 
     var body: some View {
-        HStack {
+        print("[DEBUG] 🔵 ChartHeader.body rendering with symbol: \(symbol?.ticker ?? "nil")")
+
+        return HStack {
             VStack(alignment: .leading, spacing: 4) {
                 if let symbol = symbol {
                     Text(symbol.ticker)

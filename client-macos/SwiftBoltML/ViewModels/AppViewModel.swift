@@ -5,6 +5,9 @@ import Combine
 final class AppViewModel: ObservableObject {
     @Published var selectedSymbol: Symbol? {
         didSet {
+            print("[DEBUG] 🔴 selectedSymbol DIDSET TRIGGERED")
+            print("[DEBUG] - Old value: \(oldValue?.ticker ?? "nil")")
+            print("[DEBUG] - New value: \(selectedSymbol?.ticker ?? "nil")")
             handleSymbolChange()
         }
     }
