@@ -96,11 +96,12 @@ struct ChartView: View {
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
-        .onChange(of: chartViewModel.chartData) { oldValue, newValue in
-            print("[DEBUG] 🔄 ChartView.onChange - chartData changed!")
-            print("[DEBUG] - Old: \(oldValue?.bars.count ?? 0) bars")
-            print("[DEBUG] - New: \(newValue?.bars.count ?? 0) bars")
-            if let newData = newValue {
+        .onChange(of: (chartViewModel.chartData?.bars.count ?? 0,
+                       chartViewModel.chartData?.bars.first?.ts.timeIntervalSince1970 ?? 0)) { oldValue, newValue in
+            print("[DEBUG] 🔄 ChartView.onChange - chartData changed (derived)!")
+            print("[DEBUG] - Old bars: \(oldValue.0) | New bars: \(newValue.0)")
+            print("[DEBUG] - Old first ts: \(oldValue.1) | New first ts: \(newValue.1)")
+            if let newData = chartViewModel.chartData {
                 print("[DEBUG] - New symbol: \(newData.symbol)")
                 print("[DEBUG] - New timeframe: \(newData.timeframe)")
             }

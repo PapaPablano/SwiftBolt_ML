@@ -1,6 +1,6 @@
 import Foundation
 
-struct OHLCBar: Codable, Identifiable {
+struct OHLCBar: Codable, Identifiable, Equatable {
     let ts: Date
     let open: Double
     let high: Double
