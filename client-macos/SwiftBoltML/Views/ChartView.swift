@@ -30,6 +30,9 @@ struct ChartView: View {
     var body: some View {
         print(debugDescription)
 
+        // Force body re-evaluation by accessing chartData
+        let _ = chartViewModel.chartData?.bars.count
+
         return VStack(spacing: 0) {
             ChartHeader(
                 symbol: chartViewModel.selectedSymbol,
@@ -75,6 +78,7 @@ struct ChartView: View {
                         config: chartViewModel.indicatorConfig
                     )
                     .padding()
+                    .id("advanced-chart-\(chartData.bars.count)-\(chartData.bars.first?.ts.timeIntervalSince1970 ?? 0)")
 
                     if let latestBar = chartData.bars.last {
                         OHLCBarView(bar: latestBar)
@@ -82,6 +86,7 @@ struct ChartView: View {
                             .padding(.bottom)
                     }
                 }
+                .id("chart-container-\(chartData.bars.count)")
             } else if let chartData = chartViewModel.chartData, chartData.bars.isEmpty {
                 // Data loaded, but empty
                 EmptyChartView()
@@ -91,6 +96,18 @@ struct ChartView: View {
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
+        .onChange(of: chartViewModel.chartData) { oldValue, newValue in
+            print("[DEBUG] 🔄 ChartView.onChange - chartData changed!")
+            print("[DEBUG] - Old: \(oldValue?.bars.count ?? 0) bars")
+            print("[DEBUG] - New: \(newValue?.bars.count ?? 0) bars")
+            if let newData = newValue {
+                print("[DEBUG] - New symbol: \(newData.symbol)")
+                print("[DEBUG] - New timeframe: \(newData.timeframe)")
+            }
+        }
+        .onChange(of: chartViewModel.isLoading) { oldValue, newValue in
+            print("[DEBUG] 🔄 ChartView.onChange - isLoading changed from \(oldValue) to \(newValue)")
+        }
     }
 }
 
