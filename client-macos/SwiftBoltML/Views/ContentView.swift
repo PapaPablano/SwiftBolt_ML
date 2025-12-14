@@ -73,14 +73,44 @@ struct SidebarView: View {
 struct DetailView: View {
     @EnvironmentObject var appViewModel: AppViewModel
     @State private var selectedTab = 0
+    #if DEBUG
+    @State private var showDebugPanel = false
+    #endif
 
     var body: some View {
         if appViewModel.selectedSymbol != nil {
-            // Horizontal split: Chart on left, News on right
-            HSplitView {
+            VStack(spacing: 0) {
+                #if DEBUG
+                HStack {
+                    Spacer()
+                    Button {
+                        showDebugPanel.toggle()
+                    } label: {
+                        Label("Debug", systemImage: showDebugPanel ? "chevron.up" : "chevron.down")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                }
+
+                if showDebugPanel {
+                    ScrollView {
+                        DebugPanel()
+                            .environmentObject(appViewModel)
+                    }
+                    .frame(maxHeight: 300)
+                    .padding(.horizontal)
+
+                    Divider()
+                }
+                #endif
+
                 ChartView()
                     .environmentObject(appViewModel)
-                    .frame(minWidth: 600)
+                    .frame(minHeight: 400)
+
+                Divider()
 
                 VStack(spacing: 0) {
                     Picker("", selection: $selectedTab) {
@@ -100,7 +130,7 @@ struct DetailView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
-                .frame(minWidth: 300, idealWidth: 400, maxWidth: 500)
+                .frame(minHeight: 250)
             }
         } else {
             EmptyStateView()

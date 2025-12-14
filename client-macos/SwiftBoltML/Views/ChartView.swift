@@ -36,22 +36,27 @@ struct ChartView: View {
         let _ = appViewModel.chartViewModel.chartData
 
         return VStack(spacing: 0) {
-            // Sticky header - always on top
-            CompactChartHeader(
+            ChartHeader(
                 symbol: chartViewModel.selectedSymbol,
-                lastBar: chartViewModel.bars.last,
-                selectedTimeframe: chartViewModel.timeframe,
-                indicatorConfig: $appViewModel.chartViewModel.indicatorConfig,
-                onTimeframeSelect: { timeframe in
-                    Task {
-                        await chartViewModel.setTimeframe(timeframe)
-                    }
-                }
+                lastBar: chartViewModel.bars.last
             )
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .zIndex(100) // Keep header above all other content
+
+            HStack {
+                TimeframePicker(
+                    selectedTimeframe: chartViewModel.timeframe,
+                    onSelect: { timeframe in
+                        Task {
+                            await chartViewModel.setTimeframe(timeframe)
+                        }
+                    }
+                )
+
+                Spacer()
+
+                IndicatorToggleMenu(config: $appViewModel.chartViewModel.indicatorConfig)
+            }
+            .padding(.horizontal)
+            .padding(.top, 8)
 
             // Simplified conditional logic - check data directly
             if chartViewModel.isLoading {
@@ -65,24 +70,8 @@ struct ChartView: View {
             } else if let chartData = chartViewModel.chartData, !chartData.bars.isEmpty {
                 // ✅ Always render the chart if we have bars
                 VStack(spacing: 0) {
-                    // Show warning if insufficient data
-                    if chartData.bars.count < 10 {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
-                            Text("Limited data available (\(chartData.bars.count) bars). This timeframe may not be fully supported.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                        }
-                        .padding(.horizontal)
-                        .padding(.vertical, 8)
-                        .background(Color.orange.opacity(0.1))
-                    }
-
                     AdvancedChartView(
                         bars: chartData.bars,
-                        timeframe: chartData.timeframe,
                         sma20: chartViewModel.sma20,
                         sma50: chartViewModel.sma50,
                         ema9: chartViewModel.ema9,
@@ -137,51 +126,35 @@ private struct ChartChangeToken: Equatable {
     let firstTimestamp: TimeInterval
 }
 
-struct CompactChartHeader: View {
+struct ChartHeader: View {
     let symbol: Symbol?
     let lastBar: OHLCBar?
-    let selectedTimeframe: String
-    @Binding var indicatorConfig: IndicatorConfig
-    let onTimeframeSelect: (String) -> Void
 
     var body: some View {
-        print("[DEBUG] 🔵 CompactChartHeader.body rendering with symbol: \(symbol?.ticker ?? "nil")")
+        print("[DEBUG] 🔵 ChartHeader.body rendering with symbol: \(symbol?.ticker ?? "nil")")
 
-        return HStack(spacing: 12) {
-            // Symbol info - compact
-            if let symbol = symbol {
-                HStack(spacing: 6) {
+        return HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                if let symbol = symbol {
                     Text(symbol.ticker)
-                        .font(.headline.bold())
+                        .font(.title.bold())
                     Text(symbol.description)
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .frame(minWidth: 120, alignment: .leading)
-            }
-
-            // Price info - compact
-            if let bar = lastBar {
-                HStack(spacing: 6) {
-                    Text(formatPrice(bar.close))
-                        .font(.subheadline.bold().monospacedDigit())
-                    PriceChangeView(open: bar.open, close: bar.close)
-                        .font(.caption)
                 }
             }
 
             Spacer()
 
-            // Timeframe picker
-            TimeframePicker(
-                selectedTimeframe: selectedTimeframe,
-                onSelect: onTimeframeSelect
-            )
-
-            // Indicator menu
-            IndicatorToggleMenu(config: $indicatorConfig)
+            if let bar = lastBar {
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(formatPrice(bar.close))
+                        .font(.title2.bold().monospacedDigit())
+                    PriceChangeView(open: bar.open, close: bar.close)
+                }
+            }
         }
+        .padding()
     }
 
     private func formatPrice(_ price: Double) -> String {
@@ -246,6 +219,8 @@ struct TimeframePicker: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            Spacer()
         }
     }
 }

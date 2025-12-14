@@ -3,7 +3,6 @@ import Charts
 
 struct AdvancedChartView: View {
     let bars: [OHLCBar]
-    let timeframe: String
     let sma20: [IndicatorDataPoint]
     let sma50: [IndicatorDataPoint]
     let ema9: [IndicatorDataPoint]
@@ -71,10 +70,10 @@ struct AdvancedChartView: View {
         }
         .chartYScale(domain: priceRange)
         .chartXAxis {
-            AxisMarks(values: xAxisStride) { value in
+            AxisMarks(values: .stride(by: .day, count: max(1, bars.count / 6))) { value in
                 AxisGridLine()
                 AxisTick()
-                AxisValueLabel(format: xAxisFormat)
+                AxisValueLabel(format: .dateTime.month().day())
             }
         }
         .chartYAxis {
@@ -261,49 +260,6 @@ struct AdvancedChartView: View {
             }
         }
         .padding(.horizontal, 8)
-    }
-
-    // MARK: - X-Axis Configuration
-
-    private var xAxisStride: AxisMarkValues {
-        switch timeframe {
-        case "m15":
-            // For 15-minute bars, show every 2 hours (8 bars)
-            return .stride(by: .hour, count: 2)
-        case "h1":
-            // For 1-hour bars, show every 6 hours
-            return .stride(by: .hour, count: 6)
-        case "h4":
-            // For 4-hour bars, show every day
-            return .stride(by: .day, count: 1)
-        case "d1":
-            // For daily bars, show every week (adaptive)
-            return .stride(by: .day, count: max(1, bars.count / 6))
-        case "w1":
-            // For weekly bars, show every month
-            return .stride(by: .month, count: 1)
-        default:
-            return .stride(by: .day, count: 1)
-        }
-    }
-
-    private var xAxisFormat: Date.FormatStyle {
-        switch timeframe {
-        case "m15", "h1":
-            // For intraday, show time
-            return .dateTime.month().day().hour().minute()
-        case "h4":
-            // For 4-hour, show date and time
-            return .dateTime.month().day().hour()
-        case "d1":
-            // For daily, show month and day
-            return .dateTime.month().day()
-        case "w1":
-            // For weekly, show month and year
-            return .dateTime.month().year()
-        default:
-            return .dateTime.month().day()
-        }
     }
 
     // MARK: - Helper Functions
