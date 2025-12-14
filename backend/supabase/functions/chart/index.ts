@@ -121,7 +121,29 @@ serve(async (req: Request): Promise<Response> => {
 
       if (cacheIsFresh) {
         console.log(`Cache hit for ${ticker} ${timeframe} (${cachedBars.length} bars)`);
-        bars = cachedBars.map((bar) => ({
+
+        // Filter cached bars to market hours for intraday timeframes
+        let filteredCachedBars = cachedBars;
+        if (timeframe === "m15" || timeframe === "h1" || timeframe === "h4" || timeframe === "m30" || timeframe === "m5") {
+          filteredCachedBars = cachedBars.filter((bar) => {
+            const date = new Date(bar.ts);
+            const hours = date.getUTCHours();
+            const minutes = date.getUTCMinutes();
+
+            // Convert to ET (UTC-5)
+            const etHours = (hours - 5 + 24) % 24;
+            const etMinutesSinceMidnight = etHours * 60 + minutes;
+
+            // Market hours: 9:30 AM - 4:00 PM ET
+            const marketOpen = 9 * 60 + 30;
+            const marketClose = 16 * 60;
+
+            return etMinutesSinceMidnight >= marketOpen && etMinutesSinceMidnight < marketClose;
+          });
+          console.log(`[Chart] Filtered cached bars to ${filteredCachedBars.length} market-hours bars (from ${cachedBars.length})`);
+        }
+
+        bars = filteredCachedBars.map((bar) => ({
           ts: bar.ts,
           open: Number(bar.open),
           high: Number(bar.high),
@@ -164,8 +186,32 @@ serve(async (req: Request): Promise<Response> => {
         });
 
         console.log(`[Chart] Received ${freshBars.length} bars from provider`);
-        if (freshBars.length > 0) {
-          // 5. Upsert bars into database
+
+        // Filter to market hours for intraday timeframes
+        let filteredBars = freshBars;
+        if (timeframe === "m15" || timeframe === "h1" || timeframe === "h4" || timeframe === "m30" || timeframe === "m5") {
+          filteredBars = freshBars.filter((bar) => {
+            const date = new Date(bar.timestamp);
+            const hours = date.getUTCHours();
+            const minutes = date.getUTCMinutes();
+            const minutesSinceMidnight = hours * 60 + minutes;
+
+            // Convert to ET (UTC-5 or UTC-4 depending on DST)
+            // For simplicity, using UTC-5 (EST). Full DST handling would require more logic.
+            const etHours = (hours - 5 + 24) % 24;
+            const etMinutesSinceMidnight = etHours * 60 + minutes;
+
+            // Market hours: 9:30 AM - 4:00 PM ET
+            const marketOpen = 9 * 60 + 30;  // 9:30 AM
+            const marketClose = 16 * 60;      // 4:00 PM
+
+            return etMinutesSinceMidnight >= marketOpen && etMinutesSinceMidnight < marketClose;
+          });
+          console.log(`[Chart] Filtered to ${filteredBars.length} market-hours bars (from ${freshBars.length})`);
+        }
+
+        if (filteredBars.length > 0) {
+          // 5. Upsert ALL bars into database (unfiltered, for future queries)
           const barsToInsert = freshBars.map((bar) => ({
             symbol_id: symbolId,
             timeframe: timeframe,
@@ -192,8 +238,8 @@ serve(async (req: Request): Promise<Response> => {
             console.log(`Cached ${freshBars.length} bars for ${ticker} ${timeframe}`);
           }
 
-          // Convert router Bar format to response format
-          bars = freshBars.map((bar) => ({
+          // Return FILTERED bars to client (market hours only for intraday)
+          bars = filteredBars.map((bar) => ({
             ts: new Date(bar.timestamp).toISOString(),
             open: bar.open,
             high: bar.high,

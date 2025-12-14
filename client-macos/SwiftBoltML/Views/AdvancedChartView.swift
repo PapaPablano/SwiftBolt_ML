@@ -13,38 +13,14 @@ struct AdvancedChartView: View {
 
     @State private var selectedBar: OHLCBar?
 
-    // Filter bars to only show regular market hours for intraday timeframes
-    private var filteredBars: [OHLCBar] {
-        // Only filter for intraday timeframes
-        guard timeframe == "m15" || timeframe == "h1" || timeframe == "h4" else {
-            return bars
-        }
-
-        return bars.filter { bar in
-            let calendar = Calendar.current
-            let components = calendar.dateComponents(in: TimeZone(identifier: "America/New_York")!, from: bar.ts)
-
-            guard let hour = components.hour, let minute = components.minute else {
-                return true // Keep if we can't determine time
-            }
-
-            // Market hours: 9:30 AM - 4:00 PM ET
-            let minutesSinceMidnight = hour * 60 + minute
-            let marketOpen = 9 * 60 + 30  // 9:30 AM
-            let marketClose = 16 * 60     // 4:00 PM
-
-            return minutesSinceMidnight >= marketOpen && minutesSinceMidnight < marketClose
-        }
-    }
-
     var body: some View {
-        print("[DEBUG] 🟡 AdvancedChartView.body rendering with \(bars.count) bars (filtered to \(filteredBars.count))")
+        print("[DEBUG] 🟡 AdvancedChartView.body rendering with \(bars.count) bars")
 
         return VStack(spacing: 0) {
             // Main price chart with indicators
             priceChartView
                 .frame(height: config.showRSI ? 400 : 500)
-                .id("price-\(filteredBars.count)-\(filteredBars.first?.ts.timeIntervalSince1970 ?? 0)")
+                .id("price-\(bars.count)-\(bars.first?.ts.timeIntervalSince1970 ?? 0)")
 
             if config.showRSI {
                 Divider()
@@ -57,10 +33,10 @@ struct AdvancedChartView: View {
                 Divider()
                 volumeChartView
                     .frame(height: 100)
-                    .id("volume-\(filteredBars.count)")
+                    .id("volume-\(bars.count)")
             }
         }
-        .id("advanced-chart-\(filteredBars.count)-\(filteredBars.first?.ts.timeIntervalSince1970 ?? 0)")
+        .id("advanced-chart-\(bars.count)-\(bars.first?.ts.timeIntervalSince1970 ?? 0)")
     }
 
     // MARK: - Price Chart
@@ -68,7 +44,7 @@ struct AdvancedChartView: View {
     private var priceChartView: some View {
         Chart {
             // Candlesticks
-            ForEach(filteredBars) { bar in
+            ForEach(bars) { bar in
                 candlestickMarks(for: bar)
             }
 
@@ -203,7 +179,7 @@ struct AdvancedChartView: View {
     // MARK: - Volume Chart
 
     private var volumeChartView: some View {
-        Chart(filteredBars) { bar in
+        Chart(bars) { bar in
             BarMark(
                 x: .value("Date", bar.ts),
                 y: .value("Volume", bar.volume)
@@ -302,7 +278,7 @@ struct AdvancedChartView: View {
             return .stride(by: .day, count: 1)
         case "d1":
             // For daily bars, show every week (adaptive)
-            return .stride(by: .day, count: max(1, filteredBars.count / 6))
+            return .stride(by: .day, count: max(1, bars.count / 6))
         case "w1":
             // For weekly bars, show every month
             return .stride(by: .month, count: 1)
@@ -333,12 +309,12 @@ struct AdvancedChartView: View {
     // MARK: - Helper Functions
 
     private var minPrice: Double {
-        filteredBars.map(\.low).min() ?? 0
+        bars.map(\.low).min() ?? 0
     }
 
     private var maxPrice: Double {
         // Include indicator values in range calculation
-        var maxValue = filteredBars.map(\.high).max() ?? 0
+        var maxValue = bars.map(\.high).max() ?? 0
         if config.showSMA20, let sma20Max = sma20.compactMap(\.value).max() {
             maxValue = max(maxValue, sma20Max)
         }
@@ -358,7 +334,7 @@ struct AdvancedChartView: View {
         let xPosition = location.x - geometry[plotFrame].origin.x
         guard let date: Date = proxy.value(atX: xPosition) else { return }
 
-        selectedBar = filteredBars.min(by: { abs($0.ts.timeIntervalSince(date)) < abs($1.ts.timeIntervalSince(date)) })
+        selectedBar = bars.min(by: { abs($0.ts.timeIntervalSince(date)) < abs($1.ts.timeIntervalSince(date)) })
     }
 
     private func formatPrice(_ price: Double) -> String {
