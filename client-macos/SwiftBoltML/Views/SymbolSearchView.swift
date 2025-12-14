@@ -8,7 +8,12 @@ struct SymbolSearchView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        let _ = print("[DEBUG] 🔴 SymbolSearchView.body rendering")
+        let _ = print("[DEBUG] - Search results count: \(searchViewModel.searchResults.count)")
+        let _ = print("[DEBUG] - Search query: '\(searchViewModel.searchQuery)'")
+        let _ = print("[DEBUG] - Is searching: \(searchViewModel.isSearching)")
+
+        return VStack(spacing: 0) {
             SearchField(
                 text: Binding(
                     get: { searchViewModel.searchQuery },
@@ -19,6 +24,7 @@ struct SymbolSearchView: View {
             .padding()
 
             if !searchViewModel.searchResults.isEmpty {
+                let _ = print("[DEBUG] 🟠 Showing SearchResultsList with \(searchViewModel.searchResults.count) results")
                 SearchResultsList(
                     results: searchViewModel.searchResults,
                     onSelect: { symbol in
@@ -32,8 +38,12 @@ struct SymbolSearchView: View {
                     }
                 )
             } else if let error = searchViewModel.errorMessage {
+                let _ = print("[DEBUG] 🔴 Showing error banner: \(error)")
                 ErrorBanner(message: error)
                     .padding(.horizontal)
+            } else {
+                let _ = print("[DEBUG] ⚪ No search results, no error - showing nothing")
+                Color.clear.frame(height: 0)
             }
         }
     }
@@ -78,14 +88,14 @@ struct SearchResultsList: View {
         ScrollView {
             LazyVStack(spacing: 2) {
                 ForEach(results) { symbol in
-                    Button {
-                        print("[DEBUG] !!! BUTTON TAPPED IN SearchResultsList !!!")
-                        print("[DEBUG] !!! Symbol: \(symbol.ticker) !!!")
-                        onSelect(symbol)
-                    } label: {
-                        SearchResultRow(symbol: symbol)
-                    }
-                    .buttonStyle(.plain)
+                    SearchResultRow(
+                        symbol: symbol,
+                        onSelect: {
+                            print("[DEBUG] !!! BUTTON TAPPED IN SearchResultsList !!!")
+                            print("[DEBUG] !!! Symbol: \(symbol.ticker) !!!")
+                            onSelect(symbol)
+                        }
+                    )
                 }
             }
             .padding(.horizontal)
@@ -97,6 +107,7 @@ struct SearchResultsList: View {
 
 struct SearchResultRow: View {
     let symbol: Symbol
+    let onSelect: () -> Void
     @State private var isHovered = false
     @EnvironmentObject var appViewModel: AppViewModel
 
@@ -105,42 +116,51 @@ struct SearchResultRow: View {
     }
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(symbol.ticker)
-                    .font(.headline)
-                Text(symbol.description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+        print("[DEBUG] 🟢 SearchResultRow.body rendering for: \(symbol.ticker)")
+        return Button {
+            print("[DEBUG] 🔵🔵🔵 SearchResultRow BUTTON PRESSED for \(symbol.ticker)")
+            onSelect()
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(symbol.ticker)
+                        .font(.headline)
+                    Text(symbol.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Text(symbol.assetType.capitalized)
+                    .font(.caption2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.blue.opacity(0.2))
+                    .clipShape(Capsule())
+
+                // Watchlist star button
+                Button {
+                    print("[DEBUG] ⭐⭐⭐ Watchlist star tapped for \(symbol.ticker)")
+                    appViewModel.watchlistViewModel.toggleSymbol(symbol)
+                } label: {
+                    Image(systemName: isWatched ? "star.fill" : "star")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.plain)
+                .help(isWatched ? "Remove from watchlist" : "Add to watchlist")
             }
-
-            Spacer()
-
-            // Watchlist star button
-            Button {
-                appViewModel.watchlistViewModel.toggleSymbol(symbol)
-            } label: {
-                Image(systemName: isWatched ? "star.fill" : "star")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-            .buttonStyle(.plain)
-            .help(isWatched ? "Remove from watchlist" : "Add to watchlist")
-
-            Text(symbol.assetType.capitalized)
-                .font(.caption2)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(.blue.opacity(0.2))
-                .clipShape(Capsule())
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(isHovered ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
-        .background(isHovered ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
-        .contentShape(Rectangle())
+        .buttonStyle(.plain)
         .onHover { hovering in
+            print("[DEBUG] 🟣 Hover state changed to: \(hovering) for \(symbol.ticker)")
             isHovered = hovering
             if hovering {
                 NSCursor.pointingHand.push()

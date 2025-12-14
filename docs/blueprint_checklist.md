@@ -185,9 +185,13 @@ Status notation:
   * [x] Navigation split view layout.
 * [x] Wire `AppViewModel` + `ChartViewModel` + `NewsViewModel` using `@StateObject`/`@EnvironmentObject`.
 * [x] Confirm: Search symbol → select → triggers chart fetch → displays data ✅
-  * [x] Tested with AAPL (69 bars loaded successfully)
-  * [x] Tested symbol search with NVDA and CRWD (both found)
-  * [x] News loading functional (pending date format fix)
+  * [x] Tested with AAPL (70 bars loaded successfully)
+  * [x] Tested symbol search with NVDA and CRWD (both found and clickable)
+  * [x] News loading functional
+  * [x] Fixed SwiftUI observation issues with nested ObservableObjects
+  * [x] Implemented objectWillChange relay pattern for all view models
+  * [x] Search results now properly display and are interactive
+  * [x] Symbol selection triggers chart and news refresh correctly
 
 ---
 

@@ -18,12 +18,28 @@ final class AppViewModel: ObservableObject {
     let watchlistViewModel: WatchlistViewModel
 
     private var refreshTask: Task<Void, Never>?
+    private var cancellables = Set<AnyCancellable>()
 
     init() {
         self.chartViewModel = ChartViewModel()
         self.newsViewModel = NewsViewModel()
         self.searchViewModel = SymbolSearchViewModel()
         self.watchlistViewModel = WatchlistViewModel()
+
+        // Relay chartViewModel changes to trigger AppViewModel updates
+        chartViewModel.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }.store(in: &cancellables)
+
+        // Relay newsViewModel changes to trigger AppViewModel updates
+        newsViewModel.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }.store(in: &cancellables)
+
+        // Relay searchViewModel changes to trigger AppViewModel updates
+        searchViewModel.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }.store(in: &cancellables)
     }
 
     private func handleSymbolChange() {

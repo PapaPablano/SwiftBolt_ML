@@ -30,8 +30,10 @@ struct ChartView: View {
     var body: some View {
         print(debugDescription)
 
-        // Force body re-evaluation by accessing chartData
+        // Force body re-evaluation by accessing published properties
         let _ = chartViewModel.chartData?.bars.count
+        let _ = chartViewModel.isLoading
+        let _ = appViewModel.chartViewModel.chartData
 
         return VStack(spacing: 0) {
             ChartHeader(
@@ -97,15 +99,9 @@ struct ChartView: View {
         }
         .background(Color(nsColor: .controlBackgroundColor))
         .onChange(of: chartChangeToken, initial: true) { oldValue, newValue in
-            if oldValue == newValue {
-                print("[DEBUG] 🔄 ChartView.onChange - initial chart data observed")
-                print("[DEBUG] - Bars: \(newValue.barCount)")
-                print("[DEBUG] - First ts: \(newValue.firstTimestamp)")
-            } else {
-                print("[DEBUG] 🔄 ChartView.onChange - chartData changed (derived)!")
-                print("[DEBUG] - Old bars: \(oldValue.barCount) | New bars: \(newValue.barCount)")
-                print("[DEBUG] - Old first ts: \(oldValue.firstTimestamp) | New first ts: \(newValue.firstTimestamp)")
-            }
+            print("[DEBUG] 🔄 ChartView.onChange - chartData changed!")
+            print("[DEBUG] - Old bars: \(oldValue.barCount) | New bars: \(newValue.barCount)")
+            print("[DEBUG] - Old first ts: \(oldValue.firstTimestamp) | New first ts: \(newValue.firstTimestamp)")
 
             if let newData = chartViewModel.chartData {
                 print("[DEBUG] - New symbol: \(newData.symbol)")
