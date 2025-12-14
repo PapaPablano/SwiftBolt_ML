@@ -96,11 +96,17 @@ struct ChartView: View {
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
-        .onChange(of: (chartViewModel.chartData?.bars.count ?? 0,
-                       chartViewModel.chartData?.bars.first?.ts.timeIntervalSince1970 ?? 0)) { oldValue, newValue in
-            print("[DEBUG] 🔄 ChartView.onChange - chartData changed (derived)!")
-            print("[DEBUG] - Old bars: \(oldValue.0) | New bars: \(newValue.0)")
-            print("[DEBUG] - Old first ts: \(oldValue.1) | New first ts: \(newValue.1)")
+        .onChange(of: chartChangeToken, initial: true) { oldValue, newValue in
+            if oldValue == newValue {
+                print("[DEBUG] 🔄 ChartView.onChange - initial chart data observed")
+                print("[DEBUG] - Bars: \(newValue.barCount)")
+                print("[DEBUG] - First ts: \(newValue.firstTimestamp)")
+            } else {
+                print("[DEBUG] 🔄 ChartView.onChange - chartData changed (derived)!")
+                print("[DEBUG] - Old bars: \(oldValue.barCount) | New bars: \(newValue.barCount)")
+                print("[DEBUG] - Old first ts: \(oldValue.firstTimestamp) | New first ts: \(newValue.firstTimestamp)")
+            }
+
             if let newData = chartViewModel.chartData {
                 print("[DEBUG] - New symbol: \(newData.symbol)")
                 print("[DEBUG] - New timeframe: \(newData.timeframe)")
@@ -110,6 +116,18 @@ struct ChartView: View {
             print("[DEBUG] 🔄 ChartView.onChange - isLoading changed from \(oldValue) to \(newValue)")
         }
     }
+
+    private var chartChangeToken: ChartChangeToken {
+        ChartChangeToken(
+            barCount: chartViewModel.chartData?.bars.count ?? 0,
+            firstTimestamp: chartViewModel.chartData?.bars.first?.ts.timeIntervalSince1970 ?? 0
+        )
+    }
+}
+
+private struct ChartChangeToken: Equatable {
+    let barCount: Int
+    let firstTimestamp: TimeInterval
 }
 
 struct ChartHeader: View {
