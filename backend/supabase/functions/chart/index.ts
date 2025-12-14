@@ -155,6 +155,7 @@ serve(async (req: Request): Promise<Response> => {
         const secondsPerBar = timeframeSeconds[timeframe];
         const from = now - (100 * secondsPerBar);
 
+        console.log(`[Chart] Requesting ${ticker} ${timeframe} from ${from} to ${now}`);
         const freshBars = await router.getHistoricalBars({
           symbol: ticker,
           timeframe: timeframe,
@@ -162,6 +163,7 @@ serve(async (req: Request): Promise<Response> => {
           end: now,
         });
 
+        console.log(`[Chart] Received ${freshBars.length} bars from provider`);
         if (freshBars.length > 0) {
           // 5. Upsert bars into database
           const barsToInsert = freshBars.map((bar) => ({
