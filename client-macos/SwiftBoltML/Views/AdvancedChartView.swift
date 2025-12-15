@@ -13,9 +13,36 @@ struct AdvancedChartView: View {
     @State private var selectedBar: OHLCBar?
     @State private var selectedIndex: Int?
 
+    // Chart pan/zoom state
+    @State private var visibleRange: ClosedRange<Int>
+    @State private var barsToShow: Int = 100 // Default visible bars
+
+    init(bars: [OHLCBar], sma20: [IndicatorDataPoint], sma50: [IndicatorDataPoint], ema9: [IndicatorDataPoint], ema21: [IndicatorDataPoint], rsi: [IndicatorDataPoint], config: IndicatorConfig) {
+        self.bars = bars
+        self.sma20 = sma20
+        self.sma50 = sma50
+        self.ema9 = ema9
+        self.ema21 = ema21
+        self.rsi = rsi
+        self.config = config
+
+        // Initialize visible range to show most recent bars
+        let count = bars.count
+        let initialBarsToShow = min(100, count)
+        let endIndex = max(0, count - 1)
+        let startIndex = max(0, endIndex - initialBarsToShow + 1)
+        _visibleRange = State(initialValue: startIndex...endIndex)
+        _barsToShow = State(initialValue: initialBarsToShow)
+    }
+
     // Create indexed versions for even spacing (TradingView style)
     private var indexedBars: [(index: Int, bar: OHLCBar)] {
         bars.enumerated().map { (index: $0.offset, bar: $0.element) }
+    }
+
+    // Visible bars based on current range
+    private var visibleBars: [(index: Int, bar: OHLCBar)] {
+        indexedBars.filter { visibleRange.contains($0.index) }
     }
 
     // Map indicator data points to bar indices
@@ -24,29 +51,95 @@ struct AdvancedChartView: View {
     }
 
     var body: some View {
-        print("[DEBUG] 🟡 AdvancedChartView.body rendering with \(bars.count) bars")
+        VStack(spacing: 0) {
+            // Chart controls
+            chartControls
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color(nsColor: .controlBackgroundColor))
 
-        return VStack(spacing: 0) {
+            Divider()
+
             // Main price chart with indicators
             priceChartView
                 .frame(height: config.showRSI ? 400 : 500)
-                .id("price-\(bars.count)-\(bars.first?.ts.timeIntervalSince1970 ?? 0)")
 
             if config.showRSI {
                 Divider()
                 rsiChartView
                     .frame(height: 120)
-                    .id("rsi-\(rsi.count)")
             }
 
             if config.showVolume {
                 Divider()
                 volumeChartView
                     .frame(height: 100)
-                    .id("volume-\(bars.count)")
             }
         }
-        .id("advanced-chart-\(bars.count)-\(bars.first?.ts.timeIntervalSince1970 ?? 0)")
+        .onChange(of: bars.count) { oldCount, newCount in
+            // Reset to latest bars when data changes
+            if oldCount != newCount {
+                resetToLatest()
+            }
+        }
+    }
+
+    // MARK: - Chart Controls
+
+    private var chartControls: some View {
+        HStack(spacing: 12) {
+            // Data range info
+            Text("\(bars.count) bars")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+
+            if bars.count > 0 {
+                Text("•")
+                    .foregroundStyle(.tertiary)
+                Text("\(formatDate(bars[visibleRange.lowerBound].ts)) - \(formatDate(bars[visibleRange.upperBound].ts))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            // Zoom controls
+            Button(action: zoomOut) {
+                Image(systemName: "minus.magnifyingglass")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+            .disabled(visibleRange.count >= bars.count)
+
+            Button(action: zoomIn) {
+                Image(systemName: "plus.magnifyingglass")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+            .disabled(visibleRange.count <= 10)
+
+            // Pan controls
+            Button(action: panLeft) {
+                Image(systemName: "chevron.left")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+            .disabled(visibleRange.lowerBound <= 0)
+
+            Button(action: panRight) {
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+            .disabled(visibleRange.upperBound >= bars.count - 1)
+
+            // Reset to most recent
+            Button("Latest") {
+                resetToLatest()
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+        }
     }
 
     // MARK: - Price Chart
@@ -54,7 +147,7 @@ struct AdvancedChartView: View {
     private var priceChartView: some View {
         Chart {
             // Candlesticks - using index for even spacing
-            ForEach(indexedBars, id: \.bar.id) { item in
+            ForEach(visibleBars, id: \.bar.id) { item in
                 candlestickMarks(index: item.index, bar: item.bar)
             }
 
@@ -79,7 +172,8 @@ struct AdvancedChartView: View {
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
             }
         }
-        .chartYScale(domain: priceRange)
+        .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
+        .chartYScale(domain: visiblePriceRange)
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 6)) { value in
                 if let index = value.as(Int.self), index >= 0 && index < bars.count {
@@ -136,7 +230,7 @@ struct AdvancedChartView: View {
         Chart {
             // RSI line
             ForEach(rsi) { point in
-                if let value = point.value, let index = indicatorIndex(for: point.date) {
+                if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
                         x: .value("Index", index),
                         y: .value("RSI", value)
@@ -167,6 +261,7 @@ struct AdvancedChartView: View {
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
             }
         }
+        .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
         .chartYScale(domain: 0...100)
         .chartXAxis(.hidden)
         .chartYAxis {
@@ -194,13 +289,14 @@ struct AdvancedChartView: View {
     // MARK: - Volume Chart
 
     private var volumeChartView: some View {
-        Chart(indexedBars, id: \.bar.id) { item in
+        Chart(visibleBars, id: \.bar.id) { item in
             BarMark(
                 x: .value("Index", item.index),
                 y: .value("Volume", item.bar.volume)
             )
             .foregroundStyle(item.bar.close >= item.bar.open ? Color.green.opacity(0.5) : Color.red.opacity(0.5))
         }
+        .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
         .chartXAxis(.hidden)
         .chartYAxis {
             AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { value in
@@ -280,25 +376,71 @@ struct AdvancedChartView: View {
 
     // MARK: - Helper Functions
 
-    private var minPrice: Double {
-        bars.map(\.low).min() ?? 0
+    private var visibleMinPrice: Double {
+        visibleBars.map(\.bar.low).min() ?? 0
     }
 
-    private var maxPrice: Double {
-        // Include indicator values in range calculation
-        var maxValue = bars.map(\.high).max() ?? 0
-        if config.showSMA20, let sma20Max = sma20.compactMap(\.value).max() {
-            maxValue = max(maxValue, sma20Max)
+    private var visibleMaxPrice: Double {
+        // Include indicator values in range calculation for visible range
+        var maxValue = visibleBars.map(\.bar.high).max() ?? 0
+
+        // Check visible indicators
+        let visibleIndicatorValues = sma20.compactMap { point -> Double? in
+            guard let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) else { return nil }
+            return value
         }
-        if config.showSMA50, let sma50Max = sma50.compactMap(\.value).max() {
-            maxValue = max(maxValue, sma50Max)
+        if let indicatorMax = visibleIndicatorValues.max() {
+            maxValue = max(maxValue, indicatorMax)
         }
+
         return maxValue
     }
 
-    private var priceRange: ClosedRange<Double> {
-        let padding = (maxPrice - minPrice) * 0.05
-        return (minPrice - padding)...(maxPrice + padding)
+    private var visiblePriceRange: ClosedRange<Double> {
+        let padding = (visibleMaxPrice - visibleMinPrice) * 0.05
+        return (visibleMinPrice - padding)...(visibleMaxPrice + padding)
+    }
+
+    // Pan/Zoom functions
+    private func zoomIn() {
+        let currentWidth = visibleRange.count
+        let newWidth = max(10, currentWidth / 2)
+        let center = (visibleRange.lowerBound + visibleRange.upperBound) / 2
+        let newStart = max(0, center - newWidth / 2)
+        let newEnd = min(bars.count - 1, newStart + newWidth - 1)
+        visibleRange = newStart...newEnd
+    }
+
+    private func zoomOut() {
+        let currentWidth = visibleRange.count
+        let newWidth = min(bars.count, currentWidth * 2)
+        let center = (visibleRange.lowerBound + visibleRange.upperBound) / 2
+        let newStart = max(0, center - newWidth / 2)
+        let newEnd = min(bars.count - 1, newStart + newWidth - 1)
+        visibleRange = newStart...newEnd
+    }
+
+    private func panLeft() {
+        let width = visibleRange.count
+        let shift = width / 4
+        let newStart = max(0, visibleRange.lowerBound - shift)
+        let newEnd = newStart + width - 1
+        visibleRange = newStart...newEnd
+    }
+
+    private func panRight() {
+        let width = visibleRange.count
+        let shift = width / 4
+        let newEnd = min(bars.count - 1, visibleRange.upperBound + shift)
+        let newStart = max(0, newEnd - width + 1)
+        visibleRange = newStart...newEnd
+    }
+
+    private func resetToLatest() {
+        let newWidth = min(100, bars.count)
+        let newEnd = bars.count - 1
+        let newStart = max(0, newEnd - newWidth + 1)
+        visibleRange = newStart...newEnd
     }
 
     private func updateSelection(at location: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) {
