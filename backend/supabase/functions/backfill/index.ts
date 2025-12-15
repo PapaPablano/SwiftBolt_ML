@@ -246,14 +246,16 @@ function getBackfillStrategy(timeframe: Timeframe, targetMonths?: number) {
   };
 
   // Default target periods (how far back to go)
+  // Note: For full historical data, make multiple sequential backfill requests
+  // to avoid Supabase Edge Function timeout limits (~60 seconds)
   const defaultMonths: Record<Timeframe, number> = {
     m1: 1,    // 1 minute: 1 month (too much data otherwise)
     m5: 2,    // 5 minute: 2 months
     m15: 3,   // 15 minute: 3 months
-    m30: 6,   // 30 minute: 6 months
-    h1: 12,   // 1 hour: 1 year
-    h4: 24,   // 4 hour: 2 years (max for Massive free tier)
-    d1: 24,   // Daily: 2 years
+    m30: 3,   // 30 minute: 3 months (reduced to fit timeout)
+    h1: 3,    // 1 hour: 3 months (reduced to fit timeout, call 4x for full year)
+    h4: 6,    // 4 hour: 6 months (reduced to fit timeout, call 4x for 2 years)
+    d1: 24,   // Daily: 2 years (fits in timeout with 6-month chunks)
     w1: 24,   // Weekly: 2 years
     mn1: 24,  // Monthly: 2 years
   };
