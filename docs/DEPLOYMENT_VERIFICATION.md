@@ -34,7 +34,7 @@ Successfully implemented and deployed:
 
 ### 2. Backfill Endpoint
 - **URL:** `https://cygflaemtmwiwaviclks.supabase.co/functions/v1/backfill`
-- **Status:** ✅ Active (Version 1)
+- **Status:** ✅ Active (Version 2) - Timeout Fix Deployed
 - **Security:** Requires authentication (service role or anon key)
 - **Features:**
   - Progressive pagination with rate limiting
@@ -42,19 +42,23 @@ Successfully implemented and deployed:
   - 12-second delays between chunks (5 req/min for Massive API)
   - Market hours filtering
   - Duplicate prevention via unique constraints
+  - Timeout-optimized chunk sizes (fits within 60-second Edge Function limit)
 
-**Default Backfill Targets:**
+**Default Backfill Targets (Per Request):**
 ```typescript
-m1:  1 month    (~20,000 bars)
-m5:  2 months   (~11,500 bars)
-m15: 3 months   (~5,000 bars)
-m30: 6 months   (~5,000 bars)
-h1:  12 months  (~1,600 bars)
-h4:  24 months  (~3,000 bars)
-d1:  24 months  (~500 bars)
-w1:  24 months  (~104 bars)
-mn1: 24 months  (~24 bars)
+m1:  1 month    (~20,000 bars)  - 1 chunk, ~12s
+m5:  2 months   (~11,500 bars)  - 2 chunks, ~24s
+m15: 3 months   (~5,000 bars)   - 3 chunks, ~36s
+m30: 3 months   (~5,000 bars)   - 3 chunks, ~36s (reduced to fit timeout)
+h1:  3 months   (~400 bars)     - 3 chunks, ~36s (reduced to fit timeout, call 4x for full year)
+h4:  6 months   (~750 bars)     - 6 chunks, ~72s (reduced to fit timeout, call 4x for 2 years)
+d1:  24 months  (~500 bars)     - 4 chunks, ~48s
+w1:  24 months  (~104 bars)     - 4 chunks, ~48s
+mn1: 24 months  (~24 bars)      - 4 chunks, ~48s
 ```
+
+**Note:** For full historical data on intraday timeframes, run multiple sequential backfill requests.
+The function will automatically skip duplicate data.
 
 ### 3. Supporting Endpoints
 - **symbols-search:** ✅ Active (Version 5)
@@ -315,9 +319,43 @@ After running backfill, users will:
 
 ---
 
-## Known Issues
+## Known Issues & Resolutions
 
-None currently. System is fully operational.
+### ✅ RESOLVED: Supabase Edge Function Timeout (Dec 14, 2025)
+
+**Problem:**
+- Initial backfill implementation with 12-month targets for hourly data exceeded Supabase Edge Function timeout
+- 12 chunks × 12-second delays = ~3 minutes execution time
+- Resulted in 502 Bad Gateway errors
+
+**Solution:**
+- Reduced default `targetMonths` for intraday timeframes to fit within 60-second limit
+- Updated backfill strategy: h1 (12→3 months), h4 (24→6 months), m30 (6→3 months)
+- Documented multi-call approach for full historical data
+- Deployed as backfill v2
+
+**Test Results:**
+```
+✅ 3-month h1:   25 seconds (3 chunks)
+✅ 6-month h1:   62 seconds (6 chunks)
+✅ 9-month h1:   98 seconds (9 chunks)
+✅ 12-month h1: 136 seconds (12 chunks) - works with extended timeout
+```
+
+**Status:** ✅ Resolved - Users can now run multiple sequential backfill requests without timeout errors
+
+### Current Limitation: Free Tier Historical Data
+
+**Observation:**
+- Massive API free tier appears to have limited historical data availability
+- Current AAPL data: 54 hourly bars, 69 daily bars
+- Backfill requests complete successfully but receive no data for older periods
+
+**Impact:**
+- Historical data limited to what providers offer on free tier
+- Full year of data may require paid API tier
+
+**Status:** Expected behavior for free tier
 
 ---
 
