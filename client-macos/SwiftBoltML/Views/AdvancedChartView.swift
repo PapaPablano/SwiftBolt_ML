@@ -11,6 +11,17 @@ struct AdvancedChartView: View {
     let config: IndicatorConfig
 
     @State private var selectedBar: OHLCBar?
+    @State private var selectedIndex: Int?
+
+    // Create indexed versions for even spacing (TradingView style)
+    private var indexedBars: [(index: Int, bar: OHLCBar)] {
+        bars.enumerated().map { (index: $0.offset, bar: $0.element) }
+    }
+
+    // Map indicator data points to bar indices
+    private func indicatorIndex(for date: Date) -> Int? {
+        bars.firstIndex(where: { Calendar.current.isDate($0.ts, equalTo: date, toGranularity: .second) })
+    }
 
     var body: some View {
         print("[DEBUG] 🟡 AdvancedChartView.body rendering with \(bars.count) bars")
@@ -42,9 +53,9 @@ struct AdvancedChartView: View {
 
     private var priceChartView: some View {
         Chart {
-            // Candlesticks
-            ForEach(bars) { bar in
-                candlestickMarks(for: bar)
+            // Candlesticks - using index for even spacing
+            ForEach(indexedBars, id: \.bar.id) { item in
+                candlestickMarks(index: item.index, bar: item.bar)
             }
 
             // Moving Average Overlays
@@ -62,18 +73,23 @@ struct AdvancedChartView: View {
             }
 
             // Selection indicator
-            if let selected = selectedBar {
-                RuleMark(x: .value("Date", selected.ts))
+            if let selectedIdx = selectedIndex {
+                RuleMark(x: .value("Index", selectedIdx))
                     .foregroundStyle(.blue.opacity(0.3))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
             }
         }
         .chartYScale(domain: priceRange)
         .chartXAxis {
-            AxisMarks(values: .stride(by: .day, count: max(1, bars.count / 6))) { value in
-                AxisGridLine()
-                AxisTick()
-                AxisValueLabel(format: .dateTime.month().day())
+            AxisMarks(values: .automatic(desiredCount: 6)) { value in
+                if let index = value.as(Int.self), index >= 0 && index < bars.count {
+                    AxisGridLine()
+                    AxisTick()
+                    AxisValueLabel {
+                        Text(formatDate(bars[index].ts))
+                            .font(.caption)
+                    }
+                }
             }
         }
         .chartYAxis {
@@ -120,9 +136,9 @@ struct AdvancedChartView: View {
         Chart {
             // RSI line
             ForEach(rsi) { point in
-                if let value = point.value {
+                if let value = point.value, let index = indicatorIndex(for: point.date) {
                     LineMark(
-                        x: .value("Date", point.date),
+                        x: .value("Index", index),
                         y: .value("RSI", value)
                     )
                     .foregroundStyle(.purple)
@@ -145,8 +161,8 @@ struct AdvancedChartView: View {
                 .foregroundStyle(.gray.opacity(0.2))
 
             // Selection indicator
-            if let selected = selectedBar {
-                RuleMark(x: .value("Date", selected.ts))
+            if let selectedIdx = selectedIndex {
+                RuleMark(x: .value("Index", selectedIdx))
                     .foregroundStyle(.blue.opacity(0.3))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
             }
@@ -178,12 +194,12 @@ struct AdvancedChartView: View {
     // MARK: - Volume Chart
 
     private var volumeChartView: some View {
-        Chart(bars) { bar in
+        Chart(indexedBars, id: \.bar.id) { item in
             BarMark(
-                x: .value("Date", bar.ts),
-                y: .value("Volume", bar.volume)
+                x: .value("Index", item.index),
+                y: .value("Volume", item.bar.volume)
             )
-            .foregroundStyle(bar.close >= bar.open ? Color.green.opacity(0.5) : Color.red.opacity(0.5))
+            .foregroundStyle(item.bar.close >= item.bar.open ? Color.green.opacity(0.5) : Color.red.opacity(0.5))
         }
         .chartXAxis(.hidden)
         .chartYAxis {
@@ -208,20 +224,20 @@ struct AdvancedChartView: View {
     // MARK: - Helper Views
 
     @ChartContentBuilder
-    private func candlestickMarks(for bar: OHLCBar) -> some ChartContent {
+    private func candlestickMarks(index: Int, bar: OHLCBar) -> some ChartContent {
         // Candlestick body
         RectangleMark(
-            x: .value("Date", bar.ts),
+            x: .value("Index", index),
             yStart: .value("Open", min(bar.open, bar.close)),
             yEnd: .value("Close", max(bar.open, bar.close)),
             width: .ratio(0.6)
         )
         .foregroundStyle(bar.close >= bar.open ? Color.green : Color.red)
-        .opacity(bar.ts == selectedBar?.ts ? 1.0 : 0.8)
+        .opacity(selectedIndex == index ? 1.0 : 0.8)
 
         // Candlestick wick
         RuleMark(
-            x: .value("Date", bar.ts),
+            x: .value("Index", index),
             yStart: .value("Low", bar.low),
             yEnd: .value("High", bar.high)
         )
@@ -232,9 +248,9 @@ struct AdvancedChartView: View {
     @ChartContentBuilder
     private func indicatorLine(_ data: [IndicatorDataPoint], color: Color, label: String) -> some ChartContent {
         ForEach(data) { point in
-            if let value = point.value {
+            if let value = point.value, let index = indicatorIndex(for: point.date) {
                 LineMark(
-                    x: .value("Date", point.date),
+                    x: .value("Index", index),
                     y: .value(label, value)
                 )
                 .foregroundStyle(color)
@@ -288,9 +304,18 @@ struct AdvancedChartView: View {
     private func updateSelection(at location: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) {
         guard let plotFrame = proxy.plotFrame else { return }
         let xPosition = location.x - geometry[plotFrame].origin.x
-        guard let date: Date = proxy.value(atX: xPosition) else { return }
+        guard let index: Int = proxy.value(atX: xPosition) else { return }
 
-        selectedBar = bars.min(by: { abs($0.ts.timeIntervalSince(date)) < abs($1.ts.timeIntervalSince(date)) })
+        // Clamp index to valid range
+        let clampedIndex = max(0, min(index, bars.count - 1))
+        selectedIndex = clampedIndex
+        selectedBar = bars[clampedIndex]
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "M/d"
+        return formatter.string(from: date)
     }
 
     private func formatPrice(_ price: Double) -> String {
