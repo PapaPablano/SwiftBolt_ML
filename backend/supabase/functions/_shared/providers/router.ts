@@ -54,7 +54,7 @@ const DEFAULT_POLICY: RouterPolicy = {
     fallback: undefined,
   },
   optionsChain: {
-    primary: "massive", // Massive has comprehensive options support
+    primary: "yahoo", // Yahoo Finance provides free options data with 15-min delay
     fallback: undefined,
   },
 };

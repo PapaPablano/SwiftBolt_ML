@@ -84,7 +84,7 @@ final class AppViewModel: ObservableObject {
             return
         }
 
-        print("[DEBUG] - Calling chartViewModel.loadChart(), newsViewModel.loadNews(), and optionsChainViewModel.loadOptionsChain()...")
+        print("[DEBUG] - Calling chartViewModel.loadChart() and newsViewModel.loadNews()...")
 
         async let chartLoad: () = chartViewModel.loadChart()
         async let newsLoad: () = newsViewModel.loadNews(for: selectedSymbol?.ticker)

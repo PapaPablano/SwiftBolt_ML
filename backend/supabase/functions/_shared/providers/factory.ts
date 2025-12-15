@@ -6,6 +6,7 @@ import { MemoryCache } from "../cache/memory-cache.ts";
 import { getRateLimits } from "../config/rate-limits.ts";
 import { FinnhubClient } from "./finnhub-client.ts";
 import { MassiveClient } from "./massive-client.ts";
+import { YahooFinanceClient } from "./yahoo-finance-client.ts";
 import { ProviderRouter } from "./router.ts";
 import type { ProviderId } from "./types.ts";
 
@@ -54,12 +55,17 @@ export function initializeProviders(): ProviderRouter {
     cacheInstance
   );
 
+  const yahooFinanceClient = new YahooFinanceClient(
+    cacheInstance
+  );
+
   console.log("[Provider Factory] Provider clients initialized");
 
   // Initialize router with default policy
   routerInstance = new ProviderRouter({
     finnhub: finnhubClient,
     massive: massiveClient,
+    yahoo: yahooFinanceClient,
   });
 
   console.log("[Provider Factory] Provider router initialized");

@@ -84,6 +84,14 @@ struct OptionsChainList: View {
                 }
             }
         }
+        .onChange(of: viewModel.selectedExpiration) { oldValue, newValue in
+            // Reload options chain when expiration changes
+            if let symbol = appViewModel.selectedSymbol?.ticker, oldValue != newValue {
+                Task {
+                    await viewModel.loadOptionsChain(for: symbol)
+                }
+            }
+        }
     }
 }
 
