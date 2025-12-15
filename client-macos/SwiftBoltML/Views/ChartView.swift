@@ -53,6 +53,19 @@ struct ChartView: View {
 
                 Spacer()
 
+                Button(action: {
+                    Task {
+                        await chartViewModel.loadChart()
+                    }
+                }) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 14))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Refresh chart data")
+                .padding(.trailing, 8)
+
                 IndicatorToggleMenu(config: $appViewModel.chartViewModel.indicatorConfig)
             }
             .padding(.horizontal)
