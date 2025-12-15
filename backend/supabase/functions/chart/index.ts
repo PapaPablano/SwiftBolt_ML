@@ -95,16 +95,16 @@ serve(async (req: Request): Promise<Response> => {
     const assetType = symbolRecord.asset_type;
 
     // 2. Check for cached data
-    // For intraday timeframes, request more bars to account for market hours filtering
-    const isIntradayTimeframe = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(timeframe);
-    const cacheLimit = isIntradayTimeframe ? 300 : 100;
+    // Return much more data from cache (up to 1000 bars) for rich charting
+    // Backfill system will ensure we have deep historical data
+    const cacheLimit = 1000;
 
     const { data: cachedBars, error: cacheError } = await supabase
       .from("ohlc_bars")
       .select("ts, open, high, low, close, volume")
       .eq("symbol_id", symbolId)
       .eq("timeframe", timeframe)
-      .order("ts", { ascending: true })
+      .order("ts", { ascending: false }) // Get most recent first
       .limit(cacheLimit);
 
     if (cacheError) {
@@ -155,14 +155,16 @@ serve(async (req: Request): Promise<Response> => {
           console.log(`[Chart] Filtered cached to ${filteredCachedBars.length} market-hours bars (from ${cachedBars.length} total)`);
         }
 
-        bars = filteredCachedBars.map((bar) => ({
-          ts: bar.ts,
-          open: Number(bar.open),
-          high: Number(bar.high),
-          low: Number(bar.low),
-          close: Number(bar.close),
-          volume: Number(bar.volume),
-        }));
+        bars = filteredCachedBars
+          .map((bar) => ({
+            ts: bar.ts,
+            open: Number(bar.open),
+            high: Number(bar.high),
+            low: Number(bar.low),
+            close: Number(bar.close),
+            volume: Number(bar.volume),
+          }))
+          .reverse(); // Reverse since we fetched in descending order
       }
     }
 
