@@ -7,7 +7,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
-import { getProviderRouter } from "../_shared/providers/factory.ts";
+import { YFinanceClient } from "../_shared/providers/yfinance-client.ts";
 import type { Timeframe } from "../_shared/providers/types.ts";
 
 const VALID_TIMEFRAMES: Timeframe[] = ["m1", "m5", "m15", "m30", "h1", "h4", "d1", "w1", "mn1"];
@@ -108,8 +108,8 @@ serve(async (req: Request): Promise<Response> => {
       ? new Date(existingBars[0].ts).getTime() / 1000
       : null;
 
-    // 4. Execute backfill in chunks
-    const router = getProviderRouter();
+    // 4. Execute backfill in chunks using YFinance (free, unlimited historical data)
+    const yfinance = new YFinanceClient();
     let totalBarsInserted = 0;
     let chunksProcessed = 0;
     const now = Math.floor(Date.now() / 1000);
@@ -140,12 +140,14 @@ serve(async (req: Request): Promise<Response> => {
       );
 
       try {
-        const bars = await router.getHistoricalBars({
+        const bars = await yfinance.getHistoricalBars({
           symbol: ticker,
           timeframe: timeframe,
           start: chunkStart,
           end: currentEnd,
         });
+
+        console.log(`[Backfill] Chunk ${chunksProcessed + 1} returned ${bars.length} bars`);
 
         if (bars.length === 0) {
           console.log(`[Backfill] No data returned for chunk ${chunksProcessed + 1}, stopping`);
@@ -176,37 +178,41 @@ serve(async (req: Request): Promise<Response> => {
         const barsToInsert = filteredBars.map((bar) => ({
           symbol_id: symbolId,
           timeframe: timeframe,
-          ts: new Date(bar.timestamp).toISOString(),
+          ts: new Date(bar.timestamp * 1000).toISOString(), // Fix: multiply by 1000 for milliseconds
           open: bar.open,
           high: bar.high,
           low: bar.low,
           close: bar.close,
           volume: bar.volume,
-          provider: "backfill",
+          provider: "yfinance",
         }));
 
         if (barsToInsert.length > 0) {
-          const { error: upsertError } = await supabase
+          console.log(`[Backfill] Attempting to insert ${barsToInsert.length} bars...`);
+          const { data: upsertData, error: upsertError } = await supabase
             .from("ohlc_bars")
             .upsert(barsToInsert, {
               onConflict: "symbol_id,timeframe,ts",
-              ignoreDuplicates: true,
-            });
+              ignoreDuplicates: false, // Changed to false to count actual inserts
+            })
+            .select();
 
           if (upsertError) {
             console.error(`[Backfill] Upsert error:`, upsertError);
           } else {
-            totalBarsInserted += barsToInsert.length;
-            console.log(`[Backfill] Inserted ${barsToInsert.length} bars (total: ${totalBarsInserted})`);
+            const inserted = upsertData?.length || 0;
+            totalBarsInserted += inserted;
+            console.log(`[Backfill] Inserted ${inserted} new bars (total: ${totalBarsInserted})`);
           }
         }
 
         chunksProcessed++;
         currentEnd = chunkStart;
 
-        // Rate limiting: wait between chunks
+        // YFinance is free and has no rate limits, so no delay needed
+        // Just a small pause to avoid overwhelming the system
         if (chunksProcessed < strategy.maxChunks && currentEnd > targetStart) {
-          await new Promise((resolve) => setTimeout(resolve, strategy.delayMs));
+          await new Promise((resolve) => setTimeout(resolve, 500)); // 0.5 second pause
         }
       } catch (error) {
         console.error(`[Backfill] Error in chunk ${chunksProcessed + 1}:`, error);
