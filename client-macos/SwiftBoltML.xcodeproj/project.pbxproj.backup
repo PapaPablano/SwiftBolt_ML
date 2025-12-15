@@ -32,10 +32,6 @@
 		A1000023233456780000023 /* WatchlistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000025233456780000025 /* WatchlistView.swift */; };
 		A1000024233456780000024 /* AdvancedChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000026233456780000026 /* AdvancedChartView.swift */; };
 		A1000025233456780000025 /* DebugPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000027233456780000027 /* DebugPanel.swift */; };
-		F60BB96C2EF036FA0044BE7E /* OptionContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96A2EF036FA0044BE7E /* OptionContract.swift */; };
-		F60BB96D2EF036FA0044BE7E /* OptionsChainResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96B2EF036FA0044BE7E /* OptionsChainResponse.swift */; };
-		F60BB96F2EF0371A0044BE7E /* OptionsChainViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96E2EF0371A0044BE7E /* OptionsChainViewModel.swift */; };
-		F60BB9712EF037360044BE7E /* OptionsChainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB9702EF037360044BE7E /* OptionsChainView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -67,10 +63,6 @@
 		A2000026233456780000026 /* AdvancedChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedChartView.swift; sourceTree = "<group>"; };
 		A2000027233456780000027 /* DebugPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugPanel.swift; sourceTree = "<group>"; };
 		A3000001233456780000001 /* SwiftBoltML.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftBoltML.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		F60BB96A2EF036FA0044BE7E /* OptionContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionContract.swift; sourceTree = "<group>"; };
-		F60BB96B2EF036FA0044BE7E /* OptionsChainResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainResponse.swift; sourceTree = "<group>"; };
-		F60BB96E2EF0371A0044BE7E /* OptionsChainViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainViewModel.swift; sourceTree = "<group>"; };
-		F60BB9702EF037360044BE7E /* OptionsChainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -124,7 +116,6 @@
 				A2000005233456780000005 /* ChartView.swift */,
 				A2000006233456780000006 /* PriceChartView.swift */,
 				A2000007233456780000007 /* NewsListView.swift */,
-				F60BB9702EF037360044BE7E /* OptionsChainView.swift */,
 				A2000025233456780000025 /* WatchlistView.swift */,
 				A2000026233456780000026 /* AdvancedChartView.swift */,
 				A2000027233456780000027 /* DebugPanel.swift */,
@@ -138,7 +129,6 @@
 				A2000016233456780000016 /* SymbolSearchViewModel.swift */,
 				A2000017233456780000017 /* ChartViewModel.swift */,
 				A2000018233456780000018 /* NewsViewModel.swift */,
-				F60BB96E2EF0371A0044BE7E /* OptionsChainViewModel.swift */,
 				A2000019233456780000019 /* AppViewModel.swift */,
 				A2000024233456780000024 /* WatchlistViewModel.swift */,
 			);
@@ -151,8 +141,6 @@
 				A2000008233456780000008 /* Symbol.swift */,
 				A2000009233456780000009 /* OHLCBar.swift */,
 				A2000010233456780000010 /* ChartResponse.swift */,
-				F60BB96A2EF036FA0044BE7E /* OptionContract.swift */,
-				F60BB96B2EF036FA0044BE7E /* OptionsChainResponse.swift */,
 				A2000011233456780000011 /* NewsItem.swift */,
 				A2000012233456780000012 /* NewsResponse.swift */,
 			);
@@ -256,8 +244,6 @@
 				A1000007233456780000007 /* NewsListView.swift in Sources */,
 				A1000008233456780000008 /* Symbol.swift in Sources */,
 				A1000009233456780000009 /* OHLCBar.swift in Sources */,
-				F60BB96C2EF036FA0044BE7E /* OptionContract.swift in Sources */,
-				F60BB96D2EF036FA0044BE7E /* OptionsChainResponse.swift in Sources */,
 				A1000010233456780000010 /* ChartResponse.swift in Sources */,
 				A1000011233456780000011 /* NewsItem.swift in Sources */,
 				A1000012233456780000012 /* NewsResponse.swift in Sources */,
@@ -266,9 +252,7 @@
 				A1000015233456780000015 /* KeychainService.swift in Sources */,
 				A1000016233456780000016 /* SymbolSearchViewModel.swift in Sources */,
 				A1000017233456780000017 /* ChartViewModel.swift in Sources */,
-				F60BB9712EF037360044BE7E /* OptionsChainView.swift in Sources */,
 				A1000018233456780000018 /* NewsViewModel.swift in Sources */,
-				F60BB96F2EF0371A0044BE7E /* OptionsChainViewModel.swift in Sources */,
 				A1000019233456780000019 /* AppViewModel.swift in Sources */,
 				A1000021233456780000021 /* TechnicalIndicators.swift in Sources */,
 				A1000022233456780000022 /* WatchlistViewModel.swift in Sources */,
@@ -406,9 +390,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "";
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
-				CODE_SIGN_IDENTITY = "";
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
@@ -437,9 +421,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "";
 				CODE_SIGNING_ALLOWED = NO;
 				CODE_SIGNING_REQUIRED = NO;
-				CODE_SIGN_IDENTITY = "";
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;

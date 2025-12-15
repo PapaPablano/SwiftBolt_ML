@@ -5,8 +5,9 @@ import type {
   DataProviderAbstraction,
   HistoricalBarsRequest,
   NewsRequest,
+  OptionsChainRequest,
 } from "./abstraction.ts";
-import type { Bar, NewsItem, Quote } from "./types.ts";
+import type { Bar, NewsItem, OptionContract, OptionsChain, OptionType, Quote } from "./types.ts";
 import {
   InvalidSymbolError,
   PermissionDeniedError,
@@ -64,6 +65,78 @@ interface PolygonSnapshotResponse {
   day?: PolygonSnapshotDay;
   lastQuote?: PolygonSnapshotQuote;
   prevDay?: PolygonSnapshotDay;
+}
+
+interface PolygonOptionDetails {
+  contract_type: string; // "call" or "put"
+  exercise_style: string;
+  expiration_date: string; // "YYYY-MM-DD"
+  shares_per_contract: number;
+  strike_price: number;
+  ticker: string; // Full option symbol
+}
+
+interface PolygonOptionQuote {
+  ask: number;
+  ask_size: number;
+  bid: number;
+  bid_size: number;
+  last_updated: number; // Unix timestamp (nanoseconds)
+}
+
+interface PolygonOptionTrade {
+  conditions: number[];
+  exchange: number;
+  price: number;
+  sip_timestamp: number; // Unix timestamp (nanoseconds)
+  size: number;
+}
+
+interface PolygonOptionGreeks {
+  delta?: number;
+  gamma?: number;
+  theta?: number;
+  vega?: number;
+}
+
+interface PolygonOptionDay {
+  change: number;
+  change_percent: number;
+  close: number;
+  high: number;
+  last_updated: number; // Unix timestamp (milliseconds)
+  low: number;
+  open: number;
+  previous_close: number;
+  volume: number;
+  vwap: number;
+}
+
+interface PolygonOptionContract {
+  break_even_price: number;
+  day?: PolygonOptionDay;
+  details: PolygonOptionDetails;
+  greeks?: PolygonOptionGreeks;
+  implied_volatility?: number;
+  last_quote?: PolygonOptionQuote;
+  last_trade?: PolygonOptionTrade;
+  open_interest?: number;
+  underlying_asset?: {
+    change_to_break_even?: number;
+    last_updated?: number;
+    price?: number;
+    ticker?: string;
+    timeframe?: string;
+    value?: number;
+  };
+}
+
+interface PolygonOptionsChainResponse {
+  status: string;
+  results?: PolygonOptionContract[];
+  next_url?: string;
+  request_id: string;
+  count?: number;
 }
 
 // Map our timeframes to Polygon multiplier + timespan
@@ -236,6 +309,118 @@ export class MassiveClient implements DataProviderAbstraction {
       "massive",
       "News API not available on free tier"
     );
+  }
+
+  async getOptionsChain(request: OptionsChainRequest): Promise<OptionsChain> {
+    const { underlying, expiration } = request;
+    const cacheKey = `options:massive:${underlying}:${expiration || "all"}`;
+    const cached = await this.cache.get<OptionsChain>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
+    // Acquire rate limit token (strict 5/min limit)
+    await this.rateLimiter.acquire("massive");
+
+    const ticker = underlying.toUpperCase();
+    const url = new URL(`${this.baseURL}/v3/snapshot/options/${ticker}`);
+
+    // Add optional filters
+    if (expiration) {
+      // Convert Unix timestamp to YYYY-MM-DD format
+      const expirationDate = new Date(expiration * 1000).toISOString().split("T")[0];
+      url.searchParams.set("expiration_date", expirationDate);
+    }
+
+    // Set limit to max to get full chain
+    url.searchParams.set("limit", "250");
+    url.searchParams.set("apiKey", this.apiKey);
+
+    try {
+      console.log(`[Massive] Fetching options chain: ${underlying}`);
+      const response = await fetch(url.toString());
+      await this.handleHttpErrors(response);
+
+      const data: PolygonOptionsChainResponse = await response.json();
+
+      if (data.status !== "OK" || !data.results || data.results.length === 0) {
+        console.log(`[Massive] No options data available for ${underlying}`);
+        return {
+          underlying,
+          timestamp: Date.now(),
+          expirations: [],
+          calls: [],
+          puts: [],
+        };
+      }
+
+      // Transform to unified OptionsChain format
+      const calls: OptionContract[] = [];
+      const puts: OptionContract[] = [];
+      const expirationSet = new Set<number>();
+
+      for (const contract of data.results) {
+        const expirationTimestamp = Math.floor(
+          new Date(contract.details.expiration_date).getTime() / 1000
+        );
+        expirationSet.add(expirationTimestamp);
+
+        const optionContract: OptionContract = {
+          symbol: contract.details.ticker,
+          underlying: ticker,
+          strike: contract.details.strike_price,
+          expiration: expirationTimestamp,
+          type: contract.details.contract_type.toLowerCase() as OptionType,
+          bid: contract.last_quote?.bid || 0,
+          ask: contract.last_quote?.ask || 0,
+          last: contract.last_trade?.price || contract.day?.close || 0,
+          mark: contract.last_quote
+            ? (contract.last_quote.bid + contract.last_quote.ask) / 2
+            : 0,
+          volume: contract.day?.volume || 0,
+          openInterest: contract.open_interest || 0,
+          delta: contract.greeks?.delta,
+          gamma: contract.greeks?.gamma,
+          theta: contract.greeks?.theta,
+          vega: contract.greeks?.vega,
+          impliedVolatility: contract.implied_volatility,
+          lastTradeTime: contract.last_trade
+            ? Math.floor(contract.last_trade.sip_timestamp / 1_000_000)
+            : undefined,
+          changePercent: contract.day?.change_percent,
+          change: contract.day?.change,
+        };
+
+        if (contract.details.contract_type.toLowerCase() === "call") {
+          calls.push(optionContract);
+        } else {
+          puts.push(optionContract);
+        }
+      }
+
+      const optionsChain: OptionsChain = {
+        underlying: ticker,
+        timestamp: Date.now(),
+        expirations: Array.from(expirationSet).sort((a, b) => a - b),
+        calls,
+        puts,
+      };
+
+      console.log(
+        `[Massive] Fetched ${calls.length} calls and ${puts.length} puts for ${underlying}`
+      );
+
+      await this.cache.set(cacheKey, optionsChain, CACHE_TTL.quote, [
+        `symbol:${underlying}`,
+        "options",
+      ]);
+
+      return optionsChain;
+    } catch (error) {
+      console.error(`[Massive] Error fetching options chain:`, error);
+      throw this.mapError(error);
+    }
   }
 
   async healthCheck(): Promise<boolean> {

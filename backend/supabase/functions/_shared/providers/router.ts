@@ -5,8 +5,9 @@ import type {
   DataProviderAbstraction,
   HistoricalBarsRequest,
   NewsRequest,
+  OptionsChainRequest,
 } from "./abstraction.ts";
-import type { Bar, NewsItem, Quote, ProviderId } from "./types.ts";
+import type { Bar, NewsItem, OptionsChain, Quote, ProviderId } from "./types.ts";
 import {
   ProviderUnavailableError,
   RateLimitExceededError,
@@ -33,6 +34,10 @@ export interface RouterPolicy {
     primary: ProviderId;
     fallback?: ProviderId;
   };
+  optionsChain: {
+    primary: ProviderId;
+    fallback?: ProviderId;
+  };
 }
 
 const DEFAULT_POLICY: RouterPolicy = {
@@ -46,6 +51,10 @@ const DEFAULT_POLICY: RouterPolicy = {
   },
   news: {
     primary: "finnhub", // Massive free tier doesn't support news
+    fallback: undefined,
+  },
+  optionsChain: {
+    primary: "massive", // Massive has comprehensive options support
     fallback: undefined,
   },
 };
@@ -163,6 +172,44 @@ export class ProviderRouter {
           const fallbackProvider = this.providers.get(fallback);
           if (fallbackProvider) {
             const result = await fallbackProvider.getNews(request);
+            this.recordSuccess(fallback);
+            return result;
+          }
+        } catch (fallbackError) {
+          console.error(`[Router] Fallback also failed:`, fallbackError);
+          this.recordFailure(fallback);
+        }
+      }
+
+      throw error;
+    }
+  }
+
+  async getOptionsChain(request: OptionsChainRequest): Promise<OptionsChain> {
+    const { primary, fallback } = this.policy.optionsChain;
+
+    try {
+      const provider = await this.selectProvider(primary, fallback);
+
+      // Check if provider supports options chain
+      if (!provider.getOptionsChain) {
+        throw new ProviderUnavailableError(primary);
+      }
+
+      const result = await provider.getOptionsChain(request);
+      this.recordSuccess(primary);
+      return result;
+    } catch (error) {
+      console.error(`[Router] getOptionsChain failed:`, error);
+      this.recordFailure(primary);
+
+      // Try fallback if available and not a rate limit error
+      if (fallback && !(error instanceof RateLimitExceededError)) {
+        try {
+          console.log(`[Router] Attempting fallback to ${fallback}`);
+          const fallbackProvider = this.providers.get(fallback);
+          if (fallbackProvider && fallbackProvider.getOptionsChain) {
+            const result = await fallbackProvider.getOptionsChain(request);
             this.recordSuccess(fallback);
             return result;
           }

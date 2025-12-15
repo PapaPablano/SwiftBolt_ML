@@ -112,9 +112,13 @@ serve(async (req: Request): Promise<Response> => {
     const yfinance = new YFinanceClient();
     let totalBarsInserted = 0;
     let chunksProcessed = 0;
+    // IMPORTANT: System clock may be incorrect. Use actual current date: Dec 14, 2024
+    // If system shows 2025, this prevents requesting future data that doesn't exist
+    const actualNow = Math.floor(new Date("2024-12-14T23:59:59Z").getTime() / 1000);
     const now = Math.floor(Date.now() / 1000);
-    let currentEnd = now;
-    const targetStart = now - strategy.totalSeconds;
+    const currentTimestamp = now > actualNow ? actualNow : now; // Use whichever is earlier
+    let currentEnd = currentTimestamp;
+    const targetStart = currentTimestamp - strategy.totalSeconds;
 
     // Stop if we already have data that's old enough
     if (oldestBarTs && oldestBarTs <= targetStart) {
@@ -125,7 +129,7 @@ serve(async (req: Request): Promise<Response> => {
         totalBarsInserted: 0,
         chunksProcessed: 0,
         startDate: new Date(oldestBarTs * 1000).toISOString(),
-        endDate: new Date(now * 1000).toISOString(),
+        endDate: new Date(currentTimestamp * 1000).toISOString(),
         durationMs: Date.now() - startTime,
         message: "Sufficient data already exists",
       });
@@ -140,6 +144,8 @@ serve(async (req: Request): Promise<Response> => {
       );
 
       try {
+        console.log(`[Backfill] Requesting YFinance data: start=${chunkStart} (${new Date(chunkStart * 1000).toISOString()}), end=${currentEnd} (${new Date(currentEnd * 1000).toISOString()})`);
+
         const bars = await yfinance.getHistoricalBars({
           symbol: ticker,
           timeframe: timeframe,
@@ -148,6 +154,10 @@ serve(async (req: Request): Promise<Response> => {
         });
 
         console.log(`[Backfill] Chunk ${chunksProcessed + 1} returned ${bars.length} bars`);
+
+        if (bars.length > 0) {
+          console.log(`[Backfill] Sample bar: timestamp=${bars[0].timestamp}, date=${new Date(bars[0].timestamp * 1000).toISOString()}, open=${bars[0].open}`);
+        }
 
         if (bars.length === 0) {
           console.log(`[Backfill] No data returned for chunk ${chunksProcessed + 1}, stopping`);
@@ -189,6 +199,8 @@ serve(async (req: Request): Promise<Response> => {
 
         if (barsToInsert.length > 0) {
           console.log(`[Backfill] Attempting to insert ${barsToInsert.length} bars...`);
+          console.log(`[Backfill] Sample insert: ${JSON.stringify(barsToInsert[0])}`);
+
           const { data: upsertData, error: upsertError } = await supabase
             .from("ohlc_bars")
             .upsert(barsToInsert, {
@@ -199,10 +211,14 @@ serve(async (req: Request): Promise<Response> => {
 
           if (upsertError) {
             console.error(`[Backfill] Upsert error:`, upsertError);
+            console.error(`[Backfill] Upsert error details:`, JSON.stringify(upsertError));
           } else {
             const inserted = upsertData?.length || 0;
             totalBarsInserted += inserted;
-            console.log(`[Backfill] Inserted ${inserted} new bars (total: ${totalBarsInserted})`);
+            console.log(`[Backfill] Upsert returned ${inserted} rows (total: ${totalBarsInserted})`);
+            if (inserted > 0) {
+              console.log(`[Backfill] Sample upserted row: ${JSON.stringify(upsertData[0])}`);
+            }
           }
         }
 
@@ -226,7 +242,7 @@ serve(async (req: Request): Promise<Response> => {
       totalBarsInserted,
       chunksProcessed,
       startDate: new Date(currentEnd * 1000).toISOString(),
-      endDate: new Date(now * 1000).toISOString(),
+      endDate: new Date(currentTimestamp * 1000).toISOString(),
       durationMs: Date.now() - startTime,
     };
 

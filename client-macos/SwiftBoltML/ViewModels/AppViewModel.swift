@@ -14,6 +14,7 @@ final class AppViewModel: ObservableObject {
 
     @Published var chartViewModel: ChartViewModel
     @Published var newsViewModel: NewsViewModel
+    @Published var optionsChainViewModel: OptionsChainViewModel
     let searchViewModel: SymbolSearchViewModel
     let watchlistViewModel: WatchlistViewModel
 
@@ -23,6 +24,7 @@ final class AppViewModel: ObservableObject {
     init() {
         self.chartViewModel = ChartViewModel()
         self.newsViewModel = NewsViewModel()
+        self.optionsChainViewModel = OptionsChainViewModel()
         self.searchViewModel = SymbolSearchViewModel()
         self.watchlistViewModel = WatchlistViewModel()
 
@@ -33,6 +35,11 @@ final class AppViewModel: ObservableObject {
 
         // Relay newsViewModel changes to trigger AppViewModel updates
         newsViewModel.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }.store(in: &cancellables)
+
+        // Relay optionsChainViewModel changes to trigger AppViewModel updates
+        optionsChainViewModel.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }.store(in: &cancellables)
 
@@ -65,6 +72,7 @@ final class AppViewModel: ObservableObject {
         // Clear stale data immediately to show loading states
         chartViewModel.clearData()
         newsViewModel.clearData()
+        optionsChainViewModel.clearData()
 
         print("[DEBUG] - Setting chartViewModel.selectedSymbol to: \(selectedSymbol?.ticker ?? "nil")")
         chartViewModel.selectedSymbol = selectedSymbol
@@ -76,12 +84,13 @@ final class AppViewModel: ObservableObject {
             return
         }
 
-        print("[DEBUG] - Calling chartViewModel.loadChart() and newsViewModel.loadNews()...")
+        print("[DEBUG] - Calling chartViewModel.loadChart(), newsViewModel.loadNews(), and optionsChainViewModel.loadOptionsChain()...")
 
         async let chartLoad: () = chartViewModel.loadChart()
         async let newsLoad: () = newsViewModel.loadNews(for: selectedSymbol?.ticker)
+        async let optionsLoad: () = optionsChainViewModel.loadOptionsChain(for: selectedSymbol?.ticker ?? "")
 
-        _ = await (chartLoad, newsLoad)
+        _ = await (chartLoad, newsLoad, optionsLoad)
         print("[DEBUG] AppViewModel.refreshData() COMPLETED")
         print("[DEBUG] ========================================")
     }

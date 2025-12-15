@@ -125,4 +125,20 @@ actor APIClient {
         )
         return try await performRequest(request)
     }
+
+    func fetchOptionsChain(underlying: String, expiration: TimeInterval? = nil) async throws -> OptionsChainResponse {
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "underlying", value: underlying)
+        ]
+
+        if let expiration = expiration {
+            queryItems.append(URLQueryItem(name: "expiration", value: String(Int(expiration))))
+        }
+
+        let request = try makeRequest(
+            endpoint: "options-chain",
+            queryItems: queryItems
+        )
+        return try await performRequest(request)
+    }
 }

@@ -1,7 +1,7 @@
 // DataProviderAbstraction: unified interface for market data providers
 // All provider clients (Finnhub, Massive) must implement this interface
 
-import type { Bar, NewsItem, Quote, Symbol, Timeframe } from "./types.ts";
+import type { Bar, NewsItem, OptionsChain, Quote, Symbol, Timeframe } from "./types.ts";
 
 export interface HistoricalBarsRequest {
   symbol: string;
@@ -15,6 +15,11 @@ export interface NewsRequest {
   from?: number; // Unix timestamp (seconds)
   to?: number; // Unix timestamp (seconds)
   limit?: number;
+}
+
+export interface OptionsChainRequest {
+  underlying: string; // Underlying symbol (e.g., "AAPL")
+  expiration?: number; // Optional: filter by specific expiration (Unix timestamp seconds)
 }
 
 export interface DataProviderAbstraction {
@@ -32,6 +37,12 @@ export interface DataProviderAbstraction {
    * Get news items, optionally filtered by symbol
    */
   getNews(request: NewsRequest): Promise<NewsItem[]>;
+
+  /**
+   * Get options chain for an underlying symbol
+   * Optional - not all providers may support this
+   */
+  getOptionsChain?(request: OptionsChainRequest): Promise<OptionsChain>;
 
   /**
    * Search for symbols by ticker or description

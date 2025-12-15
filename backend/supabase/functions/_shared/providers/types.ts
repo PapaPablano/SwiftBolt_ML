@@ -46,6 +46,49 @@ export interface Symbol {
   currency?: string;
 }
 
+export type OptionType = "call" | "put";
+
+export interface OptionContract {
+  symbol: string; // Option symbol (e.g., "AAPL250117C00150000")
+  underlying: string; // Underlying symbol (e.g., "AAPL")
+  strike: number;
+  expiration: number; // Unix timestamp (seconds)
+  type: OptionType;
+
+  // Pricing
+  bid: number;
+  ask: number;
+  last: number;
+  mark: number; // Midpoint of bid/ask
+
+  // Volume & Open Interest
+  volume: number;
+  openInterest: number;
+
+  // Greeks (optional, may not always be available)
+  delta?: number;
+  gamma?: number;
+  theta?: number;
+  vega?: number;
+  rho?: number;
+
+  // Implied Volatility
+  impliedVolatility?: number;
+
+  // Additional data
+  lastTradeTime?: number;
+  changePercent?: number;
+  change?: number;
+}
+
+export interface OptionsChain {
+  underlying: string;
+  timestamp: number;
+  expirations: number[]; // Array of expiration timestamps
+  calls: OptionContract[];
+  puts: OptionContract[];
+}
+
 // Error types for unified error handling
 export class ProviderError extends Error {
   constructor(

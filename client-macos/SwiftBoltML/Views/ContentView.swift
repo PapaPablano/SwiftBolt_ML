@@ -85,7 +85,8 @@ struct DetailView: View {
                 VStack(spacing: 0) {
                     Picker("", selection: $selectedTab) {
                         Text("News").tag(0)
-                        Text("Analysis").tag(1)
+                        Text("Options").tag(1)
+                        Text("Analysis").tag(2)
                     }
                     .pickerStyle(.segmented)
                     .padding()
@@ -93,6 +94,9 @@ struct DetailView: View {
 
                     if selectedTab == 0 {
                         NewsListView()
+                            .environmentObject(appViewModel)
+                    } else if selectedTab == 1 {
+                        OptionsChainView()
                             .environmentObject(appViewModel)
                     } else {
                         Text("Analysis coming soon...")

@@ -5,6 +5,8 @@
     "https://esm.sh/iceberg-js@^0.8.1?target=denonext": "https://esm.sh/iceberg-js@0.8.1?target=denonext"
   },
   "remote": {
+    "https://deno.land/std@0.208.0/async/delay.ts": "a6142eb44cdd856b645086af2b811b1fcce08ec06bb7d50969e6a872ee9b8659",
+    "https://deno.land/std@0.208.0/http/server.ts": "f3cde6672e631d3e00785743cfa96bfed275618c0352c5ae84abbe5a2e0e4afc",
     "https://esm.sh/@supabase/auth-js@2.87.1/denonext/auth-js.mjs": "df648c4de803ec1cbffe08566cc4bdc203a89eb75856528b965f43dd4b877088",
     "https://esm.sh/@supabase/functions-js@2.87.1/denonext/functions-js.mjs": "cefdfdefe3d6a8aaa6268f1109a73d5fb431015e8f604a4d73bd554dba6e1c1e",
     "https://esm.sh/@supabase/postgrest-js@2.87.1/denonext/postgrest-js.mjs": "ee1bcda955a878440196503923a535e18ff2fd1f20dd0582f652a435ba5a9a10",

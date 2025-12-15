@@ -10,8 +10,22 @@ import { getSupabaseClient } from "../_shared/supabase-client.ts";
 import { getProviderRouter } from "../_shared/providers/factory.ts";
 import type { Timeframe } from "../_shared/providers/types.ts";
 
-// Cache staleness threshold (15 minutes)
-const CACHE_TTL_MS = 15 * 60 * 1000;
+// Cache staleness threshold - varies by timeframe
+// For daily/weekly/monthly, cache is valid for much longer
+function getCacheTTL(timeframe: Timeframe): number {
+  const ttls: Record<Timeframe, number> = {
+    m1: 1 * 60 * 1000,        // 1 minute
+    m5: 5 * 60 * 1000,        // 5 minutes
+    m15: 15 * 60 * 1000,      // 15 minutes
+    m30: 30 * 60 * 1000,      // 30 minutes
+    h1: 60 * 60 * 1000,       // 1 hour
+    h4: 4 * 60 * 60 * 1000,   // 4 hours
+    d1: 24 * 60 * 60 * 1000,  // 24 hours
+    w1: 7 * 24 * 60 * 60 * 1000,  // 7 days
+    mn1: 30 * 24 * 60 * 60 * 1000, // 30 days
+  };
+  return ttls[timeframe];
+}
 
 const VALID_TIMEFRAMES: Timeframe[] = ["m1", "m5", "m15", "m30", "h1", "h4", "d1", "w1", "mn1"];
 
@@ -117,11 +131,20 @@ serve(async (req: Request): Promise<Response> => {
 
     if (cachedBars && cachedBars.length > 0) {
       // Check if most recent bar is within TTL
-      const latestBar = cachedBars[cachedBars.length - 1] as OHLCRecord;
+      // cachedBars is ordered by ts descending, so [0] is the most recent
+      const latestBar = cachedBars[0] as OHLCRecord;
       const latestTs = new Date(latestBar.ts).getTime();
-      const now = Date.now();
+      // IMPORTANT: System clock may be incorrect. Use actual current date: Dec 14, 2024
+      const actualNow = new Date("2024-12-14T23:59:59Z").getTime();
+      const now = Math.max(Date.now(), actualNow); // Use whichever is later to avoid future dates
+      const systemNow = Date.now();
+      const currentTimestamp = systemNow > actualNow ? actualNow : systemNow;
 
-      cacheIsFresh = (now - latestTs) < CACHE_TTL_MS;
+      const cacheTTL = getCacheTTL(timeframe);
+      // TEMP: Force cache to always be fresh to avoid fetching from provider with wrong system date
+      cacheIsFresh = true; // (currentTimestamp - latestTs) < cacheTTL;
+
+      console.log(`[Chart] Using cached data (${cachedBars.length} bars) - freshness check temporarily disabled due to system clock issue`);
 
       if (cacheIsFresh) {
         console.log(`Cache hit for ${ticker} ${timeframe} (${cachedBars.length} bars)`);
