@@ -539,17 +539,12 @@ struct AdvancedChartView: View {
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 2]))
 
                 // Shaded area between confidence bands
-                if offset < series.points.count - 1 {
-                    let nextPoint = series.points[offset + 1]
-                    let nextIndex = lastBarIndex + offset + 2
-
-                    AreaMark(
-                        x: .value("Index", forecastIndex),
-                        yStart: .value("Lower", point.lower),
-                        yEnd: .value("Upper", point.upper)
-                    )
-                    .foregroundStyle(forecastColor.opacity(0.1))
-                }
+                AreaMark(
+                    x: .value("Index", forecastIndex),
+                    yStart: .value("Lower", point.lower),
+                    yEnd: .value("Upper", point.upper)
+                )
+                .foregroundStyle(forecastColor.opacity(0.1))
             }
         }
     }

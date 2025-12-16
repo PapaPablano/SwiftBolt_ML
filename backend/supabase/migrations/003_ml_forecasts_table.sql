@@ -18,10 +18,10 @@ CREATE TABLE IF NOT EXISTS ml_forecasts (
 );
 
 -- Indexes
-CREATE INDEX idx_ml_forecasts_symbol_id ON ml_forecasts(symbol_id);
-CREATE INDEX idx_ml_forecasts_horizon ON ml_forecasts(horizon);
-CREATE INDEX idx_ml_forecasts_run_at ON ml_forecasts(run_at DESC);
-CREATE INDEX idx_ml_forecasts_symbol_horizon ON ml_forecasts(symbol_id, horizon);
+CREATE INDEX IF NOT EXISTS idx_ml_forecasts_symbol_id ON ml_forecasts(symbol_id);
+CREATE INDEX IF NOT EXISTS idx_ml_forecasts_horizon ON ml_forecasts(horizon);
+CREATE INDEX IF NOT EXISTS idx_ml_forecasts_run_at ON ml_forecasts(run_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ml_forecasts_symbol_horizon ON ml_forecasts(symbol_id, horizon);
 
 -- Updated_at trigger
 CREATE OR REPLACE FUNCTION update_ml_forecasts_updated_at()
