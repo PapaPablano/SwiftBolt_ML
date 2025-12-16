@@ -37,6 +37,7 @@ npm-debug.log*
 
 # Supabase
 .supabase/
+supabase/.temp/
 
 # Python
 __pycache__/
