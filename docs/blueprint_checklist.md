@@ -324,25 +324,52 @@ Status notation:
 
 ### 6.1. Options Data & `options_ranks`
 
-* [ ] Ingest options chain & metrics from Massive API.
-* [ ] Create or finalize `options_ranks` schema.
-* [ ] Implement ML scoring/ranking for options in Python job.
+* [x] Options chain data available via `/options-chain` Edge Function (Yahoo Finance).
+* [x] Enhanced `options_ranks` schema with ML scoring columns.
+  * [x] Added contract_symbol, theta, vega, rho, bid/ask/mark, last_price
+  * [x] Created indexes for performant queries (ml_score DESC, run_at, underlying+score)
+* [x] Implemented ML scoring/ranking for options in Python:
+  * [x] Created `OptionsRanker` class with multi-factor scoring model
+  * [x] Scoring factors: moneyness, IV rank, liquidity, delta/theta, momentum
+  * [x] Weighted composite ml_score (0-1 range)
+  * [x] Created `options_ranking_job.py` for batch processing
 
 ### 6.2. `/options/rankings` Endpoint
 
-* [ ] Implement Edge Function for `GET /options/rankings`.
-* [ ] Apply plan gating (only upgraded users receive real data).
+* [x] Implemented Edge Function `GET /options-rankings`:
+  * [x] Query params: symbol, expiry (optional), side (optional), limit (default 50)
+  * [x] Returns ML-ranked contracts sorted by ml_score descending
+  * [x] Deployed to Supabase production
+* [ ] Apply plan gating (deferred - currently open for MVP testing).
 
 ### 6.3. Client Integration
 
-* [ ] Implement `OptionsRankerService` and models.
-* [ ] Implement `OptionsRankerTabView` UI.
+* [x] Implemented Swift models:
+  * [x] `OptionsRankingResponse` with `OptionRank` struct
+  * [x] ML score helpers (color coding, percentage, labels)
+  * [x] Expiry date parsing and DTE calculation
+* [ ] Implement `OptionsRankerService` to call `/options-rankings`.
+* [ ] Integrate ranking display into `OptionsChainView` or create dedicated ranker tab.
 
 ### 6.4. Watchlist Scanner
 
-* [ ] Implement `scanner_alerts` logic and table.
-* [ ] Implement `/scanner/watchlist` Edge Function.
-* [ ] Wire `ScannerService` + `AlertsTabView` + watchlist badges.
+* [x] Enhanced `scanner_alerts` table:
+  * [x] Added condition_type, details (JSONB), is_read, expires_at
+  * [x] Created indexes for efficient queries
+* [x] Implemented Edge Function `POST /scanner-watchlist`:
+  * [x] Accepts array of symbols from user's watchlist
+  * [x] Fetches ML forecasts for each symbol
+  * [x] Aggregates alerts (last 7 days) with unread counts
+  * [x] Returns watchlist items with price data and alert badges
+  * [x] Deployed to Supabase production
+* [x] Implemented Swift models:
+  * [x] `ScannerWatchlistResponse` with `WatchlistItem` and `ScannerAlert`
+  * [x] Alert severity and condition type enums
+  * [x] Color helpers for badges and icons
+  * [x] `AnyCodable` for flexible JSON details
+* [ ] Implement `ScannerService` in Swift to call `/scanner-watchlist`.
+* [ ] Add alert badges to `WatchlistView` showing unread count and critical status.
+* [ ] Create `AlertsTabView` to display scanner alerts.
 
 ---
 
