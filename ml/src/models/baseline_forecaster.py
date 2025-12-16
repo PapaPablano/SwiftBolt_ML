@@ -53,11 +53,11 @@ class BaselineForecaster:
             -horizon_days
         )
 
-        # Create labels: Bullish (1), Neutral (0), Bearish (-1)
+        # Create labels: bullish (1), neutral (0), bearish (-1)
         df["label"] = pd.cut(
             df["forward_return"],
             bins=[-np.inf, -0.02, 0.02, np.inf],
-            labels=["Bearish", "Neutral", "Bullish"],
+            labels=["bearish", "neutral", "bullish"],
         )
 
         # Drop rows with NaN labels (last horizon_days rows + initial NaNs)
@@ -217,11 +217,11 @@ class BaselineForecaster:
         points = []
 
         # Determine expected return based on label
-        if label == "Bullish":
+        if label == "bullish":
             expected_return = 0.03  # 3% gain
-        elif label == "Bearish":
+        elif label == "bearish":
             expected_return = -0.03  # 3% loss
-        else:  # Neutral
+        else:  # neutral
             expected_return = 0.0
 
         # Scale by confidence

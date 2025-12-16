@@ -9,6 +9,7 @@ struct AdvancedChartView: View {
     let ema21: [IndicatorDataPoint]
     let rsi: [IndicatorDataPoint]
     let config: IndicatorConfig
+    let mlSummary: MLSummary?
 
     @State private var selectedBar: OHLCBar?
     @State private var selectedIndex: Int?
@@ -17,7 +18,7 @@ struct AdvancedChartView: View {
     @State private var visibleRange: ClosedRange<Int>
     @State private var barsToShow: Int = 100 // Default visible bars
 
-    init(bars: [OHLCBar], sma20: [IndicatorDataPoint], sma50: [IndicatorDataPoint], ema9: [IndicatorDataPoint], ema21: [IndicatorDataPoint], rsi: [IndicatorDataPoint], config: IndicatorConfig) {
+    init(bars: [OHLCBar], sma20: [IndicatorDataPoint], sma50: [IndicatorDataPoint], ema9: [IndicatorDataPoint], ema21: [IndicatorDataPoint], rsi: [IndicatorDataPoint], config: IndicatorConfig, mlSummary: MLSummary? = nil) {
         self.bars = bars
         self.sma20 = sma20
         self.sma50 = sma50
@@ -25,6 +26,7 @@ struct AdvancedChartView: View {
         self.ema21 = ema21
         self.rsi = rsi
         self.config = config
+        self.mlSummary = mlSummary
 
         // Initialize visible range to show most recent bars
         let count = bars.count
@@ -163,6 +165,11 @@ struct AdvancedChartView: View {
             }
             if config.showEMA21 {
                 indicatorLine(ema21, color: .pink, label: "EMA(21)")
+            }
+
+            // ML Forecast Overlays
+            if let mlSummary = mlSummary {
+                forecastOverlay(mlSummary)
             }
 
             // Selection indicator
@@ -480,6 +487,70 @@ struct AdvancedChartView: View {
             return .green
         } else {
             return .purple
+        }
+    }
+
+    // MARK: - ML Forecast Overlay
+
+    @ChartContentBuilder
+    private func forecastOverlay(_ mlSummary: MLSummary) -> some ChartContent {
+        // Get the forecast color based on overall label
+        let forecastColor: Color = {
+            switch mlSummary.overallLabel.lowercased() {
+            case "bullish": return .green
+            case "bearish": return .red
+            case "neutral": return .orange
+            default: return .gray
+            }
+        }()
+
+        // Calculate the starting index (after the last bar)
+        let lastBarIndex = bars.count - 1
+
+        // Render forecast for each horizon
+        ForEach(mlSummary.horizons, id: \.horizon) { series in
+            // Convert forecast points to chart-compatible data
+            ForEach(Array(series.points.enumerated()), id: \.offset) { offset, point in
+                let forecastIndex = lastBarIndex + offset + 1
+
+                // Forecast line (main prediction)
+                LineMark(
+                    x: .value("Index", forecastIndex),
+                    y: .value("Forecast", point.value)
+                )
+                .foregroundStyle(forecastColor)
+                .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 3]))
+                .opacity(0.8)
+
+                // Upper confidence band
+                LineMark(
+                    x: .value("Index", forecastIndex),
+                    y: .value("Upper", point.upper)
+                )
+                .foregroundStyle(forecastColor.opacity(0.3))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 2]))
+
+                // Lower confidence band
+                LineMark(
+                    x: .value("Index", forecastIndex),
+                    y: .value("Lower", point.lower)
+                )
+                .foregroundStyle(forecastColor.opacity(0.3))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 2]))
+
+                // Shaded area between confidence bands
+                if offset < series.points.count - 1 {
+                    let nextPoint = series.points[offset + 1]
+                    let nextIndex = lastBarIndex + offset + 2
+
+                    AreaMark(
+                        x: .value("Index", forecastIndex),
+                        yStart: .value("Lower", point.lower),
+                        yEnd: .value("Upper", point.upper)
+                    )
+                    .foregroundStyle(forecastColor.opacity(0.1))
+                }
+            }
         }
     }
 }

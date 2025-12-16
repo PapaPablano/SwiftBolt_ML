@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings
-from src.data.db import db
+from src.data.supabase_db import db
 from src.features.technical_indicators import add_technical_features
 from src.models.baseline_forecaster import BaselineForecaster
 

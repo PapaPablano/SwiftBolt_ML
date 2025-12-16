@@ -83,6 +83,13 @@ struct ChartView: View {
             } else if let chartData = chartViewModel.chartData, !chartData.bars.isEmpty {
                 // ✅ Always render the chart if we have bars
                 VStack(spacing: 0) {
+                    // ML Report Card (if available)
+                    if let mlSummary = chartData.mlSummary {
+                        MLReportCard(mlSummary: mlSummary)
+                            .padding(.horizontal)
+                            .padding(.top, 8)
+                    }
+
                     AdvancedChartView(
                         bars: chartData.bars,
                         sma20: chartViewModel.sma20,
@@ -90,7 +97,8 @@ struct ChartView: View {
                         ema9: chartViewModel.ema9,
                         ema21: chartViewModel.ema21,
                         rsi: chartViewModel.rsi,
-                        config: chartViewModel.indicatorConfig
+                        config: chartViewModel.indicatorConfig,
+                        mlSummary: chartData.mlSummary
                     )
                     .padding()
                     .id("advanced-chart-\(chartData.bars.count)-\(chartData.bars.first?.ts.timeIntervalSince1970 ?? 0)")

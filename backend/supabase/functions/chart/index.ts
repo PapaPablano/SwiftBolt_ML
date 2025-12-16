@@ -33,6 +33,24 @@ function isValidTimeframe(value: string): value is Timeframe {
   return VALID_TIMEFRAMES.includes(value as Timeframe);
 }
 
+interface ForecastPoint {
+  ts: number;
+  value: number;
+  lower: number;
+  upper: number;
+}
+
+interface ForecastSeries {
+  horizon: string;
+  points: ForecastPoint[];
+}
+
+interface MLSummary {
+  overallLabel: string;
+  confidence: number;
+  horizons: ForecastSeries[];
+}
+
 interface ChartResponse {
   symbol: string;
   assetType: string;
@@ -45,6 +63,7 @@ interface ChartResponse {
     close: number;
     volume: number;
   }[];
+  mlSummary?: MLSummary;
 }
 
 interface SymbolRecord {
@@ -108,7 +127,38 @@ serve(async (req: Request): Promise<Response> => {
     const symbolId = symbolRecord.id;
     const assetType = symbolRecord.asset_type;
 
-    // 2. Check for cached data
+    // 2. Query ML forecasts for this symbol
+    let mlSummary: MLSummary | undefined;
+    try {
+      const { data: forecasts, error: forecastError } = await supabase
+        .from("ml_forecasts")
+        .select("horizon, overall_label, confidence, points, run_at")
+        .eq("symbol_id", symbolId)
+        .in("horizon", ["1D", "1W"])
+        .order("run_at", { ascending: false });
+
+      if (!forecastError && forecasts && forecasts.length > 0) {
+        // Use the most recent forecast with highest confidence as overall
+        const sortedByConfidence = forecasts.sort((a, b) => b.confidence - a.confidence);
+        const primary = sortedByConfidence[0];
+
+        mlSummary = {
+          overallLabel: primary.overall_label,
+          confidence: primary.confidence,
+          horizons: forecasts.map((f) => ({
+            horizon: f.horizon,
+            points: f.points as ForecastPoint[],
+          })),
+        };
+
+        console.log(`[Chart] Loaded ${forecasts.length} ML forecasts for ${ticker}`);
+      }
+    } catch (forecastError) {
+      console.error("Error loading ML forecasts:", forecastError);
+      // Continue without forecasts if query fails
+    }
+
+    // 3. Check for cached data
     // Return much more data from cache (up to 1000 bars) for rich charting
     // Backfill system will ensure we have deep historical data
     const cacheLimit = 1000;
@@ -125,7 +175,7 @@ serve(async (req: Request): Promise<Response> => {
       console.error("Cache query error:", cacheError);
     }
 
-    // 3. Determine if cache is fresh
+    // 4. Determine if cache is fresh
     let bars: OHLCBar[] = [];
     let cacheIsFresh = false;
 
@@ -191,7 +241,7 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    // 4. If cache is stale or empty, fetch via ProviderRouter
+    // 5. If cache is stale or empty, fetch via ProviderRouter
     if (!cacheIsFresh) {
       console.log(`Cache miss for ${ticker} ${timeframe}, fetching via ProviderRouter`);
 
@@ -262,7 +312,7 @@ serve(async (req: Request): Promise<Response> => {
         }
 
         if (marketHoursBars.length > 0) {
-          // 5. Upsert bars into database
+          // 6. Upsert bars into database
           const barsToInsert = freshBars.map((bar) => ({
             symbol_id: symbolId,
             timeframe: timeframe,
@@ -330,12 +380,13 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    // 6. Return response
+    // 7. Return response with ML forecasts
     const response: ChartResponse = {
       symbol: ticker,
       assetType: assetType,
       timeframe: timeframe,
       bars: bars,
+      mlSummary: mlSummary,
     };
 
     return jsonResponse(response);
