@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1B3F554CCC5B9C65482F52FA /* WatchlistModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A4D3D1FC85DBCBD8C45CCA5 /* WatchlistModels.swift */; };
+		2B0B27F844CF7F11D77399D7 /* ScannerResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BED859934C91510459C2BF0 /* ScannerResponse.swift */; };
+		3D2E2ECF304A82C0FF14E1A6 /* AnalysisViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FA5FFF80A4C7A0C6E60A1CA /* AnalysisViewModel.swift */; };
+		731BC29C18688AD83AF0A16E /* StrikePriceComparisonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE33C7CA7CA515703FFF0B5D /* StrikePriceComparisonView.swift */; };
 		A1000001233456780000001 /* SwiftBoltMLApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001233456780000001 /* SwiftBoltMLApp.swift */; };
 		A1000002233456780000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000002233456780000002 /* ContentView.swift */; };
 		A1000003233456780000003 /* DevToolsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000003233456780000003 /* DevToolsView.swift */; };
@@ -32,14 +36,26 @@
 		A1000023233456780000023 /* WatchlistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000025233456780000025 /* WatchlistView.swift */; };
 		A1000024233456780000024 /* AdvancedChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000026233456780000026 /* AdvancedChartView.swift */; };
 		A1000025233456780000025 /* DebugPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000027233456780000027 /* DebugPanel.swift */; };
+		A2A8103C284B7A6C2EA18C30 /* OptionsRankerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA453D2167A88A3AB27575EB /* OptionsRankerViewModel.swift */; };
+		A66084CE5A41ABCA72B26DB6 /* OptionsRankingResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C341141BD25E1C4A72A109 /* OptionsRankingResponse.swift */; };
+		BC576D3E8C5285E20896AD47 /* AnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45CDF4DECC736A4B74E5CF6F /* AnalysisView.swift */; };
+		E90FBEB82247C0247F23FFCF /* OptionsRankerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D40AA22987ED31FDDFD8FD9 /* OptionsRankerView.swift */; };
 		F60BB96C2EF036FA0044BE7E /* OptionContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96A2EF036FA0044BE7E /* OptionContract.swift */; };
 		F60BB96D2EF036FA0044BE7E /* OptionsChainResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96B2EF036FA0044BE7E /* OptionsChainResponse.swift */; };
 		F60BB96F2EF0371A0044BE7E /* OptionsChainViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96E2EF0371A0044BE7E /* OptionsChainViewModel.swift */; };
 		F60BB9712EF037360044BE7E /* OptionsChainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB9702EF037360044BE7E /* OptionsChainView.swift */; };
+		F6161BC02EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6161BBF2EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift */; };
+		F6161BC12EF2D49A0065ABA1 /* OptionRankDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6161BBE2EF2D49A0065ABA1 /* OptionRankDetailView.swift */; };
 		F64681A92EF0E00900FBEF04 /* MLReportCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F64681A82EF0E00900FBEF04 /* MLReportCard.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0A4D3D1FC85DBCBD8C45CCA5 /* WatchlistModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchlistModels.swift; sourceTree = "<group>"; };
+		0D40AA22987ED31FDDFD8FD9 /* OptionsRankerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerView.swift; sourceTree = "<group>"; };
+		45CDF4DECC736A4B74E5CF6F /* AnalysisView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AnalysisView.swift; sourceTree = "<group>"; };
+		5FA5FFF80A4C7A0C6E60A1CA /* AnalysisViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AnalysisViewModel.swift; sourceTree = "<group>"; };
+		6BED859934C91510459C2BF0 /* ScannerResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ScannerResponse.swift; sourceTree = "<group>"; };
+		91C341141BD25E1C4A72A109 /* OptionsRankingResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankingResponse.swift; sourceTree = "<group>"; };
 		A2000001233456780000001 /* SwiftBoltMLApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBoltMLApp.swift; sourceTree = "<group>"; };
 		A2000002233456780000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A2000003233456780000003 /* DevToolsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevToolsView.swift; sourceTree = "<group>"; };
@@ -68,10 +84,14 @@
 		A2000026233456780000026 /* AdvancedChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedChartView.swift; sourceTree = "<group>"; };
 		A2000027233456780000027 /* DebugPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugPanel.swift; sourceTree = "<group>"; };
 		A3000001233456780000001 /* SwiftBoltML.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftBoltML.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA453D2167A88A3AB27575EB /* OptionsRankerViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerViewModel.swift; sourceTree = "<group>"; };
+		EE33C7CA7CA515703FFF0B5D /* StrikePriceComparisonView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StrikePriceComparisonView.swift; sourceTree = "<group>"; };
 		F60BB96A2EF036FA0044BE7E /* OptionContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionContract.swift; sourceTree = "<group>"; };
 		F60BB96B2EF036FA0044BE7E /* OptionsChainResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainResponse.swift; sourceTree = "<group>"; };
 		F60BB96E2EF0371A0044BE7E /* OptionsChainViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainViewModel.swift; sourceTree = "<group>"; };
 		F60BB9702EF037360044BE7E /* OptionsChainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainView.swift; sourceTree = "<group>"; };
+		F6161BBE2EF2D49A0065ABA1 /* OptionRankDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionRankDetailView.swift; sourceTree = "<group>"; };
+		F6161BBF2EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsRankerExpiryView.swift; sourceTree = "<group>"; };
 		F64681A82EF0E00900FBEF04 /* MLReportCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLReportCard.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -120,6 +140,8 @@
 		A5000004233456780000004 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				F6161BBE2EF2D49A0065ABA1 /* OptionRankDetailView.swift */,
+				F6161BBF2EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift */,
 				A2000002233456780000002 /* ContentView.swift */,
 				A2000003233456780000003 /* DevToolsView.swift */,
 				A2000004233456780000004 /* SymbolSearchView.swift */,
@@ -131,6 +153,9 @@
 				A2000025233456780000025 /* WatchlistView.swift */,
 				A2000026233456780000026 /* AdvancedChartView.swift */,
 				A2000027233456780000027 /* DebugPanel.swift */,
+				45CDF4DECC736A4B74E5CF6F /* AnalysisView.swift */,
+				0D40AA22987ED31FDDFD8FD9 /* OptionsRankerView.swift */,
+				EE33C7CA7CA515703FFF0B5D /* StrikePriceComparisonView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -144,6 +169,8 @@
 				F60BB96E2EF0371A0044BE7E /* OptionsChainViewModel.swift */,
 				A2000019233456780000019 /* AppViewModel.swift */,
 				A2000024233456780000024 /* WatchlistViewModel.swift */,
+				5FA5FFF80A4C7A0C6E60A1CA /* AnalysisViewModel.swift */,
+				AA453D2167A88A3AB27575EB /* OptionsRankerViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -158,6 +185,9 @@
 				F60BB96B2EF036FA0044BE7E /* OptionsChainResponse.swift */,
 				A2000011233456780000011 /* NewsItem.swift */,
 				A2000012233456780000012 /* NewsResponse.swift */,
+				91C341141BD25E1C4A72A109 /* OptionsRankingResponse.swift */,
+				6BED859934C91510459C2BF0 /* ScannerResponse.swift */,
+				0A4D3D1FC85DBCBD8C45CCA5 /* WatchlistModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -279,6 +309,16 @@
 				A1000023233456780000023 /* WatchlistView.swift in Sources */,
 				A1000024233456780000024 /* AdvancedChartView.swift in Sources */,
 				A1000025233456780000025 /* DebugPanel.swift in Sources */,
+				F6161BC02EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift in Sources */,
+				F6161BC12EF2D49A0065ABA1 /* OptionRankDetailView.swift in Sources */,
+				A66084CE5A41ABCA72B26DB6 /* OptionsRankingResponse.swift in Sources */,
+				2B0B27F844CF7F11D77399D7 /* ScannerResponse.swift in Sources */,
+				BC576D3E8C5285E20896AD47 /* AnalysisView.swift in Sources */,
+				E90FBEB82247C0247F23FFCF /* OptionsRankerView.swift in Sources */,
+				3D2E2ECF304A82C0FF14E1A6 /* AnalysisViewModel.swift in Sources */,
+				A2A8103C284B7A6C2EA18C30 /* OptionsRankerViewModel.swift in Sources */,
+				731BC29C18688AD83AF0A16E /* StrikePriceComparisonView.swift in Sources */,
+				1B3F554CCC5B9C65482F52FA /* WatchlistModels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
