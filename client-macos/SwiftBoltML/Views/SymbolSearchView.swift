@@ -143,7 +143,9 @@ struct SearchResultRow: View {
                 // Watchlist star button
                 Button {
                     print("[DEBUG] ⭐⭐⭐ Watchlist star tapped for \(symbol.ticker)")
-                    appViewModel.watchlistViewModel.toggleSymbol(symbol)
+                    Task {
+                        await appViewModel.watchlistViewModel.toggleSymbol(symbol)
+                    }
                 } label: {
                     Image(systemName: isWatched ? "star.fill" : "star")
                         .font(.caption)

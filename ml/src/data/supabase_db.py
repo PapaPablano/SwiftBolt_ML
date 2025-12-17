@@ -162,6 +162,91 @@ class SupabaseDatabase:
             logger.error(f"Error upserting forecast: {e}")
             raise
 
+    def upsert_option_rank(
+        self,
+        underlying_symbol_id: str,
+        contract_symbol: str,
+        expiry: str,
+        strike: float,
+        side: str,
+        ml_score: float,
+        implied_vol: float,
+        delta: float,
+        gamma: float,
+        theta: float,
+        vega: float,
+        rho: float,
+        bid: float,
+        ask: float,
+        mark: float,
+        last_price: float,
+        volume: int,
+        open_interest: int,
+        run_at: str,
+    ) -> None:
+        """
+        Insert or update an option rank in the options_ranks table.
+
+        Args:
+            underlying_symbol_id: UUID of the underlying symbol
+            contract_symbol: Options contract symbol
+            expiry: Expiration date (YYYY-MM-DD)
+            strike: Strike price
+            side: "call" or "put"
+            ml_score: ML ranking score (0-1)
+            implied_vol: Implied volatility
+            delta: Option delta
+            gamma: Option gamma
+            theta: Option theta
+            vega: Option vega
+            rho: Option rho
+            bid: Bid price
+            ask: Ask price
+            mark: Mark price
+            last_price: Last traded price
+            volume: Volume
+            open_interest: Open interest
+            run_at: Timestamp when ranking was generated
+        """
+        try:
+            rank_data = {
+                "underlying_symbol_id": underlying_symbol_id,
+                "contract_symbol": contract_symbol,
+                "expiry": expiry,
+                "strike": strike,
+                "side": side,
+                "ml_score": ml_score,
+                "implied_vol": implied_vol,
+                "delta": delta,
+                "gamma": gamma,
+                "theta": theta,
+                "vega": vega,
+                "rho": rho,
+                "bid": bid,
+                "ask": ask,
+                "mark": mark,
+                "last_price": last_price,
+                "volume": volume,
+                "open_interest": open_interest,
+                "run_at": run_at,
+            }
+
+            # Delete existing rank for this contract if it exists
+            self.client.table("options_ranks").delete().eq("contract_symbol", contract_symbol).execute()
+
+            # Insert new rank
+            response = (
+                self.client.table("options_ranks")
+                .insert(rank_data)
+                .execute()
+            )
+
+            logger.debug(f"Saved rank for {contract_symbol} (score: {ml_score:.3f})")
+
+        except Exception as e:
+            logger.error(f"Error upserting option rank for {contract_symbol}: {e}")
+            raise
+
     def close(self) -> None:
         """Close the Supabase client (no-op for REST API)."""
         logger.info("Supabase client closed")

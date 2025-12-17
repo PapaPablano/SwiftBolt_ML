@@ -1,6 +1,44 @@
 import Foundation
 import SwiftUI
 
+// MARK: - Trigger Ranking Response
+
+struct TriggerRankingResponse: Codable {
+    let message: String
+    let symbol: String
+    let jobId: String
+    let estimatedCompletionSeconds: Int
+    let queuePosition: Int?
+}
+
+// MARK: - ML Trend Label
+
+enum MLTrendLabel: String, Codable {
+    case bullish = "bullish"
+    case neutral = "neutral"
+    case bearish = "bearish"
+
+    // Support both lowercase and capitalized versions
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+
+        switch rawValue.lowercased() {
+        case "bullish":
+            self = .bullish
+        case "neutral":
+            self = .neutral
+        case "bearish":
+            self = .bearish
+        default:
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Invalid ML trend label: \(rawValue)"
+            )
+        }
+    }
+}
+
 // MARK: - Scanner Watchlist Response
 
 struct ScannerWatchlistResponse: Codable {

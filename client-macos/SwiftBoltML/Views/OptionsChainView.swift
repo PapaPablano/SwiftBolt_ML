@@ -2,6 +2,40 @@ import SwiftUI
 
 struct OptionsChainView: View {
     @EnvironmentObject var appViewModel: AppViewModel
+    @State private var selectedTab = 0
+
+    private var viewModel: OptionsChainViewModel {
+        appViewModel.optionsChainViewModel
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Tab selector
+            Picker("", selection: $selectedTab) {
+                Label("ML Ranker", systemImage: "brain.head.profile").tag(0)
+                Label("Full Chain", systemImage: "chart.bar.doc.horizontal").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(Color(nsColor: .windowBackgroundColor))
+
+            Divider()
+
+            // Tab content
+            if selectedTab == 0 {
+                OptionsRankerView()
+                    .environmentObject(appViewModel)
+            } else {
+                OptionsChainContent()
+                    .environmentObject(appViewModel)
+            }
+        }
+    }
+}
+
+struct OptionsChainContent: View {
+    @EnvironmentObject var appViewModel: AppViewModel
 
     private var viewModel: OptionsChainViewModel {
         appViewModel.optionsChainViewModel

@@ -191,10 +191,11 @@ serve(async (req: Request): Promise<Response> => {
       const currentTimestamp = systemNow > actualNow ? actualNow : systemNow;
 
       const cacheTTL = getCacheTTL(timeframe);
-      // TEMP: Force cache to always be fresh to avoid fetching from provider with wrong system date
-      cacheIsFresh = true; // (currentTimestamp - latestTs) < cacheTTL;
+      // TEMP: Force cache to be fresh if we have data (avoid fetching with wrong system date)
+      // BUT: If cache is empty, we need to fetch fresh data
+      cacheIsFresh = cachedBars.length > 0; // Use cache if we have any data at all
 
-      console.log(`[Chart] Using cached data (${cachedBars.length} bars) - freshness check temporarily disabled due to system clock issue`);
+      console.log(`[Chart] Cached data check: ${cachedBars.length} bars - ${cacheIsFresh ? 'using cache' : 'will fetch fresh'}`);
 
       if (cacheIsFresh) {
         console.log(`Cache hit for ${ticker} ${timeframe} (${cachedBars.length} bars)`);
@@ -322,7 +323,7 @@ serve(async (req: Request): Promise<Response> => {
             low: bar.low,
             close: bar.close,
             volume: bar.volume,
-            provider: "router", // Using router (could be finnhub or massive)
+            provider: "massive", // Using provider router (Polygon/Massive)
           }));
 
           const { error: upsertError } = await supabase

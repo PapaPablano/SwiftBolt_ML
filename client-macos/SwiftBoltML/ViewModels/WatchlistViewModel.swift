@@ -3,39 +3,160 @@ import Foundation
 @MainActor
 final class WatchlistViewModel: ObservableObject {
     @Published private(set) var watchedSymbols: [Symbol] = []
+    @Published private(set) var jobStatuses: [String: WatchlistJobStatus] = [:]
+    @Published private(set) var isLoading = false
+    @Published var errorMessage: String?
 
+    private let apiClient: APIClient
     private let storageKey = "watchlist_symbols"
 
-    init() {
+    init(apiClient: APIClient = .shared) {
+        self.apiClient = apiClient
         loadWatchlist()
     }
 
     // MARK: - Public Methods
 
-    func addSymbol(_ symbol: Symbol) {
+    func addSymbol(_ symbol: Symbol) async {
         guard !isWatched(symbol) else { return }
-        watchedSymbols.append(symbol)
-        saveWatchlist()
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            let request = WatchlistSyncRequest(
+                action: .add,
+                symbol: symbol.ticker,
+                watchlistId: nil
+            )
+
+            let response: WatchlistSyncResponse = try await apiClient.post(
+                endpoint: "watchlist-sync",
+                body: request
+            )
+
+            if response.success {
+                watchedSymbols.append(symbol)
+                saveWatchlist()
+
+                // Update job status if provided
+                if let jobStatus = response.jobStatus {
+                    updateJobStatuses(jobStatus)
+                }
+
+                print("[WatchlistViewModel] ✅ Added \(symbol.ticker) to watchlist, jobs queued")
+            } else {
+                errorMessage = response.message ?? "Failed to add symbol"
+            }
+        } catch {
+            errorMessage = "Failed to sync watchlist: \(error.localizedDescription)"
+            print("[WatchlistViewModel] Error adding symbol: \(error)")
+        }
+
+        isLoading = false
     }
 
-    func removeSymbol(_ symbol: Symbol) {
-        watchedSymbols.removeAll { $0.id == symbol.id }
-        saveWatchlist()
+    func removeSymbol(_ symbol: Symbol) async {
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            let request = WatchlistSyncRequest(
+                action: .remove,
+                symbol: symbol.ticker,
+                watchlistId: nil
+            )
+
+            let response: WatchlistSyncResponse = try await apiClient.post(
+                endpoint: "watchlist-sync",
+                body: request
+            )
+
+            if response.success {
+                watchedSymbols.removeAll { $0.id == symbol.id }
+                jobStatuses.removeValue(forKey: symbol.ticker)
+                saveWatchlist()
+                print("[WatchlistViewModel] ✅ Removed \(symbol.ticker) from watchlist")
+            } else {
+                errorMessage = response.message ?? "Failed to remove symbol"
+            }
+        } catch {
+            errorMessage = "Failed to sync watchlist: \(error.localizedDescription)"
+            print("[WatchlistViewModel] Error removing symbol: \(error)")
+        }
+
+        isLoading = false
     }
 
     func isWatched(_ symbol: Symbol) -> Bool {
         watchedSymbols.contains { $0.id == symbol.id }
     }
 
-    func toggleSymbol(_ symbol: Symbol) {
+    func toggleSymbol(_ symbol: Symbol) async {
         if isWatched(symbol) {
-            removeSymbol(symbol)
+            await removeSymbol(symbol)
         } else {
-            addSymbol(symbol)
+            await addSymbol(symbol)
         }
     }
 
-    // MARK: - Persistence
+    func refreshWatchlist() async {
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            let request = WatchlistSyncRequest(
+                action: .list,
+                symbol: nil,
+                watchlistId: nil
+            )
+
+            let response: WatchlistSyncResponse = try await apiClient.post(
+                endpoint: "watchlist-sync",
+                body: request
+            )
+
+            if response.success, let items = response.items {
+                // Convert items to Symbol objects
+                watchedSymbols = items.map { item in
+                    Symbol(ticker: item.symbol)
+                }
+
+                // Update job statuses
+                for item in items {
+                    if let status = item.jobStatus {
+                        jobStatuses[item.symbol] = status
+                    }
+                }
+
+                saveWatchlist()
+                print("[WatchlistViewModel] ✅ Refreshed watchlist: \(watchedSymbols.count) symbols")
+            } else {
+                errorMessage = response.message ?? "Failed to refresh watchlist"
+            }
+        } catch {
+            errorMessage = "Failed to refresh watchlist: \(error.localizedDescription)"
+            print("[WatchlistViewModel] Error refreshing: \(error)")
+        }
+
+        isLoading = false
+    }
+
+    func getJobStatus(for symbol: Symbol) -> WatchlistJobStatus? {
+        jobStatuses[symbol.ticker]
+    }
+
+    // MARK: - Private Helpers
+
+    private func updateJobStatuses(_ statuses: [JobStatus]) {
+        for _ in statuses {
+            // Extract symbol from job (assuming job has symbol context)
+            // For now, we'll need to track this differently or modify API response
+            // This is a placeholder implementation
+        }
+    }
+
+    // MARK: - Local Persistence (Backup)
 
     private func saveWatchlist() {
         do {
@@ -43,7 +164,7 @@ final class WatchlistViewModel: ObservableObject {
             let data = try encoder.encode(watchedSymbols)
             UserDefaults.standard.set(data, forKey: storageKey)
         } catch {
-            print("[WatchlistViewModel] Error saving watchlist: \(error)")
+            print("[WatchlistViewModel] Error saving watchlist locally: \(error)")
         }
     }
 
@@ -54,13 +175,14 @@ final class WatchlistViewModel: ObservableObject {
             let decoder = JSONDecoder()
             watchedSymbols = try decoder.decode([Symbol].self, from: data)
         } catch {
-            print("[WatchlistViewModel] Error loading watchlist: \(error)")
+            print("[WatchlistViewModel] Error loading watchlist locally: \(error)")
             watchedSymbols = []
         }
     }
 
     func clearWatchlist() {
         watchedSymbols = []
+        jobStatuses = [:]
         UserDefaults.standard.removeObject(forKey: storageKey)
     }
 }

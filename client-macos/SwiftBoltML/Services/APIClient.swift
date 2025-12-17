@@ -94,6 +94,49 @@ actor APIClient {
         }
     }
 
+    // Generic GET method
+    func get<R: Decodable>(endpoint: String, queryParams: [String: String] = [:]) async throws -> R {
+        guard var components = URLComponents(string: "\(baseURL)/\(endpoint)") else {
+            throw APIError.invalidURL
+        }
+
+        if !queryParams.isEmpty {
+            components.queryItems = queryParams.map { URLQueryItem(name: $0.key, value: $0.value) }
+        }
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        return try await performRequest(request)
+    }
+
+    // Generic POST method
+    func post<T: Encodable, R: Decodable>(endpoint: String, body: T) async throws -> R {
+        guard let components = URLComponents(string: "\(baseURL)/\(endpoint)") else {
+            throw APIError.invalidURL
+        }
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let encoder = JSONEncoder()
+        request.httpBody = try encoder.encode(body)
+
+        return try await performRequest(request)
+    }
+
     func searchSymbols(query: String) async throws -> [Symbol] {
         let request = try makeRequest(
             endpoint: "symbols-search",
@@ -139,6 +182,68 @@ actor APIClient {
             endpoint: "options-chain",
             queryItems: queryItems
         )
+        return try await performRequest(request)
+    }
+
+    func fetchOptionsRankings(symbol: String, expiry: String? = nil, side: OptionSide? = nil, limit: Int = 50) async throws -> OptionsRankingsResponse {
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "symbol", value: symbol),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+
+        if let expiry = expiry {
+            queryItems.append(URLQueryItem(name: "expiry", value: expiry))
+        }
+
+        if let side = side {
+            queryItems.append(URLQueryItem(name: "side", value: side.rawValue))
+        }
+
+        let request = try makeRequest(
+            endpoint: "options-rankings",
+            queryItems: queryItems
+        )
+        return try await performRequest(request)
+    }
+
+    func scanWatchlist(symbols: [String]) async throws -> ScannerWatchlistResponse {
+        guard let components = URLComponents(string: "\(baseURL)/scanner-watchlist") else {
+            throw APIError.invalidURL
+        }
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body = ["symbols": symbols]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        return try await performRequest(request)
+    }
+
+    func triggerRankingJob(for symbol: String) async throws -> TriggerRankingResponse {
+        guard let components = URLComponents(string: "\(baseURL)/trigger-ranking-job") else {
+            throw APIError.invalidURL
+        }
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body = ["symbol": symbol]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        print("[API] Triggering ranking job for \(symbol)...")
         return try await performRequest(request)
     }
 }

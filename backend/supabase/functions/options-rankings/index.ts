@@ -140,7 +140,7 @@ serve(async (req: Request): Promise<Response> => {
       },
     };
 
-    logger.info(
+    console.log(
       `[Options Rankings] Returned ${ranks.length} ranked contracts for ${symbol}` +
         (expiryParam ? ` (expiry: ${expiryParam})` : "") +
         (sideParam ? ` (side: ${sideParam})` : "")

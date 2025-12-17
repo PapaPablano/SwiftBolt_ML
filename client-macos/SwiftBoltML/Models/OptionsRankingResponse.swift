@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 // MARK: - Options Rankings Response
 

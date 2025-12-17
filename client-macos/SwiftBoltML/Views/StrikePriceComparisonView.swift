@@ -175,11 +175,11 @@ struct StrikePriceComparisonView: View {
                             .fontWeight(.bold)
                             .foregroundStyle(expiry.isDiscount ? .green : .primary)
 
-                        if let avgMark = expiry.avgMark, let pct = expiry.pctDiffFromAvg {
+                        if let _ = expiry.avgMark, let pct = expiry.pctDiffFromAvg {
                             HStack(spacing: 4) {
                                 Image(systemName: pct < 0 ? "arrow.down" : "arrow.up")
                                     .font(.caption)
-                                Text("\(abs(pct), specifier: "%.1f")%")
+                                Text(String(format: "%.1f%%", abs(pct)))
                                     .font(.caption)
                             }
                             .foregroundStyle(pct < 0 ? .green : .red)
@@ -192,15 +192,15 @@ struct StrikePriceComparisonView: View {
             if expiry.avgMark != nil || expiry.currentIv != nil {
                 HStack(spacing: 20) {
                     if let avgMark = expiry.avgMark {
-                        detailStat(label: "Avg", value: "$\(avgMark, specifier: "%.2f")")
+                        detailStat(label: "Avg", value: String(format: "$%.2f", avgMark))
                     }
 
                     if let minMark = expiry.minMark, let maxMark = expiry.maxMark {
-                        detailStat(label: "Range", value: "$\(minMark, specifier: "%.2f") - $\(maxMark, specifier: "%.2f")")
+                        detailStat(label: "Range", value: String(format: "$%.2f - $%.2f", minMark, maxMark))
                     }
 
                     if let currentIv = expiry.currentIv {
-                        detailStat(label: "IV", value: "\(currentIv * 100, specifier: "%.1f")%")
+                        detailStat(label: "IV", value: String(format: "%.1f%%", currentIv * 100))
                     }
 
                     if expiry.sampleCount > 0 {

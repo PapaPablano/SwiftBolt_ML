@@ -14,6 +14,24 @@ struct WatchlistView: View {
                 Text("Watchlist")
                     .font(.headline)
                 Spacer()
+
+                if watchlistViewModel.isLoading {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                        .frame(width: 16, height: 16)
+                }
+
+                Button {
+                    Task {
+                        await watchlistViewModel.refreshWatchlist()
+                    }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .help("Refresh watchlist")
+
                 Text("\(watchlistViewModel.watchedSymbols.count)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -39,7 +57,9 @@ struct WatchlistView: View {
                                     appViewModel.selectSymbol(symbol)
                                 },
                                 onRemove: {
-                                    watchlistViewModel.removeSymbol(symbol)
+                                    Task {
+                                        await watchlistViewModel.removeSymbol(symbol)
+                                    }
                                 }
                             )
                             Divider()
@@ -58,11 +78,16 @@ struct WatchlistRow: View {
     let onSelect: () -> Void
     let onRemove: () -> Void
 
+    @EnvironmentObject var appViewModel: AppViewModel
     @State private var isHovered = false
+
+    private var jobStatus: WatchlistJobStatus? {
+        appViewModel.watchlistViewModel.getJobStatus(for: symbol)
+    }
 
     var body: some View {
         HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(symbol.ticker)
                     .font(.headline)
                     .foregroundStyle(isSelected ? Color.accentColor : .primary)
@@ -71,6 +96,14 @@ struct WatchlistRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+
+                // Job status indicators
+                if let status = jobStatus {
+                    HStack(spacing: 6) {
+                        jobStatusBadge(label: "ML", status: status.forecastStatus)
+                        jobStatusBadge(label: "Rank", status: status.rankingStatus)
+                    }
+                }
             }
 
             Spacer()
@@ -104,6 +137,33 @@ struct WatchlistRow: View {
             } else {
                 NSCursor.pop()
             }
+        }
+    }
+
+    private func jobStatusBadge(label: String, status: JobStatusState) -> some View {
+        HStack(spacing: 3) {
+            Circle()
+                .fill(statusColor(status))
+                .frame(width: 6, height: 6)
+
+            Text(label)
+                .font(.system(size: 9))
+                .fontWeight(.medium)
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        .background(Color(.windowBackgroundColor).opacity(0.5))
+        .clipShape(Capsule())
+        .help("\(label): \(status.displayName)")
+    }
+
+    private func statusColor(_ status: JobStatusState) -> Color {
+        switch status {
+        case .pending: return .gray
+        case .running: return .blue
+        case .completed: return .green
+        case .failed: return .red
+        case .unknown: return .gray
         }
     }
 }

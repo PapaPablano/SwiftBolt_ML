@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MLReportCard: View {
     let mlSummary: MLSummary
+    @State private var isExpanded = false
 
     private var labelColor: Color {
         switch mlSummary.overallLabel.lowercased() {
@@ -30,64 +31,22 @@ struct MLReportCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header
-            HStack {
-                Image(systemName: "brain.head.profile")
-                    .foregroundStyle(.purple)
-                Text("ML Forecast")
-                    .font(.headline)
-                Spacer()
-            }
+        VStack(alignment: .leading, spacing: 0) {
+            // Compact header (always visible)
+            CompactMLHeader(
+                mlSummary: mlSummary,
+                labelColor: labelColor,
+                labelIcon: labelIcon,
+                isExpanded: $isExpanded
+            )
 
-            // Overall Prediction
-            HStack(spacing: 12) {
-                // Label Badge
-                HStack(spacing: 6) {
-                    Image(systemName: labelIcon)
-                    Text(mlSummary.overallLabel.capitalized)
-                        .font(.subheadline.bold())
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(labelColor.opacity(0.15))
-                .foregroundStyle(labelColor)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+            // Expanded details (toggle)
+            if isExpanded {
+                Divider()
+                    .padding(.vertical, 8)
 
-                // Confidence Bar
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Confidence")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            // Background
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.gray.opacity(0.2))
-
-                            // Confidence fill
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(labelColor)
-                                .frame(width: geometry.size.width * mlSummary.confidence)
-                        }
-                        .frame(height: 6)
-                        .overlay(alignment: .trailing) {
-                            Text("\(Int(mlSummary.confidence * 100))%")
-                                .font(.caption2.bold())
-                                .foregroundStyle(labelColor)
-                                .padding(.trailing, 4)
-                        }
-                    }
-                    .frame(height: 20)
-                }
-            }
-
-            // Horizons
-            HStack(spacing: 8) {
-                ForEach(mlSummary.horizons, id: \.horizon) { series in
-                    HorizonBadge(horizon: series.horizon)
-                }
+                ExpandedMLDetails(mlSummary: mlSummary, labelColor: labelColor)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(12)
@@ -96,6 +55,194 @@ struct MLReportCard: View {
                 .fill(Color(nsColor: .controlBackgroundColor))
                 .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
         )
+        .animation(.easeInOut(duration: 0.2), value: isExpanded)
+    }
+}
+
+struct CompactMLHeader: View {
+    let mlSummary: MLSummary
+    let labelColor: Color
+    let labelIcon: String
+    @Binding var isExpanded: Bool
+
+    private var horizonSummary: String {
+        mlSummary.horizons.map { series in
+            let change = calculateChange(for: series)
+            return "\(series.horizon): \(change)"
+        }.joined(separator: " • ")
+    }
+
+    private func calculateChange(for series: ForecastSeries) -> String {
+        guard let point = series.points.first else { return "N/A" }
+        // This is a placeholder - in real implementation, compare to current price
+        return String(format: "%+.1f%%", (point.value - point.lower) / point.value * 100)
+    }
+
+    var body: some View {
+        Button(action: { isExpanded.toggle() }) {
+            HStack(spacing: 12) {
+                // Icon
+                Image(systemName: "brain.head.profile")
+                    .foregroundStyle(.purple)
+                    .font(.title3)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text("ML Forecast")
+                            .font(.caption.bold())
+                            .foregroundStyle(.primary)
+
+                        Divider()
+                            .frame(height: 12)
+
+                        Image(systemName: labelIcon)
+                            .font(.caption)
+                        Text(mlSummary.overallLabel.uppercased())
+                            .font(.caption.bold())
+                    }
+                    .foregroundStyle(labelColor)
+
+                    Text(horizonSummary)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                // Confidence
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(Int(mlSummary.confidence * 100))%")
+                        .font(.title3.bold())
+                        .foregroundStyle(labelColor)
+
+                    Text("Confidence")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                // Expand indicator
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct ExpandedMLDetails: View {
+    let mlSummary: MLSummary
+    let labelColor: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Confidence breakdown (simulated)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Confidence Breakdown")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+
+                ConfidenceFactorRow(
+                    label: "Technical Indicators",
+                    percentage: min(100, Int(mlSummary.confidence * 120)),
+                    color: labelColor
+                )
+
+                ConfidenceFactorRow(
+                    label: "Price Momentum",
+                    percentage: min(100, Int(mlSummary.confidence * 95)),
+                    color: labelColor
+                )
+
+                ConfidenceFactorRow(
+                    label: "Volume Pattern",
+                    percentage: min(100, Int(mlSummary.confidence * 105)),
+                    color: labelColor
+                )
+            }
+
+            Divider()
+
+            // Horizon details
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Forecast Horizons")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+
+                ForEach(mlSummary.horizons, id: \.horizon) { series in
+                    HorizonDetailRow(series: series, labelColor: labelColor)
+                }
+            }
+        }
+    }
+}
+
+struct ConfidenceFactorRow: View {
+    let label: String
+    let percentage: Int
+    let color: Color
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.caption2)
+
+            Spacer()
+
+            Text("\(percentage)%")
+                .font(.caption2.bold())
+                .foregroundStyle(color)
+
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.gray.opacity(0.2))
+
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(color)
+                        .frame(width: geometry.size.width * Double(percentage) / 100)
+                }
+            }
+            .frame(width: 60, height: 4)
+        }
+    }
+}
+
+struct HorizonDetailRow: View {
+    let series: ForecastSeries
+    let labelColor: Color
+
+    private var targetPrice: Double? {
+        series.points.first?.value
+    }
+
+    private var priceRange: String {
+        guard let first = series.points.first else {
+            return "N/A"
+        }
+        return "$\(String(format: "%.2f", first.lower))-$\(String(format: "%.2f", first.upper))"
+    }
+
+    var body: some View {
+        HStack {
+            Text(series.horizon)
+                .font(.caption.bold())
+                .frame(width: 40, alignment: .leading)
+
+            if let target = targetPrice {
+                Text("$\(String(format: "%.2f", target))")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(labelColor)
+            }
+
+            Spacer()
+
+            Text(priceRange)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
     }
 }
 

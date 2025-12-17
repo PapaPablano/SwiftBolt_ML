@@ -99,9 +99,8 @@ struct DetailView: View {
                         OptionsChainView()
                             .environmentObject(appViewModel)
                     } else {
-                        Text("Analysis coming soon...")
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        AnalysisView()
+                            .environmentObject(appViewModel)
                     }
                 }
                 .frame(minWidth: 300, idealWidth: 400, maxWidth: 500)

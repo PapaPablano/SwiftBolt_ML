@@ -348,8 +348,12 @@ Status notation:
   * [x] `OptionsRankingResponse` with `OptionRank` struct
   * [x] ML score helpers (color coding, percentage, labels)
   * [x] Expiry date parsing and DTE calculation
-* [ ] Implement `OptionsRankerService` to call `/options-rankings`.
-* [ ] Integrate ranking display into `OptionsChainView` or create dedicated ranker tab.
+* [x] Implement API client methods for `/options-rankings` and `/scanner-watchlist`.
+* [x] Integrate ranking display into `OptionsChainView` with dedicated ranker tab.
+  * [x] Created `OptionsRankerViewModel` for state management
+  * [x] Created `OptionsRankerView` with ML score filtering and sorting
+  * [x] Added tabbed interface in `OptionsChainView` (ML Ranker / Full Chain)
+  * [x] Implemented rich UI with score badges, filters, and contract details
 
 ### 6.4. Watchlist Scanner
 
@@ -367,9 +371,75 @@ Status notation:
   * [x] Alert severity and condition type enums
   * [x] Color helpers for badges and icons
   * [x] `AnyCodable` for flexible JSON details
-* [ ] Implement `ScannerService` in Swift to call `/scanner-watchlist`.
-* [ ] Add alert badges to `WatchlistView` showing unread count and critical status.
-* [ ] Create `AlertsTabView` to display scanner alerts.
+* [x] Implement scanner integration in Swift client.
+  * [x] Created `AnalysisViewModel` for alert management
+  * [x] Created comprehensive `AnalysisView` with three sections:
+    * [x] Active Alerts section with severity-based filtering
+    * [x] ML Forecast Breakdown with horizon details
+    * [x] Technical Summary with RSI, volume, and MA analysis
+  * [x] Integrated `AnalysisView` into main tab navigation
+
+### 6.5. Enhanced ML Report Card
+
+* [x] Redesigned `MLReportCard` for improved UX:
+  * [x] Compact horizontal layout (default collapsed state)
+  * [x] Inline metrics showing forecast and confidence at a glance
+  * [x] Expandable details on click with smooth animation
+  * [x] Confidence breakdown showing contributing factors
+  * [x] Horizon detail rows with target prices and ranges
+  * [x] Color-coded status indicators throughout
+
+### 6.6. Job Queue System for Rankings
+
+* [x] Implemented database-backed job queue:
+  * [x] Created `ranking_jobs` table with status tracking (pending/running/completed/failed)
+  * [x] Added priority queue support with retry logic
+  * [x] Created database functions: `get_next_ranking_job()`, `complete_ranking_job()`, `fail_ranking_job()`
+  * [x] Implemented atomic job locking with `FOR UPDATE SKIP LOCKED`
+* [x] Created `trigger-ranking-job` Edge Function:
+  * [x] Queues ranking jobs in database instead of direct execution
+  * [x] Prevents duplicate jobs within 5-minute window
+  * [x] Returns job ID and estimated completion time
+  * [x] Calculates queue position for user feedback
+* [x] Created Python job worker (`ml/src/ranking_job_worker.py`):
+  * [x] Polls queue for pending jobs
+  * [x] Executes `options_ranking_job.py` as subprocess
+  * [x] Handles job completion and failure with retry logic
+  * [x] Supports watch mode for continuous processing (--watch flag)
+  * [x] Tested end-to-end with MSFT, CRWD, AAPL
+* [x] Updated Swift client:
+  * [x] Added `triggerRankingJob()` API method
+  * [x] Updated `OptionsRankerViewModel` to use real job queue
+  * [x] Added loading state with estimated wait time
+  * [x] Auto-refresh rankings after job completion
+
+### 6.7. Multi-Expiry Comparison View
+
+* [x] Fixed OHLC data persistence:
+  * [x] Created `backfill_ohlc.py` script for historical data
+  * [x] Fixed `/chart` Edge Function to auto-persist fetched data
+  * [x] Fixed database constraint error (provider enum)
+  * [x] Tested with CRWD, NVDA (70 bars persisted per symbol)
+* [x] Enhanced symbol database:
+  * [x] Added missing popular symbols (PLTR, AMD, NFLX, DIS)
+  * [x] Verified symbol search functionality
+* [x] Implemented multi-expiry comparison UI:
+  * [x] Created `OptionsRankerExpiryView.swift`
+  * [x] Grouped rankings by expiration date with pinned headers
+  * [x] Shows top 10 contracts per expiration
+  * [x] Compact display with ML score, strike, side, mark, IV, delta, volume
+  * [x] Added segmented control to toggle between "All Contracts" and "By Expiry" views
+  * [x] Maintained filter compatibility (side, min score) in both views
+  * [x] Added file to Xcode project (project.pbxproj updated)
+
+### 6.8. Documentation
+
+* [x] Created comprehensive documentation:
+  * [x] `FIXES_SUMMARY.md` - Detailed guide for multi-expiry view and symbol fixes
+  * [x] `RANKING_JOB_SYSTEM.md` - Complete architecture of job queue system
+  * [x] `OPTIONS_RANKER_SETUP.md` - Setup and testing guide
+  * [x] `QUICKSTART_RANKING_JOBS.md` - Quick reference for job system
+  * [x] `XCODE_PROJECT_UPDATED.md` - Confirmation of Xcode project changes
 
 ---
 
