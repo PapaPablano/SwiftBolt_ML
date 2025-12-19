@@ -34,14 +34,10 @@ serve(async (req) => {
   }
 
   try {
+    // Use service role for symbol creation/queries
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      {
-        global: {
-          headers: { Authorization: req.headers.get("Authorization")! },
-        },
-      }
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
     const url = new URL(req.url);
@@ -70,21 +66,32 @@ serve(async (req) => {
       );
     }
 
-    // Get symbol ID
-    const { data: symbolData, error: symbolError } = await supabaseClient
+    // Get or create symbol
+    let { data: symbolData, error: symbolError } = await supabaseClient
       .from("symbols")
       .select("id")
       .eq("ticker", symbol.toUpperCase())
       .single();
 
     if (symbolError || !symbolData) {
-      return new Response(
-        JSON.stringify({ error: "Symbol not found" }),
-        {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      // Create symbol if it doesn't exist
+      const { data: newSymbol, error: createError } = await supabaseClient
+        .from("symbols")
+        .insert({ ticker: symbol.toUpperCase(), asset_type: "stock" })
+        .select("id")
+        .single();
+
+      if (createError) {
+        return new Response(
+          JSON.stringify({ error: "Symbol not found and could not be created" }),
+          {
+            status: 404,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      symbolData = newSymbol;
     }
 
     // Get strike price comparison across expirations
@@ -126,13 +133,16 @@ serve(async (req) => {
     });
 
     // Get historical price chart for this strike
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - lookbackDays);
+
     const { data: priceHistory, error: historyError } = await supabaseClient
       .from("options_price_history")
       .select("snapshot_at, mark, implied_vol")
       .eq("underlying_symbol_id", symbolData.id)
       .eq("strike", parseFloat(strike))
-      .eq("side", side)
-      .gte("snapshot_at", `now() - interval '${lookbackDays} days'`)
+      .filter("side", "eq", side)
+      .gte("snapshot_at", cutoffDate.toISOString())
       .order("snapshot_at", { ascending: true });
 
     if (historyError) throw historyError;

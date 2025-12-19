@@ -183,7 +183,7 @@ BEGIN
         FROM options_price_history oph
         WHERE oph.underlying_symbol_id = p_symbol_id
         AND oph.strike = p_strike
-        AND oph.side = p_side
+        AND oph.side = p_side::option_side
         AND oph.snapshot_at >= NOW() - (p_lookback_days || ' days')::INTERVAL
         AND oph.mark IS NOT NULL
         GROUP BY oph.expiry
@@ -196,7 +196,7 @@ BEGIN
         FROM options_ranks orr
         WHERE orr.underlying_symbol_id = p_symbol_id
         AND orr.strike = p_strike
-        AND orr.side = p_side
+        AND orr.side = p_side::option_side
     )
     SELECT
         COALESCE(cp.expiry, hs.expiry) as expiry,

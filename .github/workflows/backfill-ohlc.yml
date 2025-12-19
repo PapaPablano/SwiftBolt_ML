@@ -39,7 +39,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r ml/requirements.txt
 
-      # Scheduled run: backfill all watchlist symbols
+      # Scheduled run: backfill all watchlist symbols (incremental mode)
       - name: Backfill (scheduled)
         if: github.event_name == 'schedule'
         env:
@@ -49,8 +49,8 @@ jobs:
           MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
         run: |
           cd ml
-          # Backfill all watchlist symbols
-          python src/scripts/backfill_ohlc.py --all
+          # Backfill all watchlist symbols in incremental mode (only fetch new bars)
+          python src/scripts/backfill_ohlc.py --all --incremental
 
       # Manual run: optional symbol/timeframe
       - name: Backfill (manual)

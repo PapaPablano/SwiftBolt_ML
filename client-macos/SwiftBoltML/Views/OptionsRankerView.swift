@@ -99,7 +99,7 @@ struct AllContractsView: View {
             ScrollView {
                 LazyVStack(spacing: 8) {
                     ForEach(rankerViewModel.filteredRankings) { rank in
-                        RankedOptionRow(rank: rank)
+                        RankedOptionRow(rank: rank, symbol: symbol)
                             .padding(.horizontal)
                             .onTapGesture {
                                 selectedRank = rank
@@ -258,7 +258,9 @@ struct RankerHeader: View {
 
 struct RankedOptionRow: View {
     let rank: OptionRank
+    let symbol: String
     @State private var isHovering = false
+    @State private var showStrikeAnalysis = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -327,6 +329,19 @@ struct RankedOptionRow: View {
                     }
                 }
             }
+
+            Divider()
+
+            // Strike analysis button
+            Button {
+                showStrikeAnalysis = true
+            } label: {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.caption)
+                    .foregroundStyle(.blue)
+            }
+            .buttonStyle(.borderless)
+            .help("Compare strike across expirations")
         }
         .padding(12)
         .background(isHovering ? Color(nsColor: .controlBackgroundColor).opacity(0.8) : Color(nsColor: .controlBackgroundColor))
@@ -341,6 +356,13 @@ struct RankedOptionRow: View {
             isHovering = hovering
         }
         .help("Click to view detailed analysis")
+        .sheet(isPresented: $showStrikeAnalysis) {
+            StrikePriceComparisonView(
+                symbol: symbol,
+                strike: rank.strike,
+                side: rank.side.rawValue
+            )
+        }
     }
 
     private func formatNumber(_ number: Int) -> String {

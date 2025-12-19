@@ -31,7 +31,7 @@ struct OptionsRankerExpiryView: View {
                         Section {
                             // Show top 10 for each expiry
                             ForEach(Array(group.ranks.prefix(10))) { rank in
-                                CompactRankRow(rank: rank)
+                                CompactRankRow(rank: rank, symbol: symbol)
                                     .padding(.horizontal)
                             }
                         } header: {
@@ -169,6 +169,8 @@ struct ExpiryHeader: View {
 
 struct CompactRankRow: View {
     let rank: OptionRank
+    let symbol: String
+    @State private var showStrikeAnalysis = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -229,6 +231,17 @@ struct CompactRankRow: View {
             }
 
             Spacer()
+
+            // Strike analysis button
+            Button {
+                showStrikeAnalysis = true
+            } label: {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.caption)
+                    .foregroundStyle(.blue)
+            }
+            .buttonStyle(.borderless)
+            .help("Compare strike across expirations")
         }
         .padding(8)
         .background(Color(nsColor: .controlBackgroundColor))
@@ -237,6 +250,13 @@ struct CompactRankRow: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(rank.scoreColor.opacity(0.3), lineWidth: 1)
         )
+        .sheet(isPresented: $showStrikeAnalysis) {
+            StrikePriceComparisonView(
+                symbol: symbol,
+                strike: rank.strike,
+                side: rank.side.rawValue
+            )
+        }
     }
 
     private func formatNumber(_ number: Int) -> String {

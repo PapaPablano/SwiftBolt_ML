@@ -136,22 +136,26 @@ export class YahooFinanceClient {
 
     const ticker = underlying.toUpperCase();
 
-    // Get authentication crumb and cookie
-    const { cookie, crumb } = await this.getCrumb();
-
-    // Build Yahoo Finance API URL
-    const url = new URL(`${this.baseURL}/v7/finance/options/${ticker}`);
-
-    // Add crumb parameter
-    url.searchParams.set("crumb", crumb);
-
-    // Add expiration date if specified
+    // If a specific expiration is requested, fetch only that one
     if (expiration) {
-      url.searchParams.set("date", expiration.toString());
+      return this.fetchSingleExpiration(ticker, expiration);
     }
 
+    // Otherwise, fetch all expirations
+    return this.fetchAllExpirations(ticker);
+  }
+
+  /**
+   * Fetch options for a single expiration date
+   */
+  private async fetchSingleExpiration(ticker: string, expiration: number): Promise<OptionsChain> {
+    const { cookie, crumb } = await this.getCrumb();
+    const url = new URL(`${this.baseURL}/v7/finance/options/${ticker}`);
+    url.searchParams.set("crumb", crumb);
+    url.searchParams.set("date", expiration.toString());
+
     try {
-      console.log(`[Yahoo Finance] Fetching options chain: ${underlying}`);
+      console.log(`[Yahoo Finance] Fetching options chain: ${ticker} (expiration: ${expiration})`);
       const response = await fetch(url.toString(), {
         headers: {
           "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -170,7 +174,74 @@ export class YahooFinanceClient {
       const result = data.optionChain?.result?.[0] as YahooOptionsChainResponse;
 
       if (!result || !result.options || result.options.length === 0) {
-        console.log(`[Yahoo Finance] No options data available for ${underlying}`);
+        console.log(`[Yahoo Finance] No options data for ${ticker} expiration ${expiration}`);
+        return {
+          underlying: ticker,
+          timestamp: Date.now(),
+          expirations: [expiration],
+          calls: [],
+          puts: [],
+        };
+      }
+
+      const underlyingPrice = result.quote?.regularMarketPrice || 0;
+      const { calls, puts } = this.processOptionsData(result.options, ticker, underlyingPrice);
+
+      const optionsChain: OptionsChain = {
+        underlying: ticker,
+        timestamp: Date.now(),
+        expirations: [expiration],
+        calls,
+        puts,
+      };
+
+      // Cache for 15 minutes
+      const cacheKey = `options:yahoo:${ticker}:${expiration}`;
+      await this.cache.set(cacheKey, optionsChain, 15 * 60 * 1000, [
+        `symbol:${ticker}`,
+        "options",
+      ]);
+
+      return optionsChain;
+    } catch (error) {
+      console.error(`[Yahoo Finance] Error fetching single expiration:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch options for all available expirations
+   * Yahoo Finance API returns only the nearest expiration by default,
+   * so we need to make multiple calls to get all expirations
+   */
+  private async fetchAllExpirations(ticker: string): Promise<OptionsChain> {
+    const { cookie, crumb } = await this.getCrumb();
+
+    try {
+      // First, fetch the base options chain to get the list of all expiration dates
+      console.log(`[Yahoo Finance] Fetching expiration dates for ${ticker}`);
+      const baseUrl = new URL(`${this.baseURL}/v7/finance/options/${ticker}`);
+      baseUrl.searchParams.set("crumb", crumb);
+
+      const baseResponse = await fetch(baseUrl.toString(), {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "application/json",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Referer": "https://finance.yahoo.com/",
+          "Cookie": cookie,
+        },
+      });
+
+      if (!baseResponse.ok) {
+        throw new Error(`Yahoo Finance API error: ${baseResponse.status} ${baseResponse.statusText}`);
+      }
+
+      const baseData = await baseResponse.json();
+      const baseResult = baseData.optionChain?.result?.[0] as YahooOptionsChainResponse;
+
+      if (!baseResult || !baseResult.expirationDates || baseResult.expirationDates.length === 0) {
+        console.log(`[Yahoo Finance] No expiration dates available for ${ticker}`);
         return {
           underlying: ticker,
           timestamp: Date.now(),
@@ -180,113 +251,163 @@ export class YahooFinanceClient {
         };
       }
 
-      // Get underlying stock price for Greeks calculations
-      const underlyingPrice = result.quote?.regularMarketPrice || 0;
+      const allExpirations = baseResult.expirationDates;
+      const underlyingPrice = baseResult.quote?.regularMarketPrice || 0;
 
-      const calls: OptionContract[] = [];
-      const puts: OptionContract[] = [];
-      const expirationSet = new Set<number>();
+      console.log(`[Yahoo Finance] Found ${allExpirations.length} expirations for ${ticker}, fetching all...`);
 
-      // Process all expiration dates
-      for (const optionData of result.options) {
-        expirationSet.add(optionData.expirationDate);
+      // Fetch options for each expiration date
+      // To avoid rate limiting, we'll fetch them sequentially with a small delay
+      const allCalls: OptionContract[] = [];
+      const allPuts: OptionContract[] = [];
 
-        // Process calls
-        for (const call of optionData.calls || []) {
-          const greeks = this.calculateGreeks(
-            underlyingPrice,
-            call.strike,
-            call.expiration,
-            call.impliedVolatility,
-            "call"
-          );
+      for (let i = 0; i < allExpirations.length; i++) {
+        const exp = allExpirations[i];
 
-          calls.push({
-            symbol: call.contractSymbol,
-            underlying: ticker,
-            strike: call.strike,
-            expiration: call.expiration,
-            type: "call",
-            bid: call.bid || 0,
-            ask: call.ask || 0,
-            last: call.lastPrice || 0,
-            mark: call.bid && call.ask ? (call.bid + call.ask) / 2 : call.lastPrice || 0,
-            volume: call.volume || 0,
-            openInterest: call.openInterest || 0,
-            delta: greeks.delta,
-            gamma: greeks.gamma,
-            theta: greeks.theta,
-            vega: greeks.vega,
-            rho: greeks.rho,
-            impliedVolatility: call.impliedVolatility,
-            lastTradeTime: call.lastTradeDate ? call.lastTradeDate * 1000 : undefined,
-            changePercent: call.percentChange,
-            change: call.change,
+        try {
+          const expUrl = new URL(`${this.baseURL}/v7/finance/options/${ticker}`);
+          expUrl.searchParams.set("crumb", crumb);
+          expUrl.searchParams.set("date", exp.toString());
+
+          const expResponse = await fetch(expUrl.toString(), {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Accept": "application/json",
+              "Accept-Language": "en-US,en;q=0.9",
+              "Referer": "https://finance.yahoo.com/",
+              "Cookie": cookie,
+            },
           });
-        }
 
-        // Process puts
-        for (const put of optionData.puts || []) {
-          const greeks = this.calculateGreeks(
-            underlyingPrice,
-            put.strike,
-            put.expiration,
-            put.impliedVolatility,
-            "put"
-          );
+          if (expResponse.ok) {
+            const expData = await expResponse.json();
+            const expResult = expData.optionChain?.result?.[0] as YahooOptionsChainResponse;
 
-          puts.push({
-            symbol: put.contractSymbol,
-            underlying: ticker,
-            strike: put.strike,
-            expiration: put.expiration,
-            type: "put",
-            bid: put.bid || 0,
-            ask: put.ask || 0,
-            last: put.lastPrice || 0,
-            mark: put.bid && put.ask ? (put.bid + put.ask) / 2 : put.lastPrice || 0,
-            volume: put.volume || 0,
-            openInterest: put.openInterest || 0,
-            delta: greeks.delta,
-            gamma: greeks.gamma,
-            theta: greeks.theta,
-            vega: greeks.vega,
-            rho: greeks.rho,
-            impliedVolatility: put.impliedVolatility,
-            lastTradeTime: put.lastTradeDate ? put.lastTradeDate * 1000 : undefined,
-            changePercent: put.percentChange,
-            change: put.change,
-          });
+            if (expResult && expResult.options && expResult.options.length > 0) {
+              const { calls, puts } = this.processOptionsData(expResult.options, ticker, underlyingPrice);
+              allCalls.push(...calls);
+              allPuts.push(...puts);
+            }
+          }
+
+          // Small delay to avoid rate limiting (100ms between requests)
+          if (i < allExpirations.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        } catch (expError) {
+          console.error(`[Yahoo Finance] Error fetching expiration ${exp}:`, expError);
+          // Continue with other expirations
         }
       }
-
-      // Use expirationDates from API response (all available expirations)
-      // rather than just the ones we have data for
-      const allExpirations = result.expirationDates || Array.from(expirationSet);
 
       const optionsChain: OptionsChain = {
         underlying: ticker,
         timestamp: Date.now(),
         expirations: allExpirations.sort((a, b) => a - b),
-        calls,
-        puts,
+        calls: allCalls,
+        puts: allPuts,
       };
 
       console.log(
-        `[Yahoo Finance] Fetched ${calls.length} calls and ${puts.length} puts for ${underlying}`
+        `[Yahoo Finance] Fetched ${allCalls.length} calls and ${allPuts.length} puts across ${allExpirations.length} expirations for ${ticker}`
       );
 
-      // Cache for 15 minutes (data is 15 min delayed anyway)
+      // Cache for 15 minutes
+      const cacheKey = `options:yahoo:${ticker}:all`;
       await this.cache.set(cacheKey, optionsChain, 15 * 60 * 1000, [
-        `symbol:${underlying}`,
+        `symbol:${ticker}`,
         "options",
       ]);
 
       return optionsChain;
     } catch (error) {
-      console.error(`[Yahoo Finance] Error fetching options chain:`, error);
+      console.error(`[Yahoo Finance] Error fetching all expirations:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Process options data from Yahoo Finance API response
+   */
+  private processOptionsData(
+    optionsData: any[],
+    ticker: string,
+    underlyingPrice: number
+  ): { calls: OptionContract[]; puts: OptionContract[] } {
+    const calls: OptionContract[] = [];
+    const puts: OptionContract[] = [];
+
+    for (const optionData of optionsData) {
+      // Process calls
+      for (const call of optionData.calls || []) {
+        const greeks = this.calculateGreeks(
+          underlyingPrice,
+          call.strike,
+          call.expiration,
+          call.impliedVolatility,
+          "call"
+        );
+
+        calls.push({
+          symbol: call.contractSymbol,
+          underlying: ticker,
+          strike: call.strike,
+          expiration: call.expiration,
+          type: "call",
+          bid: call.bid || 0,
+          ask: call.ask || 0,
+          last: call.lastPrice || 0,
+          mark: call.bid && call.ask ? (call.bid + call.ask) / 2 : call.lastPrice || 0,
+          volume: call.volume || 0,
+          openInterest: call.openInterest || 0,
+          delta: greeks.delta,
+          gamma: greeks.gamma,
+          theta: greeks.theta,
+          vega: greeks.vega,
+          rho: greeks.rho,
+          impliedVolatility: call.impliedVolatility,
+          lastTradeTime: call.lastTradeDate ? call.lastTradeDate * 1000 : undefined,
+          changePercent: call.percentChange,
+          change: call.change,
+        });
+      }
+
+      // Process puts
+      for (const put of optionData.puts || []) {
+        const greeks = this.calculateGreeks(
+          underlyingPrice,
+          put.strike,
+          put.expiration,
+          put.impliedVolatility,
+          "put"
+        );
+
+        puts.push({
+          symbol: put.contractSymbol,
+          underlying: ticker,
+          strike: put.strike,
+          expiration: put.expiration,
+          type: "put",
+          bid: put.bid || 0,
+          ask: put.ask || 0,
+          last: put.lastPrice || 0,
+          mark: put.bid && put.ask ? (put.bid + put.ask) / 2 : put.lastPrice || 0,
+          volume: put.volume || 0,
+          openInterest: put.openInterest || 0,
+          delta: greeks.delta,
+          gamma: greeks.gamma,
+          theta: greeks.theta,
+          vega: greeks.vega,
+          rho: greeks.rho,
+          impliedVolatility: put.impliedVolatility,
+          lastTradeTime: put.lastTradeDate ? put.lastTradeDate * 1000 : undefined,
+          changePercent: put.percentChange,
+          change: put.change,
+        });
+      }
+    }
+
+    return { calls, puts };
   }
 
   /**

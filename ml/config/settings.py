@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # Supabase Connection
     supabase_url: str
     supabase_service_role_key: str
-    database_url: str  # Direct Postgres connection string
+    database_url: str | None = None  # Direct Postgres connection string (optional for backfill)
 
     # ML Configuration
     forecast_horizons: list[str] = ["1D", "1W"]

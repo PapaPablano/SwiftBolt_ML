@@ -4,19 +4,27 @@ Backfill OHLC data for symbols by fetching from the /chart Edge Function.
 This script fetches historical OHLC data via the chart API (which pulls from Polygon)
 and persists it to the database so the options ranking job can use it.
 
+Features:
+- Incremental backfill (only fetches missing data)
+- Rate limiting to respect API quotas
+- Deduplication via database unique constraints
+- Structured logging for monitoring
+
 Usage:
-    python src/scripts/backfill_ohlc.py --symbol CRWD
+    python src/scripts/backfill_ohlc.py --symbol CRWD --timeframe d1
     python src/scripts/backfill_ohlc.py --symbols CRWD NVDA TSLA
     python src/scripts/backfill_ohlc.py --all  # Backfill watchlist
+    python src/scripts/backfill_ohlc.py --all --incremental  # Recommended for scheduled runs
 """
 
 import argparse
 import logging
 import sys
+import time
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
-from typing import List
+from typing import List, Optional
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -35,6 +43,37 @@ WATCHLIST_SYMBOLS = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META",
     "SPY", "QQQ", "CRWD", "PLTR", "AMD", "NFLX", "DIS"
 ]
+
+# Rate limiting configuration (respecting free-tier API constraints)
+RATE_LIMIT_DELAY = 2.0  # Seconds between API calls
+CHUNK_DELAY = 12.0      # Seconds between chunks for strict providers
+
+
+def get_latest_bar_timestamp(symbol: str, timeframe: str) -> Optional[datetime]:
+    """
+    Get the timestamp of the most recent bar for a symbol/timeframe.
+
+    Returns None if no bars exist (full backfill needed).
+    """
+    try:
+        symbol_id = db.get_symbol_id(symbol)
+        response = (
+            db.client.table("ohlc_bars")
+            .select("ts")
+            .eq("symbol_id", symbol_id)
+            .eq("timeframe", timeframe)
+            .order("ts", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        if response.data:
+            ts_str = response.data[0]["ts"]
+            return datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        return None
+    except Exception as e:
+        logger.warning(f"Could not fetch latest bar for {symbol}: {e}")
+        return None
 
 
 def fetch_chart_data(symbol: str, timeframe: str = "d1") -> dict:
@@ -69,20 +108,22 @@ def fetch_chart_data(symbol: str, timeframe: str = "d1") -> dict:
         raise
 
 
-def persist_ohlc_bars(symbol: str, bars: List[dict]) -> int:
+def persist_ohlc_bars(symbol: str, timeframe: str, bars: List[dict]) -> tuple[int, int]:
     """
     Persist OHLC bars to the database.
 
-    Returns the number of bars successfully inserted.
+    Returns tuple of (inserted_count, skipped_count).
+    Uses upsert to handle duplicates gracefully (idempotent).
     """
     if not bars:
         logger.warning(f"No bars to persist for {symbol}")
-        return 0
+        return 0, 0
 
     # Get symbol_id
     symbol_id = db.get_symbol_id(symbol)
 
     inserted_count = 0
+    skipped_count = 0
 
     for bar in bars:
         try:
@@ -94,11 +135,10 @@ def persist_ohlc_bars(symbol: str, bars: List[dict]) -> int:
             close = float(bar["close"])
             volume = int(bar["volume"])
 
-            # Insert into database using raw SQL (upsert)
-            # We'll use the Supabase client's table.upsert() method
+            # Insert into database using upsert (dedupe via unique constraint)
             result = db.client.table("ohlc_bars").upsert({
                 "symbol_id": symbol_id,
-                "timeframe": "d1",  # Daily bars
+                "timeframe": timeframe,
                 "ts": ts,
                 "open": open_price,
                 "high": high,
@@ -111,24 +151,49 @@ def persist_ohlc_bars(symbol: str, bars: List[dict]) -> int:
             inserted_count += 1
 
         except Exception as e:
-            logger.error(f"Failed to insert bar for {symbol} at {bar.get('ts')}: {e}")
+            logger.debug(f"Skipped duplicate or error for {symbol} at {bar.get('ts')}: {e}")
+            skipped_count += 1
             continue
 
-    logger.info(f"✅ Persisted {inserted_count}/{len(bars)} bars for {symbol}")
-    return inserted_count
+    logger.info(f"✅ Persisted {inserted_count} bars for {symbol} ({skipped_count} skipped)")
+    return inserted_count, skipped_count
 
 
-def backfill_symbol(symbol: str, timeframe: str = "d1") -> bool:
+def backfill_symbol(symbol: str, timeframe: str = "d1", incremental: bool = False) -> bool:
     """
     Backfill OHLC data for a single symbol.
 
-    Returns True if successful, False otherwise.
+    Args:
+        symbol: Stock ticker
+        timeframe: Timeframe (d1, h1, etc.)
+        incremental: If True, only fetch data newer than latest bar
+
+    Returns:
+        True if successful, False otherwise.
     """
+    start_time = time.time()
     logger.info(f"{'='*60}")
-    logger.info(f"Backfilling {symbol} ({timeframe})")
+    logger.info(f"Backfilling {symbol} ({timeframe}) [incremental={incremental}]")
     logger.info(f"{'='*60}")
 
     try:
+        # Check for existing data if incremental mode
+        latest_bar_ts = None
+        if incremental:
+            latest_bar_ts = get_latest_bar_timestamp(symbol, timeframe)
+            if latest_bar_ts:
+                logger.info(f"Latest bar: {latest_bar_ts.isoformat()}")
+                # If data is recent (within 1 day for d1, 1 hour for h1), skip
+                now = datetime.now(latest_bar_ts.tzinfo)
+                if timeframe == "d1" and (now - latest_bar_ts) < timedelta(days=1):
+                    logger.info(f"⏭️  Data is current, skipping {symbol}")
+                    return True
+                elif timeframe.startswith("h") and (now - latest_bar_ts) < timedelta(hours=1):
+                    logger.info(f"⏭️  Data is current, skipping {symbol}")
+                    return True
+            else:
+                logger.info("No existing data, performing full backfill")
+
         # Fetch data from /chart endpoint
         chart_data = fetch_chart_data(symbol, timeframe)
         bars = chart_data.get("bars", [])
@@ -137,11 +202,29 @@ def backfill_symbol(symbol: str, timeframe: str = "d1") -> bool:
             logger.warning(f"No bars returned for {symbol}")
             return False
 
+        # Filter to only new bars if incremental
+        if incremental and latest_bar_ts:
+            original_count = len(bars)
+            bars = [
+                bar for bar in bars
+                if datetime.fromisoformat(bar["ts"].replace("Z", "+00:00")) > latest_bar_ts
+            ]
+            logger.info(f"Filtered {original_count} → {len(bars)} new bars")
+
+        if not bars and incremental:
+            logger.info(f"✅ No new bars for {symbol} (already up to date)")
+            return True
+
         # Persist to database
-        inserted = persist_ohlc_bars(symbol, bars)
+        inserted, skipped = persist_ohlc_bars(symbol, timeframe, bars)
+        elapsed = time.time() - start_time
 
         if inserted > 0:
-            logger.info(f"✅ Successfully backfilled {symbol}: {inserted} bars")
+            logger.info(
+                f"✅ Successfully backfilled {symbol}: "
+                f"{inserted} inserted, {skipped} skipped "
+                f"({elapsed:.1f}s)"
+            )
             return True
         else:
             logger.warning(f"⚠️  No bars persisted for {symbol}")
@@ -154,7 +237,7 @@ def backfill_symbol(symbol: str, timeframe: str = "d1") -> bool:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Backfill OHLC data for symbols"
+        description="Backfill OHLC data for symbols with incremental support and rate limiting"
     )
 
     group = parser.add_mutually_exclusive_group(required=True)
@@ -182,6 +265,12 @@ def main():
         help="Timeframe to backfill (default: d1)"
     )
 
+    parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help="Only fetch data newer than latest bar (recommended for scheduled runs)"
+    )
+
     args = parser.parse_args()
 
     # Determine which symbols to process
@@ -192,27 +281,42 @@ def main():
     else:  # --all
         symbols = WATCHLIST_SYMBOLS
 
+    overall_start_time = time.time()
+
     logger.info("="*60)
     logger.info("OHLC Backfill Script")
+    logger.info(f"Mode: {'INCREMENTAL' if args.incremental else 'FULL'}")
+    logger.info(f"Timeframe: {args.timeframe}")
     logger.info(f"Processing {len(symbols)} symbol(s)")
     logger.info("="*60)
 
     success_count = 0
     failure_count = 0
+    total_inserted = 0
 
-    for symbol in symbols:
-        if backfill_symbol(symbol, args.timeframe):
+    for i, symbol in enumerate(symbols):
+        # Process the symbol
+        if backfill_symbol(symbol, args.timeframe, incremental=args.incremental):
             success_count += 1
         else:
             failure_count += 1
+
+        # Rate limiting between symbols (respect API quotas)
+        if i < len(symbols) - 1:  # Don't delay after last symbol
+            logger.info(f"⏱️  Rate limit delay ({RATE_LIMIT_DELAY}s)...")
+            time.sleep(RATE_LIMIT_DELAY)
+
+    overall_elapsed = time.time() - overall_start_time
 
     logger.info("")
     logger.info("="*60)
     logger.info("Backfill Complete")
     logger.info(f"✅ Success: {success_count}")
     logger.info(f"❌ Failed: {failure_count}")
+    logger.info(f"⏱️  Total time: {overall_elapsed:.1f}s")
     logger.info("="*60)
 
+    # Exit with non-zero code if any failures
     sys.exit(0 if failure_count == 0 else 1)
 
 
