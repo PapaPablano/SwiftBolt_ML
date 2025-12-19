@@ -99,7 +99,7 @@ def fetch_chart_data(symbol: str, timeframe: str = "d1") -> dict:
         "timeframe": timeframe,
     }
     headers = {
-        "Authorization": f"Bearer {settings.supabase_service_role_key}",
+        "Authorization": f"Bearer {settings.supabase_key}",
         "Content-Type": "application/json",
     }
 
