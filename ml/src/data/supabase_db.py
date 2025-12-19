@@ -19,7 +19,7 @@ class SupabaseDatabase:
         """Initialize Supabase client."""
         self.client: Client = create_client(
             settings.supabase_url,
-            settings.supabase_service_role_key,
+            settings.supabase_key,
         )
         logger.info("Supabase client initialized")
 

@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     # Supabase Connection
     supabase_url: str
-    supabase_service_role_key: str
+    supabase_key: str  # Service role key (maps to SUPABASE_KEY env var)
     database_url: str | None = None  # Direct Postgres connection string (optional for backfill)
 
     # ML Configuration

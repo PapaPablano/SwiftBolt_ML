@@ -41,12 +41,12 @@ logger = logging.getLogger(__name__)
 
 # Validate required environment variables at startup
 logger.info(f"Supabase URL: {settings.supabase_url[:30]}..." if settings.supabase_url else "Supabase URL: NOT SET")
-logger.info(f"Supabase Service Role Key: {'SET (' + str(len(settings.supabase_service_role_key)) + ' chars)' if settings.supabase_service_role_key else 'NOT SET'}")
-if not settings.supabase_url or not settings.supabase_service_role_key:
+logger.info(f"Supabase Key: {'SET (' + str(len(settings.supabase_key)) + ' chars)' if settings.supabase_key else 'NOT SET'}")
+if not settings.supabase_url or not settings.supabase_key:
     logger.error("❌ Missing required Supabase credentials!")
     logger.error(f"Environment variables check:")
     logger.error(f"  SUPABASE_URL: {os.getenv('SUPABASE_URL', 'NOT SET')[:30] if os.getenv('SUPABASE_URL') else 'NOT SET'}")
-    logger.error(f"  SUPABASE_SERVICE_ROLE_KEY: {'SET' if os.getenv('SUPABASE_SERVICE_ROLE_KEY') else 'NOT SET'}")
+    logger.error(f"  SUPABASE_KEY: {'SET' if os.getenv('SUPABASE_KEY') else 'NOT SET'}")
     sys.exit(1)
 
 
