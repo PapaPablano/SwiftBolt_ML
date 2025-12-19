@@ -7,6 +7,7 @@ and persists it to the database so the options ranking job can use it.
 Features:
 - Incremental backfill (only fetches missing data)
 - Rate limiting to respect API quotas
+- Retry with exponential backoff for transient errors (502, 503, 504)
 - Deduplication via database unique constraints
 - Structured logging for monitoring
 
@@ -59,6 +60,11 @@ WATCHLIST_SYMBOLS = [
 RATE_LIMIT_DELAY = 2.0  # Seconds between API calls
 CHUNK_DELAY = 12.0      # Seconds between chunks for strict providers
 
+# Retry configuration for transient errors
+MAX_RETRIES = 3
+RETRY_BASE_DELAY = 2.0  # Base delay for exponential backoff
+RETRYABLE_STATUS_CODES = {502, 503, 504}  # Bad Gateway, Service Unavailable, Gateway Timeout
+
 
 def get_latest_bar_timestamp(symbol: str, timeframe: str) -> Optional[datetime]:
     """
@@ -92,6 +98,7 @@ def fetch_chart_data(symbol: str, timeframe: str = "d1") -> dict:
     Fetch chart data from the /chart Edge Function.
 
     This endpoint pulls data from Polygon on-demand.
+    Includes retry logic with exponential backoff for transient errors.
     """
     url = f"{settings.supabase_url}/functions/v1/chart"
     params = {
@@ -105,18 +112,48 @@ def fetch_chart_data(symbol: str, timeframe: str = "d1") -> dict:
 
     logger.info(f"Fetching chart data for {symbol} ({timeframe})...")
 
-    try:
-        response = requests.get(url, params=params, headers=headers, timeout=30)
-        response.raise_for_status()
-        data = response.json()
+    last_exception = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = requests.get(url, params=params, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
 
-        bars_count = len(data.get("bars", []))
-        logger.info(f"Fetched {bars_count} bars for {symbol}")
+            bars_count = len(data.get("bars", []))
+            logger.info(f"Fetched {bars_count} bars for {symbol}")
 
-        return data
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to fetch chart data for {symbol}: {e}")
-        raise
+            return data
+        except requests.exceptions.HTTPError as e:
+            last_exception = e
+            status_code = e.response.status_code if e.response is not None else 0
+
+            if status_code in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES - 1:
+                delay = RETRY_BASE_DELAY * (2 ** attempt)
+                logger.warning(
+                    f"⚠️  Transient error ({status_code}) for {symbol}, "
+                    f"retrying in {delay:.1f}s (attempt {attempt + 1}/{MAX_RETRIES})..."
+                )
+                time.sleep(delay)
+                continue
+            else:
+                logger.error(f"Failed to fetch chart data for {symbol}: {e}")
+                raise
+        except requests.exceptions.RequestException as e:
+            last_exception = e
+            if attempt < MAX_RETRIES - 1:
+                delay = RETRY_BASE_DELAY * (2 ** attempt)
+                logger.warning(
+                    f"⚠️  Request error for {symbol}, "
+                    f"retrying in {delay:.1f}s (attempt {attempt + 1}/{MAX_RETRIES})..."
+                )
+                time.sleep(delay)
+                continue
+            else:
+                logger.error(f"Failed to fetch chart data for {symbol}: {e}")
+                raise
+
+    # Should not reach here, but just in case
+    raise last_exception or Exception(f"Failed to fetch chart data for {symbol} after {MAX_RETRIES} attempts")
 
 
 def persist_ohlc_bars(symbol: str, timeframe: str, bars: List[dict]) -> tuple[int, int]:
