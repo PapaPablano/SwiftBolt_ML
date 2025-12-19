@@ -5,6 +5,7 @@ This script fetches historical OHLC data via the chart API (which pulls from Pol
 and persists it to the database so the options ranking job can use it.
 
 Features:
+- Server-side watchlist: fetches symbols from all user watchlists (up to 200)
 - Incremental backfill (only fetches missing data)
 - Rate limiting to respect API quotas
 - Retry with exponential backoff for transient errors (502, 503, 504)
@@ -14,7 +15,7 @@ Features:
 Usage:
     python src/scripts/backfill_ohlc.py --symbol CRWD --timeframe d1
     python src/scripts/backfill_ohlc.py --symbols CRWD NVDA TSLA
-    python src/scripts/backfill_ohlc.py --all  # Backfill watchlist
+    python src/scripts/backfill_ohlc.py --all  # Backfill all watchlist symbols from DB
     python src/scripts/backfill_ohlc.py --all --incremental  # Recommended for scheduled runs
 """
 
@@ -51,7 +52,8 @@ if not settings.supabase_url or not settings.supabase_key:
     sys.exit(1)
 
 
-WATCHLIST_SYMBOLS = [
+# Fallback symbols if database watchlist is empty
+DEFAULT_SYMBOLS = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META",
     "SPY", "QQQ", "CRWD", "PLTR", "AMD", "NFLX", "DIS"
 ]
@@ -64,6 +66,33 @@ CHUNK_DELAY = 12.0      # Seconds between chunks for strict providers
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 2.0  # Base delay for exponential backoff
 RETRYABLE_STATUS_CODES = {502, 503, 504}  # Bad Gateway, Service Unavailable, Gateway Timeout
+
+
+def get_watchlist_symbols_from_db(limit: int = 200) -> List[str]:
+    """
+    Fetch all unique symbols from user watchlists in the database.
+
+    Uses the get_all_watchlist_symbols() database function to get symbols
+    that users have added to their watchlists (up to the specified limit).
+
+    Falls back to DEFAULT_SYMBOLS if no watchlist symbols found.
+    """
+    try:
+        # Call the database function to get watchlist symbols
+        response = db.client.rpc("get_all_watchlist_symbols", {"p_limit": limit}).execute()
+
+        if response.data:
+            symbols = [row["ticker"] for row in response.data]
+            logger.info(f"📋 Fetched {len(symbols)} symbols from user watchlists")
+            return symbols
+        else:
+            logger.warning("No symbols found in user watchlists, using defaults")
+            return DEFAULT_SYMBOLS
+
+    except Exception as e:
+        logger.warning(f"Could not fetch watchlist symbols from DB: {e}")
+        logger.info("Falling back to default symbol list")
+        return DEFAULT_SYMBOLS
 
 
 def get_latest_bar_timestamp(symbol: str, timeframe: str) -> Optional[datetime]:
@@ -327,7 +356,8 @@ def main():
     elif args.symbols:
         symbols = [s.upper() for s in args.symbols]
     else:  # --all
-        symbols = WATCHLIST_SYMBOLS
+        # Fetch symbols from database watchlists (with fallback to defaults)
+        symbols = get_watchlist_symbols_from_db(limit=200)
 
     overall_start_time = time.time()
 
