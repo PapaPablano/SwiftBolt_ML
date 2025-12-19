@@ -7,6 +7,8 @@ stores snapshots in options_chain_snapshots, and updates options_ranks.
 Features:
 - Server-side watchlist: fetches symbols from all user watchlists (up to 200)
 - Fetches ALL expirations for each symbol (nightly comprehensive update)
+- Batch inserts (1000 records/batch) for fast database writes
+- No slow single-record fallback - retry batch once, then skip
 - Stores raw snapshot data for historical analysis
 - Updates ML-scored options_ranks table
 - Rate limiting to respect API quotas
@@ -54,10 +56,13 @@ DEFAULT_SYMBOLS = [
 ]
 
 # Rate limiting configuration
-RATE_LIMIT_DELAY = 3.0  # Seconds between API calls (more conservative for options)
+RATE_LIMIT_DELAY = 2.0  # Seconds between API calls
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 2.0
 RETRYABLE_STATUS_CODES = {502, 503, 504}
+
+# Batch insert configuration
+BATCH_SIZE = 1000  # Insert this many records at once (Supabase/Postgres handles this well)
 
 
 def get_watchlist_symbols_from_db(limit: int = 200) -> List[str]:
@@ -155,6 +160,7 @@ def persist_options_snapshot(
 ) -> tuple[int, int]:
     """
     Persist options chain data to the options_chain_snapshots table.
+    Uses batch inserts for performance.
     Returns (inserted_count, skipped_count).
     """
     try:
@@ -172,9 +178,10 @@ def persist_options_snapshot(
         (contract, "put") for contract in puts
     ]
 
+    # Build batch of records
+    batch = []
     for contract, side in all_contracts:
         try:
-            # Parse expiration timestamp to date
             expiration_ts = contract.get("expiration", 0)
             expiry_date = datetime.fromtimestamp(expiration_ts).date()
 
@@ -197,20 +204,32 @@ def persist_options_snapshot(
                 "rho": float(contract.get("rho", 0)) if contract.get("rho") else None,
                 "snapshot_date": snapshot_date.isoformat(),
             }
-
-            # Upsert to handle re-runs on same day
-            db.client.table("options_chain_snapshots").upsert(
-                snapshot_data,
-                on_conflict="underlying_symbol_id,expiry,strike,side,snapshot_date"
-            ).execute()
-
-            inserted += 1
-
+            batch.append(snapshot_data)
         except Exception as e:
             logger.debug(f"Skipped contract: {e}")
             skipped += 1
 
-    logger.info(f"Persisted {inserted} contracts for {underlying} ({skipped} skipped)")
+    # Insert in batches - no slow fallback, just retry once and move on
+    total_batches = (len(batch) + BATCH_SIZE - 1) // BATCH_SIZE
+    for batch_num, i in enumerate(range(0, len(batch), BATCH_SIZE), 1):
+        chunk = batch[i:i + BATCH_SIZE]
+        for attempt in range(2):  # Max 2 attempts per batch
+            try:
+                db.client.table("options_chain_snapshots").upsert(
+                    chunk,
+                    on_conflict="underlying_symbol_id,expiry,strike,side,snapshot_date"
+                ).execute()
+                inserted += len(chunk)
+                break  # Success, move to next batch
+            except Exception as e:
+                if attempt == 0:
+                    logger.debug(f"Batch {batch_num}/{total_batches} failed, retrying: {e}")
+                    time.sleep(1)  # Brief pause before retry
+                else:
+                    logger.warning(f"Batch {batch_num}/{total_batches} failed after retry, skipping {len(chunk)} records: {e}")
+                    skipped += len(chunk)
+
+    logger.info(f"Persisted {inserted} snapshot contracts for {underlying} ({skipped} skipped)")
     return inserted, skipped
 
 
@@ -221,6 +240,7 @@ def update_options_ranks(
 ) -> int:
     """
     Update the options_ranks table with ML scores.
+    Uses batch inserts for performance.
     For now, uses a simple scoring heuristic based on volume, OI, and Greeks.
     Returns count of updated ranks.
     """
@@ -231,6 +251,7 @@ def update_options_ranks(
         return 0
 
     updated = 0
+    skipped = 0
     run_at = datetime.utcnow().isoformat()
 
     all_contracts = [
@@ -239,25 +260,25 @@ def update_options_ranks(
         (contract, "put") for contract in puts
     ]
 
+    # Build batch of records
+    batch = []
     for contract, side in all_contracts:
         try:
             expiration_ts = contract.get("expiration", 0)
             expiry_date = datetime.fromtimestamp(expiration_ts).date()
 
             # Simple ML score heuristic (placeholder for actual ML model)
-            # Factors: volume, open interest, delta proximity to 0.5, implied vol
             volume = int(contract.get("volume", 0))
             oi = int(contract.get("openInterest", 0))
             delta = abs(float(contract.get("delta", 0)) if contract.get("delta") else 0)
             iv = float(contract.get("impliedVolatility", 0)) if contract.get("impliedVolatility") else 0
 
             # Score components (0-1 range each)
-            volume_score = min(volume / 1000, 1.0)  # Normalize volume
-            oi_score = min(oi / 5000, 1.0)  # Normalize OI
-            delta_score = 1.0 - abs(delta - 0.5) * 2  # Peak at 0.5 delta
-            iv_score = min(iv / 1.0, 1.0)  # Normalize IV
+            volume_score = min(volume / 1000, 1.0)
+            oi_score = min(oi / 5000, 1.0)
+            delta_score = 1.0 - abs(delta - 0.5) * 2
+            iv_score = min(iv / 1.0, 1.0)
 
-            # Weighted average
             ml_score = (
                 volume_score * 0.25 +
                 oi_score * 0.25 +
@@ -286,19 +307,32 @@ def update_options_ranks(
                 "contract_symbol": contract.get("symbol", ""),
                 "run_at": run_at,
             }
-
-            # Upsert
-            db.client.table("options_ranks").upsert(
-                rank_data,
-                on_conflict="underlying_symbol_id,expiry,strike,side"
-            ).execute()
-
-            updated += 1
-
+            batch.append(rank_data)
         except Exception as e:
-            logger.debug(f"Failed to update rank: {e}")
+            logger.debug(f"Failed to build rank data: {e}")
+            skipped += 1
 
-    logger.info(f"Updated {updated} option ranks for {underlying}")
+    # Insert in batches - no slow fallback, just retry once and move on
+    total_batches = (len(batch) + BATCH_SIZE - 1) // BATCH_SIZE
+    for batch_num, i in enumerate(range(0, len(batch), BATCH_SIZE), 1):
+        chunk = batch[i:i + BATCH_SIZE]
+        for attempt in range(2):  # Max 2 attempts per batch
+            try:
+                db.client.table("options_ranks").upsert(
+                    chunk,
+                    on_conflict="underlying_symbol_id,expiry,strike,side"
+                ).execute()
+                updated += len(chunk)
+                break  # Success, move to next batch
+            except Exception as e:
+                if attempt == 0:
+                    logger.debug(f"Ranks batch {batch_num}/{total_batches} failed, retrying: {e}")
+                    time.sleep(1)  # Brief pause before retry
+                else:
+                    logger.warning(f"Ranks batch {batch_num}/{total_batches} failed after retry, skipping {len(chunk)} records: {e}")
+                    skipped += len(chunk)
+
+    logger.info(f"Updated {updated} option ranks for {underlying} ({skipped} skipped)")
     return updated
 
 
