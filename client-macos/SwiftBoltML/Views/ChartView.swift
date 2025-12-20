@@ -112,6 +112,7 @@ struct ChartView: View {
                         minusDI: chartViewModel.minusDI,
                         superTrendLine: chartViewModel.superTrendLine,
                         superTrendTrend: chartViewModel.superTrendTrend,
+                        superTrendStrength: chartViewModel.superTrendStrength,
                         bollingerUpper: chartViewModel.bollingerUpper,
                         bollingerMiddle: chartViewModel.bollingerMiddle,
                         bollingerLower: chartViewModel.bollingerLower,

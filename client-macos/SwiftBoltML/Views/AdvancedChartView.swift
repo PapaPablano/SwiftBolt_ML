@@ -25,6 +25,7 @@ struct AdvancedChartView: View {
     let minusDI: [IndicatorDataPoint]
     let superTrendLine: [IndicatorDataPoint]
     let superTrendTrend: [Int]
+    let superTrendStrength: [IndicatorDataPoint]
     let bollingerUpper: [IndicatorDataPoint]
     let bollingerMiddle: [IndicatorDataPoint]
     let bollingerLower: [IndicatorDataPoint]
@@ -59,6 +60,7 @@ struct AdvancedChartView: View {
         minusDI: [IndicatorDataPoint] = [],
         superTrendLine: [IndicatorDataPoint] = [],
         superTrendTrend: [Int] = [],
+        superTrendStrength: [IndicatorDataPoint] = [],
         bollingerUpper: [IndicatorDataPoint] = [],
         bollingerMiddle: [IndicatorDataPoint] = [],
         bollingerLower: [IndicatorDataPoint] = [],
@@ -85,6 +87,7 @@ struct AdvancedChartView: View {
         self.minusDI = minusDI
         self.superTrendLine = superTrendLine
         self.superTrendTrend = superTrendTrend
+        self.superTrendStrength = superTrendStrength
         self.bollingerUpper = bollingerUpper
         self.bollingerMiddle = bollingerMiddle
         self.bollingerLower = bollingerLower
@@ -533,8 +536,38 @@ struct AdvancedChartView: View {
             if config.showEMA21 {
                 LegendItem(color: .pink, label: "EMA(21)", value: ema21.last?.value)
             }
+            if config.showSuperTrend {
+                superTrendLegendItem
+            }
         }
         .padding(.horizontal, 8)
+    }
+
+    // SuperTrend legend with trend strength indicator
+    private var superTrendLegendItem: some View {
+        let lastTrend = superTrendTrend.last ?? 0
+        let lastStrength = superTrendStrength.last?.value ?? 0
+        let isBullish = lastTrend == 1
+        let trendColor: Color = isBullish ? .green : .red
+        let trendLabel = isBullish ? "BULL" : "BEAR"
+
+        // Strength as percentage (0-100)
+        let strengthPercent = Int(lastStrength)
+
+        return HStack(spacing: 4) {
+            Circle()
+                .fill(trendColor)
+                .frame(width: 8, height: 8)
+            Text("ST")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text(trendLabel)
+                .font(.caption2.bold())
+                .foregroundColor(trendColor)
+            Text("(\(strengthPercent)%)")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
     }
 
     // MARK: - Helper Functions
@@ -714,24 +747,60 @@ struct AdvancedChartView: View {
             }
         }
 
-        // SuperTrend line
-        ForEach(Array(superTrendLine.enumerated()), id: \.element.id) { index, point in
-            if let value = point.value,
-               let barIndex = indicatorIndex(for: point.date),
-               visibleRange.contains(barIndex),
-               barIndex < superTrendTrend.count {
-                let trend = superTrendTrend[barIndex]
-                let color: Color = trend == 1 ? .green : (trend == -1 ? .red : .gray)
-
-                LineMark(
-                    x: .value("Index", barIndex),
-                    y: .value("SuperTrend", value)
-                )
-                .foregroundStyle(color)
-                .lineStyle(StrokeStyle(lineWidth: 2))
-                .interpolationMethod(.catmullRom)
-            }
+        // SuperTrend line - render as segments with color based on trend
+        // Only render for actual bar data (not forecast area)
+        ForEach(superTrendSegments, id: \.id) { segment in
+            LineMark(
+                x: .value("Index", segment.index),
+                y: .value("SuperTrend", segment.value)
+            )
+            .foregroundStyle(segment.isBullish ? Color.green : Color.red)
+            .lineStyle(StrokeStyle(lineWidth: 2))
+            .interpolationMethod(.stepEnd)
         }
+    }
+
+    // Helper struct for SuperTrend line segments
+    private struct SuperTrendSegment: Identifiable {
+        let id: Int
+        let index: Int
+        let value: Double
+        let isBullish: Bool
+    }
+
+    // Build SuperTrend segments with proper color based on trend direction
+    private var superTrendSegments: [SuperTrendSegment] {
+        var segments: [SuperTrendSegment] = []
+
+        // Only process bars within visible range AND within actual data bounds
+        let maxBarIndex = bars.count - 1
+        let rangeStart = max(0, visibleRange.lowerBound)
+        let rangeEnd = min(maxBarIndex, visibleRange.upperBound)
+
+        guard rangeStart <= rangeEnd else { return [] }
+
+        for i in rangeStart...rangeEnd {
+            // Ensure we have valid data for this index
+            guard i < superTrendLine.count,
+                  i < superTrendTrend.count,
+                  i < bars.count,
+                  let stValue = superTrendLine[i].value else {
+                continue
+            }
+
+            let trend = superTrendTrend[i]
+            // Bullish when trend is 1 (close > supertrend line)
+            let isBullish = trend == 1
+
+            segments.append(SuperTrendSegment(
+                id: i,
+                index: i,
+                value: stValue,
+                isBullish: isBullish
+            ))
+        }
+
+        return segments
     }
 
     // MARK: - SuperTrend Zones
@@ -740,8 +809,10 @@ struct AdvancedChartView: View {
         guard !superTrendTrend.isEmpty else { return [] }
 
         var zones: [SuperTrendZone] = []
+        // Limit to actual bar data - don't extend into forecast area
+        let maxBarIndex = bars.count - 1
         let rangeStart = max(0, visibleRange.lowerBound)
-        let rangeEnd = min(superTrendTrend.count - 1, visibleRange.upperBound)
+        let rangeEnd = min(min(superTrendTrend.count - 1, maxBarIndex), visibleRange.upperBound)
 
         guard rangeStart <= rangeEnd else { return [] }
 

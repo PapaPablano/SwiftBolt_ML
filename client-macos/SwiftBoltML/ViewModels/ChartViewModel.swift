@@ -160,6 +160,11 @@ final class ChartViewModel: ObservableObject {
         superTrendResult?.trend ?? []
     }
 
+    var superTrendStrength: [IndicatorDataPoint] {
+        guard let result = superTrendResult else { return [] }
+        return zip(bars, result.strength).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
     // MARK: - Bollinger Bands
 
     var bollingerBands: TechnicalIndicators.BollingerBands? {

@@ -500,6 +500,7 @@ struct TechnicalIndicators {
     struct SuperTrendResult {
         let supertrend: [Double?]  // SuperTrend line
         let trend: [Int]           // 1 = bullish, -1 = bearish, 0 = neutral
+        let strength: [Double?]    // Trend strength 0-100 (distance from ST as % of ATR)
     }
 
     /// Calculate SuperTrend indicator
@@ -516,7 +517,8 @@ struct TechnicalIndicators {
         guard bars.count > period else {
             return SuperTrendResult(
                 supertrend: Array(repeating: nil, count: bars.count),
-                trend: Array(repeating: 0, count: bars.count)
+                trend: Array(repeating: 0, count: bars.count),
+                strength: Array(repeating: nil, count: bars.count)
             )
         }
 
@@ -587,7 +589,23 @@ struct TechnicalIndicators {
             }
         }
 
-        return SuperTrendResult(supertrend: supertrend, trend: trend)
+        // Calculate trend strength: distance from SuperTrend as percentage of ATR
+        // Capped at 100 (when price is 2x ATR away from SuperTrend)
+        var strength: [Double?] = []
+        for i in 0..<bars.count {
+            guard let stValue = supertrend[i], let atr = atrEMA[i], atr > 0 else {
+                strength.append(nil)
+                continue
+            }
+
+            let close = bars[i].close
+            let distance = abs(close - stValue)
+            // Normalize: 0 = at SuperTrend, 100 = 2x ATR away
+            let normalizedStrength = min(100.0, (distance / atr) * 50.0)
+            strength.append(normalizedStrength)
+        }
+
+        return SuperTrendResult(supertrend: supertrend, trend: trend, strength: strength)
     }
 
     // MARK: - ATR (Average True Range)
