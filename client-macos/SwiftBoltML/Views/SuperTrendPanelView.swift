@@ -61,7 +61,7 @@ struct SuperTrendPanelView: View {
             }
 
             // Candlesticks
-            ForEach(visibleBars) { item in
+            ForEach(Array(visibleBarsData.enumerated()), id: \.offset) { _, item in
                 candlestickMark(for: item.bar, at: item.index)
             }
 
@@ -83,13 +83,13 @@ struct SuperTrendPanelView: View {
             }
 
             // Signal markers
-            ForEach(visibleSignals) { signal in
+            ForEach(visibleSignals, id: \.id) { signal in
                 if let barIndex = signalBarIndex(for: signal) {
                     PointMark(
                         x: .value("Index", barIndex),
                         y: .value("Price", signal.price)
                     )
-                    .symbol(signal.type == "BUY" ? .triangle : .invertedTriangle)
+                    .symbol(signal.type == "BUY" ? .triangle : .diamond)
                     .foregroundStyle(signal.type == "BUY" ? .green : .red)
                     .symbolSize(80)
                 }
@@ -139,11 +139,15 @@ struct SuperTrendPanelView: View {
 
     // MARK: - Computed Properties
 
-    private var visibleBars: [(index: Int, bar: OHLCBar)] {
+    private var visibleBarsData: [(index: Int, bar: OHLCBar)] {
         visibleRange.compactMap { index in
             guard index >= 0 && index < bars.count else { return nil }
             return (index, bars[index])
         }
+    }
+
+    private var visibleBars: [(index: Int, bar: OHLCBar)] {
+        visibleBarsData
     }
 
     private var visibleMinPrice: Double {

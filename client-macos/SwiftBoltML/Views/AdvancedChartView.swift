@@ -696,12 +696,15 @@ struct AdvancedChartView: View {
     private var superTrendOverlay: some ChartContent {
         // Trend zone backgrounds (when enabled)
         if config.showTrendZones {
+            let minPrice = visibleBars.map(\.bar.low).min() ?? 0
+            let maxPrice = visibleBars.map(\.bar.high).max() ?? 0
+
             ForEach(superTrendZones, id: \.startIndex) { zone in
                 RectangleMark(
                     xStart: .value("Start", zone.startIndex),
                     xEnd: .value("End", zone.endIndex),
-                    yStart: .value("Low", visibleMinPrice),
-                    yEnd: .value("High", visibleMaxPrice)
+                    yStart: .value("Low", minPrice),
+                    yEnd: .value("High", maxPrice)
                 )
                 .foregroundStyle(
                     zone.isBullish
@@ -766,23 +769,6 @@ struct AdvancedChartView: View {
         ))
 
         return zones
-    }
-
-    private var visibleMinPrice: Double {
-        let prices = visibleBars.map(\.low)
-        return prices.min() ?? 0
-    }
-
-    private var visibleMaxPrice: Double {
-        let prices = visibleBars.map(\.high)
-        return prices.max() ?? 0
-    }
-
-    private var visibleBars: [OHLCBar] {
-        let start = max(0, visibleRange.lowerBound)
-        let end = min(bars.count - 1, visibleRange.upperBound)
-        guard start <= end else { return [] }
-        return Array(bars[start...end])
     }
 
     // MARK: - ML Forecast Overlay
