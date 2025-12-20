@@ -7,6 +7,7 @@ struct ChartResponse: Codable, Equatable {
     let bars: [OHLCBar]
     let mlSummary: MLSummary?
     let indicators: IndicatorData?
+    let superTrendAI: SuperTrendAIData?
 
     enum CodingKeys: String, CodingKey {
         case symbol
@@ -15,19 +16,70 @@ struct ChartResponse: Codable, Equatable {
         case bars
         case mlSummary
         case indicators
+        case superTrendAI = "supertrend_ai"
     }
 }
 
+// MARK: - SuperTrend AI Data
+
+/// Full SuperTrend AI data from backend with signals and metadata
+struct SuperTrendAIData: Codable, Equatable {
+    let factor: Double
+    let performanceIndex: Double
+    let signalStrength: Int  // 0-10
+    let currentTrend: String  // "BULLISH" or "BEARISH"
+    let currentStopLevel: Double
+    let trendDurationBars: Int
+    let signals: [SignalMetadata]
+
+    enum CodingKeys: String, CodingKey {
+        case factor
+        case performanceIndex = "performance_index"
+        case signalStrength = "signal_strength"
+        case currentTrend = "current_trend"
+        case currentStopLevel = "current_stop_level"
+        case trendDurationBars = "trend_duration_bars"
+        case signals
+    }
+}
+
+/// Metadata for individual SuperTrend signals
+struct SignalMetadata: Codable, Equatable, Identifiable {
+    var id: String { "\(date)-\(type)" }
+
+    let date: String
+    let type: String  // "BUY" or "SELL"
+    let price: Double
+    let confidence: Int  // 0-10
+    let stopLevel: Double
+    let targetPrice: Double
+    let atrAtSignal: Double
+
+    enum CodingKeys: String, CodingKey {
+        case date
+        case type
+        case price
+        case confidence
+        case stopLevel = "stop_level"
+        case targetPrice = "target_price"
+        case atrAtSignal = "atr_at_signal"
+    }
+}
+
+// MARK: - Indicator Data
+
 /// Pre-computed indicator data from backend (optional)
 struct IndicatorData: Codable, Equatable {
-    // SuperTrend AI results
+    // SuperTrend AI results (legacy - use SuperTrendAIData for full data)
     let supertrendFactor: Double?
     let supertrendPerformance: Double?
     let supertrendSignal: Int?  // 1 = bullish, -1 = bearish
 
     // Trend analysis
     let trendLabel: String?  // bullish, neutral, bearish
-    let trendConfidence: Double?
+    let trendConfidence: Int?
+    let stopLevel: Double?
+    let trendDurationBars: Int?
 
     // Key indicator values (latest)
     let rsi: Double?
@@ -41,6 +93,8 @@ struct IndicatorData: Codable, Equatable {
         case supertrendSignal = "supertrend_signal"
         case trendLabel = "trend_label"
         case trendConfidence = "trend_confidence"
+        case stopLevel = "stop_level"
+        case trendDurationBars = "trend_duration_bars"
         case rsi
         case adx
         case macdHistogram = "macd_histogram"

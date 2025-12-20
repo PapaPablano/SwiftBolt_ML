@@ -113,6 +113,7 @@ class SupabaseDatabase:
         overall_label: str,
         confidence: float,
         points: list[dict[str, Any]],
+        supertrend_data: dict[str, Any] | None = None,
     ) -> None:
         """
         Insert or update a forecast in the ml_forecasts table.
@@ -123,6 +124,7 @@ class SupabaseDatabase:
             overall_label: Overall trend label (Bullish/Neutral/Bearish)
             confidence: Model confidence score (0-1)
             points: List of forecast points
+            supertrend_data: Optional SuperTrend AI data dict
         """
         try:
             # Check if forecast exists
@@ -142,9 +144,31 @@ class SupabaseDatabase:
                 "points": points,
             }
 
+            # Add SuperTrend AI data if available
+            if supertrend_data:
+                forecast_data.update({
+                    "supertrend_factor": supertrend_data.get("supertrend_factor"),
+                    "supertrend_performance": supertrend_data.get(
+                        "supertrend_performance"
+                    ),
+                    "supertrend_signal": supertrend_data.get("supertrend_signal"),
+                    "trend_label": supertrend_data.get("trend_label"),
+                    "trend_confidence": supertrend_data.get("trend_confidence"),
+                    "stop_level": supertrend_data.get("stop_level"),
+                    "trend_duration_bars": supertrend_data.get(
+                        "trend_duration_bars"
+                    ),
+                })
+
             if existing.data:
                 # Delete existing forecast first to avoid trigger issues
-                self.client.table("ml_forecasts").delete().eq("symbol_id", symbol_id).eq("horizon", horizon).execute()
+                (
+                    self.client.table("ml_forecasts")
+                    .delete()
+                    .eq("symbol_id", symbol_id)
+                    .eq("horizon", horizon)
+                    .execute()
+                )
 
             # Always insert (after deleting if it existed)
             response = (
@@ -161,6 +185,48 @@ class SupabaseDatabase:
         except Exception as e:
             logger.error(f"Error upserting forecast: {e}")
             raise
+
+    def upsert_supertrend_signals(
+        self,
+        symbol: str,
+        signals: list[dict[str, Any]],
+    ) -> None:
+        """
+        Insert SuperTrend signals into the supertrend_signals table.
+
+        Args:
+            symbol: Stock ticker symbol
+            signals: List of signal dictionaries from SuperTrendAI
+        """
+        if not signals:
+            return
+
+        try:
+            for signal in signals:
+                signal_data = {
+                    "symbol": symbol.upper(),
+                    "signal_date": signal["date"],
+                    "signal_type": signal["type"],
+                    "entry_price": signal["price"],
+                    "stop_level": signal["stop_level"],
+                    "target_price": signal.get("target_price"),
+                    "confidence": signal.get("confidence"),
+                    "atr_at_signal": signal.get("atr_at_signal"),
+                    "risk_amount": signal.get("risk_amount"),
+                    "reward_amount": signal.get("reward_amount"),
+                    "outcome": "OPEN",
+                }
+
+                # Upsert (insert or update on conflict)
+                self.client.table("supertrend_signals").upsert(
+                    signal_data,
+                    on_conflict="symbol,signal_date,signal_type",
+                ).execute()
+
+            logger.info(f"Saved {len(signals)} SuperTrend signals for {symbol}")
+
+        except Exception as e:
+            logger.warning(f"Error upserting SuperTrend signals for {symbol}: {e}")
 
     def upsert_option_rank(
         self,

@@ -10,16 +10,18 @@ Key Features:
 - Selects optimal factor from 'Best' cluster
 - Generates performance-adaptive signals
 - Outputs signal strength score (0-10)
+- Extracts detailed signal metadata with confidence scores
+- Calculates stop levels and target prices
 
 Usage:
     supertrend = SuperTrendAI(df)
     result_df, info = supertrend.calculate()
-    # result_df contains 'supertrend', 'trend', 'signal' columns
-    # info contains 'target_factor', 'performance_index', 'signal_strength'
+    # result_df contains 'supertrend', 'trend', 'signal', 'signal_confidence' columns
+    # info contains 'target_factor', 'performance_index', 'signal_strength', 'signals'
 """
 
 import logging
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -311,9 +313,18 @@ class SuperTrendAI:
             prev_trend = self.df["supertrend_trend"].iloc[i - 1]
             curr_trend = self.df["supertrend_trend"].iloc[i]
             if prev_trend == 0 and curr_trend == 1:
-                self.df.loc[self.df.index[i], "supertrend_signal"] = 1  # Buy
+                self.df.loc[self.df.index[i], "supertrend_signal"] = 1
             elif prev_trend == 1 and curr_trend == 0:
-                self.df.loc[self.df.index[i], "supertrend_signal"] = -1  # Sell
+                self.df.loc[self.df.index[i], "supertrend_signal"] = -1
+
+        # Calculate per-bar confidence scores
+        self.df["signal_confidence"] = self.calculate_signal_confidence(perf_idx)
+
+        # Extract signal metadata
+        signals = self.extract_signal_metadata(perf_idx)
+
+        # Get current state
+        current_state = self.get_current_state()
 
         info = {
             "target_factor": target_factor,
@@ -322,14 +333,162 @@ class SuperTrendAI:
             "signal_strength": int(perf_idx * 10),  # 0-10 score
             "factors_tested": self.factors.tolist(),
             "performances": all_performances,
+            # NEW: Enhanced output
+            "signals": signals,
+            "current_trend": current_state.get("current_trend", "UNKNOWN"),
+            "current_stop_level": current_state.get("current_stop_level", 0),
+            "trend_duration_bars": current_state.get("trend_duration_bars", 0),
+            "total_signals": len(signals),
+            "buy_signals": len([s for s in signals if s["type"] == "BUY"]),
+            "sell_signals": len([s for s in signals if s["type"] == "SELL"]),
         }
 
         logger.info(
             f"SuperTrend AI complete: factor={target_factor:.2f}, "
-            f"perf_idx={perf_idx:.3f}, signal_strength={info['signal_strength']}/10"
+            f"perf={perf_idx:.3f}, strength={info['signal_strength']}/10, "
+            f"signals={len(signals)}"
         )
 
         return self.df, info
+
+    def calculate_signal_confidence(self, perf_idx: float) -> pd.Series:
+        """
+        Calculate per-bar confidence score based on multiple factors.
+
+        Confidence is derived from:
+        - Base performance index (0-1)
+        - Price distance from SuperTrend (confirmation strength)
+        - Trend duration (longer trends = higher confidence)
+
+        Args:
+            perf_idx: Overall performance index (0-1)
+
+        Returns:
+            Series of confidence scores (0-10)
+        """
+        close = self.df["close"]
+        st = self.df["supertrend"]
+        trend = self.df["supertrend_trend"]
+
+        # Base confidence from performance index
+        base_confidence = perf_idx * 7  # Max 7 from performance
+
+        # Distance bonus: higher when price clearly above/below SuperTrend
+        distance_pct = ((close - st) / close).abs() * 100
+        distance_bonus = np.clip(distance_pct / 2, 0, 1.5)
+
+        # Trend duration bonus: longer trends get slight boost
+        trend_duration = pd.Series(0, index=self.df.index)
+        duration = 0
+        for i in range(1, len(self.df)):
+            if trend.iloc[i] == trend.iloc[i - 1]:
+                duration += 1
+            else:
+                duration = 0
+            trend_duration.iloc[i] = duration
+
+        duration_bonus = np.clip(trend_duration / 20, 0, 1.5)
+
+        # Combine and clip to 0-10
+        confidence = base_confidence + distance_bonus + duration_bonus
+        confidence = np.clip(confidence, 0, 10).astype(int)
+
+        return pd.Series(confidence, index=self.df.index)
+
+    def extract_signal_metadata(
+        self, perf_idx: float, risk_reward_ratio: float = 2.0
+    ) -> List[Dict[str, Any]]:
+        """
+        Extract detailed metadata for each signal candle.
+
+        For each BUY/SELL signal, calculates:
+        - Entry price
+        - Stop level (SuperTrend value)
+        - Target price (based on risk:reward ratio)
+        - Confidence score (0-10)
+        - ATR at signal time
+
+        Args:
+            perf_idx: Performance index for confidence calculation
+            risk_reward_ratio: Target profit / risk ratio (default 2.0)
+
+        Returns:
+            List of signal dictionaries with full metadata
+        """
+        signals = []
+        atr = self.df["atr"]
+        confidence = self.calculate_signal_confidence(perf_idx)
+
+        for i in range(1, len(self.df)):
+            signal = self.df["supertrend_signal"].iloc[i]
+            if signal != 0:
+                entry_price = float(self.df["close"].iloc[i])
+                stop_level = float(self.df["supertrend"].iloc[i])
+                atr_val = float(atr.iloc[i])
+
+                # Calculate risk (distance to stop)
+                risk = abs(entry_price - stop_level)
+
+                # Calculate target based on risk:reward ratio
+                if signal == 1:  # BUY
+                    target_price = entry_price + (risk * risk_reward_ratio)
+                else:  # SELL
+                    target_price = entry_price - (risk * risk_reward_ratio)
+
+                # Get date - handle both datetime index and regular index
+                idx = self.df.index[i]
+                if hasattr(idx, "isoformat"):
+                    date_str = idx.isoformat()
+                elif hasattr(idx, "strftime"):
+                    date_str = idx.strftime("%Y-%m-%dT%H:%M:%S")
+                else:
+                    date_str = str(idx)
+
+                signals.append({
+                    "date": date_str,
+                    "type": "BUY" if signal == 1 else "SELL",
+                    "price": entry_price,
+                    "confidence": int(confidence.iloc[i]),
+                    "stop_level": stop_level,
+                    "target_price": float(target_price),
+                    "atr_at_signal": atr_val,
+                    "risk_amount": float(risk),
+                    "reward_amount": float(risk * risk_reward_ratio),
+                })
+
+        return signals
+
+    def get_current_state(self) -> Dict[str, Any]:
+        """
+        Get the current state of the SuperTrend indicator.
+
+        Returns:
+            Dictionary with current trend info, stop level, duration
+        """
+        if len(self.df) == 0:
+            return {}
+
+        current_trend = self.df["supertrend_trend"].iloc[-1]
+        current_stop = self.df["supertrend"].iloc[-1]
+
+        # Calculate trend duration (bars since last signal)
+        trend_duration = 0
+        for i in range(len(self.df) - 1, 0, -1):
+            if self.df["supertrend_signal"].iloc[i] != 0:
+                break
+            trend_duration += 1
+
+        return {
+            "current_trend": "BULLISH" if current_trend == 1 else "BEARISH",
+            "current_stop_level": float(current_stop),
+            "trend_duration_bars": trend_duration,
+            "current_price": float(self.df["close"].iloc[-1]),
+            "distance_to_stop_pct": float(
+                abs(self.df["close"].iloc[-1] - current_stop)
+                / self.df["close"].iloc[-1]
+                * 100
+            ),
+        }
 
     def predict(self, new_df: pd.DataFrame, target_factor: float) -> pd.DataFrame:
         """
@@ -351,5 +510,6 @@ class SuperTrendAI:
         self.df["supertrend"] = supertrend
         self.df["supertrend_trend"] = trend
         self.df["supertrend_signal"] = trend.diff().fillna(0)
+        self.df["atr"] = atr
 
         return self.df

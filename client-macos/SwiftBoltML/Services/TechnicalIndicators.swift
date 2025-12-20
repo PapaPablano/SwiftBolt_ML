@@ -657,4 +657,9 @@ struct IndicatorConfig {
     var showADX: Bool = false
     var showSuperTrend: Bool = false
     var showATR: Bool = false
+
+    // SuperTrend AI Enhanced Options
+    var showTrendZones: Bool = true
+    var showSignalMarkers: Bool = true
+    var showConfidenceBadges: Bool = true
 }

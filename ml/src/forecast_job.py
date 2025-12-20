@@ -11,6 +11,7 @@ from config.settings import settings
 from src.data.supabase_db import db
 from src.features.technical_indicators import add_technical_features
 from src.models.baseline_forecaster import BaselineForecaster
+from src.strategies.supertrend_ai import SuperTrendAI
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -22,6 +23,10 @@ logger = logging.getLogger(__name__)
 def process_symbol(symbol: str) -> None:
     """
     Process a single symbol: fetch data, train model, generate forecasts.
+
+    Includes:
+    - Baseline ML forecasts for multiple horizons
+    - SuperTrend AI indicator with K-means clustering
 
     Args:
         symbol: Stock ticker symbol
@@ -45,7 +50,37 @@ def process_symbol(symbol: str) -> None:
         # Get symbol_id
         symbol_id = db.get_symbol_id(symbol)
 
-        # Generate forecasts for each horizon
+        # === SuperTrend AI Processing ===
+        supertrend_data = None
+        try:
+            supertrend = SuperTrendAI(df)
+            st_df, st_info = supertrend.calculate()
+
+            supertrend_data = {
+                "supertrend_factor": st_info["target_factor"],
+                "supertrend_performance": st_info["performance_index"],
+                "supertrend_signal": int(st_df["supertrend_signal"].iloc[-1]),
+                "trend_label": st_info["current_trend"],
+                "trend_confidence": st_info["signal_strength"],
+                "stop_level": float(st_df["supertrend"].iloc[-1]),
+                "trend_duration_bars": st_info["trend_duration_bars"],
+            }
+
+            logger.info(
+                f"SuperTrend AI for {symbol}: "
+                f"factor={st_info['target_factor']:.2f}, "
+                f"trend={st_info['current_trend']}, "
+                f"confidence={st_info['signal_strength']}/10"
+            )
+
+            # Store signals in supertrend_signals table if any new signals
+            if st_info["signals"]:
+                db.upsert_supertrend_signals(symbol, st_info["signals"])
+
+        except Exception as e:
+            logger.warning(f"SuperTrend AI failed for {symbol}: {e}")
+
+        # === Generate forecasts for each horizon ===
         for horizon in settings.forecast_horizons:
             logger.info(f"Generating {horizon} forecast for {symbol}")
 
@@ -55,13 +90,14 @@ def process_symbol(symbol: str) -> None:
             # Generate forecast
             forecast = forecaster.generate_forecast(df, horizon)
 
-            # Save to database
+            # Save to database (include SuperTrend data if available)
             db.upsert_forecast(
                 symbol_id=symbol_id,
                 horizon=forecast["horizon"],
                 overall_label=forecast["label"],
                 confidence=forecast["confidence"],
                 points=forecast["points"],
+                supertrend_data=supertrend_data,
             )
 
             logger.info(

@@ -694,6 +694,24 @@ struct AdvancedChartView: View {
 
     @ChartContentBuilder
     private var superTrendOverlay: some ChartContent {
+        // Trend zone backgrounds (when enabled)
+        if config.showTrendZones {
+            ForEach(superTrendZones, id: \.startIndex) { zone in
+                RectangleMark(
+                    xStart: .value("Start", zone.startIndex),
+                    xEnd: .value("End", zone.endIndex),
+                    yStart: .value("Low", visibleMinPrice),
+                    yEnd: .value("High", visibleMaxPrice)
+                )
+                .foregroundStyle(
+                    zone.isBullish
+                        ? Color.green.opacity(0.05)
+                        : Color.red.opacity(0.05)
+                )
+            }
+        }
+
+        // SuperTrend line
         ForEach(Array(superTrendLine.enumerated()), id: \.element.id) { index, point in
             if let value = point.value,
                let barIndex = indicatorIndex(for: point.date),
@@ -711,6 +729,60 @@ struct AdvancedChartView: View {
                 .interpolationMethod(.catmullRom)
             }
         }
+    }
+
+    // MARK: - SuperTrend Zones
+
+    private var superTrendZones: [SuperTrendZone] {
+        guard !superTrendTrend.isEmpty else { return [] }
+
+        var zones: [SuperTrendZone] = []
+        let rangeStart = max(0, visibleRange.lowerBound)
+        let rangeEnd = min(superTrendTrend.count - 1, visibleRange.upperBound)
+
+        guard rangeStart <= rangeEnd else { return [] }
+
+        var currentZoneStart = rangeStart
+        var currentTrendValue = superTrendTrend[rangeStart]
+
+        for i in rangeStart...rangeEnd {
+            let trend = superTrendTrend[i]
+            if trend != currentTrendValue && i > currentZoneStart {
+                zones.append(SuperTrendZone(
+                    startIndex: currentZoneStart,
+                    endIndex: i - 1,
+                    isBullish: currentTrendValue == 1
+                ))
+                currentZoneStart = i
+                currentTrendValue = trend
+            }
+        }
+
+        // Close final zone
+        zones.append(SuperTrendZone(
+            startIndex: currentZoneStart,
+            endIndex: rangeEnd,
+            isBullish: currentTrendValue == 1
+        ))
+
+        return zones
+    }
+
+    private var visibleMinPrice: Double {
+        let prices = visibleBars.map(\.low)
+        return prices.min() ?? 0
+    }
+
+    private var visibleMaxPrice: Double {
+        let prices = visibleBars.map(\.high)
+        return prices.max() ?? 0
+    }
+
+    private var visibleBars: [OHLCBar] {
+        let start = max(0, visibleRange.lowerBound)
+        let end = min(bars.count - 1, visibleRange.upperBound)
+        guard start <= end else { return [] }
+        return Array(bars[start...end])
     }
 
     // MARK: - ML Forecast Overlay
@@ -792,4 +864,12 @@ struct LegendItem: View {
             }
         }
     }
+}
+
+// MARK: - SuperTrend Zone
+
+struct SuperTrendZone: Equatable {
+    let startIndex: Int
+    let endIndex: Int
+    let isBullish: Bool
 }

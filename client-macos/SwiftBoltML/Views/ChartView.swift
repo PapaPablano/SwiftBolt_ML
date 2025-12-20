@@ -381,6 +381,12 @@ struct IndicatorToggleMenu: View {
                 Toggle("ATR(14)", isOn: $config.showATR)
             }
 
+            Section("SuperTrend AI") {
+                Toggle("Trend Zones", isOn: $config.showTrendZones)
+                Toggle("Signal Markers", isOn: $config.showSignalMarkers)
+                Toggle("Confidence Badges", isOn: $config.showConfidenceBadges)
+            }
+
             Section("Display") {
                 Toggle("Volume", isOn: $config.showVolume)
             }
