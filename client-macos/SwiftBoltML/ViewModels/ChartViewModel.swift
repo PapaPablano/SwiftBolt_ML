@@ -61,6 +61,135 @@ final class ChartViewModel: ObservableObject {
         return zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
     }
 
+    // MARK: - MACD Indicator
+
+    var macdResult: TechnicalIndicators.MACDResult? {
+        guard !bars.isEmpty else { return nil }
+        return TechnicalIndicators.macd(bars: bars)
+    }
+
+    var macdLine: [IndicatorDataPoint] {
+        guard let result = macdResult else { return [] }
+        return zip(bars, result.macd).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    var macdSignal: [IndicatorDataPoint] {
+        guard let result = macdResult else { return [] }
+        return zip(bars, result.signal).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    var macdHistogram: [IndicatorDataPoint] {
+        guard let result = macdResult else { return [] }
+        return zip(bars, result.histogram).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    // MARK: - Stochastic Indicator
+
+    var stochasticResult: TechnicalIndicators.StochasticResult? {
+        guard !bars.isEmpty else { return nil }
+        return TechnicalIndicators.stochastic(bars: bars)
+    }
+
+    var stochasticK: [IndicatorDataPoint] {
+        guard let result = stochasticResult else { return [] }
+        return zip(bars, result.k).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    var stochasticD: [IndicatorDataPoint] {
+        guard let result = stochasticResult else { return [] }
+        return zip(bars, result.d).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    // MARK: - KDJ Indicator
+
+    var kdjResult: TechnicalIndicators.KDJResult? {
+        guard !bars.isEmpty else { return nil }
+        return TechnicalIndicators.kdj(bars: bars)
+    }
+
+    var kdjK: [IndicatorDataPoint] {
+        guard let result = kdjResult else { return [] }
+        return zip(bars, result.k).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    var kdjD: [IndicatorDataPoint] {
+        guard let result = kdjResult else { return [] }
+        return zip(bars, result.d).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    var kdjJ: [IndicatorDataPoint] {
+        guard let result = kdjResult else { return [] }
+        return zip(bars, result.j).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    // MARK: - ADX Indicator
+
+    var adxResult: TechnicalIndicators.ADXResult? {
+        guard !bars.isEmpty else { return nil }
+        return TechnicalIndicators.adx(bars: bars)
+    }
+
+    var adxLine: [IndicatorDataPoint] {
+        guard let result = adxResult else { return [] }
+        return zip(bars, result.adx).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    var plusDI: [IndicatorDataPoint] {
+        guard let result = adxResult else { return [] }
+        return zip(bars, result.plusDI).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    var minusDI: [IndicatorDataPoint] {
+        guard let result = adxResult else { return [] }
+        return zip(bars, result.minusDI).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    // MARK: - SuperTrend Indicator
+
+    var superTrendResult: TechnicalIndicators.SuperTrendResult? {
+        guard !bars.isEmpty else { return nil }
+        return TechnicalIndicators.superTrend(bars: bars)
+    }
+
+    var superTrendLine: [IndicatorDataPoint] {
+        guard let result = superTrendResult else { return [] }
+        return zip(bars, result.supertrend).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    var superTrendTrend: [Int] {
+        superTrendResult?.trend ?? []
+    }
+
+    // MARK: - Bollinger Bands
+
+    var bollingerBands: TechnicalIndicators.BollingerBands? {
+        guard !bars.isEmpty else { return nil }
+        return TechnicalIndicators.bollingerBands(bars: bars)
+    }
+
+    var bollingerUpper: [IndicatorDataPoint] {
+        guard let bb = bollingerBands else { return [] }
+        return zip(bars, bb.upper).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    var bollingerMiddle: [IndicatorDataPoint] {
+        guard let bb = bollingerBands else { return [] }
+        return zip(bars, bb.middle).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    var bollingerLower: [IndicatorDataPoint] {
+        guard let bb = bollingerBands else { return [] }
+        return zip(bars, bb.lower).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    // MARK: - ATR Indicator
+
+    var atr: [IndicatorDataPoint] {
+        guard !bars.isEmpty else { return [] }
+        let values = TechnicalIndicators.atr(bars: bars)
+        return zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
     func loadChart() async {
         // Cancel any existing load operation
         loadTask?.cancel()

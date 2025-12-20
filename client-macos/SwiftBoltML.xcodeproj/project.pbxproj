@@ -35,6 +35,7 @@
 		A1000022233456780000022 /* WatchlistViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000024233456780000024 /* WatchlistViewModel.swift */; };
 		A1000023233456780000023 /* WatchlistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000025233456780000025 /* WatchlistView.swift */; };
 		A1000024233456780000024 /* AdvancedChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000026233456780000026 /* AdvancedChartView.swift */; };
+		A1000028233456780000028 /* IndicatorPanelViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000028233456780000028 /* IndicatorPanelViews.swift */; };
 		A1000025233456780000025 /* DebugPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000027233456780000027 /* DebugPanel.swift */; };
 		A2A8103C284B7A6C2EA18C30 /* OptionsRankerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA453D2167A88A3AB27575EB /* OptionsRankerViewModel.swift */; };
 		A66084CE5A41ABCA72B26DB6 /* OptionsRankingResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C341141BD25E1C4A72A109 /* OptionsRankingResponse.swift */; };
@@ -83,6 +84,7 @@
 		A2000025233456780000025 /* WatchlistView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchlistView.swift; sourceTree = "<group>"; };
 		A2000026233456780000026 /* AdvancedChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedChartView.swift; sourceTree = "<group>"; };
 		A2000027233456780000027 /* DebugPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugPanel.swift; sourceTree = "<group>"; };
+		A2000028233456780000028 /* IndicatorPanelViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndicatorPanelViews.swift; sourceTree = "<group>"; };
 		A3000001233456780000001 /* SwiftBoltML.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftBoltML.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA453D2167A88A3AB27575EB /* OptionsRankerViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerViewModel.swift; sourceTree = "<group>"; };
 		EE33C7CA7CA515703FFF0B5D /* StrikePriceComparisonView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StrikePriceComparisonView.swift; sourceTree = "<group>"; };
@@ -156,6 +158,7 @@
 				45CDF4DECC736A4B74E5CF6F /* AnalysisView.swift */,
 				0D40AA22987ED31FDDFD8FD9 /* OptionsRankerView.swift */,
 				EE33C7CA7CA515703FFF0B5D /* StrikePriceComparisonView.swift */,
+				A2000028233456780000028 /* IndicatorPanelViews.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -319,6 +322,7 @@
 				A2A8103C284B7A6C2EA18C30 /* OptionsRankerViewModel.swift in Sources */,
 				731BC29C18688AD83AF0A16E /* StrikePriceComparisonView.swift in Sources */,
 				1B3F554CCC5B9C65482F52FA /* WatchlistModels.swift in Sources */,
+				A1000028233456780000028 /* IndicatorPanelViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

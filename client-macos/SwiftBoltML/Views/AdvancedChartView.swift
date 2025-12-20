@@ -11,6 +11,25 @@ struct AdvancedChartView: View {
     let config: IndicatorConfig
     let mlSummary: MLSummary?
 
+    // New Phase 7 indicators
+    let macdLine: [IndicatorDataPoint]
+    let macdSignal: [IndicatorDataPoint]
+    let macdHistogram: [IndicatorDataPoint]
+    let stochasticK: [IndicatorDataPoint]
+    let stochasticD: [IndicatorDataPoint]
+    let kdjK: [IndicatorDataPoint]
+    let kdjD: [IndicatorDataPoint]
+    let kdjJ: [IndicatorDataPoint]
+    let adxLine: [IndicatorDataPoint]
+    let plusDI: [IndicatorDataPoint]
+    let minusDI: [IndicatorDataPoint]
+    let superTrendLine: [IndicatorDataPoint]
+    let superTrendTrend: [Int]
+    let bollingerUpper: [IndicatorDataPoint]
+    let bollingerMiddle: [IndicatorDataPoint]
+    let bollingerLower: [IndicatorDataPoint]
+    let atr: [IndicatorDataPoint]
+
     @State private var selectedBar: OHLCBar?
     @State private var selectedIndex: Int?
 
@@ -18,7 +37,33 @@ struct AdvancedChartView: View {
     @State private var visibleRange: ClosedRange<Int>
     @State private var barsToShow: Int = 100 // Default visible bars
 
-    init(bars: [OHLCBar], sma20: [IndicatorDataPoint], sma50: [IndicatorDataPoint], ema9: [IndicatorDataPoint], ema21: [IndicatorDataPoint], rsi: [IndicatorDataPoint], config: IndicatorConfig, mlSummary: MLSummary? = nil) {
+    init(
+        bars: [OHLCBar],
+        sma20: [IndicatorDataPoint],
+        sma50: [IndicatorDataPoint],
+        ema9: [IndicatorDataPoint],
+        ema21: [IndicatorDataPoint],
+        rsi: [IndicatorDataPoint],
+        config: IndicatorConfig,
+        mlSummary: MLSummary? = nil,
+        macdLine: [IndicatorDataPoint] = [],
+        macdSignal: [IndicatorDataPoint] = [],
+        macdHistogram: [IndicatorDataPoint] = [],
+        stochasticK: [IndicatorDataPoint] = [],
+        stochasticD: [IndicatorDataPoint] = [],
+        kdjK: [IndicatorDataPoint] = [],
+        kdjD: [IndicatorDataPoint] = [],
+        kdjJ: [IndicatorDataPoint] = [],
+        adxLine: [IndicatorDataPoint] = [],
+        plusDI: [IndicatorDataPoint] = [],
+        minusDI: [IndicatorDataPoint] = [],
+        superTrendLine: [IndicatorDataPoint] = [],
+        superTrendTrend: [Int] = [],
+        bollingerUpper: [IndicatorDataPoint] = [],
+        bollingerMiddle: [IndicatorDataPoint] = [],
+        bollingerLower: [IndicatorDataPoint] = [],
+        atr: [IndicatorDataPoint] = []
+    ) {
         self.bars = bars
         self.sma20 = sma20
         self.sma50 = sma50
@@ -27,6 +72,23 @@ struct AdvancedChartView: View {
         self.rsi = rsi
         self.config = config
         self.mlSummary = mlSummary
+        self.macdLine = macdLine
+        self.macdSignal = macdSignal
+        self.macdHistogram = macdHistogram
+        self.stochasticK = stochasticK
+        self.stochasticD = stochasticD
+        self.kdjK = kdjK
+        self.kdjD = kdjD
+        self.kdjJ = kdjJ
+        self.adxLine = adxLine
+        self.plusDI = plusDI
+        self.minusDI = minusDI
+        self.superTrendLine = superTrendLine
+        self.superTrendTrend = superTrendTrend
+        self.bollingerUpper = bollingerUpper
+        self.bollingerMiddle = bollingerMiddle
+        self.bollingerLower = bollingerLower
+        self.atr = atr
 
         // Initialize visible range to show most recent bars
         let count = bars.count
@@ -52,30 +114,114 @@ struct AdvancedChartView: View {
         bars.firstIndex(where: { Calendar.current.isDate($0.ts, equalTo: date, toGranularity: .second) })
     }
 
+    // Calculate dynamic height for price chart based on active panels
+    private var priceChartHeight: CGFloat {
+        var height: CGFloat = 500
+        var activePanels = 0
+
+        if config.showRSI { activePanels += 1 }
+        if config.showMACD { activePanels += 1 }
+        if config.showStochastic { activePanels += 1 }
+        if config.showKDJ { activePanels += 1 }
+        if config.showADX { activePanels += 1 }
+        if config.showATR { activePanels += 1 }
+        if config.showVolume { activePanels += 1 }
+
+        // Reduce price chart height based on active panels
+        height -= CGFloat(min(activePanels, 4)) * 50
+        return max(250, height)
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            // Chart controls
-            chartControls
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color(nsColor: .controlBackgroundColor))
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(spacing: 0) {
+                // Chart controls
+                chartControls
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color(nsColor: .controlBackgroundColor))
 
-            Divider()
-
-            // Main price chart with indicators
-            priceChartView
-                .frame(height: config.showRSI ? 400 : 500)
-
-            if config.showRSI {
                 Divider()
-                rsiChartView
-                    .frame(height: 120)
-            }
 
-            if config.showVolume {
-                Divider()
-                volumeChartView
+                // Main price chart with indicators
+                priceChartView
+                    .frame(height: priceChartHeight)
+
+                // RSI Panel
+                if config.showRSI {
+                    Divider()
+                    rsiChartView
+                        .frame(height: 100)
+                }
+
+                // MACD Panel
+                if config.showMACD {
+                    Divider()
+                    MACDPanelView(
+                        bars: bars,
+                        macdLine: macdLine,
+                        signalLine: macdSignal,
+                        histogram: macdHistogram,
+                        visibleRange: visibleRange
+                    )
                     .frame(height: 100)
+                }
+
+                // Stochastic Panel
+                if config.showStochastic {
+                    Divider()
+                    StochasticPanelView(
+                        bars: bars,
+                        kLine: stochasticK,
+                        dLine: stochasticD,
+                        visibleRange: visibleRange
+                    )
+                    .frame(height: 100)
+                }
+
+                // KDJ Panel
+                if config.showKDJ {
+                    Divider()
+                    KDJPanelView(
+                        bars: bars,
+                        kLine: kdjK,
+                        dLine: kdjD,
+                        jLine: kdjJ,
+                        visibleRange: visibleRange
+                    )
+                    .frame(height: 100)
+                }
+
+                // ADX Panel
+                if config.showADX {
+                    Divider()
+                    ADXPanelView(
+                        bars: bars,
+                        adxLine: adxLine,
+                        plusDI: plusDI,
+                        minusDI: minusDI,
+                        visibleRange: visibleRange
+                    )
+                    .frame(height: 100)
+                }
+
+                // ATR Panel
+                if config.showATR {
+                    Divider()
+                    ATRPanelView(
+                        bars: bars,
+                        atrLine: atr,
+                        visibleRange: visibleRange
+                    )
+                    .frame(height: 80)
+                }
+
+                // Volume Panel
+                if config.showVolume {
+                    Divider()
+                    volumeChartView
+                        .frame(height: 80)
+                }
             }
         }
         .onChange(of: bars.count) { oldCount, newCount in
@@ -165,6 +311,16 @@ struct AdvancedChartView: View {
             }
             if config.showEMA21 {
                 indicatorLine(ema21, color: .pink, label: "EMA(21)")
+            }
+
+            // Bollinger Bands Overlay
+            if config.showBollingerBands {
+                bollingerBandsOverlay
+            }
+
+            // SuperTrend Overlay
+            if config.showSuperTrend {
+                superTrendOverlay
             }
 
             // ML Forecast Overlays
@@ -487,6 +643,73 @@ struct AdvancedChartView: View {
             return .green
         } else {
             return .purple
+        }
+    }
+
+    // MARK: - Bollinger Bands Overlay
+
+    @ChartContentBuilder
+    private var bollingerBandsOverlay: some ChartContent {
+        // Upper band (gray dashed)
+        ForEach(bollingerUpper) { point in
+            if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
+                LineMark(
+                    x: .value("Index", index),
+                    y: .value("BB Upper", value)
+                )
+                .foregroundStyle(.gray.opacity(0.6))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 2]))
+                .interpolationMethod(.catmullRom)
+            }
+        }
+
+        // Middle band (SMA - gray solid)
+        ForEach(bollingerMiddle) { point in
+            if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
+                LineMark(
+                    x: .value("Index", index),
+                    y: .value("BB Middle", value)
+                )
+                .foregroundStyle(.gray.opacity(0.4))
+                .lineStyle(StrokeStyle(lineWidth: 1))
+                .interpolationMethod(.catmullRom)
+            }
+        }
+
+        // Lower band (gray dashed)
+        ForEach(bollingerLower) { point in
+            if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
+                LineMark(
+                    x: .value("Index", index),
+                    y: .value("BB Lower", value)
+                )
+                .foregroundStyle(.gray.opacity(0.6))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 2]))
+                .interpolationMethod(.catmullRom)
+            }
+        }
+    }
+
+    // MARK: - SuperTrend Overlay
+
+    @ChartContentBuilder
+    private var superTrendOverlay: some ChartContent {
+        ForEach(Array(superTrendLine.enumerated()), id: \.element.id) { index, point in
+            if let value = point.value,
+               let barIndex = indicatorIndex(for: point.date),
+               visibleRange.contains(barIndex),
+               barIndex < superTrendTrend.count {
+                let trend = superTrendTrend[barIndex]
+                let color: Color = trend == 1 ? .green : (trend == -1 ? .red : .gray)
+
+                LineMark(
+                    x: .value("Index", barIndex),
+                    y: .value("SuperTrend", value)
+                )
+                .foregroundStyle(color)
+                .lineStyle(StrokeStyle(lineWidth: 2))
+                .interpolationMethod(.catmullRom)
+            }
         }
     }
 

@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from config.settings import settings
 from src.data.supabase_db import db
 from src.models.options_ranker import OptionsRanker
+from src.models.enhanced_options_ranker import EnhancedOptionsRanker
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -253,24 +254,12 @@ def process_symbol_options(symbol: str) -> None:
         # Calculate underlying price and trend
         underlying_price = float(df_ohlc.iloc[-1]["close"])
 
-        # Derive trend from recent price action (simplified)
-        recent_prices = df_ohlc.tail(20)["close"]
-        pct_change = (recent_prices.iloc[-1] - recent_prices.iloc[0]) / recent_prices.iloc[0]
-
-        if pct_change > 0.05:
-            underlying_trend = "bullish"
-        elif pct_change < -0.05:
-            underlying_trend = "bearish"
-        else:
-            underlying_trend = "neutral"
-
         # Calculate historical volatility (20-day)
         returns = df_ohlc.tail(20)["close"].pct_change().dropna()
         historical_vol = returns.std() * (252 ** 0.5)  # Annualized
 
         logger.info(
-            f"{symbol}: price=${underlying_price:.2f}, "
-            f"trend={underlying_trend}, HV={historical_vol:.2%}"
+            f"{symbol}: price=${underlying_price:.2f}, HV={historical_vol:.2%}"
         )
 
         # Fetch options chain from API
@@ -283,12 +272,13 @@ def process_symbol_options(symbol: str) -> None:
 
         logger.info(f"Parsed {len(options_df)} contracts for {symbol}")
 
-        # Rank options using ML ranker
-        ranker = OptionsRanker()
-        ranked_df = ranker.rank_options(
+        # Use EnhancedOptionsRanker with full technical indicator analysis
+        # This integrates SuperTrend AI and multi-indicator signals (Phase 6)
+        ranker = EnhancedOptionsRanker()
+        ranked_df = ranker.rank_options_with_indicators(
             options_df,
+            df_ohlc,  # Pass OHLC data for indicator computation
             underlying_price,
-            underlying_trend,
             historical_vol
         )
 

@@ -98,7 +98,24 @@ struct ChartView: View {
                         ema21: chartViewModel.ema21,
                         rsi: chartViewModel.rsi,
                         config: chartViewModel.indicatorConfig,
-                        mlSummary: chartData.mlSummary
+                        mlSummary: chartData.mlSummary,
+                        macdLine: chartViewModel.macdLine,
+                        macdSignal: chartViewModel.macdSignal,
+                        macdHistogram: chartViewModel.macdHistogram,
+                        stochasticK: chartViewModel.stochasticK,
+                        stochasticD: chartViewModel.stochasticD,
+                        kdjK: chartViewModel.kdjK,
+                        kdjD: chartViewModel.kdjD,
+                        kdjJ: chartViewModel.kdjJ,
+                        adxLine: chartViewModel.adxLine,
+                        plusDI: chartViewModel.plusDI,
+                        minusDI: chartViewModel.minusDI,
+                        superTrendLine: chartViewModel.superTrendLine,
+                        superTrendTrend: chartViewModel.superTrendTrend,
+                        bollingerUpper: chartViewModel.bollingerUpper,
+                        bollingerMiddle: chartViewModel.bollingerMiddle,
+                        bollingerLower: chartViewModel.bollingerLower,
+                        atr: chartViewModel.atr
                     )
                     .padding()
                     .id("advanced-chart-\(chartData.bars.count)-\(chartData.bars.first?.ts.timeIntervalSince1970 ?? 0)")
@@ -352,6 +369,16 @@ struct IndicatorToggleMenu: View {
 
             Section("Oscillators") {
                 Toggle("RSI(14)", isOn: $config.showRSI)
+                Toggle("MACD(12,26,9)", isOn: $config.showMACD)
+                Toggle("Stochastic(14,3)", isOn: $config.showStochastic)
+                Toggle("KDJ(9,3,3)", isOn: $config.showKDJ)
+            }
+
+            Section("Trend & Volatility") {
+                Toggle("ADX(14)", isOn: $config.showADX)
+                Toggle("SuperTrend(10,3)", isOn: $config.showSuperTrend)
+                Toggle("Bollinger Bands", isOn: $config.showBollingerBands)
+                Toggle("ATR(14)", isOn: $config.showATR)
             }
 
             Section("Display") {

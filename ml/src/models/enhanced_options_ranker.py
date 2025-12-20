@@ -3,12 +3,19 @@ Enhanced Options Ranker with ML-derived trend analysis.
 
 Integrates SuperTrend AI and multi-indicator signals for
 improved options contract ranking.
+
+Phase 6 implementation from technicals_and_ml_improvement.md
 """
 
 import logging
+from typing import Any, Dict
+
 import pandas as pd
 
 from .options_ranker import OptionsRanker
+from ..features.technical_indicators import add_all_technical_features
+from ..strategies.supertrend_ai import SuperTrendAI
+from ..strategies.multi_indicator_signals import MultiIndicatorSignalGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -278,3 +285,171 @@ class EnhancedOptionsRanker(OptionsRanker):
             ])
 
         return "\n".join(lines)
+
+    def rank_options_with_indicators(
+        self,
+        options_df: pd.DataFrame,
+        underlying_df: pd.DataFrame,
+        underlying_price: float,
+        historical_vol: float = 0.30,
+    ) -> pd.DataFrame:
+        """
+        Rank options using full technical indicator analysis.
+
+        This is the main entry point for Phase 6 integration. It:
+        1. Computes all technical indicators on the underlying OHLC data
+        2. Runs SuperTrend AI to get adaptive trend signals
+        3. Generates multi-indicator composite signals
+        4. Ranks options based on comprehensive trend analysis
+
+        Args:
+            options_df: Options chain DataFrame with columns:
+                strike, side, expiration, delta, gamma, theta, vega,
+                impliedVolatility, volume, openInterest, bid, ask
+            underlying_df: OHLC DataFrame with columns:
+                ts, open, high, low, close, volume
+            underlying_price: Current underlying price
+            historical_vol: Historical volatility (annualized)
+
+        Returns:
+            Ranked options DataFrame with ml_score and trend metadata
+        """
+        if options_df.empty:
+            logger.warning("No options data to rank")
+            return options_df
+
+        if underlying_df.empty or len(underlying_df) < 50:
+            logger.warning(
+                f"Insufficient OHLC data ({len(underlying_df)} bars), "
+                "falling back to basic ranking"
+            )
+            return self.rank_options(
+                options_df, underlying_price, "neutral", historical_vol
+            )
+
+        # Step 1: Add all technical indicators to OHLC data
+        logger.info("Computing technical indicators...")
+        df_with_indicators = add_all_technical_features(underlying_df)
+
+        # Step 2: Run SuperTrend AI
+        supertrend_info: Dict[str, Any] = {}
+        try:
+            supertrend = SuperTrendAI(df_with_indicators)
+            df_with_indicators, supertrend_info = supertrend.calculate()
+            logger.info(
+                f"SuperTrend: factor={supertrend_info.get('target_factor', 0):.2f}, "
+                f"perf={supertrend_info.get('performance_index', 0):.3f}"
+            )
+        except Exception as e:
+            logger.warning(f"SuperTrend AI failed: {e}, using defaults")
+            supertrend_info = {
+                "target_factor": 3.0,
+                "performance_index": 0.5,
+                "signal_strength": 5,
+            }
+
+        # Step 3: Generate multi-indicator signals
+        signal_generator = MultiIndicatorSignalGenerator()
+        trend_analysis = signal_generator.get_trend_analysis(df_with_indicators)
+
+        # Step 4: Combine SuperTrend info with trend analysis
+        combined_analysis = {
+            "trend": trend_analysis.get("trend", "neutral"),
+            "signal_strength": supertrend_info.get("signal_strength", 5),
+            "supertrend_factor": supertrend_info.get("target_factor", 3.0),
+            "supertrend_performance": supertrend_info.get("performance_index", 0.5),
+            "composite_signal": trend_analysis.get("composite_signal", 0.0),
+            "confidence": trend_analysis.get("confidence", 0.5),
+            "adx": trend_analysis.get("adx", 20.0),
+            "rsi": trend_analysis.get("rsi", 50.0),
+            "supertrend_signal": trend_analysis.get("supertrend_signal", 0),
+        }
+
+        logger.info(
+            f"Trend analysis: {combined_analysis['trend']} "
+            f"(confidence={combined_analysis['confidence']:.2f}, "
+            f"ADX={combined_analysis['adx']:.1f})"
+        )
+
+        # Step 5: Rank options with enhanced trend analysis
+        return self.rank_options_with_trend(
+            options_df,
+            underlying_price,
+            combined_analysis,
+            historical_vol,
+        )
+
+    def analyze_underlying(
+        self,
+        underlying_df: pd.DataFrame,
+    ) -> Dict[str, Any]:
+        """
+        Analyze underlying price data and return trend analysis.
+
+        Useful for getting trend info without ranking options.
+
+        Args:
+            underlying_df: OHLC DataFrame
+
+        Returns:
+            Dict with trend analysis including:
+            - trend: 'bullish', 'bearish', 'neutral'
+            - signal_strength: 0-10
+            - supertrend_factor: optimal ATR multiplier
+            - supertrend_performance: 0-1 performance index
+            - confidence: 0-1 confidence score
+            - indicators: dict of individual indicator values
+        """
+        if underlying_df.empty or len(underlying_df) < 50:
+            return {
+                "trend": "neutral",
+                "signal_strength": 5,
+                "supertrend_factor": 3.0,
+                "supertrend_performance": 0.5,
+                "confidence": 0.0,
+                "indicators": {},
+            }
+
+        # Add technical indicators
+        df_with_indicators = add_all_technical_features(underlying_df)
+
+        # Run SuperTrend AI
+        supertrend_info: Dict[str, Any] = {}
+        try:
+            supertrend = SuperTrendAI(df_with_indicators)
+            df_with_indicators, supertrend_info = supertrend.calculate()
+        except Exception as e:
+            logger.warning(f"SuperTrend AI failed: {e}")
+            supertrend_info = {
+                "target_factor": 3.0,
+                "performance_index": 0.5,
+                "signal_strength": 5,
+            }
+
+        # Generate multi-indicator signals
+        signal_generator = MultiIndicatorSignalGenerator()
+        trend_analysis = signal_generator.get_trend_analysis(df_with_indicators)
+
+        # Get latest indicator values
+        latest = df_with_indicators.iloc[-1]
+        indicators = {
+            "rsi_14": float(latest.get("rsi_14", 50)),
+            "macd_hist": float(latest.get("macd_hist", 0)),
+            "adx": float(latest.get("adx", 20)),
+            "plus_di": float(latest.get("plus_di", 50)),
+            "minus_di": float(latest.get("minus_di", 50)),
+            "kdj_j": float(latest.get("kdj_j", 50)),
+            "mfi": float(latest.get("mfi", 50)),
+            "stoch_k": float(latest.get("stoch_k", 50)),
+            "supertrend_trend": int(latest.get("supertrend_trend", 0)),
+        }
+
+        return {
+            "trend": trend_analysis.get("trend", "neutral"),
+            "signal_strength": supertrend_info.get("signal_strength", 5),
+            "supertrend_factor": supertrend_info.get("target_factor", 3.0),
+            "supertrend_performance": supertrend_info.get("performance_index", 0.5),
+            "confidence": trend_analysis.get("confidence", 0.5),
+            "composite_signal": trend_analysis.get("composite_signal", 0.0),
+            "indicators": indicators,
+        }
