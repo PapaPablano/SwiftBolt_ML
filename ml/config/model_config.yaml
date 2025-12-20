@@ -1,0 +1,89 @@
+# Model Configuration for SwiftBolt ML Pipeline
+# IMPORTANT: linear_tree=True enables time series extrapolation
+
+lightgbm:
+  # CRITICAL: linear_tree=True enables extrapolation beyond training range
+  # Without this, predictions are bounded by training data min/max
+  linear_tree: true
+  objective: 'regression'
+  metric: 'rmse'
+  boosting_type: 'gbdt'
+  num_leaves: 31
+  max_depth: 10
+  learning_rate: 0.05
+  min_child_samples: 20
+  subsample: 0.8
+  colsample_bytree: 0.8
+  feature_fraction: 0.9
+  n_estimators: 100
+  verbose: -1
+
+xgboost:
+  objective: 'reg:squarederror'
+  max_depth: 8
+  learning_rate: 0.1
+  n_estimators: 100
+  subsample: 0.8
+  colsample_bytree: 0.8
+
+random_forest:
+  n_estimators: 100
+  max_depth: 10
+  min_samples_split: 5
+  min_samples_leaf: 2
+  random_state: 42
+
+ensemble:
+  # Weights for model ensemble
+  weights:
+    lightgbm: 0.5
+    xgboost: 0.3
+    random_forest: 0.2
+
+walk_forward_cv:
+  # Number of validation splits
+  n_splits: 5
+  # Test size in days (M5 Kaggle standard)
+  test_size: 28
+  # Gap between train/test to prevent leakage
+  gap: 0
+
+direct_forecasting:
+  # Forecast horizons in days
+  horizons: [1, 7, 14, 28]
+  # Use parallel training for speed
+  parallel_training: true
+
+supertrend_ai:
+  # ATR period for volatility calculation
+  atr_length: 10
+  # ATR multiplier range to test
+  min_multiplier: 1.0
+  max_multiplier: 5.0
+  step: 0.5
+  # Performance smoothing factor
+  perf_alpha: 10
+  # Cluster selection: Best, Average, Worst
+  from_cluster: 'Best'
+  # K-means max iterations
+  max_iter: 1000
+
+multi_indicator_signals:
+  # Indicator weights (should sum to 1.0)
+  weights:
+    rsi: 0.15
+    macd: 0.15
+    kdj: 0.15
+    adx: 0.10
+    bollinger: 0.10
+    volume: 0.10
+    supertrend: 0.25
+  # Signal thresholds
+  buy_threshold: 0.3
+  sell_threshold: -0.3
+
+drift_detection:
+  # Significance level for KS test
+  significance_level: 0.05
+  # Percentage of drifted features to trigger retraining
+  drift_threshold: 0.1
