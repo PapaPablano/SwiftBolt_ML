@@ -17,6 +17,11 @@ on:
         required: false
         type: string
         default: "d1"
+      all_timeframes:
+        description: "Backfill all timeframes (m15, h1, d1, w1) for multi-timeframe analysis"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   backfill:
@@ -65,14 +70,20 @@ jobs:
 
           SYMBOL="${{ github.event.inputs.symbol }}"
           TIMEFRAME="${{ github.event.inputs.timeframe }}"
+          ALL_TIMEFRAMES="${{ github.event.inputs.all_timeframes }}"
 
           # Build args based on inputs
+          EXTRA_ARGS=""
+          if [ "$ALL_TIMEFRAMES" = "true" ]; then
+            EXTRA_ARGS="--all-timeframes"
+          fi
+
           if [ -n "$SYMBOL" ]; then
             # Single symbol provided
-            python src/scripts/backfill_ohlc.py --symbol "$SYMBOL" --timeframe "$TIMEFRAME"
+            python src/scripts/backfill_ohlc.py --symbol "$SYMBOL" --timeframe "$TIMEFRAME" $EXTRA_ARGS
           else
             # No symbol provided, backfill all watchlist symbols
-            python src/scripts/backfill_ohlc.py --all --timeframe "$TIMEFRAME"
+            python src/scripts/backfill_ohlc.py --all --timeframe "$TIMEFRAME" $EXTRA_ARGS
           fi
 
       - name: Job summary

@@ -348,6 +348,12 @@ def main():
         help="Only fetch data newer than latest bar (recommended for scheduled runs)"
     )
 
+    parser.add_argument(
+        "--all-timeframes",
+        action="store_true",
+        help="Backfill all timeframes (m15, h1, d1, w1) for multi-timeframe analysis"
+    )
+
     args = parser.parse_args()
 
     # Determine which symbols to process
@@ -361,34 +367,50 @@ def main():
 
     overall_start_time = time.time()
 
+    # Determine timeframes to process
+    if args.all_timeframes:
+        timeframes = ["d1", "h1", "m15", "w1"]  # Order: most important first
+    else:
+        timeframes = [args.timeframe]
+
     logger.info("="*60)
     logger.info("OHLC Backfill Script")
     logger.info(f"Mode: {'INCREMENTAL' if args.incremental else 'FULL'}")
-    logger.info(f"Timeframe: {args.timeframe}")
+    logger.info(f"Timeframes: {', '.join(timeframes)}")
     logger.info(f"Processing {len(symbols)} symbol(s)")
     logger.info("="*60)
 
     success_count = 0
     failure_count = 0
-    total_inserted = 0
 
-    for i, symbol in enumerate(symbols):
-        # Process the symbol
-        if backfill_symbol(symbol, args.timeframe, incremental=args.incremental):
-            success_count += 1
-        else:
-            failure_count += 1
+    for timeframe in timeframes:
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Processing timeframe: {timeframe}")
+        logger.info(f"{'='*60}")
 
-        # Rate limiting between symbols (respect API quotas)
-        if i < len(symbols) - 1:  # Don't delay after last symbol
-            logger.info(f"⏱️  Rate limit delay ({RATE_LIMIT_DELAY}s)...")
-            time.sleep(RATE_LIMIT_DELAY)
+        for i, symbol in enumerate(symbols):
+            # Process the symbol
+            if backfill_symbol(symbol, timeframe, incremental=args.incremental):
+                success_count += 1
+            else:
+                failure_count += 1
+
+            # Rate limiting between symbols (respect API quotas)
+            if i < len(symbols) - 1:  # Don't delay after last symbol
+                logger.info(f"⏱️  Rate limit delay ({RATE_LIMIT_DELAY}s)...")
+                time.sleep(RATE_LIMIT_DELAY)
+
+        # Extra delay between timeframes
+        if len(timeframes) > 1 and timeframe != timeframes[-1]:
+            logger.info(f"⏱️  Timeframe delay ({CHUNK_DELAY}s)...")
+            time.sleep(CHUNK_DELAY)
 
     overall_elapsed = time.time() - overall_start_time
 
     logger.info("")
     logger.info("="*60)
     logger.info("Backfill Complete")
+    logger.info(f"Timeframes processed: {len(timeframes)}")
     logger.info(f"✅ Success: {success_count}")
     logger.info(f"❌ Failed: {failure_count}")
     logger.info(f"⏱️  Total time: {overall_elapsed:.1f}s")
