@@ -11,6 +11,9 @@ from .options_ranking_validation import (
     OptionsRankingValidator,
     RankingValidationResult,
     validate_options_ranking,
+    LeakageDetector,
+    LeakageCheckResult,
+    ExecutionRealism,
 )
 
 __all__ = [
@@ -26,4 +29,8 @@ __all__ = [
     "OptionsRankingValidator",
     "RankingValidationResult",
     "validate_options_ranking",
+    # Leakage detection and execution realism
+    "LeakageDetector",
+    "LeakageCheckResult",
+    "ExecutionRealism",
 ]
