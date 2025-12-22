@@ -533,3 +533,161 @@ ohlc_bars → Stock ML Pipeline → ml_forecasts → Options Ranker → options_
 ```
 
 This ensures options rankings are aligned with the underlying stock's ML-derived trend analysis.
+
+---
+
+## 12. Automated Options Refresh (pg_cron)
+
+### Scheduled Jobs
+
+| Job | Schedule (UTC) | Schedule (ET) | Function |
+|-----|----------------|---------------|----------|
+| `hourly-options-refresh` | `30 14-21 * * 1-5` | Every hour at :30, 9 AM - 4 PM | `refresh_watchlist_options()` |
+
+### Database Functions
+
+```sql
+-- Queues ranking jobs for all watchlist symbols
+CREATE FUNCTION refresh_watchlist_options() RETURNS void;
+```
+
+### How It Works
+```
+pg_cron (hourly during market hours at :30)
+     ↓
+refresh_watchlist_options()
+     ↓
+ranking_jobs table (ranking jobs queued)
+     ↓
+GitHub Actions ranking_job_worker (processes queue)
+     ↓
+Options rankings updated automatically
+```
+
+**Options data refreshes hourly** - no manual sync required. Offset by 30 minutes from OHLC refresh to spread API load.
+
+---
+
+## 13. Data Providers for Options
+
+### Provider Priority (as of Dec 2024)
+
+| Provider | Data Type | Real-time? | Notes |
+|----------|-----------|------------|-------|
+| **Yahoo Finance** | Options chain, Greeks | ✅ 15-min delay | Primary provider |
+| **Polygon (Massive)** | Historical snapshots | ❌ End of day | Backup/historical |
+
+### Options Chain Endpoint
+**File:** `backend/supabase/functions/options-chain/index.ts`
+
+- Cache TTL: 15 minutes for intraday freshness
+- Includes full Greeks (delta, gamma, theta, vega, rho)
+- Implied volatility per contract
+
+---
+
+## 14. Statistical Significance Testing for Options Ranking
+
+### Validation Module
+**File:** `ml/src/evaluation/options_ranking_validation.py`
+
+### Available Tests
+
+| Test | Purpose | What It Measures |
+|------|---------|------------------|
+| **Spearman Correlation** | Score-return relationship | Do higher scores predict higher returns? |
+| **Top vs Bottom Quantile** | Quantile spread | Do top-ranked options outperform bottom? |
+| **Information Coefficient (IC)** | Predictive power | Industry standard: IC > 0.05 is good |
+| **Hit Rate** | Win percentage | % of positive returns in top quintile |
+| **Ranking Stability** | Consistency | Kendall's W across time periods |
+| **Score Distribution** | Quality check | Skewness, entropy, spread |
+
+### Usage
+
+```python
+from src.evaluation import validate_options_ranking
+
+# Quick validation
+results = validate_options_ranking(
+    rankings_df,      # DataFrame with ml_score
+    returns_df,       # DataFrame with actual_return
+)
+
+# Output:
+# ✅ Spearman Correlation: 0.15 (p=0.001)
+# ✅ Top vs Bottom Quantile Spread: 8.34% (p=0.004)
+# ✅ Information Coefficient (IC): 0.07 (Good)
+# ✅ Hit Rate: 58.2% (p=0.015)
+```
+
+### Detailed Validation
+
+```python
+from src.evaluation import OptionsRankingValidator
+
+validator = OptionsRankingValidator(confidence_level=0.95)
+
+# Test ranking accuracy
+results = validator.validate_ranking_accuracy(rankings_df, returns_df)
+
+# Test ranking stability over time
+stability = validator.validate_ranking_stability(
+    [rankings_day1, rankings_day2, rankings_day3]
+)
+
+# Analyze score distribution
+dist_stats = validator.validate_score_distribution(rankings_df["ml_score"])
+```
+
+### Sample Validation Report
+
+```
+============================================================
+OPTIONS RANKING VALIDATION REPORT
+============================================================
+Confidence Level: 95%
+
+--- Statistical Tests ---
+✅ Spearman Correlation: 0.1523 (p=0.0012, CI=[0.08, 0.22])
+   Scores positively correlate with returns (ρ=0.152)
+
+✅ Top vs Bottom Quantile Spread: 0.0834 (p=0.0045)
+   Top quintile outperforms bottom by 8.34% (significant)
+
+✅ Information Coefficient (IC): 0.0712 (p=0.0023)
+   IC = 0.0712 (Good)
+
+✅ Hit Rate (Top Quantile): 0.5820 (p=0.0156)
+   Hit rate: 58.2% (47/81 positive)
+
+--- Score Distribution ---
+  Mean: 0.6234
+  Std Dev: 0.1856
+  Skewness: -0.23
+  Good score distribution
+
+============================================================
+✅ RANKING MODEL IS STATISTICALLY VALIDATED
+   4/4 tests passed
+============================================================
+```
+
+---
+
+## 15. Key Files Reference (Updated)
+
+| Category | File Path |
+|----------|-----------|
+| **Base Ranker** | `ml/src/models/options_ranker.py` |
+| **Enhanced Ranker** | `ml/src/models/enhanced_options_ranker.py` |
+| **Ranking Job** | `ml/src/options_ranking_job.py` |
+| **Ranking Job Worker** | `ml/src/ranking_job_worker.py` |
+| **Statistical Validation** | `ml/src/evaluation/options_ranking_validation.py` |
+| **Multi-Indicator Signals** | `ml/src/strategies/multi_indicator_signals.py` |
+| **SuperTrend AI** | `ml/src/strategies/supertrend_ai.py` |
+| **Database Layer** | `ml/src/data/supabase_db.py` |
+| **Options Chain API** | `backend/supabase/functions/options-chain/index.ts` |
+| **Yahoo Finance Client** | `backend/supabase/functions/_shared/providers/yahoo-finance-client.ts` |
+| **Provider Router** | `backend/supabase/functions/_shared/providers/router.ts` |
+| **Ranker ViewModel** | `client-macos/SwiftBoltML/ViewModels/OptionsRankerViewModel.swift` |
+| **Ranker View** | `client-macos/SwiftBoltML/Views/OptionsRankerView.swift` |

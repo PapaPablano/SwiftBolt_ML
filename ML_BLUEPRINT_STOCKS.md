@@ -387,3 +387,121 @@ Key Properties:
 | Factor Step | 0.5 |
 | K-Means Clusters | 3 |
 | Cluster Selection | "Best" |
+
+---
+
+## 11. Data Providers
+
+### Provider Priority (as of Dec 2024)
+
+| Provider | Primary Use | Real-time Intraday? | Notes |
+|----------|-------------|---------------------|-------|
+| **Yahoo Finance** | Historical bars | ✅ Yes | Primary for all timeframes |
+| **Finnhub** | Fallback | ❌ No (free tier) | Backup provider |
+| **Polygon (Massive)** | Legacy | ❌ No (free tier) | 15-min delay |
+
+### Provider Router
+**File:** `backend/supabase/functions/_shared/providers/router.ts`
+
+```typescript
+DEFAULT_POLICY = {
+  historicalBars: {
+    primary: "yfinance",   // Real-time intraday data
+    fallback: ["finnhub", "massive"]
+  }
+}
+```
+
+---
+
+## 12. Automated Data Refresh (pg_cron)
+
+### Scheduled Jobs
+
+| Job | Schedule (UTC) | Schedule (ET) | Function |
+|-----|----------------|---------------|----------|
+| `hourly-ohlc-refresh` | `0 14-21 * * 1-5` | Every hour 9 AM - 4 PM | `refresh_watchlist_data()` |
+| `premarket-refresh` | `0 14 * * 1-5` | 9:00 AM | `refresh_watchlist_data()` |
+
+### Database Functions
+
+```sql
+-- Queues forecast jobs for all watchlist symbols
+CREATE FUNCTION refresh_watchlist_data() RETURNS void;
+```
+
+### How It Works
+```
+pg_cron (hourly during market hours)
+     ↓
+refresh_watchlist_data()
+     ↓
+job_queue table (forecast jobs queued)
+     ↓
+GitHub Actions job-worker (every 5 min)
+     ↓
+ML forecasts updated automatically
+```
+
+**Users no longer need to manually hit refresh** - data updates automatically every hour during market hours.
+
+---
+
+## 13. Statistical Significance Testing
+
+### Validation Module
+**File:** `ml/src/evaluation/statistical_tests.py`
+
+### Available Tests
+
+| Test | Purpose | Method |
+|------|---------|--------|
+| **Bootstrap CI** | Confidence intervals for MAE, RMSE, R², MAPE | Percentile bootstrap (1000 samples) |
+| **Paired t-test** | Compare two models | Tests if error difference is significant |
+| **Permutation test** | Model vs random baseline | Shuffles predictions to build null distribution |
+| **Diebold-Mariano** | Forecast comparison | Standard econometric test |
+| **Directional accuracy** | Trend prediction | Binomial test vs 50% random chance |
+
+### Usage
+
+```python
+from src.evaluation import validate_model_significance
+
+# Quick validation
+report = validate_model_significance(y_true, y_pred, model_name="SuperTrend AI")
+
+# Output includes:
+# - MAE: 2.34 [2.12, 2.57] (95% CI)
+# - RMSE: 3.12 [2.89, 3.36] (95% CI)
+# - R²: 0.78 [0.75, 0.82] (95% CI)
+# - Permutation test: p=0.001 (significant)
+# - Directional accuracy: 62.5% (p=0.003, significant)
+```
+
+### Walk-Forward Cross-Validation
+**File:** `ml/src/evaluation/walk_forward_cv.py`
+
+Maintains temporal order to prevent data leakage:
+```
+Train: Jan-Aug, Validate: Sep
+Train: Jan-Sep, Validate: Oct
+Train: Jan-Oct, Validate: Nov
+```
+
+---
+
+## 14. Data Drift Detection
+
+### Drift Detector
+**File:** `ml/src/monitoring/drift_detector.py`
+
+Uses Kolmogorov-Smirnov test to detect distribution shifts between training and production data.
+
+```python
+from src.monitoring.drift_detector import DriftDetector
+
+detector = DriftDetector(significance_level=0.05)
+results = detector.detect_drift(training_data, production_data)
+
+# Output: Feature drift report with p-values and severity levels
+```
