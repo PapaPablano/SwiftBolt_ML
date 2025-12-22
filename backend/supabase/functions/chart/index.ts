@@ -11,7 +11,7 @@ import { getProviderRouter } from "../_shared/providers/factory.ts";
 import type { Timeframe } from "../_shared/providers/types.ts";
 
 // Cache staleness threshold - varies by timeframe
-// For daily/weekly/monthly, cache is valid for much longer
+// For daily/weekly/monthly, we need to be smarter about market hours
 function getCacheTTL(timeframe: Timeframe): number {
   const ttls: Record<Timeframe, number> = {
     m1: 1 * 60 * 1000,        // 1 minute
@@ -20,11 +20,61 @@ function getCacheTTL(timeframe: Timeframe): number {
     m30: 30 * 60 * 1000,      // 30 minutes
     h1: 60 * 60 * 1000,       // 1 hour
     h4: 4 * 60 * 60 * 1000,   // 4 hours
-    d1: 24 * 60 * 60 * 1000,  // 24 hours
-    w1: 7 * 24 * 60 * 60 * 1000,  // 7 days
-    mn1: 30 * 24 * 60 * 60 * 1000, // 30 days
+    d1: 4 * 60 * 60 * 1000,   // 4 hours - check more frequently for daily
+    w1: 24 * 60 * 60 * 1000,  // 24 hours for weekly
+    mn1: 7 * 24 * 60 * 60 * 1000, // 7 days for monthly
   };
   return ttls[timeframe];
+}
+
+// Check if we're within US market hours (9:30 AM - 4:00 PM ET)
+function isMarketOpen(): boolean {
+  const now = new Date();
+  const day = now.getUTCDay(); // 0 = Sunday, 6 = Saturday
+  
+  // Weekend - market closed
+  if (day === 0 || day === 6) return false;
+  
+  const utcHours = now.getUTCHours();
+  const utcMinutes = now.getUTCMinutes();
+  
+  // Determine DST (approximate: March-November)
+  const month = now.getUTCMonth();
+  const isDST = month >= 2 && month <= 10;
+  const offset = isDST ? 4 : 5;
+  
+  const etHours = (utcHours - offset + 24) % 24;
+  const etTotalMinutes = etHours * 60 + utcMinutes;
+  
+  // Market hours: 9:30 AM (570 min) to 4:00 PM (960 min) ET
+  return etTotalMinutes >= 570 && etTotalMinutes < 960;
+}
+
+// Get the last expected trading day timestamp
+function getLastTradingDayClose(): Date {
+  const now = new Date();
+  const day = now.getUTCDay();
+  const utcHours = now.getUTCHours();
+  
+  // Determine DST offset
+  const month = now.getUTCMonth();
+  const isDST = month >= 2 && month <= 10;
+  const offset = isDST ? 4 : 5;
+  const etHours = (utcHours - offset + 24) % 24;
+  
+  let daysBack = 0;
+  
+  // If it's weekend, go back to Friday
+  if (day === 0) daysBack = 2; // Sunday -> Friday
+  else if (day === 6) daysBack = 1; // Saturday -> Friday
+  // If it's a weekday before market close (4 PM ET), use previous day
+  else if (etHours < 16) daysBack = 1;
+  
+  const lastTradingDay = new Date(now);
+  lastTradingDay.setUTCDate(lastTradingDay.getUTCDate() - daysBack);
+  lastTradingDay.setUTCHours(isDST ? 20 : 21, 0, 0, 0); // 4 PM ET in UTC
+  
+  return lastTradingDay;
 }
 
 const VALID_TIMEFRAMES: Timeframe[] = ["m1", "m5", "m15", "m30", "h1", "h4", "d1", "w1", "mn1"];
@@ -175,71 +225,51 @@ serve(async (req: Request): Promise<Response> => {
       console.error("Cache query error:", cacheError);
     }
 
-    // 4. Determine if cache is fresh
+    // 4. Always use database data first (refresh-data populates it)
+    // This ensures consistency - no more cache freshness logic causing issues
     let bars: OHLCBar[] = [];
-    let cacheIsFresh = false;
+    let needsFetch = true;
 
     if (cachedBars && cachedBars.length > 0) {
-      // Check if most recent bar is within TTL
-      // cachedBars is ordered by ts descending, so [0] is the most recent
       const latestBar = cachedBars[0] as OHLCRecord;
+      console.log(`[Chart] DB has ${cachedBars.length} bars, latest=${latestBar.ts}`);
+      
+      // Always use DB data - it's the source of truth
+      // cachedBars is ordered by ts descending, so reverse for ascending order
+      bars = cachedBars
+        .map((bar) => ({
+          ts: bar.ts,
+          open: Number(bar.open),
+          high: Number(bar.high),
+          low: Number(bar.low),
+          close: Number(bar.close),
+          volume: Number(bar.volume),
+        }))
+        .reverse(); // Reverse to get ascending order (oldest first)
+      
+      // Check if we need to fetch more data
+      // For daily: check if latest bar is from last trading day
+      // For intraday: check TTL
       const latestTs = new Date(latestBar.ts).getTime();
       const now = Date.now();
-
       const cacheTTL = getCacheTTL(timeframe);
       const cacheAge = now - latestTs;
-      cacheIsFresh = cacheAge < cacheTTL;
-
-      console.log(`[Chart] Cache check: ${cachedBars.length} bars, latest=${new Date(latestTs).toISOString()}, age=${Math.round(cacheAge/1000/60)}min, TTL=${Math.round(cacheTTL/1000/60)}min, fresh=${cacheIsFresh}`);
-
-      if (cacheIsFresh) {
-        console.log(`Cache hit for ${ticker} ${timeframe} (${cachedBars.length} bars)`);
-
-        // Filter cached bars to market hours for intraday timeframes
-        const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(timeframe);
-        let filteredCachedBars = cachedBars;
-
-        if (isIntraday) {
-          filteredCachedBars = cachedBars.filter((bar) => {
-            const date = new Date(bar.ts);
-            const utcHours = date.getUTCHours();
-            const utcMinutes = date.getUTCMinutes();
-
-            // Determine DST offset
-            const month = date.getUTCMonth();
-            const isDST = month >= 2 && month <= 10;
-            const offset = isDST ? 4 : 5;
-
-            // Convert to ET
-            const etHours = (utcHours - offset + 24) % 24;
-            const etTotalMinutes = etHours * 60 + utcMinutes;
-
-            // Market hours: 9:30 AM - 4:00 PM ET
-            const marketOpen = 9 * 60 + 30;
-            const marketClose = 16 * 60;
-
-            return etTotalMinutes >= marketOpen && etTotalMinutes < marketClose;
-          });
-
-          console.log(`[Chart] Filtered cached to ${filteredCachedBars.length} market-hours bars (from ${cachedBars.length} total)`);
-        }
-
-        bars = filteredCachedBars
-          .map((bar) => ({
-            ts: bar.ts,
-            open: Number(bar.open),
-            high: Number(bar.high),
-            low: Number(bar.low),
-            close: Number(bar.close),
-            volume: Number(bar.volume),
-          }))
-          .reverse(); // Reverse since we fetched in descending order
+      
+      if (timeframe === "d1") {
+        const lastTradingClose = getLastTradingDayClose();
+        const latestBarDay = new Date(new Date(latestBar.ts).toISOString().split('T')[0]);
+        const lastTradingDay = new Date(lastTradingClose.toISOString().split('T')[0]);
+        needsFetch = latestBarDay < lastTradingDay;
+        console.log(`[Chart] D1: latestBar=${latestBarDay.toISOString()}, lastTradingDay=${lastTradingDay.toISOString()}, needsFetch=${needsFetch}`);
+      } else {
+        needsFetch = cacheAge > cacheTTL;
+        console.log(`[Chart] ${timeframe}: age=${Math.round(cacheAge/1000/60)}min, TTL=${Math.round(cacheTTL/1000/60)}min, needsFetch=${needsFetch}`);
       }
     }
 
-    // 5. If cache is stale or empty, fetch via ProviderRouter
-    if (!cacheIsFresh) {
-      console.log(`Cache miss for ${ticker} ${timeframe}, fetching via ProviderRouter`);
+    // 5. If we need fresh data, fetch via ProviderRouter
+    if (needsFetch) {
+      console.log(`[Chart] Fetching fresh data for ${ticker} ${timeframe} via ProviderRouter`);
 
       try {
         const router = getProviderRouter();
@@ -307,7 +337,7 @@ serve(async (req: Request): Promise<Response> => {
           console.log(`[Chart] Filtered to ${marketHoursBars.length} market-hours bars (from ${freshBars.length} total)`);
         }
 
-        if (marketHoursBars.length > 0) {
+        if (freshBars.length > 0) {
           // 6. Upsert bars into database
           const barsToInsert = freshBars.map((bar) => ({
             symbol_id: symbolId,
@@ -318,7 +348,7 @@ serve(async (req: Request): Promise<Response> => {
             low: bar.low,
             close: bar.close,
             volume: bar.volume,
-            provider: "massive", // Using provider router (Polygon/Massive)
+            provider: "massive",
           }));
 
           const { error: upsertError } = await supabase
@@ -330,49 +360,35 @@ serve(async (req: Request): Promise<Response> => {
 
           if (upsertError) {
             console.error("Upsert error:", upsertError);
-            // Continue with fresh data even if upsert fails
           } else {
-            console.log(`Cached ${freshBars.length} bars for ${ticker} ${timeframe}`);
+            console.log(`[Chart] Upserted ${freshBars.length} bars for ${ticker} ${timeframe}`);
           }
 
-          // Convert router Bar format to response format (use filtered bars for intraday)
-          bars = marketHoursBars.map((bar) => ({
-            ts: new Date(bar.timestamp).toISOString(),
-            open: bar.open,
-            high: bar.high,
-            low: bar.low,
-            close: bar.close,
-            volume: bar.volume,
-          }));
-        } else if (cachedBars && cachedBars.length > 0) {
-          // No fresh data, fall back to stale cache
-          console.log(`No fresh data, using stale cache for ${ticker} ${timeframe}`);
-          bars = cachedBars.map((bar) => ({
-            ts: bar.ts,
-            open: Number(bar.open),
-            high: Number(bar.high),
-            low: Number(bar.low),
-            close: Number(bar.close),
-            volume: Number(bar.volume),
-          }));
+          // Re-query DB to get complete, consistent data after upsert
+          const { data: updatedBars } = await supabase
+            .from("ohlc_bars")
+            .select("ts, open, high, low, close, volume")
+            .eq("symbol_id", symbolId)
+            .eq("timeframe", timeframe)
+            .order("ts", { ascending: true }) // Ascending order for chart
+            .limit(cacheLimit);
+
+          if (updatedBars && updatedBars.length > 0) {
+            bars = updatedBars.map((bar) => ({
+              ts: bar.ts,
+              open: Number(bar.open),
+              high: Number(bar.high),
+              low: Number(bar.low),
+              close: Number(bar.close),
+              volume: Number(bar.volume),
+            }));
+            console.log(`[Chart] Returning ${bars.length} bars from DB after upsert`);
+          }
         }
       } catch (fetchError) {
-        console.error("Provider router error:", fetchError);
-
-        // Fall back to stale cache if available
-        if (cachedBars && cachedBars.length > 0) {
-          console.log(`Provider error, using stale cache for ${ticker} ${timeframe}`);
-          bars = cachedBars.map((bar) => ({
-            ts: bar.ts,
-            open: Number(bar.open),
-            high: Number(bar.high),
-            low: Number(bar.low),
-            close: Number(bar.close),
-            volume: Number(bar.volume),
-          }));
-        } else {
-          return errorResponse("Failed to fetch market data", 502);
-        }
+        console.error("[Chart] Provider router error:", fetchError);
+        // bars already contains DB data from earlier, so we can continue
+        console.log(`[Chart] Using existing ${bars.length} bars from DB`);
       }
     }
 

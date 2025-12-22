@@ -194,7 +194,11 @@ export class FinnhubClient implements DataProviderAbstraction {
 
       console.log(`[Finnhub] Fetched ${bars.length} bars`);
 
-      await this.cache.set(cacheKey, bars, CACHE_TTL.bars, [
+      // Use shorter cache TTL for intraday timeframes to get fresh data
+      const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(timeframe);
+      const cacheTTL = isIntraday ? 60 : CACHE_TTL.bars; // 1 min for intraday, 24h for daily+
+      
+      await this.cache.set(cacheKey, bars, cacheTTL, [
         `symbol:${symbol}`,
         `timeframe:${timeframe}`,
       ]);

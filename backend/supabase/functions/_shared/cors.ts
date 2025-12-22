@@ -20,6 +20,7 @@ export function handleCorsOptions(): Response {
 
 /**
  * Adds CORS headers to a JSON response
+ * Includes cache-control headers to prevent stale data
  */
 export function jsonResponse(
   data: unknown,
@@ -30,6 +31,9 @@ export function jsonResponse(
     headers: {
       ...corsHeaders,
       "Content-Type": "application/json",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
     },
   });
 }

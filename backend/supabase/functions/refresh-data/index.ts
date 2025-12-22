@@ -65,7 +65,7 @@ serve(async (req: Request): Promise<Response> => {
     const symbol = body.symbol?.toUpperCase();
     const refreshML = body.refreshML !== false; // Default true
     const refreshOptions = body.refreshOptions === true; // Default false
-    const timeframes = body.timeframes || ["d1"];
+    const timeframes = body.timeframes || ["d1", "h1", "h4", "m15"];
 
     if (!symbol) {
       return new Response(JSON.stringify({ error: "Symbol required" }), {

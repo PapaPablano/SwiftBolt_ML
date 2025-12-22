@@ -290,7 +290,11 @@ export class MassiveClient implements DataProviderAbstraction {
 
       console.log(`[Massive] Fetched ${bars.length} bars`);
 
-      await this.cache.set(cacheKey, bars, CACHE_TTL.bars, [
+      // Use shorter cache TTL for intraday timeframes
+      const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(timeframe);
+      const cacheTTL = isIntraday ? 300 : CACHE_TTL.bars; // 5 min for intraday, 24h for daily+
+      
+      await this.cache.set(cacheKey, bars, cacheTTL, [
         `symbol:${symbol}`,
         `timeframe:${timeframe}`,
       ]);

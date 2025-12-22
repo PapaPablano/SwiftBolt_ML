@@ -162,7 +162,14 @@ class SuperTrendAI:
         """
         Calculate performance metric for a SuperTrend configuration.
 
-        Uses EMA-smoothed returns aligned with trend direction.
+        Implements LuxAlgo formula:
+        P(t, factor) = P(t-1) + α × (ΔC(t) × S(t-1, factor) - P(t-1))
+
+        Where:
+        - P(t) = performance at time t
+        - α = smoothing factor (2 / (perf_alpha + 1))
+        - ΔC(t) = price change (close[t] - close[t-1])
+        - S(t-1, factor) = signal from previous bar (+1 bullish, -1 bearish)
 
         Args:
             supertrend: SuperTrend values
@@ -176,16 +183,19 @@ class SuperTrendAI:
 
         perf = 0.0
         for i in range(1, len(self.df)):
-            prev_close = close.iloc[i - 1]
             curr_close = close.iloc[i]
-            prev_st = supertrend.iloc[i - 1]
+            prev_close = close.iloc[i - 1]
+            prev_trend = trend.iloc[i - 1]
 
-            # Direction: +1 if price above supertrend, -1 if below
-            diff = np.sign(prev_close - prev_st) if prev_st > 0 else 0
+            # S(t-1, factor): Signal direction from previous bar
+            # Convert trend (1=bullish, 0=bearish) to signal (+1, -1)
+            signal = 1 if prev_trend == 1 else -1
+
+            # ΔC(t): Price change
             price_change = curr_close - prev_close
 
-            # EMA of direction-aligned returns
-            perf = perf + alpha * (price_change * diff - perf)
+            # LuxAlgo formula: P(t) = P(t-1) + α × (ΔC(t) × S(t-1) - P(t-1))
+            perf = perf + alpha * (price_change * signal - perf)
 
         return perf
 

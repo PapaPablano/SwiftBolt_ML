@@ -46,8 +46,8 @@ const DEFAULT_POLICY: RouterPolicy = {
     fallback: "massive",
   },
   historicalBars: {
-    primary: "massive", // Massive has better historical data (2 years)
-    fallback: "finnhub",
+    primary: "yahoo", // Yahoo Finance has real-time intraday data (no delay!)
+    fallback: "finnhub", // Finnhub as fallback
   },
   news: {
     primary: "finnhub", // Massive free tier doesn't support news

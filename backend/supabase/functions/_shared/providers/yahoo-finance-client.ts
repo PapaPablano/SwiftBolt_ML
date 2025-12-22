@@ -1,13 +1,68 @@
 // YahooFinanceClient: DataProviderAbstraction implementation for Yahoo Finance
 // Free options data with 15-minute delay
+// Real-time intraday candle data (no delay!)
 // Greeks calculated from Black-Scholes model
 
 import type {
   OptionsChainRequest,
+  HistoricalBarsRequest,
 } from "./abstraction.ts";
-import type { OptionContract, OptionsChain, OptionType } from "./types.ts";
+import type { Bar, OptionContract, OptionsChain, OptionType } from "./types.ts";
 import type { Cache } from "../cache/interface.ts";
 import { CACHE_TTL } from "../config/rate-limits.ts";
+
+// Yahoo Finance chart response interfaces
+interface YahooChartResult {
+  meta: {
+    currency: string;
+    symbol: string;
+    exchangeName: string;
+    regularMarketPrice: number;
+    regularMarketTime: number;
+  };
+  timestamp: number[];
+  indicators: {
+    quote: Array<{
+      open: number[];
+      high: number[];
+      low: number[];
+      close: number[];
+      volume: number[];
+    }>;
+  };
+}
+
+interface YahooChartResponse {
+  chart: {
+    result: YahooChartResult[] | null;
+    error: { code: string; description: string } | null;
+  };
+}
+
+// Map our timeframes to Yahoo Finance intervals
+const TIMEFRAME_TO_YAHOO_INTERVAL: Record<string, string> = {
+  m1: "1m",
+  m5: "5m",
+  m15: "15m",
+  m30: "30m",
+  h1: "1h",
+  h4: "4h", // Yahoo doesn't support 4h, we'll use 1h and aggregate
+  d1: "1d",
+  w1: "1wk",
+  mn1: "1mo",
+};
+
+// Yahoo Finance range limits by interval
+const YAHOO_RANGE_LIMITS: Record<string, string> = {
+  "1m": "7d",   // 1-minute data available for last 7 days
+  "5m": "60d",  // 5-minute data available for last 60 days
+  "15m": "60d", // 15-minute data available for last 60 days
+  "30m": "60d", // 30-minute data available for last 60 days
+  "1h": "730d", // 1-hour data available for last 2 years
+  "1d": "max",  // Daily data available for max history
+  "1wk": "max", // Weekly data available for max history
+  "1mo": "max", // Monthly data available for max history
+};
 
 // Yahoo Finance doesn't need rate limiting - it's very generous with free tier
 // But we'll still use caching to be respectful and improve performance
@@ -60,6 +115,141 @@ export class YahooFinanceClient {
   ) {
     this.cache = cache;
     this.baseURL = baseURL;
+  }
+
+  /**
+   * Get historical OHLC bars from Yahoo Finance
+   * Provides real-time intraday data with no delay!
+   */
+  async getHistoricalBars(request: HistoricalBarsRequest): Promise<Bar[]> {
+    const { symbol, timeframe, start, end } = request;
+    
+    // Use shorter cache key without timestamps for intraday to get fresh data
+    const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(timeframe);
+    const cacheKey = isIntraday 
+      ? `bars:yahoo:${symbol}:${timeframe}:recent`
+      : `bars:yahoo:${symbol}:${timeframe}:${start}:${end}`;
+    
+    const cached = await this.cache.get<Bar[]>(cacheKey);
+    if (cached && !isIntraday) {
+      console.log(`[Yahoo Finance] Cache hit for ${symbol} ${timeframe}`);
+      return cached;
+    }
+
+    const ticker = symbol.toUpperCase();
+    const interval = TIMEFRAME_TO_YAHOO_INTERVAL[timeframe];
+    
+    if (!interval) {
+      console.error(`[Yahoo Finance] Unsupported timeframe: ${timeframe}`);
+      return [];
+    }
+
+    // For h4, we need to fetch h1 and aggregate (Yahoo doesn't support 4h)
+    const actualInterval = timeframe === "h4" ? "1h" : interval;
+    const range = YAHOO_RANGE_LIMITS[actualInterval] || "1mo";
+
+    try {
+      // Yahoo Finance chart API - no authentication needed for basic data
+      const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}`);
+      url.searchParams.set("interval", actualInterval);
+      url.searchParams.set("range", range);
+      url.searchParams.set("includePrePost", "false"); // Only regular market hours
+
+      console.log(`[Yahoo Finance] Fetching bars: ${ticker} ${timeframe} (interval=${actualInterval}, range=${range})`);
+      
+      const response = await fetch(url.toString(), {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        console.error(`[Yahoo Finance] API error: ${response.status} ${response.statusText}`);
+        return [];
+      }
+
+      const data: YahooChartResponse = await response.json();
+      
+      if (data.chart.error) {
+        console.error(`[Yahoo Finance] Chart error: ${data.chart.error.description}`);
+        return [];
+      }
+
+      const result = data.chart.result?.[0];
+      if (!result || !result.timestamp || result.timestamp.length === 0) {
+        console.log(`[Yahoo Finance] No data available for ${ticker} ${timeframe}`);
+        return [];
+      }
+
+      const quotes = result.indicators.quote[0];
+      const bars: Bar[] = [];
+
+      for (let i = 0; i < result.timestamp.length; i++) {
+        // Skip bars with null values
+        if (quotes.open[i] == null || quotes.close[i] == null) continue;
+        
+        const timestamp = result.timestamp[i] * 1000; // Convert to milliseconds
+        
+        // Filter by requested time range
+        if (timestamp < start * 1000 || timestamp > end * 1000) continue;
+
+        bars.push({
+          timestamp,
+          open: quotes.open[i],
+          high: quotes.high[i],
+          low: quotes.low[i],
+          close: quotes.close[i],
+          volume: quotes.volume[i] || 0,
+        });
+      }
+
+      // For h4 timeframe, aggregate 1h bars into 4h bars
+      let finalBars = bars;
+      if (timeframe === "h4") {
+        finalBars = this.aggregateBars(bars, 4);
+      }
+
+      console.log(`[Yahoo Finance] Fetched ${finalBars.length} bars for ${ticker} ${timeframe}`);
+
+      // Use shorter cache TTL for intraday (1 min) vs daily (24h)
+      const cacheTTL = isIntraday ? 60 : CACHE_TTL.bars;
+      await this.cache.set(cacheKey, finalBars, cacheTTL, [
+        `symbol:${symbol}`,
+        `timeframe:${timeframe}`,
+      ]);
+
+      return finalBars;
+    } catch (error) {
+      console.error(`[Yahoo Finance] Error fetching bars:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Aggregate smaller timeframe bars into larger timeframe
+   * e.g., aggregate 1h bars into 4h bars
+   */
+  private aggregateBars(bars: Bar[], factor: number): Bar[] {
+    if (bars.length === 0) return [];
+    
+    const aggregated: Bar[] = [];
+    
+    for (let i = 0; i < bars.length; i += factor) {
+      const chunk = bars.slice(i, i + factor);
+      if (chunk.length === 0) continue;
+      
+      aggregated.push({
+        timestamp: chunk[0].timestamp,
+        open: chunk[0].open,
+        high: Math.max(...chunk.map(b => b.high)),
+        low: Math.min(...chunk.map(b => b.low)),
+        close: chunk[chunk.length - 1].close,
+        volume: chunk.reduce((sum, b) => sum + b.volume, 0),
+      });
+    }
+    
+    return aggregated;
   }
 
   /**
