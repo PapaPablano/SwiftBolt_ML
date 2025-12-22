@@ -246,4 +246,73 @@ actor APIClient {
         print("[API] Triggering ranking job for \(symbol)...")
         return try await performRequest(request)
     }
+    
+    func fetchEnhancedPrediction(symbol: String) async throws -> EnhancedPredictionResponse {
+        let request = try makeRequest(
+            endpoint: "enhanced-prediction",
+            queryItems: [URLQueryItem(name: "symbol", value: symbol)]
+        )
+        return try await performRequest(request)
+    }
+    
+    /// Refresh data for a symbol - fetches new bars and optionally queues ML/options jobs
+    func refreshData(symbol: String, refreshML: Bool = true, refreshOptions: Bool = false) async throws -> RefreshDataResponse {
+        var request = try makeRequest(endpoint: "refresh-data", queryItems: [])
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let body = RefreshDataRequest(symbol: symbol, refreshML: refreshML, refreshOptions: refreshOptions)
+        request.httpBody = try JSONEncoder().encode(body)
+        
+        return try await performRequest(request)
+    }
+}
+
+// MARK: - Refresh Data Request/Response
+
+struct RefreshDataRequest: Encodable {
+    let symbol: String
+    let refreshML: Bool
+    let refreshOptions: Bool
+}
+
+struct RefreshDataResponse: Decodable {
+    let symbol: String
+    let success: Bool
+    let dataRefresh: [TimeframeRefresh]
+    let mlJobQueued: Bool
+    let optionsJobQueued: Bool
+    let errors: [String]
+    let message: String
+    
+    struct TimeframeRefresh: Decodable {
+        let timeframe: String
+        let existingBars: Int
+        let newBars: Int
+        let latestTimestamp: String?
+    }
+}
+
+// MARK: - Enhanced Prediction Response
+
+struct EnhancedPredictionResponse: Decodable {
+    let symbol: String
+    let timestamp: String?
+    let prediction: String
+    let confidence: Double
+    let priceTarget: Double?
+    let multiTimeframe: MultiTimeframeConsensus?
+    let explanation: ForecastExplanation?
+    let dataQuality: DataQualityReport?
+    
+    enum CodingKeys: String, CodingKey {
+        case symbol
+        case timestamp
+        case prediction
+        case confidence
+        case priceTarget = "price_target"
+        case multiTimeframe = "multi_timeframe"
+        case explanation
+        case dataQuality = "data_quality"
+    }
 }

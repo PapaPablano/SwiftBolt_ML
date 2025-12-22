@@ -21,6 +21,9 @@ struct AnalysisView: View {
                     MLForecastBreakdownSection(mlSummary: mlSummary)
                     Divider()
                 }
+                
+                // Enhanced ML Insights Section
+                EnhancedInsightsSection(analysisViewModel: analysisViewModel)
 
                 // Technical Summary Section
                 TechnicalSummarySection(chartViewModel: chartViewModel)
@@ -32,6 +35,7 @@ struct AnalysisView: View {
             if let symbol = newValue?.ticker {
                 Task {
                     await analysisViewModel.loadAlerts(for: symbol)
+                    await analysisViewModel.loadEnhancedInsights(for: symbol)
                 }
             }
         }
@@ -39,6 +43,7 @@ struct AnalysisView: View {
             if let symbol = appViewModel.selectedSymbol?.ticker {
                 Task {
                     await analysisViewModel.loadAlerts(for: symbol)
+                    await analysisViewModel.loadEnhancedInsights(for: symbol)
                 }
             }
         }
@@ -431,6 +436,77 @@ struct TechnicalIndicatorRow: View {
         .padding(10)
         .background(Color(nsColor: .windowBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+// MARK: - Enhanced Insights Section
+
+struct EnhancedInsightsSection: View {
+    @ObservedObject var analysisViewModel: AnalysisViewModel
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Section header
+            HStack {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(.purple)
+                Text("Enhanced ML Insights")
+                    .font(.headline)
+                
+                Spacer()
+                
+                if analysisViewModel.isLoadingEnhancedInsights {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                }
+            }
+            
+            if analysisViewModel.isLoadingEnhancedInsights {
+                ProgressView("Loading insights...")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+            } else {
+                // Multi-Timeframe Consensus
+                if let consensus = analysisViewModel.multiTimeframeConsensus {
+                    MultiTimeframeConsensusView(consensus: consensus)
+                }
+                
+                // Forecast Explainer
+                if let explanation = analysisViewModel.forecastExplanation {
+                    ForecastExplainerView(explanation: explanation)
+                }
+                
+                // Data Health
+                if let dataQuality = analysisViewModel.dataQuality {
+                    DataHealthView(dataQuality: dataQuality)
+                }
+                
+                // Show message if no data available
+                if analysisViewModel.multiTimeframeConsensus == nil &&
+                   analysisViewModel.forecastExplanation == nil &&
+                   analysisViewModel.dataQuality == nil {
+                    if analysisViewModel.enhancedInsightsError != nil {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(.orange)
+                            Text("Enhanced insights unavailable")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding()
+                    } else {
+                        Text("Select a symbol to view enhanced insights")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
 

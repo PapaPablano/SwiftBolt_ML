@@ -20,7 +20,7 @@ class Settings(BaseSettings):
 
     # ML Configuration
     forecast_horizons: list[str] = ["1D", "1W"]
-    min_bars_for_training: int = 100
+    min_bars_for_training: int = 50  # Lowered from 100 to allow forecasts with less data
     confidence_threshold: float = 0.6
 
     # Job Configuration

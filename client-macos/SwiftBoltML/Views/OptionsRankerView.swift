@@ -139,17 +139,33 @@ struct RankerHeader: View {
 
                 Spacer()
 
-                // Refresh button
+                // Quick refresh - just reload existing rankings
                 Button(action: {
                     Task {
-                        await rankerViewModel.triggerRankingJob(for: symbol)
+                        await rankerViewModel.loadRankings(for: symbol)
                     }
                 }) {
                     Image(systemName: "arrow.clockwise")
                         .font(.caption)
                 }
                 .buttonStyle(.borderless)
-                .help("Generate new rankings")
+                .help("Reload rankings")
+                
+                // Full sync - fetch fresh data + generate new rankings
+                Button(action: {
+                    Task {
+                        await rankerViewModel.syncAndRank(for: symbol)
+                    }
+                }) {
+                    HStack(spacing: 2) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.caption2)
+                        Text("Sync")
+                            .font(.caption2)
+                    }
+                }
+                .buttonStyle(.borderless)
+                .help("Sync data & generate new rankings")
 
                 Text("\(rankerViewModel.filteredRankings.count) contracts")
                     .font(.caption)

@@ -556,36 +556,65 @@ struct TechnicalIndicators {
                 continue
             }
 
-            let upperBand = hl2 + multiplier * atr
-            let lowerBand = hl2 - multiplier * atr
+            let basicUpperBand = hl2 + multiplier * atr
+            let basicLowerBand = hl2 - multiplier * atr
 
             if i == 0 {
-                finalUpper.append(upperBand)
-                finalLower.append(lowerBand)
-                trend.append(1)
-                supertrend.append(lowerBand)
+                finalUpper.append(basicUpperBand)
+                finalLower.append(basicLowerBand)
+                trend.append(1)  // Start bullish
+                supertrend.append(basicLowerBand)
             } else {
-                // Adjust bands based on previous values
+                let close = bars[i].close
                 let prevClose = bars[i - 1].close
-                let newUpper = upperBand < finalUpper[i - 1] || prevClose > finalUpper[i - 1]
-                    ? upperBand : finalUpper[i - 1]
-                let newLower = lowerBand > finalLower[i - 1] || prevClose < finalLower[i - 1]
-                    ? lowerBand : finalLower[i - 1]
+                let prevTrend = trend[i - 1]
+                
+                // Calculate final upper band
+                // Upper band can only move DOWN (never up) - acts as resistance
+                var newUpper: Double
+                if basicUpperBand < finalUpper[i - 1] || prevClose > finalUpper[i - 1] {
+                    newUpper = basicUpperBand
+                } else {
+                    newUpper = finalUpper[i - 1]
+                }
+                
+                // Calculate final lower band  
+                // Lower band can only move UP (never down) - acts as support
+                var newLower: Double
+                if basicLowerBand > finalLower[i - 1] || prevClose < finalLower[i - 1] {
+                    newLower = basicLowerBand
+                } else {
+                    newLower = finalLower[i - 1]
+                }
 
                 finalUpper.append(newUpper)
                 finalLower.append(newLower)
 
-                // Determine trend
-                let close = bars[i].close
-                if close > newUpper {
-                    trend.append(1)
-                } else if close < newLower {
-                    trend.append(-1)
+                // Determine trend direction based on price vs previous SuperTrend
+                var currentTrend: Int
+                
+                if prevTrend == 1 {
+                    // Was bullish - check if price broke below lower band
+                    if close < newLower {
+                        currentTrend = -1  // Flip to bearish
+                    } else {
+                        currentTrend = 1   // Stay bullish
+                    }
                 } else {
-                    trend.append(trend[i - 1])
+                    // Was bearish - check if price broke above upper band
+                    if close > newUpper {
+                        currentTrend = 1   // Flip to bullish
+                    } else {
+                        currentTrend = -1  // Stay bearish
+                    }
                 }
-
-                supertrend.append(trend[i] == 1 ? newLower : newUpper)
+                
+                trend.append(currentTrend)
+                
+                // SuperTrend line value
+                // When bullish: use lower band (trailing stop below price)
+                // When bearish: use upper band (trailing stop above price)
+                supertrend.append(currentTrend == 1 ? newLower : newUpper)
             }
         }
 
@@ -673,7 +702,7 @@ struct IndicatorConfig {
     // Volatility/Trend
     var showBollingerBands: Bool = false
     var showADX: Bool = false
-    var showSuperTrend: Bool = false
+    var showSuperTrend: Bool = true  // Enabled by default for SuperTrend AI
     var showATR: Bool = false
 
     // SuperTrend AI Enhanced Options

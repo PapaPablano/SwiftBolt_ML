@@ -184,18 +184,13 @@ serve(async (req: Request): Promise<Response> => {
       // cachedBars is ordered by ts descending, so [0] is the most recent
       const latestBar = cachedBars[0] as OHLCRecord;
       const latestTs = new Date(latestBar.ts).getTime();
-      // IMPORTANT: System clock may be incorrect. Use actual current date: Dec 14, 2024
-      const actualNow = new Date("2024-12-14T23:59:59Z").getTime();
-      const now = Math.max(Date.now(), actualNow); // Use whichever is later to avoid future dates
-      const systemNow = Date.now();
-      const currentTimestamp = systemNow > actualNow ? actualNow : systemNow;
+      const now = Date.now();
 
       const cacheTTL = getCacheTTL(timeframe);
-      // TEMP: Force cache to be fresh if we have data (avoid fetching with wrong system date)
-      // BUT: If cache is empty, we need to fetch fresh data
-      cacheIsFresh = cachedBars.length > 0; // Use cache if we have any data at all
+      const cacheAge = now - latestTs;
+      cacheIsFresh = cacheAge < cacheTTL;
 
-      console.log(`[Chart] Cached data check: ${cachedBars.length} bars - ${cacheIsFresh ? 'using cache' : 'will fetch fresh'}`);
+      console.log(`[Chart] Cache check: ${cachedBars.length} bars, latest=${new Date(latestTs).toISOString()}, age=${Math.round(cacheAge/1000/60)}min, TTL=${Math.round(cacheTTL/1000/60)}min, fresh=${cacheIsFresh}`);
 
       if (cacheIsFresh) {
         console.log(`Cache hit for ${ticker} ${timeframe} (${cachedBars.length} bars)`);

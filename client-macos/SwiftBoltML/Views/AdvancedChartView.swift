@@ -102,7 +102,7 @@ struct AdvancedChartView: View {
         _barsToShow = State(initialValue: initialBarsToShow)
     }
 
-    // Create indexed versions for even spacing (TradingView style)
+    // Create indexed versionsx for even spacing (TradingView style)
     private var indexedBars: [(index: Int, bar: OHLCBar)] {
         bars.enumerated().map { (index: $0.offset, bar: $0.element) }
     }
@@ -217,6 +217,13 @@ struct AdvancedChartView: View {
                         visibleRange: visibleRange
                     )
                     .frame(height: 80)
+                }
+
+                // SuperTrend Strength Panel (shown when SuperTrend is enabled)
+                if config.showSuperTrend {
+                    Divider()
+                    superTrendStrengthPanel
+                        .frame(height: 80)
                 }
 
                 // Volume Panel
@@ -570,6 +577,132 @@ struct AdvancedChartView: View {
         }
     }
 
+    // MARK: - SuperTrend Strength Panel
+
+    private var superTrendStrengthPanel: some View {
+        VStack(spacing: 0) {
+            // Header with current trend info
+            HStack {
+                Label("SuperTrend", systemImage: "waveform.path.ecg")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+
+                // Show current parameters
+                Text(superTrendParamsLabel)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+
+                Spacer()
+
+                // Current trend badge
+                let lastTrend = superTrendTrend.last ?? 0
+                let isBullish = lastTrend == 1
+                Text(isBullish ? "BULLISH" : "BEARISH")
+                    .font(.caption.bold())
+                    .foregroundColor(isBullish ? .green : .red)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background((isBullish ? Color.green : Color.red).opacity(0.15))
+                    .clipShape(Capsule())
+
+                // Current strength value
+                if let lastStrength = superTrendStrength.last?.value {
+                    Text("\(Int(lastStrength))%")
+                        .font(.caption.bold().monospacedDigit())
+                        .foregroundColor(strengthColor(lastStrength))
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+
+            // Strength chart
+            Chart {
+                ForEach(visibleStrengthData, id: \.index) { item in
+                    AreaMark(
+                        x: .value("Index", item.index),
+                        y: .value("Strength", item.strength)
+                    )
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [item.isBullish ? Color.green.opacity(0.3) : Color.red.opacity(0.3), .clear],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+
+                    LineMark(
+                        x: .value("Index", item.index),
+                        y: .value("Strength", item.strength)
+                    )
+                    .foregroundStyle(item.isBullish ? Color.green : Color.red)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                }
+
+                // Reference lines
+                RuleMark(y: .value("Strong", 50))
+                    .foregroundStyle(.orange.opacity(0.3))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 2]))
+
+                RuleMark(y: .value("VeryStrong", 75))
+                    .foregroundStyle(.green.opacity(0.3))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 2]))
+            }
+            .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
+            .chartYScale(domain: 0...100)
+            .chartXAxis(.hidden)
+            .chartYAxis {
+                AxisMarks(position: .trailing, values: [25, 50, 75]) { value in
+                    AxisGridLine()
+                    AxisValueLabel {
+                        if let v = value.as(Int.self) {
+                            Text("\(v)")
+                                .font(.caption2)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Helper for strength panel data
+    private var visibleStrengthData: [(index: Int, strength: Double, isBullish: Bool)] {
+        var data: [(index: Int, strength: Double, isBullish: Bool)] = []
+
+        let maxBarIndex = bars.count - 1
+        guard maxBarIndex >= 0 else { return [] }
+
+        let rangeStart = max(0, visibleRange.lowerBound)
+        let rangeEnd = min(maxBarIndex, visibleRange.upperBound)
+
+        guard rangeStart <= rangeEnd else { return [] }
+
+        for i in rangeStart...rangeEnd {
+            guard i < superTrendStrength.count,
+                  i < superTrendTrend.count,
+                  let strength = superTrendStrength[i].value else {
+                continue
+            }
+
+            let isBullish = superTrendTrend[i] == 1
+            data.append((index: i, strength: strength, isBullish: isBullish))
+        }
+
+        return data
+    }
+
+    // Color based on strength value
+    private func strengthColor(_ strength: Double) -> Color {
+        if strength >= 75 {
+            return .green
+        } else if strength >= 50 {
+            return .orange
+        } else if strength >= 25 {
+            return .yellow
+        } else {
+            return .red
+        }
+    }
+
     // MARK: - Helper Functions
 
     private var visibleMinPrice: Double {
@@ -679,6 +812,28 @@ struct AdvancedChartView: View {
         }
     }
 
+    // SuperTrend parameters label based on bar timeframe
+    // Note: This is a display-only approximation since we don't have direct access to timeframe
+    // The actual params are set in ChartViewModel based on timeframe
+    private var superTrendParamsLabel: String {
+        // Estimate timeframe from bar spacing
+        if bars.count >= 2 {
+            let interval = bars[1].ts.timeIntervalSince(bars[0].ts)
+            if interval < 3600 {  // < 1 hour
+                return "(7, 2.0)"
+            } else if interval < 14400 {  // < 4 hours
+                return "(8, 2.5)"
+            } else if interval < 86400 {  // < 1 day
+                return "(10, 3.0)"
+            } else if interval < 604800 {  // < 1 week
+                return "(10, 3.0)"
+            } else {
+                return "(14, 4.0)"
+            }
+        }
+        return "(10, 3.0)"
+    }
+
     // MARK: - Bollinger Bands Overlay
 
     @ChartContentBuilder
@@ -747,17 +902,125 @@ struct AdvancedChartView: View {
             }
         }
 
-        // SuperTrend line - render as segments with color based on trend
-        // Only render for actual bar data (not forecast area)
-        ForEach(superTrendSegments, id: \.id) { segment in
+        // SuperTrend line - render each point with series grouping by trend
+        // Using series modifier to connect points within same trend direction
+        ForEach(superTrendPoints, id: \.id) { point in
             LineMark(
-                x: .value("Index", segment.index),
-                y: .value("SuperTrend", segment.value)
+                x: .value("Index", point.index),
+                y: .value("SuperTrend", point.value),
+                series: .value("Trend", point.seriesKey)
             )
-            .foregroundStyle(segment.isBullish ? Color.green : Color.red)
-            .lineStyle(StrokeStyle(lineWidth: 2))
-            .interpolationMethod(.stepEnd)
+            .foregroundStyle(point.isBullish ? Color.green : Color.red)
+            .lineStyle(StrokeStyle(lineWidth: 2.5))
         }
+    }
+
+    // Helper struct for SuperTrend points with series key for proper line connection
+    private struct SuperTrendPoint: Identifiable {
+        let id: String
+        let index: Int
+        let value: Double
+        let isBullish: Bool
+        let seriesKey: String  // Groups points into connected line segments
+    }
+
+    // Build SuperTrend points with series keys for connected line rendering
+    private var superTrendPoints: [SuperTrendPoint] {
+        var points: [SuperTrendPoint] = []
+        var segmentId = 0
+        var lastTrend: Int? = nil
+
+        let maxBarIndex = bars.count - 1
+        guard maxBarIndex >= 0 else { return [] }
+
+        let rangeStart = max(0, visibleRange.lowerBound)
+        let rangeEnd = min(maxBarIndex, visibleRange.upperBound)
+
+        guard rangeStart <= rangeEnd else { return [] }
+
+        for i in rangeStart...rangeEnd {
+            guard i < superTrendLine.count,
+                  i < superTrendTrend.count,
+                  let stValue = superTrendLine[i].value else {
+                continue
+            }
+
+            let trend = superTrendTrend[i]
+
+            // Start new segment when trend changes
+            if let prev = lastTrend, prev != trend {
+                segmentId += 1
+            }
+            lastTrend = trend
+
+            let isBullish = trend == 1
+            points.append(SuperTrendPoint(
+                id: "\(i)-\(segmentId)",
+                index: i,
+                value: stValue,
+                isBullish: isBullish,
+                seriesKey: "ST-\(segmentId)"
+            ))
+        }
+
+        return points
+    }
+
+    // Helper struct for continuous SuperTrend line segments (grouped by trend)
+    private struct SuperTrendLineSegment: Identifiable {
+        let id: Int
+        let isBullish: Bool
+        let points: [(index: Int, value: Double)]
+    }
+
+    // Build continuous line segments grouped by trend direction
+    private var superTrendLineSegments: [SuperTrendLineSegment] {
+        var lineSegments: [SuperTrendLineSegment] = []
+        var currentPoints: [(index: Int, value: Double)] = []
+        var currentTrend: Int? = nil
+        var segmentId = 0
+
+        let maxBarIndex = bars.count - 1
+        let rangeStart = max(0, visibleRange.lowerBound)
+        let rangeEnd = min(maxBarIndex, visibleRange.upperBound)
+
+        guard rangeStart <= rangeEnd else { return [] }
+
+        for i in rangeStart...rangeEnd {
+            guard i < superTrendLine.count,
+                  i < superTrendTrend.count,
+                  i < bars.count,
+                  let stValue = superTrendLine[i].value else {
+                continue
+            }
+
+            let trend = superTrendTrend[i]
+
+            // If trend changed, save current segment and start new one
+            if let prevTrend = currentTrend, prevTrend != trend, !currentPoints.isEmpty {
+                lineSegments.append(SuperTrendLineSegment(
+                    id: segmentId,
+                    isBullish: prevTrend == 1,
+                    points: currentPoints
+                ))
+                segmentId += 1
+                currentPoints = []
+            }
+
+            currentPoints.append((index: i, value: stValue))
+            currentTrend = trend
+        }
+
+        // Add final segment
+        if !currentPoints.isEmpty, let trend = currentTrend {
+            lineSegments.append(SuperTrendLineSegment(
+                id: segmentId,
+                isBullish: trend == 1,
+                points: currentPoints
+            ))
+        }
+
+        return lineSegments
     }
 
     // Helper struct for SuperTrend line segments

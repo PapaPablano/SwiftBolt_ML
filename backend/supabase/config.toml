@@ -1,6 +1,8 @@
 # SwiftBolt ML - Supabase Configuration
 # Docs: https://supabase.com/docs/guides/cli/config
 
+project_id = "cygflaemtmwiwaviclks"
+
 [api]
 enabled = true
 port = 54321
@@ -11,7 +13,7 @@ max_rows = 1000
 [db]
 port = 54322
 shadow_port = 54320
-major_version = 17
+major_version = 15
 
 [db.pooler]
 enabled = false
@@ -64,6 +66,12 @@ verify_jwt = false  # Allow unauthenticated access for search
 verify_jwt = false  # TODO: Enable JWT verification for production
 
 [functions.news]
+verify_jwt = false  # TODO: Enable JWT verification for production
+
+[functions.enhanced-prediction]
+verify_jwt = false  # TODO: Enable JWT verification for production
+
+[functions.refresh-data]
 verify_jwt = false  # TODO: Enable JWT verification for production
 
 [analytics]

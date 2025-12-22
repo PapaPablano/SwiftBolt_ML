@@ -7,11 +7,13 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config.settings import settings
-from src.data.supabase_db import db
-from src.features.technical_indicators import add_technical_features
-from src.models.baseline_forecaster import BaselineForecaster
-from src.strategies.supertrend_ai import SuperTrendAI
+from config.settings import settings  # noqa: E402
+from src.data.supabase_db import db  # noqa: E402
+from src.features.technical_indicators import (  # noqa: E402
+    add_technical_features,
+)
+from src.models.baseline_forecaster import BaselineForecaster  # noqa: E402
+from src.strategies.supertrend_ai import SuperTrendAI  # noqa: E402
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),

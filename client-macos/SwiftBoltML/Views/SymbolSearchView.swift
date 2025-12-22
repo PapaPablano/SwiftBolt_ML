@@ -140,20 +140,19 @@ struct SearchResultRow: View {
                     .background(.blue.opacity(0.2))
                     .clipShape(Capsule())
 
-                // Watchlist star button
-                Button {
-                    print("[DEBUG] ⭐⭐⭐ Watchlist star tapped for \(symbol.ticker)")
-                    Task {
-                        await appViewModel.watchlistViewModel.toggleSymbol(symbol)
+                // Watchlist star button - use onTapGesture to prevent event propagation
+                Image(systemName: isWatched ? "star.fill" : "star")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        print("[DEBUG] ⭐⭐⭐ Watchlist star tapped for \(symbol.ticker)")
+                        Task {
+                            await appViewModel.watchlistViewModel.toggleSymbol(symbol)
+                        }
                     }
-                } label: {
-                    Image(systemName: isWatched ? "star.fill" : "star")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .frame(width: 24, height: 24)
-                }
-                .buttonStyle(.plain)
-                .help(isWatched ? "Remove from watchlist" : "Add to watchlist")
+                    .help(isWatched ? "Remove from watchlist" : "Add to watchlist")
             }
             .padding(.vertical, 8)
             .padding(.horizontal, 12)

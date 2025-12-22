@@ -83,11 +83,15 @@ serve(async (req: Request): Promise<Response> => {
 
     const symbolId = symbolData.id;
 
+    // Get today's date in YYYY-MM-DD format for filtering expired options
+    const today = new Date().toISOString().split('T')[0];
+
     // Build query for options_ranks
     let query = supabase
       .from("options_ranks")
       .select("*")
       .eq("underlying_symbol_id", symbolId)
+      .gte("expiry", today)  // Filter out expired options
       .order("ml_score", { ascending: false })
       .limit(limit);
 

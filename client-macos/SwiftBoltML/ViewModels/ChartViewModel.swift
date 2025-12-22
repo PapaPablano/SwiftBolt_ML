@@ -16,6 +16,11 @@ final class ChartViewModel: ObservableObject {
     @Published private(set) var isLoading: Bool = false
     @Published var errorMessage: String?
     @Published var indicatorConfig = IndicatorConfig()
+    
+    // Refresh state
+    @Published private(set) var isRefreshing: Bool = false
+    @Published var refreshMessage: String?
+    @Published var lastRefreshResult: RefreshDataResponse?
 
     private var loadTask: Task<Void, Never>?
 
@@ -146,9 +151,31 @@ final class ChartViewModel: ObservableObject {
 
     // MARK: - SuperTrend Indicator
 
+    /// Adaptive SuperTrend parameters based on timeframe
+    /// - Intraday (15M, 1H): Tighter settings for faster signals
+    /// - Swing (4H, D): Standard settings
+    /// - Position (W): Wider settings for less noise
+    private var superTrendParams: (period: Int, multiplier: Double) {
+        switch timeframe {
+        case "m15":
+            return (period: 7, multiplier: 2.0)   // Fast, tight stops
+        case "h1":
+            return (period: 8, multiplier: 2.5)   // Slightly wider
+        case "h4":
+            return (period: 10, multiplier: 3.0)  // Standard
+        case "d1":
+            return (period: 10, multiplier: 3.0)  // Standard
+        case "w1":
+            return (period: 14, multiplier: 4.0)  // Wide, less noise
+        default:
+            return (period: 10, multiplier: 3.0)  // Default
+        }
+    }
+
     var superTrendResult: TechnicalIndicators.SuperTrendResult? {
         guard !bars.isEmpty else { return nil }
-        return TechnicalIndicators.superTrend(bars: bars)
+        let params = superTrendParams
+        return TechnicalIndicators.superTrend(bars: bars, period: params.period, multiplier: params.multiplier)
     }
 
     var superTrendLine: [IndicatorDataPoint] {
@@ -283,5 +310,42 @@ final class ChartViewModel: ObservableObject {
         chartData = nil
         errorMessage = nil
         isLoading = false
+    }
+    
+    // MARK: - Coordinated Refresh
+    
+    /// Refresh data for the current symbol - fetches new bars and queues ML/options jobs
+    /// - Parameters:
+    ///   - refreshML: Queue ML forecast job after data refresh (default: true)
+    ///   - refreshOptions: Queue options ranking job after data refresh (default: false)
+    func refreshData(refreshML: Bool = true, refreshOptions: Bool = false) async {
+        guard let symbol = selectedSymbol else {
+            refreshMessage = "No symbol selected"
+            return
+        }
+        
+        isRefreshing = true
+        refreshMessage = nil
+        
+        do {
+            let response = try await APIClient.shared.refreshData(
+                symbol: symbol.ticker,
+                refreshML: refreshML,
+                refreshOptions: refreshOptions
+            )
+            
+            lastRefreshResult = response
+            refreshMessage = response.message
+            
+            // After successful refresh, reload chart data to show new bars
+            if response.success {
+                await loadChart()
+            }
+            
+        } catch {
+            refreshMessage = "Refresh failed: \(error.localizedDescription)"
+        }
+        
+        isRefreshing = false
     }
 }

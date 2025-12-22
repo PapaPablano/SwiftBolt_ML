@@ -27,28 +27,28 @@ struct MACDPanelView: View {
                 }
             }
 
-            // MACD Line (blue)
+            // MACD Line (green - upper/bullish line)
             ForEach(macdLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
                         x: .value("Index", index),
                         y: .value("MACD", value)
                     )
-                    .foregroundStyle(.blue)
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .foregroundStyle(.green)
+                    .lineStyle(StrokeStyle(lineWidth: 2))
                     .interpolationMethod(.catmullRom)
                 }
             }
 
-            // Signal Line (orange)
+            // Signal Line (red - lower/slower line)
             ForEach(signalLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
                         x: .value("Index", index),
                         y: .value("Signal", value)
                     )
-                    .foregroundStyle(.orange)
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .foregroundStyle(.red)
+                    .lineStyle(StrokeStyle(lineWidth: 2))
                     .interpolationMethod(.catmullRom)
                 }
             }
@@ -68,8 +68,8 @@ struct MACDPanelView: View {
         }
         .chartLegend(position: .top, alignment: .leading) {
             HStack(spacing: 12) {
-                LegendItem(color: .blue, label: "MACD", value: macdLine.last?.value)
-                LegendItem(color: .orange, label: "Signal", value: signalLine.last?.value)
+                LegendItem(color: .green, label: "MACD", value: macdLine.last?.value)
+                LegendItem(color: .red, label: "Signal", value: signalLine.last?.value)
                 if let histVal = histogram.last?.value {
                     HStack(spacing: 4) {
                         Rectangle()
@@ -102,28 +102,28 @@ struct StochasticPanelView: View {
 
     var body: some View {
         Chart {
-            // %K Line (blue)
+            // %K Line (green - faster/upper line)
             ForEach(kLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
                         x: .value("Index", index),
                         y: .value("%K", value)
                     )
-                    .foregroundStyle(.blue)
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .foregroundStyle(.green)
+                    .lineStyle(StrokeStyle(lineWidth: 2))
                     .interpolationMethod(.catmullRom)
                 }
             }
 
-            // %D Line (orange)
+            // %D Line (red - slower/lower line)
             ForEach(dLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
                         x: .value("Index", index),
                         y: .value("%D", value)
                     )
-                    .foregroundStyle(.orange)
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .foregroundStyle(.red)
+                    .lineStyle(StrokeStyle(lineWidth: 2))
                     .interpolationMethod(.catmullRom)
                 }
             }
@@ -149,8 +149,8 @@ struct StochasticPanelView: View {
         }
         .chartLegend(position: .top, alignment: .leading) {
             HStack(spacing: 12) {
-                LegendItem(color: .blue, label: "%K(14)", value: kLine.last?.value)
-                LegendItem(color: .orange, label: "%D(3)", value: dLine.last?.value)
+                LegendItem(color: .green, label: "%K(14)", value: kLine.last?.value)
+                LegendItem(color: .red, label: "%D(3)", value: dLine.last?.value)
             }
             .padding(.horizontal, 8)
         }
@@ -172,7 +172,7 @@ struct KDJPanelView: View {
 
     var body: some View {
         Chart {
-            // K Line (blue)
+            // K Line (blue - middle line)
             ForEach(kLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
@@ -180,33 +180,33 @@ struct KDJPanelView: View {
                         y: .value("K", value)
                     )
                     .foregroundStyle(.blue)
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .lineStyle(StrokeStyle(lineWidth: 2))
                     .interpolationMethod(.catmullRom)
                 }
             }
 
-            // D Line (orange)
+            // D Line (red - slower/lower line)
             ForEach(dLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
                         x: .value("Index", index),
                         y: .value("D", value)
                     )
-                    .foregroundStyle(.orange)
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .foregroundStyle(.red)
+                    .lineStyle(StrokeStyle(lineWidth: 2))
                     .interpolationMethod(.catmullRom)
                 }
             }
 
-            // J Line (purple - most sensitive)
+            // J Line (green - most sensitive/upper line)
             ForEach(jLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
                         x: .value("Index", index),
                         y: .value("J", value)
                     )
-                    .foregroundStyle(.purple)
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .foregroundStyle(.green)
+                    .lineStyle(StrokeStyle(lineWidth: 2))
                     .interpolationMethod(.catmullRom)
                 }
             }
@@ -233,8 +233,8 @@ struct KDJPanelView: View {
         .chartLegend(position: .top, alignment: .leading) {
             HStack(spacing: 12) {
                 LegendItem(color: .blue, label: "K", value: kLine.last?.value)
-                LegendItem(color: .orange, label: "D", value: dLine.last?.value)
-                LegendItem(color: .purple, label: "J", value: jLine.last?.value)
+                LegendItem(color: .red, label: "D", value: dLine.last?.value)
+                LegendItem(color: .green, label: "J", value: jLine.last?.value)
             }
             .padding(.horizontal, 8)
         }

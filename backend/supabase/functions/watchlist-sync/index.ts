@@ -95,7 +95,7 @@ serve(async (req) => {
           symbol = newSymbol;
         }
 
-        // Add to watchlist (trigger will auto-create jobs)
+        // Add to watchlist
         const { error: insertError } = await supabaseClient
           .from("watchlist_items")
           .insert({
@@ -120,6 +120,20 @@ serve(async (req) => {
           }
           throw insertError;
         }
+
+        // Trigger symbol initialization (OHLC backfill + ML forecast)
+        // This runs async - don't wait for completion
+        const initUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/symbol-init`;
+        fetch(initUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          },
+          body: JSON.stringify({ symbol: symbol.ticker }),
+        }).catch((err) => {
+          console.error(`[watchlist-sync] Failed to trigger symbol-init for ${symbol.ticker}:`, err);
+        });
 
         // Get job status
         const { data: jobStatus } = await supabaseClient.rpc(

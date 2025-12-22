@@ -296,6 +296,143 @@ class MultiTimeframeFeatures:
         
         return strength
 
+    def aggregate_signals(self, features_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Aggregate signals across all timeframes into a consensus signal.
+        
+        This is the key method for multi-timeframe signal fusion. It combines
+        trend indicators from all timeframes and produces:
+        - signal: 'buy', 'sell', or 'neutral'
+        - confidence: 0.0 to 1.0 (how many TFs agree)
+        - bullish_count: number of bullish timeframes
+        - bearish_count: number of bearish timeframes
+        - dominant_tf: which timeframe has strongest signal
+        
+        Args:
+            features_df: DataFrame with multi-timeframe features
+            
+        Returns:
+            DataFrame with aggregated signal columns
+        """
+        result = pd.DataFrame(index=features_df.index)
+        
+        # Collect signals from each timeframe
+        tf_signals = {}
+        tf_strengths = {}
+        
+        for tf in self.timeframes:
+            # Build composite signal for this timeframe
+            signals = []
+            weights = []
+            
+            # RSI signal (weight: 1.0)
+            rsi_col = f"rsi_14_{tf}"
+            if rsi_col in features_df.columns:
+                rsi = features_df[rsi_col]
+                rsi_signal = pd.Series(0.0, index=features_df.index)
+                rsi_signal[rsi > 60] = 1.0   # Bullish
+                rsi_signal[rsi < 40] = -1.0  # Bearish
+                rsi_signal[(rsi >= 40) & (rsi <= 60)] = 0.0  # Neutral
+                signals.append(rsi_signal)
+                weights.append(1.0)
+            
+            # MACD signal (weight: 1.5)
+            macd_col = f"macd_{tf}"
+            macd_signal_col = f"macd_signal_{tf}"
+            if macd_col in features_df.columns:
+                macd = features_df[macd_col]
+                macd_sig = features_df.get(macd_signal_col, pd.Series(0, index=features_df.index))
+                macd_signal = pd.Series(0.0, index=features_df.index)
+                macd_signal[(macd > 0) & (macd > macd_sig)] = 1.0   # Bullish
+                macd_signal[(macd < 0) & (macd < macd_sig)] = -1.0  # Bearish
+                signals.append(macd_signal)
+                weights.append(1.5)
+            
+            # Price vs SMA signal (weight: 1.0)
+            sma_col = f"price_vs_sma20_{tf}"
+            if sma_col in features_df.columns:
+                sma_diff = features_df[sma_col]
+                sma_signal = pd.Series(0.0, index=features_df.index)
+                sma_signal[sma_diff > 0.02] = 1.0   # >2% above SMA = bullish
+                sma_signal[sma_diff < -0.02] = -1.0  # >2% below SMA = bearish
+                signals.append(sma_signal)
+                weights.append(1.0)
+            
+            # ADX direction signal (weight: 1.5 if ADX > 25, else 0.5)
+            plus_di_col = f"plus_di_{tf}"
+            minus_di_col = f"minus_di_{tf}"
+            adx_col = f"adx_{tf}"
+            if plus_di_col in features_df.columns and minus_di_col in features_df.columns:
+                plus_di = features_df[plus_di_col]
+                minus_di = features_df[minus_di_col]
+                adx = features_df.get(adx_col, pd.Series(25, index=features_df.index))
+                
+                di_signal = pd.Series(0.0, index=features_df.index)
+                di_signal[plus_di > minus_di] = 1.0
+                di_signal[plus_di < minus_di] = -1.0
+                signals.append(di_signal)
+                
+                # Weight based on ADX strength
+                adx_weight = pd.Series(0.5, index=features_df.index)
+                adx_weight[adx > 25] = 1.5
+                weights.append(adx_weight.mean())  # Use mean for simplicity
+            
+            # Compute weighted average signal for this timeframe
+            if signals:
+                weighted_signals = [s * w for s, w in zip(signals, weights)]
+                total_weight = sum(weights)
+                tf_signal = sum(weighted_signals) / total_weight
+                tf_signals[tf] = tf_signal
+                
+                # Strength is absolute value of signal
+                tf_strengths[tf] = tf_signal.abs()
+        
+        if not tf_signals:
+            logger.warning("No signals computed from any timeframe")
+            result["signal"] = "neutral"
+            result["confidence"] = 0.0
+            result["bullish_count"] = 0
+            result["bearish_count"] = 0
+            result["dominant_tf"] = None
+            return result
+        
+        # Aggregate across timeframes
+        all_signals = pd.DataFrame(tf_signals)
+        all_strengths = pd.DataFrame(tf_strengths)
+        
+        # Count bullish/bearish timeframes
+        result["bullish_count"] = (all_signals > 0.2).sum(axis=1)
+        result["bearish_count"] = (all_signals < -0.2).sum(axis=1)
+        
+        # Average signal across timeframes
+        avg_signal = all_signals.mean(axis=1)
+        
+        # Determine consensus signal
+        result["signal"] = "neutral"
+        result.loc[avg_signal > 0.3, "signal"] = "buy"
+        result.loc[avg_signal < -0.3, "signal"] = "sell"
+        
+        # Confidence = agreement level (0-1)
+        # High confidence when most TFs agree
+        total_tfs = len(tf_signals)
+        agreement = result[["bullish_count", "bearish_count"]].max(axis=1) / total_tfs
+        result["confidence"] = agreement.clip(0, 1)
+        
+        # Dominant timeframe (strongest signal)
+        result["dominant_tf"] = all_strengths.idxmax(axis=1)
+        
+        # Raw signal value for further processing
+        result["signal_value"] = avg_signal
+        
+        logger.info(
+            f"Aggregated signals: "
+            f"buy={len(result[result['signal'] == 'buy'])}, "
+            f"sell={len(result[result['signal'] == 'sell'])}, "
+            f"neutral={len(result[result['signal'] == 'neutral'])}"
+        )
+        
+        return result
+
     def compute_volatility_regime(self, features_df: pd.DataFrame) -> pd.Series:
         """
         Determine volatility regime across timeframes.

@@ -53,6 +53,7 @@ struct ChartView: View {
 
                 Spacer()
 
+                // Quick refresh - just reload chart
                 Button(action: {
                     Task {
                         await chartViewModel.loadChart()
@@ -64,6 +65,31 @@ struct ChartView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Refresh chart data")
+                .disabled(chartViewModel.isLoading)
+                
+                // Full refresh - fetch new data + queue ML jobs
+                Button(action: {
+                    Task {
+                        await chartViewModel.refreshData(refreshML: true, refreshOptions: false)
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        if chartViewModel.isRefreshing {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .frame(width: 14, height: 14)
+                        } else {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 12))
+                        }
+                        Text("Sync")
+                            .font(.system(size: 11))
+                    }
+                    .foregroundColor(chartViewModel.isRefreshing ? .secondary : .accentColor)
+                }
+                .buttonStyle(.plain)
+                .help("Sync data & refresh ML predictions")
+                .disabled(chartViewModel.isRefreshing)
                 .padding(.trailing, 8)
 
                 IndicatorToggleMenu(config: $appViewModel.chartViewModel.indicatorConfig)

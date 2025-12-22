@@ -6,6 +6,13 @@ class AnalysisViewModel: ObservableObject {
     @Published var alerts: [ScannerAlert] = []
     @Published var isLoadingAlerts = false
     @Published var alertsError: String?
+    
+    // Enhanced ML insights
+    @Published var multiTimeframeConsensus: MultiTimeframeConsensus?
+    @Published var forecastExplanation: ForecastExplanation?
+    @Published var dataQuality: DataQualityReport?
+    @Published var isLoadingEnhancedInsights = false
+    @Published var enhancedInsightsError: String?
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -46,5 +53,29 @@ class AnalysisViewModel: ObservableObject {
 
     func refresh(for symbol: String) async {
         await loadAlerts(for: symbol)
+        await loadEnhancedInsights(for: symbol)
+    }
+    
+    // MARK: - Enhanced ML Insights
+    
+    func loadEnhancedInsights(for symbol: String) async {
+        isLoadingEnhancedInsights = true
+        enhancedInsightsError = nil
+        
+        do {
+            let response = try await APIClient.shared.fetchEnhancedPrediction(symbol: symbol)
+            
+            multiTimeframeConsensus = response.multiTimeframe
+            forecastExplanation = response.explanation
+            dataQuality = response.dataQuality
+            
+            isLoadingEnhancedInsights = false
+            print("[Analysis] Loaded enhanced insights for \(symbol)")
+        } catch {
+            // Log error - views will show empty state
+            enhancedInsightsError = error.localizedDescription
+            isLoadingEnhancedInsights = false
+            print("[Analysis] Enhanced insights not available: \(error.localizedDescription)")
+        }
     }
 }
