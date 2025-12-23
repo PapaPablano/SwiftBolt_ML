@@ -13,6 +13,7 @@ from src.features.technical_indicators import (  # noqa: E402
     add_technical_features,
 )
 from src.models.baseline_forecaster import BaselineForecaster  # noqa: E402
+from src.models.ensemble_forecaster import EnsembleForecaster  # noqa: E402
 from src.strategies.supertrend_ai import SuperTrendAI  # noqa: E402
 
 logging.basicConfig(
@@ -86,11 +87,42 @@ def process_symbol(symbol: str) -> None:
         for horizon in settings.forecast_horizons:
             logger.info(f"Generating {horizon} forecast for {symbol}")
 
-            # Create forecaster
-            forecaster = BaselineForecaster()
+            # Use ensemble forecaster (RF + GB) for better accuracy
+            use_ensemble = getattr(settings, "use_ensemble_forecaster", True)
 
-            # Generate forecast
-            forecast = forecaster.generate_forecast(df, horizon)
+            if use_ensemble:
+                # Prepare data for ensemble
+                baseline = BaselineForecaster()
+                X, y = baseline.prepare_training_data(df, horizon_days=baseline._parse_horizon(horizon))
+
+                # Create and train ensemble
+                forecaster = EnsembleForecaster(horizon=horizon, rf_weight=0.5, gb_weight=0.5)
+                forecaster.train(X, y)
+
+                # Generate prediction
+                last_features = X.tail(1)
+                ensemble_pred = forecaster.predict(last_features)
+
+                forecast = {
+                    "label": ensemble_pred["label"].lower(),
+                    "confidence": ensemble_pred["confidence"],
+                    "horizon": horizon,
+                    "points": baseline._generate_forecast_points(
+                        df["ts"].iloc[-1],
+                        df["close"].iloc[-1],
+                        ensemble_pred["label"].lower(),
+                        ensemble_pred["confidence"],
+                        baseline._parse_horizon(horizon),
+                    ),
+                    "rf_prediction": ensemble_pred.get("rf_prediction"),
+                    "gb_prediction": ensemble_pred.get("gb_prediction"),
+                    "agreement": ensemble_pred.get("agreement"),
+                    "ensemble_type": "RF+GB",
+                }
+            else:
+                # Fallback to baseline forecaster
+                baseline_forecaster = BaselineForecaster()
+                forecast = baseline_forecaster.generate_forecast(df, horizon)
 
             # Save to database (include SuperTrend data if available)
             db.upsert_forecast(
@@ -105,6 +137,8 @@ def process_symbol(symbol: str) -> None:
             logger.info(
                 f"Saved {horizon} forecast for {symbol}: "
                 f"{forecast['label']} ({forecast['confidence']:.2%})"
+                + (f" [ensemble: RF={forecast.get('rf_prediction')}, GB={forecast.get('gb_prediction')}, agreement={forecast.get('agreement')}]"
+                   if use_ensemble else "")
             )
 
     except Exception as e:

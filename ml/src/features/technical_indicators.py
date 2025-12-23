@@ -5,6 +5,8 @@ import logging
 import numpy as np
 import pandas as pd
 
+from src.features.regime_indicators import add_regime_features_to_technical
+
 logger = logging.getLogger(__name__)
 
 
@@ -65,7 +67,10 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     # Average True Range (ATR)
     df["atr_14"] = calculate_atr(df, period=14)
 
-    logger.info(f"Added {len(df.columns) - 6} technical indicators")
+    # Add regime features (5 additional indicators)
+    df = add_regime_features_to_technical(df, df)
+
+    logger.info(f"Added {len(df.columns) - 6} technical indicators (including regime features)")
 
     return df
 
