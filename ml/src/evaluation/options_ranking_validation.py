@@ -322,6 +322,7 @@ class RankingValidationResult:
     is_significant: bool
     confidence_interval: Tuple[float, float]
     interpretation: str
+    n_samples: int = 0  # Sample size for the test
     
     def __str__(self) -> str:
         sig = "✅" if self.is_significant else "❌"
@@ -357,19 +358,28 @@ class OptionsRankingValidator:
         confidence_level: float = 0.95,
         min_samples: int = 30,
         random_state: int = 42,
+        hit_rate_warning_n_threshold: int = 200,
+        low_std_warning_threshold: float = 0.01,
+        min_days_threshold: int = 20,
     ):
         """
         Initialize validator.
-        
+
         Args:
             confidence_level: Confidence level for statistical tests
             min_samples: Minimum samples for valid testing
             random_state: Random seed for reproducibility
+            hit_rate_warning_n_threshold: Warn if hit_rate=1.0 with n < this
+            low_std_warning_threshold: Warn if std_rank_ic < this
+            min_days_threshold: Warn if n_days < this
         """
         self.confidence_level = confidence_level
         self.alpha = 1 - confidence_level
         self.min_samples = min_samples
         self.random_state = random_state
+        self.hit_rate_warning_n_threshold = hit_rate_warning_n_threshold
+        self.low_std_warning_threshold = low_std_warning_threshold
+        self.min_days_threshold = min_days_threshold
         np.random.seed(random_state)
     
     def validate_ranking_accuracy(
@@ -631,6 +641,7 @@ class OptionsRankingValidator:
             is_significant=is_significant,
             confidence_interval=(ci_lower, ci_upper),
             interpretation=interp,
+            n_samples=n_total,
         )
     
     def validate_ranking_stability(
@@ -998,12 +1009,16 @@ class OptionsRankingValidator:
         mean daily Rank IC each permutation (not pooled).
         IC should collapse near 0. If it doesn't, leakage is present.
 
+        NOTE: For real data runs, use n_permutations >= 1000 for meaningful
+        p-value resolution. With 100 permutations, the smallest attainable
+        p-value is ~1/101 ≈ 0.0099, which is too coarse for production.
+
         Args:
             df: DataFrame with rankings and returns
             date_col: Column with ranking dates
             score_col: Column with ML scores
             return_col: Column with forward returns
-            n_permutations: Number of permutations to run
+            n_permutations: Number of permutations (default 1000, use >= 1000)
             min_group_size: Minimum contracts per day
             random_seed: Seed for reproducibility in CI/debugging
 
@@ -1152,44 +1167,98 @@ class OptionsRankingValidator:
             "",
         ]
 
-        # Validation results
-        lines.append("--- Statistical Tests ---")
+        # Collect warnings for Data Sufficiency block
+        data_warnings = []
+        insufficient_days = False  # Track if we should suppress significance
+
+        # Check hit rate warnings from validation results
+        top_quantile_n = 0
+        total_samples_all = len(validation_results) if validation_results else 0
+        for result in validation_results:
+            if "Hit Rate" in result.metric:
+                top_quantile_n = result.n_samples
+                if result.value == 1.0 and result.n_samples < self.hit_rate_warning_n_threshold:
+                    data_warnings.append(
+                        f"⚠️ 100% hit rate with n={result.n_samples} "
+                        f"(threshold={self.hit_rate_warning_n_threshold}) - "
+                        "likely sample-size artifact"
+                    )
+
+        # Extract IC stats for Data Sufficiency block
+        n_days = ic_stats.get('n_periods', 0) if ic_stats else 0
+        n_days_total = ic_stats.get('n_days_total', 0) if ic_stats else 0
+        pct_skip = ic_stats.get('pct_days_skipped', 0) if ic_stats else 0
+        avg_c = ic_stats.get('avg_contracts_per_day', 0) if ic_stats else 0
+        min_c = ic_stats.get('min_contracts_per_day', 0) if ic_stats else 0
+        max_c = ic_stats.get('max_contracts_per_day', 0) if ic_stats else 0
+        std_rank_ic = ic_stats.get('std_rank_ic', 0) if ic_stats else 0
+        total_samples = int(n_days * avg_c) if ic_stats else total_samples_all
+
+        # Check for low n_days - this is a hard warning that affects significance
+        if n_days < self.min_days_threshold:
+            insufficient_days = True
+            data_warnings.append(
+                f"⚠️ n_days={n_days} < {self.min_days_threshold} - "
+                "SIGNIFICANCE NOT ASSESSED (insufficient days). "
+                "Increase sample window to at least 60 days (prefer 120)."
+            )
+
+        # Check for low std_rank_ic (synthetic/degenerate data)
+        if ic_stats and std_rank_ic < self.low_std_warning_threshold:
+            data_warnings.append(
+                f"⚠️ std_rank_ic={std_rank_ic:.4f} < {self.low_std_warning_threshold} - "
+                "results may be synthetic/degenerate"
+            )
+
+        # === DATA SUFFICIENCY BLOCK (first, so users can't miss it) ===
+        lines.append("--- Data Sufficiency ---")
+        lines.append(f"  n_days: {n_days} (of {n_days_total} total)")
+        lines.append(f"  top_quantile_n: {top_quantile_n}")
+        lines.append(f"  total_samples_all_contracts: {total_samples}")
+        lines.append(f"  avg_contracts_per_day: {avg_c:.1f}")
+        lines.append(f"  min/max contracts per day: {min_c} / {max_c}")
+        lines.append(f"  % days skipped: {pct_skip:.1f}%")
+        if data_warnings:
+            lines.append("")
+            lines.append("  WARNINGS:")
+            for w in data_warnings:
+                lines.append(f"    {w}")
+        else:
+            lines.append("  ✅ No data sufficiency warnings")
+
+        # === STATISTICAL TESTS ===
+        lines.append("\n--- Statistical Tests ---")
         n_significant = 0
         for result in validation_results:
             lines.append(str(result))
             if result.is_significant:
                 n_significant += 1
 
-        # IC Statistics (new section)
+        # === IC ANALYSIS ===
         if ic_stats:
             lines.append("\n--- IC Analysis ---")
             lines.append(f"  Horizon: {ic_stats.get('horizon', 'N/A')}")
             lines.append(f"  Min Group Size: {ic_stats.get('min_group_size', 25)}")
             lines.append("")
-            lines.append(f"  n_days: {ic_stats.get('n_periods', 0)}")
-            lines.append(f"  n_days_total: {ic_stats.get('n_days_total', 0)}")
-            lines.append(f"  n_days_skipped: {ic_stats.get('n_days_skipped', 0)}")
-            pct_skip = ic_stats.get('pct_days_skipped', 0)
-            lines.append(f"  % days skipped: {pct_skip:.1f}%")
-            lines.append("")
-            avg_c = ic_stats.get('avg_contracts_per_day', 0)
-            min_c = ic_stats.get('min_contracts_per_day', 0)
-            max_c = ic_stats.get('max_contracts_per_day', 0)
-            lines.append(f"  avg_contracts_per_day: {avg_c:.1f}")
-            lines.append(f"  min/max contracts per day: {min_c} / {max_c}")
-            lines.append("")
             rank_ic = ic_stats.get('mean_rank_ic', 0)
             ic = ic_stats.get('mean_ic', 0)
+            std_ic = ic_stats.get('std_ic', 0)
             lines.append(f"  Rank IC (Spearman): {rank_ic:.4f} "
-                         f"(CI: [{ic_stats.get('rank_ic_ci_lower', 0):.4f}, "
-                         f"{ic_stats.get('rank_ic_ci_upper', 0):.4f}])")
-            lines.append(f"  IC (Pearson): {ic:.4f} "
-                         f"(CI: [{ic_stats.get('ic_ci_lower', 0):.4f}, "
-                         f"{ic_stats.get('ic_ci_upper', 0):.4f}])")
-            lines.append(f"  t-stat: {ic_stats.get('t_stat', 0):.2f}, "
+                         f"± {std_rank_ic:.4f} (std)")
+            lines.append(f"    CI: [{ic_stats.get('rank_ic_ci_lower', 0):.4f}, "
+                         f"{ic_stats.get('rank_ic_ci_upper', 0):.4f}]")
+            lines.append(f"  IC (Pearson): {ic:.4f} ± {std_ic:.4f} (std)")
+            lines.append(f"    CI: [{ic_stats.get('ic_ci_lower', 0):.4f}, "
+                         f"{ic_stats.get('ic_ci_upper', 0):.4f}]")
+            lines.append(f"  t-stat: {ic_stats.get('t_stat', 0):.2f} "
+                         f"(df={n_days - 1}), "
                          f"p-value: {ic_stats.get('p_value', 1):.4f}")
-            sig = "✅" if ic_stats.get('is_significant', False) else "❌"
-            lines.append(f"  {sig} Significant: {ic_stats.get('is_significant')}")
+            # Suppress significance if insufficient days
+            if insufficient_days:
+                lines.append("  ⚠️ Significant: NOT ASSESSED (insufficient days)")
+            else:
+                sig = "✅" if ic_stats.get('is_significant', False) else "❌"
+                lines.append(f"  {sig} Significant: {ic_stats.get('is_significant')}")
 
         # Permutation test results
         if permutation_stats:

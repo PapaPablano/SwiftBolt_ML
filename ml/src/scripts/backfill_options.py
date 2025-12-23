@@ -156,11 +156,21 @@ def persist_options_snapshot(
     underlying: str,
     calls: List[Dict],
     puts: List[Dict],
-    snapshot_date: date
+    snapshot_date: date,
+    ml_scores: Optional[Dict[str, float]] = None
 ) -> tuple[int, int]:
     """
     Persist options chain data to the options_chain_snapshots table.
     Uses batch inserts for performance.
+    
+    Args:
+        underlying: Underlying symbol
+        calls: List of call contracts
+        puts: List of put contracts
+        snapshot_date: Date of snapshot
+        ml_scores: Optional dict mapping contract key to ml_score
+                   Key format: "{expiry}_{strike}_{side}"
+    
     Returns (inserted_count, skipped_count).
     """
     try:
@@ -185,10 +195,19 @@ def persist_options_snapshot(
             expiration_ts = contract.get("expiration", 0)
             expiry_date = datetime.fromtimestamp(expiration_ts).date()
 
+            # Build contract key for ml_score lookup
+            strike_val = float(contract.get("strike", 0))
+            contract_key = f"{expiry_date.isoformat()}_{strike_val}_{side}"
+            
+            # Get ml_score if available
+            ml_score = None
+            if ml_scores and contract_key in ml_scores:
+                ml_score = ml_scores[contract_key]
+            
             snapshot_data = {
                 "underlying_symbol_id": symbol_id,
                 "expiry": expiry_date.isoformat(),
-                "strike": float(contract.get("strike", 0)),
+                "strike": strike_val,
                 "side": side,
                 "bid": float(contract.get("bid", 0)),
                 "ask": float(contract.get("ask", 0)),
@@ -203,6 +222,7 @@ def persist_options_snapshot(
                 "vega": float(contract.get("vega", 0)) if contract.get("vega") else None,
                 "rho": float(contract.get("rho", 0)) if contract.get("rho") else None,
                 "snapshot_date": snapshot_date.isoformat(),
+                "ml_score": ml_score,
             }
             batch.append(snapshot_data)
         except Exception as e:
@@ -231,6 +251,59 @@ def persist_options_snapshot(
 
     logger.info(f"Persisted {inserted} snapshot contracts for {underlying} ({skipped} skipped)")
     return inserted, skipped
+
+
+def calculate_ml_scores(
+    underlying: str,
+    calls: List[Dict],
+    puts: List[Dict]
+) -> Dict[str, float]:
+    """
+    Calculate ML scores for all contracts.
+    
+    Returns dict mapping contract key to ml_score.
+    Key format: "{expiry}_{strike}_{side}"
+    """
+    ml_scores = {}
+    
+    all_contracts = [
+        (contract, "call") for contract in calls
+    ] + [
+        (contract, "put") for contract in puts
+    ]
+    
+    for contract, side in all_contracts:
+        try:
+            expiration_ts = contract.get("expiration", 0)
+            expiry_date = datetime.fromtimestamp(expiration_ts).date()
+            strike = float(contract.get("strike", 0))
+            
+            # Simple ML score heuristic (placeholder for actual ML model)
+            volume = int(contract.get("volume", 0))
+            oi = int(contract.get("openInterest", 0))
+            delta = abs(float(contract.get("delta", 0)) if contract.get("delta") else 0)
+            iv = float(contract.get("impliedVolatility", 0)) if contract.get("impliedVolatility") else 0
+            
+            # Score components (0-1 range each)
+            volume_score = min(volume / 1000, 1.0)
+            oi_score = min(oi / 5000, 1.0)
+            delta_score = 1.0 - abs(delta - 0.5) * 2
+            iv_score = min(iv / 1.0, 1.0)
+            
+            ml_score = (
+                volume_score * 0.25 +
+                oi_score * 0.25 +
+                delta_score * 0.3 +
+                iv_score * 0.2
+            )
+            
+            # Build key
+            contract_key = f"{expiry_date.isoformat()}_{strike}_{side}"
+            ml_scores[contract_key] = round(ml_score, 4)
+        except Exception:
+            pass  # Skip contracts that fail
+    
+    return ml_scores
 
 
 def update_options_ranks(
@@ -355,12 +428,15 @@ def process_symbol(underlying: str, snapshot_date: date) -> Dict[str, Any]:
             logger.warning(f"No options data for {underlying}")
             return {"symbol": underlying, "success": False, "error": "No data"}
 
-        # Store snapshot
+        # Calculate ML scores first so we can include them in snapshots
+        ml_scores = calculate_ml_scores(underlying, calls, puts)
+        
+        # Store snapshot with ml_scores
         snapshot_inserted, snapshot_skipped = persist_options_snapshot(
-            underlying, calls, puts, snapshot_date
+            underlying, calls, puts, snapshot_date, ml_scores=ml_scores
         )
 
-        # Update ranks
+        # Update ranks (uses same scoring logic)
         ranks_updated = update_options_ranks(underlying, calls, puts)
 
         return {
