@@ -16,46 +16,48 @@ struct MACDPanelView: View {
 
     var body: some View {
         Chart {
-            // MACD Histogram (bars)
+            // MACD Histogram (bars) - rendered first so lines are on top
             ForEach(histogram) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     BarMark(
                         x: .value("Index", index),
                         y: .value("Histogram", value)
                     )
-                    .foregroundStyle(value >= 0 ? Color.green.opacity(0.6) : Color.red.opacity(0.6))
+                    .foregroundStyle(value >= 0 ? ChartColors.macdHistogramPos.opacity(0.6) : ChartColors.macdHistogramNeg.opacity(0.6))
                 }
             }
 
-            // MACD Line (green - upper/bullish line)
+            // MACD Line (cyan - fast line)
             ForEach(macdLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
                         x: .value("Index", index),
-                        y: .value("MACD", value)
+                        y: .value("MACD", value),
+                        series: .value("Series", "MACD")
                     )
-                    .foregroundStyle(.green)
-                    .lineStyle(StrokeStyle(lineWidth: 2))
+                    .foregroundStyle(ChartColors.macdLine)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5))
                     .interpolationMethod(.catmullRom)
                 }
             }
 
-            // Signal Line (red - lower/slower line)
+            // Signal Line (orange - slow line)
             ForEach(signalLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
                         x: .value("Index", index),
-                        y: .value("Signal", value)
+                        y: .value("Signal", value),
+                        series: .value("Series", "Signal")
                     )
-                    .foregroundStyle(.red)
-                    .lineStyle(StrokeStyle(lineWidth: 2))
+                    .foregroundStyle(ChartColors.macdSignal)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5))
                     .interpolationMethod(.catmullRom)
                 }
             }
 
             // Zero line
             RuleMark(y: .value("Zero", 0))
-                .foregroundStyle(.gray.opacity(0.3))
+                .foregroundStyle(ChartColors.midline)
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
         }
         .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
@@ -68,12 +70,12 @@ struct MACDPanelView: View {
         }
         .chartLegend(position: .top, alignment: .leading) {
             HStack(spacing: 12) {
-                LegendItem(color: .green, label: "MACD", value: macdLine.last?.value)
-                LegendItem(color: .red, label: "Signal", value: signalLine.last?.value)
+                LegendItem(color: ChartColors.macdLine, label: "MACD", value: macdLine.last?.value)
+                LegendItem(color: ChartColors.macdSignal, label: "Signal", value: signalLine.last?.value)
                 if let histVal = histogram.last?.value {
                     HStack(spacing: 4) {
                         Rectangle()
-                            .fill(histVal >= 0 ? Color.green : Color.red)
+                            .fill(histVal >= 0 ? ChartColors.macdHistogramPos : ChartColors.macdHistogramNeg)
                             .frame(width: 8, height: 8)
                         Text("Hist")
                             .font(.caption)
@@ -102,40 +104,60 @@ struct StochasticPanelView: View {
 
     var body: some View {
         Chart {
-            // %K Line (green - faster/upper line)
+            // Overbought zone shading (80-100)
+            RectangleMark(
+                xStart: .value("Start", visibleRange.lowerBound),
+                xEnd: .value("End", visibleRange.upperBound),
+                yStart: .value("Low", 80),
+                yEnd: .value("High", 100)
+            )
+            .foregroundStyle(Color.red.opacity(0.08))
+
+            // Oversold zone shading (0-20)
+            RectangleMark(
+                xStart: .value("Start", visibleRange.lowerBound),
+                xEnd: .value("End", visibleRange.upperBound),
+                yStart: .value("Low", 0),
+                yEnd: .value("High", 20)
+            )
+            .foregroundStyle(Color.green.opacity(0.08))
+
+            // %K Line (cyan - faster line)
             ForEach(kLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
                         x: .value("Index", index),
-                        y: .value("%K", value)
+                        y: .value("%K", value),
+                        series: .value("Series", "K")
                     )
-                    .foregroundStyle(.green)
-                    .lineStyle(StrokeStyle(lineWidth: 2))
+                    .foregroundStyle(ChartColors.stochasticK)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5))
                     .interpolationMethod(.catmullRom)
                 }
             }
 
-            // %D Line (red - slower/lower line)
+            // %D Line (orange - slower line)
             ForEach(dLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
                         x: .value("Index", index),
-                        y: .value("%D", value)
+                        y: .value("%D", value),
+                        series: .value("Series", "D")
                     )
-                    .foregroundStyle(.red)
-                    .lineStyle(StrokeStyle(lineWidth: 2))
+                    .foregroundStyle(ChartColors.stochasticD)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5))
                     .interpolationMethod(.catmullRom)
                 }
             }
 
             // Overbought (80)
             RuleMark(y: .value("Overbought", 80))
-                .foregroundStyle(.red.opacity(0.3))
+                .foregroundStyle(ChartColors.overbought)
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
 
             // Oversold (20)
             RuleMark(y: .value("Oversold", 20))
-                .foregroundStyle(.green.opacity(0.3))
+                .foregroundStyle(ChartColors.oversold)
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
         }
         .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
@@ -149,8 +171,8 @@ struct StochasticPanelView: View {
         }
         .chartLegend(position: .top, alignment: .leading) {
             HStack(spacing: 12) {
-                LegendItem(color: .green, label: "%K(14)", value: kLine.last?.value)
-                LegendItem(color: .red, label: "%D(3)", value: dLine.last?.value)
+                LegendItem(color: ChartColors.stochasticK, label: "%K(14)", value: kLine.last?.value)
+                LegendItem(color: ChartColors.stochasticD, label: "%D(3)", value: dLine.last?.value)
             }
             .padding(.horizontal, 8)
         }
@@ -172,53 +194,74 @@ struct KDJPanelView: View {
 
     var body: some View {
         Chart {
-            // K Line (blue - middle line)
+            // Overbought zone shading (80-120)
+            RectangleMark(
+                xStart: .value("Start", visibleRange.lowerBound),
+                xEnd: .value("End", visibleRange.upperBound),
+                yStart: .value("Low", 80),
+                yEnd: .value("High", 120)
+            )
+            .foregroundStyle(Color.red.opacity(0.08))
+
+            // Oversold zone shading (-20 to 20)
+            RectangleMark(
+                xStart: .value("Start", visibleRange.lowerBound),
+                xEnd: .value("End", visibleRange.upperBound),
+                yStart: .value("Low", -20),
+                yEnd: .value("High", 20)
+            )
+            .foregroundStyle(Color.green.opacity(0.08))
+
+            // K Line (BRIGHT RED - most visible)
             ForEach(kLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
                         x: .value("Index", index),
-                        y: .value("K", value)
+                        y: .value("K", value),
+                        series: .value("Series", "KDJ-K")
                     )
-                    .foregroundStyle(.blue)
-                    .lineStyle(StrokeStyle(lineWidth: 2))
+                    .foregroundStyle(ChartColors.kdjK)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5))
                     .interpolationMethod(.catmullRom)
                 }
             }
 
-            // D Line (red - slower/lower line)
+            // D Line (BRIGHT GREEN - clearly distinct)
             ForEach(dLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
                         x: .value("Index", index),
-                        y: .value("D", value)
+                        y: .value("D", value),
+                        series: .value("Series", "KDJ-D")
                     )
-                    .foregroundStyle(.red)
-                    .lineStyle(StrokeStyle(lineWidth: 2))
+                    .foregroundStyle(ChartColors.kdjD)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5))
                     .interpolationMethod(.catmullRom)
                 }
             }
 
-            // J Line (green - most sensitive/upper line)
+            // J Line (BRIGHT BLUE - third distinct color)
             ForEach(jLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
                         x: .value("Index", index),
-                        y: .value("J", value)
+                        y: .value("J", value),
+                        series: .value("Series", "KDJ-J")
                     )
-                    .foregroundStyle(.green)
-                    .lineStyle(StrokeStyle(lineWidth: 2))
+                    .foregroundStyle(ChartColors.kdjJ)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5))
                     .interpolationMethod(.catmullRom)
                 }
             }
 
             // Overbought (80)
             RuleMark(y: .value("Overbought", 80))
-                .foregroundStyle(.red.opacity(0.3))
+                .foregroundStyle(ChartColors.overbought)
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
 
             // Oversold (20)
             RuleMark(y: .value("Oversold", 20))
-                .foregroundStyle(.green.opacity(0.3))
+                .foregroundStyle(ChartColors.oversold)
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
         }
         .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
@@ -232,9 +275,9 @@ struct KDJPanelView: View {
         }
         .chartLegend(position: .top, alignment: .leading) {
             HStack(spacing: 12) {
-                LegendItem(color: .blue, label: "K", value: kLine.last?.value)
-                LegendItem(color: .red, label: "D", value: dLine.last?.value)
-                LegendItem(color: .green, label: "J", value: jLine.last?.value)
+                LegendItem(color: ChartColors.kdjK, label: "K", value: kLine.last?.value)
+                LegendItem(color: ChartColors.kdjD, label: "D", value: dLine.last?.value)
+                LegendItem(color: ChartColors.kdjJ, label: "J", value: jLine.last?.value)
             }
             .padding(.horizontal, 8)
         }
@@ -256,15 +299,24 @@ struct ADXPanelView: View {
 
     var body: some View {
         Chart {
-            // ADX Line (yellow - trend strength)
+            // Strong trend zone shading (above 25)
+            RectangleMark(
+                xStart: .value("Start", visibleRange.lowerBound),
+                xEnd: .value("End", visibleRange.upperBound),
+                yStart: .value("Low", 25),
+                yEnd: .value("High", 100)
+            )
+            .foregroundStyle(Color.yellow.opacity(0.05))
+
+            // ADX Line (gold - trend strength)
             ForEach(adxLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
                         x: .value("Index", index),
                         y: .value("ADX", value)
                     )
-                    .foregroundStyle(.yellow)
-                    .lineStyle(StrokeStyle(lineWidth: 2))
+                    .foregroundStyle(ChartColors.adx)
+                    .lineStyle(StrokeStyle(lineWidth: 3.0))
                     .interpolationMethod(.catmullRom)
                 }
             }
@@ -276,8 +328,8 @@ struct ADXPanelView: View {
                         x: .value("Index", index),
                         y: .value("+DI", value)
                     )
-                    .foregroundStyle(.green)
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .foregroundStyle(ChartColors.plusDI)
+                    .lineStyle(StrokeStyle(lineWidth: 2.0))
                     .interpolationMethod(.catmullRom)
                 }
             }
@@ -289,15 +341,15 @@ struct ADXPanelView: View {
                         x: .value("Index", index),
                         y: .value("-DI", value)
                     )
-                    .foregroundStyle(.red)
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .foregroundStyle(ChartColors.minusDI)
+                    .lineStyle(StrokeStyle(lineWidth: 2.0))
                     .interpolationMethod(.catmullRom)
                 }
             }
 
             // Trend strength threshold (25)
             RuleMark(y: .value("Trend", 25))
-                .foregroundStyle(.gray.opacity(0.3))
+                .foregroundStyle(ChartColors.midline)
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
         }
         .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
@@ -311,9 +363,9 @@ struct ADXPanelView: View {
         }
         .chartLegend(position: .top, alignment: .leading) {
             HStack(spacing: 12) {
-                LegendItem(color: .yellow, label: "ADX", value: adxLine.last?.value)
-                LegendItem(color: .green, label: "+DI", value: plusDI.last?.value)
-                LegendItem(color: .red, label: "-DI", value: minusDI.last?.value)
+                LegendItem(color: ChartColors.adx, label: "ADX", value: adxLine.last?.value)
+                LegendItem(color: ChartColors.plusDI, label: "+DI", value: plusDI.last?.value)
+                LegendItem(color: ChartColors.minusDI, label: "-DI", value: minusDI.last?.value)
             }
             .padding(.horizontal, 8)
         }
@@ -340,27 +392,39 @@ struct ATRPanelView: View {
         }
         let minVal = visibleValues.min() ?? 0
         let maxVal = visibleValues.max() ?? 1
-        let padding = (maxVal - minVal) * 0.1
+        let padding = (maxVal - minVal) * 0.15
         return max(0, minVal - padding)...(maxVal + padding)
     }
 
     var body: some View {
         Chart {
+            // ATR area fill
+            ForEach(atrLine) { point in
+                if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
+                    AreaMark(
+                        x: .value("Index", index),
+                        y: .value("ATR", value)
+                    )
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [ChartColors.atr.opacity(0.2), ChartColors.atr.opacity(0.02)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .interpolationMethod(.catmullRom)
+                }
+            }
+
+            // ATR line
             ForEach(atrLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                     LineMark(
                         x: .value("Index", index),
                         y: .value("ATR", value)
                     )
-                    .foregroundStyle(.cyan)
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
-                    .interpolationMethod(.catmullRom)
-
-                    AreaMark(
-                        x: .value("Index", index),
-                        y: .value("ATR", value)
-                    )
-                    .foregroundStyle(.cyan.opacity(0.1))
+                    .foregroundStyle(ChartColors.atr)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5))
                     .interpolationMethod(.catmullRom)
                 }
             }
@@ -381,14 +445,21 @@ struct ATRPanelView: View {
         }
         .chartLegend(position: .top, alignment: .leading) {
             HStack(spacing: 8) {
-                Label("ATR(14)", systemImage: "waveform")
-                    .font(.caption)
-                    .foregroundStyle(.cyan)
+                Circle()
+                    .fill(ChartColors.atr)
+                    .frame(width: 8, height: 8)
+                Text("ATR(14)")
+                    .font(.caption.bold())
+                    .foregroundStyle(.primary)
                 Spacer()
                 if let latestATR = atrLine.last?.value {
                     Text(String(format: "%.2f", latestATR))
                         .font(.caption.bold().monospacedDigit())
-                        .foregroundStyle(.cyan)
+                        .foregroundStyle(ChartColors.atr)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(ChartColors.atr.opacity(0.15))
+                        .clipShape(Capsule())
                 }
             }
             .padding(.horizontal, 8)

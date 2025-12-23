@@ -1,6 +1,65 @@
 import SwiftUI
 import Charts
 
+// MARK: - Chart Color Palette
+/// Professional, high-contrast colors for chart elements - optimized for dark mode visibility
+struct ChartColors {
+    // Moving Averages - distinct, easily differentiable colors with high contrast
+    static let sma20 = Color(red: 0.3, green: 0.7, blue: 1.0)      // Bright sky blue
+    static let sma50 = Color(red: 1.0, green: 0.65, blue: 0.0)     // Bright orange
+    static let sma200 = Color(red: 0.85, green: 0.4, blue: 0.95)   // Bright purple
+    static let ema9 = Color(red: 0.0, green: 1.0, blue: 0.75)      // Bright teal/cyan
+    static let ema21 = Color(red: 1.0, green: 0.5, blue: 0.7)      // Bright pink/magenta
+
+    // Bollinger Bands - lighter for visibility
+    static let bollingerBand = Color(red: 0.7, green: 0.7, blue: 0.85)  // Light purple-gray
+    static let bollingerFill = Color(red: 0.6, green: 0.6, blue: 0.75).opacity(0.12)
+
+    // Candlesticks
+    static let bullish = Color(red: 0.2, green: 0.85, blue: 0.4)   // Bright green
+    static let bearish = Color(red: 1.0, green: 0.3, blue: 0.25)   // Bright red
+
+    // Forecast
+    static let forecastBullish = Color(red: 0.3, green: 0.9, blue: 0.5)
+    static let forecastBearish = Color(red: 1.0, green: 0.35, blue: 0.3)
+    static let forecastNeutral = Color(red: 1.0, green: 0.75, blue: 0.0)
+
+    // SuperTrend - brighter to stand out from candlesticks
+    static let superTrendBull = Color(red: 0.0, green: 1.0, blue: 0.5)     // Neon green
+    static let superTrendBear = Color(red: 1.0, green: 0.25, blue: 0.5)    // Hot pink/red
+
+    // Oscillators - MACD (high contrast pair)
+    static let macdLine = Color(red: 0.2, green: 0.85, blue: 1.0)    // Bright cyan
+    static let macdSignal = Color(red: 1.0, green: 0.6, blue: 0.1)   // Bright orange
+    static let macdHistogramPos = Color(red: 0.25, green: 0.85, blue: 0.45)
+    static let macdHistogramNeg = Color(red: 1.0, green: 0.35, blue: 0.3)
+
+    // Stochastic (very distinct pair)
+    static let stochasticK = Color(red: 0.2, green: 0.85, blue: 1.0)   // Bright cyan
+    static let stochasticD = Color(red: 1.0, green: 0.6, blue: 0.1)    // Bright orange
+
+    // KDJ - MAXIMUM CONTRAST - three completely different colors
+    static let kdjK = Color(red: 0.3, green: 1.0, blue: 0.3)       // BRIGHT GREEN
+    static let kdjD = Color(red: 1.0, green: 0.3, blue: 0.3)       // BRIGHT RED
+    static let kdjJ = Color(red: 0.3, green: 0.5, blue: 1.0)       // BRIGHT BLUE
+
+    // ADX - three distinct colors
+    static let adx = Color(red: 1.0, green: 0.9, blue: 0.1)         // Bright yellow/gold
+    static let plusDI = Color(red: 0.3, green: 1.0, blue: 0.5)      // Bright green
+    static let minusDI = Color(red: 1.0, green: 0.4, blue: 0.3)     // Bright red
+
+    // RSI - brighter purple for better visibility
+    static let rsi = Color(red: 0.8, green: 0.5, blue: 1.0)         // Bright purple/magenta
+
+    // ATR - bright cyan
+    static let atr = Color(red: 0.2, green: 0.9, blue: 1.0)         // Bright cyan
+
+    // Reference lines
+    static let overbought = Color.red.opacity(0.5)
+    static let oversold = Color.green.opacity(0.5)
+    static let midline = Color.gray.opacity(0.4)
+}
+
 struct AdvancedChartView: View {
     let bars: [OHLCBar]
     let sma20: [IndicatorDataPoint]
@@ -309,18 +368,18 @@ struct AdvancedChartView: View {
                 candlestickMarks(index: item.index, bar: item.bar)
             }
 
-            // Moving Average Overlays
+            // Moving Average Overlays - using distinct high-contrast colors
             if config.showSMA20 {
-                indicatorLine(sma20, color: .blue, label: "SMA(20)")
+                indicatorLine(sma20, color: ChartColors.sma20, label: "SMA(20)")
             }
             if config.showSMA50 {
-                indicatorLine(sma50, color: .orange, label: "SMA(50)")
+                indicatorLine(sma50, color: ChartColors.sma50, label: "SMA(50)")
             }
             if config.showEMA9 {
-                indicatorLine(ema9, color: .purple, label: "EMA(9)")
+                indicatorLine(ema9, color: ChartColors.ema9, label: "EMA(9)")
             }
             if config.showEMA21 {
-                indicatorLine(ema21, color: .pink, label: "EMA(21)")
+                indicatorLine(ema21, color: ChartColors.ema21, label: "EMA(21)")
             }
 
             // Bollinger Bands Overlay
@@ -401,6 +460,24 @@ struct AdvancedChartView: View {
 
     private var rsiChartView: some View {
         Chart {
+            // RSI overbought zone shading (80-100)
+            RectangleMark(
+                xStart: .value("Start", visibleRange.lowerBound),
+                xEnd: .value("End", visibleRange.upperBound),
+                yStart: .value("Low", 80),
+                yEnd: .value("High", 100)
+            )
+            .foregroundStyle(Color.red.opacity(0.08))
+
+            // RSI oversold zone shading (0-20)
+            RectangleMark(
+                xStart: .value("Start", visibleRange.lowerBound),
+                xEnd: .value("End", visibleRange.upperBound),
+                yStart: .value("Low", 0),
+                yEnd: .value("High", 20)
+            )
+            .foregroundStyle(Color.green.opacity(0.08))
+
             // RSI line
             ForEach(rsi) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
@@ -408,24 +485,25 @@ struct AdvancedChartView: View {
                         x: .value("Index", index),
                         y: .value("RSI", value)
                     )
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(ChartColors.rsi)
+                    .lineStyle(StrokeStyle(lineWidth: 2.5))
                     .interpolationMethod(.catmullRom)
                 }
             }
 
-            // Overbought line (70)
-            RuleMark(y: .value("Overbought", 70))
-                .foregroundStyle(.red.opacity(0.3))
+            // Overbought line (80)
+            RuleMark(y: .value("Overbought", 80))
+                .foregroundStyle(ChartColors.overbought)
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
 
-            // Oversold line (30)
-            RuleMark(y: .value("Oversold", 30))
-                .foregroundStyle(.green.opacity(0.3))
+            // Oversold line (20)
+            RuleMark(y: .value("Oversold", 20))
+                .foregroundStyle(ChartColors.oversold)
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
 
             // Midline (50)
             RuleMark(y: .value("Midline", 50))
-                .foregroundStyle(.gray.opacity(0.2))
+                .foregroundStyle(ChartColors.midline)
 
             // Selection indicator
             if let selectedIdx = selectedIndex {
@@ -435,24 +513,31 @@ struct AdvancedChartView: View {
             }
         }
         .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
-        .chartYScale(domain: 0...100)
+        .chartYScale(domain: 0...100)  // Full range with adjusted reference lines
         .chartXAxis(.hidden)
         .chartYAxis {
-            AxisMarks(position: .trailing, values: [30, 50, 70]) { value in
+            AxisMarks(position: .trailing, values: [20, 50, 80]) { value in
                 AxisGridLine()
                 AxisValueLabel()
             }
         }
         .chartLegend(position: .top, alignment: .leading) {
             HStack(spacing: 8) {
-                Label("RSI(14)", systemImage: "waveform.path.ecg")
-                    .font(.caption)
-                    .foregroundStyle(.purple)
+                Circle()
+                    .fill(ChartColors.rsi)
+                    .frame(width: 8, height: 8)
+                Text("RSI(14)")
+                    .font(.caption.bold())
+                    .foregroundStyle(.primary)
                 Spacer()
                 if let latestRSI = rsi.last?.value {
                     Text(String(format: "%.1f", latestRSI))
                         .font(.caption.bold().monospacedDigit())
                         .foregroundStyle(rsiColor(latestRSI))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(rsiColor(latestRSI).opacity(0.15))
+                        .clipShape(Capsule())
                 }
             }
             .padding(.horizontal, 8)
@@ -494,6 +579,9 @@ struct AdvancedChartView: View {
 
     @ChartContentBuilder
     private func candlestickMarks(index: Int, bar: OHLCBar) -> some ChartContent {
+        let isBullish = bar.close >= bar.open
+        let candleColor = isBullish ? ChartColors.bullish : ChartColors.bearish
+
         // Candlestick body
         RectangleMark(
             x: .value("Index", index),
@@ -501,8 +589,8 @@ struct AdvancedChartView: View {
             yEnd: .value("Close", max(bar.open, bar.close)),
             width: .ratio(0.6)
         )
-        .foregroundStyle(bar.close >= bar.open ? Color.green : Color.red)
-        .opacity(selectedIndex == index ? 1.0 : 0.8)
+        .foregroundStyle(candleColor)
+        .opacity(selectedIndex == index ? 1.0 : 0.85)
 
         // Candlestick wick
         RuleMark(
@@ -510,7 +598,7 @@ struct AdvancedChartView: View {
             yStart: .value("Low", bar.low),
             yEnd: .value("High", bar.high)
         )
-        .foregroundStyle(bar.close >= bar.open ? Color.green.opacity(0.8) : Color.red.opacity(0.8))
+        .foregroundStyle(candleColor.opacity(0.9))
         .lineStyle(StrokeStyle(lineWidth: 1.5))
     }
 
@@ -532,16 +620,19 @@ struct AdvancedChartView: View {
     private var legendView: some View {
         HStack(spacing: 12) {
             if config.showSMA20 {
-                LegendItem(color: .blue, label: "SMA(20)", value: sma20.last?.value)
+                LegendItem(color: ChartColors.sma20, label: "SMA(20)", value: sma20.last?.value)
             }
             if config.showSMA50 {
-                LegendItem(color: .orange, label: "SMA(50)", value: sma50.last?.value)
+                LegendItem(color: ChartColors.sma50, label: "SMA(50)", value: sma50.last?.value)
             }
             if config.showEMA9 {
-                LegendItem(color: .purple, label: "EMA(9)", value: ema9.last?.value)
+                LegendItem(color: ChartColors.ema9, label: "EMA(9)", value: ema9.last?.value)
             }
             if config.showEMA21 {
-                LegendItem(color: .pink, label: "EMA(21)", value: ema21.last?.value)
+                LegendItem(color: ChartColors.ema21, label: "EMA(21)", value: ema21.last?.value)
+            }
+            if config.showBollingerBands {
+                LegendItem(color: ChartColors.bollingerBand, label: "BB(20,2)", value: nil)
             }
             if config.showSuperTrend {
                 superTrendLegendItem
@@ -580,7 +671,11 @@ struct AdvancedChartView: View {
     // MARK: - SuperTrend Strength Panel
 
     private var superTrendStrengthPanel: some View {
-        VStack(spacing: 0) {
+        let lastTrend = superTrendTrend.last ?? 0
+        let isBullish = lastTrend == 1
+        let bgColor = isBullish ? ChartColors.superTrendBull : ChartColors.superTrendBear
+
+        return VStack(spacing: 0) {
             // Header with current trend info
             HStack {
                 Label("SuperTrend", systemImage: "waveform.path.ecg")
@@ -595,14 +690,12 @@ struct AdvancedChartView: View {
                 Spacer()
 
                 // Current trend badge
-                let lastTrend = superTrendTrend.last ?? 0
-                let isBullish = lastTrend == 1
                 Text(isBullish ? "BULLISH" : "BEARISH")
                     .font(.caption.bold())
-                    .foregroundColor(isBullish ? .green : .red)
+                    .foregroundColor(isBullish ? ChartColors.superTrendBull : ChartColors.superTrendBear)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background((isBullish ? Color.green : Color.red).opacity(0.15))
+                    .background((isBullish ? ChartColors.superTrendBull : ChartColors.superTrendBear).opacity(0.15))
                     .clipShape(Capsule())
 
                 // Current strength value
@@ -624,7 +717,7 @@ struct AdvancedChartView: View {
                     )
                     .foregroundStyle(
                         LinearGradient(
-                            colors: [item.isBullish ? Color.green.opacity(0.3) : Color.red.opacity(0.3), .clear],
+                            colors: [item.isBullish ? ChartColors.superTrendBull.opacity(0.3) : ChartColors.superTrendBear.opacity(0.3), .clear],
                             startPoint: .top,
                             endPoint: .bottom
                         )
@@ -634,7 +727,7 @@ struct AdvancedChartView: View {
                         x: .value("Index", item.index),
                         y: .value("Strength", item.strength)
                     )
-                    .foregroundStyle(item.isBullish ? Color.green : Color.red)
+                    .foregroundStyle(item.isBullish ? ChartColors.superTrendBull : ChartColors.superTrendBear)
                     .lineStyle(StrokeStyle(lineWidth: 1.5))
                 }
 
@@ -662,6 +755,7 @@ struct AdvancedChartView: View {
                 }
             }
         }
+        .background(bgColor.opacity(0.05))  // Subtle background color matching trend
     }
 
     // Helper for strength panel data
@@ -705,28 +799,90 @@ struct AdvancedChartView: View {
 
     // MARK: - Helper Functions
 
+    /// Collect all visible indicator values for proper Y-axis scaling
+    private func visibleIndicatorValues(from data: [IndicatorDataPoint]) -> [Double] {
+        data.compactMap { point -> Double? in
+            guard let value = point.value,
+                  let index = indicatorIndex(for: point.date),
+                  visibleRange.contains(index) else { return nil }
+            return value
+        }
+    }
+
     private var visibleMinPrice: Double {
-        visibleBars.map(\.bar.low).min() ?? 0
+        var minValue = visibleBars.map(\.bar.low).min() ?? 0
+
+        // Include all enabled indicator minimums
+        if config.showSMA20, let min = visibleIndicatorValues(from: sma20).min() {
+            minValue = Swift.min(minValue, min)
+        }
+        if config.showSMA50, let min = visibleIndicatorValues(from: sma50).min() {
+            minValue = Swift.min(minValue, min)
+        }
+        if config.showEMA9, let min = visibleIndicatorValues(from: ema9).min() {
+            minValue = Swift.min(minValue, min)
+        }
+        if config.showEMA21, let min = visibleIndicatorValues(from: ema21).min() {
+            minValue = Swift.min(minValue, min)
+        }
+        if config.showBollingerBands, let min = visibleIndicatorValues(from: bollingerLower).min() {
+            minValue = Swift.min(minValue, min)
+        }
+        if config.showSuperTrend, let min = visibleIndicatorValues(from: superTrendLine).min() {
+            minValue = Swift.min(minValue, min)
+        }
+
+        // Include forecast lower bounds
+        if let mlSummary = mlSummary {
+            for horizon in mlSummary.horizons {
+                if let forecastMin = horizon.points.map({ $0.lower }).min() {
+                    minValue = Swift.min(minValue, forecastMin)
+                }
+            }
+        }
+
+        return minValue
     }
 
     private var visibleMaxPrice: Double {
-        // Include indicator values in range calculation for visible range
         var maxValue = visibleBars.map(\.bar.high).max() ?? 0
 
-        // Check visible indicators
-        let visibleIndicatorValues = sma20.compactMap { point -> Double? in
-            guard let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) else { return nil }
-            return value
+        // Include all enabled indicator maximums
+        if config.showSMA20, let max = visibleIndicatorValues(from: sma20).max() {
+            maxValue = Swift.max(maxValue, max)
         }
-        if let indicatorMax = visibleIndicatorValues.max() {
-            maxValue = max(maxValue, indicatorMax)
+        if config.showSMA50, let max = visibleIndicatorValues(from: sma50).max() {
+            maxValue = Swift.max(maxValue, max)
+        }
+        if config.showEMA9, let max = visibleIndicatorValues(from: ema9).max() {
+            maxValue = Swift.max(maxValue, max)
+        }
+        if config.showEMA21, let max = visibleIndicatorValues(from: ema21).max() {
+            maxValue = Swift.max(maxValue, max)
+        }
+        if config.showBollingerBands, let max = visibleIndicatorValues(from: bollingerUpper).max() {
+            maxValue = Swift.max(maxValue, max)
+        }
+        if config.showSuperTrend, let max = visibleIndicatorValues(from: superTrendLine).max() {
+            maxValue = Swift.max(maxValue, max)
+        }
+
+        // Include forecast upper bounds
+        if let mlSummary = mlSummary {
+            for horizon in mlSummary.horizons {
+                if let forecastMax = horizon.points.map({ $0.upper }).max() {
+                    maxValue = Swift.max(maxValue, forecastMax)
+                }
+            }
         }
 
         return maxValue
     }
 
     private var visiblePriceRange: ClosedRange<Double> {
-        let padding = (visibleMaxPrice - visibleMinPrice) * 0.05
+        let range = visibleMaxPrice - visibleMinPrice
+        // Use 8% padding for better visual margins
+        let padding = range * 0.08
         return (visibleMinPrice - padding)...(visibleMaxPrice + padding)
     }
 
@@ -838,42 +994,58 @@ struct AdvancedChartView: View {
 
     @ChartContentBuilder
     private var bollingerBandsOverlay: some ChartContent {
-        // Upper band (gray dashed)
+        // Upper band
         ForEach(bollingerUpper) { point in
             if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                 LineMark(
                     x: .value("Index", index),
                     y: .value("BB Upper", value)
                 )
-                .foregroundStyle(.gray.opacity(0.6))
-                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 2]))
+                .foregroundStyle(ChartColors.bollingerBand.opacity(0.7))
+                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
                 .interpolationMethod(.catmullRom)
             }
         }
 
-        // Middle band (SMA - gray solid)
+        // Middle band (SMA)
         ForEach(bollingerMiddle) { point in
             if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                 LineMark(
                     x: .value("Index", index),
                     y: .value("BB Middle", value)
                 )
-                .foregroundStyle(.gray.opacity(0.4))
+                .foregroundStyle(ChartColors.bollingerBand.opacity(0.5))
                 .lineStyle(StrokeStyle(lineWidth: 1))
                 .interpolationMethod(.catmullRom)
             }
         }
 
-        // Lower band (gray dashed)
+        // Lower band
         ForEach(bollingerLower) { point in
             if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
                 LineMark(
                     x: .value("Index", index),
                     y: .value("BB Lower", value)
                 )
-                .foregroundStyle(.gray.opacity(0.6))
-                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 2]))
+                .foregroundStyle(ChartColors.bollingerBand.opacity(0.7))
+                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
                 .interpolationMethod(.catmullRom)
+            }
+        }
+
+        // Fill area between upper and lower bands
+        ForEach(Array(zip(bollingerUpper, bollingerLower).enumerated()), id: \.offset) { _, pair in
+            let (upper, lower) = pair
+            if let upperVal = upper.value,
+               let lowerVal = lower.value,
+               let index = indicatorIndex(for: upper.date),
+               visibleRange.contains(index) {
+                AreaMark(
+                    x: .value("Index", index),
+                    yStart: .value("Lower", lowerVal),
+                    yEnd: .value("Upper", upperVal)
+                )
+                .foregroundStyle(ChartColors.bollingerFill)
             }
         }
     }
@@ -1109,18 +1281,42 @@ struct AdvancedChartView: View {
 
     @ChartContentBuilder
     private func forecastOverlay(_ mlSummary: MLSummary) -> some ChartContent {
-        // Get the forecast color based on overall label
+        // Get the forecast color based on overall label - using ChartColors
         let forecastColor: Color = {
             switch mlSummary.overallLabel.lowercased() {
-            case "bullish": return .green
-            case "bearish": return .red
-            case "neutral": return .orange
+            case "bullish": return ChartColors.forecastBullish
+            case "bearish": return ChartColors.forecastBearish
+            case "neutral": return ChartColors.forecastNeutral
             default: return .gray
             }
         }()
 
+        // Get the last bar's close price as the starting point for the forecast
+        let lastClose = bars.last?.close ?? 0
+
         // Calculate the starting index (after the last bar)
         let lastBarIndex = bars.count - 1
+
+        // Draw a connection line from last bar to first forecast point
+        if let firstHorizon = mlSummary.horizons.first,
+           let firstPoint = firstHorizon.points.first {
+            // Connection from last bar to forecast start
+            LineMark(
+                x: .value("Index", lastBarIndex),
+                y: .value("Price", lastClose)
+            )
+            .foregroundStyle(forecastColor)
+            .lineStyle(StrokeStyle(lineWidth: 2.5, dash: [6, 4]))
+            .opacity(0.9)
+
+            LineMark(
+                x: .value("Index", lastBarIndex + 1),
+                y: .value("Price", firstPoint.value)
+            )
+            .foregroundStyle(forecastColor)
+            .lineStyle(StrokeStyle(lineWidth: 2.5, dash: [6, 4]))
+            .opacity(0.9)
+        }
 
         // Render forecast for each horizon
         ForEach(mlSummary.horizons, id: \.horizon) { series in
@@ -1128,30 +1324,30 @@ struct AdvancedChartView: View {
             ForEach(Array(series.points.enumerated()), id: \.offset) { offset, point in
                 let forecastIndex = lastBarIndex + offset + 1
 
-                // Forecast line (main prediction)
+                // Forecast line (main prediction) - thicker and more visible
                 LineMark(
                     x: .value("Index", forecastIndex),
                     y: .value("Forecast", point.value)
                 )
                 .foregroundStyle(forecastColor)
-                .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 3]))
-                .opacity(0.8)
+                .lineStyle(StrokeStyle(lineWidth: 2.5, dash: [6, 4]))
+                .opacity(0.9)
 
                 // Upper confidence band
                 LineMark(
                     x: .value("Index", forecastIndex),
                     y: .value("Upper", point.upper)
                 )
-                .foregroundStyle(forecastColor.opacity(0.3))
-                .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 2]))
+                .foregroundStyle(forecastColor.opacity(0.4))
+                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
 
                 // Lower confidence band
                 LineMark(
                     x: .value("Index", forecastIndex),
                     y: .value("Lower", point.lower)
                 )
-                .foregroundStyle(forecastColor.opacity(0.3))
-                .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 2]))
+                .foregroundStyle(forecastColor.opacity(0.4))
+                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
 
                 // Shaded area between confidence bands
                 AreaMark(
@@ -1159,8 +1355,20 @@ struct AdvancedChartView: View {
                     yStart: .value("Lower", point.lower),
                     yEnd: .value("Upper", point.upper)
                 )
-                .foregroundStyle(forecastColor.opacity(0.1))
+                .foregroundStyle(forecastColor.opacity(0.15))
             }
+        }
+
+        // Add forecast endpoint marker
+        if let lastHorizon = mlSummary.horizons.last,
+           let lastPoint = lastHorizon.points.last {
+            let endIndex = lastBarIndex + lastHorizon.points.count
+            PointMark(
+                x: .value("Index", endIndex),
+                y: .value("Forecast", lastPoint.value)
+            )
+            .foregroundStyle(forecastColor)
+            .symbolSize(60)
         }
     }
 }
