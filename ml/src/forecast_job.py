@@ -2,6 +2,7 @@
 
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # Add parent directory to path for imports
@@ -11,6 +12,12 @@ from config.settings import settings  # noqa: E402
 from src.data.supabase_db import db  # noqa: E402
 from src.features.technical_indicators import (  # noqa: E402
     add_technical_features,
+)
+from src.backtesting.walk_forward_tester import (  # noqa: E402
+    WalkForwardBacktester,
+)
+from src.monitoring.forecast_quality import (  # noqa: E402
+    ForecastQualityMonitor,
 )
 from src.models.baseline_forecaster import BaselineForecaster  # noqa: E402
 from src.models.ensemble_forecaster import EnsembleForecaster  # noqa: E402
@@ -53,6 +60,30 @@ def process_symbol(symbol: str) -> None:
         # Get symbol_id
         symbol_id = db.get_symbol_id(symbol)
 
+        # === Walk-forward backtest (validation) ===
+        backtester = WalkForwardBacktester(
+            train_window=252,
+            test_window=21,
+            step_size=5,
+        )
+        backtest_metrics = None
+        try:
+            baseline_bt = BaselineForecaster()
+            backtest_metrics = backtester.backtest(
+                df,
+                baseline_bt,
+                horizons=["1D"],
+            )
+            logger.info(
+                "Backtest %s - acc=%.2f%%, sharpe=%.2f, win_rate=%.2f%%",
+                symbol,
+                backtest_metrics.accuracy * 100,
+                backtest_metrics.sharpe_ratio,
+                backtest_metrics.win_rate * 100,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Backtest failed for %s: %s", symbol, e)
+
         # === SuperTrend AI Processing ===
         supertrend_data = None
         try:
@@ -93,10 +124,17 @@ def process_symbol(symbol: str) -> None:
             if use_ensemble:
                 # Prepare data for ensemble
                 baseline = BaselineForecaster()
-                X, y = baseline.prepare_training_data(df, horizon_days=baseline._parse_horizon(horizon))
+                X, y = baseline.prepare_training_data(
+                    df,
+                    horizon_days=baseline._parse_horizon(horizon),
+                )
 
                 # Create and train ensemble
-                forecaster = EnsembleForecaster(horizon=horizon, rf_weight=0.5, gb_weight=0.5)
+                forecaster = EnsembleForecaster(
+                    horizon=horizon,
+                    rf_weight=0.5,
+                    gb_weight=0.5,
+                )
                 forecaster.train(X, y)
 
                 # Generate prediction
@@ -118,11 +156,40 @@ def process_symbol(symbol: str) -> None:
                     "gb_prediction": ensemble_pred.get("gb_prediction"),
                     "agreement": ensemble_pred.get("agreement"),
                     "ensemble_type": "RF+GB",
+                    "backtest": (
+                        backtest_metrics.__dict__ if backtest_metrics else None
+                    ),
                 }
             else:
                 # Fallback to baseline forecaster
                 baseline_forecaster = BaselineForecaster()
                 forecast = baseline_forecaster.generate_forecast(df, horizon)
+
+            # Quality monitoring (log-only)
+            quality_score = ForecastQualityMonitor.compute_quality_score(
+                {
+                    "confidence": forecast.get("confidence", 0.5),
+                    "model_agreement": forecast.get("agreement", 0.75),
+                    "created_at": datetime.now(),
+                    "conflicting_signals": supertrend_data.get(
+                        "conflicting_signals", 0
+                    )
+                    if supertrend_data
+                    else 0,
+                }
+            )
+            issues = ForecastQualityMonitor.check_quality_issues(
+                {
+                    "confidence": forecast.get("confidence", 0.5),
+                    "model_agreement": forecast.get("agreement", 0.75),
+                    "created_at": datetime.now(),
+                    "conflicting_signals": supertrend_data.get(
+                        "conflicting_signals", 0
+                    )
+                    if supertrend_data
+                    else 0,
+                }
+            )
 
             # Save to database (include SuperTrend data if available)
             db.upsert_forecast(
@@ -137,8 +204,18 @@ def process_symbol(symbol: str) -> None:
             logger.info(
                 f"Saved {horizon} forecast for {symbol}: "
                 f"{forecast['label']} ({forecast['confidence']:.2%})"
-                + (f" [ensemble: RF={forecast.get('rf_prediction')}, GB={forecast.get('gb_prediction')}, agreement={forecast.get('agreement')}]"
-                   if use_ensemble else "")
+                + (
+                    f" [ensemble: RF={forecast.get('rf_prediction')}, "
+                    f"GB={forecast.get('gb_prediction')}, "
+                    f"agreement={forecast.get('agreement')}]"
+                    if use_ensemble
+                    else ""
+                )
+            )
+            logger.info(
+                "Quality score %.3f, issues=%s",
+                quality_score,
+                issues,
             )
 
     except Exception as e:

@@ -10,6 +10,7 @@ from typing import Dict
 
 import numpy as np
 import pandas as pd
+from imblearn.over_sampling import SMOTE
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,10 @@ class EnsembleForecaster:
     """
 
     def __init__(
-        self, horizon: str = "1D", rf_weight: float = 0.5, gb_weight: float = 0.5
+        self,
+        horizon: str = "1D",
+        rf_weight: float = 0.5,
+        gb_weight: float = 0.5,
     ) -> None:
         """
         Initialize Ensemble Forecaster.
@@ -41,10 +45,12 @@ class EnsembleForecaster:
         Note: Weights should sum to 1.0
         """
         from src.models.baseline_forecaster import BaselineForecaster
-        from src.models.gradient_boosting_forecaster import GradientBoostingForecaster
+        from src.models.gradient_boosting_forecaster import (
+            GradientBoostingForecaster,
+        )
 
         self.horizon = horizon
-        self.rf_weight = rf_weight / (rf_weight + gb_weight)  # Normalize
+        self.rf_weight = rf_weight / (rf_weight + gb_weight)
         self.gb_weight = gb_weight / (rf_weight + gb_weight)
 
         self.rf_model = BaselineForecaster()
@@ -53,7 +59,9 @@ class EnsembleForecaster:
         self.is_trained = False
         self.training_stats: Dict = {}
         logger.info(
-            f"Ensemble initialized: RF weight={self.rf_weight:.2f}, GB weight={self.gb_weight:.2f}"
+            "Ensemble initialized: RF weight=%.2f, GB weight=%.2f",
+            self.rf_weight,
+            self.gb_weight,
         )
 
     def train(
@@ -64,52 +72,69 @@ class EnsembleForecaster:
 
         Args:
             features_df: Technical indicators DataFrame
-            labels_series: Direction labels {-1, 0, 1} or {'bearish', 'neutral', 'bullish'}
+            labels_series: Direction labels {-1, 0, 1} or
+                {'bearish', 'neutral', 'bullish'}
 
         Returns:
             self
         """
-        logger.info(f"Training ensemble ({self.horizon})...")
+        logger.info("Training ensemble (%s)...", self.horizon)
+
+        smote = SMOTE(random_state=42, k_neighbors=5)
+        X_balanced, y_balanced = smote.fit_resample(features_df, labels_series)
+
+        logger.info(
+            "Class distribution after SMOTE: %s",
+            pd.Series(y_balanced).value_counts().to_dict(),
+        )
 
         # Train RF (expects string labels)
-        rf_labels = labels_series
-        if labels_series.dtype in [np.int64, np.int32, int]:
+        rf_labels = pd.Series(y_balanced)
+        if rf_labels.dtype in [np.int64, np.int32, int]:
             label_map = {-1: "bearish", 0: "neutral", 1: "bullish"}
-            rf_labels = labels_series.map(label_map)
+            rf_labels = rf_labels.map(label_map)
 
         self.rf_model.feature_columns = features_df.columns.tolist()
-        self.rf_model.scaler.fit(features_df)
-        X_scaled = self.rf_model.scaler.transform(features_df)
+        self.rf_model.scaler.fit(X_balanced)
+        X_scaled = self.rf_model.scaler.transform(X_balanced)
         self.rf_model.model.fit(X_scaled, rf_labels)
         self.rf_model.is_trained = True
         rf_accuracy = self.rf_model.model.score(X_scaled, rf_labels)
-        logger.info(f"  RF trained (accuracy: {rf_accuracy:.3f})")
+        logger.info("  RF trained (accuracy: %.3f)", rf_accuracy)
 
         # Train GB (expects numeric labels -1, 0, 1)
-        gb_labels = labels_series
-        if labels_series.dtype == object:
-            # Handle both lowercase and capitalized labels
+        gb_labels = pd.Series(y_balanced)
+        if gb_labels.dtype == object:
             reverse_map = {
-                "bearish": -1, "neutral": 0, "bullish": 1,
-                "Bearish": -1, "Neutral": 0, "Bullish": 1,
+                "bearish": -1,
+                "neutral": 0,
+                "bullish": 1,
+                "Bearish": -1,
+                "Neutral": 0,
+                "Bullish": 1,
             }
-            gb_labels = labels_series.map(reverse_map)
+            gb_labels = gb_labels.map(reverse_map)
 
-        # Check if we have enough data for GB (requires 100+ samples)
-        if len(features_df) >= 100:
+        if len(X_balanced) >= 100:
             try:
-                self.gb_model.train(features_df, gb_labels)
-                gb_accuracy = self.gb_model.training_stats.get("training_accuracy", 0)
-                logger.info(f"  GB trained (accuracy: {gb_accuracy:.3f})")
-            except ValueError as e:
-                # Fall back to RF-only mode if training fails
-                logger.warning(f"  GB training failed: {e}. Using RF only.")
+                self.gb_model.train(
+                    pd.DataFrame(X_balanced, columns=features_df.columns),
+                    gb_labels,
+                )
+                gb_accuracy = self.gb_model.training_stats.get(
+                    "training_accuracy", 0
+                )
+                logger.info("  GB trained (accuracy: %.3f)", gb_accuracy)
+            except ValueError as exc:
+                logger.warning("  GB training failed: %s. Using RF only.", exc)
                 self.rf_weight = 1.0
                 self.gb_weight = 0.0
                 gb_accuracy = 0.0
         else:
-            # Fall back to RF-only mode
-            logger.warning(f"  GB skipped: insufficient data ({len(features_df)} < 100). Using RF only.")
+            logger.warning(
+                "  GB skipped: insufficient data (%s < 100). Using RF only.",
+                len(X_balanced),
+            )
             self.rf_weight = 1.0
             self.gb_weight = 0.0
             gb_accuracy = 0.0
@@ -175,7 +200,9 @@ class EnsembleForecaster:
         final_confidence = ensemble_probs[final_label]
 
         # Check agreement
-        rf_label_str = rf_label.lower() if isinstance(rf_label, str) else rf_label
+        rf_label_str = (
+            rf_label.lower() if isinstance(rf_label, str) else rf_label
+        )
         gb_label_str = gb_pred.get("label", "Unknown").lower()
         agreement = rf_label_str == gb_label_str
 
@@ -204,7 +231,9 @@ class EnsembleForecaster:
             raise RuntimeError("Ensemble not trained.")
 
         # Get RF batch predictions
-        X_scaled = self.rf_model.scaler.transform(features_df[self.rf_model.feature_columns])
+        X_scaled = self.rf_model.scaler.transform(
+            features_df[self.rf_model.feature_columns]
+        )
         rf_predictions = self.rf_model.model.predict(X_scaled)
         rf_probabilities = self.rf_model.model.predict_proba(X_scaled)
         rf_classes = self.rf_model.model.classes_
@@ -230,15 +259,18 @@ class EnsembleForecaster:
 
         # Weighted average probabilities
         ensemble_bullish = (
-            rf_probs.get("bullish", np.zeros(len(features_df))) * self.rf_weight
+            rf_probs.get("bullish", np.zeros(len(features_df)))
+            * self.rf_weight
             + gb_bullish * self.gb_weight
         )
         ensemble_bearish = (
-            rf_probs.get("bearish", np.zeros(len(features_df))) * self.rf_weight
+            rf_probs.get("bearish", np.zeros(len(features_df)))
+            * self.rf_weight
             + gb_bearish * self.gb_weight
         )
         ensemble_neutral = (
-            rf_probs.get("neutral", np.zeros(len(features_df))) * self.rf_weight
+            rf_probs.get("neutral", np.zeros(len(features_df)))
+            * self.rf_weight
             + gb_neutral * self.gb_weight
         )
 
@@ -284,7 +316,6 @@ class EnsembleForecaster:
         Returns:
             Dict with accuracy metrics for each model
         """
-        label_map = {"Bullish": 1, "Neutral": 0, "Bearish": -1}
         reverse_map = {1: "bullish", 0: "neutral", -1: "bearish"}
 
         # Convert labels to string for comparison
@@ -294,13 +325,19 @@ class EnsembleForecaster:
             labels_str = labels_series.str.lower()
 
         # RF predictions
-        X_scaled = self.rf_model.scaler.transform(features_df[self.rf_model.feature_columns])
+        X_scaled = self.rf_model.scaler.transform(
+            features_df[self.rf_model.feature_columns]
+        )
         rf_preds = self.rf_model.model.predict(X_scaled)
-        rf_accuracy = (pd.Series(rf_preds).str.lower() == labels_str.values).mean()
+        rf_accuracy = (
+            pd.Series(rf_preds).str.lower() == labels_str.values
+        ).mean()
 
         # GB predictions
         gb_preds = self.gb_model.predict_batch(features_df)
-        gb_accuracy = (gb_preds["prediction"].str.lower() == labels_str.values).mean()
+        gb_accuracy = (
+            gb_preds["prediction"].str.lower() == labels_str.values
+        ).mean()
 
         # Ensemble predictions
         ensemble_preds = self.predict_batch(features_df)
@@ -312,7 +349,8 @@ class EnsembleForecaster:
             "rf_accuracy": rf_accuracy,
             "gb_accuracy": gb_accuracy,
             "ensemble_accuracy": ensemble_accuracy,
-            "ensemble_improvement": ensemble_accuracy - max(rf_accuracy, gb_accuracy),
+            "ensemble_improvement": ensemble_accuracy
+            - max(rf_accuracy, gb_accuracy),
         }
 
     def save(self, filepath_rf: str, filepath_gb: str) -> None:

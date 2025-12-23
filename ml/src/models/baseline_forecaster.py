@@ -10,6 +10,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 
 from config.settings import settings
+from src.features.adaptive_thresholds import AdaptiveThresholds
+from src.features.temporal_indicators import TemporalFeatureEngineer
 
 logger = logging.getLogger(__name__)
 
@@ -34,84 +36,115 @@ class BaselineForecaster:
         self.is_trained = False
 
     def prepare_training_data(
-        self, df: pd.DataFrame, horizon_days: int = 1
+        self,
+        df: pd.DataFrame,
+        horizon_days: int = 1,
     ) -> tuple[pd.DataFrame, pd.Series]:
         """
-        Prepare training data with features and labels.
-
-        Args:
-            df: DataFrame with technical indicators
-            horizon_days: Number of days ahead to predict
-
-        Returns:
-            Tuple of (features_df, labels_series)
+        Prepare training data with adaptive thresholds and temporal features.
         """
         df = df.copy()
 
-        # Calculate forward returns (our label)
-        df["forward_return"] = df["close"].pct_change(periods=horizon_days).shift(
+        bearish_thresh, bullish_thresh = AdaptiveThresholds.compute_thresholds(
+            df
+        )
+        logger.info(
+            "Adaptive thresholds: bearish=%.4f, bullish=%.4f",
+            bearish_thresh,
+            bullish_thresh,
+        )
+
+        forward_returns = df["close"].pct_change(periods=horizon_days).shift(
             -horizon_days
         )
 
-        # Create labels: bullish (1), neutral (0), bearish (-1)
-        df["label"] = pd.cut(
-            df["forward_return"],
-            bins=[-np.inf, -0.02, 0.02, np.inf],
-            labels=["bearish", "neutral", "bullish"],
-        )
+        engineer = TemporalFeatureEngineer()
+        X_list: list[dict[str, Any]] = []
+        y_list: list[str] = []
 
-        # Drop rows with NaN labels (last horizon_days rows + initial NaNs)
-        df_clean = df.dropna(subset=["label"])
+        for idx in range(50, len(df) - horizon_days):
+            features = engineer.add_features_to_point(df, idx)
+            actual_return = forward_returns.iloc[idx]
 
-        # Select feature columns (exclude metadata and target)
-        exclude_cols = [
-            "ts",
-            "open",
-            "high",
-            "low",
-            "close",
-            "volume",
-            "forward_return",
-            "label",
-        ]
-        feature_cols = [col for col in df_clean.columns if col not in exclude_cols]
+            if pd.notna(actual_return):
+                X_list.append(features)
+                if actual_return > bullish_thresh:
+                    label = "bullish"
+                elif actual_return < bearish_thresh:
+                    label = "bearish"
+                else:
+                    label = "neutral"
+                y_list.append(label)
 
-        X = df_clean[feature_cols]
-        y = df_clean["label"]
+        X = pd.DataFrame(X_list)
+        y = pd.Series(y_list)
 
-        logger.info(
-            f"Prepared {len(X)} training samples with {len(feature_cols)} features"
-        )
-        logger.info(f"Label distribution: {y.value_counts().to_dict()}")
+        logger.info("Training data prepared: %s samples", len(X))
+        logger.info("Label distribution: %s", y.value_counts().to_dict())
 
         return X, y
 
     def train(self, X: pd.DataFrame, y: pd.Series) -> None:
         """
-        Train the forecaster model.
-
-        Args:
-            X: Feature DataFrame
-            y: Label series
+        Train the forecaster model with enhanced metrics logging.
         """
         if len(X) < settings.min_bars_for_training:
             raise ValueError(
-                f"Insufficient training data: {len(X)} < {settings.min_bars_for_training}"
+                f"Insufficient training data: {len(X)} "
+                f"< {settings.min_bars_for_training}"
             )
 
-        # Store feature columns
         self.feature_columns = X.columns.tolist()
-
-        # Scale features
         X_scaled = self.scaler.fit_transform(X)
 
-        # Train model
         logger.info("Training Random Forest model...")
         self.model.fit(X_scaled, y)
 
-        # Calculate training accuracy
-        train_score = self.model.score(X_scaled, y)
-        logger.info(f"Training accuracy: {train_score:.3f}")
+        from sklearn.metrics import (
+            accuracy_score,
+            confusion_matrix,
+            f1_score,
+            precision_score,
+            recall_score,
+        )
+
+        predictions = self.model.predict(X_scaled)
+        accuracy = accuracy_score(y, predictions)
+        precision = precision_score(
+            y,
+            predictions,
+            average="weighted",
+            zero_division=0,
+        )
+        recall = recall_score(
+            y,
+            predictions,
+            average="weighted",
+            zero_division=0,
+        )
+        f1 = f1_score(y, predictions, average="weighted", zero_division=0)
+        cm = confusion_matrix(y, predictions)
+
+        self.training_stats = {
+            "timestamp": datetime.now().isoformat(),
+            "accuracy": accuracy,
+            "precision": precision,
+            "recall": recall,
+            "f1_score": f1,
+            "confusion_matrix": cm.tolist(),
+            "n_samples": len(X),
+            "n_features": len(self.feature_columns),
+            "class_distribution": y.value_counts().to_dict(),
+        }
+
+        logger.info(
+            "Training metrics - acc=%.3f, prec=%.3f, rec=%.3f, f1=%.3f",
+            accuracy,
+            precision,
+            recall,
+            f1,
+        )
+        logger.info("Confusion matrix:\n%s", cm)
 
         self.is_trained = True
 
