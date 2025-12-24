@@ -157,7 +157,7 @@ def render_sidebar():
     # View selection
     view = st.sidebar.radio(
         "Select View",
-        ["Overview", "Forecast Details", "Model Performance", "Feature Importance"],
+        ["Overview", "Forecast Details", "Model Performance", "Feature Importance", "Support & Resistance"],
         index=0,
     )
 
@@ -658,6 +658,378 @@ def render_feature_importance(df: pd.DataFrame):
             st.progress(importance, text=f"{cat}: {importance*100:.1f}%")
 
 
+def fetch_sr_levels_from_db(db, symbol: str) -> dict:
+    """Fetch S/R levels from database for a symbol."""
+    if db is None:
+        return None
+
+    try:
+        result = db.client.table("sr_levels").select(
+            "*, symbols(ticker)"
+        ).eq("symbols.ticker", symbol).order(
+            "computed_at", desc=True
+        ).limit(1).execute()
+
+        if result.data and len(result.data) > 0:
+            return result.data[0]
+    except Exception as e:
+        st.warning(f"Could not fetch S/R data: {e}")
+
+    return None
+
+
+def fetch_ohlc_for_sr(db, symbol: str, lookback: int = 100) -> pd.DataFrame:
+    """Fetch OHLC data for S/R calculation."""
+    if db is None:
+        return None
+
+    try:
+        # Get symbol ID first
+        sym_result = db.client.table("symbols").select("id").eq(
+            "ticker", symbol
+        ).single().execute()
+
+        if not sym_result.data:
+            return None
+
+        symbol_id = sym_result.data["id"]
+
+        # Fetch OHLC data
+        ohlc_result = db.client.table("ohlc_1d").select(
+            "ts, open, high, low, close, volume"
+        ).eq("symbol_id", symbol_id).order(
+            "ts", desc=False
+        ).limit(lookback).execute()
+
+        if ohlc_result.data:
+            return pd.DataFrame(ohlc_result.data)
+    except Exception as e:
+        st.warning(f"Could not fetch OHLC data: {e}")
+
+    return None
+
+
+def render_support_resistance(df: pd.DataFrame):
+    """Render support and resistance levels visualization."""
+    st.title("Support & Resistance Levels")
+
+    # Symbol selector
+    symbols = sorted(df["symbol"].unique())
+    selected_symbol = st.selectbox("Select Symbol for S/R Analysis", symbols)
+
+    st.markdown("---")
+
+    # Try to fetch real data from database
+    db = get_db_connection()
+    ohlc_df = fetch_ohlc_for_sr(db, selected_symbol, lookback=100)
+
+    # Check if we have real data
+    use_real_data = ohlc_df is not None and len(ohlc_df) >= 20
+
+    if use_real_data:
+        st.success(f"📊 Using real market data ({len(ohlc_df)} bars)")
+
+        # Use the SupportResistanceDetector for real calculations
+        try:
+            from src.features.support_resistance_detector import (
+                SupportResistanceDetector
+            )
+            sr_detector = SupportResistanceDetector()
+
+            # Ensure proper column names
+            ohlc_df.columns = [c.lower() for c in ohlc_df.columns]
+
+            # Calculate S/R levels
+            sr_result = sr_detector.find_all_levels(ohlc_df)
+
+            current_price = sr_result["current_price"]
+            nearest_support = sr_result["nearest_support"]
+            nearest_resistance = sr_result["nearest_resistance"]
+
+            pivot_points = sr_result["methods"]["pivot_points"]
+            fib_data = sr_result["methods"]["fibonacci"]
+            trend = fib_data["trend"]
+
+            # Build fib_levels dict for display
+            fib_levels = {
+                f"{k}%": v for k, v in fib_data["levels"].items()
+            }
+
+            # Get price series for chart
+            close_prices = ohlc_df["close"].values
+            n_bars = len(close_prices)
+
+        except Exception as e:
+            st.warning(f"S/R calculation error: {e}. Using simulated data.")
+            use_real_data = False
+
+    if not use_real_data:
+        st.info("📈 Using simulated data (connect to database for real data)")
+
+        # Fallback to simulated data
+        np.random.seed(hash(selected_symbol) % 2**32)
+        base_price = 100 + np.random.uniform(0, 200)
+
+        n_bars = 100
+        returns = np.random.normal(0.0005, 0.02, n_bars)
+        close_prices = base_price * np.cumprod(1 + returns)
+        current_price = close_prices[-1]
+
+        high = close_prices.max() * 1.01
+        low = close_prices.min() * 0.99
+        close = current_price
+
+        pp = (high + low + close) / 3
+        r1 = 2 * pp - low
+        r2 = pp + (high - low)
+        r3 = high + 2 * (pp - low)
+        s1 = 2 * pp - high
+        s2 = pp - (high - low)
+        s3 = low - 2 * (high - pp)
+
+        pivot_points = {
+            "PP": round(pp, 2),
+            "R1": round(r1, 2),
+            "R2": round(r2, 2),
+            "R3": round(r3, 2),
+            "S1": round(s1, 2),
+            "S2": round(s2, 2),
+            "S3": round(s3, 2),
+        }
+
+        range_high = max(close_prices[-50:])
+        range_low = min(close_prices[-50:])
+        diff = range_high - range_low
+        trend = "uptrend" if close_prices[-1] > close_prices[-50] else "downtrend"
+
+        if trend == "uptrend":
+            fib_levels = {
+                "0.0%": round(range_high, 2),
+                "23.6%": round(range_high - diff * 0.236, 2),
+                "38.2%": round(range_high - diff * 0.382, 2),
+                "50.0%": round(range_high - diff * 0.5, 2),
+                "61.8%": round(range_high - diff * 0.618, 2),
+                "78.6%": round(range_high - diff * 0.786, 2),
+                "100.0%": round(range_low, 2),
+            }
+        else:
+            fib_levels = {
+                "0.0%": round(range_low, 2),
+                "23.6%": round(range_low + diff * 0.236, 2),
+                "38.2%": round(range_low + diff * 0.382, 2),
+                "50.0%": round(range_low + diff * 0.5, 2),
+                "61.8%": round(range_low + diff * 0.618, 2),
+                "78.6%": round(range_low + diff * 0.786, 2),
+                "100.0%": round(range_high, 2),
+            }
+
+        all_levels = list(pivot_points.values()) + list(fib_levels.values())
+        supports = sorted([lv for lv in all_levels if lv < current_price], reverse=True)
+        resistances = sorted([lv for lv in all_levels if lv > current_price])
+
+        nearest_support = supports[0] if supports else None
+        nearest_resistance = resistances[0] if resistances else None
+
+    # Top metrics
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric("Current Price", f"${current_price:.2f}")
+
+    with col2:
+        if nearest_support:
+            dist = (current_price - nearest_support) / current_price * 100
+            st.metric("Nearest Support", f"${nearest_support:.2f}",
+                      delta=f"-{dist:.1f}%", delta_color="normal")
+        else:
+            st.metric("Nearest Support", "N/A")
+
+    with col3:
+        if nearest_resistance:
+            dist = (nearest_resistance - current_price) / current_price * 100
+            st.metric("Nearest Resistance", f"${nearest_resistance:.2f}",
+                      delta=f"+{dist:.1f}%", delta_color="normal")
+        else:
+            st.metric("Nearest Resistance", "N/A")
+
+    with col4:
+        st.metric("Trend", trend.upper(),
+                  delta="↑" if trend == "uptrend" else "↓")
+
+    st.markdown("---")
+
+    # Price chart with S/R levels
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        st.subheader("Price Chart with S/R Levels")
+
+        # Create price chart
+        dates = pd.date_range(end=datetime.now(), periods=n_bars, freq='D')
+        price_df = pd.DataFrame({
+            'Date': dates,
+            'Price': close_prices
+        })
+
+        fig = px.line(price_df, x='Date', y='Price',
+                      title=f"{selected_symbol} Price with Support/Resistance")
+
+        # Add horizontal lines for key levels
+        colors = {
+            "R3": "#ff1744", "R2": "#ff5252", "R1": "#ff8a80",
+            "PP": "#ffc107",
+            "S1": "#69f0ae", "S2": "#00e676", "S3": "#00c853"
+        }
+
+        for level_name, level_price in pivot_points.items():
+            fig.add_hline(y=level_price, line_dash="dash",
+                          line_color=colors.get(level_name, "gray"),
+                          annotation_text=f"{level_name}: ${level_price:.2f}",
+                          annotation_position="right")
+
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font_color="white",
+            height=500,
+            showlegend=False,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        st.subheader("Pivot Points")
+
+        # Display pivot points as a table
+        pivot_df = pd.DataFrame([
+            {"Level": "R3", "Price": f"${pivot_points['R3']:.2f}", "Type": "🔴 Resistance"},
+            {"Level": "R2", "Price": f"${pivot_points['R2']:.2f}", "Type": "🔴 Resistance"},
+            {"Level": "R1", "Price": f"${pivot_points['R1']:.2f}", "Type": "🔴 Resistance"},
+            {"Level": "PP", "Price": f"${pivot_points['PP']:.2f}", "Type": "🟡 Pivot"},
+            {"Level": "S1", "Price": f"${pivot_points['S1']:.2f}", "Type": "🟢 Support"},
+            {"Level": "S2", "Price": f"${pivot_points['S2']:.2f}", "Type": "🟢 Support"},
+            {"Level": "S3", "Price": f"${pivot_points['S3']:.2f}", "Type": "🟢 Support"},
+        ])
+        st.dataframe(pivot_df, use_container_width=True, hide_index=True)
+
+        st.subheader("Fibonacci Levels")
+        fib_df = pd.DataFrame([
+            {"Level": k, "Price": f"${v:.2f}"}
+            for k, v in fib_levels.items()
+        ])
+        st.dataframe(fib_df, use_container_width=True, hide_index=True)
+
+    st.markdown("---")
+
+    # S/R Level Gauge
+    st.subheader("Price Position Analysis")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        # Distance to support gauge
+        if nearest_support:
+            support_dist_pct = (current_price - nearest_support) / current_price * 100
+            st.markdown("### Distance to Support")
+            st.progress(min(support_dist_pct / 10, 1.0),
+                        text=f"{support_dist_pct:.2f}% above support")
+            if support_dist_pct < 2:
+                st.warning("⚠️ Price near support level")
+            elif support_dist_pct < 5:
+                st.info("ℹ️ Price moderately above support")
+            else:
+                st.success("✅ Price well above support")
+
+    with col2:
+        # Distance to resistance gauge
+        if nearest_resistance:
+            resistance_dist_pct = (nearest_resistance - current_price) / current_price * 100
+            st.markdown("### Distance to Resistance")
+            st.progress(min(resistance_dist_pct / 10, 1.0),
+                        text=f"{resistance_dist_pct:.2f}% below resistance")
+            if resistance_dist_pct < 2:
+                st.warning("⚠️ Price near resistance level")
+            elif resistance_dist_pct < 5:
+                st.info("ℹ️ Price moderately below resistance")
+            else:
+                st.success("✅ Price well below resistance")
+
+    with col3:
+        # S/R Ratio
+        if nearest_support and nearest_resistance:
+            support_dist = current_price - nearest_support
+            resistance_dist = nearest_resistance - current_price
+            sr_ratio = resistance_dist / support_dist if support_dist > 0 else 0
+
+            st.markdown("### S/R Ratio")
+            if sr_ratio > 1.5:
+                st.success(f"📈 Bullish bias (ratio: {sr_ratio:.2f})")
+                st.caption("More room to upside than downside")
+            elif sr_ratio < 0.67:
+                st.error(f"📉 Bearish bias (ratio: {sr_ratio:.2f})")
+                st.caption("More room to downside than upside")
+            else:
+                st.info(f"➡️ Neutral (ratio: {sr_ratio:.2f})")
+                st.caption("Balanced risk/reward")
+
+    st.markdown("---")
+
+    # Method comparison
+    st.subheader("S/R Detection Methods Comparison")
+
+    methods_data = {
+        "Method": ["ZigZag", "Pivot Points", "Fibonacci", "Local Extrema", "K-Means"],
+        "Accuracy": [9, 8, 7, 8, 8],
+        "Speed": [8, 10, 10, 9, 6],
+        "Best For": [
+            "Swing trading, trend reversals",
+            "Daily levels, day trading",
+            "Retracement targets",
+            "Peak/trough detection",
+            "Statistical zones"
+        ],
+        "Complexity": ["Medium", "Low", "Low", "Low", "High"],
+    }
+
+    methods_df = pd.DataFrame(methods_data)
+    st.dataframe(methods_df, use_container_width=True, hide_index=True)
+
+    # Radar chart for method comparison
+    fig = go.Figure()
+
+    categories = ['Accuracy', 'Speed', 'Simplicity', 'Real-time', 'Reliability']
+
+    fig.add_trace(go.Scatterpolar(
+        r=[9, 8, 7, 9, 8],
+        theta=categories,
+        fill='toself',
+        name='ZigZag'
+    ))
+    fig.add_trace(go.Scatterpolar(
+        r=[8, 10, 10, 10, 8],
+        theta=categories,
+        fill='toself',
+        name='Pivot Points'
+    ))
+    fig.add_trace(go.Scatterpolar(
+        r=[7, 10, 9, 8, 7],
+        theta=categories,
+        fill='toself',
+        name='Fibonacci'
+    ))
+
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0, 10])
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font_color="white",
+        showlegend=True,
+        title="Method Comparison",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
 def main():
     """Main dashboard entry point."""
     # Sidebar
@@ -705,6 +1077,8 @@ def main():
         render_model_performance(df)
     elif view == "Feature Importance":
         render_feature_importance(df)
+    elif view == "Support & Resistance":
+        render_support_resistance(df)
 
 
 if __name__ == "__main__":
