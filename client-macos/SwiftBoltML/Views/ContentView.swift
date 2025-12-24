@@ -1,15 +1,30 @@
 import SwiftUI
 
+enum SidebarSection: Hashable {
+    case stocks
+    case portfolio
+    case predictions
+    case devtools
+}
+
 struct ContentView: View {
     @StateObject private var appViewModel = AppViewModel()
+    @State private var activeSection: SidebarSection = .stocks
 
     var body: some View {
         NavigationSplitView {
-            SidebarView()
+            SidebarView(activeSection: $activeSection)
                 .environmentObject(appViewModel)
         } detail: {
-            DetailView()
-                .environmentObject(appViewModel)
+            switch activeSection {
+            case .predictions:
+                PredictionsView()
+            case .portfolio:
+                Text("Portfolio")
+            default:
+                DetailView()
+                    .environmentObject(appViewModel)
+            }
         }
         .frame(minWidth: 1200, minHeight: 800)
         .onChange(of: appViewModel.selectedSymbol) { oldValue, newValue in
@@ -18,6 +33,8 @@ struct ContentView: View {
             print("[DEBUG] - Old: \(oldValue?.ticker ?? "nil")")
             print("[DEBUG] - New: \(newValue?.ticker ?? "nil")")
             print("[DEBUG] ========================================")
+            // Always return to stock detail when a symbol is selected
+            activeSection = .stocks
         }
         #if DEBUG
         .onAppear {
@@ -32,6 +49,7 @@ struct ContentView: View {
 
 struct SidebarView: View {
     @EnvironmentObject var appViewModel: AppViewModel
+    @Binding var activeSection: SidebarSection
 
     var body: some View {
         VStack(spacing: 0) {
@@ -46,19 +64,19 @@ struct SidebarView: View {
 
             Divider()
 
-            List {
+            List(selection: $activeSection) {
                 Section("Navigation") {
-                    NavigationLink(destination: Text("Portfolio")) {
+                    NavigationLink(value: SidebarSection.portfolio) {
                         Label("Portfolio", systemImage: "chart.pie.fill")
                     }
-                    NavigationLink(destination: Text("Predictions")) {
+                    NavigationLink(value: SidebarSection.predictions) {
                         Label("Predictions", systemImage: "waveform.path.ecg")
                     }
                 }
 
                 #if DEBUG
                 Section("Development") {
-                    NavigationLink(destination: DevToolsView()) {
+                    NavigationLink(value: SidebarSection.devtools) {
                         Label("Dev Tools", systemImage: "wrench.and.screwdriver.fill")
                     }
                 }

@@ -260,10 +260,16 @@ actor APIClient {
         var request = try makeRequest(endpoint: "refresh-data", queryItems: [])
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
+
         let body = RefreshDataRequest(symbol: symbol, refreshML: refreshML, refreshOptions: refreshOptions)
         request.httpBody = try JSONEncoder().encode(body)
-        
+
+        return try await performRequest(request)
+    }
+
+    /// Fetch ML dashboard data - aggregate metrics across all symbols
+    func fetchMLDashboard() async throws -> MLDashboardResponse {
+        let request = try makeRequest(endpoint: "ml-dashboard")
         return try await performRequest(request)
     }
 }

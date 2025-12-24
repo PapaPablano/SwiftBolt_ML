@@ -1,4 +1,13 @@
-"""Technical indicator calculations for feature engineering."""
+"""Technical indicator calculations for feature engineering.
+
+UPDATED: 2025-12-24
+This module now uses CORRECTED indicator implementations from
+technical_indicators_corrected.py with proper:
+- ADX: Wilder's smoothing (not rolling mean)
+- KDJ: Exponential smoothing (2/3 weight on prior)
+- SuperTrend: Full implementation (was missing!)
+- ATR: For normalization only, not directional signal
+"""
 
 import logging
 
@@ -8,6 +17,7 @@ import pandas as pd
 from src.features.market_regime import add_market_regime_features
 from src.features.regime_indicators import add_regime_features_to_technical
 from src.features.volatility_regime import add_garch_features
+from src.features.technical_indicators_corrected import TechnicalIndicatorsCorrect
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +25,8 @@ logger = logging.getLogger(__name__)
 def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add technical indicators as features to OHLC DataFrame.
+
+    UPDATED: Now uses corrected indicator implementations.
 
     Args:
         df: DataFrame with columns [ts, open, high, low, close, volume]
@@ -29,45 +41,57 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     df["returns_5d"] = df["close"].pct_change(periods=5)
     df["returns_20d"] = df["close"].pct_change(periods=20)
 
+    # =========================================================================
+    # CORRECTED INDICATORS (from technical_indicators_corrected.py)
+    # =========================================================================
+
     # Moving Averages
-    df["sma_5"] = df["close"].rolling(window=5).mean()
-    df["sma_20"] = df["close"].rolling(window=20).mean()
-    df["sma_50"] = df["close"].rolling(window=50).mean()
+    df = TechnicalIndicatorsCorrect.add_moving_averages(df)
 
-    # Exponential Moving Averages
-    df["ema_12"] = df["close"].ewm(span=12, adjust=False).mean()
-    df["ema_26"] = df["close"].ewm(span=26, adjust=False).mean()
+    # MACD (standard implementation)
+    df["macd"], df["macd_signal"], df["macd_hist"] = \
+        TechnicalIndicatorsCorrect.calculate_macd(df["close"], fast=12, slow=26, signal=9)
 
-    # MACD
-    df["macd"] = df["ema_12"] - df["ema_26"]
-    df["macd_signal"] = df["macd"].ewm(span=9, adjust=False).mean()
-    df["macd_hist"] = df["macd"] - df["macd_signal"]
+    # RSI (using proper EMA smoothing)
+    df["rsi_14"] = TechnicalIndicatorsCorrect.calculate_rsi(df["close"], period=14)
 
-    # RSI
-    df["rsi_14"] = calculate_rsi(df["close"], period=14)
+    # Bollinger Bands (with width percentile for regime detection)
+    df = TechnicalIndicatorsCorrect.calculate_bollinger_bands(df, period=20, std_dev=2.0)
 
-    # Bollinger Bands
-    bb_period = 20
-    bb_std = 2
-    df["bb_middle"] = df["close"].rolling(window=bb_period).mean()
-    rolling_std = df["close"].rolling(window=bb_period).std()
-    df["bb_upper"] = df["bb_middle"] + (rolling_std * bb_std)
-    df["bb_lower"] = df["bb_middle"] - (rolling_std * bb_std)
-    df["bb_width"] = (df["bb_upper"] - df["bb_lower"]) / df["bb_middle"]
+    # ADX (CRITICAL FIX: Wilder's smoothing, not rolling mean)
+    df = TechnicalIndicatorsCorrect.calculate_adx_correct(df, period=14)
+
+    # KDJ (CRITICAL FIX: Exponential smoothing, not SMA)
+    df = TechnicalIndicatorsCorrect.calculate_kdj_correct(df, period=9, k_smooth=3, d_smooth=3)
+
+    # SuperTrend (WAS MISSING - now implemented with 20% weight)
+    df = TechnicalIndicatorsCorrect.calculate_supertrend(df, period=10, multiplier=3.0)
+
+    # ATR (for normalization only, NOT as directional signal)
+    df["atr_14"] = TechnicalIndicatorsCorrect.calculate_atr(df, period=14)
+    df["atr_normalized"] = df["atr_14"] / df["close"] * 100
 
     # Volume indicators
     df["volume_sma_20"] = df["volume"].rolling(window=20).mean()
     df["volume_ratio"] = df["volume"] / df["volume_sma_20"]
 
-    # Volatility
-    df["volatility_20d"] = df["returns_1d"].rolling(window=20).std()
+    # MFI (volume-weighted RSI)
+    df["mfi_14"] = TechnicalIndicatorsCorrect.calculate_mfi(df, period=14)
+
+    # OBV
+    df["obv"] = TechnicalIndicatorsCorrect.calculate_obv(df)
+    df["obv_sma"] = df["obv"].rolling(window=20).mean()
+
+    # Volatility (annualized)
+    df["volatility_20d"] = df["returns_1d"].rolling(window=20).std() * np.sqrt(252)
 
     # Price position relative to range
     df["price_vs_sma20"] = (df["close"] - df["sma_20"]) / df["sma_20"]
     df["price_vs_sma50"] = (df["close"] - df["sma_50"]) / df["sma_50"]
 
-    # Average True Range (ATR)
-    df["atr_14"] = calculate_atr(df, period=14)
+    # =========================================================================
+    # REGIME FEATURES (HMM + GARCH)
+    # =========================================================================
 
     # Add regime features (5 additional indicators)
     df = add_regime_features_to_technical(df, df)
@@ -85,7 +109,7 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
         logger.warning("GARCH features failed: %s", exc)
 
     logger.info(
-        "Added %s technical indicators (including regime features)",
+        "Added %s technical indicators (CORRECTED implementations)",
         len(df.columns) - 6,
     )
 
@@ -418,9 +442,12 @@ def add_all_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add comprehensive technical indicators for ML training.
 
+    UPDATED: Now uses CORRECTED implementations from technical_indicators_corrected.py.
+
     This function adds all available indicators including:
     - Basic indicators (returns, MAs, MACD, RSI, BB, ATR)
-    - Momentum indicators (Stochastic, KDJ, ADX)
+    - Momentum indicators (Stochastic, KDJ, ADX) - CORRECTED
+    - SuperTrend - NEW (was missing!)
     - Volume indicators (OBV, MFI, VROC)
     - Volatility indicators (Keltner Channel)
 
@@ -430,24 +457,21 @@ def add_all_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame with all technical indicator columns added
     """
-    # Start with basic indicators
+    # Use the corrected add_technical_features which now includes:
+    # - ADX with Wilder's smoothing
+    # - KDJ with exponential smoothing
+    # - SuperTrend (was completely missing)
+    # - ATR for normalization only
     df = add_technical_features(df)
 
-    # Add momentum indicators
-    df = calculate_stochastic(df)
-    df = calculate_kdj(df)
-    df = calculate_adx(df)
-
-    # Add volume indicators
-    df = calculate_obv(df)
-    df = calculate_mfi(df)
+    # Add additional volume indicators (legacy for compatibility)
     df = calculate_vroc(df)
 
-    # Add volatility indicators
+    # Add volatility indicators (legacy for compatibility)
     df = calculate_keltner_channel(df)
 
     logger.info(
-        "Added all technical indicators: %s features total",
+        "Added all technical indicators (CORRECTED): %s features total",
         len(df.columns) - 6,
     )
 

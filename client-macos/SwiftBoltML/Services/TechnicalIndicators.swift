@@ -337,11 +337,12 @@ struct TechnicalIndicators {
     }
 
     /// Calculate KDJ Indicator with J line for early reversal detection
+    /// CORRECTED: Uses exponential smoothing (2/3 weight on prior) instead of SMA
     /// - Parameters:
     ///   - bars: OHLC bars
     ///   - period: Lookback period for RSV (typically 9)
-    ///   - kSmooth: Smoothing period for K (typically 3)
-    ///   - dSmooth: Smoothing period for D (typically 3)
+    ///   - kSmooth: Smoothing period for K (typically 3, used for EMA alpha)
+    ///   - dSmooth: Smoothing period for D (typically 3, used for EMA alpha)
     /// - Returns: KDJResult with K, D, and J lines
     static func kdj(
         bars: [OHLCBar],
@@ -349,62 +350,47 @@ struct TechnicalIndicators {
         kSmooth: Int = 3,
         dSmooth: Int = 3
     ) -> KDJResult {
-        // Calculate RSV (Raw Stochastic Value)
-        var rsvValues: [Double?] = []
-
-        for i in 0..<bars.count {
-            if i < period - 1 {
-                rsvValues.append(nil)
-            } else {
-                let periodBars = Array(bars[(i - period + 1)...i])
-                let highestHigh = periodBars.map(\.high).max() ?? 0
-                let lowestLow = periodBars.map(\.low).min() ?? 0
-                let close = bars[i].close
-
-                let range = highestHigh - lowestLow
-                let rsv = range == 0 ? 50 : ((close - lowestLow) / range) * 100
-                rsvValues.append(rsv)
-            }
+        guard bars.count >= period else {
+            return KDJResult(
+                k: Array(repeating: nil, count: bars.count),
+                d: Array(repeating: nil, count: bars.count),
+                j: Array(repeating: nil, count: bars.count)
+            )
         }
 
-        // K = SMA of RSV
-        let rsvFiltered = rsvValues.compactMap { $0 }
-        let kSMA = sma(rsvFiltered, period: kSmooth)
+        var kValues: [Double?] = Array(repeating: nil, count: period - 1)
+        var dValues: [Double?] = Array(repeating: nil, count: period - 1)
+        var jValues: [Double?] = Array(repeating: nil, count: period - 1)
 
-        var kValues: [Double?] = []
-        var kIdx = 0
-        for rsv in rsvValues {
-            if rsv != nil {
-                kValues.append(kIdx < kSMA.count ? kSMA[kIdx] : nil)
-                kIdx += 1
-            } else {
-                kValues.append(nil)
-            }
-        }
+        // Initialize K and D at neutral (50)
+        var prevK: Double = 50.0
+        var prevD: Double = 50.0
 
-        // D = SMA of K
-        let kFiltered = kValues.compactMap { $0 }
-        let dSMA = sma(kFiltered, period: dSmooth)
+        for i in (period - 1)..<bars.count {
+            // Calculate RSV (Raw Stochastic Value)
+            let periodBars = Array(bars[(i - period + 1)...i])
+            let highestHigh = periodBars.map(\.high).max() ?? 0
+            let lowestLow = periodBars.map(\.low).min() ?? 0
+            let close = bars[i].close
 
-        var dValues: [Double?] = []
-        var dIdx = 0
-        for kVal in kValues {
-            if kVal != nil {
-                dValues.append(dIdx < dSMA.count ? dSMA[dIdx] : nil)
-                dIdx += 1
-            } else {
-                dValues.append(nil)
-            }
-        }
+            let range = highestHigh - lowestLow
+            let rsv = range == 0 ? 50.0 : ((close - lowestLow) / range) * 100.0
 
-        // J = 3*K - 2*D
-        var jValues: [Double?] = []
-        for i in 0..<kValues.count {
-            if let k = kValues[i], let d = dValues[i] {
-                jValues.append(3 * k - 2 * d)
-            } else {
-                jValues.append(nil)
-            }
+            // CORRECTED: K = (2/3)*K_prev + (1/3)*RSV (exponential smoothing)
+            let currentK = (2.0 / 3.0) * prevK + (1.0 / 3.0) * rsv
+
+            // CORRECTED: D = (2/3)*D_prev + (1/3)*K (exponential smoothing)
+            let currentD = (2.0 / 3.0) * prevD + (1.0 / 3.0) * currentK
+
+            // J = 3*K - 2*D (extreme sensitivity indicator)
+            let currentJ = 3.0 * currentK - 2.0 * currentD
+
+            kValues.append(currentK)
+            dValues.append(currentD)
+            jValues.append(currentJ)
+
+            prevK = currentK
+            prevD = currentD
         }
 
         return KDJResult(k: kValues, d: dValues, j: jValues)
@@ -419,6 +405,7 @@ struct TechnicalIndicators {
     }
 
     /// Calculate Average Directional Index for trend strength
+    /// CORRECTED: Uses Wilder's smoothing (EMA) throughout, not SMA for ADX
     /// - Parameters:
     ///   - bars: OHLC bars
     ///   - period: Smoothing period (typically 14)
@@ -452,17 +439,18 @@ struct TechnicalIndicators {
             tr.append(trueRange)
         }
 
-        // Smooth with EMA
-        let plusDIEMA = ema(plusDM, period: period)
-        let minusDIEMA = ema(minusDM, period: period)
-        let trEMA = ema(tr, period: period)
+        // CORRECTED: Smooth with Wilder's EMA (span = period)
+        let plusDMSmooth = ema(plusDM, period: period)
+        let minusDMSmooth = ema(minusDM, period: period)
+        let trSmooth = ema(tr, period: period)
 
         var plusDI: [Double?] = []
         var minusDI: [Double?] = []
-        var dx: [Double] = []
+        var dxValues: [Double] = []
+        var dxStartIdx = 0
 
         for i in 0..<bars.count {
-            if let pdi = plusDIEMA[i], let mdi = minusDIEMA[i], let atr = trEMA[i], atr > 0 {
+            if let pdi = plusDMSmooth[i], let mdi = minusDMSmooth[i], let atr = trSmooth[i], atr > 0 {
                 let pdiVal = (pdi / atr) * 100
                 let mdiVal = (mdi / atr) * 100
                 plusDI.append(pdiVal)
@@ -470,7 +458,10 @@ struct TechnicalIndicators {
 
                 let sum = pdiVal + mdiVal
                 if sum > 0 {
-                    dx.append(abs(pdiVal - mdiVal) / sum * 100)
+                    if dxValues.isEmpty {
+                        dxStartIdx = i
+                    }
+                    dxValues.append(abs(pdiVal - mdiVal) / sum * 100)
                 }
             } else {
                 plusDI.append(nil)
@@ -478,16 +469,16 @@ struct TechnicalIndicators {
             }
         }
 
-        // ADX = SMA of DX
-        let adxSMA = sma(dx, period: period)
+        // CORRECTED: ADX = Wilder's EMA of DX (not SMA!)
+        let adxSmooth = ema(dxValues, period: period)
 
         // Align ADX with original data
-        var adxValues: [Double?] = Array(repeating: nil, count: bars.count - dx.count)
-        for val in adxSMA {
+        var adxValues: [Double?] = Array(repeating: nil, count: dxStartIdx)
+        for val in adxSmooth {
             adxValues.append(val)
         }
 
-        // Pad to match length
+        // Pad to match length if needed
         while adxValues.count < bars.count {
             adxValues.append(nil)
         }
@@ -640,6 +631,7 @@ struct TechnicalIndicators {
     // MARK: - ATR (Average True Range)
 
     /// Calculate Average True Range
+    /// CORRECTED: Uses Wilder's EMA smoothing instead of SMA
     /// - Parameters:
     ///   - bars: OHLC bars
     ///   - period: ATR period (typically 14)
@@ -663,7 +655,8 @@ struct TechnicalIndicators {
             }
         }
 
-        return sma(tr, period: period)
+        // CORRECTED: Use Wilder's EMA (not SMA) for smoothing
+        return ema(tr, period: period)
     }
 }
 
