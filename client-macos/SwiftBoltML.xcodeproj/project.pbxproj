@@ -56,6 +56,9 @@
 		F6161BC02EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6161BBF2EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift */; };
 		F6161BC12EF2D49A0065ABA1 /* OptionRankDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6161BBE2EF2D49A0065ABA1 /* OptionRankDetailView.swift */; };
 		F64681A92EF0E00900FBEF04 /* MLReportCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F64681A82EF0E00900FBEF04 /* MLReportCard.swift */; };
+		SR0000012345678900000001 /* SupportResistanceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000002 /* SupportResistanceModels.swift */; };
+		SR0000012345678900000003 /* SupportResistanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000004 /* SupportResistanceView.swift */; };
+		SA0000012345678900000003 /* StrikeAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SA0000012345678900000004 /* StrikeAnalysisView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -115,6 +118,9 @@
 		F6161BBE2EF2D49A0065ABA1 /* OptionRankDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionRankDetailView.swift; sourceTree = "<group>"; };
 		F6161BBF2EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsRankerExpiryView.swift; sourceTree = "<group>"; };
 		F64681A82EF0E00900FBEF04 /* MLReportCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLReportCard.swift; sourceTree = "<group>"; };
+		SR0000012345678900000002 /* SupportResistanceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportResistanceModels.swift; sourceTree = "<group>"; };
+		SR0000012345678900000004 /* SupportResistanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportResistanceView.swift; sourceTree = "<group>"; };
+		SA0000012345678900000004 /* StrikeAnalysisView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrikeAnalysisView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -186,6 +192,8 @@
 				848DB246B70C854F2FE0A63C /* ForecastExplainerView.swift */,
 				33A7027FA21F544B41C22B1F /* DataHealthView.swift */,
 				B1B744048995733E3EF70004 /* PredictionsView.swift */,
+				SR0000012345678900000004 /* SupportResistanceView.swift */,
+				SA0000012345678900000004 /* StrikeAnalysisView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -223,6 +231,7 @@
 				0A4D3D1FC85DBCBD8C45CCA5 /* WatchlistModels.swift */,
 				83A51D8136CB3AF96EBB360E /* EnhancedPredictionModels.swift */,
 				495F16DC7FC5729654ADE6C7 /* MLDashboardModels.swift */,
+				SR0000012345678900000002 /* SupportResistanceModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -363,6 +372,9 @@
 				EAB197F7318F24B608BAA78D /* MLDashboardModels.swift in Sources */,
 				C01BE4658F2DADDC3E59B1DC /* PredictionsView.swift in Sources */,
 				75E6EC514BD3BA75308497C8 /* PredictionsViewModel.swift in Sources */,
+				SR0000012345678900000001 /* SupportResistanceModels.swift in Sources */,
+				SR0000012345678900000003 /* SupportResistanceView.swift in Sources */,
+				SA0000012345678900000003 /* StrikeAnalysisView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

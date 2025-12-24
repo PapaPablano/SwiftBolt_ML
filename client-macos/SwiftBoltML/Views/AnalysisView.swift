@@ -24,6 +24,11 @@ struct AnalysisView: View {
                 
                 // Enhanced ML Insights Section
                 EnhancedInsightsSection(analysisViewModel: analysisViewModel)
+                
+                Divider()
+                
+                // Support & Resistance Section
+                SupportResistanceView(analysisViewModel: analysisViewModel)
 
                 // Technical Summary Section
                 TechnicalSummarySection(chartViewModel: chartViewModel)
@@ -36,6 +41,7 @@ struct AnalysisView: View {
                 Task {
                     await analysisViewModel.loadAlerts(for: symbol)
                     await analysisViewModel.loadEnhancedInsights(for: symbol)
+                    await analysisViewModel.loadSupportResistance(for: symbol)
                 }
             }
         }
@@ -44,6 +50,7 @@ struct AnalysisView: View {
                 Task {
                     await analysisViewModel.loadAlerts(for: symbol)
                     await analysisViewModel.loadEnhancedInsights(for: symbol)
+                    await analysisViewModel.loadSupportResistance(for: symbol)
                 }
             }
         }

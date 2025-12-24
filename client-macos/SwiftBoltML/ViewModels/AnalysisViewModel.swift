@@ -13,6 +13,11 @@ class AnalysisViewModel: ObservableObject {
     @Published var dataQuality: DataQualityReport?
     @Published var isLoadingEnhancedInsights = false
     @Published var enhancedInsightsError: String?
+    
+    // Support & Resistance
+    @Published var supportResistance: SupportResistanceResponse?
+    @Published var isLoadingSR = false
+    @Published var srError: String?
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -54,6 +59,25 @@ class AnalysisViewModel: ObservableObject {
     func refresh(for symbol: String) async {
         await loadAlerts(for: symbol)
         await loadEnhancedInsights(for: symbol)
+        await loadSupportResistance(for: symbol)
+    }
+    
+    // MARK: - Support & Resistance
+    
+    func loadSupportResistance(for symbol: String) async {
+        isLoadingSR = true
+        srError = nil
+        
+        do {
+            let response = try await APIClient.shared.fetchSupportResistance(symbol: symbol)
+            supportResistance = response
+            isLoadingSR = false
+            print("[Analysis] Loaded S/R levels for \(symbol)")
+        } catch {
+            srError = error.localizedDescription
+            isLoadingSR = false
+            print("[Analysis] S/R levels not available: \(error.localizedDescription)")
+        }
     }
     
     // MARK: - Enhanced ML Insights

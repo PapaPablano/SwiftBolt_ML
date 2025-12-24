@@ -175,3 +175,35 @@ struct StrikeAnalysisMetadata: Codable {
     let expirationsFound: Int
     let hasHistoricalData: Bool
 }
+
+// MARK: - Strike Analysis Computed Properties
+
+extension StrikeAnalysisResponse {
+    var isCall: Bool { side == "call" }
+    
+    var bestDiscount: StrikeExpiryData? {
+        expirations
+            .filter { $0.isDiscount && $0.discountPct != nil }
+            .max(by: { ($0.discountPct ?? 0) < ($1.discountPct ?? 0) })
+    }
+    
+    var discountExpirations: [StrikeExpiryData] {
+        expirations.filter { $0.isDiscount }
+    }
+    
+    var currentVsAvgPct: Double? {
+        guard let current = expirations.first?.currentMark,
+              let avg = overallStats.avgMark,
+              avg > 0 else { return nil }
+        return ((current - avg) / avg) * 100
+    }
+}
+
+extension StrikeExpiryData {
+    var formattedExpiry: String {
+        guard let date = expiryDate else { return expiry }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter.string(from: date)
+    }
+}

@@ -272,6 +272,32 @@ actor APIClient {
         let request = try makeRequest(endpoint: "ml-dashboard")
         return try await performRequest(request)
     }
+    
+    /// Fetch Support & Resistance levels for a symbol (default 252 bars = 1 year of trading days)
+    func fetchSupportResistance(symbol: String, lookback: Int = 252) async throws -> SupportResistanceResponse {
+        let request = try makeRequest(
+            endpoint: "support-resistance",
+            queryItems: [
+                URLQueryItem(name: "symbol", value: symbol),
+                URLQueryItem(name: "lookback", value: String(lookback))
+            ]
+        )
+        return try await performRequest(request)
+    }
+    
+    /// Fetch strike analysis - historical price comparison for an options strike
+    func fetchStrikeAnalysis(symbol: String, strike: Double, side: String, lookbackDays: Int = 30) async throws -> StrikeAnalysisResponse {
+        let request = try makeRequest(
+            endpoint: "strike-analysis",
+            queryItems: [
+                URLQueryItem(name: "symbol", value: symbol),
+                URLQueryItem(name: "strike", value: String(strike)),
+                URLQueryItem(name: "side", value: side),
+                URLQueryItem(name: "lookbackDays", value: String(lookbackDays))
+            ]
+        )
+        return try await performRequest(request)
+    }
 }
 
 // MARK: - Refresh Data Request/Response

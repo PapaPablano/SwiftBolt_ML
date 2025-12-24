@@ -53,6 +53,15 @@ struct OptionRankDetailView: View {
 
                 // Greeks & Risk Metrics
                 greeksSection
+                
+                Divider()
+                
+                // Historical Strike Analysis
+                StrikeAnalysisView(
+                    symbol: symbol,
+                    strike: rank.strike,
+                    side: rank.side.rawValue
+                )
             }
             .padding(24)
         }

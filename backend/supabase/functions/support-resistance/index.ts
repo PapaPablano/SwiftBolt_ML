@@ -209,7 +209,7 @@ serve(async (req: Request): Promise<Response> => {
   try {
     const url = new URL(req.url);
     const symbol = url.searchParams.get("symbol");
-    const lookback = parseInt(url.searchParams.get("lookback") || "100");
+    const lookback = parseInt(url.searchParams.get("lookback") || "252");
     const zigzagThreshold = parseFloat(url.searchParams.get("threshold") || "5");
 
     if (!symbol) {
@@ -229,13 +229,17 @@ serve(async (req: Request): Promise<Response> => {
       return errorResponse(`Symbol not found: ${symbol}`, 404);
     }
 
-    // Fetch OHLC data
-    const { data: ohlcData, error: ohlcError } = await supabase
-      .from("ohlc_1d")
+    // Fetch OHLC data (daily timeframe) - get most recent bars
+    const { data: rawOhlcData, error: ohlcError } = await supabase
+      .from("ohlc_bars")
       .select("ts, open, high, low, close, volume")
       .eq("symbol_id", symbolData.id)
-      .order("ts", { ascending: true })
+      .eq("timeframe", "d1")
+      .order("ts", { ascending: false })
       .limit(lookback);
+    
+    // Reverse to get chronological order (oldest to newest) for calculations
+    const ohlcData = rawOhlcData ? [...rawOhlcData].reverse() : null;
 
     if (ohlcError) {
       console.error("[support-resistance] OHLC query error:", ohlcError);

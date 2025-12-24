@@ -20,6 +20,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
+from typing import Optional
 import json
 
 # Page configuration
@@ -678,7 +679,7 @@ def fetch_sr_levels_from_db(db, symbol: str) -> dict:
     return None
 
 
-def fetch_ohlc_for_sr(db, symbol: str, lookback: int = 100) -> pd.DataFrame:
+def fetch_ohlc_for_sr(db, symbol: str, lookback: int = 252) -> Optional[pd.DataFrame]:
     """Fetch OHLC data for S/R calculation."""
     if db is None:
         return None
@@ -694,15 +695,18 @@ def fetch_ohlc_for_sr(db, symbol: str, lookback: int = 100) -> pd.DataFrame:
 
         symbol_id = sym_result.data["id"]
 
-        # Fetch OHLC data
-        ohlc_result = db.client.table("ohlc_1d").select(
+        # Fetch OHLC data (most recent bars, then reverse for chronological order)
+        ohlc_result = db.client.table("ohlc_bars").select(
             "ts, open, high, low, close, volume"
-        ).eq("symbol_id", symbol_id).order(
-            "ts", desc=False
+        ).eq("symbol_id", symbol_id).eq(
+            "timeframe", "d1"
+        ).order(
+            "ts", desc=True
         ).limit(lookback).execute()
 
         if ohlc_result.data:
-            return pd.DataFrame(ohlc_result.data)
+            # Reverse to get chronological order (oldest to newest)
+            return pd.DataFrame(ohlc_result.data[::-1])
     except Exception as e:
         st.warning(f"Could not fetch OHLC data: {e}")
 
@@ -721,7 +725,7 @@ def render_support_resistance(df: pd.DataFrame):
 
     # Try to fetch real data from database
     db = get_db_connection()
-    ohlc_df = fetch_ohlc_for_sr(db, selected_symbol, lookback=100)
+    ohlc_df = fetch_ohlc_for_sr(db, selected_symbol, lookback=252)
 
     # Check if we have real data
     use_real_data = ohlc_df is not None and len(ohlc_df) >= 20
