@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class BacktestConfig:
     """Configuration for backtest execution."""
+
     initial_capital: float = 100_000.0
     commission_rate: float = 0.001  # 0.1% per trade
     slippage_bps: float = 5.0  # 5 basis points
@@ -33,6 +34,7 @@ class BacktestConfig:
 @dataclass
 class BacktestResult:
     """Results from a single backtest run."""
+
     start_date: datetime
     end_date: datetime
     total_return: float
@@ -226,7 +228,7 @@ class BacktestFramework:
 
         for i, (idx, row) in enumerate(data.iterrows()):
             signal = signals.iloc[i] if i < len(signals) else 0
-            price = row['close']
+            price = row["close"]
 
             # Apply slippage
             if signal > 0:
@@ -254,12 +256,14 @@ class BacktestFramework:
                         position = shares
                         entry_price = exec_price
                         entry_date = idx
-                        trades.append({
-                            'entry_date': idx,
-                            'entry_price': exec_price,
-                            'shares': shares,
-                            'type': 'LONG',
-                        })
+                        trades.append(
+                            {
+                                "entry_date": idx,
+                                "entry_price": exec_price,
+                                "shares": shares,
+                                "type": "LONG",
+                            }
+                        )
 
             elif signal < 0 and position > 0:  # Sell signal
                 commission = self.config.commission_rate
@@ -267,15 +271,15 @@ class BacktestFramework:
                 capital += proceeds
 
                 # Complete the trade record
-                if trades and 'exit_date' not in trades[-1]:
-                    trades[-1]['exit_date'] = idx
-                    trades[-1]['exit_price'] = exec_price
-                    trades[-1]['proceeds'] = proceeds
+                if trades and "exit_date" not in trades[-1]:
+                    trades[-1]["exit_date"] = idx
+                    trades[-1]["exit_price"] = exec_price
+                    trades[-1]["proceeds"] = proceeds
                     entry_cost = position * entry_price * (1 + commission)
-                    trades[-1]['pnl'] = proceeds - entry_cost
-                    trades[-1]['return'] = (exec_price / entry_price) - 1
+                    trades[-1]["pnl"] = proceeds - entry_cost
+                    trades[-1]["return"] = (exec_price / entry_price) - 1
                     duration = (idx - entry_date).days if entry_date else 0
-                    trades[-1]['duration_days'] = duration
+                    trades[-1]["duration_days"] = duration
 
                 position = 0
                 entry_price = 0.0
@@ -283,34 +287,36 @@ class BacktestFramework:
 
             # Track equity
             equity = capital + (position * price)
-            equity_curve.append({'date': idx, 'equity': equity})
+            equity_curve.append({"date": idx, "equity": equity})
 
         # Close any open position at end
         if position > 0:
-            final_price = data['close'].iloc[-1]
+            final_price = data["close"].iloc[-1]
             commission = self.config.commission_rate
             proceeds = position * final_price * (1 - commission)
             capital += proceeds
 
-            if trades and 'exit_date' not in trades[-1]:
-                trades[-1]['exit_date'] = data.index[-1]
-                trades[-1]['exit_price'] = final_price
-                trades[-1]['proceeds'] = proceeds
+            if trades and "exit_date" not in trades[-1]:
+                trades[-1]["exit_date"] = data.index[-1]
+                trades[-1]["exit_price"] = final_price
+                trades[-1]["proceeds"] = proceeds
                 entry_cost = position * entry_price * (1 + commission)
-                trades[-1]['pnl'] = proceeds - entry_cost
-                trades[-1]['return'] = (final_price / entry_price) - 1
-                duration = (data.index[-1] - entry_date).days if entry_date else 0
-                trades[-1]['duration_days'] = duration
+                trades[-1]["pnl"] = proceeds - entry_cost
+                trades[-1]["return"] = (final_price / entry_price) - 1
+                duration = (
+                    (data.index[-1] - entry_date).days if entry_date else 0
+                )
+                trades[-1]["duration_days"] = duration
 
-            equity_curve[-1]['equity'] = capital
+            equity_curve[-1]["equity"] = capital
 
-        equity_df = pd.DataFrame(equity_curve).set_index('date')
+        equity_df = pd.DataFrame(equity_curve).set_index("date")
         if trades:
             trades_df = pd.DataFrame(trades)
         else:
             trades_df = pd.DataFrame()
 
-        return equity_df['equity'], trades_df
+        return equity_df["equity"], trades_df
 
     def _calculate_metrics(
         self,
@@ -341,7 +347,8 @@ class BacktestFramework:
         sharpe = (
             (excess_returns.mean() / excess_returns.std())
             * np.sqrt(self.config.trading_days_per_year)
-            if excess_returns.std() > 0 else 0
+            if excess_returns.std() > 0
+            else 0
         )
 
         # Sortino ratio (downside deviation only)
@@ -353,7 +360,8 @@ class BacktestFramework:
         sortino = (
             (daily_returns.mean() / downside_std)
             * np.sqrt(self.config.trading_days_per_year)
-            if downside_std > 0 else 0
+            if downside_std > 0
+            else 0
         )
 
         # Max drawdown
@@ -362,32 +370,34 @@ class BacktestFramework:
         max_drawdown = drawdown.min()
 
         # Calmar ratio
-        calmar = annualized_return / abs(max_drawdown) if max_drawdown != 0 else 0
+        calmar = (
+            annualized_return / abs(max_drawdown) if max_drawdown != 0 else 0
+        )
 
         # Trade statistics
-        if len(trades_df) > 0 and 'pnl' in trades_df.columns:
-            completed_trades = trades_df[trades_df['pnl'].notna()]
+        if len(trades_df) > 0 and "pnl" in trades_df.columns:
+            completed_trades = trades_df[trades_df["pnl"].notna()]
             n_trades = len(completed_trades)
 
             if n_trades > 0:
-                winning_trades = completed_trades[completed_trades['pnl'] > 0]
-                losing_trades = completed_trades[completed_trades['pnl'] < 0]
+                winning_trades = completed_trades[completed_trades["pnl"] > 0]
+                losing_trades = completed_trades[completed_trades["pnl"] < 0]
 
                 win_rate = len(winning_trades) / n_trades
                 if len(winning_trades) > 0:
-                    gross_profit = winning_trades['pnl'].sum()
+                    gross_profit = winning_trades["pnl"].sum()
                 else:
                     gross_profit = 0
                 if len(losing_trades) > 0:
-                    gross_loss = abs(losing_trades['pnl'].sum())
+                    gross_loss = abs(losing_trades["pnl"].sum())
                 else:
                     gross_loss = 0
                 if gross_loss > 0:
                     profit_factor = gross_profit / gross_loss
                 else:
-                    profit_factor = float('inf')
-                avg_trade_return = completed_trades['return'].mean()
-                avg_duration = completed_trades['duration_days'].mean()
+                    profit_factor = float("inf")
+                avg_trade_return = completed_trades["return"].mean()
+                avg_duration = completed_trades["duration_days"].mean()
             else:
                 win_rate = 0
                 profit_factor = 0
@@ -428,13 +438,13 @@ class BacktestFramework:
             return {}
 
         return {
-            'n_folds': len(results),
-            'total_return_mean': np.mean([r.total_return for r in results]),
-            'total_return_std': np.std([r.total_return for r in results]),
-            'sharpe_mean': np.mean([r.sharpe_ratio for r in results]),
-            'sharpe_std': np.std([r.sharpe_ratio for r in results]),
-            'max_drawdown_mean': np.mean([r.max_drawdown for r in results]),
-            'max_drawdown_worst': min([r.max_drawdown for r in results]),
-            'win_rate_mean': np.mean([r.win_rate for r in results]),
-            'total_trades': sum([r.total_trades for r in results]),
+            "n_folds": len(results),
+            "total_return_mean": np.mean([r.total_return for r in results]),
+            "total_return_std": np.std([r.total_return for r in results]),
+            "sharpe_mean": np.mean([r.sharpe_ratio for r in results]),
+            "sharpe_std": np.std([r.sharpe_ratio for r in results]),
+            "max_drawdown_mean": np.mean([r.max_drawdown for r in results]),
+            "max_drawdown_worst": min([r.max_drawdown for r in results]),
+            "win_rate_mean": np.mean([r.win_rate for r in results]),
+            "total_trades": sum([r.total_trades for r in results]),
         }

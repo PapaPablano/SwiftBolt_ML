@@ -159,11 +159,15 @@ def process_symbol(symbol: str) -> None:
                     "backtest": (
                         backtest_metrics.__dict__ if backtest_metrics else None
                     ),
+                    "training_stats": forecaster.training_stats,
                 }
             else:
                 # Fallback to baseline forecaster
                 baseline_forecaster = BaselineForecaster()
                 forecast = baseline_forecaster.generate_forecast(df, horizon)
+                forecast["training_stats"] = getattr(
+                    baseline_forecaster, "training_stats", None
+                )
 
             # Quality monitoring (log-only)
             quality_score = ForecastQualityMonitor.compute_quality_score(
@@ -183,11 +187,11 @@ def process_symbol(symbol: str) -> None:
                     "confidence": forecast.get("confidence", 0.5),
                     "model_agreement": forecast.get("agreement", 0.75),
                     "created_at": datetime.now(),
-                    "conflicting_signals": supertrend_data.get(
-                        "conflicting_signals", 0
-                    )
-                    if supertrend_data
-                    else 0,
+                    "conflicting_signals": (
+                        supertrend_data.get("conflicting_signals", 0)
+                        if supertrend_data
+                        else 0
+                    ),
                 }
             )
 
@@ -199,6 +203,11 @@ def process_symbol(symbol: str) -> None:
                 confidence=forecast["confidence"],
                 points=forecast["points"],
                 supertrend_data=supertrend_data,
+                backtest_metrics=forecast.get("backtest"),
+                quality_score=quality_score,
+                quality_issues=issues,
+                model_agreement=forecast.get("agreement"),
+                training_stats=forecast.get("training_stats"),
             )
 
             logger.info(

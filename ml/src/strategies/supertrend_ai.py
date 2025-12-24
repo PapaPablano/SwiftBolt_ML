@@ -73,7 +73,9 @@ class SuperTrendAI:
         self.max_data = max_data
 
         if min_mult > max_mult:
-            raise ValueError("Minimum multiplier cannot be greater than maximum")
+            raise ValueError(
+                "Minimum multiplier cannot be greater than maximum"
+            )
 
         self.factors = np.arange(min_mult, max_mult + step, step)
         logger.info(
@@ -151,7 +153,9 @@ class SuperTrendAI:
 
             # SuperTrend output
             supertrend.iloc[i] = (
-                final_lower.iloc[i] if trend.iloc[i] == 1 else final_upper.iloc[i]
+                final_lower.iloc[i]
+                if trend.iloc[i] == 1
+                else final_upper.iloc[i]
             )
 
         return supertrend, trend
@@ -243,7 +247,9 @@ class SuperTrendAI:
             perf_clusters[label].append(perf_array[i][0])
 
         # Sort clusters by average performance
-        cluster_means = {k: np.mean(v) if v else 0 for k, v in perf_clusters.items()}
+        cluster_means = {
+            k: np.mean(v) if v else 0 for k, v in perf_clusters.items()
+        }
         sorted_clusters = sorted(cluster_means.items(), key=lambda x: x[1])
 
         cluster_mapping = {
@@ -258,7 +264,9 @@ class SuperTrendAI:
         ][0]
         target_factors = clusters[target_label]
 
-        optimal_factor = np.mean(target_factors) if target_factors else self.min_mult
+        optimal_factor = (
+            np.mean(target_factors) if target_factors else self.min_mult
+        )
 
         logger.info(
             f"K-means clustering: Best cluster mean={sorted_clusters[2][1]:.4f}, "
@@ -298,9 +306,9 @@ class SuperTrendAI:
         # Performance index (0-1 normalized)
         close = self.df["close"]
         den = close.diff().abs().ewm(span=self.perf_alpha, adjust=False).mean()
-        perf_idx = max(self.calculate_performance(final_st, final_trend), 0) / (
-            den.iloc[-1] + 1e-10
-        )
+        perf_idx = max(
+            self.calculate_performance(final_st, final_trend), 0
+        ) / (den.iloc[-1] + 1e-10)
         perf_idx = min(max(perf_idx, 0), 1)
 
         # Performance-adaptive MA
@@ -328,7 +336,9 @@ class SuperTrendAI:
                 self.df.loc[self.df.index[i], "supertrend_signal"] = -1
 
         # Calculate per-bar confidence scores
-        self.df["signal_confidence"] = self.calculate_signal_confidence(perf_idx)
+        self.df["signal_confidence"] = self.calculate_signal_confidence(
+            perf_idx
+        )
 
         # Extract signal metadata
         signals = self.extract_signal_metadata(perf_idx)
@@ -454,17 +464,19 @@ class SuperTrendAI:
                 else:
                     date_str = str(idx)
 
-                signals.append({
-                    "date": date_str,
-                    "type": "BUY" if signal == 1 else "SELL",
-                    "price": entry_price,
-                    "confidence": int(confidence.iloc[i]),
-                    "stop_level": stop_level,
-                    "target_price": float(target_price),
-                    "atr_at_signal": atr_val,
-                    "risk_amount": float(risk),
-                    "reward_amount": float(risk * risk_reward_ratio),
-                })
+                signals.append(
+                    {
+                        "date": date_str,
+                        "type": "BUY" if signal == 1 else "SELL",
+                        "price": entry_price,
+                        "confidence": int(confidence.iloc[i]),
+                        "stop_level": stop_level,
+                        "target_price": float(target_price),
+                        "atr_at_signal": atr_val,
+                        "risk_amount": float(risk),
+                        "reward_amount": float(risk * risk_reward_ratio),
+                    }
+                )
 
         return signals
 
@@ -500,7 +512,9 @@ class SuperTrendAI:
             ),
         }
 
-    def predict(self, new_df: pd.DataFrame, target_factor: float) -> pd.DataFrame:
+    def predict(
+        self, new_df: pd.DataFrame, target_factor: float
+    ) -> pd.DataFrame:
         """
         Generate SuperTrend signals using a pre-fitted optimal factor.
 

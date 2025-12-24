@@ -1,6 +1,5 @@
 """Supabase-based database access layer for SwiftBolt ML pipeline."""
 
-import json
 import logging
 from typing import Any
 
@@ -69,14 +68,23 @@ class SupabaseDatabase:
             df = pd.DataFrame(response.data)
 
             if df.empty:
-                logger.warning(f"No OHLC bars found for {symbol} ({timeframe})")
+                logger.warning(
+                    "No OHLC bars found for %s (%s)",
+                    symbol,
+                    timeframe,
+                )
                 return df
 
             # Convert timestamp to datetime and sort ascending
             df["ts"] = pd.to_datetime(df["ts"])
             df = df.sort_values("ts").reset_index(drop=True)
 
-            logger.info(f"Fetched {len(df)} bars for {symbol} ({timeframe})")
+            logger.info(
+                "Fetched %s bars for %s (%s)",
+                len(df),
+                symbol,
+                timeframe,
+            )
             return df
 
         except Exception as e:
@@ -114,6 +122,11 @@ class SupabaseDatabase:
         confidence: float,
         points: list[dict[str, Any]],
         supertrend_data: dict[str, Any] | None = None,
+        backtest_metrics: dict[str, Any] | None = None,
+        quality_score: float | None = None,
+        quality_issues: list[dict[str, Any]] | None = None,
+        model_agreement: float | None = None,
+        training_stats: dict[str, Any] | None = None,
     ) -> None:
         """
         Insert or update a forecast in the ml_forecasts table.
@@ -146,19 +159,38 @@ class SupabaseDatabase:
 
             # Add SuperTrend AI data if available
             if supertrend_data:
-                forecast_data.update({
-                    "supertrend_factor": supertrend_data.get("supertrend_factor"),
-                    "supertrend_performance": supertrend_data.get(
-                        "supertrend_performance"
-                    ),
-                    "supertrend_signal": supertrend_data.get("supertrend_signal"),
-                    "trend_label": supertrend_data.get("trend_label"),
-                    "trend_confidence": supertrend_data.get("trend_confidence"),
-                    "stop_level": supertrend_data.get("stop_level"),
-                    "trend_duration_bars": supertrend_data.get(
-                        "trend_duration_bars"
-                    ),
-                })
+                forecast_data.update(
+                    {
+                        "supertrend_factor": supertrend_data.get(
+                            "supertrend_factor"
+                        ),
+                        "supertrend_performance": supertrend_data.get(
+                            "supertrend_performance"
+                        ),
+                        "supertrend_signal": supertrend_data.get(
+                            "supertrend_signal"
+                        ),
+                        "trend_label": supertrend_data.get("trend_label"),
+                        "trend_confidence": supertrend_data.get(
+                            "trend_confidence"
+                        ),
+                        "stop_level": supertrend_data.get("stop_level"),
+                        "trend_duration_bars": supertrend_data.get(
+                            "trend_duration_bars"
+                        ),
+                    }
+                )
+
+            if backtest_metrics:
+                forecast_data["backtest_metrics"] = backtest_metrics
+            if quality_score is not None:
+                forecast_data["quality_score"] = quality_score
+            if quality_issues is not None:
+                forecast_data["quality_issues"] = quality_issues
+            if model_agreement is not None:
+                forecast_data["model_agreement"] = model_agreement
+            if training_stats is not None:
+                forecast_data["training_stats"] = training_stats
 
             if existing.data:
                 # Delete existing forecast first to avoid trigger issues
@@ -171,15 +203,13 @@ class SupabaseDatabase:
                 )
 
             # Always insert (after deleting if it existed)
-            response = (
-                self.client.table("ml_forecasts")
-                .insert(forecast_data)
-                .execute()
-            )
+            self.client.table("ml_forecasts").insert(forecast_data).execute()
 
             logger.info(
-                f"Saved forecast: {horizon} - {overall_label} "
-                f"(confidence: {confidence:.2%})"
+                "Saved forecast: %s - %s (confidence: %.2f%%)",
+                horizon,
+                overall_label,
+                confidence * 100,
             )
 
         except Exception as e:
@@ -223,10 +253,18 @@ class SupabaseDatabase:
                     on_conflict="symbol,signal_date,signal_type",
                 ).execute()
 
-            logger.info(f"Saved {len(signals)} SuperTrend signals for {symbol}")
+            logger.info(
+                "Saved %s SuperTrend signals for %s",
+                len(signals),
+                symbol,
+            )
 
         except Exception as e:
-            logger.warning(f"Error upserting SuperTrend signals for {symbol}: {e}")
+            logger.warning(
+                "Error upserting SuperTrend signals for %s: %s",
+                symbol,
+                e,
+            )
 
     def upsert_option_rank(
         self,
@@ -298,19 +336,25 @@ class SupabaseDatabase:
             }
 
             # Delete existing rank for this contract if it exists
-            self.client.table("options_ranks").delete().eq("contract_symbol", contract_symbol).execute()
+            self.client.table("options_ranks").delete().eq(
+                "contract_symbol", contract_symbol
+            ).execute()
 
             # Insert new rank
-            response = (
-                self.client.table("options_ranks")
-                .insert(rank_data)
-                .execute()
+            self.client.table("options_ranks").insert(rank_data).execute()
+
+            logger.debug(
+                "Saved rank for %s (score: %.3f)",
+                contract_symbol,
+                ml_score,
             )
 
-            logger.debug(f"Saved rank for {contract_symbol} (score: {ml_score:.3f})")
-
         except Exception as e:
-            logger.error(f"Error upserting option rank for {contract_symbol}: {e}")
+            logger.error(
+                "Error upserting option rank for %s: %s",
+                contract_symbol,
+                e,
+            )
             raise
 
     def close(self) -> None:

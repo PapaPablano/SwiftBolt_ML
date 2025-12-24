@@ -124,6 +124,20 @@ class BaselineForecaster:
         )
         f1 = f1_score(y, predictions, average="weighted", zero_division=0)
         cm = confusion_matrix(y, predictions)
+        # Feature importances (RF supports this attribute)
+        importances = getattr(self.model, "feature_importances_", None)
+        if (
+            importances is not None
+            and len(importances) == len(self.feature_columns)
+        ):
+            importance_pairs = sorted(
+                zip(self.feature_columns, importances),
+                key=lambda kv: kv[1],
+                reverse=True,
+            )
+            top_features = importance_pairs[:10]
+        else:
+            top_features = []
 
         self.training_stats = {
             "timestamp": datetime.now().isoformat(),
@@ -135,6 +149,7 @@ class BaselineForecaster:
             "n_samples": len(X),
             "n_features": len(self.feature_columns),
             "class_distribution": y.value_counts().to_dict(),
+            "top_features": top_features,
         }
 
         logger.info(
@@ -145,6 +160,13 @@ class BaselineForecaster:
             f1,
         )
         logger.info("Confusion matrix:\n%s", cm)
+        if top_features:
+            logger.info(
+                "Top features: %s",
+                ", ".join(
+                    f"{name}={score:.3f}" for name, score in top_features
+                ),
+            )
 
         self.is_trained = True
 

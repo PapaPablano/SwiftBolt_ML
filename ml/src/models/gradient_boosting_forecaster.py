@@ -8,7 +8,7 @@ Designed to complement Random Forest in ensemble.
 
 import logging
 import pickle
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import numpy as np
 import pandas as pd
@@ -84,8 +84,10 @@ class GradientBoostingForecaster:
         Train Gradient Boosting model on historical data.
 
         Args:
-            features_df: DataFrame with technical indicators (shape: [N, num_features])
-            labels_series: Series with directional labels {-1, 0, 1} (shape: [N])
+            features_df: DataFrame with technical indicators
+                (shape: [N, num_features])
+            labels_series: Series with directional labels {-1, 0, 1}
+                (shape: [N])
 
         Returns:
             self (for method chaining)
@@ -96,12 +98,14 @@ class GradientBoostingForecaster:
         # Validation
         if features_df.shape[0] != labels_series.shape[0]:
             raise ValueError(
-                f"Feature/label mismatch: {features_df.shape[0]} vs {labels_series.shape[0]}"
+                "Feature/label mismatch: "
+                f"{features_df.shape[0]} vs {labels_series.shape[0]}"
             )
 
         if features_df.shape[0] < 100:
             raise ValueError(
-                f"Insufficient training data: {features_df.shape[0]} rows (need >= 100)"
+                "Insufficient training data: "
+                f"{features_df.shape[0]} rows (need >= 100)"
             )
 
         # Remove rows with NaN in features
@@ -114,8 +118,12 @@ class GradientBoostingForecaster:
         if labels_clean.dtype == object:
             # String labels
             string_to_internal = {
-                "bearish": 0, "neutral": 1, "bullish": 2,
-                "Bearish": 0, "Neutral": 1, "Bullish": 2,
+                "bearish": 0,
+                "neutral": 1,
+                "bullish": 2,
+                "Bearish": 0,
+                "Neutral": 1,
+                "Bullish": 2,
             }
             labels_internal = labels_clean.map(string_to_internal)
         else:
@@ -128,13 +136,16 @@ class GradientBoostingForecaster:
         labels_internal = labels_internal[valid_mask].astype(int)
 
         logger.info(
-            f"Training GB Forecaster ({self.horizon}): {len(features_clean)} samples"
+            "Training GB Forecaster (%s): %s samples",
+            self.horizon,
+            len(features_clean),
         )
 
         # Check if we still have enough samples after filtering
         if len(features_clean) < 50:
             raise ValueError(
-                f"Insufficient training data after NaN filtering: {len(features_clean)} rows (need >= 50)"
+                "Insufficient training data after NaN filtering: "
+                f"{len(features_clean)} rows (need >= 50)"
             )
 
         # Store feature names
@@ -145,17 +156,53 @@ class GradientBoostingForecaster:
         self.model.fit(X=features_clean, y=labels_internal)
 
         # Store training stats
+        # Feature importance (may be gain-based depending on booster)
+        importance_pairs: list[tuple[str, float]] = []
+        try:
+            importances = self.model.feature_importances_
+            importance_pairs = sorted(
+                zip(self.feature_names, importances),
+                key=lambda kv: kv[1],
+                reverse=True,
+            )
+        except Exception:  # noqa: BLE001
+            # Fallback to booster scores if available
+            try:
+                booster = self.model.get_booster()
+                score_dict = booster.get_score(importance_type="gain")
+                importance_pairs = sorted(
+                    score_dict.items(),
+                    key=lambda kv: kv[1],
+                    reverse=True,
+                )
+            except Exception:  # noqa: BLE001
+                importance_pairs = []
+
+        top_features = importance_pairs[:10]
+
         self.training_stats = {
             "n_samples": len(features_clean),
             "n_features": features_clean.shape[1],
             "class_distribution": labels_internal.value_counts().to_dict(),
-            "training_accuracy": self.model.score(features_clean, labels_internal),
+            "training_accuracy": self.model.score(
+                features_clean, labels_internal
+            ),
+            "top_features": top_features,
         }
 
         self.is_trained = True
         logger.info(
-            f"GB model trained. Accuracy: {self.training_stats['training_accuracy']:.3f}"
+            "GB model trained. Accuracy: %.3f",
+            self.training_stats["training_accuracy"],
         )
+        if top_features:
+            logger.info(
+                "GB top features: %s",
+                ", ".join(
+                    f"{name}={score:.3f}"
+                    for name, score in top_features
+                ),
+            )
 
         return self
 
@@ -164,7 +211,8 @@ class GradientBoostingForecaster:
         Predict stock direction on new data.
 
         Args:
-            features_df: DataFrame with technical indicators (1 row = current bar)
+            features_df: DataFrame with technical indicators
+                (1 row = current bar)
 
         Returns:
             Dict with keys:
@@ -190,7 +238,9 @@ class GradientBoostingForecaster:
         probabilities = self.model.predict_proba(features)[0]
 
         # Map internal to external label
-        prediction_external = self.INTERNAL_TO_EXTERNAL[int(prediction_internal)]
+        prediction_external = self.INTERNAL_TO_EXTERNAL[
+            int(prediction_internal)
+        ]
         label = self.LABEL_MAP[prediction_external]
         confidence = float(np.max(probabilities))
 
@@ -224,11 +274,16 @@ class GradientBoostingForecaster:
         probabilities = self.model.predict_proba(features_df)
 
         # Convert internal predictions to external labels
-        predictions_external = [self.INTERNAL_TO_EXTERNAL[int(p)] for p in predictions_internal]
+        predictions_external = [
+            self.INTERNAL_TO_EXTERNAL[int(pred)]
+            for pred in predictions_internal
+        ]
 
         result_df = pd.DataFrame(
             {
-                "prediction": [self.LABEL_MAP[p] for p in predictions_external],
+                "prediction": [
+                    self.LABEL_MAP[p] for p in predictions_external
+                ],
                 "confidence": np.max(probabilities, axis=1),
                 "prob_bearish": probabilities[:, 0],
                 "prob_neutral": probabilities[:, 1],
@@ -261,7 +316,10 @@ class GradientBoostingForecaster:
     def save(self, filepath: str) -> None:
         """Save trained model to disk."""
         with open(filepath, "wb") as f:
-            pickle.dump({"model": self.model, "feature_names": self.feature_names}, f)
+            pickle.dump(
+                {"model": self.model, "feature_names": self.feature_names},
+                f,
+            )
         logger.info(f"Model saved to {filepath}")
 
     def load(self, filepath: str) -> "GradientBoostingForecaster":

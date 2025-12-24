@@ -5,7 +5,9 @@ import logging
 import numpy as np
 import pandas as pd
 
+from src.features.market_regime import add_market_regime_features
 from src.features.regime_indicators import add_regime_features_to_technical
+from src.features.volatility_regime import add_garch_features
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +72,22 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     # Add regime features (5 additional indicators)
     df = add_regime_features_to_technical(df, df)
 
-    logger.info(f"Added {len(df.columns) - 6} technical indicators (including regime features)")
+    # Add HMM market regimes (discrete + probabilities)
+    try:
+        df = add_market_regime_features(df)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Market regime features failed: %s", exc)
+
+    # Add GARCH variance/regime
+    try:
+        df = add_garch_features(df)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("GARCH features failed: %s", exc)
+
+    logger.info(
+        "Added %s technical indicators (including regime features)",
+        len(df.columns) - 6,
+    )
 
     return df
 
@@ -371,12 +388,16 @@ def calculate_keltner_channel(
         multiplier: ATR multiplier for bands (default: 2.0)
 
     Returns:
-        DataFrame with keltner_middle, keltner_upper, keltner_lower columns added
+        DataFrame with keltner_middle, keltner_upper, keltner_lower
+        columns added
     """
     df = df.copy()
 
     # Center line (EMA)
-    df["keltner_middle"] = df["close"].ewm(span=ema_period, adjust=False).mean()
+    df["keltner_middle"] = df["close"].ewm(
+        span=ema_period,
+        adjust=False,
+    ).mean()
 
     # ATR for channel width
     atr = calculate_atr(df, period=atr_period)
@@ -425,14 +446,18 @@ def add_all_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     # Add volatility indicators
     df = calculate_keltner_channel(df)
 
-    logger.info(f"Added all technical indicators: {len(df.columns) - 6} features total")
+    logger.info(
+        "Added all technical indicators: %s features total",
+        len(df.columns) - 6,
+    )
 
     return df
 
 
 def prepare_features_for_ml(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Prepare features for ML model by selecting relevant columns and handling NaNs.
+    Prepare features for ML model by selecting relevant columns and
+    handling NaNs.
 
     Args:
         df: DataFrame with technical indicators
@@ -461,6 +486,10 @@ def prepare_features_for_ml(df: pd.DataFrame) -> pd.DataFrame:
     # Drop rows with NaN (typically from rolling window initialization)
     features_df = features_df.dropna()
 
-    logger.info(f"Prepared {len(features_df)} samples with {len(feature_cols)} features")
+    logger.info(
+        "Prepared %s samples with %s features",
+        len(features_df),
+        len(feature_cols),
+    )
 
     return features_df

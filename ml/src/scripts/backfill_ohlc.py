@@ -42,30 +42,56 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Validate required environment variables at startup
-logger.info(f"Supabase URL: {settings.supabase_url[:30]}..." if settings.supabase_url else "Supabase URL: NOT SET")
-logger.info(f"Supabase Key: {'SET (' + str(len(settings.supabase_key)) + ' chars)' if settings.supabase_key else 'NOT SET'}")
+logger.info(
+    f"Supabase URL: {settings.supabase_url[:30]}..."
+    if settings.supabase_url
+    else "Supabase URL: NOT SET"
+)
+logger.info(
+    f"Supabase Key: {'SET (' + str(len(settings.supabase_key)) + ' chars)' if settings.supabase_key else 'NOT SET'}"
+)
 if not settings.supabase_url or not settings.supabase_key:
     logger.error("❌ Missing required Supabase credentials!")
     logger.error(f"Environment variables check:")
-    logger.error(f"  SUPABASE_URL: {os.getenv('SUPABASE_URL', 'NOT SET')[:30] if os.getenv('SUPABASE_URL') else 'NOT SET'}")
-    logger.error(f"  SUPABASE_KEY: {'SET' if os.getenv('SUPABASE_KEY') else 'NOT SET'}")
+    logger.error(
+        f"  SUPABASE_URL: {os.getenv('SUPABASE_URL', 'NOT SET')[:30] if os.getenv('SUPABASE_URL') else 'NOT SET'}"
+    )
+    logger.error(
+        f"  SUPABASE_KEY: {'SET' if os.getenv('SUPABASE_KEY') else 'NOT SET'}"
+    )
     sys.exit(1)
 
 
 # Fallback symbols if database watchlist is empty
 DEFAULT_SYMBOLS = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META",
-    "SPY", "QQQ", "CRWD", "PLTR", "AMD", "NFLX", "DIS"
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "AMZN",
+    "NVDA",
+    "TSLA",
+    "META",
+    "SPY",
+    "QQQ",
+    "CRWD",
+    "PLTR",
+    "AMD",
+    "NFLX",
+    "DIS",
 ]
 
 # Rate limiting configuration (respecting free-tier API constraints)
 RATE_LIMIT_DELAY = 2.0  # Seconds between API calls
-CHUNK_DELAY = 12.0      # Seconds between chunks for strict providers
+CHUNK_DELAY = 12.0  # Seconds between chunks for strict providers
 
 # Retry configuration for transient errors
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 2.0  # Base delay for exponential backoff
-RETRYABLE_STATUS_CODES = {502, 503, 504}  # Bad Gateway, Service Unavailable, Gateway Timeout
+RETRYABLE_STATUS_CODES = {
+    502,
+    503,
+    504,
+}  # Bad Gateway, Service Unavailable, Gateway Timeout
 
 
 def get_watchlist_symbols_from_db(limit: int = 200) -> List[str]:
@@ -79,14 +105,20 @@ def get_watchlist_symbols_from_db(limit: int = 200) -> List[str]:
     """
     try:
         # Call the database function to get watchlist symbols
-        response = db.client.rpc("get_all_watchlist_symbols", {"p_limit": limit}).execute()
+        response = db.client.rpc(
+            "get_all_watchlist_symbols", {"p_limit": limit}
+        ).execute()
 
         if response.data:
             symbols = [row["ticker"] for row in response.data]
-            logger.info(f"📋 Fetched {len(symbols)} symbols from user watchlists")
+            logger.info(
+                f"📋 Fetched {len(symbols)} symbols from user watchlists"
+            )
             return symbols
         else:
-            logger.warning("No symbols found in user watchlists, using defaults")
+            logger.warning(
+                "No symbols found in user watchlists, using defaults"
+            )
             return DEFAULT_SYMBOLS
 
     except Exception as e:
@@ -95,7 +127,9 @@ def get_watchlist_symbols_from_db(limit: int = 200) -> List[str]:
         return DEFAULT_SYMBOLS
 
 
-def get_latest_bar_timestamp(symbol: str, timeframe: str) -> Optional[datetime]:
+def get_latest_bar_timestamp(
+    symbol: str, timeframe: str
+) -> Optional[datetime]:
     """
     Get the timestamp of the most recent bar for a symbol/timeframe.
 
@@ -144,7 +178,9 @@ def fetch_chart_data(symbol: str, timeframe: str = "d1") -> dict:
     last_exception = None
     for attempt in range(MAX_RETRIES):
         try:
-            response = requests.get(url, params=params, headers=headers, timeout=30)
+            response = requests.get(
+                url, params=params, headers=headers, timeout=30
+            )
             response.raise_for_status()
             data = response.json()
 
@@ -154,10 +190,15 @@ def fetch_chart_data(symbol: str, timeframe: str = "d1") -> dict:
             return data
         except requests.exceptions.HTTPError as e:
             last_exception = e
-            status_code = e.response.status_code if e.response is not None else 0
+            status_code = (
+                e.response.status_code if e.response is not None else 0
+            )
 
-            if status_code in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES - 1:
-                delay = RETRY_BASE_DELAY * (2 ** attempt)
+            if (
+                status_code in RETRYABLE_STATUS_CODES
+                and attempt < MAX_RETRIES - 1
+            ):
+                delay = RETRY_BASE_DELAY * (2**attempt)
                 logger.warning(
                     f"⚠️  Transient error ({status_code}) for {symbol}, "
                     f"retrying in {delay:.1f}s (attempt {attempt + 1}/{MAX_RETRIES})..."
@@ -170,7 +211,7 @@ def fetch_chart_data(symbol: str, timeframe: str = "d1") -> dict:
         except requests.exceptions.RequestException as e:
             last_exception = e
             if attempt < MAX_RETRIES - 1:
-                delay = RETRY_BASE_DELAY * (2 ** attempt)
+                delay = RETRY_BASE_DELAY * (2**attempt)
                 logger.warning(
                     f"⚠️  Request error for {symbol}, "
                     f"retrying in {delay:.1f}s (attempt {attempt + 1}/{MAX_RETRIES})..."
@@ -182,10 +223,14 @@ def fetch_chart_data(symbol: str, timeframe: str = "d1") -> dict:
                 raise
 
     # Should not reach here, but just in case
-    raise last_exception or Exception(f"Failed to fetch chart data for {symbol} after {MAX_RETRIES} attempts")
+    raise last_exception or Exception(
+        f"Failed to fetch chart data for {symbol} after {MAX_RETRIES} attempts"
+    )
 
 
-def persist_ohlc_bars(symbol: str, timeframe: str, bars: List[dict]) -> tuple[int, int]:
+def persist_ohlc_bars(
+    symbol: str, timeframe: str, bars: List[dict]
+) -> tuple[int, int]:
     """
     Persist OHLC bars to the database.
 
@@ -213,30 +258,43 @@ def persist_ohlc_bars(symbol: str, timeframe: str, bars: List[dict]) -> tuple[in
             volume = int(bar["volume"])
 
             # Insert into database using upsert (dedupe via unique constraint)
-            result = db.client.table("ohlc_bars").upsert({
-                "symbol_id": symbol_id,
-                "timeframe": timeframe,
-                "ts": ts,
-                "open": open_price,
-                "high": high,
-                "low": low,
-                "close": close,
-                "volume": volume,
-                "provider": "massive",  # Data originally from Polygon via /chart
-            }, on_conflict="symbol_id,timeframe,ts").execute()
+            result = (
+                db.client.table("ohlc_bars")
+                .upsert(
+                    {
+                        "symbol_id": symbol_id,
+                        "timeframe": timeframe,
+                        "ts": ts,
+                        "open": open_price,
+                        "high": high,
+                        "low": low,
+                        "close": close,
+                        "volume": volume,
+                        "provider": "massive",  # Data originally from Polygon via /chart
+                    },
+                    on_conflict="symbol_id,timeframe,ts",
+                )
+                .execute()
+            )
 
             inserted_count += 1
 
         except Exception as e:
-            logger.debug(f"Skipped duplicate or error for {symbol} at {bar.get('ts')}: {e}")
+            logger.debug(
+                f"Skipped duplicate or error for {symbol} at {bar.get('ts')}: {e}"
+            )
             skipped_count += 1
             continue
 
-    logger.info(f"✅ Persisted {inserted_count} bars for {symbol} ({skipped_count} skipped)")
+    logger.info(
+        f"✅ Persisted {inserted_count} bars for {symbol} ({skipped_count} skipped)"
+    )
     return inserted_count, skipped_count
 
 
-def backfill_symbol(symbol: str, timeframe: str = "d1", incremental: bool = False) -> bool:
+def backfill_symbol(
+    symbol: str, timeframe: str = "d1", incremental: bool = False
+) -> bool:
     """
     Backfill OHLC data for a single symbol.
 
@@ -250,7 +308,9 @@ def backfill_symbol(symbol: str, timeframe: str = "d1", incremental: bool = Fals
     """
     start_time = time.time()
     logger.info(f"{'='*60}")
-    logger.info(f"Backfilling {symbol} ({timeframe}) [incremental={incremental}]")
+    logger.info(
+        f"Backfilling {symbol} ({timeframe}) [incremental={incremental}]"
+    )
     logger.info(f"{'='*60}")
 
     try:
@@ -262,10 +322,14 @@ def backfill_symbol(symbol: str, timeframe: str = "d1", incremental: bool = Fals
                 logger.info(f"Latest bar: {latest_bar_ts.isoformat()}")
                 # If data is recent (within 1 day for d1, 1 hour for h1), skip
                 now = datetime.now(latest_bar_ts.tzinfo)
-                if timeframe == "d1" and (now - latest_bar_ts) < timedelta(days=1):
+                if timeframe == "d1" and (now - latest_bar_ts) < timedelta(
+                    days=1
+                ):
                     logger.info(f"⏭️  Data is current, skipping {symbol}")
                     return True
-                elif timeframe.startswith("h") and (now - latest_bar_ts) < timedelta(hours=1):
+                elif timeframe.startswith("h") and (
+                    now - latest_bar_ts
+                ) < timedelta(hours=1):
                     logger.info(f"⏭️  Data is current, skipping {symbol}")
                     return True
             else:
@@ -283,8 +347,10 @@ def backfill_symbol(symbol: str, timeframe: str = "d1", incremental: bool = Fals
         if incremental and latest_bar_ts:
             original_count = len(bars)
             bars = [
-                bar for bar in bars
-                if datetime.fromisoformat(bar["ts"].replace("Z", "+00:00")) > latest_bar_ts
+                bar
+                for bar in bars
+                if datetime.fromisoformat(bar["ts"].replace("Z", "+00:00"))
+                > latest_bar_ts
             ]
             logger.info(f"Filtered {original_count} → {len(bars)} new bars")
 
@@ -319,39 +385,35 @@ def main():
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
-        "--symbol",
-        type=str,
-        help="Single symbol to backfill (e.g., CRWD)"
+        "--symbol", type=str, help="Single symbol to backfill (e.g., CRWD)"
     )
     group.add_argument(
         "--symbols",
         type=str,
         nargs="+",
-        help="Multiple symbols to backfill (e.g., CRWD NVDA TSLA)"
+        help="Multiple symbols to backfill (e.g., CRWD NVDA TSLA)",
     )
     group.add_argument(
-        "--all",
-        action="store_true",
-        help="Backfill all watchlist symbols"
+        "--all", action="store_true", help="Backfill all watchlist symbols"
     )
 
     parser.add_argument(
         "--timeframe",
         type=str,
         default="d1",
-        help="Timeframe to backfill (default: d1)"
+        help="Timeframe to backfill (default: d1)",
     )
 
     parser.add_argument(
         "--incremental",
         action="store_true",
-        help="Only fetch data newer than latest bar (recommended for scheduled runs)"
+        help="Only fetch data newer than latest bar (recommended for scheduled runs)",
     )
 
     parser.add_argument(
         "--all-timeframes",
         action="store_true",
-        help="Backfill all timeframes (m15, h1, d1, w1) for multi-timeframe analysis"
+        help="Backfill all timeframes (m15, h1, d1, w1) for multi-timeframe analysis",
     )
 
     args = parser.parse_args()
@@ -373,12 +435,12 @@ def main():
     else:
         timeframes = [args.timeframe]
 
-    logger.info("="*60)
+    logger.info("=" * 60)
     logger.info("OHLC Backfill Script")
     logger.info(f"Mode: {'INCREMENTAL' if args.incremental else 'FULL'}")
     logger.info(f"Timeframes: {', '.join(timeframes)}")
     logger.info(f"Processing {len(symbols)} symbol(s)")
-    logger.info("="*60)
+    logger.info("=" * 60)
 
     success_count = 0
     failure_count = 0
@@ -390,7 +452,9 @@ def main():
 
         for i, symbol in enumerate(symbols):
             # Process the symbol
-            if backfill_symbol(symbol, timeframe, incremental=args.incremental):
+            if backfill_symbol(
+                symbol, timeframe, incremental=args.incremental
+            ):
                 success_count += 1
             else:
                 failure_count += 1
@@ -408,13 +472,13 @@ def main():
     overall_elapsed = time.time() - overall_start_time
 
     logger.info("")
-    logger.info("="*60)
+    logger.info("=" * 60)
     logger.info("Backfill Complete")
     logger.info(f"Timeframes processed: {len(timeframes)}")
     logger.info(f"✅ Success: {success_count}")
     logger.info(f"❌ Failed: {failure_count}")
     logger.info(f"⏱️  Total time: {overall_elapsed:.1f}s")
-    logger.info("="*60)
+    logger.info("=" * 60)
 
     # Exit with non-zero code if any failures
     sys.exit(0 if failure_count == 0 else 1)

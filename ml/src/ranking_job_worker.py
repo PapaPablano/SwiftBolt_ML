@@ -6,22 +6,21 @@ the options ranking script for each symbol in the queue.
 
 Usage:
     python src/ranking_job_worker.py           # Run once
-    python src/ranking_job_worker.py --watch   # Run continuously (poll every 10s)
+    python src/ranking_job_worker.py --watch   # Run continuously
+                                              (poll every 10s)
 """
 
 import argparse
 import logging
+import subprocess
 import sys
 import time
-import subprocess
 from pathlib import Path
-from datetime import datetime
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config.settings import settings
-from src.data.supabase_db import db
+from src.data.supabase_db import db  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,10 +37,13 @@ def get_next_job():
 
         if result.data and len(result.data) > 0:
             job = result.data[0]
-            logger.info(f"📥 Got job: {job['job_id']} for symbol {job['symbol']}")
+            logger.info(
+                "📥 Got job: %s for symbol %s",
+                job["job_id"],
+                job["symbol"],
+            )
             return job
-        else:
-            return None
+        return None
 
     except Exception as e:
         logger.error(f"Error getting next job: {e}")
@@ -60,10 +62,13 @@ def complete_job(job_id: str):
 def fail_job(job_id: str, error_message: str):
     """Mark a job as failed."""
     try:
-        db.client.rpc("fail_ranking_job", {
-            "job_id": job_id,
-            "error_msg": error_message[:500]  # Limit error message length
-        }).execute()
+        db.client.rpc(
+            "fail_ranking_job",
+            {
+                "job_id": job_id,
+                "error_msg": error_message[:500],  # Limit error message length
+            },
+        ).execute()
         logger.error(f"❌ Marked job {job_id} as failed: {error_message}")
     except Exception as e:
         logger.error(f"Error marking job as failed {job_id}: {e}")
@@ -79,10 +84,10 @@ def process_job(job: dict) -> bool:
     Returns:
         True if successful, False otherwise
     """
-    job_id = job['job_id']
-    symbol = job['symbol']
+    job_id = job["job_id"]
+    symbol = job["symbol"]
 
-    logger.info(f"🔄 Processing job {job_id} for {symbol}...")
+    logger.info("🔄 Processing job %s for %s...", job_id, symbol)
 
     try:
         # Get the path to the ranking script
@@ -94,29 +99,34 @@ def process_job(job: dict) -> bool:
             [python_path, str(script_path), "--symbol", symbol],
             capture_output=True,
             text=True,
-            timeout=120  # 2 minute timeout
+            timeout=120,  # 2 minute timeout
         )
 
         if result.returncode == 0:
-            logger.info(f"✅ Successfully processed job {job_id} for {symbol}")
-            logger.debug(f"Output: {result.stdout}")
+            logger.info(
+                "✅ Successfully processed job %s for %s", job_id, symbol
+            )
+            logger.debug("Output: %s", result.stdout)
             complete_job(job_id)
             return True
-        else:
-            error_msg = f"Script failed with exit code {result.returncode}: {result.stderr}"
-            logger.error(f"❌ Job {job_id} failed: {error_msg}")
-            fail_job(job_id, error_msg)
-            return False
+
+        error_msg = (
+            f"Script failed with exit code {result.returncode}: "
+            f"{result.stderr}"
+        )
+        logger.error("❌ Job %s failed: %s", job_id, error_msg)
+        fail_job(job_id, error_msg)
+        return False
 
     except subprocess.TimeoutExpired:
         error_msg = "Job timed out after 120 seconds"
-        logger.error(f"❌ Job {job_id} timed out")
+        logger.error("❌ Job %s timed out", job_id)
         fail_job(job_id, error_msg)
         return False
 
     except Exception as e:
         error_msg = f"Unexpected error: {str(e)}"
-        logger.error(f"❌ Job {job_id} error: {error_msg}")
+        logger.error("❌ Job %s error: %s", job_id, error_msg)
         fail_job(job_id, error_msg)
         return False
 
@@ -128,9 +138,9 @@ def process_queue_once() -> int:
     Returns:
         Number of jobs processed
     """
-    logger.info("="*60)
+    logger.info("=" * 60)
     logger.info("Checking for pending jobs...")
-    logger.info("="*60)
+    logger.info("=" * 60)
 
     processed = 0
 
@@ -155,18 +165,20 @@ def watch_queue(poll_interval: int = 10):
     Args:
         poll_interval: Seconds to wait between polls (default: 10)
     """
-    logger.info("="*60)
+    logger.info("=" * 60)
     logger.info("Ranking Job Worker - Watch Mode")
     logger.info(f"Polling every {poll_interval} seconds")
     logger.info("Press Ctrl+C to stop")
-    logger.info("="*60)
+    logger.info("=" * 60)
 
     try:
         while True:
             processed = process_queue_once()
 
             if processed == 0:
-                logger.info(f"Waiting {poll_interval} seconds before next poll...")
+                logger.info(
+                    f"Waiting {poll_interval} seconds before next poll..."
+                )
                 time.sleep(poll_interval)
             # If jobs were processed, check again immediately for more
 
@@ -183,14 +195,14 @@ def main():
     parser.add_argument(
         "--watch",
         action="store_true",
-        help="Continuously watch the queue and process jobs as they arrive"
+        help="Continuously watch the queue and process jobs as they arrive",
     )
 
     parser.add_argument(
         "--interval",
         type=int,
         default=10,
-        help="Poll interval in seconds when in watch mode (default: 10)"
+        help="Poll interval in seconds when in watch mode (default: 10)",
     )
 
     args = parser.parse_args()

@@ -45,57 +45,73 @@ def capture_snapshot(symbol: str = None) -> int:
 
             # Capture snapshot using database function
             result = db.client.rpc(
-                "capture_options_snapshot",
-                {"p_symbol_id": symbol_id}
+                "capture_options_snapshot", {"p_symbol_id": symbol_id}
             ).execute()
 
             rows_captured = result.data if result.data else 0
-            logger.info(f"✅ Captured {rows_captured} price records for {symbol}")
+            logger.info(
+                f"✅ Captured {rows_captured} price records for {symbol}"
+            )
 
             return rows_captured
 
         else:
             # Get all symbols with options rankings
-            result = db.client.from_("options_ranks") \
-                .select("underlying_symbol_id") \
+            result = (
+                db.client.from_("options_ranks")
+                .select("underlying_symbol_id")
                 .execute()
+            )
 
             if not result.data:
                 logger.warning("No options rankings found in database")
                 return 0
 
             # Get unique symbol IDs
-            symbol_ids = list(set(row["underlying_symbol_id"] for row in result.data))
+            symbol_ids = list(
+                set(row["underlying_symbol_id"] for row in result.data)
+            )
 
-            logger.info(f"Found {len(symbol_ids)} symbols with rankings to snapshot")
+            logger.info(
+                f"Found {len(symbol_ids)} symbols with rankings to snapshot"
+            )
 
             total_captured = 0
 
             for symbol_id in symbol_ids:
                 try:
                     snapshot_result = db.client.rpc(
-                        "capture_options_snapshot",
-                        {"p_symbol_id": symbol_id}
+                        "capture_options_snapshot", {"p_symbol_id": symbol_id}
                     ).execute()
 
                     rows = snapshot_result.data if snapshot_result.data else 0
                     total_captured += rows
 
                     # Get symbol ticker for logging
-                    symbol_result = db.client.from_("symbols") \
-                        .select("ticker") \
-                        .eq("id", symbol_id) \
-                        .single() \
+                    symbol_result = (
+                        db.client.from_("symbols")
+                        .select("ticker")
+                        .eq("id", symbol_id)
+                        .single()
                         .execute()
+                    )
 
-                    ticker = symbol_result.data["ticker"] if symbol_result.data else symbol_id
+                    ticker = (
+                        symbol_result.data["ticker"]
+                        if symbol_result.data
+                        else symbol_id
+                    )
 
                     logger.info(f"  ✓ {ticker}: {rows} records")
 
                 except Exception as e:
-                    logger.error(f"  ✗ Error capturing snapshot for {symbol_id}: {e}")
+                    logger.error(
+                        f"  ✗ Error capturing snapshot for {symbol_id}: {e}"
+                    )
 
-            logger.info(f"✅ Total: Captured {total_captured} price records across all symbols")
+            logger.info(
+                f"✅ Total: Captured {total_captured} price records across all symbols"
+            )
 
             return total_captured
 
@@ -115,7 +131,9 @@ def cleanup_old_snapshots() -> int:
         result = db.client.rpc("cleanup_old_price_history").execute()
         rows_deleted = result.data if result.data else 0
 
-        logger.info(f"🗑️  Cleaned up {rows_deleted} old price history records (>90 days)")
+        logger.info(
+            f"🗑️  Cleaned up {rows_deleted} old price history records (>90 days)"
+        )
 
         return rows_deleted
 
@@ -133,13 +151,13 @@ def main():
     parser.add_argument(
         "--symbol",
         type=str,
-        help="Single symbol to snapshot (e.g., AAPL). If not provided, snapshots all symbols."
+        help="Single symbol to snapshot (e.g., AAPL). If not provided, snapshots all symbols.",
     )
 
     parser.add_argument(
         "--cleanup",
         action="store_true",
-        help="Also cleanup old price history (>90 days)"
+        help="Also cleanup old price history (>90 days)",
     )
 
     args = parser.parse_args()

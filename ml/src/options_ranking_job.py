@@ -39,15 +39,19 @@ def fetch_options_from_api(symbol: str) -> dict:
     params = {"underlying": symbol}
     headers = {
         "Authorization": f"Bearer {settings.supabase_service_role_key}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     try:
-        response = requests.get(url, params=params, headers=headers, timeout=30)
+        response = requests.get(
+            url, params=params, headers=headers, timeout=30
+        )
         response.raise_for_status()
         data = response.json()
 
-        logger.info(f"Fetched {len(data.get('calls', []))} calls and {len(data.get('puts', []))} puts")
+        logger.info(
+            f"Fetched {len(data.get('calls', []))} calls and {len(data.get('puts', []))} puts"
+        )
         return data
 
     except requests.exceptions.RequestException as e:
@@ -60,44 +64,60 @@ def parse_options_chain(api_response: dict) -> pd.DataFrame:
     contracts = []
 
     for call in api_response.get("calls", []):
-        contracts.append({
-            "contract_symbol": call["symbol"],
-            "strike": call["strike"],
-            "expiration": call["expiration"],
-            "side": "call",
-            "bid": call.get("bid", 0),
-            "ask": call.get("ask", 0),
-            "mark": call.get("mark", (call.get("bid", 0) + call.get("ask", 0)) / 2),
-            "last_price": call.get("last", 0),
-            "volume": call.get("volume", 0),
-            "openInterest": call.get("openInterest", 0),  # camelCase for ranker
-            "impliedVolatility": call.get("impliedVolatility", 0),  # camelCase for ranker
-            "delta": call.get("delta", 0),
-            "gamma": call.get("gamma", 0),
-            "theta": call.get("theta", 0),
-            "vega": call.get("vega", 0),
-            "rho": call.get("rho", 0),
-        })
+        contracts.append(
+            {
+                "contract_symbol": call["symbol"],
+                "strike": call["strike"],
+                "expiration": call["expiration"],
+                "side": "call",
+                "bid": call.get("bid", 0),
+                "ask": call.get("ask", 0),
+                "mark": call.get(
+                    "mark", (call.get("bid", 0) + call.get("ask", 0)) / 2
+                ),
+                "last_price": call.get("last", 0),
+                "volume": call.get("volume", 0),
+                "openInterest": call.get(
+                    "openInterest", 0
+                ),  # camelCase for ranker
+                "impliedVolatility": call.get(
+                    "impliedVolatility", 0
+                ),  # camelCase for ranker
+                "delta": call.get("delta", 0),
+                "gamma": call.get("gamma", 0),
+                "theta": call.get("theta", 0),
+                "vega": call.get("vega", 0),
+                "rho": call.get("rho", 0),
+            }
+        )
 
     for put in api_response.get("puts", []):
-        contracts.append({
-            "contract_symbol": put["symbol"],
-            "strike": put["strike"],
-            "expiration": put["expiration"],
-            "side": "put",
-            "bid": put.get("bid", 0),
-            "ask": put.get("ask", 0),
-            "mark": put.get("mark", (put.get("bid", 0) + put.get("ask", 0)) / 2),
-            "last_price": put.get("last", 0),
-            "volume": put.get("volume", 0),
-            "openInterest": put.get("openInterest", 0),  # camelCase for ranker
-            "impliedVolatility": put.get("impliedVolatility", 0),  # camelCase for ranker
-            "delta": put.get("delta", 0),
-            "gamma": put.get("gamma", 0),
-            "theta": put.get("theta", 0),
-            "vega": put.get("vega", 0),
-            "rho": put.get("rho", 0),
-        })
+        contracts.append(
+            {
+                "contract_symbol": put["symbol"],
+                "strike": put["strike"],
+                "expiration": put["expiration"],
+                "side": "put",
+                "bid": put.get("bid", 0),
+                "ask": put.get("ask", 0),
+                "mark": put.get(
+                    "mark", (put.get("bid", 0) + put.get("ask", 0)) / 2
+                ),
+                "last_price": put.get("last", 0),
+                "volume": put.get("volume", 0),
+                "openInterest": put.get(
+                    "openInterest", 0
+                ),  # camelCase for ranker
+                "impliedVolatility": put.get(
+                    "impliedVolatility", 0
+                ),  # camelCase for ranker
+                "delta": put.get("delta", 0),
+                "gamma": put.get("gamma", 0),
+                "theta": put.get("theta", 0),
+                "vega": put.get("vega", 0),
+                "rho": put.get("rho", 0),
+            }
+        )
 
     return pd.DataFrame(contracts)
 
@@ -109,7 +129,9 @@ def calculate_days_to_expiry(expiration_ts: int) -> int:
     return (expiry_date - today).days
 
 
-def select_balanced_expiry_contracts(ranked_df: pd.DataFrame, total_contracts: int = 100) -> pd.DataFrame:
+def select_balanced_expiry_contracts(
+    ranked_df: pd.DataFrame, total_contracts: int = 100
+) -> pd.DataFrame:
     """
     Select top contracts with balanced distribution across expiry ranges.
 
@@ -133,13 +155,13 @@ def select_balanced_expiry_contracts(ranked_df: pd.DataFrame, total_contracts: i
 
     # Add DTE column
     ranked_df = ranked_df.copy()
-    ranked_df['dte'] = ranked_df['expiration'].apply(calculate_days_to_expiry)
+    ranked_df["dte"] = ranked_df["expiration"].apply(calculate_days_to_expiry)
 
     # Define expiry buckets
-    near_term = ranked_df[ranked_df['dte'].between(7, 30)]
-    mid_term = ranked_df[ranked_df['dte'].between(30, 60)]
-    long_term = ranked_df[ranked_df['dte'] >= 60]
-    very_short = ranked_df[ranked_df['dte'] < 7]  # Less than 1 week
+    near_term = ranked_df[ranked_df["dte"].between(7, 30)]
+    mid_term = ranked_df[ranked_df["dte"].between(30, 60)]
+    long_term = ranked_df[ranked_df["dte"] >= 60]
+    very_short = ranked_df[ranked_df["dte"] < 7]  # Less than 1 week
 
     # Allocate contract counts
     near_count = int(total_contracts * 0.30)
@@ -151,16 +173,18 @@ def select_balanced_expiry_contracts(ranked_df: pd.DataFrame, total_contracts: i
     selected_contracts = []
 
     if not very_short.empty:
-        selected_contracts.append(very_short.nlargest(very_short_count, 'ml_score'))
+        selected_contracts.append(
+            very_short.nlargest(very_short_count, "ml_score")
+        )
 
     if not near_term.empty:
-        selected_contracts.append(near_term.nlargest(near_count, 'ml_score'))
+        selected_contracts.append(near_term.nlargest(near_count, "ml_score"))
 
     if not mid_term.empty:
-        selected_contracts.append(mid_term.nlargest(mid_count, 'ml_score'))
+        selected_contracts.append(mid_term.nlargest(mid_count, "ml_score"))
 
     if not long_term.empty:
-        selected_contracts.append(long_term.nlargest(long_count, 'ml_score'))
+        selected_contracts.append(long_term.nlargest(long_count, "ml_score"))
 
     # If we didn't get enough contracts from buckets, backfill with top overall
     if selected_contracts:
@@ -173,14 +197,14 @@ def select_balanced_expiry_contracts(ranked_df: pd.DataFrame, total_contracts: i
         remaining_count = total_contracts - len(result)
         excluded = ranked_df[~ranked_df.index.isin(result.index)]
         if not excluded.empty:
-            backfill = excluded.nlargest(remaining_count, 'ml_score')
+            backfill = excluded.nlargest(remaining_count, "ml_score")
             result = pd.concat([result, backfill], ignore_index=True)
 
     # Sort by ml_score descending
-    result = result.sort_values('ml_score', ascending=False)
+    result = result.sort_values("ml_score", ascending=False)
 
     # Drop the temporary DTE column before returning
-    result = result.drop(columns=['dte'])
+    result = result.drop(columns=["dte"])
 
     logger.info(
         f"Selected {len(result)} contracts: "
@@ -201,7 +225,9 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
     for _, row in ranked_df.iterrows():
         try:
             # Convert expiration timestamp to date string
-            expiry_date = datetime.fromtimestamp(row["expiration"]).strftime("%Y-%m-%d")
+            expiry_date = datetime.fromtimestamp(row["expiration"]).strftime(
+                "%Y-%m-%d"
+            )
 
             db.upsert_option_rank(
                 underlying_symbol_id=symbol_id,
@@ -210,7 +236,9 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
                 strike=float(row["strike"]),
                 side=row["side"],
                 ml_score=float(row["ml_score"]),
-                implied_vol=float(row.get("impliedVolatility", 0)),  # Use camelCase
+                implied_vol=float(
+                    row.get("impliedVolatility", 0)
+                ),  # Use camelCase
                 delta=float(row.get("delta", 0)),
                 gamma=float(row.get("gamma", 0)),
                 theta=float(row.get("theta", 0)),
@@ -226,7 +254,9 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
             )
             saved_count += 1
         except Exception as e:
-            logger.error(f"Error saving rank for {row.get('contract_symbol')}: {e}")
+            logger.error(
+                f"Error saving rank for {row.get('contract_symbol')}: {e}"
+            )
 
     return saved_count
 
@@ -248,7 +278,9 @@ def process_symbol_options(symbol: str) -> None:
         df_ohlc = db.fetch_ohlc_bars(symbol, timeframe="d1", limit=100)
 
         if df_ohlc.empty:
-            logger.warning(f"No price data for {symbol}, skipping options ranking")
+            logger.warning(
+                f"No price data for {symbol}, skipping options ranking"
+            )
             return
 
         # Calculate underlying price and trend
@@ -256,7 +288,7 @@ def process_symbol_options(symbol: str) -> None:
 
         # Calculate historical volatility (20-day)
         returns = df_ohlc.tail(20)["close"].pct_change().dropna()
-        historical_vol = returns.std() * (252 ** 0.5)  # Annualized
+        historical_vol = returns.std() * (252**0.5)  # Annualized
 
         logger.info(
             f"{symbol}: price=${underlying_price:.2f}, HV={historical_vol:.2%}"
@@ -279,7 +311,7 @@ def process_symbol_options(symbol: str) -> None:
             options_df,
             df_ohlc,  # Pass OHLC data for indicator computation
             underlying_price,
-            historical_vol
+            historical_vol,
         )
 
         logger.info(f"Ranked {len(ranked_df)} contracts for {symbol}")
@@ -291,16 +323,20 @@ def process_symbol_options(symbol: str) -> None:
         logger.info(f"✅ Saved {saved_count} ranked contracts for {symbol}")
 
     except Exception as e:
-        logger.error(f"Error processing options for {symbol}: {e}", exc_info=True)
+        logger.error(
+            f"Error processing options for {symbol}: {e}", exc_info=True
+        )
 
 
 def main() -> None:
     """Main options ranking job entry point."""
-    parser = argparse.ArgumentParser(description="Rank options contracts using ML")
+    parser = argparse.ArgumentParser(
+        description="Rank options contracts using ML"
+    )
     parser.add_argument(
         "--symbol",
         type=str,
-        help="Single symbol to process (e.g., AAPL). If not provided, processes all symbols from settings."
+        help="Single symbol to process (e.g., AAPL). If not provided, processes all symbols from settings.",
     )
     args = parser.parse_args()
 
@@ -312,7 +348,9 @@ def main() -> None:
 
     logger.info("=" * 80)
     logger.info("Starting Options Ranking Job")
-    logger.info(f"Processing {len(symbols_to_process)} symbol(s): {', '.join(symbols_to_process)}")
+    logger.info(
+        f"Processing {len(symbols_to_process)} symbol(s): {', '.join(symbols_to_process)}"
+    )
     logger.info("=" * 80)
 
     symbols_processed = 0
