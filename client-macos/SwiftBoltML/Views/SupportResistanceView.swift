@@ -96,10 +96,14 @@ struct SRLevelsContent: View {
             Divider()
             
             // Pivot Points
-            PivotPointsRow(pivots: sr.pivotPoints, currentPrice: sr.currentPrice)
+            if let pivots = sr.pivotPoints {
+                PivotPointsRow(pivots: pivots, currentPrice: sr.currentPrice)
+            }
             
             // Fibonacci Levels
-            FibonacciRow(fib: sr.fibonacci, currentPrice: sr.currentPrice)
+            if let fib = sr.fibonacci {
+                FibonacciRow(fib: fib, currentPrice: sr.currentPrice)
+            }
         }
     }
 }
@@ -203,13 +207,13 @@ struct PivotPointsRow: View {
                 .foregroundStyle(.secondary)
             
             HStack(spacing: 6) {
-                PivotBadge(label: "S3", value: pivots.S3, currentPrice: currentPrice, isSupport: true)
-                PivotBadge(label: "S2", value: pivots.S2, currentPrice: currentPrice, isSupport: true)
-                PivotBadge(label: "S1", value: pivots.S1, currentPrice: currentPrice, isSupport: true)
-                PivotBadge(label: "PP", value: pivots.PP, currentPrice: currentPrice, isPivot: true)
-                PivotBadge(label: "R1", value: pivots.R1, currentPrice: currentPrice, isSupport: false)
-                PivotBadge(label: "R2", value: pivots.R2, currentPrice: currentPrice, isSupport: false)
-                PivotBadge(label: "R3", value: pivots.R3, currentPrice: currentPrice, isSupport: false)
+                PivotBadge(label: "S3", value: pivots.s3, currentPrice: currentPrice, isSupport: true)
+                PivotBadge(label: "S2", value: pivots.s2, currentPrice: currentPrice, isSupport: true)
+                PivotBadge(label: "S1", value: pivots.s1, currentPrice: currentPrice, isSupport: true)
+                PivotBadge(label: "PP", value: pivots.pp, currentPrice: currentPrice, isPivot: true)
+                PivotBadge(label: "R1", value: pivots.r1, currentPrice: currentPrice, isSupport: false)
+                PivotBadge(label: "R2", value: pivots.r2, currentPrice: currentPrice, isSupport: false)
+                PivotBadge(label: "R3", value: pivots.r3, currentPrice: currentPrice, isSupport: false)
             }
         }
     }
@@ -260,6 +264,16 @@ struct FibonacciRow: View {
     let fib: FibonacciLevels
     let currentPrice: Double
     
+    private var labeledLevels: [(String, Double)] {
+        [
+            ("0.236", fib.fib236),
+            ("0.382", fib.fib382),
+            ("0.500", fib.fib500),
+            ("0.618", fib.fib618),
+            ("0.786", fib.fib786)
+        ]
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -280,10 +294,10 @@ struct FibonacciRow: View {
             
             // Show key Fibonacci levels
             HStack(spacing: 4) {
-                ForEach(fib.levels.prefix(5), id: \.name) { level in
+                ForEach(labeledLevels.prefix(5), id: \.0) { level in
                     FibBadge(
-                        name: level.name,
-                        value: level.value,
+                        name: level.0,
+                        value: level.1,
                         currentPrice: currentPrice
                     )
                 }

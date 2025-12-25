@@ -5,7 +5,8 @@ struct MLReportCard: View {
     @State private var isExpanded = false
 
     private var labelColor: Color {
-        switch mlSummary.overallLabel.lowercased() {
+        let label = (mlSummary.overallLabel ?? "unknown").lowercased()
+        switch label {
         case "bullish":
             return .green
         case "bearish":
@@ -18,7 +19,8 @@ struct MLReportCard: View {
     }
 
     private var labelIcon: String {
-        switch mlSummary.overallLabel.lowercased() {
+        let label = (mlSummary.overallLabel ?? "unknown").lowercased()
+        switch label {
         case "bullish":
             return "arrow.up.right"
         case "bearish":
@@ -97,7 +99,7 @@ struct CompactMLHeader: View {
 
                         Image(systemName: labelIcon)
                             .font(.caption)
-                        Text(mlSummary.overallLabel.uppercased())
+                        Text((mlSummary.overallLabel ?? "UNKNOWN").uppercased())
                             .font(.caption.bold())
                     }
                     .foregroundStyle(labelColor)
@@ -271,7 +273,9 @@ struct HorizonBadge: View {
             ForecastSeries(horizon: "1W", points: [
                 ForecastPoint(ts: 1734186600, value: 249.29, lower: 246.54, upper: 252.04)
             ])
-        ]
+        ],
+        srLevels: nil,
+        srDensity: nil
     ))
     .padding()
     .frame(width: 300)

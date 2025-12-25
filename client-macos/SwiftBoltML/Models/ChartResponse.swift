@@ -103,7 +103,7 @@ struct IndicatorData: Codable, Equatable {
 }
 
 struct MLSummary: Codable, Equatable {
-    let overallLabel: String
+    let overallLabel: String?
     let confidence: Double
     let horizons: [ForecastSeries]
     let srLevels: SRLevels?

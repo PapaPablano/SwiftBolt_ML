@@ -387,10 +387,6 @@
 				SR0000012345678900000001 /* SupportResistanceModels.swift in Sources */,
 				SR0000012345678900000003 /* SupportResistanceView.swift in Sources */,
 				SA0000012345678900000003 /* StrikeAnalysisView.swift in Sources */,
-				3B097E610F6A47BAC49A56F7 /* OptionsRankerViewModel.swift in Sources */,
-				0FCF1B1E4600027F5DDEEE15 /* AnalysisViewModel.swift in Sources */,
-				DFD9B78300B56EAB24388FD0 /* OptionsRankerView.swift in Sources */,
-				4DCDA5FE9BFF64A024AA07B9 /* AnalysisView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
