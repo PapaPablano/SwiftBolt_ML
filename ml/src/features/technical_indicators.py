@@ -18,6 +18,7 @@ from src.features.market_regime import add_market_regime_features
 from src.features.regime_indicators import add_regime_features_to_technical
 from src.features.volatility_regime import add_garch_features
 from src.features.technical_indicators_corrected import TechnicalIndicatorsCorrect
+from src.features.support_resistance_detector import add_support_resistance_features
 
 logger = logging.getLogger(__name__)
 
@@ -108,8 +109,19 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     except Exception as exc:  # noqa: BLE001
         logger.warning("GARCH features failed: %s", exc)
 
+    # =========================================================================
+    # SUPPORT/RESISTANCE FEATURES
+    # =========================================================================
+
+    # Add S/R features (5 additional indicators for ML)
+    try:
+        df = add_support_resistance_features(df)
+        logger.info("Added S/R features to technical indicators")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("S/R features failed: %s", exc)
+
     logger.info(
-        "Added %s technical indicators (CORRECTED implementations)",
+        "Added %s technical indicators (CORRECTED implementations + S/R)",
         len(df.columns) - 6,
     )
 

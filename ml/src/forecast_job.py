@@ -13,6 +13,9 @@ from src.data.supabase_db import db  # noqa: E402
 from src.features.technical_indicators import (  # noqa: E402
     add_technical_features,
 )
+from src.features.support_resistance_detector import (  # noqa: E402
+    SupportResistanceDetector,
+)
 from src.backtesting.walk_forward_tester import (  # noqa: E402
     WalkForwardBacktester,
 )
@@ -30,6 +33,108 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def apply_sr_constraints(
+    forecast: dict,
+    sr_levels: dict,
+    current_price: float,
+) -> dict:
+    """
+    Apply S/R constraints to forecast points and adjust confidence.
+
+    Args:
+        forecast: Forecast dict with label, confidence, points
+        sr_levels: S/R levels from detector
+        current_price: Current closing price
+
+    Returns:
+        Updated forecast with S/R constraints applied
+    """
+    forecast = forecast.copy()
+    label = forecast["label"]
+    points = forecast.get("points", [])
+
+    nearest_support = sr_levels.get("nearest_support")
+    nearest_resistance = sr_levels.get("nearest_resistance")
+    support_dist_pct = sr_levels.get("support_distance_pct")
+    resistance_dist_pct = sr_levels.get("resistance_distance_pct")
+
+    # Apply constraints to forecast points
+    constrained_points = []
+    for point in points:
+        value = point["value"]
+        lower = point.get("lower", value)
+        upper = point.get("upper", value)
+
+        # Constrain bullish targets at resistance
+        if label == "bullish" and nearest_resistance:
+            if value > nearest_resistance:
+                value = nearest_resistance * 0.99  # Stop just below resistance
+            if upper > nearest_resistance:
+                upper = nearest_resistance * 0.995
+
+        # Constrain bearish targets at support
+        elif label == "bearish" and nearest_support:
+            if value < nearest_support:
+                value = nearest_support * 1.01  # Stop just above support
+            if lower < nearest_support:
+                lower = nearest_support * 1.005
+
+        constrained_points.append({
+            **point,
+            "value": round(value, 2),
+            "lower": round(lower, 2),
+            "upper": round(upper, 2),
+        })
+
+    forecast["points"] = constrained_points
+
+    # Adjust confidence based on S/R proximity
+    original_confidence = forecast["confidence"]
+    adjusted_confidence = original_confidence
+
+    # Reduce confidence if predicting bullish near resistance
+    if label == "bullish" and resistance_dist_pct is not None:
+        if resistance_dist_pct < 2.0:  # Within 2% of resistance
+            penalty = (2.0 - resistance_dist_pct) / 2.0 * 0.15  # Up to 15% penalty
+            adjusted_confidence = max(0.3, original_confidence - penalty)
+            logger.debug(
+                f"Bullish near resistance ({resistance_dist_pct:.2f}%), "
+                f"confidence {original_confidence:.2f} -> {adjusted_confidence:.2f}"
+            )
+
+    # Reduce confidence if predicting bearish near support
+    elif label == "bearish" and support_dist_pct is not None:
+        if support_dist_pct < 2.0:  # Within 2% of support
+            penalty = (2.0 - support_dist_pct) / 2.0 * 0.15  # Up to 15% penalty
+            adjusted_confidence = max(0.3, original_confidence - penalty)
+            logger.debug(
+                f"Bearish near support ({support_dist_pct:.2f}%), "
+                f"confidence {original_confidence:.2f} -> {adjusted_confidence:.2f}"
+            )
+
+    forecast["confidence"] = adjusted_confidence
+
+    # Add S/R metadata to forecast
+    forecast["sr_levels"] = {
+        "nearest_support": nearest_support,
+        "nearest_resistance": nearest_resistance,
+        "support_distance_pct": support_dist_pct,
+        "resistance_distance_pct": resistance_dist_pct,
+        "all_supports": sr_levels.get("all_supports", [])[:5],  # Top 5
+        "all_resistances": sr_levels.get("all_resistances", [])[:5],  # Top 5
+    }
+
+    # Calculate S/R density (number of levels within 5% of current price)
+    all_levels = sr_levels.get("all_supports", [])[:10] + sr_levels.get("all_resistances", [])[:10]
+    levels_within_5pct = [
+        level for level in all_levels
+        if abs(level - current_price) / current_price <= 0.05
+    ]
+    forecast["sr_density"] = len(levels_within_5pct)
+
+    return forecast
+
+
 def process_symbol(symbol: str) -> None:
     """
     Process a single symbol: fetch data, train model, generate forecasts.
@@ -44,8 +149,8 @@ def process_symbol(symbol: str) -> None:
     logger.info(f"Processing {symbol}...")
 
     try:
-        # Fetch OHLC data
-        df = db.fetch_ohlc_bars(symbol, timeframe="d1", limit=500)
+        # Fetch OHLC data (252 bars = 1 year of daily data for S/R detection)
+        df = db.fetch_ohlc_bars(symbol, timeframe="d1", limit=252, ascending=False)
 
         if len(df) < settings.min_bars_for_training:
             logger.warning(
@@ -54,8 +159,18 @@ def process_symbol(symbol: str) -> None:
             )
             return
 
-        # Add technical indicators
+        # Add technical indicators (includes S/R features)
         df = add_technical_features(df)
+
+        # Extract S/R levels for forecast constraints
+        sr_detector = SupportResistanceDetector()
+        sr_levels = sr_detector.find_all_levels(df)
+        current_price = df["close"].iloc[-1]
+
+        logger.info(
+            f"S/R Levels for {symbol}: support={sr_levels.get('nearest_support')}, "
+            f"resistance={sr_levels.get('nearest_resistance')}, price={current_price:.2f}"
+        )
 
         # Get symbol_id
         symbol_id = db.get_symbol_id(symbol)
@@ -161,6 +276,9 @@ def process_symbol(symbol: str) -> None:
                     ),
                     "training_stats": forecaster.training_stats,
                 }
+
+                # Apply S/R constraints to forecast
+                forecast = apply_sr_constraints(forecast, sr_levels, current_price)
             else:
                 # Fallback to baseline forecaster
                 baseline_forecaster = BaselineForecaster()
@@ -168,6 +286,9 @@ def process_symbol(symbol: str) -> None:
                 forecast["training_stats"] = getattr(
                     baseline_forecaster, "training_stats", None
                 )
+
+                # Apply S/R constraints to forecast
+                forecast = apply_sr_constraints(forecast, sr_levels, current_price)
 
             # Quality monitoring (log-only)
             quality_score = ForecastQualityMonitor.compute_quality_score(
@@ -195,7 +316,7 @@ def process_symbol(symbol: str) -> None:
                 }
             )
 
-            # Save to database (include SuperTrend data if available)
+            # Save to database (include SuperTrend data and S/R levels)
             db.upsert_forecast(
                 symbol_id=symbol_id,
                 horizon=forecast["horizon"],
@@ -208,6 +329,8 @@ def process_symbol(symbol: str) -> None:
                 quality_issues=issues,
                 model_agreement=forecast.get("agreement"),
                 training_stats=forecast.get("training_stats"),
+                sr_levels=forecast.get("sr_levels"),
+                sr_density=forecast.get("sr_density"),
             )
 
             logger.info(

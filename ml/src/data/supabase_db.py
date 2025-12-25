@@ -127,6 +127,8 @@ class SupabaseDatabase:
         quality_issues: list[dict[str, Any]] | None = None,
         model_agreement: float | None = None,
         training_stats: dict[str, Any] | None = None,
+        sr_levels: dict[str, Any] | None = None,
+        sr_density: int | None = None,
     ) -> None:
         """
         Insert or update a forecast in the ml_forecasts table.
@@ -138,6 +140,13 @@ class SupabaseDatabase:
             confidence: Model confidence score (0-1)
             points: List of forecast points
             supertrend_data: Optional SuperTrend AI data dict
+            backtest_metrics: Optional backtest performance metrics
+            quality_score: Optional quality score
+            quality_issues: Optional list of quality issues
+            model_agreement: Optional model agreement score
+            training_stats: Optional training statistics
+            sr_levels: Optional support/resistance levels dict
+            sr_density: Optional S/R density count
         """
         try:
             # Check if forecast exists
@@ -191,6 +200,10 @@ class SupabaseDatabase:
                 forecast_data["model_agreement"] = model_agreement
             if training_stats is not None:
                 forecast_data["training_stats"] = training_stats
+            if sr_levels is not None:
+                forecast_data["sr_levels"] = sr_levels
+            if sr_density is not None:
+                forecast_data["sr_density"] = sr_density
 
             if existing.data:
                 # Delete existing forecast first to avoid trigger issues
