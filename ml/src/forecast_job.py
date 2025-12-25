@@ -149,8 +149,8 @@ def process_symbol(symbol: str) -> None:
     logger.info(f"Processing {symbol}...")
 
     try:
-        # Fetch OHLC data (252 bars = 1 year of daily data for S/R detection)
-        df = db.fetch_ohlc_bars(symbol, timeframe="d1", limit=252, ascending=False)
+        # Fetch most recent bars (db.fetch_ohlc_bars already returns latest first and sorts ascending)
+        df = db.fetch_ohlc_bars(symbol, timeframe="d1", limit=252)
 
         if len(df) < settings.min_bars_for_training:
             logger.warning(
