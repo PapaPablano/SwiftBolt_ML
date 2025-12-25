@@ -218,3 +218,127 @@ enum SRLevelType {
         }
     }
 }
+
+// MARK: - API Response Models
+
+/// Response from the support-resistance Edge Function
+struct SupportResistanceResponse: Codable {
+    let symbol: String
+    let lookback: Int
+    let currentPrice: Double
+    let levels: SRLevels
+    let density: Int
+    let timestamp: String
+    let pivotPoints: PivotPoints?
+    let fibonacci: FibonacciLevels?
+
+    enum CodingKeys: String, CodingKey {
+        case symbol
+        case lookback
+        case currentPrice = "current_price"
+        case levels = "sr_levels"
+        case density = "sr_density"
+        case timestamp
+        case pivotPoints = "pivot_points"
+        case fibonacci
+    }
+
+    // Convenience accessors that delegate to levels
+    var nearestSupport: Double? { levels.nearestSupport }
+    var nearestResistance: Double? { levels.nearestResistance }
+    var supportDistancePct: Double? { levels.supportDistancePct }
+    var resistanceDistancePct: Double? { levels.resistanceDistancePct }
+
+    var bias: String {
+        guard let supportDist = supportDistancePct,
+              let resistanceDist = resistanceDistancePct else {
+            return "Neutral"
+        }
+
+        if supportDist < resistanceDist {
+            return "Bullish"  // Closer to support, likely to bounce up
+        } else if resistanceDist < supportDist {
+            return "Bearish"  // Closer to resistance, likely to reject down
+        } else {
+            return "Neutral"
+        }
+    }
+
+    var biasDescription: String {
+        guard let supportDist = supportDistancePct,
+              let resistanceDist = resistanceDistancePct else {
+            return "No clear S/R bias"
+        }
+
+        if supportDist < 1.0 {
+            return "Very close to support - strong bounce potential"
+        } else if resistanceDist < 1.0 {
+            return "Very close to resistance - rejection likely"
+        } else if supportDist < resistanceDist {
+            return "Closer to support than resistance"
+        } else {
+            return "Closer to resistance than support"
+        }
+    }
+
+    var srRatio: Double? {
+        guard let supportDist = supportDistancePct,
+              let resistanceDist = resistanceDistancePct,
+              resistanceDist > 0 else {
+            return nil
+        }
+        return supportDist / resistanceDist
+    }
+
+    var densityInfo: SRDensityInfo {
+        SRDensityInfo(density: density)
+    }
+
+    var chartOverlay: SRChartOverlay {
+        SRChartOverlay(srLevels: levels, currentPrice: currentPrice)
+    }
+}
+
+// MARK: - Pivot Points
+
+struct PivotPoints: Codable {
+    let pp: Double
+    let r1: Double
+    let r2: Double
+    let r3: Double
+    let s1: Double
+    let s2: Double
+    let s3: Double
+
+    var allLevels: [Double] {
+        [s3, s2, s1, pp, r1, r2, r3]
+    }
+}
+
+// MARK: - Fibonacci Levels
+
+struct FibonacciLevels: Codable {
+    let trend: String  // "uptrend" or "downtrend"
+    let high: Double
+    let low: Double
+    let fib236: Double
+    let fib382: Double
+    let fib500: Double
+    let fib618: Double
+    let fib786: Double
+
+    enum CodingKeys: String, CodingKey {
+        case trend
+        case high
+        case low
+        case fib236 = "0.236"
+        case fib382 = "0.382"
+        case fib500 = "0.500"
+        case fib618 = "0.618"
+        case fib786 = "0.786"
+    }
+
+    var allLevels: [Double] {
+        [fib236, fib382, fib500, fib618, fib786]
+    }
+}
