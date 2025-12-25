@@ -210,26 +210,27 @@ struct MLForecastBreakdownSection: View {
             // Overall prediction
             HStack(spacing: 12) {
                 HStack(spacing: 6) {
-                    Image(systemName: labelIcon(for: mlSummary.overallLabel))
-                    Text(mlSummary.overallLabel.uppercased())
+                    let label = mlSummary.overallLabel ?? "unknown"
+                    Image(systemName: labelIcon(for: label))
+                    Text(label.uppercased())
                         .font(.title3.bold())
                 }
-                .foregroundStyle(labelColor(for: mlSummary.overallLabel))
+                .foregroundStyle(labelColor(for: mlSummary.overallLabel ?? "unknown"))
 
                 Spacer()
 
                 Text("\(Int(mlSummary.confidence * 100))%")
                     .font(.title2.bold())
-                    .foregroundStyle(labelColor(for: mlSummary.overallLabel))
+                    .foregroundStyle(labelColor(for: mlSummary.overallLabel ?? "unknown"))
             }
             .padding()
-            .background(labelColor(for: mlSummary.overallLabel).opacity(0.1))
+            .background(labelColor(for: mlSummary.overallLabel ?? "unknown").opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 12))
 
             // Horizons breakdown
             VStack(spacing: 8) {
                 ForEach(mlSummary.horizons, id: \.horizon) { series in
-                    HorizonRow(series: series, overallColor: labelColor(for: mlSummary.overallLabel))
+                    HorizonRow(series: series, overallColor: labelColor(for: mlSummary.overallLabel ?? "unknown"))
                 }
             }
         }

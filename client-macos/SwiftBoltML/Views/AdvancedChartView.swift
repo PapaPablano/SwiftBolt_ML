@@ -1283,7 +1283,8 @@ struct AdvancedChartView: View {
     private func forecastOverlay(_ mlSummary: MLSummary) -> some ChartContent {
         // Get the forecast color based on overall label - using ChartColors
         let forecastColor: Color = {
-            switch mlSummary.overallLabel.lowercased() {
+            let label = (mlSummary.overallLabel ?? "unknown").lowercased()
+            switch label {
             case "bullish": return ChartColors.forecastBullish
             case "bearish": return ChartColors.forecastBearish
             case "neutral": return ChartColors.forecastNeutral
