@@ -99,6 +99,8 @@ interface MLSummary {
   overallLabel: string;
   confidence: number;
   horizons: ForecastSeries[];
+  srLevels?: Record<string, unknown> | null;
+  srDensity?: number | null;
 }
 
 interface ChartResponse {
@@ -182,7 +184,7 @@ serve(async (req: Request): Promise<Response> => {
     try {
       const { data: forecasts, error: forecastError } = await supabase
         .from("ml_forecasts")
-        .select("horizon, overall_label, confidence, points, run_at")
+        .select("horizon, overall_label, confidence, points, run_at, sr_levels, sr_density")
         .eq("symbol_id", symbolId)
         .in("horizon", ["1D", "1W"])
         .order("run_at", { ascending: false });
@@ -199,6 +201,8 @@ serve(async (req: Request): Promise<Response> => {
             horizon: f.horizon,
             points: f.points as ForecastPoint[],
           })),
+          srLevels: primary.sr_levels || null,
+          srDensity: primary.sr_density || null,
         };
 
         console.log(`[Chart] Loaded ${forecasts.length} ML forecasts for ${ticker}`);

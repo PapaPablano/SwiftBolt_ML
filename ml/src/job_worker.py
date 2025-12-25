@@ -33,8 +33,8 @@ def process_forecast_job(db: SupabaseDatabase, symbol: str, payload: dict) -> bo
     try:
         logger.info(f"Processing forecast job for {symbol}")
 
-        # Fetch OHLC data
-        df = db.fetch_ohlc_bars(symbol, timeframe="d1", limit=500)
+        # Fetch OHLC data (252 bars = 1 year for S/R detection, newest first)
+        df = db.fetch_ohlc_bars(symbol, timeframe="d1", limit=252, ascending=False)
 
         if len(df) < settings.min_bars_for_training:
             logger.warning(
@@ -43,7 +43,7 @@ def process_forecast_job(db: SupabaseDatabase, symbol: str, payload: dict) -> bo
             )
             return False
 
-        # Add technical features
+        # Add technical features (includes S/R features)
         df = add_technical_features(df)
 
         # Get symbol_id for database operations

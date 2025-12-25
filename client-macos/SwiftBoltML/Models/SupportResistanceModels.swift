@@ -1,121 +1,220 @@
 import Foundation
 
-// MARK: - Support & Resistance Response
+// MARK: - Support/Resistance Models
 
-struct SupportResistanceResponse: Codable {
-    let symbol: String
-    let currentPrice: Double
-    let lastUpdated: String
+struct SRLevels: Codable, Equatable {
     let nearestSupport: Double?
     let nearestResistance: Double?
     let supportDistancePct: Double?
     let resistanceDistancePct: Double?
-    let pivotPoints: PivotPoints
-    let fibonacci: FibonacciLevels
-    let zigzagSwings: [SwingPoint]
-    let allSupports: [Double]
-    let allResistances: [Double]
-    let priceData: SRPriceData
-}
+    let allSupports: [Double]?
+    let allResistances: [Double]?
 
-struct PivotPoints: Codable {
-    let PP: Double
-    let R1: Double
-    let R2: Double
-    let R3: Double
-    let S1: Double
-    let S2: Double
-    let S3: Double
-}
-
-struct FibonacciLevels: Codable {
-    let trend: String
-    let rangeHigh: Double
-    let rangeLow: Double
-    
-    // Fibonacci levels as strings since JSON keys have decimals
-    private enum CodingKeys: String, CodingKey {
-        case trend, rangeHigh, rangeLow
-        case fib0 = "0.0"
-        case fib236 = "23.6"
-        case fib382 = "38.2"
-        case fib500 = "50.0"
-        case fib618 = "61.8"
-        case fib786 = "78.6"
-        case fib100 = "100.0"
+    enum CodingKeys: String, CodingKey {
+        case nearestSupport = "nearest_support"
+        case nearestResistance = "nearest_resistance"
+        case supportDistancePct = "support_distance_pct"
+        case resistanceDistancePct = "resistance_distance_pct"
+        case allSupports = "all_supports"
+        case allResistances = "all_resistances"
     }
-    
-    let fib0: Double
-    let fib236: Double
-    let fib382: Double
-    let fib500: Double
-    let fib618: Double
-    let fib786: Double
-    let fib100: Double
-    
-    var levels: [(name: String, value: Double)] {
-        [
-            ("0.0%", fib0),
-            ("23.6%", fib236),
-            ("38.2%", fib382),
-            ("50.0%", fib500),
-            ("61.8%", fib618),
-            ("78.6%", fib786),
-            ("100.0%", fib100)
-        ]
+
+    var hasSupport: Bool {
+        nearestSupport != nil
+    }
+
+    var hasResistance: Bool {
+        nearestResistance != nil
+    }
+
+    var isNearSupport: Bool {
+        guard let dist = supportDistancePct else { return false }
+        return dist < 2.0  // Within 2%
+    }
+
+    var isNearResistance: Bool {
+        guard let dist = resistanceDistancePct else { return false }
+        return dist < 2.0  // Within 2%
+    }
+
+    /// Get the top N support levels
+    func topSupports(_ count: Int = 3) -> [Double] {
+        Array((allSupports ?? []).prefix(count))
+    }
+
+    /// Get the top N resistance levels
+    func topResistances(_ count: Int = 3) -> [Double] {
+        Array((allResistances ?? []).prefix(count))
     }
 }
 
-struct SwingPoint: Codable, Identifiable {
-    let type: String // "high" or "low"
+struct SRDensityInfo: Codable {
+    let density: Int?
+    let description: String
+
+    enum CodingKeys: String, CodingKey {
+        case density = "sr_density"
+        case description
+    }
+
+    init(density: Int?) {
+        self.density = density
+        self.description = Self.getDescription(for: density)
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        density = try container.decodeIfPresent(Int.self, forKey: .density)
+        description = Self.getDescription(for: density)
+    }
+
+    var congestionLevel: CongestionLevel {
+        guard let density = density else { return .low }
+        if density >= 5 {
+            return .high
+        } else if density >= 3 {
+            return .medium
+        } else {
+            return .low
+        }
+    }
+
+    var color: String {
+        congestionLevel.color
+    }
+
+    private static func getDescription(for density: Int?) -> String {
+        guard let density = density else { return "No S/R data" }
+        if density >= 5 {
+            return "High congestion zone (\(density) levels)"
+        } else if density >= 3 {
+            return "Moderate congestion (\(density) levels)"
+        } else if density > 0 {
+            return "Light S/R presence (\(density) levels)"
+        } else {
+            return "Clear trading zone"
+        }
+    }
+}
+
+enum CongestionLevel {
+    case low
+    case medium
+    case high
+
+    var displayName: String {
+        switch self {
+        case .low: return "Low"
+        case .medium: return "Moderate"
+        case .high: return "High"
+        }
+    }
+
+    var color: String {
+        switch self {
+        case .low: return "green"
+        case .medium: return "orange"
+        case .high: return "red"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .low: return "checkmark.circle.fill"
+        case .medium: return "exclamationmark.triangle.fill"
+        case .high: return "xmark.octagon.fill"
+        }
+    }
+}
+
+// MARK: - S/R Chart Overlay Models
+
+struct SRChartOverlay {
+    let supportLevels: [SRLevel]
+    let resistanceLevels: [SRLevel]
+    let currentPrice: Double
+
+    init(srLevels: SRLevels, currentPrice: Double) {
+        self.currentPrice = currentPrice
+
+        // Create support levels
+        self.supportLevels = (srLevels.allSupports ?? []).enumerated().map { index, price in
+            SRLevel(
+                price: price,
+                type: .support,
+                isNearest: index == 0,
+                distancePercent: ((currentPrice - price) / currentPrice) * 100
+            )
+        }
+
+        // Create resistance levels
+        self.resistanceLevels = (srLevels.allResistances ?? []).enumerated().map { index, price in
+            SRLevel(
+                price: price,
+                type: .resistance,
+                isNearest: index == 0,
+                distancePercent: ((price - currentPrice) / currentPrice) * 100
+            )
+        }
+    }
+
+    var allLevels: [SRLevel] {
+        supportLevels + resistanceLevels
+    }
+
+    var significantLevels: [SRLevel] {
+        allLevels.filter { $0.distancePercent < 5.0 }  // Within 5% of current price
+    }
+}
+
+struct SRLevel: Identifiable {
+    let id = UUID()
     let price: Double
-    let ts: String
-    let index: Int
-    
-    var id: String { "\(type)-\(index)" }
-    
-    var isHigh: Bool { type == "high" }
-}
+    let type: SRLevelType
+    let isNearest: Bool
+    let distancePercent: Double
 
-struct SRPriceData: Codable {
-    let high: Double
-    let low: Double
-    let close: Double
-    let periodHigh: Double
-    let periodLow: Double
-}
-
-// MARK: - Computed Properties
-
-extension SupportResistanceResponse {
-    var srRatio: Double? {
-        guard let supportDist = supportDistancePct,
-              let resistanceDist = resistanceDistancePct,
-              supportDist > 0 else {
-            return nil
-        }
-        return resistanceDist / supportDist
+    var color: String {
+        type.color
     }
-    
-    var bias: String {
-        guard let ratio = srRatio else { return "Unknown" }
-        if ratio > 1.5 {
-            return "Bullish"
-        } else if ratio < 0.67 {
-            return "Bearish"
+
+    var opacity: Double {
+        if isNearest {
+            return 0.8
+        } else if distancePercent < 2.0 {
+            return 0.6
         } else {
-            return "Neutral"
+            return 0.3
         }
     }
-    
-    var biasDescription: String {
-        guard let ratio = srRatio else { return "Unable to determine bias" }
-        if ratio > 1.5 {
-            return "More room to upside than downside"
-        } else if ratio < 0.67 {
-            return "More room to downside than upside"
-        } else {
-            return "Balanced risk/reward"
+
+    var lineWidth: Double {
+        isNearest ? 2.0 : 1.0
+    }
+}
+
+enum SRLevelType {
+    case support
+    case resistance
+
+    var displayName: String {
+        switch self {
+        case .support: return "Support"
+        case .resistance: return "Resistance"
+        }
+    }
+
+    var color: String {
+        switch self {
+        case .support: return "green"
+        case .resistance: return "red"
+        }
+    }
+
+    var shortName: String {
+        switch self {
+        case .support: return "S"
+        case .resistance: return "R"
         }
     }
 }
