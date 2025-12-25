@@ -46,7 +46,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          USE_ENSEMBLE: "true"
+          USE_ENSEMBLE_FORECASTER: "true"
           MIN_BARS_FOR_TRAINING: "50"
         run: |
           cd ml
@@ -58,7 +58,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          USE_ENSEMBLE: ${{ github.event.inputs.use_ensemble }}
+          USE_ENSEMBLE_FORECASTER: ${{ github.event.inputs.use_ensemble }}
           MIN_BARS_FOR_TRAINING: "50"
         run: |
           cd ml
