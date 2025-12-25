@@ -455,14 +455,28 @@ class SuperTrendAI:
                 else:  # SELL
                     target_price = entry_price - (risk * risk_reward_ratio)
 
-                # Get date - handle both datetime index and regular index
-                idx = self.df.index[i]
-                if hasattr(idx, "isoformat"):
-                    date_str = idx.isoformat()
-                elif hasattr(idx, "strftime"):
-                    date_str = idx.strftime("%Y-%m-%dT%H:%M:%S")
+                # Get date - prioritize 'ts' column over index
+                if "ts" in self.df.columns:
+                    ts_val = self.df["ts"].iloc[i]
+                    if hasattr(ts_val, "isoformat"):
+                        date_str = ts_val.isoformat()
+                    elif hasattr(ts_val, "strftime"):
+                        date_str = ts_val.strftime("%Y-%m-%dT%H:%M:%S")
+                    else:
+                        # If ts is a timestamp integer, convert it
+                        import datetime
+                        date_str = datetime.datetime.fromtimestamp(ts_val).isoformat()
                 else:
-                    date_str = str(idx)
+                    # Fallback to index
+                    idx = self.df.index[i]
+                    if hasattr(idx, "isoformat"):
+                        date_str = idx.isoformat()
+                    elif hasattr(idx, "strftime"):
+                        date_str = idx.strftime("%Y-%m-%dT%H:%M:%S")
+                    else:
+                        # Use current time as fallback
+                        import datetime
+                        date_str = datetime.datetime.now().isoformat()
 
                 signals.append(
                     {

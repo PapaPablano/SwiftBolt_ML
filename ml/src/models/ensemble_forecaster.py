@@ -80,8 +80,17 @@ class EnsembleForecaster:
         """
         logger.info("Training ensemble (%s)...", self.horizon)
 
+        # Drop datetime columns before SMOTE (they cause float() errors)
+        numeric_features = features_df.select_dtypes(
+            exclude=["datetime64[ns]", "datetimetz", "object"]
+        ).copy()
+
+        if len(numeric_features.columns) != len(features_df.columns):
+            dropped = set(features_df.columns) - set(numeric_features.columns)
+            logger.info("Dropped non-numeric columns for training: %s", dropped)
+
         smote = SMOTE(random_state=42, k_neighbors=5)
-        X_balanced, y_balanced = smote.fit_resample(features_df, labels_series)
+        X_balanced, y_balanced = smote.fit_resample(numeric_features, labels_series)
 
         logger.info(
             "Class distribution after SMOTE: %s",
@@ -94,7 +103,7 @@ class EnsembleForecaster:
             label_map = {-1: "bearish", 0: "neutral", 1: "bullish"}
             rf_labels = rf_labels.map(label_map)
 
-        self.rf_model.feature_columns = features_df.columns.tolist()
+        self.rf_model.feature_columns = numeric_features.columns.tolist()
         self.rf_model.scaler.fit(X_balanced)
         X_scaled = self.rf_model.scaler.transform(X_balanced)
         self.rf_model.model.fit(X_scaled, rf_labels)
