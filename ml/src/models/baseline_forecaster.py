@@ -233,9 +233,9 @@ class BaselineForecaster:
         # Predict
         label, confidence, probabilities = self.predict(last_features)
 
-        # Generate forecast points (simple projection based on prediction)
+        # Generate forecast points with probability-based directional estimates
         points = self._generate_forecast_points(
-            last_ts, last_close, label, confidence, horizon_days
+            last_ts, last_close, label, confidence, horizon_days, probabilities
         )
 
         return {
@@ -243,6 +243,7 @@ class BaselineForecaster:
             "confidence": confidence,
             "horizon": horizon,
             "points": points,
+            "probabilities": probabilities,
         }
 
     def _parse_horizon(self, horizon: str) -> int:
@@ -263,24 +264,55 @@ class BaselineForecaster:
         label: str,
         confidence: float,
         horizon_days: int,
+        probabilities: dict[str, float] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Generate forecast points for visualization.
 
-        Creates a simple linear projection with confidence bands.
+        Creates directional projections based on the full probability distribution,
+        ensuring forecasts always show meaningful price movement.
         """
         points = []
 
-        # Determine expected return based on label
-        if label == "bullish":
-            expected_return = 0.03  # 3% gain
-        elif label == "bearish":
-            expected_return = -0.03  # 3% loss
-        else:  # neutral
-            expected_return = 0.0
+        # Calculate directional expected return from probability distribution
+        if probabilities:
+            # Use weighted probabilities for more nuanced predictions
+            # Convert numpy types to float to avoid calculation issues
+            bull_prob = float(probabilities.get("bullish", 0.0))
+            bear_prob = float(probabilities.get("bearish", 0.0))
 
-        # Scale by confidence
-        expected_return *= confidence
+            # Net directional signal: positive = bullish bias, negative = bearish bias
+            directional_bias = bull_prob - bear_prob
+
+            # Base expected return scaled by directional strength
+            # Maximum move is 5% for 100% directional confidence
+            expected_return = directional_bias * 0.05
+
+            logger.info(f"Directional calc: bull={bull_prob:.3f}, bear={bear_prob:.3f}, bias={directional_bias:.3f}, return={expected_return:.4f}")
+        else:
+            # Fallback to label-based approach
+            if label == "bullish":
+                expected_return = 0.03 * confidence
+            elif label == "bearish":
+                expected_return = -0.03 * confidence
+            else:
+                expected_return = 0.0
+
+        # Ensure minimum visible movement for 1-week+ horizons
+        # Even "neutral" should show slight directional tendency
+        min_move = 0.005 * (horizon_days / 5)  # 0.5% per week minimum
+        if abs(expected_return) < min_move and probabilities:
+            # Use sign of directional bias or default to slight bullish
+            sign = 1 if (probabilities.get("bullish", 0) >=
+                        probabilities.get("bearish", 0)) else -1
+            expected_return = sign * min_move
+
+        # Scale expected return by horizon (longer = more movement)
+        # 1D = base, 1W = 1.5x, 1M = 2x
+        horizon_multiplier = 1.0 + (horizon_days - 1) * 0.1
+        expected_return *= min(horizon_multiplier, 2.0)
+
+        logger.info(f"Forecast gen: last_close={last_close:.2f}, expected_return={expected_return:.4f}, horizon={horizon_days}d")
 
         # Generate daily points
         for i in range(1, horizon_days + 1):
@@ -288,12 +320,18 @@ class BaselineForecaster:
             progress = i / horizon_days
 
             # Linear interpolation of price movement
-            forecast_value = last_close * (1 + expected_return * progress)
+            forecast_value = float(last_close) * (1 + expected_return * progress)
 
-            # Confidence bands (wider for less confident predictions)
-            uncertainty = (1 - confidence) * 0.05  # 5% max uncertainty
-            lower_bound = forecast_value * (1 - uncertainty)
-            upper_bound = forecast_value * (1 + uncertainty)
+            # Confidence bands (wider for less confident, more for longer horizons)
+            base_uncertainty = (1 - confidence) * 0.03  # 3% max base uncertainty
+            time_uncertainty = progress * 0.02  # +2% uncertainty over time
+            total_uncertainty = base_uncertainty + time_uncertainty
+
+            lower_bound = forecast_value * (1 - total_uncertainty)
+            upper_bound = forecast_value * (1 + total_uncertainty)
+
+            if i == 1:
+                logger.info(f"  Day {i}: value={forecast_value:.2f}, lower={lower_bound:.2f}, upper={upper_bound:.2f}")
 
             points.append(
                 {

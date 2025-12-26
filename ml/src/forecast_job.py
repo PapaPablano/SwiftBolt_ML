@@ -58,26 +58,22 @@ def apply_sr_constraints(
     support_dist_pct = sr_levels.get("support_distance_pct")
     resistance_dist_pct = sr_levels.get("resistance_distance_pct")
 
-    # Apply constraints to forecast points
+    # Don't hard-cap forecast values - ML model predictions should be shown as-is
+    # S/R levels are informational; confidence adjustments handle the uncertainty
+    # Just ensure bounds are properly ordered (lower < value < upper)
     constrained_points = []
     for point in points:
         value = point["value"]
-        lower = point.get("lower", value)
-        upper = point.get("upper", value)
+        lower = point.get("lower", value * 0.97)
+        upper = point.get("upper", value * 1.03)
 
-        # Constrain bullish targets at resistance
-        if label == "bullish" and nearest_resistance:
-            if value > nearest_resistance:
-                value = nearest_resistance * 0.99  # Stop just below resistance
-            if upper > nearest_resistance:
-                upper = nearest_resistance * 0.995
-
-        # Constrain bearish targets at support
-        elif label == "bearish" and nearest_support:
-            if value < nearest_support:
-                value = nearest_support * 1.01  # Stop just above support
-            if lower < nearest_support:
-                lower = nearest_support * 1.005
+        # Ensure bounds are in correct order
+        if lower > value:
+            lower = value * 0.97
+        if upper < value:
+            upper = value * 1.03
+        if lower > upper:
+            lower, upper = upper, lower
 
         constrained_points.append({
             **point,
@@ -256,6 +252,9 @@ def process_symbol(symbol: str) -> None:
                 last_features = X.tail(1)
                 ensemble_pred = forecaster.predict(last_features)
 
+                # Get ensemble probabilities for directional forecasts
+                ensemble_probs = ensemble_pred.get("probabilities", {})
+
                 forecast = {
                     "label": ensemble_pred["label"].lower(),
                     "confidence": ensemble_pred["confidence"],
@@ -266,7 +265,9 @@ def process_symbol(symbol: str) -> None:
                         ensemble_pred["label"].lower(),
                         ensemble_pred["confidence"],
                         baseline._parse_horizon(horizon),
+                        probabilities=ensemble_probs,  # Pass probabilities for directional estimates
                     ),
+                    "probabilities": ensemble_probs,
                     "rf_prediction": ensemble_pred.get("rf_prediction"),
                     "gb_prediction": ensemble_pred.get("gb_prediction"),
                     "agreement": ensemble_pred.get("agreement"),

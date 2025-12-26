@@ -7,16 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0FCF1B1E4600027F5DDEEE15 /* AnalysisViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68C6F605AE8D089ACEFC837A /* AnalysisViewModel.swift */; };
 		136FE9F67FA29A26AE074312 /* MultiTimeframeConsensusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144206D7859B6361AEFE13D9 /* MultiTimeframeConsensusView.swift */; };
 		1B3F554CCC5B9C65482F52FA /* WatchlistModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A4D3D1FC85DBCBD8C45CCA5 /* WatchlistModels.swift */; };
+		29A803E54D93C7BF1DAAF99A /* ForecastAccuracyTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2105D896E918ACDCE342EFA /* ForecastAccuracyTabView.swift */; };
 		2B0B27F844CF7F11D77399D7 /* ScannerResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BED859934C91510459C2BF0 /* ScannerResponse.swift */; };
-		3B097E610F6A47BAC49A56F7 /* OptionsRankerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0128CA566A7D864E3938B3FA /* OptionsRankerViewModel.swift */; };
 		3D2E2ECF304A82C0FF14E1A6 /* AnalysisViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FA5FFF80A4C7A0C6E60A1CA /* AnalysisViewModel.swift */; };
-		4DCDA5FE9BFF64A024AA07B9 /* AnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A60BA09DF439592380CCB5EC /* AnalysisView.swift */; };
 		611D5562963D3AAE070CC72B /* EnhancedPredictionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A51D8136CB3AF96EBB360E /* EnhancedPredictionModels.swift */; };
 		731BC29C18688AD83AF0A16E /* StrikePriceComparisonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE33C7CA7CA515703FFF0B5D /* StrikePriceComparisonView.swift */; };
 		75E6EC514BD3BA75308497C8 /* PredictionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9956271A37FA42982A5F0DDC /* PredictionsViewModel.swift */; };
+		80B1B38AB6AA986B4B10DD85 /* MLAccuracyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC81FDA448EE43BF7946EB61 /* MLAccuracyModels.swift */; };
 		A1000001233456780000001 /* SwiftBoltMLApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001233456780000001 /* SwiftBoltMLApp.swift */; };
 		A1000002233456780000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000002233456780000002 /* ContentView.swift */; };
 		A1000003233456780000003 /* DevToolsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000003233456780000003 /* DevToolsView.swift */; };
@@ -50,7 +49,6 @@
 		BD25768D5DDFD833E346DDB5 /* DataHealthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33A7027FA21F544B41C22B1F /* DataHealthView.swift */; };
 		C01BE4658F2DADDC3E59B1DC /* PredictionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B744048995733E3EF70004 /* PredictionsView.swift */; };
 		DC8011B65E28852181663316 /* ForecastExplainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 848DB246B70C854F2FE0A63C /* ForecastExplainerView.swift */; };
-		DFD9B78300B56EAB24388FD0 /* OptionsRankerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */; };
 		E90FBEB82247C0247F23FFCF /* OptionsRankerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D40AA22987ED31FDDFD8FD9 /* OptionsRankerView.swift */; };
 		EAB197F7318F24B608BAA78D /* MLDashboardModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 495F16DC7FC5729654ADE6C7 /* MLDashboardModels.swift */; };
 		F60BB96C2EF036FA0044BE7E /* OptionContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96A2EF036FA0044BE7E /* OptionContract.swift */; };
@@ -117,6 +115,8 @@
 		A60BA09DF439592380CCB5EC /* AnalysisView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AnalysisView.swift; sourceTree = "<group>"; };
 		AA453D2167A88A3AB27575EB /* OptionsRankerViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerViewModel.swift; sourceTree = "<group>"; };
 		B1B744048995733E3EF70004 /* PredictionsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PredictionsView.swift; sourceTree = "<group>"; };
+		BC81FDA448EE43BF7946EB61 /* MLAccuracyModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MLAccuracyModels.swift; path = MLAccuracyModels.swift; sourceTree = "<group>"; };
+		D2105D896E918ACDCE342EFA /* ForecastAccuracyTabView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ForecastAccuracyTabView.swift; path = ForecastAccuracyTabView.swift; sourceTree = "<group>"; };
 		DA355DE6C6DCDE9AE10561A0 /* AnalysisViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AnalysisViewModel.swift; sourceTree = "<group>"; };
 		EE33C7CA7CA515703FFF0B5D /* StrikePriceComparisonView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StrikePriceComparisonView.swift; sourceTree = "<group>"; };
 		F60BB96A2EF036FA0044BE7E /* OptionContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionContract.swift; sourceTree = "<group>"; };
@@ -204,6 +204,7 @@
 				SA0000012345678900000004 /* StrikeAnalysisView.swift */,
 				07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */,
 				A60BA09DF439592380CCB5EC /* AnalysisView.swift */,
+				D2105D896E918ACDCE342EFA /* ForecastAccuracyTabView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -244,6 +245,7 @@
 				83A51D8136CB3AF96EBB360E /* EnhancedPredictionModels.swift */,
 				495F16DC7FC5729654ADE6C7 /* MLDashboardModels.swift */,
 				SR0000012345678900000002 /* SupportResistanceModels.swift */,
+				BC81FDA448EE43BF7946EB61 /* MLAccuracyModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -387,6 +389,8 @@
 				SR0000012345678900000001 /* SupportResistanceModels.swift in Sources */,
 				SR0000012345678900000003 /* SupportResistanceView.swift in Sources */,
 				SA0000012345678900000003 /* StrikeAnalysisView.swift in Sources */,
+				80B1B38AB6AA986B4B10DD85 /* MLAccuracyModels.swift in Sources */,
+				29A803E54D93C7BF1DAAF99A /* ForecastAccuracyTabView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

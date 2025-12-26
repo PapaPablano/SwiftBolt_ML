@@ -298,6 +298,65 @@ actor APIClient {
         )
         return try await performRequest(request)
     }
+
+    // MARK: - ML Accuracy & Feedback Loop
+
+    /// Fetch horizon accuracy data (1D vs 1W breakdown)
+    func fetchHorizonAccuracy() async throws -> HorizonAccuracyResponse {
+        let request = try makeRequest(
+            endpoint: "ml-dashboard",
+            queryItems: [URLQueryItem(name: "action", value: "horizon_accuracy")]
+        )
+        return try await performRequest(request)
+    }
+
+    /// Fetch current model weights (RF vs GB)
+    func fetchModelWeights() async throws -> [ModelWeightInfo] {
+        let request = try makeRequest(
+            endpoint: "ml-dashboard",
+            queryItems: [URLQueryItem(name: "action", value: "weights")]
+        )
+        return try await performRequest(request)
+    }
+
+    /// Fetch recent forecast evaluations
+    func fetchEvaluations(horizon: String? = nil, symbol: String? = nil, limit: Int = 50) async throws -> [ForecastEvaluation] {
+        var queryItems = [
+            URLQueryItem(name: "action", value: "evaluations"),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+
+        if let horizon = horizon {
+            queryItems.append(URLQueryItem(name: "horizon", value: horizon))
+        }
+        if let symbol = symbol {
+            queryItems.append(URLQueryItem(name: "symbol", value: symbol))
+        }
+
+        let request = try makeRequest(endpoint: "ml-dashboard", queryItems: queryItems)
+        return try await performRequest(request)
+    }
+
+    /// Fetch symbol accuracy by horizon
+    func fetchSymbolAccuracy(horizon: String? = nil) async throws -> [SymbolAccuracyData] {
+        var queryItems = [URLQueryItem(name: "action", value: "symbol_accuracy")]
+
+        if let horizon = horizon {
+            queryItems.append(URLQueryItem(name: "horizon", value: horizon))
+        }
+
+        let request = try makeRequest(endpoint: "ml-dashboard", queryItems: queryItems)
+        return try await performRequest(request)
+    }
+
+    /// Fetch model comparison (RF vs GB performance)
+    func fetchModelComparison() async throws -> [ModelComparisonData] {
+        let request = try makeRequest(
+            endpoint: "ml-dashboard",
+            queryItems: [URLQueryItem(name: "action", value: "model_comparison")]
+        )
+        return try await performRequest(request)
+    }
 }
 
 // MARK: - Refresh Data Request/Response

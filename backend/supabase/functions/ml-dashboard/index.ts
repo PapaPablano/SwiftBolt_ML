@@ -1,10 +1,23 @@
 // ml-dashboard: Get aggregate ML model performance and forecast metrics
-// GET /ml-dashboard
+// GET /ml-dashboard?action=<action>
+//
+// Actions:
+// - dashboard (default): Full dashboard with overview, recent forecasts, performance
+// - accuracy: Forecast accuracy metrics by horizon
+// - weights: Current model weights with 30-day accuracy
+// - trend: Daily accuracy trend over time
+// - evaluations: Recent forecast evaluations
+// - horizon_accuracy: Detailed 1D vs 1W accuracy breakdown (NEW)
+// - symbol_accuracy: Per-symbol accuracy by horizon (NEW)
+// - model_comparison: RF vs GB performance by horizon (NEW)
+// - update_weights (POST): Trigger automatic weight recalculation
 //
 // Returns dashboard data including:
 // - Forecast overview (signal distribution, recent forecasts)
 // - Model performance metrics (by symbol)
 // - Feature importance (top contributing features)
+// - Forecast accuracy and evaluation metrics
+// - Daily (1D) vs Weekly (1W) accuracy comparison
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
@@ -63,6 +76,31 @@ interface MLDashboardResponse {
     medium: number;  // 0.4 - 0.7
     low: number;     // < 0.4
   };
+  // NEW: Accuracy and feedback loop metrics
+  accuracyMetrics?: AccuracyMetrics;
+  modelWeights?: ModelWeightInfo[];
+}
+
+// NEW: Accuracy metrics from feedback loop
+interface AccuracyMetrics {
+  horizon: string;
+  totalEvaluations: number;
+  accuracyPct: number;
+  avgErrorPct: number;
+  rfAccuracyPct: number | null;
+  gbAccuracyPct: number | null;
+  lastEvaluation: string | null;
+}
+
+// NEW: Model weight information
+interface ModelWeightInfo {
+  horizon: string;
+  rfWeightPct: number;
+  gbWeightPct: number;
+  rfAccuracy30dPct: number | null;
+  gbAccuracy30dPct: number | null;
+  lastUpdated: string;
+  updateReason: string;
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -71,13 +109,180 @@ serve(async (req: Request): Promise<Response> => {
     return handleCorsOptions();
   }
 
-  // Only allow GET requests
-  if (req.method !== "GET") {
+  // Allow GET and POST (for update_weights)
+  if (req.method !== "GET" && req.method !== "POST") {
     return errorResponse("Method not allowed", 405);
   }
 
   try {
     const supabase = getSupabaseClient();
+    const url = new URL(req.url);
+    const action = url.searchParams.get("action") || "dashboard";
+
+    // Handle new feedback loop actions
+    switch (action) {
+      case "accuracy": {
+        // Get accuracy summary from view
+        const { data, error } = await supabase
+          .from("v_forecast_accuracy_summary")
+          .select("*");
+        if (error) {
+          console.error("[ml-dashboard] Accuracy query error:", error);
+          return errorResponse(`Database error: ${error.message}`, 500);
+        }
+        return jsonResponse(data || []);
+      }
+
+      case "weights": {
+        // Get current model weights
+        const { data, error } = await supabase
+          .from("v_model_weights_dashboard")
+          .select("*");
+        if (error) {
+          console.error("[ml-dashboard] Weights query error:", error);
+          return errorResponse(`Database error: ${error.message}`, 500);
+        }
+        return jsonResponse(data || []);
+      }
+
+      case "trend": {
+        // Get daily accuracy trend
+        const days = parseInt(url.searchParams.get("days") || "30");
+        const horizon = url.searchParams.get("horizon");
+
+        let query = supabase
+          .from("v_daily_accuracy_trend")
+          .select("*")
+          .order("eval_date", { ascending: false })
+          .limit(days * 3);
+
+        if (horizon) {
+          query = query.eq("horizon", horizon);
+        }
+
+        const { data, error } = await query;
+        if (error) {
+          console.error("[ml-dashboard] Trend query error:", error);
+          return errorResponse(`Database error: ${error.message}`, 500);
+        }
+        return jsonResponse(data || []);
+      }
+
+      case "evaluations": {
+        // Get recent evaluations
+        const limit = parseInt(url.searchParams.get("limit") || "50");
+        const horizon = url.searchParams.get("horizon");
+        const symbol = url.searchParams.get("symbol");
+
+        let query = supabase
+          .from("forecast_evaluations")
+          .select("*")
+          .order("evaluation_date", { ascending: false })
+          .limit(limit);
+
+        if (horizon) {
+          query = query.eq("horizon", horizon);
+        }
+        if (symbol) {
+          query = query.eq("symbol", symbol.toUpperCase());
+        }
+
+        const { data, error } = await query;
+        if (error) {
+          console.error("[ml-dashboard] Evaluations query error:", error);
+          return errorResponse(`Database error: ${error.message}`, 500);
+        }
+        return jsonResponse(data || []);
+      }
+
+      case "update_weights": {
+        // Trigger weight update (POST only)
+        if (req.method !== "POST") {
+          return errorResponse("POST method required for update_weights", 405);
+        }
+
+        const { data, error } = await supabase.rpc("trigger_weight_update");
+        if (error) {
+          console.error("[ml-dashboard] Weight update error:", error);
+          return errorResponse(`Database error: ${error.message}`, 500);
+        }
+        return jsonResponse(data);
+      }
+
+      case "pending": {
+        // Get pending evaluations count
+        const horizon = url.searchParams.get("horizon") || "1D";
+        const { data, error } = await supabase.rpc("get_pending_evaluations", {
+          p_horizon: horizon,
+        });
+        if (error) {
+          console.error("[ml-dashboard] Pending query error:", error);
+          return errorResponse(`Database error: ${error.message}`, 500);
+        }
+        return jsonResponse({
+          horizon,
+          pending_count: data?.length || 0,
+          forecasts: data || [],
+        });
+      }
+
+      case "full_report": {
+        // Get comprehensive ML dashboard from RPC function
+        const { data, error } = await supabase.rpc("get_ml_dashboard");
+        if (error) {
+          console.error("[ml-dashboard] Full report error:", error);
+          return errorResponse(`Database error: ${error.message}`, 500);
+        }
+        return jsonResponse(data);
+      }
+
+      case "horizon_accuracy": {
+        // Get detailed 1D vs 1W accuracy breakdown
+        const { data, error } = await supabase.rpc("get_horizon_accuracy");
+        if (error) {
+          console.error("[ml-dashboard] Horizon accuracy error:", error);
+          return errorResponse(`Database error: ${error.message}`, 500);
+        }
+        return jsonResponse(data);
+      }
+
+      case "symbol_accuracy": {
+        // Get per-symbol accuracy by horizon
+        const horizon = url.searchParams.get("horizon");
+        let query = supabase
+          .from("v_symbol_accuracy_by_horizon")
+          .select("*")
+          .order("accuracy_pct", { ascending: false });
+
+        if (horizon) {
+          query = query.eq("horizon", horizon);
+        }
+
+        const { data, error } = await query;
+        if (error) {
+          console.error("[ml-dashboard] Symbol accuracy error:", error);
+          return errorResponse(`Database error: ${error.message}`, 500);
+        }
+        return jsonResponse(data || []);
+      }
+
+      case "model_comparison": {
+        // Get RF vs GB comparison by horizon
+        const { data, error } = await supabase
+          .from("v_model_comparison_by_horizon")
+          .select("*");
+        if (error) {
+          console.error("[ml-dashboard] Model comparison error:", error);
+          return errorResponse(`Database error: ${error.message}`, 500);
+        }
+        return jsonResponse(data || []);
+      }
+
+      case "dashboard":
+      default:
+        // Continue to existing dashboard logic below
+        break;
+    }
 
     // 1. Get all forecasts with symbol info
     const { data: forecasts, error: forecastError } = await supabase
@@ -231,7 +436,52 @@ serve(async (req: Request): Promise<Response> => {
       else confidenceDistribution.low++;
     }
 
-    // 7. Build response
+    // 7. Get accuracy metrics from feedback loop (if available)
+    let accuracyMetrics: AccuracyMetrics | undefined;
+    let modelWeights: ModelWeightInfo[] | undefined;
+
+    try {
+      // Try to get accuracy summary
+      const { data: accuracyData } = await supabase
+        .from("v_forecast_accuracy_summary")
+        .select("*")
+        .eq("horizon", "1D")
+        .single();
+
+      if (accuracyData) {
+        accuracyMetrics = {
+          horizon: accuracyData.horizon,
+          totalEvaluations: accuracyData.total_evaluations,
+          accuracyPct: accuracyData.accuracy_pct,
+          avgErrorPct: accuracyData.avg_error_pct,
+          rfAccuracyPct: accuracyData.rf_accuracy_pct,
+          gbAccuracyPct: accuracyData.gb_accuracy_pct,
+          lastEvaluation: accuracyData.last_evaluation,
+        };
+      }
+
+      // Try to get model weights
+      const { data: weightsData } = await supabase
+        .from("v_model_weights_dashboard")
+        .select("*");
+
+      if (weightsData && weightsData.length > 0) {
+        modelWeights = weightsData.map((w: any) => ({
+          horizon: w.horizon,
+          rfWeightPct: w.rf_weight_pct,
+          gbWeightPct: w.gb_weight_pct,
+          rfAccuracy30dPct: w.rf_accuracy_30d_pct,
+          gbAccuracy30dPct: w.gb_accuracy_30d_pct,
+          lastUpdated: w.last_updated,
+          updateReason: w.update_reason,
+        }));
+      }
+    } catch (metricsErr) {
+      // Feedback loop tables may not exist yet - that's OK
+      console.log("[ml-dashboard] Feedback loop metrics not available:", metricsErr);
+    }
+
+    // 8. Build response
     const response: MLDashboardResponse = {
       overview: {
         totalForecasts: allForecasts.length,
@@ -246,6 +496,8 @@ serve(async (req: Request): Promise<Response> => {
       symbolPerformance: symbolPerformance.slice(0, 20), // Top 20 symbols
       featureStats,
       confidenceDistribution,
+      accuracyMetrics,
+      modelWeights,
     };
 
     console.log(`[ml-dashboard] Returning dashboard data: ${allForecasts.length} forecasts, ${symbolMap.size} symbols`);

@@ -18,6 +18,15 @@ struct SRLevels: Codable, Equatable {
         case allSupports = "all_supports"
         case allResistances = "all_resistances"
     }
+    
+    init(nearestSupport: Double? = nil, nearestResistance: Double? = nil, supportDistancePct: Double? = nil, resistanceDistancePct: Double? = nil, allSupports: [Double]? = nil, allResistances: [Double]? = nil) {
+        self.nearestSupport = nearestSupport
+        self.nearestResistance = nearestResistance
+        self.supportDistancePct = supportDistancePct
+        self.resistanceDistancePct = resistanceDistancePct
+        self.allSupports = allSupports
+        self.allResistances = allResistances
+    }
 
     var hasSupport: Bool {
         nearestSupport != nil
@@ -222,60 +231,50 @@ enum SRLevelType {
 // MARK: - API Response Models
 
 /// Response from the support-resistance Edge Function
+/// API returns flat structure with S/R data at root level
 struct SupportResistanceResponse: Codable {
     let symbol: String
-    let lookback: Int?
     let currentPrice: Double
-    let levels: SRLevels
-    let density: Int
-    let timestamp: String
+    let lastUpdated: String?
+    let nearestSupport: Double?
+    let nearestResistance: Double?
+    let supportDistancePct: Double?
+    let resistanceDistancePct: Double?
     let pivotPoints: PivotPoints?
     let fibonacci: FibonacciLevels?
+    let allSupports: [Double]?
+    let allResistances: [Double]?
 
     enum CodingKeys: String, CodingKey {
         case symbol
-        case lookback
-        case currentPrice = "current_price"
-        case currentPriceCamel = "currentPrice"
-        case levels = "sr_levels"
-        case density = "sr_density"
-        case timestamp
-        case pivotPoints = "pivot_points"
+        case currentPrice
+        case lastUpdated
+        case nearestSupport
+        case nearestResistance
+        case supportDistancePct
+        case resistanceDistancePct
+        case pivotPoints
         case fibonacci
+        case allSupports
+        case allResistances
     }
 
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        symbol = try container.decode(String.self, forKey: .symbol)
-        lookback = try container.decodeIfPresent(Int.self, forKey: .lookback)
-        // Accept either current_price or currentPrice
-        currentPrice = try container.decodeIfPresent(Double.self, forKey: .currentPrice)
-            ?? container.decodeIfPresent(Double.self, forKey: .currentPriceCamel)
-            ?? 0
-        levels = try container.decode(SRLevels.self, forKey: .levels)
-        density = try container.decodeIfPresent(Int.self, forKey: .density) ?? 0
-        timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp) ?? ""
-        pivotPoints = try container.decodeIfPresent(PivotPoints.self, forKey: .pivotPoints)
-        fibonacci = try container.decodeIfPresent(FibonacciLevels.self, forKey: .fibonacci)
+    /// Computed property to create SRLevels from flat response
+    var levels: SRLevels {
+        SRLevels(
+            nearestSupport: nearestSupport,
+            nearestResistance: nearestResistance,
+            supportDistancePct: supportDistancePct,
+            resistanceDistancePct: resistanceDistancePct,
+            allSupports: allSupports,
+            allResistances: allResistances
+        )
     }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(symbol, forKey: .symbol)
-        try container.encodeIfPresent(lookback, forKey: .lookback)
-        try container.encode(currentPrice, forKey: .currentPrice)
-        try container.encode(levels, forKey: .levels)
-        try container.encode(density, forKey: .density)
-        try container.encode(timestamp, forKey: .timestamp)
-        try container.encodeIfPresent(pivotPoints, forKey: .pivotPoints)
-        try container.encodeIfPresent(fibonacci, forKey: .fibonacci)
+    
+    /// Computed density based on number of levels
+    var density: Int {
+        (allSupports?.count ?? 0) + (allResistances?.count ?? 0)
     }
-
-    // Convenience accessors that delegate to levels
-    var nearestSupport: Double? { levels.nearestSupport }
-    var nearestResistance: Double? { levels.nearestResistance }
-    var supportDistancePct: Double? { levels.supportDistancePct }
-    var resistanceDistancePct: Double? { levels.resistanceDistancePct }
 
     var bias: String {
         guard let supportDist = supportDistancePct,

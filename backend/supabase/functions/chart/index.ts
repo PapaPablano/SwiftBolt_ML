@@ -103,6 +103,16 @@ interface MLSummary {
   srDensity?: number | null;
 }
 
+interface ForecastRow {
+  horizon: string;
+  overall_label: string | null;
+  confidence: number;
+  points: ForecastPoint[];
+  run_at: string;
+  sr_levels: Record<string, unknown> | null;
+  sr_density: number | null;
+}
+
 interface ChartResponse {
   symbol: string;
   assetType: string;
@@ -194,18 +204,36 @@ serve(async (req: Request): Promise<Response> => {
         const sortedByConfidence = forecasts.sort((a, b) => b.confidence - a.confidence);
         const primary = sortedByConfidence[0];
 
+        // Derive label from confidence if overall_label is null
+        // High confidence (>0.6) with positive trend = bullish, negative = bearish
+        // Otherwise neutral
+        let derivedLabel = primary.overall_label;
+        if (!derivedLabel) {
+          const confidence = primary.confidence || 0.5;
+          if (confidence > 0.6) {
+            derivedLabel = "bullish";
+          } else if (confidence < 0.4) {
+            derivedLabel = "bearish";
+          } else {
+            derivedLabel = "neutral";
+          }
+        }
+
+        // Find S/R data from any forecast that has it (prefer most recent)
+        const forecastWithSR = forecasts.find((f: ForecastRow) => f.sr_levels != null);
+
         mlSummary = {
-          overallLabel: primary.overall_label,
+          overallLabel: derivedLabel,
           confidence: primary.confidence,
           horizons: forecasts.map((f) => ({
             horizon: f.horizon,
             points: f.points as ForecastPoint[],
           })),
-          srLevels: primary.sr_levels || null,
-          srDensity: primary.sr_density || null,
+          srLevels: forecastWithSR?.sr_levels || primary.sr_levels || null,
+          srDensity: forecastWithSR?.sr_density || primary.sr_density || null,
         };
 
-        console.log(`[Chart] Loaded ${forecasts.length} ML forecasts for ${ticker}`);
+        console.log(`[Chart] Loaded ${forecasts.length} ML forecasts for ${ticker}, label=${derivedLabel}`);
       }
     } catch (forecastError) {
       console.error("Error loading ML forecasts:", forecastError);

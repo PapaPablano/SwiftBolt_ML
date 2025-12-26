@@ -14,6 +14,7 @@ struct PredictionsView: View {
                 Text("Overview").tag(0)
                 Text("Model Performance").tag(1)
                 Text("Feature Importance").tag(2)
+                Text("Forecast Accuracy").tag(3)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 24)
@@ -38,6 +39,8 @@ struct PredictionsView: View {
                             ModelPerformanceTabView(viewModel: viewModel)
                         case 2:
                             FeatureImportanceTabView()
+                        case 3:
+                            ForecastAccuracyTabView()
                         default:
                             EmptyView()
                         }

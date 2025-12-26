@@ -109,13 +109,7 @@ struct MLSummary: Codable, Equatable {
     let srLevels: SRLevels?
     let srDensity: Int?
 
-    enum CodingKeys: String, CodingKey {
-        case overallLabel = "overall_label"
-        case confidence
-        case horizons
-        case srLevels = "sr_levels"
-        case srDensity = "sr_density"
-    }
+    // Note: API returns camelCase keys, no custom CodingKeys needed
 }
 
 struct ForecastSeries: Codable, Equatable {

@@ -31,16 +31,18 @@ class EnsembleForecaster:
     def __init__(
         self,
         horizon: str = "1D",
-        rf_weight: float = 0.5,
-        gb_weight: float = 0.5,
+        rf_weight: float | None = None,
+        gb_weight: float | None = None,
+        use_db_weights: bool = True,
     ) -> None:
         """
         Initialize Ensemble Forecaster.
 
         Args:
             horizon: Forecast horizon ("1D" or "1W")
-            rf_weight: Weight for Random Forest predictions (0-1)
-            gb_weight: Weight for Gradient Boosting predictions (0-1)
+            rf_weight: Weight for Random Forest predictions (0-1). If None, uses DB.
+            gb_weight: Weight for Gradient Boosting predictions (0-1). If None, uses DB.
+            use_db_weights: If True and weights are None, fetch from model_weights table.
 
         Note: Weights should sum to 1.0
         """
@@ -50,8 +52,21 @@ class EnsembleForecaster:
         )
 
         self.horizon = horizon
-        self.rf_weight = rf_weight / (rf_weight + gb_weight)
-        self.gb_weight = gb_weight / (rf_weight + gb_weight)
+
+        # Try to load weights from database if not provided
+        if rf_weight is None or gb_weight is None:
+            if use_db_weights:
+                db_weights = self._load_weights_from_db(horizon)
+                rf_weight = db_weights.get("rf_weight", 0.5)
+                gb_weight = db_weights.get("gb_weight", 0.5)
+            else:
+                rf_weight = 0.5
+                gb_weight = 0.5
+
+        # Normalize weights to sum to 1.0
+        total = rf_weight + gb_weight
+        self.rf_weight = rf_weight / total
+        self.gb_weight = gb_weight / total
 
         self.rf_model = BaselineForecaster()
         self.gb_model = GradientBoostingForecaster(horizon=horizon)
@@ -59,10 +74,46 @@ class EnsembleForecaster:
         self.is_trained = False
         self.training_stats: Dict = {}
         logger.info(
-            "Ensemble initialized: RF weight=%.2f, GB weight=%.2f",
+            "Ensemble initialized: RF weight=%.2f, GB weight=%.2f (horizon=%s)",
             self.rf_weight,
             self.gb_weight,
+            horizon,
         )
+
+    def _load_weights_from_db(self, horizon: str) -> Dict[str, float]:
+        """
+        Load model weights from database.
+
+        Args:
+            horizon: Forecast horizon
+
+        Returns:
+            Dict with rf_weight and gb_weight
+        """
+        try:
+            from src.data.supabase_db import db
+
+            result = db.client.rpc(
+                "get_model_weights",
+                {"p_horizon": horizon}
+            ).execute()
+
+            if result.data and len(result.data) > 0:
+                weights = result.data[0]
+                logger.info(
+                    "Loaded weights from DB for %s: RF=%.2f, GB=%.2f",
+                    horizon,
+                    weights.get("rf_weight", 0.5),
+                    weights.get("gb_weight", 0.5),
+                )
+                return {
+                    "rf_weight": float(weights.get("rf_weight", 0.5)),
+                    "gb_weight": float(weights.get("gb_weight", 0.5)),
+                }
+        except Exception as e:
+            logger.warning("Could not load weights from DB: %s. Using defaults.", e)
+
+        return {"rf_weight": 0.5, "gb_weight": 0.5}
 
     def train(
         self, features_df: pd.DataFrame, labels_series: pd.Series
@@ -89,8 +140,17 @@ class EnsembleForecaster:
             dropped = set(features_df.columns) - set(numeric_features.columns)
             logger.info("Dropped non-numeric columns for training: %s", dropped)
 
-        smote = SMOTE(random_state=42, k_neighbors=5)
-        X_balanced, y_balanced = smote.fit_resample(numeric_features, labels_series)
+        # Dynamically set k_neighbors based on smallest class size
+        min_class_count = labels_series.value_counts().min()
+        k_neighbors = min(5, min_class_count - 1) if min_class_count > 1 else 0
+
+        if k_neighbors < 1:
+            # If any class has only 1 sample, skip SMOTE and use original data
+            logger.warning("Skipping SMOTE: minority class too small (%d samples)", min_class_count)
+            X_balanced, y_balanced = numeric_features.values, labels_series.values
+        else:
+            smote = SMOTE(random_state=42, k_neighbors=k_neighbors)
+            X_balanced, y_balanced = smote.fit_resample(numeric_features, labels_series)
 
         logger.info(
             "Class distribution after SMOTE: %s",
@@ -208,12 +268,12 @@ class EnsembleForecaster:
         final_label = max(ensemble_probs, key=ensemble_probs.get)
         final_confidence = ensemble_probs[final_label]
 
-        # Check agreement
+        # Check agreement (1.0 = agree, 0.0 = disagree)
         rf_label_str = (
             rf_label.lower() if isinstance(rf_label, str) else rf_label
         )
         gb_label_str = gb_pred.get("label", "Unknown").lower()
-        agreement = rf_label_str == gb_label_str
+        agreement = 1.0 if rf_label_str == gb_label_str else 0.0
 
         return {
             "label": final_label.capitalize(),
@@ -304,7 +364,7 @@ class EnsembleForecaster:
                 "ensemble_label": ensemble_labels,
                 "ensemble_confidence": ensemble_confidences,
                 "agreement": [
-                    str(rf).lower() == str(gb).lower()
+                    1.0 if str(rf).lower() == str(gb).lower() else 0.0
                     for rf, gb in zip(rf_predictions, gb_labels)
                 ],
             }
