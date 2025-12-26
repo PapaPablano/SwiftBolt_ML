@@ -272,6 +272,10 @@ struct FibonacciRow: View {
             ("0.618", fib.fib618),
             ("0.786", fib.fib786)
         ]
+        .compactMap { name, value in
+            guard let value = value else { return nil }
+            return (name, value)
+        }
     }
     
     var body: some View {

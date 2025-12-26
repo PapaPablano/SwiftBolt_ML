@@ -224,7 +224,7 @@ enum SRLevelType {
 /// Response from the support-resistance Edge Function
 struct SupportResistanceResponse: Codable {
     let symbol: String
-    let lookback: Int
+    let lookback: Int?
     let currentPrice: Double
     let levels: SRLevels
     let density: Int
@@ -236,11 +236,39 @@ struct SupportResistanceResponse: Codable {
         case symbol
         case lookback
         case currentPrice = "current_price"
+        case currentPriceCamel = "currentPrice"
         case levels = "sr_levels"
         case density = "sr_density"
         case timestamp
         case pivotPoints = "pivot_points"
         case fibonacci
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        symbol = try container.decode(String.self, forKey: .symbol)
+        lookback = try container.decodeIfPresent(Int.self, forKey: .lookback)
+        // Accept either current_price or currentPrice
+        currentPrice = try container.decodeIfPresent(Double.self, forKey: .currentPrice)
+            ?? container.decodeIfPresent(Double.self, forKey: .currentPriceCamel)
+            ?? 0
+        levels = try container.decode(SRLevels.self, forKey: .levels)
+        density = try container.decodeIfPresent(Int.self, forKey: .density) ?? 0
+        timestamp = try container.decodeIfPresent(String.self, forKey: .timestamp) ?? ""
+        pivotPoints = try container.decodeIfPresent(PivotPoints.self, forKey: .pivotPoints)
+        fibonacci = try container.decodeIfPresent(FibonacciLevels.self, forKey: .fibonacci)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(symbol, forKey: .symbol)
+        try container.encodeIfPresent(lookback, forKey: .lookback)
+        try container.encode(currentPrice, forKey: .currentPrice)
+        try container.encode(levels, forKey: .levels)
+        try container.encode(density, forKey: .density)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encodeIfPresent(pivotPoints, forKey: .pivotPoints)
+        try container.encodeIfPresent(fibonacci, forKey: .fibonacci)
     }
 
     // Convenience accessors that delegate to levels
@@ -310,6 +338,16 @@ struct PivotPoints: Codable {
     let s2: Double
     let s3: Double
 
+    enum CodingKeys: String, CodingKey {
+        case pp = "PP"
+        case r1 = "R1"
+        case r2 = "R2"
+        case r3 = "R3"
+        case s1 = "S1"
+        case s2 = "S2"
+        case s3 = "S3"
+    }
+
     var allLevels: [Double] {
         [s3, s2, s1, pp, r1, r2, r3]
     }
@@ -319,26 +357,30 @@ struct PivotPoints: Codable {
 
 struct FibonacciLevels: Codable {
     let trend: String  // "uptrend" or "downtrend"
-    let high: Double
-    let low: Double
-    let fib236: Double
-    let fib382: Double
-    let fib500: Double
-    let fib618: Double
-    let fib786: Double
+    let fib0: Double?
+    let fib236: Double?
+    let fib382: Double?
+    let fib500: Double?
+    let fib618: Double?
+    let fib786: Double?
+    let fib100: Double?
+    let rangeHigh: Double?
+    let rangeLow: Double?
 
     enum CodingKeys: String, CodingKey {
         case trend
-        case high
-        case low
-        case fib236 = "0.236"
-        case fib382 = "0.382"
-        case fib500 = "0.500"
-        case fib618 = "0.618"
-        case fib786 = "0.786"
+        case fib0 = "0.0"
+        case fib236 = "23.6"
+        case fib382 = "38.2"
+        case fib500 = "50.0"
+        case fib618 = "61.8"
+        case fib786 = "78.6"
+        case fib100 = "100.0"
+        case rangeHigh
+        case rangeLow
     }
 
     var allLevels: [Double] {
-        [fib236, fib382, fib500, fib618, fib786]
+        [fib0, fib236, fib382, fib500, fib618, fib786, fib100].compactMap { $0 }
     }
 }
