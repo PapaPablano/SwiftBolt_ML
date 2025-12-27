@@ -127,9 +127,9 @@ struct RankerHeader: View {
         VStack(spacing: 12) {
             // Title with status badge
             HStack {
-                Image(systemName: "brain.head.profile")
+                Image(systemName: "chart.line.uptrend.xyaxis.circle.fill")
                     .foregroundStyle(.purple)
-                Text("ML Options Ranker")
+                Text("Options Momentum Ranker")
                     .font(.headline)
 
                 // Status badge
@@ -176,6 +176,7 @@ struct RankerHeader: View {
 
             // Filters
             VStack(spacing: 8) {
+                // Row 1: Expiry, Side, Signal
                 HStack {
                     // Expiry filter
                     VStack(alignment: .leading, spacing: 4) {
@@ -212,22 +213,59 @@ struct RankerHeader: View {
                         .labelsHidden()
                         .frame(maxWidth: .infinity)
                     }
-                }
 
-                // Min score slider
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Min ML Score")
+                    // Signal filter
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Signal")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        Spacer()
-                        Text("\(Int(rankerViewModel.minScore * 100))%")
-                            .font(.caption2.bold())
-                            .foregroundStyle(.purple)
+                        Picker("", selection: Binding(
+                            get: { rankerViewModel.selectedSignal },
+                            set: { rankerViewModel.setSignalFilter($0) }
+                        )) {
+                            ForEach(SignalFilter.allCases, id: \.self) { signal in
+                                Text(signal.rawValue).tag(signal)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+
+                // Row 2: Sort option and min score slider
+                HStack(spacing: 16) {
+                    // Sort option
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Sort By")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Picker("", selection: Binding(
+                            get: { rankerViewModel.sortOption },
+                            set: { rankerViewModel.setSortOption($0) }
+                        )) {
+                            ForEach(RankingSortOption.allCases, id: \.self) { option in
+                                Text(option.rawValue).tag(option)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 100)
                     }
 
-                    Slider(value: $rankerViewModel.minScore, in: 0...1, step: 0.05)
-                        .tint(.purple)
+                    // Min score slider
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Min Rank")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text("\(Int(rankerViewModel.minScore * 100))")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.purple)
+                        }
+
+                        Slider(value: $rankerViewModel.minScore, in: 0...1, step: 0.05)
+                            .tint(.purple)
+                    }
                 }
             }
             .padding(.horizontal)
@@ -280,18 +318,18 @@ struct RankedOptionRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // ML Score badge
+            // Composite Score badge (Momentum Framework 0-100)
             VStack(spacing: 2) {
-                Text("\(Int(rank.scorePercentage))")
+                Text("\(rank.compositeScoreDisplay)")
                     .font(.title3.bold())
-                    .foregroundStyle(rank.scoreColor)
-                Text("SCORE")
+                    .foregroundStyle(rank.compositeColor)
+                Text("RANK")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            .frame(width: 60)
+            .frame(width: 50)
             .padding(.vertical, 8)
-            .background(rank.scoreColor.opacity(0.1))
+            .background(rank.compositeColor.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
             Divider()
@@ -309,6 +347,11 @@ struct RankedOptionRow: View {
                         .foregroundStyle(rank.side == .call ? .green : .red)
                         .clipShape(RoundedRectangle(cornerRadius: 4))
 
+                    // Signal badges
+                    ForEach(rank.activeSignals, id: \.self) { signal in
+                        signalBadge(signal)
+                    }
+
                     Spacer()
 
                     if let mark = rank.mark {
@@ -324,7 +367,11 @@ struct RankedOptionRow: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    if let iv = rank.impliedVol {
+                    if let ivRank = rank.ivRank {
+                        Label("IV Rank \(Int(ivRank))%", systemImage: "chart.bar.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    } else if let iv = rank.impliedVol {
                         Label("\(Int(iv * 100))% IV", systemImage: "waveform.path.ecg")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -364,7 +411,7 @@ struct RankedOptionRow: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(isHovering ? rank.scoreColor.opacity(0.6) : rank.scoreColor.opacity(0.3), lineWidth: isHovering ? 2 : 1)
+                .stroke(isHovering ? rank.compositeColor.opacity(0.6) : rank.compositeColor.opacity(0.3), lineWidth: isHovering ? 2 : 1)
         )
         .scaleEffect(isHovering ? 1.01 : 1.0)
         .animation(.easeInOut(duration: 0.15), value: isHovering)
@@ -378,6 +425,37 @@ struct RankedOptionRow: View {
                 strike: rank.strike,
                 side: rank.side.rawValue
             )
+        }
+    }
+
+    @ViewBuilder
+    private func signalBadge(_ signal: String) -> some View {
+        let (color, icon) = signalStyle(signal)
+        HStack(spacing: 2) {
+            Image(systemName: icon)
+                .font(.caption2)
+            Text(signal)
+                .font(.caption2.bold())
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(color.opacity(0.2))
+        .foregroundStyle(color)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+    }
+
+    private func signalStyle(_ signal: String) -> (Color, String) {
+        switch signal {
+        case "BUY":
+            return (.green, "checkmark.circle.fill")
+        case "DISCOUNT":
+            return (.blue, "tag.fill")
+        case "RUNNER":
+            return (.orange, "flame.fill")
+        case "GREEKS":
+            return (.purple, "function")
+        default:
+            return (.gray, "questionmark.circle")
         }
     }
 

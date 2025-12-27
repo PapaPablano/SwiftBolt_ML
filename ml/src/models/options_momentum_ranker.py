@@ -2,11 +2,33 @@
 
 Implements a rigorous quantitative methodology for ranking options by combining:
 1. Momentum Analysis (40%) - Price acceleration, volume flow, OI growth
-2. Valuation Assessment (35%) - IV Rank, IV Percentile, liquidity
+2. Valuation Assessment (35%) - IV Rank, bid-ask spread tightness
 3. Greeks-Based Risk Scoring (25%) - Delta, Gamma, Vega, Theta alignment
 
-The composite score (0-100) enables systematic option selection based on
-statistical properties rather than intuition.
+SCORING FORMULAS (all normalized to 0-100):
+
+1. VALUE SCORE (35% of composite):
+   - iv_value_score = 100 - iv_rank  (lower IV = better for buyer)
+   - spread_penalty = min(spread_% × 2, 50)
+   - spread_score = 100 - spread_penalty
+   - value_score = 0.60 × iv_value_score + 0.40 × spread_score
+
+2. MOMENTUM SCORE (40% of composite):
+   - price_mom_score = clip(2 × r + 50, 0, 100)  where r = 5-day return %
+   - vol_oi_score = min(vol/OI / 0.20 × 100, 100)
+   - oi_growth_score = clip(growth + 50, 0, 100)  where growth = 5-day OI change %
+   - momentum_score = 0.50 × price_mom + 0.30 × vol_oi + 0.20 × oi_growth
+
+3. GREEKS SCORE (25% of composite):
+   - delta_score = 100 - 100 × |Δ - 0.55|  (target 0.55 calls, -0.55 puts)
+   - gamma_score = min(γ / 0.04 × 100, 100)
+   - vega_score = min(vega / 0.30 × 100, 100)
+   - theta_penalty = min(|θ%| × 10, 40)  where θ% = θ/mid × 100
+   - greeks_pre = 0.50 × delta + 0.35 × gamma + 0.10 × vega
+   - greeks_score = clip(greeks_pre - theta_penalty, 0, 100)
+
+4. COMPOSITE RANK (final 0-100 score):
+   rank_score = 0.40 × momentum + 0.35 × value + 0.25 × greeks
 """
 
 import logging
@@ -101,11 +123,11 @@ class OptionsMomentumRanker:
     IV_RANK_WEIGHT = 0.60
     SPREAD_WEIGHT = 0.40
 
-    # Greeks sub-weights
+    # Greeks sub-weights (for pre-penalty calculation)
     DELTA_WEIGHT = 0.50
     GAMMA_WEIGHT = 0.35
     VEGA_WEIGHT = 0.10
-    THETA_WEIGHT = 0.05  # Applied as penalty
+    # Note: Theta is applied as penalty (up to 40 pts), not as a weight
 
     # Thresholds
     OPTIMAL_DELTA_MIN = 0.40
@@ -241,17 +263,25 @@ class OptionsMomentumRanker:
     ) -> pd.DataFrame:
         """Calculate value score from IV Rank and bid-ask spread.
 
-        Value Score = (100 - IVR) × 0.60 + (100 - Spread%) × 0.40
+        For a BUYER, lower IV is better, so we invert it:
+            iv_value_score = 100 - iv_rank
+
+        For spread:
+            spread_penalty = min(spread_% × 2, 50)
+            spread_score = 100 - spread_penalty
+
+        Value Score = iv_value_score × 0.60 + spread_score × 0.40
         """
         # IV Rank component (60% of value)
+        # iv_rank is already 0-100 percentile
         df["iv_rank"] = self._calculate_iv_rank(df, iv_stats)
-        df["iv_rank_score"] = 100 - df["iv_rank"]  # Lower IVR = higher score
+        df["iv_rank_score"] = 100 - df["iv_rank"]  # Lower IVR = higher score for buyer
 
         # Bid-Ask Spread component (40% of value)
         df["spread_pct"] = self._calculate_spread_pct(df)
-        df["spread_score"] = 100 - df["spread_pct"].clip(upper=self.SPREAD_CAP)
+        df["spread_score"] = self._calculate_spread_score(df["spread_pct"])
 
-        # Combined Value Score
+        # Combined Value Score (0-100)
         df["value_score"] = (
             df["iv_rank_score"] * self.IV_RANK_WEIGHT +
             df["spread_score"] * self.SPREAD_WEIGHT
@@ -296,7 +326,10 @@ class OptionsMomentumRanker:
         return iv_rank.clip(0, 100)
 
     def _calculate_spread_pct(self, df: pd.DataFrame) -> pd.Series:
-        """Calculate bid-ask spread as percentage of mid price."""
+        """Calculate bid-ask spread as percentage of mid price.
+
+        spread_% = (ask - bid) / mid × 100
+        """
         if "bid" not in df.columns or "ask" not in df.columns:
             return pd.Series(5.0, index=df.index)  # Default 5% spread
 
@@ -307,6 +340,21 @@ class OptionsMomentumRanker:
         spread_pct = np.where(mid > 0, (spread / mid) * 100, 100)
 
         return pd.Series(spread_pct, index=df.index)
+
+    def _calculate_spread_score(self, spread_pct: pd.Series) -> pd.Series:
+        """Calculate spread score from spread percentage.
+
+        Formula:
+            spread_penalty = min(spread_% × 2, 50)
+            spread_score = 100 - spread_penalty
+
+        Examples:
+            - 0% spread → penalty 0 → score 100
+            - 10% spread → penalty 20 → score 80
+            - 25%+ spread → penalty 50 → score 50
+        """
+        spread_penalty = (spread_pct * 2).clip(upper=50)
+        return 100 - spread_penalty
 
     # =========================================================================
     # MOMENTUM SCORING (40% of total)
@@ -466,7 +514,14 @@ class OptionsMomentumRanker:
     ) -> pd.DataFrame:
         """Calculate Greeks-based score for directional alignment.
 
-        Greeks Score = Delta × 0.50 + Gamma × 0.35 + Vega × 0.10 - Theta_Penalty
+        Formulas:
+            delta_score = 100 - 100 × |Δ - 0.55| (target 0.55 for calls, -0.55 for puts)
+            gamma_score = min(γ / 0.04 × 100, 100)
+            vega_score = min(vega / 0.30 × 100, 100)
+            theta_penalty = min(|θ%| × 10, 40) where θ% = θ/mid × 100
+
+        Greeks Pre-Score = Delta × 0.50 + Gamma × 0.35 + Vega × 0.10
+        Greeks Score = clip(Greeks_Pre - Theta_Penalty, 0, 100)
         """
         # Delta Score (50%)
         df["delta_score"] = self._score_delta(df, underlying_trend)
@@ -491,32 +546,38 @@ class OptionsMomentumRanker:
         return df
 
     def _score_delta(self, df: pd.DataFrame, trend: str) -> pd.Series:
-        """Score delta based on optimal range and trend alignment.
+        """Score delta based on distance from optimal target.
 
-        For CALLS (bullish): Target delta 0.40-0.70, peak at 0.55
-        For PUTS (bearish): Target delta -0.70 to -0.40, peak at -0.55
+        Formula:
+            Calls (target band 0.4-0.8, sweet spot ~0.55):
+                delta_score = 100 - 100 × |Δ - 0.55|
 
-        Scores peak at 100 when delta is optimal and aligned with trend.
+            Puts: same idea with target -0.55
+                delta_score = 100 - 100 × |Δ - (-0.55)|
+
+        Examples for calls (target 0.55):
+            - Delta 0.55 → score = 100 - 0 = 100
+            - Delta 0.45 → score = 100 - 10 = 90
+            - Delta 0.70 → score = 100 - 15 = 85
+            - Delta 0.30 → score = 100 - 25 = 75
+
+        Trend alignment provides additional multiplier.
         """
         scores = pd.Series(50.0, index=df.index)
 
         for idx, row in df.iterrows():
             delta = row.get("delta", 0.5)
             side = row.get("side", "call")
-            abs_delta = abs(delta)
 
-            # Base delta score (optimal range scoring)
-            if self.OPTIMAL_DELTA_MIN <= abs_delta <= self.OPTIMAL_DELTA_MAX:
-                # Peak score at target, decreasing toward edges
-                deviation = abs(abs_delta - self.OPTIMAL_DELTA_TARGET)
-                base_score = 100 - (deviation / 0.15) * 30  # Max 30 point reduction
-            elif abs_delta < self.OPTIMAL_DELTA_MIN:
-                # Below optimal range
-                base_score = (abs_delta / self.OPTIMAL_DELTA_MIN) * 50
+            # Target delta based on side
+            if side == "call":
+                target = self.OPTIMAL_DELTA_TARGET  # 0.55
             else:
-                # Above optimal range (too deep ITM)
-                excess = abs_delta - self.OPTIMAL_DELTA_MAX
-                base_score = 70 - (excess / 0.30) * 30
+                target = -self.OPTIMAL_DELTA_TARGET  # -0.55
+
+            # Core formula: delta_score = 100 - 100 × |Δ - target|
+            deviation = abs(delta - target)
+            base_score = 100 - (100 * deviation)
 
             # Trend alignment multiplier
             if trend == "bullish" and side == "call":
@@ -524,10 +585,10 @@ class OptionsMomentumRanker:
             elif trend == "bearish" and side == "put":
                 alignment_mult = 1.0
             elif trend == "neutral":
-                alignment_mult = 0.85
+                alignment_mult = 0.90  # Small penalty for no trend
             else:
-                # Counter-trend
-                alignment_mult = 0.50
+                # Counter-trend (bullish but put, or bearish but call)
+                alignment_mult = 0.70
 
             scores[idx] = max(0, min(100, base_score * alignment_mult))
 
@@ -558,18 +619,24 @@ class OptionsMomentumRanker:
     def _calculate_theta_penalty(self, df: pd.DataFrame) -> pd.Series:
         """Calculate theta decay penalty.
 
-        Theta_Factor = |Theta| / Mid_Price × 100 (daily decay as % of price)
-        Penalty = min(Theta_Factor × 10, 50)
+        Formula:
+            θ% = (θ / mid) × 100 (daily decay as % of price)
+            theta_penalty = min(|θ%| × 10, 40)
 
-        Capped at 50 to not eliminate high-momentum options.
+        Examples:
+            - θ = -$0.02, mid = $2.00 → θ% = -1% → penalty = 10
+            - θ = -$0.05, mid = $1.00 → θ% = -5% → penalty = 40 (capped)
+
+        Capped at 40 to not eliminate high-momentum options.
         """
         theta = df.get("theta", pd.Series(-0.10, index=df.index)).abs()
         mid_price = df.get("mid", df.get("mark", pd.Series(1.0, index=df.index)))
 
         # Avoid division by zero
-        theta_factor = np.where(mid_price > 0, (theta / mid_price) * 100, 10)
+        theta_pct = np.where(mid_price > 0, (theta / mid_price) * 100, 10)
 
-        penalty = (pd.Series(theta_factor, index=df.index) * 10).clip(0, 50)
+        # penalty = min(|θ%| × 10, 40)
+        penalty = (pd.Series(theta_pct, index=df.index).abs() * 10).clip(0, 40)
 
         return penalty
 

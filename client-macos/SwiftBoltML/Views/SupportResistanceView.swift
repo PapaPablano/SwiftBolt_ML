@@ -266,7 +266,7 @@ struct FibonacciRow: View {
     
     private var labeledLevels: [(String, Double)] {
         [
-            ("0.236", fib.fib236),
+        ("0.236", fib.fib236),
             ("0.382", fib.fib382),
             ("0.500", fib.fib500),
             ("0.618", fib.fib618),

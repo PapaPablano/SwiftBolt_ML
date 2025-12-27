@@ -74,19 +74,19 @@ struct OptionRankDetailView: View {
     private var headerSection: some View {
         VStack(spacing: 12) {
             HStack {
-                // ML Score badge
-                Text("\(Int(rank.mlScore * 100))")
+                // Composite Rank badge
+                Text("\(rank.compositeScoreDisplay)")
                     .font(.system(size: 48, weight: .bold, design: .rounded))
-                    .foregroundColor(scoreColor)
+                    .foregroundColor(rank.compositeColor)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("ML SCORE")
+                    Text("COMPOSITE RANK")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    Text(scoreLabel)
+                    Text(compositeLabel)
                         .font(.headline)
-                        .foregroundColor(scoreColor)
+                        .foregroundColor(rank.compositeColor)
                 }
 
                 Spacer()
@@ -97,10 +97,15 @@ struct OptionRankDetailView: View {
                 .buttonStyle(.bordered)
             }
 
-            // Contract title
+            // Contract title with signal badges
             HStack {
                 Text("\(symbol) $\(String(format: "%.2f", rank.strike)) \(rank.side.rawValue.uppercased())")
                     .font(.title2.bold())
+
+                // Signal badges in header
+                ForEach(rank.activeSignals, id: \.self) { signal in
+                    signalBadge(signal)
+                }
 
                 Spacer()
 
@@ -111,67 +116,131 @@ struct OptionRankDetailView: View {
         }
     }
 
+    private var compositeLabel: String {
+        if rank.compositeRank >= 75 { return "Strong Buy" }
+        if rank.compositeRank >= 60 { return "Buy" }
+        if rank.compositeRank >= 45 { return "Hold" }
+        return "Weak"
+    }
+
     // MARK: - ML Breakdown Section
 
     private var mlBreakdownSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("ML Ranking Breakdown")
+            Text("Momentum Framework Breakdown")
                 .font(.headline)
 
-            Text("This contract scored \(Int(rank.mlScore * 100))/100 based on the following factors:")
+            Text("Composite Rank: \(rank.compositeScoreDisplay)/100")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
+            // Signal badges if any
+            if rank.hasSignals {
+                HStack(spacing: 8) {
+                    Text("Signals:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    ForEach(rank.activeSignals, id: \.self) { signal in
+                        signalBadge(signal)
+                    }
+                }
+                .padding(.bottom, 4)
+            }
+
             VStack(spacing: 12) {
-                // Moneyness
+                // Momentum Score (40% weight)
                 factorRow(
-                    name: "Moneyness",
-                    score: calculateMoneyness(),
+                    name: "Momentum Score",
+                    score: (rank.momentumScore ?? 50) / 100,
+                    weight: 0.40,
+                    description: "Price momentum, volume/OI ratio, OI growth"
+                )
+
+                // Value Score (35% weight)
+                factorRow(
+                    name: "Value Score",
+                    score: (rank.valueScore ?? 50) / 100,
+                    weight: 0.35,
+                    description: "IV Rank, bid-ask spread tightness"
+                )
+
+                // Greeks Score (25% weight)
+                factorRow(
+                    name: "Greeks Score",
+                    score: (rank.greeksScore ?? 50) / 100,
                     weight: 0.25,
-                    description: moneynesDescription
-                )
-
-                // IV Rank
-                factorRow(
-                    name: "IV Rank",
-                    score: normalizedIV,
-                    weight: 0.20,
-                    description: "Implied volatility relative to historical range"
-                )
-
-                // Liquidity
-                factorRow(
-                    name: "Liquidity",
-                    score: liquidityScore,
-                    weight: 0.15,
-                    description: "Trading volume and open interest"
-                )
-
-                // Delta Score
-                factorRow(
-                    name: "Delta Quality",
-                    score: deltaScore,
-                    weight: 0.15,
-                    description: "Optimal delta for directional trades"
-                )
-
-                // Theta Decay
-                factorRow(
-                    name: "Theta Impact",
-                    score: thetaScore,
-                    weight: 0.10,
-                    description: "Time decay favorability"
-                )
-
-                // Momentum
-                factorRow(
-                    name: "Price Momentum",
-                    score: 0.75, // Placeholder - would come from API
-                    weight: 0.15,
-                    description: "Recent price action strength"
+                    description: "Delta quality, gamma, vega exposure, theta impact"
                 )
             }
+
+            Divider()
+                .padding(.vertical, 8)
+
+            // Additional metrics
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Key Metrics")
+                    .font(.subheadline.weight(.medium))
+
+                Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 8) {
+                    GridRow {
+                        metricLabel("IV Rank")
+                        metricValue(rank.ivRank.map { "\(Int($0))%" } ?? "—")
+
+                        metricLabel("Spread")
+                        metricValue(rank.spreadPct.map { String(format: "%.1f%%", $0) } ?? "—")
+                    }
+
+                    GridRow {
+                        metricLabel("Vol/OI")
+                        metricValue(rank.volOiRatio.map { String(format: "%.2f", $0) } ?? "—")
+                    }
+                }
+            }
         }
+    }
+
+    @ViewBuilder
+    private func signalBadge(_ signal: String) -> some View {
+        let (color, icon) = signalStyle(signal)
+        HStack(spacing: 2) {
+            Image(systemName: icon)
+                .font(.caption2)
+            Text(signal)
+                .font(.caption2.bold())
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(color.opacity(0.2))
+        .foregroundStyle(color)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+    }
+
+    private func signalStyle(_ signal: String) -> (Color, String) {
+        switch signal {
+        case "BUY":
+            return (.green, "checkmark.circle.fill")
+        case "DISCOUNT":
+            return (.blue, "tag.fill")
+        case "RUNNER":
+            return (.orange, "flame.fill")
+        case "GREEKS":
+            return (.purple, "function")
+        default:
+            return (.gray, "questionmark.circle")
+        }
+    }
+
+    private func metricLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(minWidth: 60, alignment: .leading)
+    }
+
+    private func metricValue(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.medium))
+            .frame(minWidth: 50, alignment: .leading)
     }
 
     // MARK: - Contract Details Section
@@ -364,18 +433,16 @@ struct OptionRankDetailView: View {
     // MARK: - Computed Properties
 
     private var scoreColor: Color {
-        let score = rank.mlScore * 100
-        if score >= 90 { return .green }
-        if score >= 75 { return .blue }
-        if score >= 60 { return .orange }
+        if rank.compositeRank >= 90 { return .green }
+        if rank.compositeRank >= 75 { return .blue }
+        if rank.compositeRank >= 60 { return .orange }
         return .red
     }
 
     private var scoreLabel: String {
-        let score = rank.mlScore * 100
-        if score >= 90 { return "Excellent" }
-        if score >= 75 { return "Good" }
-        if score >= 60 { return "Fair" }
+        if rank.compositeRank >= 90 { return "Excellent" }
+        if rank.compositeRank >= 75 { return "Good" }
+        if rank.compositeRank >= 60 { return "Fair" }
         return "Poor"
     }
 
@@ -474,10 +541,10 @@ struct StrikeComparisonRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // ML Score badge
-            Text("\(Int(rank.mlScore * 100))")
+            // Composite Score badge
+            Text("\(rank.compositeScoreDisplay)")
                 .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundColor(scoreColor)
+                .foregroundColor(rank.compositeColor)
                 .frame(width: 50)
 
             // Expiry info
@@ -570,14 +637,6 @@ struct StrikeComparisonRow: View {
                 .stroke(isCurrent ? Color.blue : Color.clear, lineWidth: 2)
         )
     }
-
-    private var scoreColor: Color {
-        let score = rank.mlScore * 100
-        if score >= 90 { return .green }
-        if score >= 75 { return .blue }
-        if score >= 60 { return .orange }
-        return .red
-    }
 }
 
 #Preview {
@@ -588,8 +647,14 @@ struct StrikeComparisonRow: View {
             expiry: "2025-12-19",
             strike: 470.0,
             side: .put,
-            mlScore: 1.00,
+            compositeRank: 82.0,
+            momentumScore: 85.0,
+            valueScore: 78.0,
+            greeksScore: 80.0,
+            mlScore: 0.82,
             impliedVol: 0.42,
+            ivRank: 65.0,
+            spreadPct: 1.2,
             delta: -0.10,
             gamma: 0.005,
             theta: -0.02,
@@ -597,10 +662,16 @@ struct StrikeComparisonRow: View {
             rho: nil,
             openInterest: 1200,
             volume: 600,
+            volOiRatio: 0.50,
             bid: 1.45,
             ask: 1.51,
             mark: 1.48,
             lastPrice: 1.47,
+            signalDiscount: true,
+            signalRunner: false,
+            signalGreeks: true,
+            signalBuy: true,
+            signals: "DISCOUNT,GREEKS,BUY",
             runAt: ISO8601DateFormatter().string(from: Date())
         ),
         symbol: "CRWD",

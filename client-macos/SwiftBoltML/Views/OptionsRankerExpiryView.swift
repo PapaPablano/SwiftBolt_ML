@@ -101,14 +101,14 @@ struct ExpiryViewHeader: View {
                     .frame(maxWidth: .infinity)
                 }
 
-                // Min score slider
+                // Min rank slider
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text("Min Score")
+                        Text("Min Rank")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Text("\(Int(rankerViewModel.minScore * 100))%")
+                        Text("\(Int(rankerViewModel.minScore * 100))")
                             .font(.caption2.bold())
                             .foregroundStyle(.purple)
                     }
@@ -174,18 +174,18 @@ struct CompactRankRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // ML Score badge (compact)
+            // Composite Rank badge (compact)
             VStack(spacing: 2) {
-                Text("\(Int(rank.scorePercentage))")
+                Text("\(rank.compositeScoreDisplay)")
                     .font(.callout.bold())
-                    .foregroundStyle(rank.scoreColor)
-                Text("ML")
+                    .foregroundStyle(rank.compositeColor)
+                Text("RANK")
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
             }
             .frame(width: 45)
             .padding(.vertical, 6)
-            .background(rank.scoreColor.opacity(0.1))
+            .background(rank.compositeColor.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 6))
 
             // Contract info
@@ -202,6 +202,11 @@ struct CompactRankRow: View {
                         .foregroundStyle(rank.side == .call ? .green : .red)
                         .clipShape(RoundedRectangle(cornerRadius: 3))
 
+                    // Signal badges (compact)
+                    ForEach(rank.activeSignals.prefix(2), id: \.self) { signal in
+                        compactSignalBadge(signal)
+                    }
+
                     if let mark = rank.mark {
                         Text("$\(String(format: "%.2f", mark))")
                             .font(.caption)
@@ -210,7 +215,11 @@ struct CompactRankRow: View {
                 }
 
                 HStack(spacing: 8) {
-                    if let iv = rank.impliedVol {
+                    if let ivRank = rank.ivRank {
+                        Label("IVR \(Int(ivRank))%", systemImage: "chart.bar.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    } else if let iv = rank.impliedVol {
                         Label("\(Int(iv * 100))%", systemImage: "waveform.path.ecg")
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
@@ -248,7 +257,7 @@ struct CompactRankRow: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(rank.scoreColor.opacity(0.3), lineWidth: 1)
+                .stroke(rank.compositeColor.opacity(0.3), lineWidth: 1)
         )
         .sheet(isPresented: $showStrikeAnalysis) {
             StrikePriceComparisonView(
@@ -256,6 +265,28 @@ struct CompactRankRow: View {
                 strike: rank.strike,
                 side: rank.side.rawValue
             )
+        }
+    }
+
+    @ViewBuilder
+    private func compactSignalBadge(_ signal: String) -> some View {
+        let color = signalColor(signal)
+        Text(signal)
+            .font(.system(size: 8, weight: .bold))
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(color.opacity(0.2))
+            .foregroundStyle(color)
+            .clipShape(RoundedRectangle(cornerRadius: 2))
+    }
+
+    private func signalColor(_ signal: String) -> Color {
+        switch signal {
+        case "BUY": return .green
+        case "DISCOUNT": return .blue
+        case "RUNNER": return .orange
+        case "GREEKS": return .purple
+        default: return .gray
         }
     }
 

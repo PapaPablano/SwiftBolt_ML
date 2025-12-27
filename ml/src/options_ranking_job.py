@@ -1,9 +1,16 @@
-"""Options ranking job that scores option contracts for key symbols."""
+"""Options ranking job that scores option contracts using Momentum Framework.
+
+Uses OptionsMomentumRanker exclusively for all scoring. The Momentum Framework
+produces composite_rank (0-100) based on:
+- Momentum Score (40%): Price momentum, volume/OI ratio, OI growth
+- Value Score (35%): IV Rank, bid-ask spread tightness
+- Greeks Score (25%): Delta quality, gamma, vega, theta penalty
+"""
 
 import logging
 import sys
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 import requests
 import pandas as pd
 import argparse
@@ -13,8 +20,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings
 from src.data.supabase_db import db
-from src.models.options_ranker import OptionsRanker
-from src.models.enhanced_options_ranker import EnhancedOptionsRanker
 from src.models.options_momentum_ranker import (
     OptionsMomentumRanker,
     IVHistoryCalculator,
@@ -146,10 +151,10 @@ def select_balanced_expiry_contracts(
     - Mid-term (30-60 days): 40%
     - Long-term (60+ days): 30%
 
-    Within each bucket, takes top contracts by ML score.
+    Within each bucket, takes top contracts by composite_rank.
 
     Args:
-        ranked_df: DataFrame of ranked options with ml_score and expiration columns
+        ranked_df: DataFrame of ranked options with composite_rank and expiration columns
         total_contracts: Total number of contracts to select (default: 100)
 
     Returns:
@@ -174,22 +179,22 @@ def select_balanced_expiry_contracts(
     long_count = int(total_contracts * 0.25)
     very_short_count = int(total_contracts * 0.05)  # Only 5% for very short
 
-    # Select top from each bucket
+    # Select top from each bucket by composite_rank
     selected_contracts = []
 
     if not very_short.empty:
         selected_contracts.append(
-            very_short.nlargest(very_short_count, "ml_score")
+            very_short.nlargest(very_short_count, "composite_rank")
         )
 
     if not near_term.empty:
-        selected_contracts.append(near_term.nlargest(near_count, "ml_score"))
+        selected_contracts.append(near_term.nlargest(near_count, "composite_rank"))
 
     if not mid_term.empty:
-        selected_contracts.append(mid_term.nlargest(mid_count, "ml_score"))
+        selected_contracts.append(mid_term.nlargest(mid_count, "composite_rank"))
 
     if not long_term.empty:
-        selected_contracts.append(long_term.nlargest(long_count, "ml_score"))
+        selected_contracts.append(long_term.nlargest(long_count, "composite_rank"))
 
     # If we didn't get enough contracts from buckets, backfill with top overall
     if selected_contracts:
@@ -202,21 +207,21 @@ def select_balanced_expiry_contracts(
         remaining_count = total_contracts - len(result)
         excluded = ranked_df[~ranked_df.index.isin(result.index)]
         if not excluded.empty:
-            backfill = excluded.nlargest(remaining_count, "ml_score")
+            backfill = excluded.nlargest(remaining_count, "composite_rank")
             result = pd.concat([result, backfill], ignore_index=True)
 
-    # Sort by ml_score descending
-    result = result.sort_values("ml_score", ascending=False)
+    # Sort by composite_rank descending
+    result = result.sort_values("composite_rank", ascending=False)
 
     # Drop the temporary DTE column before returning
     result = result.drop(columns=["dte"])
 
     logger.info(
         f"Selected {len(result)} contracts: "
-        f"{len(very_short.nlargest(very_short_count, 'ml_score'))} very short-term, "
-        f"{len(near_term.nlargest(near_count, 'ml_score'))} near-term, "
-        f"{len(mid_term.nlargest(mid_count, 'ml_score'))} mid-term, "
-        f"{len(long_term.nlargest(long_count, 'ml_score'))} long-term"
+        f"{len(very_short.nlargest(very_short_count, 'composite_rank'))} very short-term, "
+        f"{len(near_term.nlargest(near_count, 'composite_rank'))} near-term, "
+        f"{len(mid_term.nlargest(mid_count, 'composite_rank'))} mid-term, "
+        f"{len(long_term.nlargest(long_count, 'composite_rank'))} long-term"
     )
 
     return result
@@ -234,14 +239,18 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
                 "%Y-%m-%d"
             )
 
+            # Get composite_rank (primary score from Momentum Framework)
+            composite_rank = float(row.get("composite_rank", 0))
+
             # Build record with all columns
+            # ml_score is derived from composite_rank for backwards compatibility
             record = {
                 "underlying_symbol_id": symbol_id,
                 "contract_symbol": row["contract_symbol"],
                 "expiry": expiry_date,
                 "strike": float(row["strike"]),
                 "side": row["side"],
-                "ml_score": float(row.get("ml_score", 0)),
+                "ml_score": composite_rank / 100.0,  # Normalize to 0-1 for legacy field
                 "implied_vol": float(row.get("impliedVolatility", row.get("iv", 0))),
                 "delta": float(row.get("delta", 0)),
                 "gamma": float(row.get("gamma", 0)),
@@ -320,8 +329,8 @@ def process_symbol_options(symbol: str) -> None:
     """
     Process options for a single symbol: fetch data, rank contracts, save rankings.
 
-    Uses both EnhancedOptionsRanker (Phase 6-7 features) and OptionsMomentumRanker
-    (statistical framework) to produce comprehensive rankings.
+    Uses OptionsMomentumRanker exclusively for all scoring. The Momentum Framework
+    produces composite_rank (0-100) based on value, momentum, and greeks analysis.
 
     Args:
         symbol: Stock ticker symbol
@@ -363,29 +372,21 @@ def process_symbol_options(symbol: str) -> None:
 
         logger.info(f"Parsed {len(options_df)} contracts for {symbol}")
 
-        # Step 1: Use EnhancedOptionsRanker with Phase 6-7 features
-        enhanced_ranker = EnhancedOptionsRanker()
-        ranked_df = enhanced_ranker.rank_options_with_indicators(
-            options_df,
-            df_ohlc,
-            underlying_price,
-            historical_vol,
-        )
-
-        logger.info(f"EnhancedRanker: scored {len(ranked_df)} contracts")
-
-        # Step 2: Apply Momentum Framework scoring
+        # Fetch IV statistics for IV Rank calculation
         iv_stats = fetch_iv_stats(symbol_id)
+
+        # Apply Momentum Framework scoring (single ranker, no chaining)
         momentum_ranker = OptionsMomentumRanker()
         ranked_df = momentum_ranker.rank_options(
-            ranked_df,
+            options_df,
             iv_stats=iv_stats,
             options_history=None,  # TODO: Fetch from options_price_history
             underlying_trend=underlying_trend,
         )
 
         logger.info(
-            f"MomentumRanker: composite range {ranked_df['composite_rank'].min():.1f}-{ranked_df['composite_rank'].max():.1f}"
+            f"Momentum Framework: scored {len(ranked_df)} contracts, "
+            f"composite range {ranked_df['composite_rank'].min():.1f}-{ranked_df['composite_rank'].max():.1f}"
         )
 
         # Log signal counts
@@ -393,15 +394,17 @@ def process_symbol_options(symbol: str) -> None:
             buy_count = ranked_df["signal_buy"].sum()
             discount_count = ranked_df["signal_discount"].sum()
             runner_count = ranked_df["signal_runner"].sum()
+            greeks_count = ranked_df["signal_greeks"].sum()
             logger.info(
-                f"Signals: BUY={buy_count}, DISCOUNT={discount_count}, RUNNER={runner_count}"
+                f"Signals: BUY={buy_count}, DISCOUNT={discount_count}, "
+                f"RUNNER={runner_count}, GREEKS={greeks_count}"
             )
 
         # Save top contracts with balanced expiry distribution
         top_ranked = select_balanced_expiry_contracts(ranked_df)
         saved_count = save_rankings_to_db(symbol_id, top_ranked)
 
-        logger.info(f"✅ Saved {saved_count} ranked contracts for {symbol}")
+        logger.info(f"Saved {saved_count} ranked contracts for {symbol}")
 
     except Exception as e:
         logger.error(
@@ -412,7 +415,7 @@ def process_symbol_options(symbol: str) -> None:
 def main() -> None:
     """Main options ranking job entry point."""
     parser = argparse.ArgumentParser(
-        description="Rank options contracts using ML"
+        description="Rank options contracts using Momentum Framework"
     )
     parser.add_argument(
         "--symbol",

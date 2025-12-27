@@ -1,6 +1,23 @@
 import Foundation
 import Combine
 
+// Signal filter options
+enum SignalFilter: String, CaseIterable {
+    case all = "All"
+    case buy = "BUY"
+    case discount = "DISCOUNT"
+    case runner = "RUNNER"
+    case greeks = "GREEKS"
+}
+
+// Sort options for rankings (Momentum Framework)
+enum RankingSortOption: String, CaseIterable {
+    case composite = "Composite"
+    case momentum = "Momentum"
+    case value = "Value"
+    case greeks = "Greeks"
+}
+
 @MainActor
 class OptionsRankerViewModel: ObservableObject {
     @Published var rankings: [OptionRank] = []
@@ -11,6 +28,8 @@ class OptionsRankerViewModel: ObservableObject {
 
     @Published var selectedExpiry: String?
     @Published var selectedSide: OptionSide?
+    @Published var selectedSignal: SignalFilter = .all
+    @Published var sortOption: RankingSortOption = .composite
     @Published var minScore: Double = 0.0
 
     private var cancellables = Set<AnyCancellable>()
@@ -24,8 +43,37 @@ class OptionsRankerViewModel: ObservableObject {
 
     var filteredRankings: [OptionRank] {
         rankings
-            .filter { $0.mlScore >= minScore }
-            .sorted { $0.mlScore > $1.mlScore }
+            .filter { rank in
+                // Score filter using composite rank (0-100)
+                let score = rank.compositeRank / 100
+                guard score >= minScore else { return false }
+
+                // Signal filter
+                switch selectedSignal {
+                case .all:
+                    return true
+                case .buy:
+                    return rank.signalBuy == true
+                case .discount:
+                    return rank.signalDiscount == true
+                case .runner:
+                    return rank.signalRunner == true
+                case .greeks:
+                    return rank.signalGreeks == true
+                }
+            }
+            .sorted { lhs, rhs in
+                switch sortOption {
+                case .composite:
+                    return lhs.compositeRank > rhs.compositeRank
+                case .momentum:
+                    return (lhs.momentumScore ?? 0) > (rhs.momentumScore ?? 0)
+                case .value:
+                    return (lhs.valueScore ?? 0) > (rhs.valueScore ?? 0)
+                case .greeks:
+                    return (lhs.greeksScore ?? 0) > (rhs.greeksScore ?? 0)
+                }
+            }
     }
 
     var availableExpiries: [String] {
@@ -147,5 +195,13 @@ class OptionsRankerViewModel: ObservableObject {
 
     func setSide(_ side: OptionSide?) {
         selectedSide = side
+    }
+
+    func setSignalFilter(_ signal: SignalFilter) {
+        selectedSignal = signal
+    }
+
+    func setSortOption(_ option: RankingSortOption) {
+        sortOption = option
     }
 }
