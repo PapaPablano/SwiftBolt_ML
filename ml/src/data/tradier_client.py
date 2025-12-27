@@ -1,10 +1,20 @@
-"""Tradier API client for options data.
+"""Tradier API client for market data.
 
-Fetches options chains, expirations, and quotes from Tradier's free API.
+Fetches options chains, OHLCV bars, quotes, tick data, and more from Tradier's API.
 Requires a Tradier brokerage account (free to open).
+
+Supported Data Types:
+    - Historical OHLCV (daily, weekly, monthly, minute, tick)
+    - Real-time Quotes (bid/ask, volume, last price)
+    - Options Chains (with Greeks)
+    - Time & Sales (tick data at intervals)
+    - Futures Data (full futures support)
 
 Usage:
     client = TradierClient()
+
+    # Get intraday bars
+    bars = client.get_intraday_bars("AAPL", interval="5min")
 
     # Get options expirations
     expirations = client.get_expirations("AAPL")
@@ -12,13 +22,16 @@ Usage:
     # Get full options chain
     chain = client.get_options_chain("AAPL", "2024-01-19")
 
-    # Get specific option quote
-    quote = client.get_option_quote("AAPL240119C00150000")
+    # Get time and sales (tick data)
+    ticks = client.get_timesales("AAPL", interval="1min")
+
+    # Get multiple quotes at once
+    quotes = client.get_quotes(["AAPL", "MSFT", "GOOGL"])
 """
 
 import logging
 import time
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Any
 
 import httpx
@@ -272,6 +285,296 @@ class TradierClient:
             df = df.sort_values("ts").reset_index(drop=True)
 
         return df
+
+    def get_intraday_bars(
+        self,
+        symbol: str,
+        interval: str = "5min",
+        start: str | None = None,
+        end: str | None = None,
+        session_filter: str = "all",
+    ) -> pd.DataFrame:
+        """Get intraday OHLCV bars.
+
+        Args:
+            symbol: Stock ticker symbol
+            interval: Bar interval - 1min, 5min, 15min, or tick
+            start: Start datetime (YYYY-MM-DD HH:MM or YYYY-MM-DD)
+            end: End datetime (YYYY-MM-DD HH:MM or YYYY-MM-DD)
+            session_filter: Session filter - 'all', 'open' (market hours only)
+
+        Returns:
+            DataFrame with intraday OHLCV data
+        """
+        # Map our interval names to Tradier's format
+        interval_map = {
+            "1min": "1min",
+            "1m": "1min",
+            "5min": "5min",
+            "5m": "5min",
+            "15min": "15min",
+            "15m": "15min",
+            "tick": "tick",
+        }
+        tradier_interval = interval_map.get(interval, interval)
+
+        # Default to last trading day if no dates specified
+        if not start:
+            start = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        if not end:
+            end = datetime.now().strftime("%Y-%m-%d")
+
+        params = {
+            "symbol": symbol,
+            "interval": tradier_interval,
+            "start": start,
+            "end": end,
+            "session_filter": session_filter,
+        }
+
+        data = self._request("GET", "/markets/timesales", params)
+        series = data.get("series", {})
+
+        if not series:
+            logger.warning(f"No intraday data for {symbol} from {start} to {end}")
+            return pd.DataFrame()
+
+        # Tradier returns 'data' for timesales
+        bars = series.get("data", [])
+        if isinstance(bars, dict):
+            bars = [bars]
+
+        if not bars:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(bars)
+
+        # Rename and parse columns
+        if "time" in df.columns:
+            df["ts"] = pd.to_datetime(df["time"])
+            df = df.drop("time", axis=1)
+        elif "timestamp" in df.columns:
+            df["ts"] = pd.to_datetime(df["timestamp"], unit="s")
+            df = df.drop("timestamp", axis=1)
+
+        # Ensure standard column names
+        rename_map = {
+            "price": "close",  # tick data has price instead of OHLC
+        }
+        df = df.rename(columns=rename_map)
+
+        df["symbol"] = symbol
+        df = df.sort_values("ts").reset_index(drop=True)
+
+        logger.info(f"Fetched {len(df)} intraday bars for {symbol}")
+        return df
+
+    def get_timesales(
+        self,
+        symbol: str,
+        interval: str = "tick",
+        start: str | None = None,
+        end: str | None = None,
+        session_filter: str = "open",
+    ) -> pd.DataFrame:
+        """Get time and sales (tick) data.
+
+        This is useful for volume analysis and understanding order flow.
+
+        Args:
+            symbol: Stock ticker symbol
+            interval: Aggregation interval - 'tick', '1min', '5min', '15min'
+            start: Start datetime (YYYY-MM-DD HH:MM)
+            end: End datetime (YYYY-MM-DD HH:MM)
+            session_filter: 'all' or 'open' (market hours only)
+
+        Returns:
+            DataFrame with tick/trade data
+        """
+        return self.get_intraday_bars(
+            symbol=symbol,
+            interval=interval,
+            start=start,
+            end=end,
+            session_filter=session_filter,
+        )
+
+    def get_quotes(self, symbols: list[str]) -> pd.DataFrame:
+        """Get quotes for multiple symbols at once.
+
+        Args:
+            symbols: List of stock ticker symbols
+
+        Returns:
+            DataFrame with quote data for all symbols
+        """
+        if not symbols:
+            return pd.DataFrame()
+
+        # Tradier accepts comma-separated symbols
+        symbols_str = ",".join(s.upper() for s in symbols)
+        data = self._request("GET", "/markets/quotes", {"symbols": symbols_str})
+
+        quotes = data.get("quotes", {}).get("quote", [])
+        if not quotes:
+            return pd.DataFrame()
+
+        # Handle single quote returned as dict
+        if isinstance(quotes, dict):
+            quotes = [quotes]
+
+        df = pd.DataFrame(quotes)
+        df["fetched_at"] = datetime.utcnow().isoformat()
+
+        logger.info(f"Fetched quotes for {len(df)} symbols")
+        return df
+
+    def get_clock(self) -> dict[str, Any]:
+        """Get current market clock/status.
+
+        Returns:
+            Market status including open/close times, current state
+        """
+        data = self._request("GET", "/markets/clock")
+        return data.get("clock", {})
+
+    def get_calendar(self, month: int | None = None, year: int | None = None) -> dict[str, Any]:
+        """Get market calendar.
+
+        Args:
+            month: Month (1-12)
+            year: Year (YYYY)
+
+        Returns:
+            Market calendar with trading days and hours
+        """
+        params = {}
+        if month:
+            params["month"] = month
+        if year:
+            params["year"] = year
+
+        data = self._request("GET", "/markets/calendar", params)
+        return data.get("calendar", {})
+
+    def is_market_open(self) -> bool:
+        """Check if market is currently open.
+
+        Returns:
+            True if market is open for trading
+        """
+        clock = self.get_clock()
+        state = clock.get("state", "").lower()
+        return state == "open"
+
+    def get_current_day_bars(
+        self,
+        symbol: str,
+        interval: str = "5min",
+    ) -> pd.DataFrame:
+        """Get intraday bars for current trading day only.
+
+        Convenience method for real-time updates.
+
+        Args:
+            symbol: Stock ticker symbol
+            interval: Bar interval
+
+        Returns:
+            DataFrame with today's intraday bars
+        """
+        today = datetime.now().strftime("%Y-%m-%d")
+        return self.get_intraday_bars(
+            symbol=symbol,
+            interval=interval,
+            start=today,
+            end=today,
+            session_filter="open",
+        )
+
+    def get_extended_hours_data(
+        self,
+        symbol: str,
+        interval: str = "5min",
+    ) -> pd.DataFrame:
+        """Get extended hours (pre-market + after-hours) data.
+
+        Args:
+            symbol: Stock ticker symbol
+            interval: Bar interval
+
+        Returns:
+            DataFrame with extended hours bars
+        """
+        today = datetime.now().strftime("%Y-%m-%d")
+        return self.get_intraday_bars(
+            symbol=symbol,
+            interval=interval,
+            start=today,
+            end=today,
+            session_filter="all",  # Include pre/post market
+        )
+
+    def compute_vwap(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Compute VWAP from intraday bars.
+
+        Args:
+            df: DataFrame with columns: close (or price), volume
+
+        Returns:
+            DataFrame with vwap column added
+        """
+        if df.empty:
+            return df
+
+        price_col = "close" if "close" in df.columns else "price"
+        if price_col not in df.columns or "volume" not in df.columns:
+            logger.warning("Cannot compute VWAP: missing price or volume columns")
+            return df
+
+        df = df.copy()
+        df["_cumvol"] = df["volume"].cumsum()
+        df["_cumvol_price"] = (df[price_col] * df["volume"]).cumsum()
+        df["vwap"] = df["_cumvol_price"] / df["_cumvol"]
+        df = df.drop(["_cumvol", "_cumvol_price"], axis=1)
+
+        return df
+
+    def get_futures_quote(self, symbol: str) -> dict[str, Any]:
+        """Get quote for a futures contract.
+
+        Args:
+            symbol: Futures symbol (e.g., /ES, /NQ, /CL)
+
+        Returns:
+            Futures quote data
+        """
+        # Futures symbols typically start with /
+        if not symbol.startswith("/"):
+            symbol = f"/{symbol}"
+
+        return self.get_quote(symbol)
+
+    def get_futures_chain(self, root: str) -> pd.DataFrame:
+        """Get available futures contracts for a root symbol.
+
+        Args:
+            root: Futures root symbol (e.g., ES, NQ, CL)
+
+        Returns:
+            DataFrame with available futures contracts
+        """
+        # Note: This may require specific Tradier subscription
+        data = self._request("GET", "/markets/options/lookup", {"underlying": f"/{root}"})
+        symbols = data.get("symbols", {}).get("symbol", [])
+
+        if not symbols:
+            return pd.DataFrame()
+
+        if isinstance(symbols, str):
+            symbols = [symbols]
+
+        return pd.DataFrame({"symbol": symbols})
 
     def close(self) -> None:
         """Close the HTTP client."""

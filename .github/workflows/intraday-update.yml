@@ -1,0 +1,119 @@
+name: Intraday Data Update
+
+on:
+  schedule:
+    # Every 15 minutes during market hours (EST/UTC-5, weekdays only)
+    # Market: 9:30 AM - 4:00 PM ET = 14:30 - 21:00 UTC
+
+    # 9:45 AM ET = 14:45 UTC (15 min after open)
+    - cron: '45 14 * * 1-5'
+    # 10:00 AM, 10:15, 10:30, 10:45 ET
+    - cron: '0,15,30,45 15 * * 1-5'
+    # 11:00 AM - 11:45 AM ET
+    - cron: '0,15,30,45 16 * * 1-5'
+    # 12:00 PM - 12:45 PM ET
+    - cron: '0,15,30,45 17 * * 1-5'
+    # 1:00 PM - 1:45 PM ET
+    - cron: '0,15,30,45 18 * * 1-5'
+    # 2:00 PM - 2:45 PM ET
+    - cron: '0,15,30,45 19 * * 1-5'
+    # 3:00 PM - 3:45 PM ET
+    - cron: '0,15,30,45 20 * * 1-5'
+    # 4:00 PM ET (market close) - final update
+    - cron: '0 21 * * 1-5'
+
+  workflow_dispatch:  # Allow manual trigger
+    inputs:
+      symbols:
+        description: 'Comma-separated symbols (leave empty for all watchlist)'
+        required: false
+        type: string
+
+jobs:
+  update-intraday:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Market Hours
+        id: market
+        run: |
+          # Get current time in ET
+          current_hour=$(TZ="America/New_York" date +%H)
+          current_min=$(TZ="America/New_York" date +%M)
+          day_of_week=$(date +%u)  # 1=Monday, 7=Sunday
+
+          echo "Current ET time: $current_hour:$current_min (day $day_of_week)"
+
+          # Skip weekends
+          if [ "$day_of_week" -gt 5 ]; then
+            echo "Weekend - skipping"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check if within market hours (9:30 AM - 4:00 PM ET)
+          current_minutes=$((current_hour * 60 + current_min))
+          market_open=$((9 * 60 + 30))   # 9:30 AM = 570 minutes
+          market_close=$((16 * 60))       # 4:00 PM = 960 minutes
+
+          if [ "$current_minutes" -lt "$market_open" ] || [ "$current_minutes" -gt "$market_close" ]; then
+            echo "Outside market hours - skipping"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "skip=false" >> $GITHUB_OUTPUT
+          echo "time=$current_hour:$current_min ET" >> $GITHUB_OUTPUT
+
+      - name: Trigger Intraday Update
+        if: steps.market.outputs.skip != 'true'
+        run: |
+          echo "Triggering intraday update at ${{ steps.market.outputs.time }}"
+
+          # Build request body
+          if [ -n "${{ github.event.inputs.symbols }}" ]; then
+            # Manual trigger with specific symbols
+            symbols=$(echo '${{ github.event.inputs.symbols }}' | jq -R 'split(",") | map(. | gsub("^\\s+|\\s+$"; ""))' -c)
+            body="{\"symbols\": $symbols}"
+          else
+            # All watchlist symbols
+            body='{"all_watchlist": true}'
+          fi
+
+          echo "Request body: $body"
+
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/intraday-update" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "$body")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Code: $http_code"
+
+          if [ "$http_code" != "200" ]; then
+            echo "Error: HTTP $http_code"
+            exit 1
+          fi
+
+          # Parse results
+          symbols_updated=$(echo "$body" | jq -r '.symbols_updated // 0')
+          market_state=$(echo "$body" | jq -r '.market_state // "unknown"')
+          echo "SYMBOLS_UPDATED=$symbols_updated" >> $GITHUB_ENV
+          echo "MARKET_STATE=$market_state" >> $GITHUB_ENV
+
+      - name: Summary
+        if: steps.market.outputs.skip != 'true'
+        run: |
+          echo "## Intraday Update Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Time | ${{ steps.market.outputs.time }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Market State | ${{ env.MARKET_STATE }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Symbols Updated | ${{ env.SYMBOLS_UPDATED }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Schedule" >> $GITHUB_STEP_SUMMARY
+          echo "Updates every 15 minutes during market hours (9:30 AM - 4:00 PM ET)" >> $GITHUB_STEP_SUMMARY
