@@ -266,6 +266,18 @@ actor APIClient {
 
         return try await performRequest(request)
     }
+    
+    /// Comprehensive user-triggered refresh - orchestrates backfill, bars, ML, options, and S/R
+    func userRefresh(symbol: String) async throws -> UserRefreshResponse {
+        var request = try makeRequest(endpoint: "user-refresh", queryItems: [])
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body = ["symbol": symbol]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        return try await performRequest(request)
+    }
 
     /// Fetch ML dashboard data - aggregate metrics across all symbols
     func fetchMLDashboard() async throws -> MLDashboardResponse {
@@ -381,6 +393,32 @@ struct RefreshDataResponse: Decodable {
         let existingBars: Int
         let newBars: Int
         let latestTimestamp: String?
+    }
+}
+
+// MARK: - User Refresh Response (Comprehensive)
+
+struct UserRefreshResponse: Decodable {
+    let symbol: String
+    let success: Bool
+    let steps: [RefreshStep]
+    let summary: RefreshSummary
+    let message: String
+    let durationMs: Int
+    
+    struct RefreshStep: Decodable {
+        let step: String
+        let status: String
+        let message: String?
+    }
+    
+    struct RefreshSummary: Decodable {
+        let backfillNeeded: Bool
+        let backfillQueued: Bool
+        let barsUpdated: Int
+        let mlJobQueued: Bool
+        let optionsJobQueued: Bool
+        let srCalculated: Bool
     }
 }
 

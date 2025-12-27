@@ -21,6 +21,7 @@ final class ChartViewModel: ObservableObject {
     @Published private(set) var isRefreshing: Bool = false
     @Published var refreshMessage: String?
     @Published var lastRefreshResult: RefreshDataResponse?
+    @Published var lastUserRefreshResult: UserRefreshResponse?
 
     private var loadTask: Task<Void, Never>?
 
@@ -335,6 +336,35 @@ final class ChartViewModel: ObservableObject {
             )
             
             lastRefreshResult = response
+            refreshMessage = response.message
+            
+            // After successful refresh, reload chart data to show new bars
+            if response.success {
+                await loadChart()
+            }
+            
+        } catch {
+            refreshMessage = "Refresh failed: \(error.localizedDescription)"
+        }
+        
+        isRefreshing = false
+    }
+    
+    /// Comprehensive user-triggered refresh - orchestrates backfill, bars, ML, options, and S/R
+    /// Use this when the user explicitly presses a refresh button
+    func userRefresh() async {
+        guard let symbol = selectedSymbol else {
+            refreshMessage = "No symbol selected"
+            return
+        }
+        
+        isRefreshing = true
+        refreshMessage = "Refreshing all data..."
+        
+        do {
+            let response = try await APIClient.shared.userRefresh(symbol: symbol.ticker)
+            
+            lastUserRefreshResult = response
             refreshMessage = response.message
             
             // After successful refresh, reload chart data to show new bars

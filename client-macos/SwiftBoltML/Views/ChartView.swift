@@ -67,10 +67,10 @@ struct ChartView: View {
                 .help("Refresh chart data")
                 .disabled(chartViewModel.isLoading)
                 
-                // Full refresh - fetch new data + queue ML jobs
+                // Full refresh - comprehensive data sync (backfill, bars, ML, options, S/R)
                 Button(action: {
                     Task {
-                        await chartViewModel.refreshData(refreshML: true, refreshOptions: false)
+                        await chartViewModel.userRefresh()
                     }
                 }) {
                     HStack(spacing: 4) {
@@ -79,7 +79,7 @@ struct ChartView: View {
                                 .scaleEffect(0.6)
                                 .frame(width: 14, height: 14)
                         } else {
-                            Image(systemName: "arrow.triangle.2.circlepath")
+                            Image(systemName: "arrow.clockwise")
                                 .font(.system(size: 12))
                         }
                         Text("Sync")
@@ -88,7 +88,7 @@ struct ChartView: View {
                     .foregroundColor(chartViewModel.isRefreshing ? .secondary : .accentColor)
                 }
                 .buttonStyle(.plain)
-                .help("Sync data & refresh ML predictions")
+                .help("Sync all data: backfill, bars, ML forecasts, options, S/R levels")
                 .disabled(chartViewModel.isRefreshing)
                 .padding(.trailing, 8)
 
