@@ -116,7 +116,19 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     # Add S/R features (5 additional indicators for ML)
     try:
         df = add_support_resistance_features(df)
-        logger.info("Added S/R features to technical indicators")
+
+        # Add volume-based S/R strength features (Phase 1: 6 additional features)
+        from src.features.support_resistance_detector import SupportResistanceDetector
+        sr_detector = SupportResistanceDetector()
+        sr_levels = sr_detector.find_all_levels(df)
+        df = sr_detector.add_volume_strength_features(df, sr_levels)
+
+        # Add polynomial S/R features (Phase 3: 4 additional features)
+        from src.features.sr_polynomial import SRPolynomialRegressor
+        poly_regressor = SRPolynomialRegressor(degree=2, min_points=4)
+        df = poly_regressor.add_polynomial_features(df, sr_levels)
+
+        logger.info("Added S/R features with volume strength + polynomial")
     except Exception as exc:  # noqa: BLE001
         logger.warning("S/R features failed: %s", exc)
 

@@ -43,6 +43,14 @@ interface SwingPoint {
   index: number;
 }
 
+// Phase 1: Volume-based strength metrics
+interface LevelStrength {
+  volumeStrength: number;    // 0-100 composite score
+  touchCount: number;        // Number of times price touched level
+  volumeRatio: number;       // Volume at touches vs average
+  volumeTrend: number;       // Ratio of recent vs early touch volume
+}
+
 interface SupportResistanceResponse {
   symbol: string;
   currentPrice: number;
@@ -63,6 +71,9 @@ interface SupportResistanceResponse {
     periodHigh: number;
     periodLow: number;
   };
+  // Phase 1: Volume-based strength metrics
+  supportStrength: LevelStrength | null;
+  resistanceStrength: LevelStrength | null;
 }
 
 // Calculate pivot points from OHLC data
@@ -119,6 +130,66 @@ function calculateFibonacci(
     rangeHigh: Math.round(rangeHigh * 100) / 100,
     rangeLow: Math.round(rangeLow * 100) / 100,
   } as FibonacciLevels;
+}
+
+// Phase 1: Calculate volume-based strength for a price level
+interface OHLCBar {
+  ts: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+function calculateVolumeStrength(
+  ohlcData: OHLCBar[],
+  level: number,
+  tolerancePct: number = 1.0
+): LevelStrength {
+  const tolerance = level * tolerancePct / 100;
+
+  // Find bars that touched this level
+  const touches = ohlcData.filter(bar =>
+    bar.low <= level + tolerance && bar.high >= level - tolerance
+  );
+
+  if (touches.length === 0) {
+    return {
+      volumeStrength: 0,
+      touchCount: 0,
+      volumeRatio: 0,
+      volumeTrend: 1,
+    };
+  }
+
+  // Calculate average volume at touches vs overall average
+  const avgTouchVolume = touches.reduce((sum, b) => sum + b.volume, 0) / touches.length;
+  const avgTotalVolume = ohlcData.reduce((sum, b) => sum + b.volume, 0) / ohlcData.length;
+  const volumeRatio = avgTotalVolume > 0 ? avgTouchVolume / avgTotalVolume : 1;
+
+  // Volume trend at touches (are later touches with higher volume?)
+  let volumeTrend = 1;
+  if (touches.length >= 2) {
+    const halfLen = Math.floor(touches.length / 2);
+    const firstHalfVol = touches.slice(0, halfLen).reduce((sum, b) => sum + b.volume, 0) / halfLen;
+    const secondHalfVol = touches.slice(-halfLen).reduce((sum, b) => sum + b.volume, 0) / halfLen;
+    volumeTrend = firstHalfVol > 0 ? secondHalfVol / firstHalfVol : 1;
+  }
+
+  // Composite strength score (0-100)
+  // Weight: 50% touch count (capped at 10), 30% volume ratio, 20% volume trend
+  const touchFactor = Math.min(10, touches.length) * 5;  // 0-50 points
+  const volumeFactor = Math.min(30, volumeRatio * 30);   // 0-30 points
+  const trendFactor = Math.min(20, volumeTrend * 10);    // 0-20 points
+  const volumeStrength = touchFactor + volumeFactor + trendFactor;
+
+  return {
+    volumeStrength: Math.round(volumeStrength * 100) / 100,
+    touchCount: touches.length,
+    volumeRatio: Math.round(volumeRatio * 1000) / 1000,
+    volumeTrend: Math.round(volumeTrend * 1000) / 1000,
+  };
 }
 
 // Calculate ZigZag swing points
@@ -322,6 +393,14 @@ serve(async (req: Request): Promise<Response> => {
       ? Math.round(((nearestResistance - currentPrice) / currentPrice) * 10000) / 100
       : null;
 
+    // Phase 1: Calculate volume-based strength for support and resistance
+    const supportStrength = nearestSupport
+      ? calculateVolumeStrength(ohlcData as OHLCBar[], nearestSupport)
+      : null;
+    const resistanceStrength = nearestResistance
+      ? calculateVolumeStrength(ohlcData as OHLCBar[], nearestResistance)
+      : null;
+
     const response: SupportResistanceResponse = {
       symbol: symbolData.ticker,
       currentPrice: Math.round(currentPrice * 100) / 100,
@@ -342,6 +421,9 @@ serve(async (req: Request): Promise<Response> => {
         periodHigh: Math.round(periodHigh * 100) / 100,
         periodLow: Math.round(periodLow * 100) / 100,
       },
+      // Phase 1: Volume-based strength metrics
+      supportStrength,
+      resistanceStrength,
     };
 
     // Store S/R levels in database
@@ -382,6 +464,13 @@ serve(async (req: Request): Promise<Response> => {
         period_low: periodLow,
         lookback_bars: lookback,
         computed_at: new Date().toISOString(),
+        // Phase 1: Volume-based strength metrics
+        support_volume_strength: supportStrength?.volumeStrength ?? null,
+        resistance_volume_strength: resistanceStrength?.volumeStrength ?? null,
+        support_touches_count: supportStrength?.touchCount ?? null,
+        resistance_touches_count: resistanceStrength?.touchCount ?? null,
+        support_strength_score: supportStrength?.volumeStrength ?? null,
+        resistance_strength_score: resistanceStrength?.volumeStrength ?? null,
       }, {
         onConflict: "symbol_id,timeframe,DATE(computed_at)",
         ignoreDuplicates: false,

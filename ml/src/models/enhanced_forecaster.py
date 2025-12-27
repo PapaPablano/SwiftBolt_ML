@@ -70,6 +70,21 @@ ENHANCED_FEATURES = [
     "keltner_upper", "keltner_middle", "keltner_lower",
     # NEW: SuperTrend
     "supertrend", "supertrend_trend",
+    # Phase 1: Volume-based S/R Strength (6 features)
+    "support_volume_strength",
+    "resistance_volume_strength",
+    "support_touches_count",
+    "resistance_touches_count",
+    "support_strength_score",
+    "resistance_strength_score",
+    # Phase 2: S/R Hold Probabilities (2 features)
+    "support_hold_probability",
+    "resistance_hold_probability",
+    # Phase 3: Polynomial S/R (4 features)
+    "polynomial_support",
+    "polynomial_resistance",
+    "support_slope",
+    "resistance_slope",
 ]
 
 

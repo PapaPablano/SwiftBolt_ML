@@ -795,6 +795,196 @@ class SupportResistanceDetector:
             "strength": round(strength, 1),
         }
 
+    # =========================================================================
+    # VOLUME-BASED STRENGTH ANALYSIS (Phase 1)
+    # =========================================================================
+
+    def calculate_volume_strength(
+        self,
+        df: pd.DataFrame,
+        level: float,
+        tolerance_pct: float = 1.0,
+    ) -> Dict[str, Any]:
+        """
+        Calculate volume-based strength for a support/resistance level.
+
+        Measures:
+        - Average volume when price touched the level
+        - Volume ratio vs overall average
+        - Volume trend at touches (increasing = stronger)
+        - Touch count for level durability
+
+        Args:
+            df: DataFrame with OHLC and volume data
+            level: Price level to analyze
+            tolerance_pct: Percentage tolerance for touch detection
+
+        Returns:
+            Dict with volume strength metrics:
+            - volume_strength: Composite score (0-100)
+            - touch_count: Number of times price touched level
+            - volume_ratio: Volume at touches vs average
+            - volume_trend: Ratio of recent vs early touch volume
+        """
+        tolerance = level * tolerance_pct / 100
+
+        # Find bars that touched this level
+        touches = df[
+            (df["low"] <= level + tolerance) &
+            (df["high"] >= level - tolerance)
+        ]
+
+        if len(touches) == 0:
+            return {
+                "volume_strength": 0.0,
+                "touch_count": 0,
+                "volume_ratio": 0.0,
+                "volume_trend": 1.0,
+            }
+
+        # Calculate volume metrics
+        avg_touch_volume = touches["volume"].mean() if "volume" in touches.columns else 0
+        avg_total_volume = df["volume"].mean() if "volume" in df.columns else 1
+        volume_ratio = avg_touch_volume / avg_total_volume if avg_total_volume > 0 else 1.0
+
+        # Volume trend at touches (are later touches with higher volume?)
+        if len(touches) >= 2:
+            half_len = len(touches) // 2
+            first_half_vol = touches.head(half_len)["volume"].mean() if "volume" in touches.columns else 1
+            second_half_vol = touches.tail(half_len)["volume"].mean() if "volume" in touches.columns else 1
+            volume_trend = second_half_vol / first_half_vol if first_half_vol > 0 else 1.0
+        else:
+            volume_trend = 1.0
+
+        # Composite strength score (0-100)
+        # Weight: 30% volume ratio, 50% touch count (capped at 10), 20% volume trend
+        touch_factor = min(10, len(touches)) * 5  # 0-50 points
+        volume_factor = min(30, volume_ratio * 30)  # 0-30 points
+        trend_factor = min(20, volume_trend * 10)  # 0-20 points
+
+        volume_strength = touch_factor + volume_factor + trend_factor
+
+        return {
+            "volume_strength": round(volume_strength, 2),
+            "touch_count": len(touches),
+            "volume_ratio": round(volume_ratio, 3),
+            "volume_trend": round(volume_trend, 3),
+        }
+
+    def _compute_composite_strength(
+        self,
+        volume_strength: float,
+        touch_count: int,
+        distance_pct: float,
+    ) -> float:
+        """
+        Compute composite strength score from multiple factors.
+
+        Combines:
+        - Volume strength (40% weight)
+        - Touch count factor (30% weight)
+        - Distance factor - closer = stronger (30% weight)
+
+        Args:
+            volume_strength: Volume-based strength score (0-100)
+            touch_count: Number of touches at level
+            distance_pct: Distance from current price as percentage
+
+        Returns:
+            Composite strength score (0-100)
+        """
+        # Closer levels are considered stronger (inverse of distance)
+        distance_factor = max(0, 100 - distance_pct * 10)  # 0-100
+
+        # Touch count factor (capped at 10 touches for max score)
+        touch_factor = min(100, touch_count * 10)  # 0-100
+
+        # Weighted composite
+        composite = (
+            volume_strength * 0.4 +
+            touch_factor * 0.3 +
+            distance_factor * 0.3
+        )
+        return round(composite, 2)
+
+    def add_volume_strength_features(
+        self,
+        df: pd.DataFrame,
+        sr_levels: Optional[Dict[str, Any]] = None,
+    ) -> pd.DataFrame:
+        """
+        Add volume-based S/R strength features to DataFrame.
+
+        Adds columns:
+        - support_volume_strength: Volume strength at nearest support (0-100)
+        - resistance_volume_strength: Volume strength at nearest resistance (0-100)
+        - support_touches_count: Number of touches at support
+        - resistance_touches_count: Number of touches at resistance
+        - support_strength_score: Composite strength (volume + touches + distance)
+        - resistance_strength_score: Composite strength
+
+        Args:
+            df: DataFrame with OHLC and volume data
+            sr_levels: Pre-computed S/R levels (optional, will compute if not provided)
+
+        Returns:
+            DataFrame with volume strength features added
+        """
+        df = df.copy()
+
+        # Get S/R levels if not provided
+        if sr_levels is None:
+            sr_levels = self.find_all_levels(df)
+
+        nearest_support = sr_levels.get("nearest_support")
+        nearest_resistance = sr_levels.get("nearest_resistance")
+        support_dist_pct = sr_levels.get("support_distance_pct") or 100
+        resistance_dist_pct = sr_levels.get("resistance_distance_pct") or 100
+
+        # Calculate support volume strength
+        if nearest_support:
+            support_metrics = self.calculate_volume_strength(df, nearest_support)
+            support_volume_strength = support_metrics["volume_strength"]
+            support_touches = support_metrics["touch_count"]
+        else:
+            support_volume_strength = 0.0
+            support_touches = 0
+
+        # Calculate resistance volume strength
+        if nearest_resistance:
+            resistance_metrics = self.calculate_volume_strength(df, nearest_resistance)
+            resistance_volume_strength = resistance_metrics["volume_strength"]
+            resistance_touches = resistance_metrics["touch_count"]
+        else:
+            resistance_volume_strength = 0.0
+            resistance_touches = 0
+
+        # Add features (broadcast to all rows)
+        df["support_volume_strength"] = support_volume_strength
+        df["resistance_volume_strength"] = resistance_volume_strength
+        df["support_touches_count"] = support_touches
+        df["resistance_touches_count"] = resistance_touches
+
+        # Compute composite strength scores
+        df["support_strength_score"] = self._compute_composite_strength(
+            support_volume_strength,
+            support_touches,
+            support_dist_pct,
+        )
+        df["resistance_strength_score"] = self._compute_composite_strength(
+            resistance_volume_strength,
+            resistance_touches,
+            resistance_dist_pct,
+        )
+
+        logger.info(
+            f"Added volume strength features: "
+            f"support_strength={df['support_strength_score'].iloc[-1]:.1f}, "
+            f"resistance_strength={df['resistance_strength_score'].iloc[-1]:.1f}"
+        )
+
+        return df
+
 
 def add_support_resistance_features(df: pd.DataFrame) -> pd.DataFrame:
     """

@@ -16,6 +16,10 @@ from src.features.technical_indicators import (  # noqa: E402
 from src.features.support_resistance_detector import (  # noqa: E402
     SupportResistanceDetector,
 )
+from src.features.sr_probability import (  # noqa: E402
+    SRProbabilityPredictor,
+    create_historical_level_outcomes,
+)
 from src.backtesting.walk_forward_tester import (  # noqa: E402
     WalkForwardBacktester,
 )
@@ -37,6 +41,7 @@ def apply_sr_constraints(
     forecast: dict,
     sr_levels: dict,
     current_price: float,
+    sr_probabilities: dict | None = None,
 ) -> dict:
     """
     Apply S/R constraints to forecast points and adjust confidence.
@@ -45,6 +50,8 @@ def apply_sr_constraints(
         forecast: Forecast dict with label, confidence, points
         sr_levels: S/R levels from detector
         current_price: Current closing price
+        sr_probabilities: Optional dict with support_hold_probability and
+                          resistance_hold_probability from Phase 2 predictor
 
     Returns:
         Updated forecast with S/R constraints applied
@@ -52,6 +59,10 @@ def apply_sr_constraints(
     forecast = forecast.copy()
     label = forecast["label"]
     points = forecast.get("points", [])
+
+    # Get hold probabilities from Phase 2 predictor (default 0.5 if not available)
+    support_hold_prob = (sr_probabilities or {}).get("support_hold_probability", 0.5)
+    resistance_hold_prob = (sr_probabilities or {}).get("resistance_hold_probability", 0.5)
 
     nearest_support = sr_levels.get("nearest_support")
     nearest_resistance = sr_levels.get("nearest_resistance")
@@ -89,22 +100,32 @@ def apply_sr_constraints(
     adjusted_confidence = original_confidence
 
     # Reduce confidence if predicting bullish near resistance
+    # Phase 2 enhancement: scale penalty by resistance hold probability
     if label == "bullish" and resistance_dist_pct is not None:
         if resistance_dist_pct < 2.0:  # Within 2% of resistance
-            penalty = (2.0 - resistance_dist_pct) / 2.0 * 0.15  # Up to 15% penalty
+            # Higher hold probability = stronger penalty (resistance more likely to hold)
+            hold_factor = 0.5 + 0.5 * resistance_hold_prob  # 0.5 to 1.0
+            base_penalty = (2.0 - resistance_dist_pct) / 2.0 * 0.15  # Up to 15% base
+            penalty = base_penalty * hold_factor
             adjusted_confidence = max(0.3, original_confidence - penalty)
             logger.debug(
                 f"Bullish near resistance ({resistance_dist_pct:.2f}%), "
+                f"hold_prob={resistance_hold_prob:.2f}, "
                 f"confidence {original_confidence:.2f} -> {adjusted_confidence:.2f}"
             )
 
     # Reduce confidence if predicting bearish near support
+    # Phase 2 enhancement: scale penalty by support hold probability
     elif label == "bearish" and support_dist_pct is not None:
         if support_dist_pct < 2.0:  # Within 2% of support
-            penalty = (2.0 - support_dist_pct) / 2.0 * 0.15  # Up to 15% penalty
+            # Higher hold probability = stronger penalty (support more likely to hold)
+            hold_factor = 0.5 + 0.5 * support_hold_prob  # 0.5 to 1.0
+            base_penalty = (2.0 - support_dist_pct) / 2.0 * 0.15  # Up to 15% base
+            penalty = base_penalty * hold_factor
             adjusted_confidence = max(0.3, original_confidence - penalty)
             logger.debug(
                 f"Bearish near support ({support_dist_pct:.2f}%), "
+                f"hold_prob={support_hold_prob:.2f}, "
                 f"confidence {original_confidence:.2f} -> {adjusted_confidence:.2f}"
             )
 
@@ -118,6 +139,9 @@ def apply_sr_constraints(
         "resistance_distance_pct": resistance_dist_pct,
         "all_supports": sr_levels.get("all_supports", [])[:5],  # Top 5
         "all_resistances": sr_levels.get("all_resistances", [])[:5],  # Top 5
+        # Phase 2: Hold probabilities
+        "support_hold_probability": support_hold_prob,
+        "resistance_hold_probability": resistance_hold_prob,
     }
 
     # Calculate S/R density (number of levels within 5% of current price)
@@ -167,6 +191,37 @@ def process_symbol(symbol: str) -> None:
             f"S/R Levels for {symbol}: support={sr_levels.get('nearest_support')}, "
             f"resistance={sr_levels.get('nearest_resistance')}, price={current_price:.2f}"
         )
+
+        # Phase 2: Train S/R probability predictor on historical swings
+        sr_probabilities = {}
+        try:
+            zigzag_swings = sr_levels.get("methods", {}).get("zigzag", {}).get("swings", [])
+            if len(zigzag_swings) >= 10:
+                # Create training data from historical outcomes
+                historical_outcomes = create_historical_level_outcomes(df, zigzag_swings)
+
+                # Train predictor
+                sr_prob_predictor = SRProbabilityPredictor()
+                X_prob, y_prob = sr_prob_predictor.generate_training_data(df, historical_outcomes)
+
+                if len(X_prob) >= 50:
+                    train_result = sr_prob_predictor.train(X_prob, y_prob)
+                    if "error" not in train_result:
+                        # Add probabilities to DataFrame
+                        df = sr_prob_predictor.add_probability_features(df, sr_levels)
+
+                        # Extract probabilities for apply_sr_constraints
+                        sr_probabilities = {
+                            "support_hold_probability": df["support_hold_probability"].iloc[-1],
+                            "resistance_hold_probability": df["resistance_hold_probability"].iloc[-1],
+                        }
+                        logger.info(
+                            f"S/R Probabilities for {symbol}: "
+                            f"support_hold={sr_probabilities['support_hold_probability']:.2f}, "
+                            f"resistance_hold={sr_probabilities['resistance_hold_probability']:.2f}"
+                        )
+        except Exception as e:
+            logger.warning(f"S/R probability training failed for {symbol}: {e}")
 
         # Get symbol_id
         symbol_id = db.get_symbol_id(symbol)
@@ -278,8 +333,8 @@ def process_symbol(symbol: str) -> None:
                     "training_stats": forecaster.training_stats,
                 }
 
-                # Apply S/R constraints to forecast
-                forecast = apply_sr_constraints(forecast, sr_levels, current_price)
+                # Apply S/R constraints to forecast (with Phase 2 probabilities)
+                forecast = apply_sr_constraints(forecast, sr_levels, current_price, sr_probabilities)
             else:
                 # Fallback to baseline forecaster
                 baseline_forecaster = BaselineForecaster()
@@ -288,8 +343,8 @@ def process_symbol(symbol: str) -> None:
                     baseline_forecaster, "training_stats", None
                 )
 
-                # Apply S/R constraints to forecast
-                forecast = apply_sr_constraints(forecast, sr_levels, current_price)
+                # Apply S/R constraints to forecast (with Phase 2 probabilities)
+                forecast = apply_sr_constraints(forecast, sr_levels, current_price, sr_probabilities)
 
             # Quality monitoring (log-only)
             quality_score = ForecastQualityMonitor.compute_quality_score(
