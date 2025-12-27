@@ -370,6 +370,110 @@ class SupabaseDatabase:
             )
             raise
 
+    def upsert_option_rank_extended(
+        self,
+        underlying_symbol_id: str,
+        contract_symbol: str,
+        expiry: str,
+        strike: float,
+        side: str,
+        ml_score: float,
+        implied_vol: float,
+        delta: float,
+        gamma: float,
+        theta: float,
+        vega: float,
+        rho: float,
+        bid: float,
+        ask: float,
+        mark: float,
+        last_price: float,
+        volume: int,
+        open_interest: int,
+        run_at: str,
+        # Momentum Framework columns
+        composite_rank: float = 0.0,
+        momentum_score: float = 0.0,
+        value_score: float = 0.0,
+        greeks_score: float = 0.0,
+        iv_rank: float = 0.0,
+        spread_pct: float = 0.0,
+        vol_oi_ratio: float = 0.0,
+        signal_discount: bool = False,
+        signal_runner: bool = False,
+        signal_greeks: bool = False,
+        signal_buy: bool = False,
+        signals: str = "",
+    ) -> None:
+        """
+        Insert or update an option rank with momentum framework scores.
+
+        Extends upsert_option_rank with additional columns for:
+        - Composite rank (0-100)
+        - Momentum, Value, Greeks component scores
+        - IV Rank and spread metrics
+        - Trading signals (DISCOUNT, RUNNER, GREEKS, BUY)
+        """
+        try:
+            rank_data = {
+                "underlying_symbol_id": underlying_symbol_id,
+                "contract_symbol": contract_symbol,
+                "expiry": expiry,
+                "strike": strike,
+                "side": side,
+                "ml_score": ml_score,
+                "implied_vol": implied_vol,
+                "delta": delta,
+                "gamma": gamma,
+                "theta": theta,
+                "vega": vega,
+                "rho": rho,
+                "bid": bid,
+                "ask": ask,
+                "mark": mark,
+                "last_price": last_price,
+                "volume": volume,
+                "open_interest": open_interest,
+                "run_at": run_at,
+                # Momentum Framework scores
+                "composite_rank": composite_rank,
+                "momentum_score": momentum_score,
+                "value_score": value_score,
+                "greeks_score": greeks_score,
+                "iv_rank": iv_rank,
+                "spread_pct": spread_pct,
+                "vol_oi_ratio": vol_oi_ratio,
+                # Signals
+                "signal_discount": signal_discount,
+                "signal_runner": signal_runner,
+                "signal_greeks": signal_greeks,
+                "signal_buy": signal_buy,
+                "signals": signals,
+            }
+
+            # Delete existing rank for this contract if it exists
+            self.client.table("options_ranks").delete().eq(
+                "contract_symbol", contract_symbol
+            ).execute()
+
+            # Insert new rank
+            self.client.table("options_ranks").insert(rank_data).execute()
+
+            logger.debug(
+                "Saved extended rank for %s (composite: %.1f, signals: %s)",
+                contract_symbol,
+                composite_rank,
+                signals,
+            )
+
+        except Exception as e:
+            logger.error(
+                "Error upserting extended option rank for %s: %s",
+                contract_symbol,
+                e,
+            )
+            raise
+
     def close(self) -> None:
         """Close the Supabase client (no-op for REST API)."""
         logger.info("Supabase client closed")

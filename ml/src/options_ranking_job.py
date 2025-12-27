@@ -15,6 +15,11 @@ from config.settings import settings
 from src.data.supabase_db import db
 from src.models.options_ranker import OptionsRanker
 from src.models.enhanced_options_ranker import EnhancedOptionsRanker
+from src.models.options_momentum_ranker import (
+    OptionsMomentumRanker,
+    IVHistoryCalculator,
+    IVStatistics,
+)
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -218,7 +223,7 @@ def select_balanced_expiry_contracts(
 
 
 def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
-    """Save ranked options to database."""
+    """Save ranked options to database with momentum framework scores."""
     saved_count = 0
     run_at = datetime.utcnow().isoformat()
 
@@ -229,29 +234,44 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
                 "%Y-%m-%d"
             )
 
-            db.upsert_option_rank(
-                underlying_symbol_id=symbol_id,
-                contract_symbol=row["contract_symbol"],
-                expiry=expiry_date,
-                strike=float(row["strike"]),
-                side=row["side"],
-                ml_score=float(row["ml_score"]),
-                implied_vol=float(
-                    row.get("impliedVolatility", 0)
-                ),  # Use camelCase
-                delta=float(row.get("delta", 0)),
-                gamma=float(row.get("gamma", 0)),
-                theta=float(row.get("theta", 0)),
-                vega=float(row.get("vega", 0)),
-                rho=float(row.get("rho", 0)),
-                bid=float(row.get("bid", 0)),
-                ask=float(row.get("ask", 0)),
-                mark=float(row.get("mark", 0)),
-                last_price=float(row.get("last_price", 0)),
-                volume=int(row.get("volume", 0)),
-                open_interest=int(row.get("openInterest", 0)),  # Use camelCase
-                run_at=run_at,
-            )
+            # Build record with all columns
+            record = {
+                "underlying_symbol_id": symbol_id,
+                "contract_symbol": row["contract_symbol"],
+                "expiry": expiry_date,
+                "strike": float(row["strike"]),
+                "side": row["side"],
+                "ml_score": float(row.get("ml_score", 0)),
+                "implied_vol": float(row.get("impliedVolatility", row.get("iv", 0))),
+                "delta": float(row.get("delta", 0)),
+                "gamma": float(row.get("gamma", 0)),
+                "theta": float(row.get("theta", 0)),
+                "vega": float(row.get("vega", 0)),
+                "rho": float(row.get("rho", 0)),
+                "bid": float(row.get("bid", 0)),
+                "ask": float(row.get("ask", 0)),
+                "mark": float(row.get("mark", 0)),
+                "last_price": float(row.get("last_price", 0)),
+                "volume": int(row.get("volume", 0)),
+                "open_interest": int(row.get("openInterest", row.get("open_interest", 0))),
+                "run_at": run_at,
+                # Momentum Framework scores
+                "composite_rank": float(row.get("composite_rank", 0)),
+                "momentum_score": float(row.get("momentum_score", 0)),
+                "value_score": float(row.get("value_score", 0)),
+                "greeks_score": float(row.get("greeks_score", 0)),
+                "iv_rank": float(row.get("iv_rank", 0)),
+                "spread_pct": float(row.get("spread_pct", 0)),
+                "vol_oi_ratio": float(row.get("vol_oi_ratio", 0)),
+                # Signals
+                "signal_discount": bool(row.get("signal_discount", False)),
+                "signal_runner": bool(row.get("signal_runner", False)),
+                "signal_greeks": bool(row.get("signal_greeks", False)),
+                "signal_buy": bool(row.get("signal_buy", False)),
+                "signals": str(row.get("signals", "")),
+            }
+
+            db.upsert_option_rank_extended(**record)
             saved_count += 1
         except Exception as e:
             logger.error(
@@ -261,9 +281,47 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
     return saved_count
 
 
+def fetch_iv_stats(symbol_id: str) -> IVStatistics | None:
+    """Fetch 52-week IV statistics for a symbol."""
+    try:
+        result = db.client.rpc("calculate_iv_rank", {"p_symbol_id": symbol_id}).execute()
+        if result.data and len(result.data) > 0:
+            row = result.data[0]
+            return IVStatistics(
+                iv_current=row.get("iv_current", 0.3),
+                iv_high=row.get("iv_52_high", 0.5),
+                iv_low=row.get("iv_52_low", 0.2),
+                iv_median=row.get("iv_52_high", 0.35) * 0.7,  # Estimate
+            )
+    except Exception as e:
+        logger.warning(f"Could not fetch IV stats: {e}")
+    return None
+
+
+def determine_trend(df_ohlc: pd.DataFrame) -> str:
+    """Determine underlying trend from OHLC data."""
+    if len(df_ohlc) < 20:
+        return "neutral"
+
+    # Simple trend detection using moving averages
+    close = df_ohlc["close"]
+    sma_10 = close.tail(10).mean()
+    sma_20 = close.tail(20).mean()
+    current = close.iloc[-1]
+
+    if current > sma_10 > sma_20:
+        return "bullish"
+    elif current < sma_10 < sma_20:
+        return "bearish"
+    return "neutral"
+
+
 def process_symbol_options(symbol: str) -> None:
     """
     Process options for a single symbol: fetch data, rank contracts, save rankings.
+
+    Uses both EnhancedOptionsRanker (Phase 6-7 features) and OptionsMomentumRanker
+    (statistical framework) to produce comprehensive rankings.
 
     Args:
         symbol: Stock ticker symbol
@@ -285,13 +343,14 @@ def process_symbol_options(symbol: str) -> None:
 
         # Calculate underlying price and trend
         underlying_price = float(df_ohlc.iloc[-1]["close"])
+        underlying_trend = determine_trend(df_ohlc)
 
         # Calculate historical volatility (20-day)
         returns = df_ohlc.tail(20)["close"].pct_change().dropna()
         historical_vol = returns.std() * (252**0.5)  # Annualized
 
         logger.info(
-            f"{symbol}: price=${underlying_price:.2f}, HV={historical_vol:.2%}"
+            f"{symbol}: price=${underlying_price:.2f}, HV={historical_vol:.2%}, trend={underlying_trend}"
         )
 
         # Fetch options chain from API
@@ -304,17 +363,39 @@ def process_symbol_options(symbol: str) -> None:
 
         logger.info(f"Parsed {len(options_df)} contracts for {symbol}")
 
-        # Use EnhancedOptionsRanker with full technical indicator analysis
-        # This integrates SuperTrend AI and multi-indicator signals (Phase 6)
-        ranker = EnhancedOptionsRanker()
-        ranked_df = ranker.rank_options_with_indicators(
+        # Step 1: Use EnhancedOptionsRanker with Phase 6-7 features
+        enhanced_ranker = EnhancedOptionsRanker()
+        ranked_df = enhanced_ranker.rank_options_with_indicators(
             options_df,
-            df_ohlc,  # Pass OHLC data for indicator computation
+            df_ohlc,
             underlying_price,
             historical_vol,
         )
 
-        logger.info(f"Ranked {len(ranked_df)} contracts for {symbol}")
+        logger.info(f"EnhancedRanker: scored {len(ranked_df)} contracts")
+
+        # Step 2: Apply Momentum Framework scoring
+        iv_stats = fetch_iv_stats(symbol_id)
+        momentum_ranker = OptionsMomentumRanker()
+        ranked_df = momentum_ranker.rank_options(
+            ranked_df,
+            iv_stats=iv_stats,
+            options_history=None,  # TODO: Fetch from options_price_history
+            underlying_trend=underlying_trend,
+        )
+
+        logger.info(
+            f"MomentumRanker: composite range {ranked_df['composite_rank'].min():.1f}-{ranked_df['composite_rank'].max():.1f}"
+        )
+
+        # Log signal counts
+        if "signal_buy" in ranked_df.columns:
+            buy_count = ranked_df["signal_buy"].sum()
+            discount_count = ranked_df["signal_discount"].sum()
+            runner_count = ranked_df["signal_runner"].sum()
+            logger.info(
+                f"Signals: BUY={buy_count}, DISCOUNT={discount_count}, RUNNER={runner_count}"
+            )
 
         # Save top contracts with balanced expiry distribution
         top_ranked = select_balanced_expiry_contracts(ranked_df)

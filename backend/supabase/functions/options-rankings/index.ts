@@ -15,18 +15,37 @@ interface OptionRank {
   strike: number;
   side: "call" | "put";
   mlScore: number;
+  // Momentum Framework Scores (0-100)
+  compositeRank?: number;
+  momentumScore?: number;
+  valueScore?: number;
+  greeksScore?: number;
+  // IV Metrics
   impliedVol?: number;
+  ivRank?: number;
+  spreadPct?: number;
+  // Greeks
   delta?: number;
   gamma?: number;
   theta?: number;
   vega?: number;
   rho?: number;
+  // Volume/Liquidity
   openInterest?: number;
   volume?: number;
+  volOiRatio?: number;
+  // Pricing
   bid?: number;
   ask?: number;
   mark?: number;
   lastPrice?: number;
+  // Signals
+  signalDiscount?: boolean;
+  signalRunner?: boolean;
+  signalGreeks?: boolean;
+  signalBuy?: boolean;
+  signals?: string;
+  // Meta
   runAt: string;
 }
 
@@ -57,6 +76,8 @@ serve(async (req: Request): Promise<Response> => {
     const symbol = url.searchParams.get("symbol")?.trim().toUpperCase();
     const expiryParam = url.searchParams.get("expiry");
     const sideParam = url.searchParams.get("side")?.toLowerCase();
+    const signalParam = url.searchParams.get("signal")?.toLowerCase(); // discount, runner, greeks, buy
+    const sortBy = url.searchParams.get("sort") || "composite"; // composite, ml, momentum, value, greeks
     const limit = parseInt(url.searchParams.get("limit") || "50", 10);
 
     if (!symbol) {
@@ -66,6 +87,12 @@ serve(async (req: Request): Promise<Response> => {
     // Validate side parameter
     if (sideParam && sideParam !== "call" && sideParam !== "put") {
       return errorResponse("Invalid side parameter (must be 'call' or 'put')", 400);
+    }
+
+    // Validate signal parameter
+    const validSignals = ["discount", "runner", "greeks", "buy"];
+    if (signalParam && !validSignals.includes(signalParam)) {
+      return errorResponse(`Invalid signal parameter (must be one of: ${validSignals.join(", ")})`, 400);
     }
 
     const supabase = getSupabaseClient();
@@ -86,13 +113,23 @@ serve(async (req: Request): Promise<Response> => {
     // Get today's date in YYYY-MM-DD format for filtering expired options
     const today = new Date().toISOString().split('T')[0];
 
+    // Determine sort column based on sortBy parameter
+    const sortColumnMap: Record<string, string> = {
+      composite: "composite_rank",
+      ml: "ml_score",
+      momentum: "momentum_score",
+      value: "value_score",
+      greeks: "greeks_score",
+    };
+    const sortColumn = sortColumnMap[sortBy] || "composite_rank";
+
     // Build query for options_ranks
     let query = supabase
       .from("options_ranks")
       .select("*")
       .eq("underlying_symbol_id", symbolId)
       .gte("expiry", today)  // Filter out expired options
-      .order("ml_score", { ascending: false })
+      .order(sortColumn, { ascending: false })
       .limit(limit);
 
     // Apply filters
@@ -102,6 +139,20 @@ serve(async (req: Request): Promise<Response> => {
 
     if (sideParam) {
       query = query.eq("side", sideParam);
+    }
+
+    // Apply signal filter
+    if (signalParam) {
+      const signalColumnMap: Record<string, string> = {
+        discount: "signal_discount",
+        runner: "signal_runner",
+        greeks: "signal_greeks",
+        buy: "signal_buy",
+      };
+      const signalColumn = signalColumnMap[signalParam];
+      if (signalColumn) {
+        query = query.eq(signalColumn, true);
+      }
     }
 
     const { data: ranksData, error: ranksError } = await query;
@@ -119,18 +170,37 @@ serve(async (req: Request): Promise<Response> => {
       strike: row.strike,
       side: row.side,
       mlScore: row.ml_score,
+      // Momentum Framework Scores
+      compositeRank: row.composite_rank,
+      momentumScore: row.momentum_score,
+      valueScore: row.value_score,
+      greeksScore: row.greeks_score,
+      // IV Metrics
       impliedVol: row.implied_vol,
+      ivRank: row.iv_rank,
+      spreadPct: row.spread_pct,
+      // Greeks
       delta: row.delta,
       gamma: row.gamma,
       theta: row.theta,
       vega: row.vega,
       rho: row.rho,
+      // Volume/Liquidity
       openInterest: row.open_interest,
       volume: row.volume,
+      volOiRatio: row.vol_oi_ratio,
+      // Pricing
       bid: row.bid,
       ask: row.ask,
       mark: row.mark,
       lastPrice: row.last_price,
+      // Signals
+      signalDiscount: row.signal_discount,
+      signalRunner: row.signal_runner,
+      signalGreeks: row.signal_greeks,
+      signalBuy: row.signal_buy,
+      signals: row.signals,
+      // Meta
       runAt: row.run_at,
     }));
 
