@@ -32,14 +32,14 @@ COMMENT ON COLUMN ml_forecasts.target_price IS
 COMMENT ON COLUMN ml_forecasts.trend_duration_bars IS 
     'Number of bars since last trend change';
 
--- Create index for efficient querying of active signals
+-- Use symbol_id (FK) to avoid missing column errors on instances without denormalized symbol
 CREATE INDEX IF NOT EXISTS idx_ml_forecasts_supertrend_signal 
-ON ml_forecasts(symbol, supertrend_signal) 
+ON ml_forecasts(symbol_id, supertrend_signal) 
 WHERE supertrend_signal IS NOT NULL AND supertrend_signal != 0;
 
 -- Create index for trend filtering
 CREATE INDEX IF NOT EXISTS idx_ml_forecasts_trend_label 
-ON ml_forecasts(symbol, trend_label) 
+ON ml_forecasts(symbol_id, trend_label) 
 WHERE trend_label IS NOT NULL;
 
 -- Optional: Create a dedicated table for signal history with full metadata

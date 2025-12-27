@@ -28,20 +28,23 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def process_forecast_job(db: SupabaseDatabase, symbol: str, payload: dict) -> bool:
+def process_forecast_job(
+    db: SupabaseDatabase, symbol: str, payload: dict
+) -> tuple[bool, Optional[str]]:
     """Process a forecast job for a symbol."""
     try:
         logger.info(f"Processing forecast job for {symbol}")
 
         # Fetch OHLC data (252 bars = 1 year for S/R detection, newest first)
-        df = db.fetch_ohlc_bars(symbol, timeframe="d1", limit=252, ascending=False)
+        df = db.fetch_ohlc_bars(symbol, timeframe="d1", limit=252)
 
         if len(df) < settings.min_bars_for_training:
-            logger.warning(
+            msg = (
                 f"Insufficient data for {symbol}: {len(df)} bars "
                 f"(need {settings.min_bars_for_training})"
             )
-            return False
+            logger.warning(msg)
+            return False, msg
 
         # Add technical features (includes S/R features)
         df = add_technical_features(df)
@@ -105,11 +108,11 @@ def process_forecast_job(db: SupabaseDatabase, symbol: str, payload: dict) -> bo
                 f"{forecast['label']} ({forecast['confidence']*100:.2f}%)"
             )
 
-        return True
+        return True, None
 
     except Exception as e:
         logger.error(f"Failed to process forecast for {symbol}: {e}")
-        return False
+        return False, str(e)
 
 
 def process_job(db: SupabaseDatabase, job: dict) -> tuple[bool, Optional[str]]:
@@ -118,18 +121,17 @@ def process_job(db: SupabaseDatabase, job: dict) -> tuple[bool, Optional[str]]:
     job_type = job["job_type"]
     symbol = job["symbol"]
     payload = job.get("payload", {}) or {}
-    
+
     logger.info(f"Processing job {job_id}: {job_type} for {symbol}")
-    
+
     try:
         if job_type == "forecast":
-            success = process_forecast_job(db, symbol, payload)
-            return success, None if success else "Forecast generation failed"
-        else:
-            logger.warning(f"Unknown job type: {job_type}")
-            return False, f"Unknown job type: {job_type}"
+            success, error = process_forecast_job(db, symbol, payload)
+            return success, error or "Forecast generation failed"
+        logger.warning(f"Unknown job type: {job_type}")
+        return False, f"Unknown job type: {job_type}"
     except Exception as e:
-        logger.error(f"Job {job_id} failed with error: {e}")
+        logger.error("Job %s failed with error: %s", job_id, e)
         return False, str(e)
 
 
@@ -138,18 +140,18 @@ def claim_and_process_job(db: SupabaseDatabase, job_type: Optional[str] = None) 
     # Claim next job using the database function
     result = db.client.rpc(
         "claim_next_job",
-        {"p_job_type": job_type}
+        {"p_job_type": job_type},
     ).execute()
-    
-    if not result.data or len(result.data) == 0:
+
+    if not result.data:
         return False  # No pending jobs
-    
+
     job = result.data[0]
     job_id = job["job_id"]
-    
+
     # Process the job
     success, error = process_job(db, job)
-    
+
     # Mark job as completed or failed
     db.client.rpc(
         "complete_job",
@@ -159,14 +161,14 @@ def claim_and_process_job(db: SupabaseDatabase, job_type: Optional[str] = None) 
             "p_error": error
         }
     ).execute()
-    
+
     return True
 
 
 def run_worker(
     continuous: bool = False,
     job_type: Optional[str] = None,
-    poll_interval: int = 30
+    poll_interval: int = 30,
 ):
     """Run the job worker."""
     logger.info("=" * 60)
@@ -175,22 +177,22 @@ def run_worker(
     if job_type:
         logger.info(f"Job Type Filter: {job_type}")
     logger.info("=" * 60)
-    
+
     db = SupabaseDatabase()
     jobs_processed = 0
-    
+
     try:
         while True:
             # Process all pending jobs
             while claim_and_process_job(db, job_type):
                 jobs_processed += 1
-            
+
             if not continuous:
                 break
-            
+
             logger.debug(f"No pending jobs, sleeping for {poll_interval}s...")
             time.sleep(poll_interval)
-            
+
     except KeyboardInterrupt:
         logger.info("Worker interrupted by user")
     finally:

@@ -324,8 +324,9 @@ serve(async (req: Request): Promise<Response> => {
         const secondsPerBar = timeframeSeconds[timeframe];
 
         // For intraday timeframes, request more bars to compensate for filtering
+        // For daily+, request 2 years of data (500+ trading days)
         const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(timeframe);
-        const barsToRequest = isIntraday ? 300 : 100; // Request 300 bars for intraday to get ~100 market-hours bars
+        const barsToRequest = isIntraday ? 500 : 750; // 500 intraday, 750 daily (~3 years)
         const from = now - (barsToRequest * secondsPerBar);
 
         const freshBars = await router.getHistoricalBars({

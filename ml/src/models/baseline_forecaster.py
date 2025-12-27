@@ -94,7 +94,10 @@ class BaselineForecaster:
                 f"< {settings.min_bars_for_training}"
             )
 
-        self.feature_columns = X.columns.tolist()
+        # Exclude non-numeric columns (e.g., timestamps)
+        numeric_cols = X.select_dtypes(include=["number"]).columns.tolist()
+        X = X[numeric_cols]
+        self.feature_columns = numeric_cols
         X_scaled = self.scaler.fit_transform(X)
 
         logger.info("Training Random Forest model...")
@@ -228,14 +231,17 @@ class BaselineForecaster:
         # Get last row features for prediction
         last_features = X.tail(1)
         last_close = df["close"].iloc[-1]
-        last_ts = df["ts"].iloc[-1]
+        last_ts = pd.to_datetime(df["ts"].iloc[-1]).to_pydatetime()
 
         # Predict
         label, confidence, probabilities = self.predict(last_features)
 
+        # Convert probabilities array to dict for _generate_forecast_points
+        proba_dict = dict(zip(self.model.classes_, probabilities[-1]))
+
         # Generate forecast points with probability-based directional estimates
         points = self._generate_forecast_points(
-            last_ts, last_close, label, confidence, horizon_days, probabilities
+            last_ts, last_close, label, confidence, horizon_days, proba_dict
         )
 
         return {

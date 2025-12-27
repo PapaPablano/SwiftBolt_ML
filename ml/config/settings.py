@@ -20,7 +20,7 @@ class Settings(BaseSettings):
 
     # ML Configuration
     forecast_horizons: list[str] = ["1D", "1W"]
-    min_bars_for_training: int = 50  # Lowered from 100 to allow forecasts with less data
+    min_bars_for_training: int = 20  # Lowered to allow forecasts with limited data
     use_ensemble_forecaster: bool = True  # Use ensemble (RF+XGBoost) vs RF-only
     confidence_threshold: float = 0.6
 
