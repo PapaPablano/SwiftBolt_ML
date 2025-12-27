@@ -367,8 +367,13 @@ final class ChartViewModel: ObservableObject {
             lastUserRefreshResult = response
             refreshMessage = response.message
             
+            // Clear existing chart data to force fresh display
+            chartData = nil
+            
             // After successful refresh, reload chart data to show new bars
             if response.success {
+                // Clear URL cache to ensure fresh data
+                URLCache.shared.removeAllCachedResponses()
                 await loadChart()
             }
             
