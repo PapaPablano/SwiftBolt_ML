@@ -110,17 +110,23 @@ source venv/bin/activate
 python src/ranking_job_worker.py --watch
 
 # Terminal 2: Trigger a job via API
+# Note: Get your SUPABASE_ANON_KEY from Supabase Dashboard -> Settings -> API
 curl -X POST \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5Z2ZsYWVtdG13aXdhdmljbGtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUyMTEzMzYsImV4cCI6MjA4MDc4NzMzNn0.51NE7weJk0PMXZJ26UgtcMZLejjPHDNoegcfpaImVJs" \
+  -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
   -H "Content-Type: application/json" \
   -d '{"symbol":"AAPL"}' \
   "https://cygflaemtmwiwaviclks.supabase.co/functions/v1/trigger-ranking-job"
 
 # Watch Terminal 1 - you'll see the job get processed!
-# Then check results:
-curl -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5Z2ZsYWVtdG13aXdhdmljbGtzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTIxMTMzNiwiZXhwIjoyMDgwNzg3MzM2fQ.YajeNHOQ63uBDDZhJ2YYHK7L-BKmnZAviDqrlk2TQxU" \
+# Then check results (anon key works for public read endpoints):
+curl -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
   "https://cygflaemtmwiwaviclks.supabase.co/functions/v1/options-rankings?symbol=AAPL&limit=3"
 ```
+
+> **Security Note**: Never commit API keys to git. Store them in environment variables:
+> ```bash
+> export SUPABASE_ANON_KEY="your-anon-key-here"
+> ```
 
 ## For Production
 

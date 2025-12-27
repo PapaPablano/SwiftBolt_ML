@@ -23,9 +23,9 @@ class OptionsRankerViewModel: ObservableObject {
     }
 
     var filteredRankings: [OptionRank] {
-        rankings.filter { rank in
-            rank.mlScore >= minScore
-        }
+        rankings
+            .filter { $0.mlScore >= minScore }
+            .sorted { $0.mlScore > $1.mlScore }
     }
 
     var availableExpiries: [String] {
