@@ -1,0 +1,87 @@
+name: Options Scrape
+
+on:
+  schedule:
+    # Market hours scraping (EST/UTC-5, weekdays only)
+    # 30 min after open: 10:00 AM ET = 15:00 UTC
+    - cron: '0 15 * * 1-5'
+    # Hourly during market: 11 AM, 12 PM, 1 PM, 2 PM, 3 PM ET
+    - cron: '0 16 * * 1-5'  # 11:00 AM ET
+    - cron: '0 17 * * 1-5'  # 12:00 PM ET
+    - cron: '0 18 * * 1-5'  # 1:00 PM ET
+    - cron: '0 19 * * 1-5'  # 2:00 PM ET
+    - cron: '0 20 * * 1-5'  # 3:00 PM ET
+    # After market close: 4:30 PM ET = 21:30 UTC
+    - cron: '30 21 * * 1-5'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  scrape-options:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Market Hours
+        id: market
+        run: |
+          # Get current time in ET
+          current_hour=$(TZ="America/New_York" date +%H)
+          current_min=$(TZ="America/New_York" date +%M)
+          day_of_week=$(date +%u)  # 1=Monday, 7=Sunday
+
+          echo "Current ET time: $current_hour:$current_min (day $day_of_week)"
+
+          # Skip weekends (shouldn't happen with cron, but just in case)
+          if [ "$day_of_week" -gt 5 ]; then
+            echo "Weekend - skipping"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "skip=false" >> $GITHUB_OUTPUT
+          echo "time=$current_hour:$current_min ET" >> $GITHUB_OUTPUT
+
+      - name: Trigger Options Scrape
+        if: steps.market.outputs.skip != 'true'
+        run: |
+          echo "Triggering options scrape for all watchlist symbols..."
+          echo "Time: ${{ steps.market.outputs.time }}"
+
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/options-scrape" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"all_watchlist": true, "max_expirations": 4}')
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Code: $http_code"
+
+          if [ "$http_code" != "200" ]; then
+            echo "Error: HTTP $http_code"
+            exit 1
+          fi
+
+          # Extract total options count
+          total=$(echo "$body" | jq -r '.total_options // 0')
+          echo "Total options scraped: $total"
+          echo "TOTAL_OPTIONS=$total" >> $GITHUB_ENV
+
+          # Extract results
+          results=$(echo "$body" | jq -r '.results // {}')
+          echo "Results by symbol: $results"
+
+      - name: Summary
+        if: steps.market.outputs.skip != 'true'
+        run: |
+          echo "## Options Scrape Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Time | ${{ steps.market.outputs.time }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Total Options | ${{ env.TOTAL_OPTIONS }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Schedule" >> $GITHUB_STEP_SUMMARY
+          echo "- 10:00 AM ET (30 min after open)" >> $GITHUB_STEP_SUMMARY
+          echo "- 11:00 AM, 12:00 PM, 1:00 PM, 2:00 PM, 3:00 PM ET (hourly)" >> $GITHUB_STEP_SUMMARY
+          echo "- 4:30 PM ET (after close)" >> $GITHUB_STEP_SUMMARY

@@ -189,6 +189,19 @@ serve(async (req: Request): Promise<Response> => {
       result.forecastsGenerated = [];
     }
 
+    // Step 7: Trigger options scraping (async - don't wait)
+    const optionsScrapeUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/options-scrape`;
+    fetch(optionsScrapeUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+      },
+      body: JSON.stringify({ symbol }),
+    }).catch((err) => {
+      console.error(`[symbol-init] Failed to trigger options-scrape for ${symbol}:`, err);
+    });
+
     console.log(`[symbol-init] Completed initialization for ${symbol}`);
 
     return new Response(JSON.stringify(result), {

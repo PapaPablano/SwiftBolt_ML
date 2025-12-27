@@ -39,15 +39,27 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run job worker
+      - name: Run forecast job worker
         working-directory: ml
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           MIN_BARS_FOR_TRAINING: 50
         run: |
-          if [ "${{ github.event.inputs.job_type }}" != "all" ] && [ -n "${{ github.event.inputs.job_type }}" ]; then
-            python -m src.job_worker --job-type ${{ github.event.inputs.job_type }}
-          else
-            python -m src.job_worker
+          JOB_TYPE="${{ github.event.inputs.job_type }}"
+          if [ "$JOB_TYPE" = "forecast" ] || [ "$JOB_TYPE" = "all" ] || [ -z "$JOB_TYPE" ]; then
+            echo "Processing forecast jobs..."
+            python -m src.job_worker --job-type forecast
+          fi
+
+      - name: Run ranking job worker
+        working-directory: ml
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          JOB_TYPE="${{ github.event.inputs.job_type }}"
+          if [ "$JOB_TYPE" = "ranking" ] || [ "$JOB_TYPE" = "all" ] || [ -z "$JOB_TYPE" ]; then
+            echo "Processing ranking jobs..."
+            python src/ranking_job_worker.py
           fi
