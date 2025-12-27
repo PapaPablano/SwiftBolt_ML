@@ -44,8 +44,8 @@ class OptionsRankerViewModel: ObservableObject {
     var filteredRankings: [OptionRank] {
         rankings
             .filter { rank in
-                // Score filter using composite rank (0-100)
-                let score = rank.compositeRank / 100
+                // Score filter using effective composite rank (0-100)
+                let score = rank.effectiveCompositeRank / 100
                 guard score >= minScore else { return false }
 
                 // Signal filter
@@ -65,7 +65,7 @@ class OptionsRankerViewModel: ObservableObject {
             .sorted { lhs, rhs in
                 switch sortOption {
                 case .composite:
-                    return lhs.compositeRank > rhs.compositeRank
+                    return lhs.effectiveCompositeRank > rhs.effectiveCompositeRank
                 case .momentum:
                     return (lhs.momentumScore ?? 0) > (rhs.momentumScore ?? 0)
                 case .value:

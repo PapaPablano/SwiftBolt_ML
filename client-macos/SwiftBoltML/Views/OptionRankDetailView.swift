@@ -117,9 +117,9 @@ struct OptionRankDetailView: View {
     }
 
     private var compositeLabel: String {
-        if rank.compositeRank >= 75 { return "Strong Buy" }
-        if rank.compositeRank >= 60 { return "Buy" }
-        if rank.compositeRank >= 45 { return "Hold" }
+        if rank.effectiveCompositeRank >= 75 { return "Strong Buy" }
+        if rank.effectiveCompositeRank >= 60 { return "Buy" }
+        if rank.effectiveCompositeRank >= 45 { return "Hold" }
         return "Weak"
     }
 
@@ -433,16 +433,16 @@ struct OptionRankDetailView: View {
     // MARK: - Computed Properties
 
     private var scoreColor: Color {
-        if rank.compositeRank >= 90 { return .green }
-        if rank.compositeRank >= 75 { return .blue }
-        if rank.compositeRank >= 60 { return .orange }
+        if rank.effectiveCompositeRank >= 90 { return .green }
+        if rank.effectiveCompositeRank >= 75 { return .blue }
+        if rank.effectiveCompositeRank >= 60 { return .orange }
         return .red
     }
 
     private var scoreLabel: String {
-        if rank.compositeRank >= 90 { return "Excellent" }
-        if rank.compositeRank >= 75 { return "Good" }
-        if rank.compositeRank >= 60 { return "Fair" }
+        if rank.effectiveCompositeRank >= 90 { return "Excellent" }
+        if rank.effectiveCompositeRank >= 75 { return "Good" }
+        if rank.effectiveCompositeRank >= 60 { return "Fair" }
         return "Poor"
     }
 

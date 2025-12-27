@@ -35,15 +35,26 @@ struct OptionRank: Codable, Identifiable {
     let side: OptionSide
 
     // Primary score: Momentum Framework composite rank (0-100)
-    let compositeRank: Double
+    // Optional for backwards compatibility with old records that only have mlScore
+    let compositeRank: Double?
 
     // Momentum Framework component scores (0-100)
     let momentumScore: Double?
     let valueScore: Double?
     let greeksScore: Double?
 
-    // Legacy field (derived from compositeRank/100 for backwards compat)
+    // Legacy field (ml_score from old ranking system, 0-1 scale)
     let mlScore: Double?
+
+    // Effective composite rank with fallback to mlScore * 100
+    var effectiveCompositeRank: Double {
+        if let rank = compositeRank {
+            return rank
+        } else if let score = mlScore {
+            return score * 100  // Convert 0-1 scale to 0-100
+        }
+        return 0
+    }
 
     // IV Metrics
     let impliedVol: Double?
@@ -89,13 +100,13 @@ struct OptionRank: Codable, Identifiable {
 
     // Composite score display (0-100 scale)
     var compositeScoreDisplay: Int {
-        Int(compositeRank)
+        Int(effectiveCompositeRank)
     }
 
     var compositeColor: Color {
-        if compositeRank >= 70 {
+        if effectiveCompositeRank >= 70 {
             return .green
-        } else if compositeRank >= 50 {
+        } else if effectiveCompositeRank >= 50 {
             return .orange
         } else {
             return .red
@@ -103,11 +114,11 @@ struct OptionRank: Codable, Identifiable {
     }
 
     var scoreLabel: String {
-        if compositeRank >= 75 {
+        if effectiveCompositeRank >= 75 {
             return "Strong Buy"
-        } else if compositeRank >= 60 {
+        } else if effectiveCompositeRank >= 60 {
             return "Buy"
-        } else if compositeRank >= 45 {
+        } else if effectiveCompositeRank >= 45 {
             return "Hold"
         } else {
             return "Weak"
