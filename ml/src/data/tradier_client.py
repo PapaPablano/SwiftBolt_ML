@@ -576,6 +576,189 @@ class TradierClient:
 
         return pd.DataFrame({"symbol": symbols})
 
+    def get_option_timesales(
+        self,
+        option_symbol: str,
+        interval: str = "5min",
+        start: str | None = None,
+        end: str | None = None,
+    ) -> pd.DataFrame:
+        """Get time and sales (tick) data for an option contract.
+
+        This can help estimate historical prices from recent trades.
+
+        Args:
+            option_symbol: Full option symbol (e.g., AAPL260117C00150000)
+            interval: Aggregation interval - 'tick', '1min', '5min', '15min'
+            start: Start datetime (YYYY-MM-DD HH:MM)
+            end: End datetime (YYYY-MM-DD HH:MM)
+
+        Returns:
+            DataFrame with trade data (timestamp, price, volume)
+        """
+        if not start:
+            start = (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%d")
+        if not end:
+            end = datetime.now().strftime("%Y-%m-%d")
+
+        params = {
+            "symbol": option_symbol,
+            "interval": interval,
+            "start": start,
+            "end": end,
+        }
+
+        try:
+            data = self._request("GET", "/markets/timesales", params)
+            series = data.get("series", {})
+
+            if not series:
+                logger.debug(f"No timesales data for option {option_symbol}")
+                return pd.DataFrame()
+
+            trades = series.get("data", [])
+            if isinstance(trades, dict):
+                trades = [trades]
+
+            if not trades:
+                return pd.DataFrame()
+
+            df = pd.DataFrame(trades)
+
+            if "time" in df.columns:
+                df["timestamp"] = pd.to_datetime(df["time"])
+                df = df.drop("time", axis=1)
+            elif "timestamp" in df.columns:
+                df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s")
+
+            df["option_symbol"] = option_symbol
+            df = df.sort_values("timestamp").reset_index(drop=True)
+
+            return df
+
+        except Exception as e:
+            logger.debug(f"Failed to get option timesales for {option_symbol}: {e}")
+            return pd.DataFrame()
+
+    def get_option_strike_prices(
+        self,
+        symbol: str,
+        expiration: str,
+    ) -> list[float]:
+        """Get available strike prices for a symbol and expiration.
+
+        Args:
+            symbol: Underlying stock symbol
+            expiration: Expiration date (YYYY-MM-DD)
+
+        Returns:
+            List of available strike prices
+        """
+        params = {
+            "symbol": symbol,
+            "expiration": expiration,
+        }
+
+        try:
+            data = self._request("GET", "/markets/options/strikes", params)
+            strikes = data.get("strikes", {}).get("strike", [])
+
+            if isinstance(strikes, (int, float)):
+                return [float(strikes)]
+            return [float(s) for s in strikes] if strikes else []
+
+        except Exception as e:
+            logger.error(f"Failed to get strikes for {symbol} {expiration}: {e}")
+            return []
+
+    def get_historical_underlying_prices(
+        self,
+        symbol: str,
+        days_back: int = 30,
+    ) -> pd.DataFrame:
+        """Get historical daily prices for underlying symbol.
+
+        Useful for estimating historical option prices based on underlying movement.
+
+        Args:
+            symbol: Stock ticker symbol
+            days_back: Number of days of history
+
+        Returns:
+            DataFrame with date, open, high, low, close, volume
+        """
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days_back)
+
+        return self.get_historical_prices(
+            symbol=symbol,
+            interval="daily",
+            start=start_date.strftime("%Y-%m-%d"),
+            end=end_date.strftime("%Y-%m-%d"),
+        )
+
+    def snapshot_options_chain(
+        self,
+        symbol: str,
+        max_expirations: int = 6,
+    ) -> pd.DataFrame:
+        """Get a complete snapshot of options chain for storage.
+
+        Fetches all available options with Greeks and formats for database storage.
+
+        Args:
+            symbol: Underlying stock symbol
+            max_expirations: Maximum expirations to fetch
+
+        Returns:
+            DataFrame formatted for options_snapshots table
+        """
+        # Get current underlying price
+        quote = self.get_quote(symbol)
+        underlying_price = float(quote.get("last", quote.get("close", 0)))
+
+        # Get all chains
+        chains = self.get_all_chains(symbol, max_expirations=max_expirations, greeks=True)
+
+        if chains.empty:
+            return pd.DataFrame()
+
+        # Format for database
+        snapshot_time = datetime.utcnow().isoformat()
+        chains["underlying_price"] = underlying_price
+        chains["snapshot_time"] = snapshot_time
+
+        # Rename columns to match database schema
+        rename_map = {
+            "symbol": "contract_symbol",
+            "option_type": "option_type",
+            "expiration_date": "expiration",
+            "greek_delta": "delta",
+            "greek_gamma": "gamma",
+            "greek_theta": "theta",
+            "greek_vega": "vega",
+            "greek_rho": "rho",
+            "greek_mid_iv": "iv",
+        }
+
+        for old_col, new_col in rename_map.items():
+            if old_col in chains.columns and new_col not in chains.columns:
+                chains[new_col] = chains[old_col]
+
+        # Ensure required columns exist
+        required_cols = [
+            "contract_symbol", "option_type", "strike", "expiration",
+            "bid", "ask", "last", "underlying_price", "volume", "open_interest",
+            "delta", "gamma", "theta", "vega", "rho", "iv", "snapshot_time"
+        ]
+
+        for col in required_cols:
+            if col not in chains.columns:
+                chains[col] = 0 if col not in ["contract_symbol", "option_type", "expiration", "snapshot_time"] else ""
+
+        logger.info(f"Created snapshot of {len(chains)} options for {symbol}")
+        return chains[required_cols]
+
     def close(self) -> None:
         """Close the HTTP client."""
         self._client.close()

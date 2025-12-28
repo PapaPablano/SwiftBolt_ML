@@ -474,6 +474,206 @@ class SupabaseDatabase:
             )
             raise
 
+    def insert_options_snapshots(
+        self,
+        symbol_id: str,
+        snapshots_df: pd.DataFrame,
+    ) -> int:
+        """Insert options snapshots into the database.
+
+        Args:
+            symbol_id: UUID of the underlying symbol
+            snapshots_df: DataFrame with snapshot data
+
+        Returns:
+            Number of records inserted
+        """
+        if snapshots_df.empty:
+            return 0
+
+        inserted = 0
+        records = []
+
+        for _, row in snapshots_df.iterrows():
+            record = {
+                "underlying_symbol_id": symbol_id,
+                "contract_symbol": str(row.get("contract_symbol", "")),
+                "option_type": str(row.get("option_type", "call")),
+                "strike": float(row.get("strike", 0)),
+                "expiration": str(row.get("expiration", "")),
+                "bid": float(row.get("bid", 0)),
+                "ask": float(row.get("ask", 0)),
+                "last": float(row.get("last", 0)),
+                "underlying_price": float(row.get("underlying_price", 0)),
+                "volume": int(row.get("volume", 0)),
+                "open_interest": int(row.get("open_interest", 0)),
+                "delta": float(row.get("delta", 0)),
+                "gamma": float(row.get("gamma", 0)),
+                "theta": float(row.get("theta", 0)),
+                "vega": float(row.get("vega", 0)),
+                "rho": float(row.get("rho", 0)),
+                "iv": float(row.get("iv", 0)),
+                "snapshot_time": str(row.get("snapshot_time", "")),
+            }
+            records.append(record)
+
+        try:
+            # Use upsert with on_conflict to handle duplicates
+            self.client.table("options_snapshots").upsert(
+                records,
+                on_conflict="contract_symbol,snapshot_time",
+            ).execute()
+            inserted = len(records)
+            logger.info(f"Inserted {inserted} options snapshots")
+        except Exception as e:
+            logger.error(f"Error inserting options snapshots: {e}")
+            raise
+
+        return inserted
+
+    def get_options_history(
+        self,
+        symbol: str,
+        days_back: int = 30,
+        limit: int | None = None,
+    ) -> pd.DataFrame:
+        """Get historical options snapshots for a symbol.
+
+        Args:
+            symbol: Stock ticker symbol
+            days_back: Number of days of history to retrieve
+            limit: Maximum records per contract (None = all)
+
+        Returns:
+            DataFrame with historical options data
+        """
+        try:
+            symbol_id = self.get_symbol_id(symbol)
+
+            # Use RPC function if available, else query directly
+            query = (
+                self.client.table("options_snapshots")
+                .select("*")
+                .eq("underlying_symbol_id", symbol_id)
+                .gte(
+                    "snapshot_time",
+                    (pd.Timestamp.now() - pd.Timedelta(days=days_back)).isoformat(),
+                )
+                .order("snapshot_time", desc=True)
+            )
+
+            if limit:
+                query = query.limit(limit)
+
+            response = query.execute()
+
+            if not response.data:
+                return pd.DataFrame()
+
+            df = pd.DataFrame(response.data)
+            df["snapshot_time"] = pd.to_datetime(df["snapshot_time"])
+
+            logger.info(f"Fetched {len(df)} historical options for {symbol}")
+            return df
+
+        except Exception as e:
+            logger.error(f"Error fetching options history for {symbol}: {e}")
+            return pd.DataFrame()
+
+    def get_snapshot_count(
+        self,
+        symbol: str,
+        days_back: int = 30,
+    ) -> int:
+        """Get count of unique snapshot days for a symbol.
+
+        Args:
+            symbol: Stock ticker symbol
+            days_back: Number of days to check
+
+        Returns:
+            Number of unique snapshot days
+        """
+        try:
+            symbol_id = self.get_symbol_id(symbol)
+
+            response = (
+                self.client.table("options_snapshots")
+                .select("snapshot_time")
+                .eq("underlying_symbol_id", symbol_id)
+                .gte(
+                    "snapshot_time",
+                    (pd.Timestamp.now() - pd.Timedelta(days=days_back)).isoformat(),
+                )
+                .execute()
+            )
+
+            if not response.data:
+                return 0
+
+            # Count unique days
+            df = pd.DataFrame(response.data)
+            df["date"] = pd.to_datetime(df["snapshot_time"]).dt.date
+            unique_days = df["date"].nunique()
+
+            return unique_days
+
+        except Exception as e:
+            logger.warning(f"Error getting snapshot count for {symbol}: {e}")
+            return 0
+
+    def get_latest_options_snapshot(
+        self,
+        symbol: str,
+    ) -> pd.DataFrame:
+        """Get the most recent options snapshot for a symbol.
+
+        Args:
+            symbol: Stock ticker symbol
+
+        Returns:
+            DataFrame with latest snapshot data
+        """
+        try:
+            symbol_id = self.get_symbol_id(symbol)
+
+            # Get the most recent snapshot time
+            time_response = (
+                self.client.table("options_snapshots")
+                .select("snapshot_time")
+                .eq("underlying_symbol_id", symbol_id)
+                .order("snapshot_time", desc=True)
+                .limit(1)
+                .execute()
+            )
+
+            if not time_response.data:
+                return pd.DataFrame()
+
+            latest_time = time_response.data[0]["snapshot_time"]
+
+            # Get all records at that time
+            response = (
+                self.client.table("options_snapshots")
+                .select("*")
+                .eq("underlying_symbol_id", symbol_id)
+                .eq("snapshot_time", latest_time)
+                .execute()
+            )
+
+            if not response.data:
+                return pd.DataFrame()
+
+            df = pd.DataFrame(response.data)
+            df["snapshot_time"] = pd.to_datetime(df["snapshot_time"])
+
+            logger.info(f"Fetched latest snapshot for {symbol}: {len(df)} contracts")
+            return df
+
+        except Exception as e:
+            logger.error(f"Error fetching latest snapshot for {symbol}: {e}")
+            return pd.DataFrame()
+
     def close(self) -> None:
         """Close the Supabase client (no-op for REST API)."""
         logger.info("Supabase client closed")

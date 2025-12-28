@@ -22,9 +22,9 @@ from config.settings import settings
 from src.data.supabase_db import db
 from src.models.options_momentum_ranker import (
     OptionsMomentumRanker,
-    IVHistoryCalculator,
     IVStatistics,
 )
+from src.options_historical_backfill import ensure_options_history
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -375,12 +375,23 @@ def process_symbol_options(symbol: str) -> None:
         # Fetch IV statistics for IV Rank calculation
         iv_stats = fetch_iv_stats(symbol_id)
 
+        # Ensure historical options data exists for momentum calculations
+        # This will backfill from Tradier if needed
+        logger.info(f"Ensuring historical options data for {symbol}...")
+        options_history = ensure_options_history(symbol, required_days=5)
+
+        if options_history.empty:
+            logger.warning(
+                f"No historical data available for {symbol}, "
+                "momentum scores will be estimated"
+            )
+
         # Apply Momentum Framework scoring (single ranker, no chaining)
         momentum_ranker = OptionsMomentumRanker()
         ranked_df = momentum_ranker.rank_options(
             options_df,
             iv_stats=iv_stats,
-            options_history=None,  # TODO: Fetch from options_price_history
+            options_history=options_history if not options_history.empty else None,
             underlying_trend=underlying_trend,
         )
 
