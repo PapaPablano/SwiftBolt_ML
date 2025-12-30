@@ -3,7 +3,7 @@ name: Nightly Options Backfill
 on:
   # Nightly run after market close (02:00 UTC = 20:00 CST / 21:00 EST)
   schedule:
-    - cron: "0 2 * * 1-5"  # Weekdays only (Mon-Fri)
+    - cron: "0 15 * * 1-5"  # Weekdays at 09:00 CST (15:00 UTC) to align with manual run
 
   # Manual trigger (GitHub UI -> Actions -> Run workflow)
   workflow_dispatch:
@@ -62,6 +62,14 @@ jobs:
             # No symbol provided, process all watchlist symbols
             python src/scripts/backfill_options.py --all
           fi
+
+      - name: Capture options price snapshots
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          cd ml
+          python src/options_snapshot_job.py
 
       - name: Job summary
         if: always()
