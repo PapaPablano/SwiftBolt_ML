@@ -196,7 +196,7 @@ struct PolynomialRegression {
 
 // MARK: - Regression Line Result
 
-/// Represents a computed regression line
+/// Represents a computed regression line with segmented breakpoint behavior
 struct RegressionLine: Identifiable {
     let id = UUID()
     let coefficients: PolynomialRegression.Coefficients
@@ -204,6 +204,12 @@ struct RegressionLine: Identifiable {
     let endIndex: Int
     let predictedPoints: [CGPoint]
     let isSupport: Bool
+    
+    // TradingView-style segmented line points (pivot-to-pivot with breakpoints)
+    var segmentedPoints: [CGPoint] = []
+    
+    // Active pivots used in current regression (for circle display)
+    var activePivots: [DetectedPivot] = []
 }
 
 /// Signal detected from regression analysis
@@ -276,6 +282,9 @@ class PolynomialRegressionIndicator: ObservableObject {
     @Published var supportLine: RegressionLine?
     @Published var signals: [RegressionSignal] = []
     @Published var pivots: (highs: [DetectedPivot], lows: [DetectedPivot]) = ([], [])
+    
+    // Active pivots used in current regression (for TradingView-style circle display)
+    @Published var activePivots: (highs: [DetectedPivot], lows: [DetectedPivot]) = ([], [])
     @Published var settings: Settings = Settings()
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
@@ -294,6 +303,7 @@ class PolynomialRegressionIndicator: ObservableObject {
         supportLine = nil
         signals = []
         pivots = ([], [])
+        activePivots = ([], [])
         self.bars = []
 
         guard !bars.isEmpty else { return }
@@ -539,13 +549,28 @@ class PolynomialRegressionIndicator: ObservableObject {
         }
         #endif
 
-        resistanceLine = RegressionLine(
+        // Generate TradingView-style segmented points (pivot-to-pivot)
+        let segmentedPoints = generateSegmentedPoints(
+            pivots: filteredPivots,
+            coefficients: adjustedCoeffs,
+            lastIndex: lastIndex,
+            extend: settings.extendFuture
+        )
+        
+        var line = RegressionLine(
             coefficients: adjustedCoeffs,
             startIndex: oldestPivotIndex,
             endIndex: lastIndex + settings.extendFuture,
             predictedPoints: predictedPoints,
             isSupport: false
         )
+        line.segmentedPoints = segmentedPoints
+        line.activePivots = filteredPivots
+        
+        resistanceLine = line
+        
+        // Update active pivots for display
+        activePivots.highs = filteredPivots
     }
 
     /// Determine the effective polynomial type based on available pivot count
@@ -654,13 +679,64 @@ class PolynomialRegressionIndicator: ObservableObject {
         print("[PolynomialSR] ========================================")
         #endif
 
-        supportLine = RegressionLine(
+        // Generate TradingView-style segmented points (pivot-to-pivot)
+        let segmentedPoints = generateSegmentedPoints(
+            pivots: filteredPivots,
+            coefficients: adjustedCoeffs,
+            lastIndex: lastIndex,
+            extend: settings.extendFuture
+        )
+        
+        var line = RegressionLine(
             coefficients: adjustedCoeffs,
             startIndex: oldestPivotIndex,
             endIndex: lastIndex + settings.extendFuture,
             predictedPoints: predictedPoints,
             isSupport: true
         )
+        line.segmentedPoints = segmentedPoints
+        line.activePivots = filteredPivots
+        
+        supportLine = line
+        
+        // Update active pivots for display
+        activePivots.lows = filteredPivots
+    }
+    
+    /// Generate TradingView-style segmented points that connect pivot-to-pivot
+    /// Creates a path that goes through each pivot point with the regression trend
+    private func generateSegmentedPoints(
+        pivots: [DetectedPivot],
+        coefficients: PolynomialRegression.Coefficients,
+        lastIndex: Int,
+        extend: Int
+    ) -> [CGPoint] {
+        guard !pivots.isEmpty else { return [] }
+        
+        // Sort pivots by index (oldest to newest)
+        let sortedPivots = pivots.sorted { $0.index < $1.index }
+        
+        var points = [CGPoint]()
+        points.reserveCapacity(sortedPivots.count * 2 + extend)
+        
+        // Add points at each pivot location
+        for pivot in sortedPivots {
+            points.append(CGPoint(x: CGFloat(pivot.index), y: pivot.price))
+        }
+        
+        // Extend the line into the future using the regression
+        if let lastPivot = sortedPivots.last {
+            let lastPivotX = Double(lastIndex - lastPivot.index)
+            
+            // Add points from last pivot to current bar and beyond
+            for barIdx in (lastPivot.index + 1)...(lastIndex + extend) {
+                let x = Double(lastIndex - barIdx)
+                let predictedY = PolynomialRegression.predict(coefficients: coefficients, x: x)
+                points.append(CGPoint(x: CGFloat(barIdx), y: predictedY))
+            }
+        }
+        
+        return points
     }
 
     /// Generate forecast points with correct x-value direction

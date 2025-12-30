@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SupportResistanceView: View {
     @ObservedObject var analysisViewModel: AnalysisViewModel
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Section header
@@ -11,15 +11,15 @@ struct SupportResistanceView: View {
                     .foregroundStyle(.cyan)
                 Text("Support & Resistance")
                     .font(.headline)
-                
+
                 Spacer()
-                
+
                 if analysisViewModel.isLoadingSR {
                     ProgressView()
                         .scaleEffect(0.7)
                 }
             }
-            
+
             if analysisViewModel.isLoadingSR {
                 ProgressView("Loading S/R levels...")
                     .frame(maxWidth: .infinity)
@@ -55,7 +55,7 @@ struct SupportResistanceView: View {
 
 struct SRLevelsContent: View {
     let sr: SupportResistanceResponse
-    
+
     var body: some View {
         VStack(spacing: 12) {
             // Key metrics row
@@ -66,7 +66,7 @@ struct SRLevelsContent: View {
                     value: String(format: "$%.2f", sr.currentPrice),
                     color: .primary
                 )
-                
+
                 // Nearest Support
                 if let support = sr.nearestSupport {
                     SRMetricCard(
@@ -76,7 +76,7 @@ struct SRLevelsContent: View {
                         color: .green
                     )
                 }
-                
+
                 // Nearest Resistance
                 if let resistance = sr.nearestResistance {
                     SRMetricCard(
@@ -87,22 +87,32 @@ struct SRLevelsContent: View {
                     )
                 }
             }
-            
+
             Divider()
-            
+
             // Bias indicator
             BiasIndicator(sr: sr)
-            
-            Divider()
-            
-            // Pivot Points
-            if let pivots = sr.pivotPoints {
-                PivotPointsRow(pivots: pivots, currentPrice: sr.currentPrice)
+
+            // Active Signals (from Logistic indicator)
+            if sr.hasActiveSignals {
+                SignalsSection(signals: sr.activeSignals)
             }
-            
-            // Fibonacci Levels
-            if let fib = sr.fibonacci {
-                FibonacciRow(fib: fib, currentPrice: sr.currentPrice)
+
+            Divider()
+
+            // Multi-timeframe Pivot Levels
+            if let pivots = sr.pivotLevels {
+                PivotLevelsSection(pivots: pivots, currentPrice: sr.currentPrice)
+            }
+
+            // Polynomial Regression S/R
+            if let polynomial = sr.polynomial {
+                PolynomialSRSection(polynomial: polynomial, currentPrice: sr.currentPrice)
+            }
+
+            // Logistic ML S/R
+            if let logistic = sr.logistic {
+                LogisticSRSection(logistic: logistic, currentPrice: sr.currentPrice)
             }
         }
     }
@@ -115,17 +125,17 @@ struct SRMetricCard: View {
     let value: String
     var subtitle: String? = nil
     let color: Color
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            
+
             Text(value)
                 .font(.subheadline.bold())
                 .foregroundStyle(color)
-            
+
             if let subtitle = subtitle {
                 Text(subtitle)
                     .font(.caption2)
@@ -143,49 +153,49 @@ struct SRMetricCard: View {
 
 struct BiasIndicator: View {
     let sr: SupportResistanceResponse
-    
+
     private var biasColor: Color {
-        switch sr.bias {
-        case "Bullish": return .green
-        case "Bearish": return .red
-        default: return .orange
+        switch sr.biasType {
+        case .bullish: return .green
+        case .bearish: return .red
+        case .neutral: return .orange
         }
     }
-    
+
     private var biasIcon: String {
-        switch sr.bias {
-        case "Bullish": return "arrow.up.right.circle.fill"
-        case "Bearish": return "arrow.down.right.circle.fill"
-        default: return "arrow.left.and.right.circle.fill"
+        switch sr.biasType {
+        case .bullish: return "arrow.up.right.circle.fill"
+        case .bearish: return "arrow.down.right.circle.fill"
+        case .neutral: return "arrow.left.and.right.circle.fill"
         }
     }
-    
+
     var body: some View {
         HStack {
             Image(systemName: biasIcon)
                 .font(.title2)
                 .foregroundStyle(biasColor)
-            
+
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text("S/R Bias:")
                         .font(.subheadline)
-                    Text(sr.bias)
+                    Text(sr.biasType.rawValue)
                         .font(.subheadline.bold())
                         .foregroundStyle(biasColor)
-                    
+
                     if let ratio = sr.srRatio {
                         Text(String(format: "(%.2f)", ratio))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
-                
+
                 Text(sr.biasDescription)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            
+
             Spacer()
         }
         .padding(10)
@@ -194,153 +204,378 @@ struct BiasIndicator: View {
     }
 }
 
-// MARK: - Pivot Points Row
+// MARK: - Signals Section
 
-struct PivotPointsRow: View {
-    let pivots: PivotPoints
-    let currentPrice: Double
-    
+struct SignalsSection: View {
+    let signals: [SRSignal]
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Pivot Points")
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Active Signals")
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
-            
-            HStack(spacing: 6) {
-                PivotBadge(label: "S3", value: pivots.s3, currentPrice: currentPrice, isSupport: true)
-                PivotBadge(label: "S2", value: pivots.s2, currentPrice: currentPrice, isSupport: true)
-                PivotBadge(label: "S1", value: pivots.s1, currentPrice: currentPrice, isSupport: true)
-                PivotBadge(label: "PP", value: pivots.pp, currentPrice: currentPrice, isPivot: true)
-                PivotBadge(label: "R1", value: pivots.r1, currentPrice: currentPrice, isSupport: false)
-                PivotBadge(label: "R2", value: pivots.r2, currentPrice: currentPrice, isSupport: false)
-                PivotBadge(label: "R3", value: pivots.r3, currentPrice: currentPrice, isSupport: false)
-            }
-        }
-    }
-}
 
-struct PivotBadge: View {
-    let label: String
-    let value: Double
-    let currentPrice: Double
-    var isSupport: Bool = false
-    var isPivot: Bool = false
-    
-    private var color: Color {
-        if isPivot {
-            return .orange
-        }
-        return isSupport ? .green : .red
-    }
-    
-    private var isNearPrice: Bool {
-        abs(value - currentPrice) / currentPrice < 0.02
-    }
-    
-    var body: some View {
-        VStack(spacing: 2) {
-            Text(label)
-                .font(.caption2.bold())
-                .foregroundStyle(color)
-            
-            Text(String(format: "%.0f", value))
-                .font(.caption2)
-                .foregroundStyle(.primary)
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .background(isNearPrice ? color.opacity(0.2) : Color(nsColor: .windowBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-        .overlay(
-            RoundedRectangle(cornerRadius: 4)
-                .stroke(isNearPrice ? color : Color.clear, lineWidth: 1)
-        )
-    }
-}
-
-// MARK: - Fibonacci Row
-
-struct FibonacciRow: View {
-    let fib: FibonacciLevels
-    let currentPrice: Double
-    
-    private var labeledLevels: [(String, Double)] {
-        [
-        ("0.236", fib.fib236),
-            ("0.382", fib.fib382),
-            ("0.500", fib.fib500),
-            ("0.618", fib.fib618),
-            ("0.786", fib.fib786)
-        ]
-        .compactMap { name, value in
-            guard let value = value else { return nil }
-            return (name, value)
-        }
-    }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Fibonacci")
-                    .font(.caption.bold())
-                    .foregroundStyle(.secondary)
-                
-                Spacer()
-                
-                Text(fib.trend.capitalized)
-                    .font(.caption)
-                    .foregroundStyle(fib.trend == "uptrend" ? .green : .red)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background((fib.trend == "uptrend" ? Color.green : Color.red).opacity(0.15))
-                    .clipShape(Capsule())
-            }
-            
-            // Show key Fibonacci levels
-            HStack(spacing: 4) {
-                ForEach(labeledLevels.prefix(5), id: \.0) { level in
-                    FibBadge(
-                        name: level.0,
-                        value: level.1,
-                        currentPrice: currentPrice
-                    )
+            HStack(spacing: 8) {
+                ForEach(signals, id: \.rawValue) { signal in
+                    SignalBadge(signal: signal)
                 }
             }
         }
     }
 }
 
-struct FibBadge: View {
-    let name: String
-    let value: Double
+struct SignalBadge: View {
+    let signal: SRSignal
+
+    private var color: Color {
+        signal.isBullish ? .green : .red
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: signal.icon)
+                .font(.caption2)
+            Text(signal.displayName)
+                .font(.caption2)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(color.opacity(0.15))
+        .foregroundStyle(color)
+        .clipShape(Capsule())
+    }
+}
+
+// MARK: - Multi-Timeframe Pivot Levels Section
+
+struct PivotLevelsSection: View {
+    let pivots: PivotLevelsResponse
     let currentPrice: Double
-    
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Multi-Timeframe Pivots")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 4) {
+                ForEach(pivots.allPeriods, id: \.name) { period in
+                    if let data = period.period {
+                        PivotPeriodRow(name: period.name, pivot: data, currentPrice: currentPrice)
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct PivotPeriodRow: View {
+    let name: String
+    let pivot: PivotLevelPeriodResponse
+    let currentPrice: Double
+
+    var body: some View {
+        HStack {
+            Text(name)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 50, alignment: .leading)
+
+            // Low (Support)
+            if let low = pivot.low {
+                PivotLevelBadge(
+                    label: "Low",
+                    value: low,
+                    status: pivot.lowStatusEnum,
+                    currentPrice: currentPrice
+                )
+            }
+
+            Spacer()
+
+            // High (Resistance)
+            if let high = pivot.high {
+                PivotLevelBadge(
+                    label: "High",
+                    value: high,
+                    status: pivot.highStatusEnum,
+                    currentPrice: currentPrice
+                )
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+struct PivotLevelBadge: View {
+    let label: String
+    let value: Double
+    let status: PivotStatus
+    let currentPrice: Double
+
+    private var statusColor: Color {
+        switch status {
+        case .support: return .green
+        case .resistance: return .red
+        case .active: return .blue
+        case .inactive: return .gray
+        }
+    }
+
     private var isNearPrice: Bool {
         abs(value - currentPrice) / currentPrice < 0.02
     }
-    
-    private var color: Color {
-        value < currentPrice ? .green : .red
-    }
-    
+
     var body: some View {
-        VStack(spacing: 2) {
-            Text(name)
-                .font(.system(size: 9))
-                .foregroundStyle(.secondary)
-            
-            Text(String(format: "%.0f", value))
-                .font(.caption2)
-                .foregroundStyle(color)
+        HStack(spacing: 4) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 6, height: 6)
+
+            Text(String(format: "%.2f", value))
+                .font(.caption)
+                .foregroundStyle(.primary)
         }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 3)
-        .background(isNearPrice ? color.opacity(0.2) : Color(nsColor: .windowBackgroundColor))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(isNearPrice ? statusColor.opacity(0.2) : Color(nsColor: .windowBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .overlay(
             RoundedRectangle(cornerRadius: 4)
-                .stroke(isNearPrice ? color : Color.clear, lineWidth: 1)
+                .stroke(isNearPrice ? statusColor : Color.clear, lineWidth: 1)
         )
+    }
+}
+
+// MARK: - Polynomial Regression S/R Section
+
+struct PolynomialSRSection: View {
+    let polynomial: PolynomialSRResponse
+    let currentPrice: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Polynomial Regression S/R")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                // Trend badges
+                if polynomial.isConverging {
+                    SRTrendBadge(text: "Squeeze", color: .purple)
+                } else if polynomial.isDiverging {
+                    SRTrendBadge(text: "Expansion", color: .orange)
+                }
+            }
+
+            HStack(spacing: 12) {
+                // Support with trend
+                if let support = polynomial.support {
+                    PolySRCard(
+                        title: "Support",
+                        value: support,
+                        trend: polynomial.supportTrend,
+                        currentPrice: currentPrice,
+                        isSupport: true
+                    )
+                }
+
+                // Resistance with trend
+                if let resistance = polynomial.resistance {
+                    PolySRCard(
+                        title: "Resistance",
+                        value: resistance,
+                        trend: polynomial.resistanceTrend,
+                        currentPrice: currentPrice,
+                        isSupport: false
+                    )
+                }
+            }
+
+            // Forecast preview
+            if let forecastS = polynomial.forecastSupport?.first,
+               let forecastR = polynomial.forecastResistance?.first {
+                HStack {
+                    Text("Next bar forecast:")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(String(format: "S: $%.2f", forecastS))
+                        .font(.caption2)
+                        .foregroundStyle(.green)
+                    Text("|")
+                        .foregroundStyle(.secondary)
+                    Text(String(format: "R: $%.2f", forecastR))
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+    }
+}
+
+struct PolySRCard: View {
+    let title: String
+    let value: Double
+    let trend: TrendDirection
+    let currentPrice: Double
+    let isSupport: Bool
+
+    private var color: Color {
+        isSupport ? .green : .red
+    }
+
+    private var trendColor: Color {
+        switch trend {
+        case .rising: return .green
+        case .falling: return .red
+        case .flat: return .gray
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                Image(systemName: trend.icon)
+                    .font(.caption2)
+                    .foregroundStyle(trendColor)
+            }
+
+            Text(String(format: "$%.2f", value))
+                .font(.caption.bold())
+                .foregroundStyle(color)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(6)
+        .background(color.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+}
+
+struct SRTrendBadge: View {
+    let text: String
+    let color: Color
+
+    var body: some View {
+        Text(text)
+            .font(.caption2)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.15))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
+    }
+}
+
+// MARK: - Logistic ML S/R Section
+
+struct LogisticSRSection: View {
+    let logistic: LogisticSRResponse
+    let currentPrice: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("ML-Detected S/R (Logistic Regression)")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+
+            HStack(alignment: .top, spacing: 12) {
+                // Support levels
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Support")
+                        .font(.caption2)
+                        .foregroundStyle(.green)
+
+                    if let levels = logistic.supportLevels, !levels.isEmpty {
+                        ForEach(levels.prefix(3)) { level in
+                            LogisticLevelRow(level: level, currentPrice: currentPrice, isSupport: true)
+                        }
+                    } else {
+                        Text("None")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Divider()
+                    .frame(height: 60)
+
+                // Resistance levels
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Resistance")
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+
+                    if let levels = logistic.resistanceLevels, !levels.isEmpty {
+                        ForEach(levels.prefix(3)) { level in
+                            LogisticLevelRow(level: level, currentPrice: currentPrice, isSupport: false)
+                        }
+                    } else {
+                        Text("None")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+}
+
+struct LogisticLevelRow: View {
+    let level: LogisticLevelResponse
+    let currentPrice: Double
+    let isSupport: Bool
+
+    private var color: Color {
+        isSupport ? .green : .red
+    }
+
+    private var confidenceColor: Color {
+        switch level.confidence {
+        case .high: return .green
+        case .medium: return .orange
+        case .low: return .gray
+        }
+    }
+
+    private var isNearPrice: Bool {
+        abs(level.level - currentPrice) / currentPrice < 0.02
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(String(format: "$%.2f", level.level))
+                .font(.caption2)
+                .foregroundStyle(color)
+
+            // Probability badge
+            Text(level.probabilityText)
+                .font(.system(size: 9))
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(confidenceColor.opacity(0.2))
+                .foregroundStyle(confidenceColor)
+                .clipShape(RoundedRectangle(cornerRadius: 3))
+
+            // Times respected (if available)
+            if let times = level.timesRespected, times > 0 {
+                Text("×\(times)")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+        .padding(.horizontal, 4)
+        .background(isNearPrice ? color.opacity(0.1) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 }
 

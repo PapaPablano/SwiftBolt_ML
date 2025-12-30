@@ -18,7 +18,7 @@ struct SRLevels: Codable, Equatable {
         case allSupports = "all_supports"
         case allResistances = "all_resistances"
     }
-    
+
     init(nearestSupport: Double? = nil, nearestResistance: Double? = nil, supportDistancePct: Double? = nil, resistanceDistancePct: Double? = nil, allSupports: [Double]? = nil, allResistances: [Double]? = nil) {
         self.nearestSupport = nearestSupport
         self.nearestResistance = nearestResistance
@@ -228,67 +228,370 @@ enum SRLevelType {
     }
 }
 
+// MARK: - New Indicator Response Models
+
+/// Single pivot level period response (5, 25, 50, or 100 bars)
+struct PivotLevelPeriodResponse: Codable {
+    let high: Double?
+    let low: Double?
+    let highStatus: String?
+    let lowStatus: String?
+
+    var highStatusEnum: PivotStatus {
+        switch highStatus?.lowercased() {
+        case "support": return .support
+        case "resistance": return .resistance
+        case "active": return .active
+        default: return .inactive
+        }
+    }
+
+    var lowStatusEnum: PivotStatus {
+        switch lowStatus?.lowercased() {
+        case "support": return .support
+        case "resistance": return .resistance
+        case "active": return .active
+        default: return .inactive
+        }
+    }
+}
+
+/// Multi-timeframe pivot levels response
+struct PivotLevelsResponse: Codable {
+    let period5: PivotLevelPeriodResponse?
+    let period25: PivotLevelPeriodResponse?
+    let period50: PivotLevelPeriodResponse?
+    let period100: PivotLevelPeriodResponse?
+
+    /// All periods in order
+    var allPeriods: [(name: String, period: PivotLevelPeriodResponse?)] {
+        [
+            ("5 Bar", period5),
+            ("25 Bar", period25),
+            ("50 Bar", period50),
+            ("100 Bar", period100)
+        ]
+    }
+
+    /// Get nearest support from all periods
+    var nearestSupport: Double? {
+        let supports = [period5?.low, period25?.low, period50?.low, period100?.low]
+            .compactMap { $0 }
+        return supports.max()  // Highest low = nearest support
+    }
+
+    /// Get nearest resistance from all periods
+    var nearestResistance: Double? {
+        let resistances = [period5?.high, period25?.high, period50?.high, period100?.high]
+            .compactMap { $0 }
+        return resistances.min()  // Lowest high = nearest resistance
+    }
+}
+
+/// Polynomial regression S/R response
+struct PolynomialSRResponse: Codable {
+    let support: Double?
+    let resistance: Double?
+    let supportSlope: Double?
+    let resistanceSlope: Double?
+    let forecastSupport: [Double]?
+    let forecastResistance: [Double]?
+
+    /// Support trend direction
+    var supportTrend: TrendDirection {
+        guard let slope = supportSlope else { return .flat }
+        if slope > 0.01 { return .rising }
+        if slope < -0.01 { return .falling }
+        return .flat
+    }
+
+    /// Resistance trend direction
+    var resistanceTrend: TrendDirection {
+        guard let slope = resistanceSlope else { return .flat }
+        if slope > 0.01 { return .rising }
+        if slope < -0.01 { return .falling }
+        return .flat
+    }
+
+    /// Check if S/R is converging (squeeze)
+    var isConverging: Bool {
+        guard let support = support, let resistance = resistance,
+              supportTrend == .rising && resistanceTrend == .falling else {
+            return false
+        }
+        let range = resistance - support
+        return range > 0 && range / support < 0.05  // Less than 5% range
+    }
+
+    /// Check if S/R is diverging (expansion)
+    var isDiverging: Bool {
+        supportTrend == .falling && resistanceTrend == .rising
+    }
+}
+
+/// Trend direction for polynomial slopes
+enum TrendDirection {
+    case rising
+    case falling
+    case flat
+
+    var displayName: String {
+        switch self {
+        case .rising: return "Rising"
+        case .falling: return "Falling"
+        case .flat: return "Flat"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .rising: return "arrow.up.right"
+        case .falling: return "arrow.down.right"
+        case .flat: return "arrow.right"
+        }
+    }
+
+    var color: String {
+        switch self {
+        case .rising: return "green"
+        case .falling: return "red"
+        case .flat: return "gray"
+        }
+    }
+}
+
+/// Individual logistic regression level
+struct LogisticLevelResponse: Codable, Identifiable {
+    let level: Double
+    let probability: Double
+    let timesRespected: Int?
+
+    var id: Double { level }
+
+    /// Probability as percentage string
+    var probabilityText: String {
+        "\(Int(probability * 100))%"
+    }
+
+    /// Confidence level based on probability
+    var confidence: ConfidenceLevel {
+        if probability >= 0.7 { return .high }
+        if probability >= 0.5 { return .medium }
+        return .low
+    }
+}
+
+/// Confidence level for ML predictions
+enum ConfidenceLevel {
+    case low
+    case medium
+    case high
+
+    var displayName: String {
+        switch self {
+        case .low: return "Low"
+        case .medium: return "Medium"
+        case .high: return "High"
+        }
+    }
+
+    var color: String {
+        switch self {
+        case .low: return "gray"
+        case .medium: return "orange"
+        case .high: return "green"
+        }
+    }
+}
+
+/// Logistic regression S/R response
+struct LogisticSRResponse: Codable {
+    let supportLevels: [LogisticLevelResponse]?
+    let resistanceLevels: [LogisticLevelResponse]?
+    let signals: [String]?
+
+    /// Top support level by probability
+    var topSupport: LogisticLevelResponse? {
+        supportLevels?.max(by: { $0.probability < $1.probability })
+    }
+
+    /// Top resistance level by probability
+    var topResistance: LogisticLevelResponse? {
+        resistanceLevels?.max(by: { $0.probability < $1.probability })
+    }
+
+    /// Check if there are active signals
+    var hasSignals: Bool {
+        !(signals?.isEmpty ?? true)
+    }
+
+    /// Parse signals into structured format
+    var parsedSignals: [SRSignal] {
+        signals?.compactMap { SRSignal(rawValue: $0) } ?? []
+    }
+}
+
+/// S/R signal types from logistic indicator
+enum SRSignal: String {
+    case supportRetest = "support_retest"
+    case resistanceRetest = "resistance_retest"
+    case supportBreak = "support_break"
+    case resistanceBreak = "resistance_break"
+    case supportRespected = "support_respected"
+    case resistanceRespected = "resistance_respected"
+
+    var displayName: String {
+        switch self {
+        case .supportRetest: return "Support Retest"
+        case .resistanceRetest: return "Resistance Retest"
+        case .supportBreak: return "Support Break"
+        case .resistanceBreak: return "Resistance Break"
+        case .supportRespected: return "Support Respected"
+        case .resistanceRespected: return "Resistance Respected"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .supportRetest, .resistanceRetest: return "arrow.uturn.down"
+        case .supportBreak, .resistanceBreak: return "arrow.down.to.line"
+        case .supportRespected, .resistanceRespected: return "checkmark.shield"
+        }
+    }
+
+    var color: String {
+        switch self {
+        case .supportRetest, .supportRespected: return "green"
+        case .resistanceRetest, .resistanceRespected: return "red"
+        case .supportBreak: return "red"
+        case .resistanceBreak: return "green"
+        }
+    }
+
+    var isBullish: Bool {
+        switch self {
+        case .supportRetest, .supportRespected, .resistanceBreak: return true
+        case .resistanceRetest, .resistanceRespected, .supportBreak: return false
+        }
+    }
+}
+
+/// Bias type for S/R analysis
+enum BiasType: String, Codable {
+    case bullish = "Bullish"
+    case bearish = "Bearish"
+    case neutral = "Neutral"
+
+    var color: String {
+        switch self {
+        case .bullish: return "green"
+        case .bearish: return "red"
+        case .neutral: return "gray"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .bullish: return "arrow.up.circle.fill"
+        case .bearish: return "arrow.down.circle.fill"
+        case .neutral: return "minus.circle.fill"
+        }
+    }
+}
+
 // MARK: - API Response Models
 
 /// Response from the support-resistance Edge Function
-/// API returns flat structure with S/R data at root level
+/// Updated for new 3-indicator structure
 struct SupportResistanceResponse: Codable {
     let symbol: String
     let currentPrice: Double
     let lastUpdated: String?
+
+    // New indicator responses
+    let pivotLevels: PivotLevelsResponse?
+    let polynomial: PolynomialSRResponse?
+    let logistic: LogisticSRResponse?
+
+    // Summary fields
     let nearestSupport: Double?
     let nearestResistance: Double?
     let supportDistancePct: Double?
     let resistanceDistancePct: Double?
-    let pivotPoints: PivotPoints?
-    let fibonacci: FibonacciLevels?
-    let allSupports: [Double]?
-    let allResistances: [Double]?
+    let bias: String?
 
     enum CodingKeys: String, CodingKey {
         case symbol
         case currentPrice
         case lastUpdated
+        case pivotLevels
+        case polynomial
+        case logistic
         case nearestSupport
         case nearestResistance
         case supportDistancePct
         case resistanceDistancePct
-        case pivotPoints
-        case fibonacci
-        case allSupports
-        case allResistances
+        case bias
     }
 
-    /// Computed property to create SRLevels from flat response
+    /// Computed property to create SRLevels from response
     var levels: SRLevels {
-        SRLevels(
+        // Collect all support/resistance levels from all indicators
+        var allSupports: [Double] = []
+        var allResistances: [Double] = []
+
+        // From pivot levels
+        if let pivots = pivotLevels {
+            if let p5Low = pivots.period5?.low { allSupports.append(p5Low) }
+            if let p25Low = pivots.period25?.low { allSupports.append(p25Low) }
+            if let p50Low = pivots.period50?.low { allSupports.append(p50Low) }
+            if let p100Low = pivots.period100?.low { allSupports.append(p100Low) }
+            if let p5High = pivots.period5?.high { allResistances.append(p5High) }
+            if let p25High = pivots.period25?.high { allResistances.append(p25High) }
+            if let p50High = pivots.period50?.high { allResistances.append(p50High) }
+            if let p100High = pivots.period100?.high { allResistances.append(p100High) }
+        }
+
+        // From polynomial
+        if let poly = polynomial {
+            if let support = poly.support { allSupports.append(support) }
+            if let resistance = poly.resistance { allResistances.append(resistance) }
+        }
+
+        // From logistic
+        if let log = logistic {
+            allSupports.append(contentsOf: log.supportLevels?.map { $0.level } ?? [])
+            allResistances.append(contentsOf: log.resistanceLevels?.map { $0.level } ?? [])
+        }
+
+        return SRLevels(
             nearestSupport: nearestSupport,
             nearestResistance: nearestResistance,
             supportDistancePct: supportDistancePct,
             resistanceDistancePct: resistanceDistancePct,
-            allSupports: allSupports,
-            allResistances: allResistances
+            allSupports: allSupports.sorted(by: >),  // Highest first
+            allResistances: allResistances.sorted()   // Lowest first
         )
     }
-    
+
     /// Computed density based on number of levels
     var density: Int {
-        (allSupports?.count ?? 0) + (allResistances?.count ?? 0)
+        var count = 0
+        if let pivots = pivotLevels {
+            if pivots.period5 != nil { count += 2 }
+            if pivots.period25 != nil { count += 2 }
+            if pivots.period50 != nil { count += 2 }
+            if pivots.period100 != nil { count += 2 }
+        }
+        if polynomial?.support != nil { count += 1 }
+        if polynomial?.resistance != nil { count += 1 }
+        count += logistic?.supportLevels?.count ?? 0
+        count += logistic?.resistanceLevels?.count ?? 0
+        return count
     }
 
-    var bias: String {
-        guard let supportDist = supportDistancePct,
-              let resistanceDist = resistanceDistancePct else {
-            return "Neutral"
-        }
-
-        if supportDist < resistanceDist {
-            return "Bullish"  // Closer to support, likely to bounce up
-        } else if resistanceDist < supportDist {
-            return "Bearish"  // Closer to resistance, likely to reject down
-        } else {
-            return "Neutral"
-        }
+    var biasType: BiasType {
+        BiasType(rawValue: bias ?? "Neutral") ?? .neutral
     }
 
     var biasDescription: String {
@@ -324,62 +627,29 @@ struct SupportResistanceResponse: Codable {
     var chartOverlay: SRChartOverlay {
         SRChartOverlay(srLevels: levels, currentPrice: currentPrice)
     }
-}
 
-// MARK: - Pivot Points
-
-struct PivotPoints: Codable {
-    let pp: Double
-    let r1: Double
-    let r2: Double
-    let r3: Double
-    let s1: Double
-    let s2: Double
-    let s3: Double
-
-    enum CodingKeys: String, CodingKey {
-        case pp = "PP"
-        case r1 = "R1"
-        case r2 = "R2"
-        case r3 = "R3"
-        case s1 = "S1"
-        case s2 = "S2"
-        case s3 = "S3"
+    /// Check if any indicator has active signals
+    var hasActiveSignals: Bool {
+        logistic?.hasSignals ?? false
     }
 
-    var allLevels: [Double] {
-        [s3, s2, s1, pp, r1, r2, r3]
-    }
-}
-
-// MARK: - Fibonacci Levels
-
-struct FibonacciLevels: Codable {
-    let trend: String  // "uptrend" or "downtrend"
-    let fib0: Double?
-    let fib236: Double?
-    let fib382: Double?
-    let fib500: Double?
-    let fib618: Double?
-    let fib786: Double?
-    let fib100: Double?
-    let rangeHigh: Double?
-    let rangeLow: Double?
-
-    enum CodingKeys: String, CodingKey {
-        case trend
-        case fib0 = "0.0"
-        case fib236 = "23.6"
-        case fib382 = "38.2"
-        case fib500 = "50.0"
-        case fib618 = "61.8"
-        case fib786 = "78.6"
-        case fib100 = "100.0"
-        case rangeHigh
-        case rangeLow
+    /// Get all active signals
+    var activeSignals: [SRSignal] {
+        logistic?.parsedSignals ?? []
     }
 
-    var allLevels: [Double] {
-        [fib0, fib236, fib382, fib500, fib618, fib786, fib100].compactMap { $0 }
+    /// Summary of polynomial trends
+    var polynomialTrendSummary: String? {
+        guard let poly = polynomial else { return nil }
+        let supportTrend = poly.supportTrend.displayName
+        let resistanceTrend = poly.resistanceTrend.displayName
+
+        if poly.isConverging {
+            return "Converging (Squeeze) - Support \(supportTrend), Resistance \(resistanceTrend)"
+        } else if poly.isDiverging {
+            return "Diverging (Expansion) - Support \(supportTrend), Resistance \(resistanceTrend)"
+        } else {
+            return "Support \(supportTrend), Resistance \(resistanceTrend)"
+        }
     }
 }

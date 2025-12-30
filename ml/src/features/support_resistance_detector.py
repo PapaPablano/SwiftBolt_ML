@@ -1,31 +1,44 @@
 """
 Support and Resistance Level Detection Module.
 
-This module provides 5 methods for detecting support and resistance levels:
-1. ZigZag - Filters noise, identifies significant swings
-2. Local Extrema - Mathematical peaks/troughs using scipy
-3. K-Means Clustering - Statistical price zones
-4. Pivot Points - Classical standard levels
-5. Fibonacci Retracement - Natural retracement levels
+This module provides S/R detection using 3 modern indicators:
+1. Pivot Levels - Multi-timeframe pivots with ATR-based coloring (BigBeluga style)
+2. Polynomial Regression - Dynamic trending S/R with forecasts
+3. Logistic Regression - ML-based S/R with probability predictions
+
+DEPRECATED: The following legacy methods are still available for backwards
+compatibility but will be removed in a future version:
+- ZigZag
+- Local Extrema
+- K-Means Clustering
+- Classical Pivot Points
+- Fibonacci Retracement
 
 Usage:
     from src.features.support_resistance_detector import SupportResistanceDetector
-    
+
     sr = SupportResistanceDetector()
-    all_levels = sr.find_all_levels(df)
-    
-    # Access individual methods
-    zigzag_df, swings = sr.zigzag(df, threshold_pct=5)
-    pivots = sr.pivot_points_classical(df)
-    fib_levels = sr.fibonacci_retracement(df)
+
+    # New method (recommended)
+    result = sr.find_all_levels(df)
+
+    # Access individual indicators
+    pivot_result = sr.calculate_pivot_levels(df)
+    poly_result = sr.calculate_polynomial_sr(df)
+    logistic_result = sr.calculate_logistic_sr(df)
 """
 
 import logging
+import warnings
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from scipy.signal import argrelextrema
+
+from src.features.pivot_levels_detector import PivotLevelsDetector, PivotLevelsSettings
+from src.features.polynomial_sr_indicator import PolynomialSRIndicator, PolynomialSRSettings
+from src.features.logistic_sr_indicator import LogisticSRIndicator, LogisticSRSettings
 
 logger = logging.getLogger(__name__)
 
@@ -33,44 +46,99 @@ logger = logging.getLogger(__name__)
 class SupportResistanceDetector:
     """
     Comprehensive support and resistance level detector.
-    
-    Combines multiple methods for robust S/R detection:
-    - ZigZag: Best for intraday/swing trading, filters noise
+
+    Uses 3 modern indicators for robust S/R detection:
+    - Pivot Levels: Multi-timeframe pivots with ATR-based status (BigBeluga style)
+    - Polynomial Regression: Dynamic trending S/R with forecasts
+    - Logistic Regression: ML-based S/R with probability predictions
+
+    Legacy methods (deprecated, for backwards compatibility):
+    - ZigZag: Filters noise, identifies significant swings
     - Local Extrema: Mathematical peak/trough detection
     - K-Means Clustering: Statistical price zone identification
-    - Pivot Points: Industry standard daily levels
+    - Pivot Points: Classical standard levels
     - Fibonacci: Natural retracement targets
-    
+
     Attributes:
-        default_zigzag_threshold: Default ZigZag threshold percentage
-        default_extrema_order: Default order for local extrema detection
-        default_n_clusters: Default number of clusters for K-Means
+        pivot_detector: Multi-timeframe pivot levels detector
+        polynomial_indicator: Polynomial regression S/R indicator
+        logistic_indicator: Logistic regression S/R indicator
     """
-    
+
     def __init__(
         self,
         default_zigzag_threshold: float = 5.0,
         default_extrema_order: int = 5,
         default_n_clusters: int = 5,
+        pivot_settings: Optional[PivotLevelsSettings] = None,
+        polynomial_settings: Optional[PolynomialSRSettings] = None,
+        logistic_settings: Optional[LogisticSRSettings] = None,
     ):
         """
         Initialize the SupportResistanceDetector.
-        
+
         Args:
-            default_zigzag_threshold: Default percentage threshold for ZigZag
-            default_extrema_order: Default order for scipy argrelextrema
-            default_n_clusters: Default number of clusters for K-Means
+            default_zigzag_threshold: Default percentage threshold for ZigZag (deprecated)
+            default_extrema_order: Default order for scipy argrelextrema (deprecated)
+            default_n_clusters: Default number of clusters for K-Means (deprecated)
+            pivot_settings: Settings for pivot levels detector
+            polynomial_settings: Settings for polynomial S/R indicator
+            logistic_settings: Settings for logistic S/R indicator
         """
+        # Legacy settings (deprecated)
         self.default_zigzag_threshold = default_zigzag_threshold
         self.default_extrema_order = default_extrema_order
         self.default_n_clusters = default_n_clusters
-        
+
+        # New indicators
+        self.pivot_detector = PivotLevelsDetector(pivot_settings)
+        self.polynomial_indicator = PolynomialSRIndicator(polynomial_settings)
+        self.logistic_indicator = LogisticSRIndicator(logistic_settings)
+
         logger.info(
-            f"SupportResistanceDetector initialized: "
-            f"zigzag_threshold={default_zigzag_threshold}%, "
-            f"extrema_order={default_extrema_order}, "
-            f"n_clusters={default_n_clusters}"
+            f"SupportResistanceDetector initialized with 3 indicators: "
+            f"PivotLevels, PolynomialSR, LogisticSR"
         )
+
+    # =========================================================================
+    # NEW INDICATOR METHODS (RECOMMENDED)
+    # =========================================================================
+
+    def calculate_pivot_levels(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Calculate multi-timeframe pivot levels.
+
+        Args:
+            df: DataFrame with OHLC data
+
+        Returns:
+            Dict with pivot levels for each timeframe, nearest S/R, distances
+        """
+        return self.pivot_detector.calculate(df)
+
+    def calculate_polynomial_sr(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Calculate polynomial regression S/R levels.
+
+        Args:
+            df: DataFrame with OHLC data
+
+        Returns:
+            Dict with current support/resistance, slopes, forecasts, signals
+        """
+        return self.polynomial_indicator.calculate(df)
+
+    def calculate_logistic_sr(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Calculate logistic regression S/R levels.
+
+        Args:
+            df: DataFrame with OHLC data
+
+        Returns:
+            Dict with ML-detected levels, probabilities, signals
+        """
+        return self.logistic_indicator.calculate(df)
     
     # =========================================================================
     # METHOD 1: ZIGZAG INDICATOR
@@ -516,7 +584,7 @@ class SupportResistanceDetector:
     # =========================================================================
     # COMBINED ANALYSIS
     # =========================================================================
-    
+
     def find_all_levels(
         self,
         df: pd.DataFrame,
@@ -524,79 +592,258 @@ class SupportResistanceDetector:
         extrema_order: Optional[int] = None,
         n_clusters: Optional[int] = None,
         fib_lookback: int = 50,
+        use_new_indicators: bool = True,
     ) -> Dict[str, Any]:
         """
-        Find all support and resistance levels using all methods.
-        
-        Combines results from all 5 methods and identifies the
-        nearest support and resistance to current price.
-        
+        Find all support and resistance levels using modern indicators.
+
+        Uses 3 modern indicators by default:
+        - Pivot Levels (multi-timeframe)
+        - Polynomial Regression
+        - Logistic Regression
+
+        Legacy methods are only used if use_new_indicators=False.
+
         Args:
             df: DataFrame with OHLC data
-            zigzag_threshold: ZigZag threshold percentage
-            extrema_order: Order for local extrema detection
-            n_clusters: Number of K-Means clusters
-            fib_lookback: Lookback for Fibonacci calculation
-            
+            zigzag_threshold: ZigZag threshold percentage (deprecated)
+            extrema_order: Order for local extrema detection (deprecated)
+            n_clusters: Number of K-Means clusters (deprecated)
+            fib_lookback: Lookback for Fibonacci calculation (deprecated)
+            use_new_indicators: Use modern indicators (default True)
+
         Returns:
             Comprehensive dict with all S/R levels and analysis
         """
-        current_price = df["close"].iloc[-1]
-        
-        # Run all methods
+        if df.empty:
+            return self._empty_result()
+
+        current_price = float(df["close"].iloc[-1])
+
+        if use_new_indicators:
+            return self._find_levels_with_new_indicators(df, current_price)
+        else:
+            # Legacy mode for backwards compatibility
+            warnings.warn(
+                "Legacy S/R methods are deprecated. Use use_new_indicators=True.",
+                DeprecationWarning,
+            )
+            return self._find_levels_legacy(
+                df, current_price, zigzag_threshold, extrema_order, n_clusters, fib_lookback
+            )
+
+    def _empty_result(self) -> Dict[str, Any]:
+        """Return empty result structure."""
+        return {
+            "current_price": None,
+            "nearest_support": None,
+            "nearest_resistance": None,
+            "support_distance_pct": None,
+            "resistance_distance_pct": None,
+            "all_supports": [],
+            "all_resistances": [],
+            "indicators": {},
+            "methods": {},  # Legacy key for backwards compatibility
+        }
+
+    def _find_levels_with_new_indicators(
+        self,
+        df: pd.DataFrame,
+        current_price: float,
+    ) -> Dict[str, Any]:
+        """
+        Find S/R levels using the 3 modern indicators.
+
+        Args:
+            df: DataFrame with OHLC data
+            current_price: Current closing price
+
+        Returns:
+            Dict with comprehensive S/R analysis
+        """
+        # Run all 3 indicators
+        pivot_result = self.calculate_pivot_levels(df)
+        poly_result = self.calculate_polynomial_sr(df)
+        logistic_result = self.calculate_logistic_sr(df)
+
+        # Collect all support candidates
+        all_supports = []
+        all_resistances = []
+
+        # From Pivot Levels
+        if pivot_result.get("nearest_support"):
+            all_supports.append(pivot_result["nearest_support"])
+
+        if pivot_result.get("nearest_resistance"):
+            all_resistances.append(pivot_result["nearest_resistance"])
+
+        # Add all pivot level values
+        for pl in pivot_result.get("pivot_levels", []):
+            if pl.get("level_low") and pl["level_low"] > 0 and pl["level_low"] < current_price:
+                all_supports.append(pl["level_low"])
+            if pl.get("level_high") and pl["level_high"] > 0 and pl["level_high"] > current_price:
+                all_resistances.append(pl["level_high"])
+
+        # From Polynomial Regression
+        if poly_result.get("current_support") and poly_result["current_support"] < current_price:
+            all_supports.append(poly_result["current_support"])
+
+        if poly_result.get("current_resistance") and poly_result["current_resistance"] > current_price:
+            all_resistances.append(poly_result["current_resistance"])
+
+        # From Logistic Regression
+        if logistic_result.get("nearest_support"):
+            all_supports.append(logistic_result["nearest_support"])
+
+        if logistic_result.get("nearest_resistance"):
+            all_resistances.append(logistic_result["nearest_resistance"])
+
+        # Add all logistic levels
+        for level in logistic_result.get("support_levels", []):
+            if level.get("level") and level["level"] < current_price:
+                all_supports.append(level["level"])
+
+        for level in logistic_result.get("resistance_levels", []):
+            if level.get("level") and level["level"] > current_price:
+                all_resistances.append(level["level"])
+
+        # Filter and sort (remove duplicates)
+        supports_below = sorted(
+            list(set(s for s in all_supports if s and s < current_price)),
+            reverse=True
+        )
+        resistances_above = sorted(
+            list(set(r for r in all_resistances if r and r > current_price))
+        )
+
+        # Find nearest levels
+        nearest_support = supports_below[0] if supports_below else None
+        nearest_resistance = resistances_above[0] if resistances_above else None
+
+        # Calculate distances
+        support_distance_pct = None
+        resistance_distance_pct = None
+
+        if nearest_support:
+            support_distance_pct = round(
+                (current_price - nearest_support) / current_price * 100, 2
+            )
+        if nearest_resistance:
+            resistance_distance_pct = round(
+                (nearest_resistance - current_price) / current_price * 100, 2
+            )
+
+        # Collect signals from all indicators
+        all_signals = []
+        all_signals.extend(poly_result.get("signals", []))
+        all_signals.extend([{"type": s} for s in logistic_result.get("signals", [])])
+
+        result = {
+            "current_price": round(current_price, 2),
+            "nearest_support": nearest_support,
+            "nearest_resistance": nearest_resistance,
+            "support_distance_pct": support_distance_pct,
+            "resistance_distance_pct": resistance_distance_pct,
+            "all_supports": supports_below[:10],
+            "all_resistances": resistances_above[:10],
+            "signals": all_signals,
+            "indicators": {
+                "pivot_levels": pivot_result,
+                "polynomial": poly_result,
+                "logistic": logistic_result,
+            },
+            # Legacy key for backwards compatibility
+            "methods": {
+                "pivot_levels": pivot_result.get("pivot_levels", []),
+                "polynomial": {
+                    "support": poly_result.get("current_support"),
+                    "resistance": poly_result.get("current_resistance"),
+                    "support_slope": poly_result.get("support_slope"),
+                    "resistance_slope": poly_result.get("resistance_slope"),
+                },
+                "logistic": {
+                    "support_levels": logistic_result.get("support_levels", []),
+                    "resistance_levels": logistic_result.get("resistance_levels", []),
+                },
+            },
+        }
+
+        logger.info(
+            f"S/R Analysis (new): price={current_price:.2f}, "
+            f"support={nearest_support}, resistance={nearest_resistance}, "
+            f"signals={len(all_signals)}"
+        )
+
+        return result
+
+    def _find_levels_legacy(
+        self,
+        df: pd.DataFrame,
+        current_price: float,
+        zigzag_threshold: Optional[float],
+        extrema_order: Optional[int],
+        n_clusters: Optional[int],
+        fib_lookback: int,
+    ) -> Dict[str, Any]:
+        """
+        Legacy method using old 5 indicators.
+
+        DEPRECATED: Use find_all_levels with use_new_indicators=True.
+        """
+        # Run all legacy methods
         zigzag_df, zigzag_swings = self.zigzag(df, zigzag_threshold)
         extrema = self.local_extrema(df, extrema_order)
         clusters = self.kmeans_clustering(df, n_clusters)
         pivots = self.pivot_points_classical(df)
         pivots_range = self.pivot_points_from_range(df)
         fib = self.fibonacci_retracement(df, fib_lookback)
-        
+
         # Collect all support levels
         all_supports = []
-        
+
         # From ZigZag lows
         zigzag_lows = [s["price"] for s in zigzag_swings if s["type"] == "low"]
         all_supports.extend(zigzag_lows)
-        
+
         # From local minima
         all_supports.extend(extrema["support_levels"])
-        
+
         # From K-Means
         all_supports.extend(clusters["support_zones"])
-        
+
         # From pivots
         for key in ["S1", "S2", "S3"]:
             if key in pivots:
                 all_supports.append(pivots[key])
-        
+
         # From Fibonacci (levels below current price)
         for level_price in fib["levels"].values():
             if level_price < current_price:
                 all_supports.append(level_price)
-        
+
         # Collect all resistance levels
         all_resistances = []
-        
+
         # From ZigZag highs
         zigzag_highs = [s["price"] for s in zigzag_swings if s["type"] == "high"]
         all_resistances.extend(zigzag_highs)
-        
+
         # From local maxima
         all_resistances.extend(extrema["resistance_levels"])
-        
+
         # From K-Means
         all_resistances.extend(clusters["resistance_zones"])
-        
+
         # From pivots
         for key in ["R1", "R2", "R3"]:
             if key in pivots:
                 all_resistances.append(pivots[key])
-        
+
         # From Fibonacci (levels above current price)
         for level_price in fib["levels"].values():
             if level_price > current_price:
                 all_resistances.append(level_price)
-        
+
         # Filter and sort
         supports_below = sorted(
             [s for s in all_supports if s < current_price],
@@ -605,28 +852,29 @@ class SupportResistanceDetector:
         resistances_above = sorted(
             [r for r in all_resistances if r > current_price]
         )
-        
+
         # Find nearest levels
         nearest_support = supports_below[0] if supports_below else None
         nearest_resistance = resistances_above[0] if resistances_above else None
-        
+
         # Calculate distances
         support_distance_pct = None
         resistance_distance_pct = None
-        
+
         if nearest_support:
             support_distance_pct = (current_price - nearest_support) / current_price * 100
         if nearest_resistance:
             resistance_distance_pct = (nearest_resistance - current_price) / current_price * 100
-        
+
         result = {
             "current_price": round(current_price, 2),
             "nearest_support": nearest_support,
             "nearest_resistance": nearest_resistance,
             "support_distance_pct": round(support_distance_pct, 2) if support_distance_pct else None,
             "resistance_distance_pct": round(resistance_distance_pct, 2) if resistance_distance_pct else None,
-            "all_supports": supports_below[:10],  # Top 10 nearest
-            "all_resistances": resistances_above[:10],  # Top 10 nearest
+            "all_supports": supports_below[:10],
+            "all_resistances": resistances_above[:10],
+            "indicators": {},  # Empty for legacy mode
             "methods": {
                 "zigzag": {
                     "swings": zigzag_swings,
@@ -640,12 +888,12 @@ class SupportResistanceDetector:
                 "fibonacci": fib,
             },
         }
-        
+
         logger.info(
-            f"S/R Analysis: price={current_price:.2f}, "
+            f"S/R Analysis (legacy): price={current_price:.2f}, "
             f"support={nearest_support}, resistance={nearest_resistance}"
         )
-        
+
         return result
     
     # =========================================================================

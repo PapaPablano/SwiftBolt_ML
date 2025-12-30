@@ -558,12 +558,14 @@ struct AdvancedChartView: View {
                 }
 
                 // Draw pivot point markers if enabled (hollow circles like TradingView)
+                // Use activePivots to only show pivots used in current regression (TradingView style)
                 if indicator.settings.showPivots {
                     let circleRadius: CGFloat = 6  // Slightly smaller for cleaner look
                     let strokeWidth: CGFloat = 2   // Ring stroke width
 
                     // Resistance pivots (red hollow circles at highs)
-                    for pivot in indicator.pivots.highs {
+                    // Use activePivots.highs for TradingView-style display (only pivots in current regression)
+                    for pivot in indicator.activePivots.highs {
                         let x = indexToX(pivot.index)
                         let y = priceToY(pivot.price)
 
@@ -581,7 +583,8 @@ struct AdvancedChartView: View {
                     }
 
                     // Support pivots (green hollow circles at lows)
-                    for pivot in indicator.pivots.lows {
+                    // Use activePivots.lows for TradingView-style display (only pivots in current regression)
+                    for pivot in indicator.activePivots.lows {
                         let x = indexToX(pivot.index)
                         let y = priceToY(pivot.price)
 

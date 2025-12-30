@@ -129,6 +129,7 @@ class SupabaseDatabase:
         training_stats: dict[str, Any] | None = None,
         sr_levels: dict[str, Any] | None = None,
         sr_density: int | None = None,
+        synthesis_data: dict[str, Any] | None = None,
     ) -> None:
         """
         Insert or update a forecast in the ml_forecasts table.
@@ -147,6 +148,7 @@ class SupabaseDatabase:
             training_stats: Optional training statistics
             sr_levels: Optional support/resistance levels dict
             sr_density: Optional S/R density count
+            synthesis_data: Optional 3-layer forecast synthesis data
         """
         try:
             # Check if forecast exists
@@ -204,6 +206,8 @@ class SupabaseDatabase:
                 forecast_data["sr_levels"] = sr_levels
             if sr_density is not None:
                 forecast_data["sr_density"] = sr_density
+            if synthesis_data is not None:
+                forecast_data["synthesis_data"] = synthesis_data
 
             if existing.data:
                 # Delete existing forecast first to avoid trigger issues
