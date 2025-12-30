@@ -142,10 +142,15 @@ struct ChartView: View {
                         bollingerUpper: chartViewModel.bollingerUpper,
                         bollingerMiddle: chartViewModel.bollingerMiddle,
                         bollingerLower: chartViewModel.bollingerLower,
-                        atr: chartViewModel.atr
+                        atr: chartViewModel.atr,
+                        pivotIndicator: chartViewModel.pivotLevelsIndicator,
+                        polyIndicator: chartViewModel.polynomialSRIndicator,
+                        logisticIndicator: chartViewModel.logisticSRIndicator,
+                        superTrendAIIndicator: chartViewModel.superTrendAIIndicator,
+                        superTrendAISignals: chartViewModel.superTrendAISignals
                     )
                     .padding()
-                    .id("advanced-chart-\(chartData.bars.count)-\(chartData.bars.first?.ts.timeIntervalSince1970 ?? 0)")
+                    .id("advanced-chart-\(chartData.symbol)-\(chartData.bars.count)-\(chartData.bars.first?.ts.timeIntervalSince1970 ?? 0)-\(chartData.bars.last?.close ?? 0)")
 
                     if let latestBar = chartData.bars.last {
                         OHLCBarView(bar: latestBar)
@@ -153,7 +158,7 @@ struct ChartView: View {
                             .padding(.bottom)
                     }
                 }
-                .id("chart-container-\(chartData.bars.count)")
+                .id("chart-container-\(chartData.symbol)-\(chartData.bars.count)")
             } else if let chartData = chartViewModel.chartData, chartData.bars.isEmpty {
                 // Data loaded, but empty
                 EmptyChartView()
@@ -409,9 +414,16 @@ struct IndicatorToggleMenu: View {
             }
 
             Section("SuperTrend AI") {
+                Toggle("AI Panel", isOn: $config.showSuperTrendAIPanel)
                 Toggle("Trend Zones", isOn: $config.showTrendZones)
                 Toggle("Signal Markers", isOn: $config.showSignalMarkers)
                 Toggle("Confidence Badges", isOn: $config.showConfidenceBadges)
+            }
+
+            Section("Support & Resistance") {
+                Toggle("Pivot Levels", isOn: $config.showPivotLevels)
+                Toggle("Polynomial S&R", isOn: $config.showPolynomialSR)
+                Toggle("ML S&R (Logistic)", isOn: $config.showLogisticSR)
             }
 
             Section("Display") {

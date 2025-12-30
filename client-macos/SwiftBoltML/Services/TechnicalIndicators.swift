@@ -6,7 +6,7 @@ struct TechnicalIndicators {
 
     // MARK: - Simple Moving Average (SMA)
 
-    /// Calculate Simple Moving Average
+    /// Calculate Simple Moving Average using rolling sum - O(n) instead of O(n·period)
     /// - Parameters:
     ///   - data: Array of values (typically close prices)
     ///   - period: Number of periods for the average
@@ -18,10 +18,14 @@ struct TechnicalIndicators {
 
         var result: [Double?] = Array(repeating: nil, count: period - 1)
 
-        for i in (period - 1)..<data.count {
-            let slice = data[(i - period + 1)...i]
-            let average = slice.reduce(0, +) / Double(period)
-            result.append(average)
+        // Initialize rolling sum with first 'period' values
+        var rollingSum = data[0..<period].reduce(0, +)
+        result.append(rollingSum / Double(period))
+
+        // Roll through remaining values: add new, subtract oldest
+        for i in period..<data.count {
+            rollingSum += data[i] - data[i - period]
+            result.append(rollingSum / Double(period))
         }
 
         return result
@@ -164,29 +168,59 @@ struct TechnicalIndicators {
         let lower: [Double?]
     }
 
-    /// Calculate Bollinger Bands
+    /// Calculate Bollinger Bands using rolling statistics - O(n) instead of O(n·period)
+    /// Uses rolling sum and sum of squares for online variance calculation
     /// - Parameters:
     ///   - data: Array of values (typically close prices)
     ///   - period: SMA period (typically 20)
     ///   - stdDevMultiplier: Standard deviation multiplier (typically 2)
     /// - Returns: Bollinger Bands (upper, middle, lower)
     static func bollingerBands(_ data: [Double], period: Int, stdDevMultiplier: Double = 2.0) -> BollingerBands {
-        let middle = sma(data, period: period)
-        var upper: [Double?] = []
-        var lower: [Double?] = []
+        guard period > 0, data.count >= period else {
+            return BollingerBands(
+                upper: Array(repeating: nil, count: data.count),
+                middle: Array(repeating: nil, count: data.count),
+                lower: Array(repeating: nil, count: data.count)
+            )
+        }
 
-        for i in 0..<data.count {
-            guard let smaValue = middle[i], i >= period - 1 else {
-                upper.append(nil)
-                lower.append(nil)
-                continue
-            }
+        var upper: [Double?] = Array(repeating: nil, count: period - 1)
+        var middle: [Double?] = Array(repeating: nil, count: period - 1)
+        var lower: [Double?] = Array(repeating: nil, count: period - 1)
 
-            // Calculate standard deviation for the period
-            let slice = data[(i - period + 1)...i]
-            let variance = slice.map { pow($0 - smaValue, 2) }.reduce(0, +) / Double(period)
-            let stdDev = sqrt(variance)
+        // Initialize rolling sum and sum of squares for first window
+        var rollingSum: Double = 0
+        var rollingSumSq: Double = 0
+        for i in 0..<period {
+            rollingSum += data[i]
+            rollingSumSq += data[i] * data[i]
+        }
 
+        // Calculate first values
+        let periodD = Double(period)
+        var smaValue = rollingSum / periodD
+        var variance = (rollingSumSq / periodD) - (smaValue * smaValue)
+        var stdDev = sqrt(max(0, variance))  // Protect against floating point errors
+
+        middle.append(smaValue)
+        upper.append(smaValue + stdDevMultiplier * stdDev)
+        lower.append(smaValue - stdDevMultiplier * stdDev)
+
+        // Roll through remaining values
+        for i in period..<data.count {
+            let oldValue = data[i - period]
+            let newValue = data[i]
+
+            // Update rolling sums
+            rollingSum += newValue - oldValue
+            rollingSumSq += (newValue * newValue) - (oldValue * oldValue)
+
+            // Calculate new SMA and StdDev
+            smaValue = rollingSum / periodD
+            variance = (rollingSumSq / periodD) - (smaValue * smaValue)
+            stdDev = sqrt(max(0, variance))
+
+            middle.append(smaValue)
             upper.append(smaValue + stdDevMultiplier * stdDev)
             lower.append(smaValue - stdDevMultiplier * stdDev)
         }
@@ -698,8 +732,18 @@ struct IndicatorConfig {
     var showSuperTrend: Bool = true  // Enabled by default for SuperTrend AI
     var showATR: Bool = false
 
+    // SuperTrend Mode
+    var useSuperTrendAI: Bool = true  // Use K-Means adaptive version vs basic
+
     // SuperTrend AI Enhanced Options
     var showTrendZones: Bool = true
     var showSignalMarkers: Bool = true
     var showConfidenceBadges: Bool = true
+    var showAdaptiveMA: Bool = true  // Show adaptive moving average of SuperTrend
+    var showSuperTrendAIPanel: Bool = false  // Show dedicated SuperTrend AI panel
+
+    // Support & Resistance Indicators
+    var showPivotLevels: Bool = false        // BigBeluga multi-timeframe pivots
+    var showPolynomialSR: Bool = false       // Polynomial regression S&R
+    var showLogisticSR: Bool = false         // Logistic regression ML S&R
 }

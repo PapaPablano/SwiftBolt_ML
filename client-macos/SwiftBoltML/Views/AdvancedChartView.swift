@@ -90,12 +90,24 @@ struct AdvancedChartView: View {
     let bollingerLower: [IndicatorDataPoint]
     let atr: [IndicatorDataPoint]
 
+    // Support & Resistance Indicators
+    var pivotIndicator: PivotLevelsIndicator?
+    var polyIndicator: PolynomialRegressionIndicator?
+    var logisticIndicator: LogisticRegressionIndicator?
+
+    // SuperTrend AI Properties
+    var superTrendAIIndicator: SuperTrendAIIndicator?
+    var superTrendAISignals: [SuperTrendSignal] = []
+
     @State private var selectedBar: OHLCBar?
     @State private var selectedIndex: Int?
 
     // Chart pan/zoom state
     @State private var visibleRange: ClosedRange<Int>
     @State private var barsToShow: Int = 100 // Default visible bars
+
+    // Native scroll position binding (synced with visibleRange)
+    @State private var scrollPosition: Int = 0
 
     init(
         bars: [OHLCBar],
@@ -123,7 +135,12 @@ struct AdvancedChartView: View {
         bollingerUpper: [IndicatorDataPoint] = [],
         bollingerMiddle: [IndicatorDataPoint] = [],
         bollingerLower: [IndicatorDataPoint] = [],
-        atr: [IndicatorDataPoint] = []
+        atr: [IndicatorDataPoint] = [],
+        pivotIndicator: PivotLevelsIndicator? = nil,
+        polyIndicator: PolynomialRegressionIndicator? = nil,
+        logisticIndicator: LogisticRegressionIndicator? = nil,
+        superTrendAIIndicator: SuperTrendAIIndicator? = nil,
+        superTrendAISignals: [SuperTrendSignal] = []
     ) {
         self.bars = bars
         self.sma20 = sma20
@@ -151,6 +168,11 @@ struct AdvancedChartView: View {
         self.bollingerMiddle = bollingerMiddle
         self.bollingerLower = bollingerLower
         self.atr = atr
+        self.pivotIndicator = pivotIndicator
+        self.polyIndicator = polyIndicator
+        self.logisticIndicator = logisticIndicator
+        self.superTrendAIIndicator = superTrendAIIndicator
+        self.superTrendAISignals = superTrendAISignals
 
         // Initialize visible range to show most recent bars
         let count = bars.count
@@ -159,6 +181,7 @@ struct AdvancedChartView: View {
         let startIndex = max(0, endIndex - initialBarsToShow + 1)
         _visibleRange = State(initialValue: startIndex...endIndex)
         _barsToShow = State(initialValue: initialBarsToShow)
+        _scrollPosition = State(initialValue: startIndex)
     }
 
     // Create indexed versionsx for even spacing (TradingView style)
@@ -166,9 +189,12 @@ struct AdvancedChartView: View {
         bars.enumerated().map { (index: $0.offset, bar: $0.element) }
     }
 
-    // Visible bars based on current range
+    // Visible bars based on scroll position
     private var visibleBars: [(index: Int, bar: OHLCBar)] {
-        indexedBars.filter { visibleRange.contains($0.index) }
+        let startIdx = max(0, scrollPosition)
+        let endIdx = min(bars.count - 1, scrollPosition + barsToShow - 1)
+        guard startIdx <= endIdx else { return [] }
+        return indexedBars.filter { $0.index >= startIdx && $0.index <= endIdx }
     }
 
     // Map indicator data points to bar indices
@@ -285,6 +311,20 @@ struct AdvancedChartView: View {
                         .frame(height: 80)
                 }
 
+                // SuperTrend AI Panel (dedicated panel with AI line and signals)
+                if config.showSuperTrendAIPanel {
+                    Divider()
+                    SuperTrendChartView(
+                        bars: bars,
+                        superTrendAIIndicator: superTrendAIIndicator,
+                        signals: superTrendAISignals,
+                        visibleRange: visibleRange,
+                        scrollPosition: $scrollPosition,
+                        barsToShow: barsToShow
+                    )
+                    .frame(height: 150)
+                }
+
                 // Volume Panel
                 if config.showVolume {
                     Divider()
@@ -295,7 +335,7 @@ struct AdvancedChartView: View {
         }
         .onChange(of: bars.count) { oldCount, newCount in
             // Reset to latest bars when data changes
-            if oldCount != newCount {
+            if oldCount != newCount && newCount > 0 {
                 resetToLatest()
             }
         }
@@ -311,9 +351,11 @@ struct AdvancedChartView: View {
                 .foregroundStyle(.secondary)
 
             if bars.count > 0 {
+                let startIdx = max(0, min(scrollPosition, bars.count - 1))
+                let endIdx = max(0, min(scrollPosition + barsToShow - 1, bars.count - 1))
                 Text("•")
                     .foregroundStyle(.tertiary)
-                Text("\(formatDate(bars[visibleRange.lowerBound].ts)) - \(formatDate(bars[visibleRange.upperBound].ts))")
+                Text("\(formatDate(bars[startIdx].ts)) - \(formatDate(bars[endIdx].ts))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -326,29 +368,33 @@ struct AdvancedChartView: View {
                     .font(.caption)
             }
             .buttonStyle(.borderless)
-            .disabled(visibleRange.count >= bars.count)
+            .disabled(barsToShow >= bars.count)
+            .help("Zoom out (show more bars)")
 
             Button(action: zoomIn) {
                 Image(systemName: "plus.magnifyingglass")
                     .font(.caption)
             }
             .buttonStyle(.borderless)
-            .disabled(visibleRange.count <= 10)
+            .disabled(barsToShow <= 10)
+            .help("Zoom in (show fewer bars)")
 
-            // Pan controls
+            // Pan controls (complement native scroll)
             Button(action: panLeft) {
                 Image(systemName: "chevron.left")
                     .font(.caption)
             }
             .buttonStyle(.borderless)
-            .disabled(visibleRange.lowerBound <= 0)
+            .disabled(scrollPosition <= 0)
+            .help("Pan left")
 
             Button(action: panRight) {
                 Image(systemName: "chevron.right")
                     .font(.caption)
             }
             .buttonStyle(.borderless)
-            .disabled(visibleRange.upperBound >= bars.count - 1)
+            .disabled(scrollPosition >= maxChartIndex - barsToShow + 1)
+            .help("Pan right")
 
             // Reset to most recent
             Button("Latest") {
@@ -356,15 +402,260 @@ struct AdvancedChartView: View {
             }
             .buttonStyle(.borderless)
             .font(.caption)
+            .help("Jump to most recent data")
+
+            Divider()
+                .frame(height: 16)
+
+            // Scroll hint
+            Text("⌘ Scroll to pan")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
     }
 
     // MARK: - Price Chart
 
     private var priceChartView: some View {
+        ZStack {
+            // Main chart
+            priceChart
+
+            // S&R Canvas Overlay (Polynomial & Logistic regression curves)
+            // NOTE: Pivot Levels are now drawn using native Chart RuleMarks inside the Chart
+            if config.showPolynomialSR || config.showLogisticSR {
+                GeometryReader { geometry in
+                    srOverlay(size: geometry.size)
+                }
+            }
+        }
+    }
+
+    // S&R Canvas Overlay (for Polynomial and Logistic S&R - Pivot Levels now use native Chart marks)
+    private func srOverlay(size: CGSize) -> some View {
+        Canvas { context, _ in
+            let priceRange = visiblePriceRange
+            let priceMin = priceRange.lowerBound
+            let priceMax = priceRange.upperBound
+
+            // NOTE: Pivot Levels are now drawn using native Chart RuleMarks
+            // See pivotLevelMarks(indicator:) for the implementation
+
+            // Draw Polynomial Regression S&R curves
+            if config.showPolynomialSR, let indicator = polyIndicator {
+                // Helper to convert bar index to screen X
+                // Uses scrollPosition for accurate coordinate mapping with native scrolling
+                // Chart uses chartXVisibleDomain(length: barsToShow), so domain spans barsToShow units
+                func indexToX(_ index: Int) -> CGFloat {
+                    let domainMin = CGFloat(scrollPosition)
+                    let domainMax = CGFloat(scrollPosition + barsToShow)
+                    let domainSpan = domainMax - domainMin
+                    guard domainSpan > 0 else { return size.width / 2 }
+                    return ((CGFloat(index) - domainMin) / domainSpan) * size.width
+                }
+
+                // Helper to convert price to screen Y
+                func priceToY(_ price: Double) -> CGFloat {
+                    let range = priceMax - priceMin
+                    guard range > 0 else { return size.height / 2 }
+                    return size.height * (1 - (price - priceMin) / range)
+                }
+
+                #if DEBUG
+                // Debug: Print first/last point info for support line
+                if let supLine = indicator.supportLine,
+                   let firstPt = supLine.predictedPoints.first,
+                   let lastPt = supLine.predictedPoints.last {
+                    let firstX = indexToX(Int(firstPt.x))
+                    let lastX = indexToX(Int(lastPt.x))
+                    print("[Canvas] Support: \(supLine.predictedPoints.count) pts, price[\(String(format: "%.1f", firstPt.y))->\(String(format: "%.1f", lastPt.y))], screenX[\(String(format: "%.0f", firstX))->\(String(format: "%.0f", lastX))]")
+                }
+                if let resLine = indicator.resistanceLine,
+                   let firstPt = resLine.predictedPoints.first,
+                   let lastPt = resLine.predictedPoints.last {
+                    let firstX = indexToX(Int(firstPt.x))
+                    let lastX = indexToX(Int(lastPt.x))
+                    print("[Canvas] Resistance: \(resLine.predictedPoints.count) pts, price[\(String(format: "%.1f", firstPt.y))->\(String(format: "%.1f", lastPt.y))], screenX[\(String(format: "%.0f", firstX))->\(String(format: "%.0f", lastX))]")
+                }
+                #endif
+
+                // Draw resistance curve
+                if let resLine = indicator.resistanceLine {
+                    var path = Path()
+                    var started = false
+                    let priceRange = priceMax - priceMin
+
+                    for point in resLine.predictedPoints {
+                        let barIndex = Int(point.x)
+                        let price = point.y
+                        let x = indexToX(barIndex)
+                        let y = priceToY(price)
+
+                        // Clamp Y to reasonable screen bounds
+                        let clampedY = max(-50, min(size.height + 50, y))
+
+                        // Only draw points within reasonable X bounds (allow some overflow for edge continuity)
+                        guard x >= -50 && x <= size.width + 100 else { continue }
+
+                        // Skip points with extreme Y values (regression extrapolation gone wild)
+                        guard price >= priceMin - priceRange * 2 &&
+                              price <= priceMax + priceRange * 2 else { continue }
+
+                        let currentPoint = CGPoint(x: x, y: clampedY)
+
+                        if !started {
+                            path.move(to: currentPoint)
+                            started = true
+                        } else {
+                            path.addLine(to: currentPoint)
+                        }
+                    }
+
+                    if started {
+                        // Draw with glow effect for better visibility
+                        context.stroke(path, with: .color(indicator.settings.resistanceColor.opacity(0.3)), lineWidth: 6)
+                        context.stroke(path, with: .color(indicator.settings.resistanceColor), lineWidth: 2)
+                    }
+                }
+
+                // Draw support curve
+                if let supLine = indicator.supportLine {
+                    var path = Path()
+                    var started = false
+
+                    for point in supLine.predictedPoints {
+                        let barIndex = Int(point.x)
+                        let price = point.y
+                        let x = indexToX(barIndex)
+                        let y = priceToY(price)
+
+                        // Clamp Y to reasonable screen bounds
+                        let clampedY = max(-50, min(size.height + 50, y))
+
+                        // Only draw points within reasonable X bounds
+                        guard x >= -50 && x <= size.width + 100 else { continue }
+
+                        // Skip points with extreme Y values (regression gone wild)
+                        let priceRange = priceMax - priceMin
+                        guard price >= priceMin - priceRange * 2 &&
+                              price <= priceMax + priceRange * 2 else { continue }
+
+                        let currentPoint = CGPoint(x: x, y: clampedY)
+
+                        if !started {
+                            path.move(to: currentPoint)
+                            started = true
+                        } else {
+                            path.addLine(to: currentPoint)
+                        }
+                    }
+
+                    if started {
+                        // Draw with glow effect for better visibility
+                        context.stroke(path, with: .color(indicator.settings.supportColor.opacity(0.3)), lineWidth: 6)
+                        context.stroke(path, with: .color(indicator.settings.supportColor), lineWidth: 2)
+                    }
+                }
+
+                // Draw pivot point markers if enabled (hollow circles like TradingView)
+                if indicator.settings.showPivots {
+                    let circleRadius: CGFloat = 6  // Slightly smaller for cleaner look
+                    let strokeWidth: CGFloat = 2   // Ring stroke width
+
+                    // Resistance pivots (red hollow circles at highs)
+                    for pivot in indicator.pivots.highs {
+                        let x = indexToX(pivot.index)
+                        let y = priceToY(pivot.price)
+
+                        guard x >= 0 && x <= size.width else { continue }
+                        guard pivot.price >= priceMin && pivot.price <= priceMax else { continue }
+
+                        // Draw hollow circle (ring)
+                        let circle = Path(ellipseIn: CGRect(
+                            x: x - circleRadius,
+                            y: y - circleRadius,
+                            width: circleRadius * 2,
+                            height: circleRadius * 2
+                        ))
+                        context.stroke(circle, with: .color(indicator.settings.resistanceColor), lineWidth: strokeWidth)
+                    }
+
+                    // Support pivots (green hollow circles at lows)
+                    for pivot in indicator.pivots.lows {
+                        let x = indexToX(pivot.index)
+                        let y = priceToY(pivot.price)
+
+                        guard x >= 0 && x <= size.width else { continue }
+                        guard pivot.price >= priceMin && pivot.price <= priceMax else { continue }
+
+                        // Draw hollow circle (ring)
+                        let circle = Path(ellipseIn: CGRect(
+                            x: x - circleRadius,
+                            y: y - circleRadius,
+                            width: circleRadius * 2,
+                            height: circleRadius * 2
+                        ))
+                        context.stroke(circle, with: .color(indicator.settings.supportColor), lineWidth: strokeWidth)
+                    }
+                }
+            }
+
+            // Draw Logistic Regression S&R
+            if config.showLogisticSR, let indicator = logisticIndicator {
+                for level in indicator.regressionLevels {
+                    guard level.level >= priceMin && level.level <= priceMax else { continue }
+                    let y = size.height * (1 - (level.level - priceMin) / (priceMax - priceMin))
+                    var path = Path()
+                    path.move(to: CGPoint(x: 0, y: y))
+                    path.addLine(to: CGPoint(x: size.width, y: y))
+                    let color = level.isSupport ? indicator.settings.supportColor : indicator.settings.resistanceColor
+                    context.stroke(path, with: .color(color), lineWidth: 3)
+
+                    // Draw probability label
+                    if indicator.settings.showPredictionLabels {
+                        let text = Text(String(format: "%.0f%%", level.detectedPrediction * 100))
+                            .font(.caption2)
+                            .foregroundColor(color)
+                        context.draw(text, at: CGPoint(x: size.width - 40, y: y - 10))
+                    }
+                }
+            }
+        }
+        .id(srOverlayChangeId)  // Force Canvas recreation when indicator data changes
+        .allowsHitTesting(false) // Allow mouse events to pass through to chart
+    }
+
+    /// Unique identifier to force Canvas redraw when S&R indicator data changes
+    private var srOverlayChangeId: String {
+        // Polynomial S&R state
+        let polyRes = polyIndicator?.currentResistance ?? 0
+        let polySup = polyIndicator?.currentSupport ?? 0
+        let polyResPoints = polyIndicator?.resistanceLine?.predictedPoints.count ?? 0
+        let polySupPoints = polyIndicator?.supportLine?.predictedPoints.count ?? 0
+        let polyHighPivots = polyIndicator?.pivots.highs.count ?? 0
+        let polyLowPivots = polyIndicator?.pivots.lows.count ?? 0
+
+        // Pivot Levels state
+        let pivotCount = pivotIndicator?.pivotLevels.count ?? 0
+        let pivotHighSum = pivotIndicator?.pivotLevels.reduce(0.0) { $0 + $1.levelHigh } ?? 0
+        let pivotLowSum = pivotIndicator?.pivotLevels.reduce(0.0) { $0 + $1.levelLow } ?? 0
+
+        // Logistic S&R state
+        let logisticCount = logisticIndicator?.regressionLevels.count ?? 0
+        let logisticLevelSum = logisticIndicator?.regressionLevels.reduce(0.0) { $0 + $1.level } ?? 0
+
+        // Include visible range, bar count, and config state
+        let barCount = bars.count
+        let configState = "\(config.showPolynomialSR)-\(config.showPivotLevels)-\(config.showLogisticSR)"
+
+        return "sr-\(polyRes.rounded())-\(polySup.rounded())-\(polyResPoints)-\(polySupPoints)-\(polyHighPivots)-\(polyLowPivots)-\(pivotCount)-\(pivotHighSum.rounded())-\(pivotLowSum.rounded())-\(logisticCount)-\(logisticLevelSum.rounded())-\(visibleRange.lowerBound)-\(visibleRange.upperBound)-\(barCount)-\(configState)"
+    }
+
+    private var priceChart: some View {
         Chart {
             // Candlesticks - using index for even spacing
-            ForEach(visibleBars, id: \.bar.id) { item in
+            // Native scrolling handles visibility, so iterate all bars
+            ForEach(indexedBars, id: \.bar.id) { item in
                 candlestickMarks(index: item.index, bar: item.bar)
             }
 
@@ -392,20 +683,52 @@ struct AdvancedChartView: View {
                 superTrendOverlay
             }
 
+            // SuperTrend AI Buy/Sell Signals
+            if config.showSuperTrend && config.showSignalMarkers {
+                superTrendSignalMarkers
+            }
+
+            // Pivot Levels (native Chart marks instead of Canvas)
+            if config.showPivotLevels, let indicator = pivotIndicator {
+                pivotLevelMarks(indicator: indicator)
+            }
+
             // ML Forecast Overlays
             if let mlSummary = mlSummary {
                 forecastOverlay(mlSummary)
             }
 
-            // Selection indicator
-            if let selectedIdx = selectedIndex {
+            // Crosshair selection indicator (vertical + horizontal lines with price badge)
+            if let selectedIdx = selectedIndex, let bar = selectedBar {
+                // Vertical crosshair line
                 RuleMark(x: .value("Index", selectedIdx))
-                    .foregroundStyle(.blue.opacity(0.3))
+                    .foregroundStyle(.blue.opacity(0.4))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
+
+                // Horizontal crosshair line at close price
+                RuleMark(y: .value("Price", bar.close))
+                    .foregroundStyle(.blue.opacity(0.4))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
+                    .annotation(position: .trailing, alignment: .trailing, spacing: 4) {
+                        // Price badge
+                        Text(formatPrice(bar.close))
+                            .font(.system(size: 10, weight: .medium).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(bar.close >= bar.open ? Color.green : Color.red)
+                            )
+                    }
             }
         }
-        .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
+        .chartXScale(domain: 0...maxChartIndex)
         .chartYScale(domain: visiblePriceRange)
+        // Native horizontal scrolling with trackpad/gesture support
+        .chartScrollableAxes(.horizontal)
+        .chartXVisibleDomain(length: barsToShow)
+        .chartScrollPosition(x: $scrollPosition)
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 6)) { value in
                 if let index = value.as(Int.self), index >= 0 && index < bars.count {
@@ -453,6 +776,12 @@ struct AdvancedChartView: View {
                 CandlestickTooltip(bar: bar)
                     .padding(8)
             }
+        }
+        // Sync scrollPosition changes back to visibleRange
+        .onChange(of: scrollPosition) { _, newPosition in
+            let clampedStart = max(0, min(newPosition, bars.count - barsToShow))
+            let newEnd = min(bars.count - 1, clampedStart + barsToShow - 1)
+            visibleRange = clampedStart...newEnd
         }
     }
 
@@ -642,8 +971,11 @@ struct AdvancedChartView: View {
     }
 
     // SuperTrend legend with trend strength indicator
+    // Uses SuperTrend AI data when available
     private var superTrendLegendItem: some View {
-        let lastTrend = superTrendTrend.last ?? 0
+        // Use AI data if available
+        let trendData = !aiSuperTrendTrend.isEmpty ? aiSuperTrendTrend : superTrendTrend
+        let lastTrend = trendData.last ?? 0
         let lastStrength = superTrendStrength.last?.value ?? 0
         let isBullish = lastTrend == 1
         let trendColor: Color = isBullish ? .green : .red
@@ -652,11 +984,14 @@ struct AdvancedChartView: View {
         // Strength as percentage (0-100)
         let strengthPercent = Int(lastStrength)
 
+        // Show "AI" indicator when using AI data
+        let isAI = !aiSuperTrendTrend.isEmpty
+
         return HStack(spacing: 4) {
             Circle()
                 .fill(trendColor)
                 .frame(width: 8, height: 8)
-            Text("ST")
+            Text(isAI ? "ST-AI" : "ST")
                 .font(.caption2)
                 .foregroundColor(.secondary)
             Text(trendLabel)
@@ -670,8 +1005,11 @@ struct AdvancedChartView: View {
 
     // MARK: - SuperTrend Strength Panel
 
+    // Uses SuperTrend AI data when available
     private var superTrendStrengthPanel: some View {
-        let lastTrend = superTrendTrend.last ?? 0
+        // Use AI data if available
+        let trendData = !aiSuperTrendTrend.isEmpty ? aiSuperTrendTrend : superTrendTrend
+        let lastTrend = trendData.last ?? 0
         let isBullish = lastTrend == 1
         let bgColor = isBullish ? ChartColors.superTrendBull : ChartColors.superTrendBear
 
@@ -759,6 +1097,7 @@ struct AdvancedChartView: View {
     }
 
     // Helper for strength panel data
+    // Uses SuperTrend AI data when available
     private var visibleStrengthData: [(index: Int, strength: Double, isBullish: Bool)] {
         var data: [(index: Int, strength: Double, isBullish: Bool)] = []
 
@@ -770,14 +1109,17 @@ struct AdvancedChartView: View {
 
         guard rangeStart <= rangeEnd else { return [] }
 
+        // Use AI data if available
+        let trendData = !aiSuperTrendTrend.isEmpty ? aiSuperTrendTrend : superTrendTrend
+
         for i in rangeStart...rangeEnd {
             guard i < superTrendStrength.count,
-                  i < superTrendTrend.count,
+                  i < trendData.count,
                   let strength = superTrendStrength[i].value else {
                 continue
             }
 
-            let isBullish = superTrendTrend[i] == 1
+            let isBullish = trendData[i] == 1
             data.append((index: i, strength: strength, isBullish: isBullish))
         }
 
@@ -801,10 +1143,12 @@ struct AdvancedChartView: View {
 
     /// Collect all visible indicator values for proper Y-axis scaling
     private func visibleIndicatorValues(from data: [IndicatorDataPoint]) -> [Double] {
-        data.compactMap { point -> Double? in
+        let startIdx = max(0, scrollPosition)
+        let endIdx = min(bars.count - 1, scrollPosition + barsToShow - 1)
+        return data.compactMap { point -> Double? in
             guard let value = point.value,
                   let index = indicatorIndex(for: point.date),
-                  visibleRange.contains(index) else { return nil }
+                  index >= startIdx && index <= endIdx else { return nil }
             return value
         }
     }
@@ -828,8 +1172,61 @@ struct AdvancedChartView: View {
         if config.showBollingerBands, let min = visibleIndicatorValues(from: bollingerLower).min() {
             minValue = Swift.min(minValue, min)
         }
-        if config.showSuperTrend, let min = visibleIndicatorValues(from: superTrendLine).min() {
-            minValue = Swift.min(minValue, min)
+        if config.showSuperTrend {
+            // Prioritize AI SuperTrend line values if available
+            if !aiSuperTrendLine.isEmpty {
+                let startIdx = max(0, scrollPosition)
+                let endIdx = min(bars.count - 1, scrollPosition + barsToShow - 1)
+                for i in startIdx...endIdx {
+                    if i < aiSuperTrendLine.count, let value = aiSuperTrendLine[i] {
+                        minValue = Swift.min(minValue, value)
+                    }
+                }
+            } else if let min = visibleIndicatorValues(from: superTrendLine).min() {
+                minValue = Swift.min(minValue, min)
+            }
+        }
+
+        // Include Polynomial S&R regression lines in visible range
+        if config.showPolynomialSR, let indicator = polyIndicator {
+            // Include visible regression line points
+            if let resLine = indicator.resistanceLine {
+                let visibleResPoints = resLine.predictedPoints.filter { point in
+                    let idx = Int(point.x)
+                    return idx >= visibleRange.lowerBound && idx <= visibleRange.upperBound + 20
+                }
+                if let min = visibleResPoints.map({ $0.y }).min() {
+                    minValue = Swift.min(minValue, min)
+                }
+            }
+            if let supLine = indicator.supportLine {
+                let visibleSupPoints = supLine.predictedPoints.filter { point in
+                    let idx = Int(point.x)
+                    return idx >= visibleRange.lowerBound && idx <= visibleRange.upperBound + 20
+                }
+                if let min = visibleSupPoints.map({ $0.y }).min() {
+                    minValue = Swift.min(minValue, min)
+                }
+            }
+        }
+
+        // Include Pivot Levels in visible range
+        if config.showPivotLevels, let indicator = pivotIndicator {
+            for level in indicator.pivotLevels where level.display {
+                if level.levelHigh > 0 {
+                    minValue = Swift.min(minValue, level.levelHigh)
+                }
+                if level.levelLow > 0 {
+                    minValue = Swift.min(minValue, level.levelLow)
+                }
+            }
+        }
+
+        // Include Logistic S&R levels in visible range
+        if config.showLogisticSR, let indicator = logisticIndicator {
+            for level in indicator.regressionLevels {
+                minValue = Swift.min(minValue, level.level)
+            }
         }
 
         // Include forecast lower bounds
@@ -863,8 +1260,61 @@ struct AdvancedChartView: View {
         if config.showBollingerBands, let max = visibleIndicatorValues(from: bollingerUpper).max() {
             maxValue = Swift.max(maxValue, max)
         }
-        if config.showSuperTrend, let max = visibleIndicatorValues(from: superTrendLine).max() {
-            maxValue = Swift.max(maxValue, max)
+        if config.showSuperTrend {
+            // Prioritize AI SuperTrend line values if available
+            if !aiSuperTrendLine.isEmpty {
+                let startIdx = max(0, scrollPosition)
+                let endIdx = min(bars.count - 1, scrollPosition + barsToShow - 1)
+                for i in startIdx...endIdx {
+                    if i < aiSuperTrendLine.count, let value = aiSuperTrendLine[i] {
+                        maxValue = Swift.max(maxValue, value)
+                    }
+                }
+            } else if let max = visibleIndicatorValues(from: superTrendLine).max() {
+                maxValue = Swift.max(maxValue, max)
+            }
+        }
+
+        // Include Polynomial S&R regression lines in visible range
+        if config.showPolynomialSR, let indicator = polyIndicator {
+            // Include visible regression line points
+            if let resLine = indicator.resistanceLine {
+                let visibleResPoints = resLine.predictedPoints.filter { point in
+                    let idx = Int(point.x)
+                    return idx >= visibleRange.lowerBound && idx <= visibleRange.upperBound + 20
+                }
+                if let max = visibleResPoints.map({ $0.y }).max() {
+                    maxValue = Swift.max(maxValue, max)
+                }
+            }
+            if let supLine = indicator.supportLine {
+                let visibleSupPoints = supLine.predictedPoints.filter { point in
+                    let idx = Int(point.x)
+                    return idx >= visibleRange.lowerBound && idx <= visibleRange.upperBound + 20
+                }
+                if let max = visibleSupPoints.map({ $0.y }).max() {
+                    maxValue = Swift.max(maxValue, max)
+                }
+            }
+        }
+
+        // Include Pivot Levels in visible range
+        if config.showPivotLevels, let indicator = pivotIndicator {
+            for level in indicator.pivotLevels where level.display {
+                if level.levelHigh > 0 {
+                    maxValue = Swift.max(maxValue, level.levelHigh)
+                }
+                if level.levelLow > 0 {
+                    maxValue = Swift.max(maxValue, level.levelLow)
+                }
+            }
+        }
+
+        // Include Logistic S&R levels in visible range
+        if config.showLogisticSR, let indicator = logisticIndicator {
+            for level in indicator.regressionLevels {
+                maxValue = Swift.max(maxValue, level.level)
+            }
         }
 
         // Include forecast upper bounds
@@ -886,46 +1336,58 @@ struct AdvancedChartView: View {
         return (visibleMinPrice - padding)...(visibleMaxPrice + padding)
     }
 
-    // Pan/Zoom functions
+    /// Maximum X-axis index including forecast points
+    private var maxChartIndex: Int {
+        var maxIndex = max(0, bars.count - 1)
+
+        // Extend domain to include forecast points
+        if let mlSummary = mlSummary {
+            let lastBarIndex = bars.count - 1
+            for horizon in mlSummary.horizons {
+                let forecastEndIndex = lastBarIndex + horizon.points.count
+                maxIndex = max(maxIndex, forecastEndIndex)
+            }
+        }
+
+        return maxIndex
+    }
+
+    // Pan/Zoom functions - work with native scrolling
     private func zoomIn() {
-        let currentWidth = visibleRange.count
-        let newWidth = max(10, currentWidth / 2)
-        let center = (visibleRange.lowerBound + visibleRange.upperBound) / 2
-        let newStart = max(0, center - newWidth / 2)
-        let newEnd = min(bars.count - 1, newStart + newWidth - 1)
-        visibleRange = newStart...newEnd
+        let newWidth = max(10, barsToShow / 2)
+        // Keep centered on current view
+        let currentCenter = scrollPosition + barsToShow / 2
+        let newStart = max(0, currentCenter - newWidth / 2)
+        barsToShow = newWidth
+        scrollPosition = newStart
     }
 
     private func zoomOut() {
-        let currentWidth = visibleRange.count
-        let newWidth = min(bars.count, currentWidth * 2)
-        let center = (visibleRange.lowerBound + visibleRange.upperBound) / 2
-        let newStart = max(0, center - newWidth / 2)
-        let newEnd = min(bars.count - 1, newStart + newWidth - 1)
-        visibleRange = newStart...newEnd
+        let newWidth = min(bars.count, barsToShow * 2)
+        // Keep centered on current view
+        let currentCenter = scrollPosition + barsToShow / 2
+        let newStart = max(0, currentCenter - newWidth / 2)
+        barsToShow = newWidth
+        scrollPosition = min(newStart, max(0, bars.count - newWidth))
     }
 
     private func panLeft() {
-        let width = visibleRange.count
-        let shift = width / 4
-        let newStart = max(0, visibleRange.lowerBound - shift)
-        let newEnd = newStart + width - 1
-        visibleRange = newStart...newEnd
+        let shift = max(1, barsToShow / 4)
+        scrollPosition = max(0, scrollPosition - shift)
     }
 
     private func panRight() {
-        let width = visibleRange.count
-        let shift = width / 4
-        let newEnd = min(bars.count - 1, visibleRange.upperBound + shift)
-        let newStart = max(0, newEnd - width + 1)
-        visibleRange = newStart...newEnd
+        let shift = max(1, barsToShow / 4)
+        // Allow panning to see forecasts (use maxChartIndex instead of bars.count)
+        let maxPosition = max(0, maxChartIndex - barsToShow + 1)
+        scrollPosition = min(maxPosition, scrollPosition + shift)
     }
 
     private func resetToLatest() {
-        let newWidth = min(100, bars.count)
-        let newEnd = bars.count - 1
-        let newStart = max(0, newEnd - newWidth + 1)
-        visibleRange = newStart...newEnd
+        barsToShow = min(100, bars.count)
+        // Position to show latest bars plus any forecast
+        let forecastOffset = maxChartIndex - (bars.count - 1)
+        scrollPosition = max(0, bars.count - barsToShow + forecastOffset)
     }
 
     private func updateSelection(at location: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) {
@@ -1087,6 +1549,156 @@ struct AdvancedChartView: View {
         }
     }
 
+    // MARK: - SuperTrend AI Signal Markers
+
+    @ChartContentBuilder
+    private var superTrendSignalMarkers: some ChartContent {
+        ForEach(superTrendAISignals) { signal in
+            // Only show signals in visible range
+            let startIdx = max(0, scrollPosition)
+            let endIdx = min(bars.count - 1, scrollPosition + barsToShow - 1)
+
+            if signal.barIndex >= startIdx && signal.barIndex <= endIdx {
+                // Get SuperTrend line value at this bar for positioning
+                // Priority: 1) SuperTrend AI line (now displayed), 2) Regular SuperTrend, 3) Bar price
+                let stValue: Double = {
+                    // Use SuperTrend AI line first (this is what's now displayed on the chart)
+                    if signal.barIndex < aiSuperTrendLine.count,
+                       let aiValue = aiSuperTrendLine[signal.barIndex] {
+                        return aiValue
+                    }
+                    // Fallback to regular SuperTrend line
+                    if signal.barIndex < superTrendLine.count,
+                       let value = superTrendLine[signal.barIndex].value {
+                        return value
+                    }
+                    return signal.price  // Final fallback to bar price
+                }()
+
+                // Signal marker point - positioned at SuperTrend line
+                PointMark(
+                    x: .value("Index", signal.barIndex),
+                    y: .value("Price", stValue)
+                )
+                .symbol {
+                    signalSymbol(for: signal)
+                }
+                .symbolSize(180)
+
+                // Signal annotation with label - positioned at SuperTrend line
+                PointMark(
+                    x: .value("Index", signal.barIndex),
+                    y: .value("Price", stValue)
+                )
+                .annotation(position: signal.type == .buy ? .bottom : .top, spacing: 4) {
+                    signalAnnotation(for: signal)
+                }
+                .opacity(0)  // Hidden point, just for annotation positioning
+            }
+        }
+    }
+
+    /// Create signal symbol (triangle up for buy, down for sell)
+    private func signalSymbol(for signal: SuperTrendSignal) -> some View {
+        let color: Color = signal.type == .buy ? ChartColors.superTrendBull : ChartColors.superTrendBear
+
+        return Group {
+            if signal.type == .buy {
+                Image(systemName: "arrowtriangle.up.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(color)
+            } else {
+                Image(systemName: "arrowtriangle.down.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(color)
+            }
+        }
+    }
+
+    /// Create signal annotation label
+    private func signalAnnotation(for signal: SuperTrendSignal) -> some View {
+        let color: Color = signal.type == .buy ? ChartColors.superTrendBull : ChartColors.superTrendBear
+        let strengthBars = min(5, max(1, signal.strength / 2))  // 1-5 bars based on 0-10 strength
+
+        return VStack(spacing: 2) {
+            Text(signal.type == .buy ? "BUY" : "SELL")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(color)
+
+            // Strength indicator (bars)
+            HStack(spacing: 1) {
+                ForEach(0..<strengthBars, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(color)
+                        .frame(width: 3, height: 6)
+                }
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(color.opacity(0.15))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(color.opacity(0.5), lineWidth: 0.5)
+                )
+        )
+    }
+
+    // MARK: - Pivot Level Chart Marks (Native Swift Charts)
+
+    @ChartContentBuilder
+    private func pivotLevelMarks(indicator: PivotLevelsIndicator) -> some ChartContent {
+        let priceRange = visiblePriceRange
+
+        ForEach(Array(indicator.pivotLevels.enumerated()), id: \.offset) { _, level in
+            if level.display {
+                // High pivot level (resistance)
+                if level.levelHigh > 0 &&
+                    level.levelHigh >= priceRange.lowerBound &&
+                    level.levelHigh <= priceRange.upperBound {
+                    RuleMark(y: .value("Pivot High", level.levelHigh))
+                        .foregroundStyle(level.highColor.opacity(0.8))
+                        .lineStyle(StrokeStyle(
+                            lineWidth: indicator.lineWidth(for: level.length),
+                            dash: [8, 4]
+                        ))
+                        .annotation(position: .trailing, alignment: .trailing, spacing: 4) {
+                            Text(String(format: "%.2f", level.levelHigh))
+                                .font(.system(size: 8, weight: .medium).monospacedDigit())
+                                .foregroundStyle(level.highColor)
+                                .padding(.horizontal, 3)
+                                .padding(.vertical, 1)
+                                .background(level.highColor.opacity(0.1))
+                                .clipShape(RoundedRectangle(cornerRadius: 2))
+                        }
+                }
+
+                // Low pivot level (support)
+                if level.levelLow > 0 &&
+                    level.levelLow >= priceRange.lowerBound &&
+                    level.levelLow <= priceRange.upperBound {
+                    RuleMark(y: .value("Pivot Low", level.levelLow))
+                        .foregroundStyle(level.lowColor.opacity(0.8))
+                        .lineStyle(StrokeStyle(
+                            lineWidth: indicator.lineWidth(for: level.length),
+                            dash: [8, 4]
+                        ))
+                        .annotation(position: .trailing, alignment: .trailing, spacing: 4) {
+                            Text(String(format: "%.2f", level.levelLow))
+                                .font(.system(size: 8, weight: .medium).monospacedDigit())
+                                .foregroundStyle(level.lowColor)
+                                .padding(.horizontal, 3)
+                                .padding(.vertical, 1)
+                                .background(level.lowColor.opacity(0.1))
+                                .clipShape(RoundedRectangle(cornerRadius: 2))
+                        }
+                }
+            }
+        }
+    }
+
     // Helper struct for SuperTrend points with series key for proper line connection
     private struct SuperTrendPoint: Identifiable {
         let id: String
@@ -1096,7 +1708,18 @@ struct AdvancedChartView: View {
         let seriesKey: String  // Groups points into connected line segments
     }
 
+    // Get SuperTrend AI line values (prioritize AI over regular SuperTrend)
+    private var aiSuperTrendLine: [Double?] {
+        superTrendAIIndicator?.result?.supertrend ?? []
+    }
+
+    // Get SuperTrend AI trend values (prioritize AI over regular SuperTrend)
+    private var aiSuperTrendTrend: [Int] {
+        superTrendAIIndicator?.result?.trend ?? []
+    }
+
     // Build SuperTrend points with series keys for connected line rendering
+    // Uses SuperTrend AI data when available, falls back to regular SuperTrend
     private var superTrendPoints: [SuperTrendPoint] {
         var points: [SuperTrendPoint] = []
         var segmentId = 0
@@ -1110,14 +1733,26 @@ struct AdvancedChartView: View {
 
         guard rangeStart <= rangeEnd else { return [] }
 
+        // Use AI data if available, otherwise fall back to regular SuperTrend
+        let useAI = !aiSuperTrendLine.isEmpty && !aiSuperTrendTrend.isEmpty
+
         for i in rangeStart...rangeEnd {
-            guard i < superTrendLine.count,
-                  i < superTrendTrend.count,
-                  let stValue = superTrendLine[i].value else {
-                continue
+            let stValue: Double?
+            let trend: Int
+
+            if useAI {
+                guard i < aiSuperTrendLine.count,
+                      i < aiSuperTrendTrend.count else { continue }
+                stValue = aiSuperTrendLine[i]
+                trend = aiSuperTrendTrend[i]
+            } else {
+                guard i < superTrendLine.count,
+                      i < superTrendTrend.count else { continue }
+                stValue = superTrendLine[i].value
+                trend = superTrendTrend[i]
             }
 
-            let trend = superTrendTrend[i]
+            guard let value = stValue else { continue }
 
             // Start new segment when trend changes
             if let prev = lastTrend, prev != trend {
@@ -1129,7 +1764,7 @@ struct AdvancedChartView: View {
             points.append(SuperTrendPoint(
                 id: "\(i)-\(segmentId)",
                 index: i,
-                value: stValue,
+                value: value,
                 isBullish: isBullish,
                 seriesKey: "ST-\(segmentId)"
             ))
@@ -1146,6 +1781,7 @@ struct AdvancedChartView: View {
     }
 
     // Build continuous line segments grouped by trend direction
+    // Uses SuperTrend AI data when available
     private var superTrendLineSegments: [SuperTrendLineSegment] {
         var lineSegments: [SuperTrendLineSegment] = []
         var currentPoints: [(index: Int, value: Double)] = []
@@ -1158,15 +1794,28 @@ struct AdvancedChartView: View {
 
         guard rangeStart <= rangeEnd else { return [] }
 
+        // Use AI data if available
+        let useAI = !aiSuperTrendLine.isEmpty && !aiSuperTrendTrend.isEmpty
+
         for i in rangeStart...rangeEnd {
-            guard i < superTrendLine.count,
-                  i < superTrendTrend.count,
-                  i < bars.count,
-                  let stValue = superTrendLine[i].value else {
-                continue
+            let stValue: Double?
+            let trend: Int
+
+            if useAI {
+                guard i < aiSuperTrendLine.count,
+                      i < aiSuperTrendTrend.count,
+                      i < bars.count else { continue }
+                stValue = aiSuperTrendLine[i]
+                trend = aiSuperTrendTrend[i]
+            } else {
+                guard i < superTrendLine.count,
+                      i < superTrendTrend.count,
+                      i < bars.count else { continue }
+                stValue = superTrendLine[i].value
+                trend = superTrendTrend[i]
             }
 
-            let trend = superTrendTrend[i]
+            guard let value = stValue else { continue }
 
             // If trend changed, save current segment and start new one
             if let prevTrend = currentTrend, prevTrend != trend, !currentPoints.isEmpty {
@@ -1179,7 +1828,7 @@ struct AdvancedChartView: View {
                 currentPoints = []
             }
 
-            currentPoints.append((index: i, value: stValue))
+            currentPoints.append((index: i, value: value))
             currentTrend = trend
         }
 
@@ -1204,6 +1853,7 @@ struct AdvancedChartView: View {
     }
 
     // Build SuperTrend segments with proper color based on trend direction
+    // Uses SuperTrend AI data when available
     private var superTrendSegments: [SuperTrendSegment] {
         var segments: [SuperTrendSegment] = []
 
@@ -1214,23 +1864,36 @@ struct AdvancedChartView: View {
 
         guard rangeStart <= rangeEnd else { return [] }
 
+        // Use AI data if available
+        let useAI = !aiSuperTrendLine.isEmpty && !aiSuperTrendTrend.isEmpty
+
         for i in rangeStart...rangeEnd {
-            // Ensure we have valid data for this index
-            guard i < superTrendLine.count,
-                  i < superTrendTrend.count,
-                  i < bars.count,
-                  let stValue = superTrendLine[i].value else {
-                continue
+            let stValue: Double?
+            let trend: Int
+
+            if useAI {
+                guard i < aiSuperTrendLine.count,
+                      i < aiSuperTrendTrend.count,
+                      i < bars.count else { continue }
+                stValue = aiSuperTrendLine[i]
+                trend = aiSuperTrendTrend[i]
+            } else {
+                guard i < superTrendLine.count,
+                      i < superTrendTrend.count,
+                      i < bars.count else { continue }
+                stValue = superTrendLine[i].value
+                trend = superTrendTrend[i]
             }
 
-            let trend = superTrendTrend[i]
+            guard let value = stValue else { continue }
+
             // Bullish when trend is 1 (close > supertrend line)
             let isBullish = trend == 1
 
             segments.append(SuperTrendSegment(
                 id: i,
                 index: i,
-                value: stValue,
+                value: value,
                 isBullish: isBullish
             ))
         }
@@ -1240,22 +1903,25 @@ struct AdvancedChartView: View {
 
     // MARK: - SuperTrend Zones
 
+    // Uses SuperTrend AI data when available
     private var superTrendZones: [SuperTrendZone] {
-        guard !superTrendTrend.isEmpty else { return [] }
+        // Use AI data if available
+        let trendData = !aiSuperTrendTrend.isEmpty ? aiSuperTrendTrend : superTrendTrend
+        guard !trendData.isEmpty else { return [] }
 
         var zones: [SuperTrendZone] = []
         // Limit to actual bar data - don't extend into forecast area
         let maxBarIndex = bars.count - 1
         let rangeStart = max(0, visibleRange.lowerBound)
-        let rangeEnd = min(min(superTrendTrend.count - 1, maxBarIndex), visibleRange.upperBound)
+        let rangeEnd = min(min(trendData.count - 1, maxBarIndex), visibleRange.upperBound)
 
         guard rangeStart <= rangeEnd else { return [] }
 
         var currentZoneStart = rangeStart
-        var currentTrendValue = superTrendTrend[rangeStart]
+        var currentTrendValue = trendData[rangeStart]
 
         for i in rangeStart...rangeEnd {
-            let trend = superTrendTrend[i]
+            let trend = trendData[i]
             if trend != currentTrendValue && i > currentZoneStart {
                 zones.append(SuperTrendZone(
                     startIndex: currentZoneStart,

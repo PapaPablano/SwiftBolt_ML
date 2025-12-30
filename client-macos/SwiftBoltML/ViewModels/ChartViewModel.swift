@@ -12,16 +12,51 @@ final class ChartViewModel: ObservableObject {
         }
     }
     @Published var timeframe: String = "d1"
-    @Published private(set) var chartData: ChartResponse?
+    @Published private(set) var chartData: ChartResponse? {
+        didSet {
+            // Invalidate indicator cache when chart data changes
+            invalidateIndicatorCache()
+        }
+    }
     @Published private(set) var isLoading: Bool = false
     @Published var errorMessage: String?
     @Published var indicatorConfig = IndicatorConfig()
-    
+
     // Refresh state
     @Published private(set) var isRefreshing: Bool = false
     @Published var refreshMessage: String?
     @Published var lastRefreshResult: RefreshDataResponse?
     @Published var lastUserRefreshResult: UserRefreshResponse?
+
+    // MARK: - Cached Indicator Storage
+
+    private var _cachedSMA20: [IndicatorDataPoint]?
+    private var _cachedSMA50: [IndicatorDataPoint]?
+    private var _cachedSMA200: [IndicatorDataPoint]?
+    private var _cachedEMA9: [IndicatorDataPoint]?
+    private var _cachedEMA21: [IndicatorDataPoint]?
+    private var _cachedRSI: [IndicatorDataPoint]?
+    private var _cachedMACD: TechnicalIndicators.MACDResult?
+    private var _cachedStochastic: TechnicalIndicators.StochasticResult?
+    private var _cachedKDJ: TechnicalIndicators.KDJResult?
+    private var _cachedADX: TechnicalIndicators.ADXResult?
+    private var _cachedSuperTrend: TechnicalIndicators.SuperTrendResult?
+    private var _cachedBollinger: TechnicalIndicators.BollingerBands?
+    private var _cachedATR: [IndicatorDataPoint]?
+
+    // MARK: - Support & Resistance Indicators
+
+    /// BigBeluga multi-timeframe pivot levels indicator
+    let pivotLevelsIndicator = PivotLevelsIndicator()
+
+    /// Polynomial regression S&R indicator
+    let polynomialSRIndicator = PolynomialRegressionIndicator()
+
+    /// Logistic regression ML-based S&R indicator
+    let logisticSRIndicator = LogisticRegressionIndicator()
+
+    /// SuperTrend AI with K-Means clustering for adaptive factor selection
+    let superTrendAIIndicator = SuperTrendAIIndicator()
 
     private var loadTask: Task<Void, Never>?
 
@@ -29,49 +64,88 @@ final class ChartViewModel: ObservableObject {
         chartData?.bars ?? []
     }
 
-    // MARK: - Computed Indicators
+    // MARK: - Cache Invalidation
+
+    private func invalidateIndicatorCache() {
+        _cachedSMA20 = nil
+        _cachedSMA50 = nil
+        _cachedSMA200 = nil
+        _cachedEMA9 = nil
+        _cachedEMA21 = nil
+        _cachedRSI = nil
+        _cachedMACD = nil
+        _cachedStochastic = nil
+        _cachedKDJ = nil
+        _cachedADX = nil
+        _cachedSuperTrend = nil
+        _cachedBollinger = nil
+        _cachedATR = nil
+    }
+
+    // MARK: - Cached Computed Indicators
 
     var sma20: [IndicatorDataPoint] {
+        if let cached = _cachedSMA20 { return cached }
         guard !bars.isEmpty else { return [] }
         let values = TechnicalIndicators.sma(bars: bars, period: 20)
-        return zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+        let result = zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+        _cachedSMA20 = result
+        return result
     }
 
     var sma50: [IndicatorDataPoint] {
+        if let cached = _cachedSMA50 { return cached }
         guard !bars.isEmpty else { return [] }
         let values = TechnicalIndicators.sma(bars: bars, period: 50)
-        return zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+        let result = zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+        _cachedSMA50 = result
+        return result
     }
 
     var sma200: [IndicatorDataPoint] {
+        if let cached = _cachedSMA200 { return cached }
         guard !bars.isEmpty else { return [] }
         let values = TechnicalIndicators.sma(bars: bars, period: 200)
-        return zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+        let result = zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+        _cachedSMA200 = result
+        return result
     }
 
     var ema9: [IndicatorDataPoint] {
+        if let cached = _cachedEMA9 { return cached }
         guard !bars.isEmpty else { return [] }
         let values = TechnicalIndicators.ema(bars: bars, period: 9)
-        return zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+        let result = zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+        _cachedEMA9 = result
+        return result
     }
 
     var ema21: [IndicatorDataPoint] {
+        if let cached = _cachedEMA21 { return cached }
         guard !bars.isEmpty else { return [] }
         let values = TechnicalIndicators.ema(bars: bars, period: 21)
-        return zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+        let result = zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+        _cachedEMA21 = result
+        return result
     }
 
     var rsi: [IndicatorDataPoint] {
+        if let cached = _cachedRSI { return cached }
         guard !bars.isEmpty else { return [] }
         let values = TechnicalIndicators.rsi(bars: bars)
-        return zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+        let result = zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+        _cachedRSI = result
+        return result
     }
 
-    // MARK: - MACD Indicator
+    // MARK: - MACD Indicator (Cached)
 
     var macdResult: TechnicalIndicators.MACDResult? {
+        if let cached = _cachedMACD { return cached }
         guard !bars.isEmpty else { return nil }
-        return TechnicalIndicators.macd(bars: bars)
+        let result = TechnicalIndicators.macd(bars: bars)
+        _cachedMACD = result
+        return result
     }
 
     var macdLine: [IndicatorDataPoint] {
@@ -89,11 +163,14 @@ final class ChartViewModel: ObservableObject {
         return zip(bars, result.histogram).map { IndicatorDataPoint(bar: $0, value: $1) }
     }
 
-    // MARK: - Stochastic Indicator
+    // MARK: - Stochastic Indicator (Cached)
 
     var stochasticResult: TechnicalIndicators.StochasticResult? {
+        if let cached = _cachedStochastic { return cached }
         guard !bars.isEmpty else { return nil }
-        return TechnicalIndicators.stochastic(bars: bars)
+        let result = TechnicalIndicators.stochastic(bars: bars)
+        _cachedStochastic = result
+        return result
     }
 
     var stochasticK: [IndicatorDataPoint] {
@@ -106,11 +183,14 @@ final class ChartViewModel: ObservableObject {
         return zip(bars, result.d).map { IndicatorDataPoint(bar: $0, value: $1) }
     }
 
-    // MARK: - KDJ Indicator
+    // MARK: - KDJ Indicator (Cached)
 
     var kdjResult: TechnicalIndicators.KDJResult? {
+        if let cached = _cachedKDJ { return cached }
         guard !bars.isEmpty else { return nil }
-        return TechnicalIndicators.kdj(bars: bars)
+        let result = TechnicalIndicators.kdj(bars: bars)
+        _cachedKDJ = result
+        return result
     }
 
     var kdjK: [IndicatorDataPoint] {
@@ -128,11 +208,14 @@ final class ChartViewModel: ObservableObject {
         return zip(bars, result.j).map { IndicatorDataPoint(bar: $0, value: $1) }
     }
 
-    // MARK: - ADX Indicator
+    // MARK: - ADX Indicator (Cached)
 
     var adxResult: TechnicalIndicators.ADXResult? {
+        if let cached = _cachedADX { return cached }
         guard !bars.isEmpty else { return nil }
-        return TechnicalIndicators.adx(bars: bars)
+        let result = TechnicalIndicators.adx(bars: bars)
+        _cachedADX = result
+        return result
     }
 
     var adxLine: [IndicatorDataPoint] {
@@ -174,9 +257,12 @@ final class ChartViewModel: ObservableObject {
     }
 
     var superTrendResult: TechnicalIndicators.SuperTrendResult? {
+        if let cached = _cachedSuperTrend { return cached }
         guard !bars.isEmpty else { return nil }
         let params = superTrendParams
-        return TechnicalIndicators.superTrend(bars: bars, period: params.period, multiplier: params.multiplier)
+        let result = TechnicalIndicators.superTrend(bars: bars, period: params.period, multiplier: params.multiplier)
+        _cachedSuperTrend = result
+        return result
     }
 
     var superTrendLine: [IndicatorDataPoint] {
@@ -193,11 +279,60 @@ final class ChartViewModel: ObservableObject {
         return zip(bars, result.strength).map { IndicatorDataPoint(bar: $0, value: $1) }
     }
 
-    // MARK: - Bollinger Bands
+    // MARK: - SuperTrend AI (K-Means Clustering)
+
+    /// SuperTrend AI result with adaptive factor selection
+    var superTrendAIResult: SuperTrendAIResult? {
+        superTrendAIIndicator.result
+    }
+
+    /// SuperTrend AI line (adaptive)
+    var superTrendAILine: [IndicatorDataPoint] {
+        guard let result = superTrendAIResult else { return [] }
+        return zip(bars, result.supertrend).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    /// SuperTrend AI trend direction
+    var superTrendAITrend: [Int] {
+        superTrendAIResult?.trend ?? []
+    }
+
+    /// SuperTrend AI adaptive factor at each bar
+    var superTrendAIFactor: [Double] {
+        superTrendAIResult?.adaptiveFactor ?? []
+    }
+
+    /// SuperTrend AI performance metrics
+    var superTrendAIPerformance: [IndicatorDataPoint] {
+        guard let result = superTrendAIResult else { return [] }
+        return zip(bars, result.performanceMetrics).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    /// SuperTrend AI adaptive moving average
+    var superTrendAIAdaptiveMA: [IndicatorDataPoint] {
+        guard let result = superTrendAIResult else { return [] }
+        return zip(bars, result.adaptiveMA).map { IndicatorDataPoint(bar: $0, value: $1) }
+    }
+
+    /// SuperTrend AI detected signals
+    var superTrendAISignals: [SuperTrendSignal] {
+        superTrendAIIndicator.detectSignals()
+    }
+
+    /// Calculate SuperTrend AI indicator
+    func calculateSuperTrendAI() {
+        guard !bars.isEmpty else { return }
+        superTrendAIIndicator.calculate(bars: bars)
+    }
+
+    // MARK: - Bollinger Bands (Cached)
 
     var bollingerBands: TechnicalIndicators.BollingerBands? {
+        if let cached = _cachedBollinger { return cached }
         guard !bars.isEmpty else { return nil }
-        return TechnicalIndicators.bollingerBands(bars: bars)
+        let result = TechnicalIndicators.bollingerBands(bars: bars)
+        _cachedBollinger = result
+        return result
     }
 
     var bollingerUpper: [IndicatorDataPoint] {
@@ -215,12 +350,58 @@ final class ChartViewModel: ObservableObject {
         return zip(bars, bb.lower).map { IndicatorDataPoint(bar: $0, value: $1) }
     }
 
-    // MARK: - ATR Indicator
+    // MARK: - ATR Indicator (Cached)
 
     var atr: [IndicatorDataPoint] {
+        if let cached = _cachedATR { return cached }
         guard !bars.isEmpty else { return [] }
         let values = TechnicalIndicators.atr(bars: bars)
-        return zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+        let result = zip(bars, values).map { IndicatorDataPoint(bar: $0, value: $1) }
+        _cachedATR = result
+        return result
+    }
+
+    // MARK: - S&R Indicator Recalculation
+
+    /// Recalculate all S&R indicators when chart data changes
+    /// Always calculates all indicators so they're ready when toggled on
+    func recalculateSRIndicators() {
+        guard !bars.isEmpty else { return }
+
+        // Always calculate all indicators so they're ready when user enables them
+        pivotLevelsIndicator.calculate(bars: bars)
+        polynomialSRIndicator.calculate(bars: bars)
+        logisticSRIndicator.calculate(bars: bars)
+    }
+
+    /// Recalculate all AI indicators (SuperTrend AI, etc.)
+    func recalculateAIIndicators() {
+        guard !bars.isEmpty else { return }
+
+        superTrendAIIndicator.calculate(bars: bars)
+    }
+
+    /// Recalculate a specific S&R indicator
+    func recalculateSRIndicator(_ type: SRIndicatorType) {
+        guard !bars.isEmpty else { return }
+
+        switch type {
+        case .pivotLevels:
+            pivotLevelsIndicator.calculate(bars: bars)
+        case .polynomialSR:
+            polynomialSRIndicator.calculate(bars: bars)
+        case .logisticSR:
+            logisticSRIndicator.calculate(bars: bars)
+        case .superTrendAI:
+            superTrendAIIndicator.calculate(bars: bars)
+        }
+    }
+
+    enum SRIndicatorType {
+        case pivotLevels
+        case polynomialSR
+        case logisticSR
+        case superTrendAI
     }
 
     func loadChart() async {
@@ -272,6 +453,12 @@ final class ChartViewModel: ObservableObject {
                 chartData = response
                 print("[DEBUG] - chartData is now: \(chartData == nil ? "nil" : "non-nil with \(chartData!.bars.count) bars")")
                 errorMessage = nil
+
+                // Recalculate S&R indicators with new data
+                recalculateSRIndicators()
+
+                // Recalculate AI indicators (SuperTrend AI)
+                recalculateAIIndicators()
             } catch {
                 guard !Task.isCancelled else {
                     print("[DEBUG] ChartViewModel.loadChart() - CANCELLED (error path)")

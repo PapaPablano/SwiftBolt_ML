@@ -3,10 +3,11 @@ import Charts
 
 // MARK: - SuperTrend Panel View
 
+/// Enhanced SuperTrend panel supporting both basic and AI modes
 struct SuperTrendPanelView: View {
     let bars: [OHLCBar]
     let superTrendLine: [IndicatorDataPoint]
-    let superTrendTrend: [Int]  // 1 = bullish, 0 = bearish
+    let superTrendTrend: [Int]  // 1 = bullish, -1 = bearish
     let signals: [SignalMetadata]
     let performanceIndex: Double
     let signalStrength: Int
@@ -14,9 +15,19 @@ struct SuperTrendPanelView: View {
     let stopLevel: Double
     let visibleRange: ClosedRange<Int>
 
+    // AI-specific properties (optional)
+    var adaptiveFactor: [Double]? = nil
+    var adaptiveMA: [IndicatorDataPoint]? = nil
+    var performanceMetrics: [IndicatorDataPoint]? = nil
+    var clusterAssignments: [Int]? = nil
+    var isAIMode: Bool = false
+
     var body: some View {
         VStack(spacing: 0) {
             headerView
+            if isAIMode {
+                aiMetricsBar
+            }
             chartView
         }
         .background(Color(nsColor: .controlBackgroundColor))
@@ -27,11 +38,27 @@ struct SuperTrendPanelView: View {
 
     private var headerView: some View {
         HStack {
-            Text("SuperTrend AI")
-                .font(.caption.bold())
-                .foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                Text("SuperTrend")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+
+                if isAIMode {
+                    Text("AI")
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.purple.opacity(0.2))
+                        .foregroundStyle(.purple)
+                        .clipShape(Capsule())
+                }
+            }
 
             Spacer()
+
+            if isAIMode, let factor = currentAdaptiveFactor {
+                FactorBadge(factor: factor)
+            }
 
             PerformanceBadge(score: signalStrength)
 
@@ -39,6 +66,53 @@ struct SuperTrendPanelView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
+    }
+
+    // MARK: - AI Metrics Bar
+
+    private var aiMetricsBar: some View {
+        HStack(spacing: 12) {
+            // Adaptive Factor
+            if let factor = currentAdaptiveFactor {
+                HStack(spacing: 2) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(String(format: "Factor: %.2f", factor))
+                        .font(.caption2)
+                        .foregroundStyle(.primary)
+                }
+            }
+
+            // Cluster
+            if let cluster = currentCluster {
+                HStack(spacing: 2) {
+                    Image(systemName: "circle.hexagongrid.fill")
+                        .font(.caption2)
+                        .foregroundStyle(clusterColor(cluster))
+                    Text(clusterLabel(cluster))
+                        .font(.caption2)
+                        .foregroundStyle(.primary)
+                }
+            }
+
+            // Performance
+            if let perf = currentPerformance {
+                HStack(spacing: 2) {
+                    Image(systemName: perf >= 0 ? "arrow.up.right" : "arrow.down.right")
+                        .font(.caption2)
+                        .foregroundStyle(perf >= 0 ? .green : .red)
+                    Text(String(format: "%.3f", perf))
+                        .font(.caption2)
+                        .foregroundStyle(.primary)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 2)
+        .background(Color.purple.opacity(0.05))
     }
 
     // MARK: - Chart
@@ -65,8 +139,24 @@ struct SuperTrendPanelView: View {
                 candlestickMark(for: item.bar, at: item.index)
             }
 
+            // Adaptive MA line (AI mode only)
+            if isAIMode, let adaptiveMA = adaptiveMA {
+                ForEach(Array(adaptiveMA.enumerated()), id: \.element.id) { _, point in
+                    if let value = point.value,
+                       let barIndex = indicatorIndex(for: point.date),
+                       visibleRange.contains(barIndex) {
+                        LineMark(
+                            x: .value("Index", barIndex),
+                            y: .value("AdaptiveMA", value)
+                        )
+                        .foregroundStyle(.purple.opacity(0.5))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 2]))
+                    }
+                }
+            }
+
             // SuperTrend line (color-coded by trend)
-            ForEach(Array(superTrendLine.enumerated()), id: \.element.id) { idx, point in
+            ForEach(Array(superTrendLine.enumerated()), id: \.element.id) { _, point in
                 if let value = point.value,
                    let barIndex = indicatorIndex(for: point.date),
                    visibleRange.contains(barIndex),
@@ -108,7 +198,7 @@ struct SuperTrendPanelView: View {
                 }
             }
         }
-        .frame(height: 180)
+        .frame(height: isAIMode ? 200 : 180)
         .padding(.horizontal, 4)
     }
 
@@ -137,6 +227,44 @@ struct SuperTrendPanelView: View {
         .lineStyle(StrokeStyle(lineWidth: 1))
     }
 
+    // MARK: - AI Properties
+
+    private var currentAdaptiveFactor: Double? {
+        guard let factors = adaptiveFactor, !factors.isEmpty else { return nil }
+        let lastVisibleIndex = min(visibleRange.upperBound, factors.count - 1)
+        return factors[lastVisibleIndex]
+    }
+
+    private var currentCluster: Int? {
+        guard let clusters = clusterAssignments, !clusters.isEmpty else { return nil }
+        let lastVisibleIndex = min(visibleRange.upperBound, clusters.count - 1)
+        return clusters[lastVisibleIndex]
+    }
+
+    private var currentPerformance: Double? {
+        guard let metrics = performanceMetrics, !metrics.isEmpty else { return nil }
+        let lastVisibleIndex = min(visibleRange.upperBound, metrics.count - 1)
+        return metrics[lastVisibleIndex].value
+    }
+
+    private func clusterColor(_ cluster: Int) -> Color {
+        switch cluster {
+        case 0: return .red      // Below average
+        case 1: return .orange   // Average
+        case 2: return .green    // Exceptional
+        default: return .gray
+        }
+    }
+
+    private func clusterLabel(_ cluster: Int) -> String {
+        switch cluster {
+        case 0: return "Low"
+        case 1: return "Mid"
+        case 2: return "High"
+        default: return "N/A"
+        }
+    }
+
     // MARK: - Computed Properties
 
     private var visibleBarsData: [(index: Int, bar: OHLCBar)] {
@@ -158,7 +286,22 @@ struct SuperTrendPanelView: View {
                   visibleRange.contains(index) else { return nil }
             return value
         }
-        return min(prices.min() ?? 0, stValues.min() ?? Double.infinity)
+        var minVal = min(prices.min() ?? 0, stValues.min() ?? Double.infinity)
+
+        // Include adaptive MA in range calculation
+        if let adaptiveMA = adaptiveMA {
+            let maValues = adaptiveMA.compactMap { point -> Double? in
+                guard let value = point.value,
+                      let index = indicatorIndex(for: point.date),
+                      visibleRange.contains(index) else { return nil }
+                return value
+            }
+            if let maMin = maValues.min() {
+                minVal = min(minVal, maMin)
+            }
+        }
+
+        return minVal
     }
 
     private var visibleMaxPrice: Double {
@@ -169,7 +312,22 @@ struct SuperTrendPanelView: View {
                   visibleRange.contains(index) else { return nil }
             return value
         }
-        return max(prices.max() ?? 0, stValues.max() ?? 0)
+        var maxVal = max(prices.max() ?? 0, stValues.max() ?? 0)
+
+        // Include adaptive MA in range calculation
+        if let adaptiveMA = adaptiveMA {
+            let maValues = adaptiveMA.compactMap { point -> Double? in
+                guard let value = point.value,
+                      let index = indicatorIndex(for: point.date),
+                      visibleRange.contains(index) else { return nil }
+                return value
+            }
+            if let maMax = maValues.max() {
+                maxVal = max(maxVal, maMax)
+            }
+        }
+
+        return maxVal
     }
 
     private var visiblePriceRange: ClosedRange<Double> {
@@ -246,6 +404,26 @@ struct TrendZone: Equatable {
     let startIndex: Int
     let endIndex: Int
     let isBullish: Bool
+}
+
+// MARK: - Factor Badge
+
+struct FactorBadge: View {
+    let factor: Double
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Image(systemName: "slider.horizontal.3")
+                .font(.caption2)
+            Text(String(format: "%.1f", factor))
+                .font(.caption2.bold())
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Color.purple.opacity(0.2))
+        .foregroundStyle(.purple)
+        .clipShape(Capsule())
+    }
 }
 
 // MARK: - Performance Badge
