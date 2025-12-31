@@ -16,6 +16,7 @@ enum RankingSortOption: String, CaseIterable {
     case momentum = "Momentum"
     case value = "Value"
     case greeks = "Greeks"
+    case gaConfidence = "GA Confidence"
 }
 
 @MainActor
@@ -32,6 +33,12 @@ class OptionsRankerViewModel: ObservableObject {
     @Published var sortOption: RankingSortOption = .composite
     @Published var minScore: Double = 0.0
 
+    // GA Strategy
+    @Published var gaStrategy: GAStrategy?
+    @Published var gaRecommendation: GARecommendation?
+    @Published var useGAFilter: Bool = false
+    @Published var isLoadingGA: Bool = false
+
     private var cancellables = Set<AnyCancellable>()
 
     enum RankingStatus {
@@ -47,6 +54,11 @@ class OptionsRankerViewModel: ObservableObject {
                 // Score filter using effective composite rank (0-100)
                 let score = rank.effectiveCompositeRank / 100
                 guard score >= minScore else { return false }
+
+                // GA filter (if enabled and strategy exists)
+                if useGAFilter, let genes = gaStrategy?.genes {
+                    guard rank.passesGAFilters(genes) else { return false }
+                }
 
                 // Signal filter
                 switch selectedSignal {
@@ -72,6 +84,11 @@ class OptionsRankerViewModel: ObservableObject {
                     return (lhs.valueScore ?? 0) > (rhs.valueScore ?? 0)
                 case .greeks:
                     return (lhs.greeksScore ?? 0) > (rhs.greeksScore ?? 0)
+                case .gaConfidence:
+                    guard let genes = gaStrategy?.genes else {
+                        return lhs.effectiveCompositeRank > rhs.effectiveCompositeRank
+                    }
+                    return lhs.gaConfidence(genes) > rhs.gaConfidence(genes)
                 }
             }
     }
@@ -203,5 +220,71 @@ class OptionsRankerViewModel: ObservableObject {
 
     func setSortOption(_ option: RankingSortOption) {
         sortOption = option
+    }
+
+    func setUseGAFilter(_ enabled: Bool) {
+        useGAFilter = enabled
+    }
+
+    // MARK: - GA Strategy
+
+    func loadGAStrategy(for symbol: String) async {
+        isLoadingGA = true
+
+        do {
+            let response = try await APIClient.shared.fetchGAStrategy(symbol: symbol)
+            gaStrategy = response.strategy
+            gaRecommendation = response.recommendation
+
+            if response.hasStrategy {
+                print("[OptionsRanker] Loaded GA strategy for \(symbol)")
+            } else {
+                print("[OptionsRanker] Using default GA strategy for \(symbol)")
+            }
+        } catch {
+            print("[OptionsRanker] Failed to load GA strategy: \(error)")
+            // Don't show error to user, just use default
+        }
+
+        isLoadingGA = false
+    }
+
+    func triggerGAOptimization(for symbol: String) async {
+        isLoadingGA = true
+        errorMessage = nil
+
+        print("[OptionsRanker] Triggering GA optimization for \(symbol)...")
+
+        do {
+            let response = try await APIClient.shared.triggerGAOptimization(
+                symbol: symbol,
+                generations: 50,
+                trainingDays: 30
+            )
+
+            if response.success {
+                print("[OptionsRanker] GA optimization queued: \(response.runId ?? "unknown")")
+                print("[OptionsRanker] Estimated time: \(response.estimatedMinutes ?? 0) minutes")
+            } else {
+                errorMessage = response.message
+            }
+        } catch {
+            errorMessage = "Failed to trigger GA optimization: \(error.localizedDescription)"
+            print("[OptionsRanker] GA trigger error: \(error)")
+        }
+
+        isLoadingGA = false
+    }
+
+    /// Get GA confidence score for an option rank (if GA strategy is loaded)
+    func gaConfidenceScore(for rank: OptionRank) -> Double? {
+        guard let genes = gaStrategy?.genes else { return nil }
+        return rank.gaConfidence(genes)
+    }
+
+    /// Check if an option passes all GA entry criteria
+    func passesGAEntry(rank: OptionRank) -> Bool {
+        guard let genes = gaStrategy?.genes else { return true }
+        return rank.passesGAFilters(genes)
     }
 }

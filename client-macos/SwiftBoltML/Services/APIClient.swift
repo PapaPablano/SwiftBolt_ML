@@ -384,6 +384,34 @@ actor APIClient {
         )
         return try await performRequest(request)
     }
+
+    // MARK: - GA Strategy Parameters
+
+    /// Fetch GA-optimized strategy parameters for a symbol
+    func fetchGAStrategy(symbol: String) async throws -> GAStrategyResponse {
+        let request = try makeRequest(
+            endpoint: "ga-strategy",
+            queryItems: [URLQueryItem(name: "symbol", value: symbol)]
+        )
+        return try await performRequest(request)
+    }
+
+    /// Trigger GA optimization run for a symbol
+    func triggerGAOptimization(symbol: String, generations: Int = 50, trainingDays: Int = 30) async throws -> TriggerOptimizationResponse {
+        var request = try makeRequest(endpoint: "ga-strategy", queryItems: [])
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body = [
+            "symbol": symbol,
+            "generations": generations,
+            "trainingDays": trainingDays
+        ] as [String: Any]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        return try await performRequest(request)
+    }
 }
 
 // MARK: - Refresh Data Request/Response
