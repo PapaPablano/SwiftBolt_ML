@@ -171,6 +171,7 @@ struct CompactRankRow: View {
     let rank: OptionRank
     let symbol: String
     @State private var showStrikeAnalysis = false
+    @State private var showHistoryChart = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -241,16 +242,16 @@ struct CompactRankRow: View {
 
             Spacer()
 
-            // Strike analysis button
+            // Historical price chart button
             Button {
-                showStrikeAnalysis = true
+                showHistoryChart = true
             } label: {
                 Image(systemName: "chart.line.uptrend.xyaxis")
                     .font(.caption)
                     .foregroundStyle(.blue)
             }
             .buttonStyle(.borderless)
-            .help("Compare strike across expirations")
+            .help("View historical mark price chart")
         }
         .padding(8)
         .background(Color(nsColor: .controlBackgroundColor))
@@ -264,6 +265,15 @@ struct CompactRankRow: View {
                 symbol: symbol,
                 strike: rank.strike,
                 side: rank.side.rawValue
+            )
+        }
+        .sheet(isPresented: $showHistoryChart) {
+            OptionHistoryChartView(
+                symbol: symbol,
+                strike: rank.strike,
+                side: rank.side.rawValue,
+                expiry: rank.expiry,
+                contractSymbol: rank.contractSymbol
             )
         }
     }
