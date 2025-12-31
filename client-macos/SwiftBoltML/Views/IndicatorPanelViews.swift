@@ -285,6 +285,15 @@ struct KDJPanelView: View {
 }
 
 // MARK: - ADX Panel View
+/// ADX indicator panel with histogram display
+/// - Green histogram bars when +DI > -DI (bullish trend)
+/// - Red histogram bars when -DI > +DI (bearish trend)
+/// - Color intensity based on ADX value (trend strength)
+/// ADX interpretation:
+///   0-20: No trend / ranging market
+///   20-30: Trend beginning
+///   30-50: Strong trend
+///   50+: Very strong trend (possible exhaustion)
 
 struct ADXPanelView: View {
     let bars: [OHLCBar]
@@ -292,78 +301,160 @@ struct ADXPanelView: View {
     let plusDI: [IndicatorDataPoint]
     let minusDI: [IndicatorDataPoint]
     let visibleRange: ClosedRange<Int>
+    
+    /// Threshold for trend confirmation (default 20)
+    var limit: Double = 20
 
     private func indicatorIndex(for date: Date) -> Int? {
         bars.firstIndex(where: { Calendar.current.isDate($0.ts, equalTo: date, toGranularity: .second) })
     }
+    
+    /// Determine if bullish (+DI > -DI) at given index
+    private func isBullish(at index: Int) -> Bool {
+        guard let plusPoint = plusDI.first(where: { indicatorIndex(for: $0.date) == index }),
+              let minusPoint = minusDI.first(where: { indicatorIndex(for: $0.date) == index }),
+              let plusVal = plusPoint.value,
+              let minusVal = minusPoint.value else {
+            return true // Default to bullish if data missing
+        }
+        return plusVal > minusVal
+    }
+    
+    /// Get ADX color based on value and direction
+    private func adxColor(value: Double, bullish: Bool) -> Color {
+        let baseColor = bullish ? ChartColors.plusDI : ChartColors.minusDI
+        // Intensity based on ADX strength
+        if value >= limit {
+            return baseColor
+        } else {
+            return baseColor.opacity(0.5)
+        }
+    }
+    
+    /// Current trend status text
+    private var trendStatus: String {
+        guard let lastADX = adxLine.last?.value else { return "N/A" }
+        let bullish = isBullishAtEnd
+        let direction = bullish ? "Bullish" : "Bearish"
+        
+        if lastADX < 20 {
+            return "Ranging"
+        } else if lastADX < 30 {
+            return "\(direction) Starting"
+        } else if lastADX < 50 {
+            return "Strong \(direction)"
+        } else {
+            return "Very Strong \(direction)"
+        }
+    }
+    
+    private var isBullishAtEnd: Bool {
+        guard let lastPlus = plusDI.last?.value,
+              let lastMinus = minusDI.last?.value else { return true }
+        return lastPlus > lastMinus
+    }
 
     var body: some View {
         Chart {
-            // Strong trend zone shading (above 25)
+            // Ranging zone shading (0-20) - gray/neutral
             RectangleMark(
                 xStart: .value("Start", visibleRange.lowerBound),
                 xEnd: .value("End", visibleRange.upperBound),
-                yStart: .value("Low", 25),
+                yStart: .value("Low", 0),
+                yEnd: .value("High", 20)
+            )
+            .foregroundStyle(Color.gray.opacity(0.08))
+            
+            // Strong trend zone shading (30-50)
+            RectangleMark(
+                xStart: .value("Start", visibleRange.lowerBound),
+                xEnd: .value("End", visibleRange.upperBound),
+                yStart: .value("Low", 30),
+                yEnd: .value("High", 50)
+            )
+            .foregroundStyle(Color.yellow.opacity(0.06))
+            
+            // Very strong trend zone (50+)
+            RectangleMark(
+                xStart: .value("Start", visibleRange.lowerBound),
+                xEnd: .value("End", visibleRange.upperBound),
+                yStart: .value("Low", 50),
                 yEnd: .value("High", 100)
             )
-            .foregroundStyle(Color.yellow.opacity(0.05))
+            .foregroundStyle(Color.orange.opacity(0.06))
 
-            // ADX Line (gold - trend strength)
+            // ADX Histogram - Green for bullish, Red for bearish
             ForEach(adxLine) { point in
                 if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
-                    LineMark(
+                    let bullish = isBullish(at: index)
+                    BarMark(
                         x: .value("Index", index),
                         y: .value("ADX", value)
                     )
-                    .foregroundStyle(ChartColors.adx)
-                    .lineStyle(StrokeStyle(lineWidth: 3.0))
-                    .interpolationMethod(.catmullRom)
+                    .foregroundStyle(adxColor(value: value, bullish: bullish))
                 }
             }
 
-            // +DI Line (green - bullish)
-            ForEach(plusDI) { point in
-                if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
-                    LineMark(
-                        x: .value("Index", index),
-                        y: .value("+DI", value)
-                    )
-                    .foregroundStyle(ChartColors.plusDI)
-                    .lineStyle(StrokeStyle(lineWidth: 2.0))
-                    .interpolationMethod(.catmullRom)
-                }
-            }
-
-            // -DI Line (red - bearish)
-            ForEach(minusDI) { point in
-                if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
-                    LineMark(
-                        x: .value("Index", index),
-                        y: .value("-DI", value)
-                    )
-                    .foregroundStyle(ChartColors.minusDI)
-                    .lineStyle(StrokeStyle(lineWidth: 2.0))
-                    .interpolationMethod(.catmullRom)
-                }
-            }
-
-            // Trend strength threshold (25)
-            RuleMark(y: .value("Trend", 25))
+            // Threshold lines
+            // Limit line (20 - trend begins)
+            RuleMark(y: .value("Limit", 20))
                 .foregroundStyle(ChartColors.midline)
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
+            
+            // Strong trend line (30)
+            RuleMark(y: .value("Strong", 30))
+                .foregroundStyle(Color.yellow.opacity(0.5))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 2]))
+            
+            // Very strong / exhaustion line (50)
+            RuleMark(y: .value("VeryStrong", 50))
+                .foregroundStyle(Color.orange.opacity(0.5))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 2]))
+            
+            // Zero line
+            RuleMark(y: .value("Zero", 0))
+                .foregroundStyle(ChartColors.midline.opacity(0.3))
         }
         .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
         .chartYScale(domain: 0...100)
         .chartXAxis(.hidden)
         .chartYAxis {
-            AxisMarks(position: .trailing, values: [0, 25, 50, 75]) { _ in
+            AxisMarks(position: .trailing, values: [0, 20, 30, 50]) { _ in
                 AxisGridLine()
                 AxisValueLabel()
             }
         }
         .chartLegend(position: .top, alignment: .leading) {
             HStack(spacing: 12) {
-                LegendItem(color: ChartColors.adx, label: "ADX", value: adxLine.last?.value)
+                // ADX value with trend color
+                if let lastADX = adxLine.last?.value {
+                    HStack(spacing: 4) {
+                        Rectangle()
+                            .fill(isBullishAtEnd ? ChartColors.plusDI : ChartColors.minusDI)
+                            .frame(width: 10, height: 10)
+                            .cornerRadius(2)
+                        Text("ADX")
+                            .font(.caption)
+                        Text(String(format: "%.1f", lastADX))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
+                // Trend status badge
+                Text(trendStatus)
+                    .font(.caption.bold())
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(isBullishAtEnd ? ChartColors.plusDI.opacity(0.2) : ChartColors.minusDI.opacity(0.2))
+                    )
+                    .foregroundStyle(isBullishAtEnd ? ChartColors.plusDI : ChartColors.minusDI)
+                
+                Spacer()
+                
+                // +DI / -DI values
                 LegendItem(color: ChartColors.plusDI, label: "+DI", value: plusDI.last?.value)
                 LegendItem(color: ChartColors.minusDI, label: "-DI", value: minusDI.last?.value)
             }

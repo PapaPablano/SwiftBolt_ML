@@ -25,10 +25,23 @@ class Settings(BaseSettings):
             object.__setattr__(self, 'supabase_service_role_key', self.supabase_key)
 
     # ML Configuration
-    forecast_horizons: list[str] = ["1D", "1W"]
+    forecast_horizons: list[str] = [
+        "1D",
+        "1W",
+        "1M",
+        "2M",
+        "3M",
+        "4M",
+        "5M",
+        "6M",
+    ]
     min_bars_for_training: int = 20  # Lowered to allow forecasts with limited data
+    max_training_bars: int = 780  # ~3 years of daily data for long horizons
     use_ensemble_forecaster: bool = True  # Use ensemble (RF+XGBoost) vs RF-only
     confidence_threshold: float = 0.6
+    enable_feature_selection: bool = True
+    max_feature_count: int = 40
+    feature_selection_cv_splits: int = 5
 
     # Job Configuration
     symbols_to_process: list[str] = ["AAPL", "SPY", "TSLA", "NVDA", "MSFT"]

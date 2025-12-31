@@ -18,7 +18,11 @@ struct AnalysisView: View {
 
                 // ML Forecast Breakdown Section
                 if let mlSummary = chartViewModel.chartData?.mlSummary {
-                    MLForecastBreakdownSection(mlSummary: mlSummary)
+                    let referencePrice = chartViewModel.liveQuote?.last ?? chartViewModel.bars.last?.close
+                    MLForecastBreakdownSection(
+                        mlSummary: mlSummary,
+                        referencePrice: referencePrice
+                    )
                     Divider()
                 }
                 
@@ -197,6 +201,7 @@ struct EmptyAlertsView: View {
 
 struct MLForecastBreakdownSection: View {
     let mlSummary: MLSummary
+    let referencePrice: Double?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -227,12 +232,11 @@ struct MLForecastBreakdownSection: View {
             .background(labelColor(for: mlSummary.overallLabel ?? "unknown").opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 12))
 
-            // Horizons breakdown
-            VStack(spacing: 8) {
-                ForEach(mlSummary.horizons, id: \.horizon) { series in
-                    HorizonRow(series: series, overallColor: labelColor(for: mlSummary.overallLabel ?? "unknown"))
-                }
-            }
+            ForecastHorizonsView(
+                horizons: mlSummary.horizons,
+                currentPrice: referencePrice,
+                mlSummary: mlSummary
+            )
         }
         .padding()
         .background(Color(nsColor: .controlBackgroundColor))
@@ -255,74 +259,6 @@ struct MLForecastBreakdownSection: View {
         case "neutral": return "arrow.left.and.right"
         default: return "questionmark"
         }
-    }
-}
-
-struct HorizonRow: View {
-    let series: ForecastSeries
-    let overallColor: Color
-
-    private var priceRange: String {
-        guard let first = series.points.first else {
-            return "N/A"
-        }
-        return "$\(String(format: "%.2f", first.lower)) - $\(String(format: "%.2f", first.upper))"
-    }
-
-    private var midPoint: Double? {
-        series.points.first?.value
-    }
-
-    private var confidence: String {
-        guard let first = series.points.first else {
-            return "N/A"
-        }
-        let range = first.upper - first.lower
-        let mid = first.value
-        let confidencePct = max(0, 100 - (range / mid * 100))
-        return "\(Int(confidencePct))%"
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(series.horizon)
-                    .font(.subheadline.bold())
-                Spacer()
-                Text(confidence)
-                    .font(.caption.bold())
-                    .foregroundStyle(overallColor)
-            }
-
-            HStack {
-                Text(priceRange)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                if let mid = midPoint {
-                    Text("Target: $\(String(format: "%.2f", mid))")
-                        .font(.caption.bold())
-                }
-            }
-
-            // Confidence bar
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.gray.opacity(0.2))
-
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(overallColor)
-                        .frame(width: geometry.size.width * (Double(confidence.dropLast()) ?? 0) / 100)
-                }
-            }
-            .frame(height: 4)
-        }
-        .padding(10)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 

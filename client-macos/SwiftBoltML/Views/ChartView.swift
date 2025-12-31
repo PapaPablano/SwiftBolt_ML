@@ -111,11 +111,15 @@ struct ChartView: View {
             } else if let chartData = chartViewModel.chartData, !chartData.bars.isEmpty {
                 // ✅ Always render the chart if we have bars
                 VStack(spacing: 0) {
-                    // ML Report Card (if available)
                     if let mlSummary = chartData.mlSummary {
-                        MLReportCard(mlSummary: mlSummary)
-                            .padding(.horizontal)
-                            .padding(.top, 8)
+                        let referencePrice = chartViewModel.liveQuote?.last ?? chartData.bars.last?.close
+                        ForecastHorizonsView(
+                            horizons: mlSummary.horizons,
+                            currentPrice: referencePrice,
+                            mlSummary: mlSummary
+                        )
+                        .padding(.horizontal)
+                        .padding(.top, 8)
                     }
 
                     AdvancedChartView(

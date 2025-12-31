@@ -39,6 +39,7 @@ from scipy.signal import argrelextrema
 from src.features.pivot_levels_detector import PivotLevelsDetector, PivotLevelsSettings
 from src.features.polynomial_sr_indicator import PolynomialSRIndicator, PolynomialSRSettings
 from src.features.logistic_sr_indicator import LogisticSRIndicator, LogisticSRSettings
+from src.features.sr_feature_builder import build_sr_feature_map
 
 logger = logging.getLogger(__name__)
 
@@ -977,6 +978,11 @@ class SupportResistanceDetector:
             df["fib_nearest"] = np.nan
             df["distance_to_fib_pct"] = np.nan
         
+        # Add rich feature bundle derived from the latest detector output
+        sr_feature_map = build_sr_feature_map(levels)
+        for feature_name, value in sr_feature_map.items():
+            df[feature_name] = value
+
         logger.info(
             f"Added S/R features: support_dist={levels['support_distance_pct']}%, "
             f"resistance_dist={levels['resistance_distance_pct']}%"

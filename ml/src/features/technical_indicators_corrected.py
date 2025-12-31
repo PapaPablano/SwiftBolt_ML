@@ -211,7 +211,31 @@ class TechnicalIndicatorsCorrect:
         # Step 6: Smooth DX to get ADX (Wilder's smoothing again)
         df["adx"] = wilders_smoothing(dx, period)
 
-        logger.info(f"Calculated ADX with Wilder's smoothing (period={period})")
+        # Step 7: Add ML-optimized features
+        # Normalized ADX (0-1 scale for ML)
+        df["adx_normalized"] = df["adx"] / 100
+
+        # DI divergence (magnitude of directional difference)
+        df["di_divergence"] = (df["plus_di"] - df["minus_di"]).abs()
+
+        # ADX momentum (rate of change in trend strength)
+        df["adx_momentum"] = df["adx"].diff()
+
+        # Binary trend direction flags
+        df["trend_bullish"] = (df["plus_di"] > df["minus_di"]).astype(int)
+        df["trend_bearish"] = (df["minus_di"] > df["plus_di"]).astype(int)
+
+        # Trend strength category (0=ranging, 1=weak, 2=moderate, 3=strong)
+        df["adx_strength"] = pd.cut(
+            df["adx"],
+            bins=[0, 20, 25, 30, 100],
+            labels=[0, 1, 2, 3],
+            include_lowest=True
+        ).astype(float)
+
+        logger.info(
+            f"Calculated ADX with Wilder's smoothing (period={period}) + ML features"
+        )
 
         return df
 
