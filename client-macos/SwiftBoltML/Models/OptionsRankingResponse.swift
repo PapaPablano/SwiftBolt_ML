@@ -72,6 +72,7 @@ struct OptionRank: Codable, Identifiable {
     let openInterest: Int?
     let volume: Int?
     let volOiRatio: Double?
+    let liquidityConfidence: Double?
 
     // Pricing
     let bid: Double?
@@ -138,6 +139,26 @@ struct OptionRank: Codable, Identifiable {
     var hasSignals: Bool {
         !activeSignals.isEmpty
     }
+    
+    // Liquidity confidence indicator
+    var liquidityLabel: String {
+        guard let conf = liquidityConfidence else { return "N/A" }
+        if conf >= 0.8 { return "High" }
+        if conf >= 0.5 { return "Medium" }
+        if conf >= 0.3 { return "Low" }
+        return "Very Low"
+    }
+    
+    var liquidityColor: Color {
+        guard let conf = liquidityConfidence else { return .gray }
+        if conf >= 0.8 { return .green }
+        if conf >= 0.5 { return .orange }
+        return .red
+    }
+    
+    var isLowLiquidity: Bool {
+        (liquidityConfidence ?? 1.0) < 0.5
+    }
 }
 
 // Extension for easy preview/testing
@@ -164,6 +185,7 @@ extension OptionRank {
         openInterest: 5000,
         volume: 1200,
         volOiRatio: 0.24,
+        liquidityConfidence: 0.85,
         bid: 5.20,
         ask: 5.30,
         mark: 5.25,

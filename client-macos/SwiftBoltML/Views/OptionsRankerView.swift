@@ -391,6 +391,13 @@ struct RankedOptionRow: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
+                    
+                    // Liquidity confidence indicator
+                    if rank.isLowLiquidity {
+                        Label(rank.liquidityLabel, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(rank.liquidityColor)
+                    }
                 }
             }
 

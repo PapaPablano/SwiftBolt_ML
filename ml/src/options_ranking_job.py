@@ -272,6 +272,7 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
                 "iv_rank": float(row.get("iv_rank", 0)),
                 "spread_pct": float(row.get("spread_pct", 0)),
                 "vol_oi_ratio": float(row.get("vol_oi_ratio", 0)),
+                "liquidity_confidence": float(row.get("liquidity_confidence", 1.0)),
                 # Signals
                 "signal_discount": bool(row.get("signal_discount", False)),
                 "signal_runner": bool(row.get("signal_runner", False)),

@@ -663,6 +663,7 @@ struct StrikeComparisonRow: View {
             openInterest: 1200,
             volume: 600,
             volOiRatio: 0.50,
+            liquidityConfidence: 0.75,
             bid: 1.45,
             ask: 1.51,
             mark: 1.48,
