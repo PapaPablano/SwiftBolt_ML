@@ -7,11 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		OHC1000001233456780000001 /* OptionHistoryChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = OHC2000001233456780000001 /* OptionHistoryChartView.swift */; };
-		A1FD3D66EDA1CA43F39517382A /* OptionContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = A27205DA944FC74A128D277853 /* OptionContract.swift */; };
-		A1C0468085CEC542FE9266CDF3 /* OptionsChainResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2A428B8CD477F4529A71815D4 /* OptionsChainResponse.swift */; };
-		A16A52E6DBA51043DCA065D3E3 /* OptionsChainViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2D2F33D68C11A4BC2A13EBD29 /* OptionsChainViewModel.swift */; };
-		A14E52391ED89D478AB265E05C /* OptionsChainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20597042F5CF84BCC92A79138 /* OptionsChainView.swift */; };
+		OHC10001233456780000001 /* OptionHistoryChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = OHC20001233456780000001 /* OptionHistoryChartView.swift */; };
 		0B281429F99B764ACF20AE52 /* OptionsRankerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */; };
 		136FE9F67FA29A26AE074312 /* MultiTimeframeConsensusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144206D7859B6361AEFE13D9 /* MultiTimeframeConsensusView.swift */; };
 		1469ED89052E948868C57E9E /* PivotLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CE2E34EE4D81F3060BC9AF1 /* PivotLevel.swift */; };
@@ -80,10 +76,6 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		A27205DA944FC74A128D277853 /* OptionContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionContract.swift; sourceTree = "<group>"; };
-		A2A428B8CD477F4529A71815D4 /* OptionsChainResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainResponse.swift; sourceTree = "<group>"; };
-		A2D2F33D68C11A4BC2A13EBD29 /* OptionsChainViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainViewModel.swift; sourceTree = "<group>"; };
-		A20597042F5CF84BCC92A79138 /* OptionsChainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainView.swift; sourceTree = "<group>"; };
 		0128CA566A7D864E3938B3FA /* OptionsRankerViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerViewModel.swift; sourceTree = "<group>"; };
 		07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerView.swift; sourceTree = "<group>"; };
 		0A4D3D1FC85DBCBD8C45CCA5 /* WatchlistModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchlistModels.swift; sourceTree = "<group>"; };
@@ -138,7 +130,7 @@
 		D749EA683B66324ED10E4516 /* SuperTrendChartView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SuperTrendChartView.swift; sourceTree = "<group>"; };
 		EA6C3F9FCEAD53FBEF384F10 /* LogisticRegressionIndicator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LogisticRegressionIndicator.swift; sourceTree = "<group>"; };
 		EE33C7CA7CA515703FFF0B5D /* StrikePriceComparisonView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StrikePriceComparisonView.swift; sourceTree = "<group>"; };
-		OHC2000001233456780000001 /* OptionHistoryChartView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionHistoryChartView.swift; sourceTree = "<group>"; };
+		OHC20001233456780000001 /* OptionHistoryChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionHistoryChartView.swift; sourceTree = "<group>"; };
 		F60BB96A2EF036FA0044BE7E /* OptionContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionContract.swift; sourceTree = "<group>"; };
 		F60BB96B2EF036FA0044BE7E /* OptionsChainResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainResponse.swift; sourceTree = "<group>"; };
 		F60BB96E2EF0371A0044BE7E /* OptionsChainViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainViewModel.swift; sourceTree = "<group>"; };
@@ -214,7 +206,7 @@
 				A2000026233456780000026 /* AdvancedChartView.swift */,
 				A2000027233456780000027 /* DebugPanel.swift */,
 				EE33C7CA7CA515703FFF0B5D /* StrikePriceComparisonView.swift */,
-				OHC2000001233456780000001 /* OptionHistoryChartView.swift */,
+				OHC20001233456780000001 /* OptionHistoryChartView.swift */,
 				A2000028233456780000028 /* IndicatorPanelViews.swift */,
 				A2000029233456780000029 /* SuperTrendPanelView.swift */,
 				310341ABEED26BABB738BEF2 /* AnalysisView.swift */,
@@ -230,7 +222,6 @@
 				D749EA683B66324ED10E4516 /* SuperTrendChartView.swift */,
 				F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */,
 			);
-				A20597042F5CF84BCC92A79138 /* OptionsChainView.swift */,
 			path = Views;
 			sourceTree = "<group>";
 		};
@@ -247,7 +238,6 @@
 				0128CA566A7D864E3938B3FA /* OptionsRankerViewModel.swift */,
 				2FB6D0158AE11968F0D3B3C2 /* AnalysisViewModel.swift */,
 			);
-				A2D2F33D68C11A4BC2A13EBD29 /* OptionsChainViewModel.swift */,
 			path = ViewModels;
 			sourceTree = "<group>";
 		};
@@ -273,8 +263,6 @@
 				78170FE468AE321CB9A91BD5 /* SuperTrendChartData.swift */,
 				FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */,
 			);
-				A27205DA944FC74A128D277853 /* OptionContract.swift */,
-				A2A428B8CD477F4529A71815D4 /* OptionsChainResponse.swift */,
 			path = Models;
 			sourceTree = "<group>";
 		};
@@ -404,7 +392,7 @@
 				A66084CE5A41ABCA72B26DB6 /* OptionsRankingResponse.swift in Sources */,
 				2B0B27F844CF7F11D77399D7 /* ScannerResponse.swift in Sources */,
 				731BC29C18688AD83AF0A16E /* StrikePriceComparisonView.swift in Sources */,
-				OHC1000001233456780000001 /* OptionHistoryChartView.swift in Sources */,
+				OHC10001233456780000001 /* OptionHistoryChartView.swift in Sources */,
 				1B3F554CCC5B9C65482F52FA /* WatchlistModels.swift in Sources */,
 				A1000028233456780000028 /* IndicatorPanelViews.swift in Sources */,
 				A1000029233456780000029 /* SuperTrendPanelView.swift in Sources */,
@@ -436,10 +424,6 @@
 				2FC800BC68800F807D6266D0 /* AnalysisViewModel.swift in Sources */,
 				A8052D8012DDF9B50B591DA6 /* AnalysisView.swift in Sources */,
 			);
-				A1FD3D66EDA1CA43F39517382A /* OptionContract.swift in Sources */,
-				A1C0468085CEC542FE9266CDF3 /* OptionsChainResponse.swift in Sources */,
-				A16A52E6DBA51043DCA065D3E3 /* OptionsChainViewModel.swift in Sources */,
-				A14E52391ED89D478AB265E05C /* OptionsChainView.swift in Sources */,
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
