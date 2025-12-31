@@ -9,6 +9,13 @@ final class ChartViewModel: ObservableObject {
             print("[DEBUG] 🟢 ChartViewModel.selectedSymbol DIDSET TRIGGERED")
             print("[DEBUG] - Old value: \(oldValue?.ticker ?? "nil")")
             print("[DEBUG] - New value: \(selectedSymbol?.ticker ?? "nil")")
+            if selectedSymbol?.id != oldValue?.id {
+                liveQuote = nil
+                stopLiveQuoteUpdates()
+                if selectedSymbol != nil {
+                    startLiveQuoteUpdates()
+                }
+            }
         }
     }
     @Published var timeframe: String = "d1"
@@ -27,6 +34,8 @@ final class ChartViewModel: ObservableObject {
     @Published var refreshMessage: String?
     @Published var lastRefreshResult: RefreshDataResponse?
     @Published var lastUserRefreshResult: UserRefreshResponse?
+    @Published private(set) var liveQuote: LiveQuote?
+    @Published private(set) var marketState: String?
 
     // MARK: - Cached Indicator Storage
 
@@ -59,9 +68,21 @@ final class ChartViewModel: ObservableObject {
     let superTrendAIIndicator = SuperTrendAIIndicator()
 
     private var loadTask: Task<Void, Never>?
+    private var liveQuoteTask: Task<Void, Never>?
+    private let liveQuoteInterval: UInt64 = 60 * 1_000_000_000  // 60 seconds
+    private let marketTimeZone = TimeZone(identifier: "America/New_York") ?? .current
+    private let isoDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 
     var bars: [OHLCBar] {
         chartData?.bars ?? []
+    }
+
+    deinit {
+        liveQuoteTask?.cancel()
     }
 
     // MARK: - Cache Invalidation
@@ -498,6 +519,8 @@ final class ChartViewModel: ObservableObject {
         chartData = nil
         errorMessage = nil
         isLoading = false
+        liveQuote = nil
+        stopLiveQuoteUpdates()
     }
     
     // MARK: - Coordinated Refresh
@@ -569,5 +592,77 @@ final class ChartViewModel: ObservableObject {
         }
         
         isRefreshing = false
+    }
+
+    // MARK: - Live Quote Updates
+
+    private func startLiveQuoteUpdates() {
+        liveQuoteTask?.cancel()
+        liveQuoteTask = Task { [weak self] in
+            await self?.runLiveQuoteLoop()
+        }
+    }
+
+    private func stopLiveQuoteUpdates() {
+        liveQuoteTask?.cancel()
+        liveQuoteTask = nil
+    }
+
+    @MainActor
+    private func runLiveQuoteLoop() async {
+        while !Task.isCancelled {
+            guard selectedSymbol != nil else {
+                liveQuote = nil
+                try? await Task.sleep(nanoseconds: liveQuoteInterval)
+                continue
+            }
+
+            if isMarketHours() {
+                await fetchLiveQuote()
+            } else {
+                liveQuote = nil
+            }
+
+            try? await Task.sleep(nanoseconds: liveQuoteInterval)
+        }
+    }
+
+    private func fetchLiveQuote() async {
+        guard let symbol = selectedSymbol else { return }
+        do {
+            let response = try await APIClient.shared.fetchQuotes(symbols: [symbol.ticker])
+            marketState = response.marketState
+            if let quote = response.quotes.first {
+                let timestamp = isoDateFormatter.date(from: quote.lastTradeTime) ?? Date()
+                liveQuote = LiveQuote(
+                    symbol: quote.symbol,
+                    last: quote.last,
+                    change: quote.change,
+                    changePercent: quote.changePercentage,
+                    timestamp: timestamp
+                )
+            }
+        } catch {
+            print("[DEBUG] ChartViewModel.fetchLiveQuote() - ERROR: \(error)")
+        }
+    }
+
+    private func isMarketHours(date: Date = Date()) -> Bool {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = marketTimeZone
+        let components = calendar.dateComponents([.weekday, .hour, .minute], from: date)
+
+        guard let weekday = components.weekday,
+              (2...6).contains(weekday), // Monday-Friday
+              let hour = components.hour,
+              let minute = components.minute else {
+            return false
+        }
+
+        let minutes = hour * 60 + minute
+        let openMinutes = 9 * 60 + 30
+        let closeMinutes = 16 * 60
+
+        return minutes >= openMinutes && minutes <= closeMinutes
     }
 }

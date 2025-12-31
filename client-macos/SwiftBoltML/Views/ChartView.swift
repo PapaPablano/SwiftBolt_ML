@@ -38,7 +38,9 @@ struct ChartView: View {
         return VStack(spacing: 0) {
             ChartHeader(
                 symbol: chartViewModel.selectedSymbol,
-                lastBar: chartViewModel.bars.last
+                lastBar: chartViewModel.bars.last,
+                liveQuote: chartViewModel.liveQuote,
+                marketState: chartViewModel.marketState
             )
 
             HStack {
@@ -199,28 +201,59 @@ private struct ChartChangeToken: Equatable {
 struct ChartHeader: View {
     let symbol: Symbol?
     let lastBar: OHLCBar?
+    let liveQuote: LiveQuote?
+    let marketState: String?
+
+    private var displayedPrice: Double? {
+        if let liveQuote {
+            return liveQuote.last
+        }
+        return lastBar?.close
+    }
+
+    private var subtitle: String? {
+        if let state = marketState, liveQuote != nil {
+            return "Live • \(state.uppercased())"
+        }
+        return symbol?.description
+    }
 
     var body: some View {
         print("[DEBUG] 🔵 ChartHeader.body rendering with symbol: \(symbol?.ticker ?? "nil")")
 
-        return HStack {
+        return HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 if let symbol = symbol {
                     Text(symbol.ticker)
                         .font(.title.bold())
-                    Text(symbol.description)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+
+                    if let subtitle = subtitle {
+                        Text(subtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(liveQuote != nil ? .green : .secondary)
+                    } else {
+                        Text(symbol.description)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 12)
 
-            if let bar = lastBar {
+            if let price = displayedPrice {
                 VStack(alignment: .trailing, spacing: 4) {
-                    Text(formatPrice(bar.close))
+                    Text(formatPrice(price))
                         .font(.title2.bold().monospacedDigit())
-                    PriceChangeView(open: bar.open, close: bar.close)
+
+                    if let quote = liveQuote {
+                        PriceChangeView(delta: quote.change, percent: quote.changePercent)
+                        Text(relativeTime(from: quote.timestamp))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    } else if let bar = lastBar {
+                        PriceChangeView(open: bar.open, close: bar.close)
+                    }
                 }
             }
         }
@@ -230,19 +263,35 @@ struct ChartHeader: View {
     private func formatPrice(_ price: Double) -> String {
         String(format: "$%.2f", price)
     }
+
+    private func relativeTime(from date: Date) -> String {
+        let seconds = Int(Date().timeIntervalSince(date))
+        if seconds < 60 {
+            return "Updated just now"
+        } else if seconds < 3600 {
+            return "Updated \(seconds / 60)m ago"
+        } else {
+            return "Updated \(seconds / 3600)h ago"
+        }
+    }
 }
 
 struct PriceChangeView: View {
-    let open: Double
-    let close: Double
+    private let change: Double
+    private let changePercent: Double
 
-    private var change: Double {
-        close - open
+    init(open: Double, close: Double) {
+        self.change = close - open
+        if open == 0 {
+            self.changePercent = 0
+        } else {
+            self.changePercent = (close - open) / open * 100
+        }
     }
 
-    private var changePercent: Double {
-        guard open != 0 else { return 0 }
-        return (change / open) * 100
+    init(delta: Double, percent: Double) {
+        self.change = delta
+        self.changePercent = percent
     }
 
     private var isPositive: Bool {

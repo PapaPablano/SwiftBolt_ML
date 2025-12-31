@@ -116,6 +116,21 @@ actor APIClient {
         return try await performRequest(request)
     }
 
+    /// Fetch real-time quotes for the given symbols (used for live price header)
+    func fetchQuotes(symbols: [String]) async throws -> QuotesResponse {
+        guard !symbols.isEmpty else {
+            throw APIError.invalidURL
+        }
+
+        let symbolParam = symbols.joined(separator: ",")
+        let request = try makeRequest(
+            endpoint: "quotes",
+            queryItems: [URLQueryItem(name: "symbols", value: symbolParam)]
+        )
+
+        return try await performRequest(request)
+    }
+
     // Generic POST method
     func post<T: Encodable, R: Decodable>(endpoint: String, body: T) async throws -> R {
         guard let components = URLComponents(string: "\(baseURL)/\(endpoint)") else {
