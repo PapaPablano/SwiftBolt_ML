@@ -726,8 +726,6 @@ class PolynomialRegressionIndicator: ObservableObject {
         
         // Extend the line into the future using the regression
         if let lastPivot = sortedPivots.last {
-            let lastPivotX = Double(lastIndex - lastPivot.index)
-            
             // Add points from last pivot to current bar and beyond
             for barIdx in (lastPivot.index + 1)...(lastIndex + extend) {
                 let x = Double(lastIndex - barIdx)

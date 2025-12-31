@@ -436,7 +436,7 @@ function calculateLogisticSR(bars: OHLCBar[]): LogisticResult {
   if (bars.length < 30) return result;
 
   const pivotLength = 14;
-  const probThreshold = 0.7;
+  const probThreshold = 0.5;  // Lowered from 0.7 to show more levels
   const n = bars.length;
 
   // Pre-calculate RSI
@@ -550,14 +550,15 @@ function calculateLogisticSR(bars: OHLCBar[]): LogisticResult {
   const lastClose = bars[n - 1].close;
 
   for (const level of allLevels) {
-    if (level.endIdx !== null) continue;
+    // Include broken levels (they can still be retested)
 
     // Simple probability based on respects and distance
     const dist = Math.abs(level.level - lastClose) / lastClose;
-    if (dist > 0.07) continue; // Skip far levels
+    if (dist > 0.12) continue; // Skip far levels (increased from 0.07 to 0.12)
 
-    // Base probability on respects (0.5 + 0.1 per respect, max 0.9)
-    const prob = Math.min(0.9, 0.5 + level.timesRespected * 0.1);
+    // Base probability on respects (0.50 + 0.10 per respect, max 0.9)
+    // Fresh levels visible immediately since base >= threshold
+    const prob = Math.min(0.9, 0.50 + level.timesRespected * 0.10);
 
     if (prob >= probThreshold) {
       const logLevel: LogisticLevel = {
