@@ -139,6 +139,14 @@ class OptionsMomentumRanker:
     VOLUME_OI_NORMAL = 0.10
     SPREAD_CAP = 50.0  # Cap spread % at 50 for scoring
 
+    # Liquidity confidence thresholds (prevents noisy low-volume signals)
+    MIN_VOLUME_FOR_MOMENTUM = 10      # Below this, momentum is heavily discounted
+    MIN_OI_FOR_MOMENTUM = 50          # Below this, momentum is heavily discounted
+    MIN_PRICE_FOR_MOMENTUM = 0.50     # Below $0.50, momentum is unreliable
+    LIQUIDITY_RAMP_VOLUME = 100       # Full confidence at this volume
+    LIQUIDITY_RAMP_OI = 500           # Full confidence at this OI
+    LIQUIDITY_RAMP_PRICE = 5.0        # Full confidence at this price
+
     # Signal thresholds
     DISCOUNT_IV_RANK_THRESHOLD = 30
     DISCOUNT_MOMENTUM_THRESHOLD = 50
@@ -360,6 +368,53 @@ class OptionsMomentumRanker:
     # MOMENTUM SCORING (40% of total)
     # =========================================================================
 
+    def _calculate_liquidity_confidence(self, df: pd.DataFrame) -> pd.Series:
+        """Calculate liquidity confidence multiplier (0.1 to 1.0).
+
+        Low-volume/low-price options get dampened momentum scores because
+        percentage changes are noisy and unreliable.
+
+        Formula uses geometric mean of three confidence factors:
+        - Volume confidence: ramps from 0.1 at vol=0 to 1.0 at vol=100
+        - OI confidence: ramps from 0.1 at OI=0 to 1.0 at OI=500
+        - Price confidence: ramps from 0.1 at $0 to 1.0 at $5
+
+        Examples:
+        - Vol=5, OI=20, Price=$0.50 → ~0.25 confidence (heavily dampened)
+        - Vol=50, OI=200, Price=$2 → ~0.65 confidence (moderately dampened)
+        - Vol=100+, OI=500+, Price=$5+ → 1.0 confidence (full weight)
+        """
+        # Get volume, OI, and price
+        volume = df.get("volume", pd.Series(0, index=df.index))
+        oi = df.get("open_interest", pd.Series(0, index=df.index))
+        price = df.get("mid", df.get("mark", pd.Series(1, index=df.index)))
+
+        # Calculate individual confidence factors (0.1 to 1.0)
+        min_conf = 0.1  # Floor to avoid zeroing out completely
+
+        # Volume confidence: linear ramp from min to 1.0
+        vol_conf = np.clip(
+            min_conf + (1 - min_conf) * volume / self.LIQUIDITY_RAMP_VOLUME,
+            min_conf, 1.0
+        )
+
+        # OI confidence
+        oi_conf = np.clip(
+            min_conf + (1 - min_conf) * oi / self.LIQUIDITY_RAMP_OI,
+            min_conf, 1.0
+        )
+
+        # Price confidence
+        price_conf = np.clip(
+            min_conf + (1 - min_conf) * price / self.LIQUIDITY_RAMP_PRICE,
+            min_conf, 1.0
+        )
+
+        # Geometric mean of all three factors
+        confidence = (vol_conf * oi_conf * price_conf) ** (1/3)
+
+        return pd.Series(confidence, index=df.index)
+
     def _calculate_momentum_scores(
         self,
         df: pd.DataFrame,
@@ -367,11 +422,22 @@ class OptionsMomentumRanker:
     ) -> pd.DataFrame:
         """Calculate momentum score from price change, Vol/OI, and OI growth.
 
-        Momentum Score = Price_Mom × 0.50 + Vol/OI × 0.30 + OI_Growth × 0.20
+        Momentum Score = (Price_Mom × 0.50 + Vol/OI × 0.30 + OI_Growth × 0.20)
+                         × Liquidity_Confidence
+
+        The liquidity confidence multiplier dampens scores for low-volume,
+        low-OI, or low-price options where percentage changes are noisy.
         """
+        # Calculate liquidity confidence multiplier first
+        df["liquidity_confidence"] = self._calculate_liquidity_confidence(df)
+
         # Price Momentum (50% of momentum)
-        df["price_momentum"] = self._calculate_price_momentum(df, options_history)
-        df["price_momentum_score"] = self._normalize_momentum(df["price_momentum"])
+        df["price_momentum"] = self._calculate_price_momentum(
+            df, options_history
+        )
+        df["price_momentum_score"] = self._normalize_momentum(
+            df["price_momentum"]
+        )
 
         # Volume/OI Ratio (30% of momentum)
         df["vol_oi_ratio"] = self._calculate_vol_oi_ratio(df)
@@ -381,12 +447,18 @@ class OptionsMomentumRanker:
         df["oi_growth"] = self._calculate_oi_growth(df, options_history)
         df["oi_growth_score"] = self._normalize_oi_growth(df["oi_growth"])
 
-        # Combined Momentum Score
-        df["momentum_score"] = (
+        # Combined Momentum Score with liquidity dampening
+        raw_momentum = (
             df["price_momentum_score"] * self.PRICE_MOMENTUM_WEIGHT +
             df["vol_oi_score"] * self.VOLUME_OI_WEIGHT +
             df["oi_growth_score"] * self.OI_GROWTH_WEIGHT
         )
+
+        # Apply liquidity confidence - low liquidity dampens toward neutral
+        # Formula: score = 50 + (raw_score - 50) * confidence
+        # Pulls extreme scores toward 50 for illiquid options
+        liq_conf = df["liquidity_confidence"]
+        df["momentum_score"] = 50 + (raw_momentum - 50) * liq_conf
 
         return df
 
