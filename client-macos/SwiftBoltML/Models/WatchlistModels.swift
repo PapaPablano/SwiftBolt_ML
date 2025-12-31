@@ -153,7 +153,15 @@ struct StrikePriceHistoryPoint: Codable, Identifiable {
     var id: String { snapshotAt }
 
     var date: Date? {
-        ISO8601DateFormatter().date(from: snapshotAt)
+        // Try standard ISO8601 first
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = isoFormatter.date(from: snapshotAt) {
+            return date
+        }
+        // Fallback without fractional seconds
+        isoFormatter.formatOptions = [.withInternetDateTime]
+        return isoFormatter.date(from: snapshotAt)
     }
 
     enum CodingKeys: String, CodingKey {

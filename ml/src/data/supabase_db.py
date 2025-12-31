@@ -543,6 +543,9 @@ class SupabaseDatabase:
     ) -> pd.DataFrame:
         """Get historical options snapshots for a symbol.
 
+        Queries options_price_history first (preferred for momentum),
+        then falls back to options_snapshots if no data found.
+
         Args:
             symbol: Stock ticker symbol
             days_back: Number of days of history to retrieve
@@ -553,16 +556,42 @@ class SupabaseDatabase:
         """
         try:
             symbol_id = self.get_symbol_id(symbol)
+            cutoff = pd.Timestamp.now() - pd.Timedelta(days=days_back)
+            cutoff_date = cutoff.isoformat()
 
-            # Use RPC function if available, else query directly
+            # Try options_price_history first (multi-day snapshots)
+            query = (
+                self.client.table("options_price_history")
+                .select("*")
+                .eq("underlying_symbol_id", symbol_id)
+                .gte("snapshot_at", cutoff_date)
+                .order("snapshot_at", desc=True)
+            )
+
+            if limit:
+                query = query.limit(limit)
+
+            response = query.execute()
+
+            if response.data and len(response.data) > 0:
+                df = pd.DataFrame(response.data)
+                df["snapshot_time"] = pd.to_datetime(df["snapshot_at"])
+                # Normalize column names for ranker compatibility
+                if "side" in df.columns and "option_type" not in df.columns:
+                    df["option_type"] = df["side"]
+                if "last_price" in df.columns and "last" not in df.columns:
+                    df["last"] = df["last_price"]
+                logger.info(
+                    f"Fetched {len(df)} from price_history for {symbol}"
+                )
+                return df
+
+            # Fallback to options_snapshots
             query = (
                 self.client.table("options_snapshots")
                 .select("*")
                 .eq("underlying_symbol_id", symbol_id)
-                .gte(
-                    "snapshot_time",
-                    (pd.Timestamp.now() - pd.Timedelta(days=days_back)).isoformat(),
-                )
+                .gte("snapshot_time", cutoff_date)
                 .order("snapshot_time", desc=True)
             )
 
@@ -577,7 +606,9 @@ class SupabaseDatabase:
             df = pd.DataFrame(response.data)
             df["snapshot_time"] = pd.to_datetime(df["snapshot_time"])
 
-            logger.info(f"Fetched {len(df)} historical options for {symbol}")
+            logger.info(
+                f"Fetched {len(df)} from options_snapshots for {symbol}"
+            )
             return df
 
         except Exception as e:

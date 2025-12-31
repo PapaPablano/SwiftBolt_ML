@@ -136,7 +136,8 @@ serve(async (req) => {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - lookbackDays);
 
-    const { data: priceHistory, error: historyError } = await supabaseClient
+    // Try options_price_history first
+    let { data: priceHistory, error: historyError } = await supabaseClient
       .from("options_price_history")
       .select("snapshot_at, mark, implied_vol")
       .eq("underlying_symbol_id", symbolData.id)
@@ -145,7 +146,32 @@ serve(async (req) => {
       .gte("snapshot_at", cutoffDate.toISOString())
       .order("snapshot_at", { ascending: true });
 
-    if (historyError) throw historyError;
+    if (historyError) {
+      console.log("options_price_history error (non-fatal):", historyError.message);
+      priceHistory = [];
+    }
+
+    // Fallback to options_snapshots if no data in options_price_history
+    if (!priceHistory || priceHistory.length === 0) {
+      const optionType = side === "call" ? "call" : "put";
+      const { data: snapshotHistory, error: snapshotError } = await supabaseClient
+        .from("options_snapshots")
+        .select("snapshot_time, bid, ask, iv")
+        .eq("underlying_symbol_id", symbolData.id)
+        .eq("strike", parseFloat(strike))
+        .eq("option_type", optionType)
+        .gte("snapshot_time", cutoffDate.toISOString())
+        .order("snapshot_time", { ascending: true });
+
+      if (!snapshotError && snapshotHistory && snapshotHistory.length > 0) {
+        // Transform to match expected format
+        priceHistory = snapshotHistory.map((s: any) => ({
+          snapshot_at: s.snapshot_time,
+          mark: s.bid && s.ask ? (s.bid + s.ask) / 2 : null,
+          implied_vol: s.iv,
+        }));
+      }
+    }
 
     // Calculate overall statistics
     const allMarks = (priceHistory || [])
