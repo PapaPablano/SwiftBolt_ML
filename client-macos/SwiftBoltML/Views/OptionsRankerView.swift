@@ -355,7 +355,7 @@ struct RankedOptionRow: View {
 
                     Spacer()
 
-                    if let mark = rank.mark {
+                    if let mark = rank.derivedMark {
                         Text("$\(String(format: "%.2f", mark))")
                             .font(.subheadline.bold())
                     }
@@ -388,6 +388,24 @@ struct RankedOptionRow: View {
 
                     if let volume = rank.volume {
                         Text("Vol: \(formatNumber(volume))")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let sp = rank.spreadPctDisplay {
+                        Text("Spr: \(String(format: "%.1f", sp))%")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let liq = rank.liquidityScore {
+                        Text("Liq: \(String(format: "%.2f", liq))")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if rank.runAtDate != nil {
+                        Text("Age: \(rank.markAgeLabel)")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }

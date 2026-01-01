@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import Combine
 
 // MARK: - Chart Color Palette
 /// Professional, high-contrast colors for chart elements - optimized for dark mode visibility
@@ -101,6 +102,8 @@ struct AdvancedChartView: View {
 
     @State private var selectedBar: OHLCBar?
     @State private var selectedIndex: Int?
+
+    @State private var superTrendAIUpdateTick: Int = 0
 
     // Chart pan/zoom state
     @State private var visibleRange: ClosedRange<Int>
@@ -339,6 +342,9 @@ struct AdvancedChartView: View {
                 resetToLatest()
             }
         }
+        .onReceive(superTrendAIIndicator?.objectWillChange.eraseToAnyPublisher() ?? Empty().eraseToAnyPublisher()) { _ in
+            superTrendAIUpdateTick += 1
+        }
     }
 
     // MARK: - Chart Controls
@@ -346,13 +352,15 @@ struct AdvancedChartView: View {
     private var chartControls: some View {
         HStack(spacing: 12) {
             // Data range info
-            Text("\(bars.count) bars")
+            let startIdx = max(0, min(scrollPosition, max(0, bars.count - 1)))
+            let endIdx = max(0, min(scrollPosition + barsToShow - 1, max(0, bars.count - 1)))
+            let visibleCount = bars.isEmpty ? 0 : (endIdx - startIdx + 1)
+
+            Text("Visible \(visibleCount) / Total \(bars.count)")
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
 
             if bars.count > 0 {
-                let startIdx = max(0, min(scrollPosition, bars.count - 1))
-                let endIdx = max(0, min(scrollPosition + barsToShow - 1, bars.count - 1))
                 Text("•")
                     .foregroundStyle(.tertiary)
                 Text("\(formatDate(bars[startIdx].ts)) - \(formatDate(bars[endIdx].ts))")
@@ -990,6 +998,95 @@ struct AdvancedChartView: View {
         // Show "AI" indicator when using AI data
         let isAI = !aiSuperTrendTrend.isEmpty
 
+        let startIdx = max(0, scrollPosition)
+        let endIdx = min(bars.count - 1, scrollPosition + barsToShow - 1)
+
+        let segmentStartIdx: Int = {
+            guard startIdx <= endIdx, endIdx < trendData.count else { return startIdx }
+            if endIdx == startIdx { return startIdx }
+            var start = startIdx
+            if startIdx + 1 <= endIdx {
+                for i in stride(from: endIdx, through: startIdx + 1, by: -1) {
+                    if i < trendData.count, (i - 1) < trendData.count, trendData[i] != trendData[i - 1] {
+                        start = i
+                        break
+                    }
+                }
+            }
+            return start
+        }()
+
+        let startLevel: Double? = {
+            guard startIdx <= endIdx else { return nil }
+            if isAI {
+                guard !aiSuperTrendLine.isEmpty else { return nil }
+                for i in segmentStartIdx...endIdx {
+                    if i < aiSuperTrendLine.count, let v = aiSuperTrendLine[i] {
+                        return v
+                    }
+                }
+                return nil
+            }
+            for i in segmentStartIdx...endIdx {
+                if i < superTrendLine.count, let v = superTrendLine[i].value {
+                    return v
+                }
+            }
+            return nil
+        }()
+
+        let currentLevel: Double? = {
+            guard startIdx <= endIdx else { return nil }
+            if isAI {
+                guard !aiSuperTrendLine.isEmpty else { return nil }
+                for i in stride(from: endIdx, through: startIdx, by: -1) {
+                    if i < aiSuperTrendLine.count, let v = aiSuperTrendLine[i] {
+                        return v
+                    }
+                }
+                return nil
+            }
+            for i in stride(from: endIdx, through: startIdx, by: -1) {
+                if i < superTrendLine.count, let v = superTrendLine[i].value {
+                    return v
+                }
+            }
+            return nil
+        }()
+
+        let levelDelta: Double? = {
+            guard let s = startLevel, let c = currentLevel else { return nil }
+            return c - s
+        }()
+
+        let levelDeltaPct: Double? = {
+            guard let s = startLevel, let d = levelDelta, abs(s) > 1e-9 else { return nil }
+            return (d / s) * 100.0
+        }()
+
+        let factorText: String? = {
+            guard isAI else { return nil }
+            if let factors = superTrendAIIndicator?.result?.adaptiveFactor,
+               endIdx >= 0,
+               endIdx < factors.count {
+                return String(format: "F%.2f", factors[endIdx])
+            }
+            if let currentFactor = superTrendAIIndicator?.currentFactor {
+                return String(format: "F%.2f", currentFactor)
+            }
+            return nil
+        }()
+
+        let deltaText: String? = {
+            guard let d = levelDelta else { return nil }
+            return String(format: "%+.2f", d)
+        }()
+
+        let deltaPctText: String? = {
+            guard let p = levelDeltaPct else { return nil }
+            return String(format: "(%+.2f%%)", p)
+        }()
+
         return HStack(spacing: 4) {
             Circle()
                 .fill(trendColor)
@@ -997,12 +1094,32 @@ struct AdvancedChartView: View {
             Text(isAI ? "ST-AI" : "ST")
                 .font(.caption2)
                 .foregroundColor(.secondary)
+            if let factorText {
+                Text(factorText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundColor(.secondary)
+            }
             Text(trendLabel)
                 .font(.caption2.bold())
                 .foregroundColor(trendColor)
             Text("(\(strengthPercent)%)")
                 .font(.caption2)
                 .foregroundColor(.secondary)
+            if let startLevel, let currentLevel {
+                Text("\(formatPrice(startLevel))→\(formatPrice(currentLevel))")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundColor(.secondary)
+            }
+            if let deltaText {
+                Text(deltaText)
+                    .font(.caption2.bold().monospacedDigit())
+                    .foregroundColor((levelDelta ?? 0) >= 0 ? .green : .red)
+            }
+            if let deltaPctText {
+                Text(deltaPctText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundColor(.secondary)
+            }
         }
     }
 
@@ -1621,7 +1738,24 @@ struct AdvancedChartView: View {
     /// Create signal annotation label
     private func signalAnnotation(for signal: SuperTrendSignal) -> some View {
         let color: Color = signal.type == .buy ? ChartColors.superTrendBull : ChartColors.superTrendBear
-        let strengthBars = min(5, max(1, signal.strength / 2))  // 1-5 bars based on 0-10 strength
+        let factorAtSignal: Double? = {
+            if let factors = superTrendAIIndicator?.result?.adaptiveFactor,
+               signal.barIndex >= 0,
+               signal.barIndex < factors.count {
+                return factors[signal.barIndex]
+            }
+            return signal.factor
+        }()
+
+        let factorMin = superTrendAIIndicator?.settings.factorMin ?? 1.0
+        let factorMax = superTrendAIIndicator?.settings.factorMax ?? 5.0
+        let factorBars: Int = {
+            guard let f = factorAtSignal else { return 1 }
+            let span = max(1e-9, factorMax - factorMin)
+            let t = max(0.0, min(1.0, (f - factorMin) / span))
+            let scaled = Int((t * 4.0).rounded())
+            return min(5, max(1, 1 + scaled))
+        }()
 
         return VStack(spacing: 2) {
             Text(signal.type == .buy ? "BUY" : "SELL")
@@ -1630,7 +1764,7 @@ struct AdvancedChartView: View {
 
             // Strength indicator (bars)
             HStack(spacing: 1) {
-                ForEach(0..<strengthBars, id: \.self) { _ in
+                ForEach(0..<factorBars, id: \.self) { _ in
                     RoundedRectangle(cornerRadius: 1)
                         .fill(color)
                         .frame(width: 3, height: 6)

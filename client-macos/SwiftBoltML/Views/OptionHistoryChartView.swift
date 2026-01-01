@@ -10,7 +10,260 @@ struct OptionHistoryChartView: View {
     let contractSymbol: String?
     
     @StateObject private var viewModel = OptionHistoryChartViewModel()
+    @State private var timeframe: Timeframe = .all
     @Environment(\.dismiss) private var dismiss
+
+    private struct TradingDayPoint: Identifiable {
+        let date: Date
+        let mark: Double?
+        let impliedVol: Double?
+
+        var id: Date { date }
+    }
+    
+    private enum Timeframe: String, CaseIterable, Identifiable {
+        case all = "All"
+        case days90 = "90d"
+        case days30 = "30d"
+        case days5 = "5d"
+        
+        var id: String { rawValue }
+        
+        var lookbackDays: Int {
+            switch self {
+            case .all:
+                return 3650
+            case .days90:
+                return 90
+            case .days30:
+                return 30
+            case .days5:
+                return 5
+            }
+        }
+        
+        var statsTitle: String {
+            switch self {
+            case .all:
+                return "Price Statistics (All Time)"
+            case .days90:
+                return "Price Statistics (Last 90 Days)"
+            case .days30:
+                return "Price Statistics (Last 30 Days)"
+            case .days5:
+                return "Price Statistics (Last 5 Days)"
+            }
+        }
+    }
+    
+    private var displayedHistory: [OptionPricePoint] {
+        switch timeframe {
+        case .all:
+            return viewModel.priceHistory
+        default:
+            let start = Calendar.current.date(
+                byAdding: .day,
+                value: -timeframe.lookbackDays,
+                to: Date()
+            ) ?? Date()
+            return viewModel.priceHistory.filter { $0.date >= start }
+        }
+    }
+    
+    private var chartDomain: ClosedRange<Date> {
+        switch timeframe {
+        case .all:
+            let start = displayedHistory.first?.date ?? Date()
+            let end = displayedHistory.last?.date ?? Date()
+            return start...end
+        default:
+            let start = Calendar.current.date(
+                byAdding: .day,
+                value: -timeframe.lookbackDays,
+                to: Date()
+            ) ?? Date()
+            return start...Date()
+        }
+    }
+
+    private var usesTradingDayAxis: Bool {
+        switch timeframe {
+        case .days30, .days90:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func buildTradingDayHistory() -> [TradingDayPoint] {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: chartDomain.lowerBound)
+        let end = calendar.startOfDay(for: chartDomain.upperBound)
+
+        var latestByDay: [Date: OptionPricePoint] = [:]
+        for point in displayedHistory {
+            let day = calendar.startOfDay(for: point.date)
+            if let existing = latestByDay[day] {
+                if point.date > existing.date {
+                    latestByDay[day] = point
+                }
+            } else {
+                latestByDay[day] = point
+            }
+        }
+
+        var cursor = start
+        var results: [TradingDayPoint] = []
+        while cursor <= end {
+            let weekday = calendar.component(.weekday, from: cursor)
+            let isWeekend = weekday == 1 || weekday == 7
+            if !isWeekend {
+                if let point = latestByDay[cursor] {
+                    results.append(
+                        TradingDayPoint(
+                            date: cursor,
+                            mark: point.mark,
+                            impliedVol: point.impliedVol
+                        )
+                    )
+                } else {
+                    results.append(
+                        TradingDayPoint(
+                            date: cursor,
+                            mark: nil,
+                            impliedVol: nil
+                        )
+                    )
+                }
+            }
+
+            cursor = calendar.date(byAdding: .day, value: 1, to: cursor) ?? cursor.addingTimeInterval(86400)
+        }
+
+        return results
+    }
+
+    private var tradingDayHistory: [TradingDayPoint] {
+        guard usesTradingDayAxis else { return [] }
+        return buildTradingDayHistory()
+    }
+
+    private var tradingDayXDomain: ClosedRange<Int> {
+        let count = tradingDayHistory.count
+        if count <= 1 {
+            return 0...1
+        }
+        return 0...(count - 1)
+    }
+
+    private var statsMarks: [Double] {
+        if usesTradingDayAxis {
+            return tradingDayHistory.compactMap { $0.mark }
+        }
+        return displayedHistory.compactMap { $0.mark }
+    }
+
+    private var statsFirstMark: Double? {
+        if usesTradingDayAxis {
+            return tradingDayHistory.compactMap { $0.mark }.first
+        }
+        return displayedHistory.first?.mark
+    }
+
+    private var statsLastMark: Double? {
+        if usesTradingDayAxis {
+            return tradingDayHistory.compactMap { $0.mark }.last
+        }
+        return displayedHistory.last?.mark
+    }
+
+    private var statsCountLabel: String {
+        if usesTradingDayAxis {
+            return "\(tradingDayHistory.count) trading days"
+        }
+        return "\(displayedHistory.count) data points"
+    }
+    
+    private func paddedDomain(
+        minValue: Double,
+        maxValue: Double
+    ) -> ClosedRange<Double> {
+        if minValue == maxValue {
+            let pad = Swift.max(0.01, abs(minValue) * 0.05)
+            return (minValue - pad)...(maxValue + pad)
+        }
+        let range = maxValue - minValue
+        let pad = Swift.max(0.01, range * 0.05)
+        return (minValue - pad)...(maxValue + pad)
+    }
+    
+    private var priceYDomain: ClosedRange<Double>? {
+        guard let minV = statsMarks.min(), let maxV = statsMarks.max() else { return nil }
+        return paddedDomain(minValue: minV, maxValue: maxV)
+    }
+    
+    private var ivSeriesPct: [Double] {
+        if usesTradingDayAxis {
+            return tradingDayHistory.compactMap { point in
+                guard let iv = point.impliedVol else { return nil }
+                return iv <= 3 ? iv * 100 : iv
+            }
+        }
+
+        return displayedHistory.compactMap { point in
+            guard let iv = point.impliedVol else { return nil }
+            return iv <= 3 ? iv * 100 : iv
+        }
+    }
+    
+    private var ivYDomain: ClosedRange<Double>? {
+        guard let minV = ivSeriesPct.min(), let maxV = ivSeriesPct.max() else {
+            return nil
+        }
+        return paddedDomain(minValue: minV, maxValue: maxV)
+    }
+    
+    private var xAxisLabelFormat: Date.FormatStyle {
+        switch timeframe {
+        case .days5:
+            return .dateTime.weekday(.abbreviated).hour(
+                .defaultDigits(amPM: .abbreviated)
+            )
+        default:
+            return .dateTime.month(.abbreviated).day()
+        }
+    }
+    
+    private var currentMark: Double? {
+        statsLastMark
+    }
+
+    private var avgMark: Double? {
+        guard !statsMarks.isEmpty else { return nil }
+        return statsMarks.reduce(0, +) / Double(statsMarks.count)
+    }
+
+    private var minMark: Double? {
+        statsMarks.min()
+    }
+
+    private var maxMark: Double? {
+        statsMarks.max()
+    }
+
+    private var priceChange: Double? {
+        guard let first = statsFirstMark,
+              let last = statsLastMark,
+              first > 0 else { return nil }
+        return ((last - first) / first) * 100
+    }
+
+    private var hasIVData: Bool {
+        if usesTradingDayAxis {
+            return tradingDayHistory.contains { $0.impliedVol != nil }
+        }
+        return displayedHistory.contains { $0.impliedVol != nil }
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -24,7 +277,7 @@ struct OptionHistoryChartView: View {
                 loadingView
             } else if let error = viewModel.errorMessage {
                 errorView(error)
-            } else if viewModel.priceHistory.isEmpty {
+            } else if displayedHistory.isEmpty {
                 emptyView
             } else {
                 ScrollView {
@@ -36,7 +289,7 @@ struct OptionHistoryChartView: View {
                         priceChartSection
                         
                         // IV chart (if available)
-                        if viewModel.hasIVData {
+                        if hasIVData {
                             ivChartSection
                         }
                     }
@@ -50,8 +303,18 @@ struct OptionHistoryChartView: View {
                 symbol: symbol,
                 strike: strike,
                 side: side,
-                lookbackDays: 60
+                lookbackDays: timeframe.lookbackDays
             )
+        }
+        .onChange(of: timeframe) { _, newValue in
+            Task {
+                await viewModel.fetchHistory(
+                    symbol: symbol,
+                    strike: strike,
+                    side: side,
+                    lookbackDays: newValue.lookbackDays
+                )
+            }
         }
     }
     
@@ -85,6 +348,14 @@ struct OptionHistoryChartView: View {
             
             Spacer()
             
+            Picker("Timeframe", selection: $timeframe) {
+                ForEach(Timeframe.allCases) { tf in
+                    Text(tf.rawValue).tag(tf)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 220)
+            
             // Refresh button
             Button {
                 Task {
@@ -92,7 +363,7 @@ struct OptionHistoryChartView: View {
                         symbol: symbol,
                         strike: strike,
                         side: side,
-                        lookbackDays: 60
+                        lookbackDays: timeframe.lookbackDays
                     )
                 }
             } label: {
@@ -117,39 +388,39 @@ struct OptionHistoryChartView: View {
     
     private var statsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Price Statistics (Last 60 Days)")
+            Text(timeframe.statsTitle)
                 .font(.headline)
             
             HStack(spacing: 24) {
                 statItem(
                     label: "Current",
-                    value: viewModel.currentMark,
+                    value: currentMark,
                     format: "$%.2f",
                     color: .primary
                 )
                 
                 statItem(
                     label: "Average",
-                    value: viewModel.avgMark,
+                    value: avgMark,
                     format: "$%.2f",
                     color: .blue
                 )
                 
                 statItem(
                     label: "Low",
-                    value: viewModel.minMark,
+                    value: minMark,
                     format: "$%.2f",
                     color: .red
                 )
                 
                 statItem(
                     label: "High",
-                    value: viewModel.maxMark,
+                    value: maxMark,
                     format: "$%.2f",
                     color: .green
                 )
                 
-                if let change = viewModel.priceChange {
+                if let change = priceChange {
                     statItem(
                         label: "Change",
                         value: change,
@@ -160,7 +431,7 @@ struct OptionHistoryChartView: View {
                 
                 Spacer()
                 
-                Text("\(viewModel.priceHistory.count) data points")
+                Text(statsCountLabel)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
@@ -195,43 +466,77 @@ struct OptionHistoryChartView: View {
             Text("Mark Price History")
                 .font(.headline)
             
-            Chart {
-                // Price line
-                ForEach(viewModel.priceHistory) { point in
-                    if let mark = point.mark {
-                        LineMark(
-                            x: .value("Date", point.date),
-                            y: .value("Price", mark)
-                        )
-                        .foregroundStyle(side == "call" ? Color.green : Color.red)
-                        .lineStyle(StrokeStyle(lineWidth: 2))
-                        .interpolationMethod(.catmullRom)
-                    }
-                }
-                
-                // Area fill
-                ForEach(viewModel.priceHistory) { point in
-                    if let mark = point.mark {
-                        AreaMark(
-                            x: .value("Date", point.date),
-                            y: .value("Price", mark)
-                        )
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    (side == "call" ? Color.green : Color.red).opacity(0.3),
-                                    (side == "call" ? Color.green : Color.red).opacity(0.05)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
+            let baseChart = Chart {
+                if usesTradingDayAxis {
+                    ForEach(Array(tradingDayHistory.enumerated()), id: \.element.id) { idx, point in
+                        if let mark = point.mark {
+                            LineMark(
+                                x: .value("Day", idx),
+                                y: .value("Price", mark)
                             )
-                        )
-                        .interpolationMethod(.catmullRom)
+                            .foregroundStyle(side == "call" ? Color.green : Color.red)
+                            .lineStyle(StrokeStyle(lineWidth: 2))
+                            .interpolationMethod(.catmullRom)
+                        }
+                    }
+
+                    ForEach(Array(tradingDayHistory.enumerated()), id: \.element.id) { idx, point in
+                        if let mark = point.mark {
+                            AreaMark(
+                                x: .value("Day", idx),
+                                y: .value("Price", mark)
+                            )
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [
+                                        (side == "call" ? Color.green : Color.red).opacity(0.3),
+                                        (side == "call" ? Color.green : Color.red).opacity(0.05)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .interpolationMethod(.catmullRom)
+                        }
+                    }
+                } else {
+                    // Price line
+                    ForEach(displayedHistory) { point in
+                        if let mark = point.mark {
+                            LineMark(
+                                x: .value("Date", point.date),
+                                y: .value("Price", mark)
+                            )
+                            .foregroundStyle(side == "call" ? Color.green : Color.red)
+                            .lineStyle(StrokeStyle(lineWidth: 2))
+                            .interpolationMethod(.catmullRom)
+                        }
+                    }
+                    
+                    // Area fill
+                    ForEach(displayedHistory) { point in
+                        if let mark = point.mark {
+                            AreaMark(
+                                x: .value("Date", point.date),
+                                y: .value("Price", mark)
+                            )
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [
+                                        (side == "call" ? Color.green : Color.red).opacity(0.3),
+                                        (side == "call" ? Color.green : Color.red).opacity(0.05)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .interpolationMethod(.catmullRom)
+                        }
                     }
                 }
-                
+
                 // Average line
-                if let avg = viewModel.avgMark {
+                if let avg = avgMark {
                     RuleMark(y: .value("Average", avg))
                         .foregroundStyle(.blue.opacity(0.5))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
@@ -244,10 +549,60 @@ struct OptionHistoryChartView: View {
             }
             .frame(height: 250)
             .chartYAxisLabel("Mark Price ($)")
-            .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 6)) { value in
-                    AxisGridLine()
-                    AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+
+            if let yDomain = priceYDomain {
+                if usesTradingDayAxis {
+                    baseChart
+                        .chartXScale(domain: tradingDayXDomain)
+                        .chartYScale(domain: yDomain)
+                        .chartXAxis {
+                            AxisMarks(values: .automatic(desiredCount: 6)) { value in
+                                AxisGridLine()
+                                AxisValueLabel {
+                                    if let idx = value.as(Int.self),
+                                       idx >= 0,
+                                       idx < tradingDayHistory.count {
+                                        Text(tradingDayHistory[idx].date, format: .dateTime.month(.abbreviated).day())
+                                    }
+                                }
+                            }
+                        }
+                } else {
+                    baseChart
+                        .chartXScale(domain: chartDomain)
+                        .chartYScale(domain: yDomain)
+                        .chartXAxis {
+                            AxisMarks(values: .automatic(desiredCount: 6)) { value in
+                                AxisGridLine()
+                                AxisValueLabel(format: xAxisLabelFormat)
+                            }
+                        }
+                }
+            } else {
+                if usesTradingDayAxis {
+                    baseChart
+                        .chartXScale(domain: tradingDayXDomain)
+                        .chartXAxis {
+                            AxisMarks(values: .automatic(desiredCount: 6)) { value in
+                                AxisGridLine()
+                                AxisValueLabel {
+                                    if let idx = value.as(Int.self),
+                                       idx >= 0,
+                                       idx < tradingDayHistory.count {
+                                        Text(tradingDayHistory[idx].date, format: .dateTime.month(.abbreviated).day())
+                                    }
+                                }
+                            }
+                        }
+                } else {
+                    baseChart
+                        .chartXScale(domain: chartDomain)
+                        .chartXAxis {
+                            AxisMarks(values: .automatic(desiredCount: 6)) { value in
+                                AxisGridLine()
+                                AxisValueLabel(format: xAxisLabelFormat)
+                            }
+                        }
                 }
             }
         }
@@ -263,42 +618,123 @@ struct OptionHistoryChartView: View {
             Text("Implied Volatility History")
                 .font(.headline)
             
-            Chart {
-                ForEach(viewModel.priceHistory) { point in
-                    if let iv = point.impliedVol {
-                        LineMark(
-                            x: .value("Date", point.date),
-                            y: .value("IV", iv * 100)
-                        )
-                        .foregroundStyle(.purple)
-                        .lineStyle(StrokeStyle(lineWidth: 2))
-                        .interpolationMethod(.catmullRom)
-                    }
-                }
-                
-                ForEach(viewModel.priceHistory) { point in
-                    if let iv = point.impliedVol {
-                        AreaMark(
-                            x: .value("Date", point.date),
-                            y: .value("IV", iv * 100)
-                        )
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [Color.purple.opacity(0.3), Color.purple.opacity(0.05)],
-                                startPoint: .top,
-                                endPoint: .bottom
+            let baseChart = Chart {
+                if usesTradingDayAxis {
+                    ForEach(Array(tradingDayHistory.enumerated()), id: \.element.id) { idx, point in
+                        if let iv = point.impliedVol {
+                            LineMark(
+                                x: .value("Day", idx),
+                                y: .value("IV", iv <= 3 ? iv * 100 : iv)
                             )
-                        )
-                        .interpolationMethod(.catmullRom)
+                            .foregroundStyle(.purple)
+                            .lineStyle(StrokeStyle(lineWidth: 2))
+                            .interpolationMethod(.catmullRom)
+                        }
+                    }
+
+                    ForEach(Array(tradingDayHistory.enumerated()), id: \.element.id) { idx, point in
+                        if let iv = point.impliedVol {
+                            AreaMark(
+                                x: .value("Day", idx),
+                                y: .value("IV", iv <= 3 ? iv * 100 : iv)
+                            )
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [Color.purple.opacity(0.3), Color.purple.opacity(0.05)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .interpolationMethod(.catmullRom)
+                        }
+                    }
+                } else {
+                    ForEach(displayedHistory) { point in
+                        if let iv = point.impliedVol {
+                            LineMark(
+                                x: .value("Date", point.date),
+                                y: .value("IV", iv <= 3 ? iv * 100 : iv)
+                            )
+                            .foregroundStyle(.purple)
+                            .lineStyle(StrokeStyle(lineWidth: 2))
+                            .interpolationMethod(.catmullRom)
+                        }
+                    }
+                    
+                    ForEach(displayedHistory) { point in
+                        if let iv = point.impliedVol {
+                            AreaMark(
+                                x: .value("Date", point.date),
+                                y: .value("IV", iv <= 3 ? iv * 100 : iv)
+                            )
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [Color.purple.opacity(0.3), Color.purple.opacity(0.05)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .interpolationMethod(.catmullRom)
+                        }
                     }
                 }
             }
             .frame(height: 150)
             .chartYAxisLabel("IV (%)")
-            .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 6)) { value in
-                    AxisGridLine()
-                    AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+
+            if let yDomain = ivYDomain {
+                if usesTradingDayAxis {
+                    baseChart
+                        .chartXScale(domain: tradingDayXDomain)
+                        .chartYScale(domain: yDomain)
+                        .chartXAxis {
+                            AxisMarks(values: .automatic(desiredCount: 6)) { value in
+                                AxisGridLine()
+                                AxisValueLabel {
+                                    if let idx = value.as(Int.self),
+                                       idx >= 0,
+                                       idx < tradingDayHistory.count {
+                                        Text(tradingDayHistory[idx].date, format: .dateTime.month(.abbreviated).day())
+                                    }
+                                }
+                            }
+                        }
+                } else {
+                    baseChart
+                        .chartXScale(domain: chartDomain)
+                        .chartYScale(domain: yDomain)
+                        .chartXAxis {
+                            AxisMarks(values: .automatic(desiredCount: 6)) { value in
+                                AxisGridLine()
+                                AxisValueLabel(format: xAxisLabelFormat)
+                            }
+                        }
+                }
+            } else {
+                if usesTradingDayAxis {
+                    baseChart
+                        .chartXScale(domain: tradingDayXDomain)
+                        .chartXAxis {
+                            AxisMarks(values: .automatic(desiredCount: 6)) { value in
+                                AxisGridLine()
+                                AxisValueLabel {
+                                    if let idx = value.as(Int.self),
+                                       idx >= 0,
+                                       idx < tradingDayHistory.count {
+                                        Text(tradingDayHistory[idx].date, format: .dateTime.month(.abbreviated).day())
+                                    }
+                                }
+                            }
+                        }
+                } else {
+                    baseChart
+                        .chartXScale(domain: chartDomain)
+                        .chartXAxis {
+                            AxisMarks(values: .automatic(desiredCount: 6)) { value in
+                                AxisGridLine()
+                                AxisValueLabel(format: xAxisLabelFormat)
+                            }
+                        }
                 }
             }
         }
@@ -339,7 +775,7 @@ struct OptionHistoryChartView: View {
                         symbol: symbol,
                         strike: strike,
                         side: side,
-                        lookbackDays: 60
+                        lookbackDays: timeframe.lookbackDays
                     )
                 }
             }

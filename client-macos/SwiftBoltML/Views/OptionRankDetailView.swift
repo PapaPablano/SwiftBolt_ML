@@ -272,6 +272,42 @@ struct OptionRankDetailView: View {
                 }
 
                 GridRow {
+                    detailLabel("Derived Mid")
+                    detailValue(rank.derivedMark.map { "$\(String(format: "%.2f", $0))" } ?? "—")
+
+                    detailLabel("Spread")
+                    if let sp = rank.spread {
+                        detailValue("$\(String(format: "%.2f", sp))")
+                    } else {
+                        detailValue("—")
+                    }
+                }
+
+                GridRow {
+                    detailLabel("Spread %")
+                    if let sp = rank.spreadPctDisplay {
+                        detailValue("\(String(format: "%.2f", sp))%")
+                    } else {
+                        detailValue("—")
+                    }
+
+                    detailLabel("Liquidity")
+                    if let liq = rank.liquidityScore {
+                        detailValue("\(String(format: "%.3f", liq))")
+                    } else {
+                        detailValue("—")
+                    }
+                }
+
+                GridRow {
+                    detailLabel("Mark Age")
+                    detailValue(rank.markAgeLabel)
+
+                    detailLabel("Run At")
+                    detailValue(rank.runAt)
+                }
+
+                GridRow {
                     detailLabel("Volume")
                     detailValue(rank.volume.map { "\($0)" } ?? "—")
 

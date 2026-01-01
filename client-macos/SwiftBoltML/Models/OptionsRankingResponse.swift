@@ -159,6 +159,66 @@ struct OptionRank: Codable, Identifiable {
     var isLowLiquidity: Bool {
         (liquidityConfidence ?? 1.0) < 0.5
     }
+
+    var derivedMark: Double? {
+        if let bid, let ask {
+            return (bid + ask) / 2
+        }
+        return mark ?? lastPrice
+    }
+
+    var spread: Double? {
+        guard let bid, let ask else { return nil }
+        return ask - bid
+    }
+
+    var spreadPctComputed: Double? {
+        guard let spread, let mid = derivedMark, mid > 0 else { return nil }
+        return spread / mid
+    }
+
+    var spreadPctDisplay: Double? {
+        if let sp = spreadPct { return sp }
+        guard let frac = spreadPctComputed else { return nil }
+        return frac * 100
+    }
+
+    var liquidityScore: Double? {
+        guard let sp = spreadPctComputed else { return nil }
+        return 1.0 / (1.0 + sp)
+    }
+
+    var runAtDate: Date? {
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = isoFormatter.date(from: runAt) {
+            return date
+        }
+        isoFormatter.formatOptions = [.withInternetDateTime]
+        return isoFormatter.date(from: runAt)
+    }
+
+    var markAgeSeconds: TimeInterval? {
+        guard let date = runAtDate else { return nil }
+        return Date().timeIntervalSince(date)
+    }
+
+    var markAgeLabel: String {
+        guard let seconds = markAgeSeconds, seconds >= 0 else { return "—" }
+        if seconds < 60 {
+            return "\(Int(seconds))s"
+        }
+        let minutes = Int(seconds / 60)
+        if minutes < 60 {
+            return "\(minutes)m"
+        }
+        let hours = Int(seconds / 3600)
+        if hours < 24 {
+            return "\(hours)h"
+        }
+        let days = Int(seconds / 86400)
+        return "\(days)d"
+    }
 }
 
 // Extension for easy preview/testing
