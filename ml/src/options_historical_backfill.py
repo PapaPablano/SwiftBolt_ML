@@ -42,10 +42,20 @@ class HistoricalOptionsBackfill:
         """Initialize backfill module.
 
         Args:
-            tradier_client: Optional TradierClient instance. Creates new if not provided.
+            tradier_client: Optional TradierClient instance.
+                            Created lazily if not provided.
         """
-        self.tradier = tradier_client or TradierClient()
+        self._tradier = tradier_client
+        self._tradier_initialized = tradier_client is not None
         self.db = db
+
+    @property
+    def tradier(self) -> TradierClient:
+        """Lazy init of TradierClient - only created when needed."""
+        if not self._tradier_initialized:
+            self._tradier = TradierClient()
+            self._tradier_initialized = True
+        return self._tradier
 
     def check_historical_data(
         self,
@@ -433,21 +443,27 @@ def ensure_options_history(
     Returns:
         DataFrame with options history, or empty DataFrame if unavailable
     """
-    backfiller = HistoricalOptionsBackfill()
+    try:
+        backfiller = HistoricalOptionsBackfill()
 
-    # Ensure we have enough history (backfills if needed)
-    success = backfiller.ensure_historical_data(
-        symbol,
-        required_days=required_days,
-        backfill_days=required_days + 5,  # Buffer
-    )
+        # Ensure we have enough history (backfills if needed)
+        success = backfiller.ensure_historical_data(
+            symbol,
+            required_days=required_days,
+            backfill_days=required_days + 5,  # Buffer
+        )
 
-    if not success:
-        logger.warning(f"{symbol}: Could not ensure historical data")
+        if not success:
+            logger.warning(f"{symbol}: Could not ensure historical data")
+            return pd.DataFrame()
+
+        # Return the history for ranking
+        return backfiller.get_options_history_for_ranking(
+            symbol, days_back=required_days + 5
+        )
+    except Exception as e:
+        logger.warning(f"{symbol}: Options history unavailable - {e}")
         return pd.DataFrame()
-
-    # Return the history for ranking
-    return backfiller.get_options_history_for_ranking(symbol, days_back=required_days + 5)
 
 
 if __name__ == "__main__":
