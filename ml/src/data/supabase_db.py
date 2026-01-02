@@ -709,6 +709,70 @@ class SupabaseDatabase:
             logger.error(f"Error fetching latest snapshot for {symbol}: {e}")
             return pd.DataFrame()
 
+    def fetch_historical_forecasts_for_calibration(
+        self,
+        lookback_days: int = 90,
+        min_samples: int = 100,
+    ) -> pd.DataFrame | None:
+        """
+        Fetch historical forecasts with their outcomes for confidence calibration.
+
+        Joins ml_forecasts with forecast_evaluations to get:
+        - confidence: The predicted confidence
+        - predicted_label: The predicted direction (bullish/neutral/bearish)
+        - actual_label: The actual direction based on price movement
+
+        Args:
+            lookback_days: Number of days to look back
+            min_samples: Minimum samples required
+
+        Returns:
+            DataFrame with confidence, predicted_label, actual_label columns
+            or None if insufficient data
+        """
+        try:
+            # Query forecast evaluations which have both predicted and actual
+            response = (
+                self.client.table("forecast_evaluations")
+                .select(
+                    "forecast_id, predicted_label, actual_label, "
+                    "ml_forecasts!inner(confidence)"
+                )
+                .gte(
+                    "evaluation_date",
+                    (
+                        pd.Timestamp.now() - pd.Timedelta(days=lookback_days)
+                    ).isoformat(),
+                )
+                .limit(1000)
+                .execute()
+            )
+
+            if not response.data or len(response.data) < min_samples:
+                logger.info(
+                    f"Insufficient calibration data: {len(response.data) if response.data else 0} "
+                    f"samples (need {min_samples})"
+                )
+                return None
+
+            # Flatten the nested structure
+            data = []
+            for row in response.data:
+                forecast_data = row.get("ml_forecasts", {})
+                data.append({
+                    "confidence": forecast_data.get("confidence", 0.5),
+                    "predicted_label": row.get("predicted_label", "neutral"),
+                    "actual_label": row.get("actual_label", "neutral"),
+                })
+
+            df = pd.DataFrame(data)
+            logger.info(f"Fetched {len(df)} forecasts for calibration")
+            return df
+
+        except Exception as e:
+            logger.warning(f"Could not fetch calibration data: {e}")
+            return None
+
     def close(self) -> None:
         """Close the Supabase client (no-op for REST API)."""
         logger.info("Supabase client closed")

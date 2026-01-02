@@ -5,11 +5,14 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
+
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings  # noqa: E402
 from src.data.supabase_db import db  # noqa: E402
+from src.data.data_validator import OHLCValidator  # noqa: E402
 from src.features.technical_indicators import (  # noqa: E402
     add_technical_features,
 )
@@ -22,6 +25,9 @@ from src.backtesting.walk_forward_tester import (  # noqa: E402
 from src.monitoring.forecast_quality import (  # noqa: E402
     ForecastQualityMonitor,
 )
+from src.monitoring.confidence_calibrator import (  # noqa: E402
+    ConfidenceCalibrator,
+)
 from src.models.baseline_forecaster import BaselineForecaster  # noqa: E402
 from src.models.ensemble_forecaster import EnsembleForecaster  # noqa: E402
 from src.strategies.supertrend_ai import SuperTrendAI  # noqa: E402
@@ -30,6 +36,34 @@ from src.forecast_synthesizer import (  # noqa: E402
     ForecastResult,
 )
 from src.forecast_weights import get_default_weights  # noqa: E402
+
+
+# Global calibrator instance (loaded once, reused across symbols)
+_calibrator: ConfidenceCalibrator | None = None
+
+
+def get_calibrator() -> ConfidenceCalibrator:
+    """Get or create the global confidence calibrator."""
+    global _calibrator
+    if _calibrator is None:
+        _calibrator = ConfidenceCalibrator()
+        # Try to load historical data for calibration
+        try:
+            historical = db.fetch_historical_forecasts_for_calibration(
+                lookback_days=90, min_samples=100
+            )
+            if historical is not None and len(historical) >= 100:
+                _calibrator.fit(historical)
+                logger.info(
+                    f"Confidence calibrator fitted with {len(historical)} samples"
+                )
+            else:
+                logger.info(
+                    "Insufficient historical data for calibration, using raw confidence"
+                )
+        except Exception as e:
+            logger.warning(f"Could not load calibration data: {e}")
+    return _calibrator
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -385,8 +419,10 @@ def process_symbol(symbol: str) -> None:
     Process a single symbol: fetch data, train model, generate forecasts.
 
     Includes:
+    - Data validation and quality checks
     - Baseline ML forecasts for multiple horizons
     - SuperTrend AI indicator with K-means clustering
+    - Confidence calibration based on historical accuracy
 
     Args:
         symbol: Stock ticker symbol
@@ -403,6 +439,35 @@ def process_symbol(symbol: str) -> None:
                 f"(need {settings.min_bars_for_training})"
             )
             return
+
+        # === Data Validation (ML Improvement Plan 2.1) ===
+        validator = OHLCValidator()
+        df, validation_result = validator.validate(df, fix_issues=True)
+        data_quality_score = validator.get_data_quality_score(df)
+
+        if not validation_result.is_valid:
+            logger.warning(
+                f"Data quality issues for {symbol}: {validation_result.issues}"
+            )
+
+        # Calculate data quality multiplier for confidence adjustment
+        data_quality_multiplier = max(
+            0.9, 1.0 - (validation_result.rows_flagged / max(1, len(df)) * 0.2)
+        )
+
+        # Calculate sample size multiplier (per ML Improvement Plan 1.1)
+        sample_size_multiplier = min(
+            1.0, len(df) / settings.min_bars_for_high_confidence
+        )
+
+        logger.info(
+            f"Data quality for {symbol}: score={data_quality_score:.2f}, "
+            f"quality_mult={data_quality_multiplier:.2f}, "
+            f"size_mult={sample_size_multiplier:.2f}"
+        )
+
+        # Get confidence calibrator
+        calibrator = get_calibrator()
 
         # Add technical indicators (includes S/R features)
         df = add_technical_features(df)
@@ -594,6 +659,39 @@ def process_symbol(symbol: str) -> None:
                 forecast = apply_sr_constraints(
                     forecast, sr_levels, current_price, sr_probabilities
                 )
+
+                # === Apply Confidence Calibration (ML Improvement Plan 1.2) ===
+                raw_confidence = forecast["confidence"]
+                adjusted_confidence = raw_confidence
+
+                # 1. Apply calibration if calibrator is fitted
+                if calibrator.is_fitted:
+                    adjusted_confidence = calibrator.calibrate(adjusted_confidence)
+
+                # 2. Apply data quality multiplier
+                adjusted_confidence *= data_quality_multiplier
+
+                # 3. Apply sample size multiplier
+                adjusted_confidence *= sample_size_multiplier
+
+                # Clamp to valid range
+                adjusted_confidence = float(np.clip(adjusted_confidence, 0.40, 0.95))
+
+                forecast["confidence"] = adjusted_confidence
+                forecast["raw_confidence"] = raw_confidence
+                forecast["data_quality"] = {
+                    "score": data_quality_score,
+                    "quality_multiplier": data_quality_multiplier,
+                    "sample_size_multiplier": sample_size_multiplier,
+                    "validation_issues": validation_result.issues,
+                    "n_training_samples": len(X),
+                }
+
+                if adjusted_confidence != raw_confidence:
+                    logger.info(
+                        f"  Confidence adjusted: {raw_confidence:.2f} -> "
+                        f"{adjusted_confidence:.2f}"
+                    )
             else:
                 # Fallback to baseline forecaster with synthesizer
                 baseline_forecaster = BaselineForecaster()
@@ -638,6 +736,28 @@ def process_symbol(symbol: str) -> None:
                 forecast = apply_sr_constraints(
                     forecast, sr_levels, current_price, sr_probabilities
                 )
+
+                # === Apply Confidence Calibration (fallback path) ===
+                raw_confidence = forecast["confidence"]
+                adjusted_confidence = raw_confidence
+
+                if calibrator.is_fitted:
+                    adjusted_confidence = calibrator.calibrate(adjusted_confidence)
+
+                adjusted_confidence *= data_quality_multiplier
+                adjusted_confidence *= sample_size_multiplier
+
+                adjusted_confidence = float(np.clip(adjusted_confidence, 0.40, 0.95))
+
+                forecast["confidence"] = adjusted_confidence
+                forecast["raw_confidence"] = raw_confidence
+                forecast["data_quality"] = {
+                    "score": data_quality_score,
+                    "quality_multiplier": data_quality_multiplier,
+                    "sample_size_multiplier": sample_size_multiplier,
+                    "validation_issues": validation_result.issues,
+                    "n_training_samples": len(df) - 50,  # Approximate
+                }
 
             # Quality monitoring (log-only)
             quality_score = ForecastQualityMonitor.compute_quality_score(
