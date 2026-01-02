@@ -403,6 +403,11 @@ class SupabaseDatabase:
         iv_rank: float = 0.0,
         spread_pct: float = 0.0,
         vol_oi_ratio: float = 0.0,
+        liquidity_confidence: float = 1.0,
+        ranking_mode: str | None = None,
+        relative_value_score: float | None = None,
+        entry_difficulty_score: float | None = None,
+        ranking_stability_score: float | None = None,
         signal_discount: bool = False,
         signal_runner: bool = False,
         signal_greeks: bool = False,
@@ -447,6 +452,11 @@ class SupabaseDatabase:
                 "iv_rank": iv_rank,
                 "spread_pct": spread_pct,
                 "vol_oi_ratio": vol_oi_ratio,
+                "liquidity_confidence": liquidity_confidence,
+                "ranking_mode": ranking_mode,
+                "relative_value_score": relative_value_score,
+                "entry_difficulty_score": entry_difficulty_score,
+                "ranking_stability_score": ranking_stability_score,
                 # Signals
                 "signal_discount": signal_discount,
                 "signal_runner": signal_runner,
@@ -456,9 +466,12 @@ class SupabaseDatabase:
             }
 
             # Delete existing rank for this contract if it exists
-            self.client.table("options_ranks").delete().eq(
+            delete_query = self.client.table("options_ranks").delete().eq(
                 "contract_symbol", contract_symbol
-            ).execute()
+            )
+            if ranking_mode is not None:
+                delete_query = delete_query.eq("ranking_mode", ranking_mode)
+            delete_query.execute()
 
             # Insert new rank
             self.client.table("options_ranks").insert(rank_data).execute()
@@ -498,25 +511,45 @@ class SupabaseDatabase:
         inserted = 0
         records = []
 
+        def _safe_float(v: Any) -> float | None:
+            if v is None or (isinstance(v, float) and pd.isna(v)):
+                return None
+            if pd.isna(v):
+                return None
+            try:
+                return float(v)
+            except Exception:
+                return None
+
+        def _safe_int(v: Any) -> int:
+            if v is None or (isinstance(v, float) and pd.isna(v)):
+                return 0
+            if pd.isna(v):
+                return 0
+            try:
+                return int(v)
+            except Exception:
+                return 0
+
         for _, row in snapshots_df.iterrows():
             record = {
                 "underlying_symbol_id": symbol_id,
                 "contract_symbol": str(row.get("contract_symbol", "")),
                 "option_type": str(row.get("option_type", "call")),
-                "strike": float(row.get("strike", 0)),
+                "strike": float(row.get("strike", 0) or 0),
                 "expiration": str(row.get("expiration", "")),
-                "bid": float(row.get("bid", 0)),
-                "ask": float(row.get("ask", 0)),
-                "last": float(row.get("last", 0)),
-                "underlying_price": float(row.get("underlying_price", 0)),
-                "volume": int(row.get("volume", 0)),
-                "open_interest": int(row.get("open_interest", 0)),
-                "delta": float(row.get("delta", 0)),
-                "gamma": float(row.get("gamma", 0)),
-                "theta": float(row.get("theta", 0)),
-                "vega": float(row.get("vega", 0)),
-                "rho": float(row.get("rho", 0)),
-                "iv": float(row.get("iv", 0)),
+                "bid": _safe_float(row.get("bid", 0)),
+                "ask": _safe_float(row.get("ask", 0)),
+                "last": _safe_float(row.get("last", 0)),
+                "underlying_price": _safe_float(row.get("underlying_price", 0)),
+                "volume": _safe_int(row.get("volume", 0)),
+                "open_interest": _safe_int(row.get("open_interest", 0)),
+                "delta": _safe_float(row.get("delta", 0)),
+                "gamma": _safe_float(row.get("gamma", 0)),
+                "theta": _safe_float(row.get("theta", 0)),
+                "vega": _safe_float(row.get("vega", 0)),
+                "rho": _safe_float(row.get("rho", 0)),
+                "iv": _safe_float(row.get("iv", 0)),
                 "snapshot_time": str(row.get("snapshot_time", "")),
             }
             records.append(record)

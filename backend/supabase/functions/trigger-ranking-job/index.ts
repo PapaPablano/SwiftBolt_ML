@@ -49,12 +49,26 @@ serve(async (req: Request): Promise<Response> => {
 
     const supabase = getSupabaseClient();
 
-    // Check if there's already a pending/running job for this symbol
+    // Resolve symbol_id (options backfill queue uses symbol_id)
+    const { data: symbolRow, error: symbolError } = await supabase
+      .from("symbols")
+      .select("id")
+      .eq("ticker", upperSymbol)
+      .single();
+
+    if (symbolError || !symbolRow) {
+      return errorResponse(`Symbol not found: ${upperSymbol}`, 404);
+    }
+
+    const symbolId = symbolRow.id;
+
+    // Check if there's already a pending/processing options backfill job
     const { data: existingJobs, error: checkError } = await supabase
-      .from("ranking_jobs")
+      .from("options_backfill_jobs")
       .select("id, status, created_at")
-      .eq("symbol", upperSymbol)
-      .in("status", ["pending", "running"])
+      .eq("symbol_id", symbolId)
+      .in("status", ["pending", "processing"])
+      .order("created_at", { ascending: false })
       .limit(1);
 
     if (checkError) {
@@ -62,58 +76,53 @@ serve(async (req: Request): Promise<Response> => {
       return errorResponse(`Database error: ${checkError.message}`, 500);
     }
 
-    // If job already exists and is recent (< 5 minutes old), return existing job
     if (existingJobs && existingJobs.length > 0) {
       const existingJob = existingJobs[0];
-      const jobAge = Date.now() - new Date(existingJob.created_at).getTime();
-      const fiveMinutes = 5 * 60 * 1000;
-
-      if (jobAge < fiveMinutes) {
-        console.log(`[Trigger Ranking Job] Job already exists for ${upperSymbol}: ${existingJob.id}`);
-
-        return jsonResponse({
-          message: `Ranking job for ${upperSymbol} is already ${existingJob.status}`,
-          symbol: upperSymbol,
-          jobId: existingJob.id,
-          estimatedCompletionSeconds: 30,
-        });
-      }
+      return jsonResponse({
+        message: `Options backfill job for ${upperSymbol} is already ${existingJob.status}`,
+        symbol: upperSymbol,
+        jobId: existingJob.id,
+        estimatedCompletionSeconds: 30,
+      });
     }
 
-    // Insert new job into queue
+    // Insert new job into options backfill queue
     const { data: newJob, error: insertError } = await supabase
-      .from("ranking_jobs")
+      .from("options_backfill_jobs")
       .insert({
-        symbol: upperSymbol,
+        symbol_id: symbolId,
+        ticker: upperSymbol,
         status: "pending",
-        priority: priority,
       })
       .select("id, created_at")
       .single();
 
     if (insertError || !newJob) {
       console.error("[Trigger Ranking Job] Error inserting job:", insertError);
-      return errorResponse(`Failed to create job: ${insertError?.message || "Unknown error"}`, 500);
+      return errorResponse(
+        `Failed to create job: ${insertError?.message || "Unknown error"}`,
+        500
+      );
     }
 
-    console.log(`[Trigger Ranking Job] Created job ${newJob.id} for ${upperSymbol}`);
-
-    // Count pending jobs ahead in queue (for estimated wait time)
+    // Count pending jobs ahead in queue (best-effort estimate)
     const { count: queuePosition } = await supabase
-      .from("ranking_jobs")
+      .from("options_backfill_jobs")
       .select("id", { count: "exact", head: true })
       .eq("status", "pending")
       .lt("created_at", newJob.created_at);
 
     const response: TriggerRankingResponse = {
-      message: `Ranking job queued for ${upperSymbol}`,
+      message: `Options backfill job queued for ${upperSymbol}`,
       symbol: upperSymbol,
       jobId: newJob.id,
-      estimatedCompletionSeconds: 30 + (queuePosition || 0) * 10, // Base 30s + 10s per job ahead
+      estimatedCompletionSeconds: 30 + (queuePosition || 0) * 10,
       queuePosition: queuePosition || 0,
     };
 
-    console.log(`[Trigger Ranking Job] Job queued: ${newJob.id}, position: ${queuePosition || 0}`);
+    console.log(
+      `[Trigger Ranking Job] Options job queued: ${newJob.id}, position: ${queuePosition || 0}`
+    );
     return jsonResponse(response);
   } catch (err) {
     console.error("[Trigger Ranking Job] Unexpected error:", err);

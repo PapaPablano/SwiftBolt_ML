@@ -1,5 +1,7 @@
 """Configuration settings for SwiftBolt ML pipeline."""
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,7 +9,10 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(
+            str(Path(__file__).resolve().parents[1] / ".env"),
+            str(Path(__file__).resolve().parents[2] / ".env"),
+        ),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -15,13 +20,15 @@ class Settings(BaseSettings):
 
     # Supabase Connection
     supabase_url: str
-    supabase_key: str  # Service role key (maps to SUPABASE_KEY env var)
+    supabase_key: str | None = None  # Service role key (maps to SUPABASE_KEY env var)
     supabase_service_role_key: str | None = None  # Alias for supabase_key
     database_url: str | None = None  # Direct Postgres connection string (optional for backfill)
 
     def model_post_init(self, __context) -> None:
         """Set service_role_key alias after init."""
-        if self.supabase_service_role_key is None:
+        if self.supabase_key is None and self.supabase_service_role_key is not None:
+            object.__setattr__(self, 'supabase_key', self.supabase_service_role_key)
+        if self.supabase_service_role_key is None and self.supabase_key is not None:
             object.__setattr__(self, 'supabase_service_role_key', self.supabase_key)
 
     # ML Configuration

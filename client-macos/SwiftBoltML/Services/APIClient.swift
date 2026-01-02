@@ -200,7 +200,7 @@ actor APIClient {
         return try await performRequest(request)
     }
 
-    func fetchOptionsRankings(symbol: String, expiry: String? = nil, side: OptionSide? = nil, limit: Int = 50) async throws -> OptionsRankingsResponse {
+    func fetchOptionsRankings(symbol: String, expiry: String? = nil, side: OptionSide? = nil, mode: String? = nil, limit: Int = 50) async throws -> OptionsRankingsResponse {
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "symbol", value: symbol),
             URLQueryItem(name: "limit", value: String(limit))
@@ -212,6 +212,10 @@ actor APIClient {
 
         if let side = side {
             queryItems.append(URLQueryItem(name: "side", value: side.rawValue))
+        }
+
+        if let mode = mode {
+            queryItems.append(URLQueryItem(name: "mode", value: mode))
         }
 
         let request = try makeRequest(

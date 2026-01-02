@@ -20,6 +20,10 @@ interface OptionRank {
   momentumScore?: number;
   valueScore?: number;
   greeksScore?: number;
+  relativeValueScore?: number;
+  entryDifficultyScore?: number;
+  rankingStabilityScore?: number;
+  rankingMode?: string;
   // IV Metrics
   impliedVol?: number;
   ivRank?: number;
@@ -77,6 +81,7 @@ serve(async (req: Request): Promise<Response> => {
     const expiryParam = url.searchParams.get("expiry");
     const sideParam = url.searchParams.get("side")?.toLowerCase();
     const signalParam = url.searchParams.get("signal")?.toLowerCase(); // discount, runner, greeks, buy
+    const modeParam = url.searchParams.get("mode")?.toLowerCase(); // entry, exit
     const sortBy = url.searchParams.get("sort") || "composite"; // composite, ml, momentum, value, greeks
     const limit = parseInt(url.searchParams.get("limit") || "50", 10);
 
@@ -87,6 +92,11 @@ serve(async (req: Request): Promise<Response> => {
     // Validate side parameter
     if (sideParam && sideParam !== "call" && sideParam !== "put") {
       return errorResponse("Invalid side parameter (must be 'call' or 'put')", 400);
+    }
+
+    // Validate mode parameter
+    if (modeParam && modeParam !== "entry" && modeParam !== "exit") {
+      return errorResponse("Invalid mode parameter (must be 'entry' or 'exit')", 400);
     }
 
     // Validate signal parameter
@@ -128,9 +138,16 @@ serve(async (req: Request): Promise<Response> => {
       .from("options_ranks")
       .select("*")
       .eq("underlying_symbol_id", symbolId)
+      .eq("ranking_mode", modeParam || "entry")
       .gte("expiry", today)  // Filter out expired options
-      .order(sortColumn, { ascending: false })
+      .order(sortColumn, { ascending: false, nullsFirst: false })
+      .order("ml_score", { ascending: false, nullsFirst: false })
       .limit(limit);
+
+    // Avoid returning legacy rows with NULL sort values when sorting by framework columns
+    if (sortColumn !== "ml_score") {
+      query = query.not(sortColumn, "is", null);
+    }
 
     // Apply filters
     if (expiryParam) {
@@ -175,6 +192,10 @@ serve(async (req: Request): Promise<Response> => {
       momentumScore: row.momentum_score,
       valueScore: row.value_score,
       greeksScore: row.greeks_score,
+      relativeValueScore: row.relative_value_score,
+      entryDifficultyScore: row.entry_difficulty_score,
+      rankingStabilityScore: row.ranking_stability_score,
+      rankingMode: row.ranking_mode,
       // IV Metrics
       impliedVol: row.implied_vol,
       ivRank: row.iv_rank,

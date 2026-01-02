@@ -273,6 +273,10 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
                 "spread_pct": float(row.get("spread_pct", 0)),
                 "vol_oi_ratio": float(row.get("vol_oi_ratio", 0)),
                 "liquidity_confidence": float(row.get("liquidity_confidence", 1.0)),
+                "ranking_mode": str(row.get("ranking_mode", "entry")),
+                "relative_value_score": float(row.get("relative_value_score", 0)),
+                "entry_difficulty_score": float(row.get("entry_difficulty_score", 0)),
+                "ranking_stability_score": float(row.get("ranking_stability_score", 0)),
                 # Signals
                 "signal_discount": bool(row.get("signal_discount", False)),
                 "signal_runner": bool(row.get("signal_runner", False)),
@@ -289,6 +293,54 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
             )
 
     return saved_count
+
+
+def fetch_previous_rankings(symbol_id: str, ranking_mode: str) -> pd.DataFrame:
+    """Fetch previous rankings for a symbol/mode to enable smoothing/stability."""
+    try:
+        latest = (
+            db.client.table("options_ranks")
+            .select("run_at")
+            .eq("underlying_symbol_id", symbol_id)
+            .eq("ranking_mode", ranking_mode)
+            .order("run_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        if not latest.data:
+            return pd.DataFrame()
+
+        latest_run_at = latest.data[0]["run_at"]
+        rows = (
+            db.client.table("options_ranks")
+            .select(
+                "contract_symbol,strike,side,composite_rank,momentum_score,value_score,"
+                "greeks_score,ranking_mode"
+            )
+            .eq("underlying_symbol_id", symbol_id)
+            .eq("ranking_mode", ranking_mode)
+            .eq("run_at", latest_run_at)
+            .execute()
+        )
+        df = pd.DataFrame(rows.data or [])
+        if df.empty:
+            return df
+
+        for col in [
+            "composite_rank",
+            "momentum_score",
+            "value_score",
+            "greeks_score",
+        ]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        df = df.dropna(subset=["momentum_score", "composite_rank"])
+        return df
+    except Exception as e:
+        logger.warning(f"Could not fetch previous rankings: {e}")
+        return pd.DataFrame()
 
 
 def fetch_iv_stats(symbol_id: str) -> IVStatistics | None:
@@ -326,7 +378,7 @@ def determine_trend(df_ohlc: pd.DataFrame) -> str:
     return "neutral"
 
 
-def process_symbol_options(symbol: str) -> None:
+def process_symbol_options(symbol: str, ranking_mode: str = "entry") -> None:
     """
     Process options for a single symbol: fetch data, rank contracts, save rankings.
 
@@ -389,11 +441,15 @@ def process_symbol_options(symbol: str) -> None:
 
         # Apply Momentum Framework scoring (single ranker, no chaining)
         momentum_ranker = OptionsMomentumRanker()
+
+        previous_rankings = fetch_previous_rankings(symbol_id, ranking_mode)
         ranked_df = momentum_ranker.rank_options(
             options_df,
             iv_stats=iv_stats,
             options_history=options_history if not options_history.empty else None,
             underlying_trend=underlying_trend,
+            previous_rankings=previous_rankings if not previous_rankings.empty else None,
+            ranking_mode=ranking_mode,
         )
 
         logger.info(
@@ -434,6 +490,13 @@ def main() -> None:
         type=str,
         help="Single symbol to process (e.g., AAPL). If not provided, processes all symbols from settings.",
     )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="entry",
+        choices=["entry", "exit"],
+        help="Ranking mode: entry (default) or exit.",
+    )
     args = parser.parse_args()
 
     # Determine which symbols to process
@@ -454,7 +517,7 @@ def main() -> None:
 
     for symbol in symbols_to_process:
         try:
-            process_symbol_options(symbol)
+            process_symbol_options(symbol, ranking_mode=args.mode)
             symbols_processed += 1
         except Exception as e:
             logger.error(f"Failed to process options for {symbol}: {e}")

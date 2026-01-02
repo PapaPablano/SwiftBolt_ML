@@ -32,7 +32,6 @@ SCORING FORMULAS (all normalized to 0-100):
 """
 
 import logging
-import math
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -183,6 +182,18 @@ class OptionsMomentumRanker:
     VALUE_WEIGHT = 0.35
     GREEKS_WEIGHT = 0.25
 
+    ENTRY_WEIGHTS = {
+        "momentum": 0.30,
+        "value": 0.35,
+        "greeks": 0.35,
+    }
+
+    EXIT_WEIGHTS = {
+        "momentum": 0.50,
+        "value": 0.20,
+        "greeks": 0.30,
+    }
+
     # Momentum sub-weights
     PRICE_MOMENTUM_WEIGHT = 0.50
     VOLUME_OI_WEIGHT = 0.30
@@ -229,6 +240,7 @@ class OptionsMomentumRanker:
 
     # Temporal smoothing (reduces daily ranking churn)
     MOMENTUM_SMOOTHING_WINDOW = 3  # 3-day EMA for momentum stability
+    MOMENTUM_MAX_DAILY_CHANGE = 30.0
 
     def __init__(
         self,
@@ -267,6 +279,7 @@ class OptionsMomentumRanker:
         options_history: Optional[pd.DataFrame] = None,
         underlying_trend: str = "neutral",
         previous_rankings: Optional[pd.DataFrame] = None,
+        ranking_mode: str = "entry",
     ) -> pd.DataFrame:
         """
         Rank options using the Momentum-Value-Greeks framework.
@@ -297,6 +310,17 @@ class OptionsMomentumRanker:
         df = self._calculate_momentum_scores(df, options_history)
         df = self._calculate_greeks_scores(df, underlying_trend)
 
+        for col in ["momentum_score", "value_score", "greeks_score"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(50.0)
+
+        df["ranking_mode"] = ranking_mode
+
+        df["relative_value_score"] = self._calculate_relative_value_score(
+            df, options_history
+        )
+        df["entry_difficulty_score"] = self._calculate_entry_difficulty_score(df)
+
         # Apply IV staleness penalty if applicable
         if iv_stats and iv_stats.is_stale:
             staleness_penalty = iv_stats.staleness_penalty
@@ -305,16 +329,46 @@ class OptionsMomentumRanker:
             )
             df["value_score"] *= (1 - staleness_penalty)
 
-        # Calculate composite rank (0-100)
+        mode = (ranking_mode or "entry").lower()
+        if mode == "exit":
+            weights = self.EXIT_WEIGHTS
+        elif mode == "entry":
+            weights = self.ENTRY_WEIGHTS
+        else:
+            weights = {
+                "momentum": self.MOMENTUM_WEIGHT,
+                "value": self.VALUE_WEIGHT,
+                "greeks": self.GREEKS_WEIGHT,
+            }
+
         df["composite_rank"] = (
-            df["momentum_score"] * self.MOMENTUM_WEIGHT +
-            df["value_score"] * self.VALUE_WEIGHT +
-            df["greeks_score"] * self.GREEKS_WEIGHT
+            df["momentum_score"] * weights["momentum"] +
+            df["value_score"] * weights["value"] +
+            df["greeks_score"] * weights["greeks"]
         )
+
+        if mode == "entry":
+            df["composite_rank"] = np.where(
+                df["composite_rank"] > self.BUY_COMPOSITE_THRESHOLD,
+                df["composite_rank"] * 0.90 + df["entry_difficulty_score"] * 0.10,
+                df["composite_rank"],
+            )
+            df["composite_rank"] = (
+                df["composite_rank"] * 0.90 + df["relative_value_score"] * 0.10
+            )
+        elif mode == "exit":
+            theta_bonus = self._calculate_theta_bonus(df)
+            df["composite_rank"] = df["composite_rank"] * 0.90 + theta_bonus * 0.10
+
+        df["composite_rank"] = df["composite_rank"].clip(0, 100)
 
         # Apply temporal smoothing if previous rankings available
         if previous_rankings is not None and not previous_rankings.empty:
             df = self._apply_temporal_smoothing(df, previous_rankings)
+
+        df["ranking_stability_score"] = self._calculate_ranking_stability_score(
+            df, previous_rankings
+        )
 
         # Generate signals
         df = self._generate_signals(df)
@@ -372,16 +426,158 @@ class OptionsMomentumRanker:
                     alpha * row["momentum_score"] +
                     (1 - alpha) * prev_momentum
                 )
+
+                if abs(smoothed - prev_momentum) > self.MOMENTUM_MAX_DAILY_CHANGE:
+                    smoothed = prev_momentum + (
+                        np.sign(smoothed - prev_momentum) * self.MOMENTUM_MAX_DAILY_CHANGE
+                    )
                 current.at[idx, "momentum_score"] = smoothed
 
                 # Recalculate composite with smoothed momentum
-                current.at[idx, "composite_rank"] = (
-                    smoothed * self.MOMENTUM_WEIGHT +
-                    row["value_score"] * self.VALUE_WEIGHT +
-                    row["greeks_score"] * self.GREEKS_WEIGHT
+                mode = str(row.get("ranking_mode", "entry") or "entry").lower()
+                if mode == "exit":
+                    weights = self.EXIT_WEIGHTS
+                elif mode == "entry":
+                    weights = self.ENTRY_WEIGHTS
+                else:
+                    weights = {
+                        "momentum": self.MOMENTUM_WEIGHT,
+                        "value": self.VALUE_WEIGHT,
+                        "greeks": self.GREEKS_WEIGHT,
+                    }
+
+                composite = (
+                    smoothed * weights["momentum"] +
+                    row["value_score"] * weights["value"] +
+                    row["greeks_score"] * weights["greeks"]
+                )
+
+                if mode == "entry":
+                    entry_diff = row.get("entry_difficulty_score", 50.0)
+                    rel_val = row.get("relative_value_score", 50.0)
+                    if composite > self.BUY_COMPOSITE_THRESHOLD:
+                        composite = composite * 0.90 + entry_diff * 0.10
+                    composite = composite * 0.90 + rel_val * 0.10
+                elif mode == "exit":
+                    theta_bonus = self._calculate_theta_bonus(current.loc[[idx]]).iloc[0]
+                    composite = composite * 0.90 + theta_bonus * 0.10
+
+                current.at[idx, "composite_rank"] = float(
+                    max(0.0, min(100.0, composite))
                 )
 
         return current
+
+    def _calculate_relative_value_score(
+        self,
+        df: pd.DataFrame,
+        options_history: Optional[pd.DataFrame] = None,
+    ) -> pd.Series:
+        if options_history is None or options_history.empty:
+            return pd.Series(50.0, index=df.index)
+
+        hist = options_history.copy()
+        if "contract_symbol" not in hist.columns:
+            return pd.Series(50.0, index=df.index)
+
+        if "iv" not in hist.columns:
+            if "implied_vol" in hist.columns:
+                hist["iv"] = hist["implied_vol"]
+            elif "impliedVolatility" in hist.columns:
+                hist["iv"] = hist["impliedVolatility"]
+
+        if "iv" not in hist.columns:
+            return pd.Series(50.0, index=df.index)
+
+        if "bid" not in hist.columns or "ask" not in hist.columns:
+            hist["spread_pct"] = np.nan
+        else:
+            mid = (hist["bid"] + hist["ask"]) / 2
+            spread = hist["ask"] - hist["bid"]
+            hist["spread_pct"] = np.where(mid > 0, (spread / mid) * 100, np.nan)
+
+        iv_avg = hist.groupby("contract_symbol")["iv"].mean()
+        spread_avg = hist.groupby("contract_symbol")["spread_pct"].mean()
+
+        contract_ids = df.get("contract_symbol", pd.Series("", index=df.index))
+        hist_iv_avg = contract_ids.map(iv_avg)
+        hist_spread_avg = contract_ids.map(spread_avg)
+
+        current_iv = df.get("iv", pd.Series(np.nan, index=df.index))
+        current_spread = df.get("spread_pct", pd.Series(np.nan, index=df.index))
+
+        iv_discount = np.where(
+            (hist_iv_avg > 0) & np.isfinite(hist_iv_avg) & np.isfinite(current_iv),
+            1.0 - (current_iv / hist_iv_avg),
+            0.0,
+        )
+        spread_discount = np.where(
+            (hist_spread_avg > 0)
+            & np.isfinite(hist_spread_avg)
+            & np.isfinite(current_spread),
+            1.0 - (current_spread / hist_spread_avg),
+            0.0,
+        )
+
+        score = (0.70 * iv_discount + 0.30 * spread_discount) * 100
+        return pd.Series(score, index=df.index).clip(0, 100)
+
+    def _calculate_entry_difficulty_score(self, df: pd.DataFrame) -> pd.Series:
+        bid = df.get("bid", pd.Series(0.0, index=df.index))
+        ask = df.get("ask", pd.Series(0.0, index=df.index))
+        volume = df.get("volume", pd.Series(0, index=df.index))
+        oi = df.get("open_interest", pd.Series(0, index=df.index))
+
+        mid = (bid + ask) / 2
+        spread = ask - bid
+        spread_pct = np.where(mid > 0, (spread / mid) * 100, 100.0)
+        vol_oi_ratio = np.where(oi > 0, volume / oi, 0.0)
+
+        spread_penalty = np.clip(spread_pct / 2.0, 0.0, 1.0)
+        vol_bonus = np.minimum(vol_oi_ratio, 1.0) * 0.5
+
+        score = (1.0 - spread_penalty + vol_bonus) * 100
+        return pd.Series(score, index=df.index).clip(0, 100)
+
+    def _calculate_theta_bonus(self, df: pd.DataFrame) -> pd.Series:
+        theta = df.get("theta", pd.Series(0.0, index=df.index)).abs()
+        mid_price = df.get("mid", df.get("mark", pd.Series(1.0, index=df.index)))
+        theta_pct = np.where(mid_price > 0, (theta / mid_price) * 100, 100.0)
+        bonus = 100 - np.minimum(theta_pct * 10, 100)
+        return pd.Series(bonus, index=df.index).clip(0, 100)
+
+    def _calculate_ranking_stability_score(
+        self,
+        current: pd.DataFrame,
+        previous: Optional[pd.DataFrame],
+    ) -> pd.Series:
+        if previous is None or previous.empty:
+            return pd.Series(np.nan, index=current.index)
+
+        scores = pd.Series(np.nan, index=current.index)
+
+        for idx, row in current.iterrows():
+            contract_id = row.get(
+                "contract_symbol",
+                f"{row['strike']}_{row['side']}"
+            )
+
+            if "contract_symbol" in previous.columns:
+                prev_match = previous[previous["contract_symbol"] == contract_id]
+            else:
+                prev_match = previous[
+                    (previous["strike"] == row["strike"]) &
+                    (previous["side"] == row["side"])
+                ]
+
+            if len(prev_match) > 0:
+                prev_rank = prev_match.iloc[0].get("composite_rank", np.nan)
+                curr_rank = row.get("composite_rank", np.nan)
+                if np.isfinite(prev_rank) and np.isfinite(curr_rank):
+                    delta = abs(curr_rank - prev_rank)
+                    scores[idx] = max(0.0, min(100.0, 100.0 - (delta * 2.0)))
+
+        return scores
 
     def _normalize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """Normalize column names for consistent processing."""
@@ -461,7 +657,6 @@ class OptionsMomentumRanker:
                 iv_rank = pd.Series(50.0, index=df.index)
         else:
             # Estimate from current chain (ATM IV as proxy)
-            atm_iv = df["iv"].median()
             iv_min = df["iv"].min()
             iv_max = df["iv"].max()
             iv_range = iv_max - iv_min

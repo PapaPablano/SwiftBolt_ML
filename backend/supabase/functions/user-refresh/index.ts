@@ -287,30 +287,51 @@ serve(async (req: Request): Promise<Response> => {
 
     // Step 5: Queue options ranking job
     try {
-      const { error: optionsError } = await supabase.from("job_queue").insert({
-        job_type: "ranking",
-        symbol,
-        status: "pending",
-        priority: 1,
-        payload: {
-          symbol_id: symbolId,
-          triggered_by: "user-refresh",
-        },
-      });
+      const { data: existingOptionsJob, error: optionsCheckError } = await supabase
+        .from("options_backfill_jobs")
+        .select("id, status, created_at")
+        .eq("symbol_id", symbolId)
+        .in("status", ["pending", "processing"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (optionsError) {
+      if (optionsCheckError) {
         steps.push({
           step: "queue_options_job",
           status: "failed",
-          message: optionsError.message,
+          message: optionsCheckError.message,
         });
-      } else {
+      } else if (existingOptionsJob) {
         summary.optionsJobQueued = true;
         steps.push({
           step: "queue_options_job",
           status: "completed",
-          message: "Options ranking job queued",
+          message: `Options backfill already queued (${existingOptionsJob.status})`,
         });
+      } else {
+        const { error: optionsQueueError } = await supabase
+          .from("options_backfill_jobs")
+          .insert({
+            symbol_id: symbolId,
+            ticker: symbol,
+            status: "pending",
+          });
+
+        if (optionsQueueError) {
+          steps.push({
+            step: "queue_options_job",
+            status: "failed",
+            message: optionsQueueError.message,
+          });
+        } else {
+          summary.optionsJobQueued = true;
+          steps.push({
+            step: "queue_options_job",
+            status: "completed",
+            message: "Options backfill job queued",
+          });
+        }
       }
     } catch (optionsError) {
       steps.push({

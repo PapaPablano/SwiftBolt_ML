@@ -19,6 +19,11 @@ enum RankingSortOption: String, CaseIterable {
     case gaConfidence = "GA Confidence"
 }
 
+enum RankingMode: String, CaseIterable {
+    case entry
+    case exit
+}
+
 @MainActor
 class OptionsRankerViewModel: ObservableObject {
     @Published var rankings: [OptionRank] = []
@@ -32,6 +37,7 @@ class OptionsRankerViewModel: ObservableObject {
     @Published var selectedSignal: SignalFilter = .all
     @Published var sortOption: RankingSortOption = .composite
     @Published var minScore: Double = 0.0
+    @Published var rankingMode: RankingMode = .entry
 
     // GA Strategy
     @Published var gaStrategy: GAStrategy?
@@ -107,6 +113,7 @@ class OptionsRankerViewModel: ObservableObject {
                 symbol: symbol,
                 expiry: selectedExpiry,
                 side: selectedSide,
+                mode: rankingMode.rawValue,
                 limit: 100
             )
 

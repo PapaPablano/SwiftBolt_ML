@@ -256,23 +256,44 @@ serve(async (req: Request): Promise<Response> => {
     // Step 4: Queue options ranking job if requested
     if (refreshOptions) {
       try {
-        const { error: optionsQueueError } = await supabase.from("job_queue").insert({
-          job_type: "ranking",
-          symbol: symbol,
-          status: "pending",
-          priority: 1,
-          payload: {
-            symbol_id: symbolId,
-            triggered_by: "refresh-data",
-          },
-        });
+        // Queue options backfill job (worker will fetch chain + write options_ranks)
+        const { data: existingOptionsJob, error: optionsCheckError } = await supabase
+          .from("options_backfill_jobs")
+          .select("id, status, created_at")
+          .eq("symbol_id", symbolId)
+          .in("status", ["pending", "processing"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-        if (optionsQueueError) {
-          console.error(`[refresh-data] Options job queue error:`, optionsQueueError);
-          result.errors.push(`Options job queue failed: ${optionsQueueError.message}`);
-        } else {
+        if (optionsCheckError) {
+          console.error(`[refresh-data] Options job check error:`, optionsCheckError);
+          result.errors.push(
+            `Options job check failed: ${optionsCheckError.message}`
+          );
+        } else if (existingOptionsJob) {
           result.optionsJobQueued = true;
-          console.log(`[refresh-data] Queued options ranking job for ${symbol}`);
+          console.log(
+            `[refresh-data] Options backfill already queued (${existingOptionsJob.status}) for ${symbol}`
+          );
+        } else {
+          const { error: optionsQueueError } = await supabase
+            .from("options_backfill_jobs")
+            .insert({
+              symbol_id: symbolId,
+              ticker: symbol,
+              status: "pending",
+            });
+
+          if (optionsQueueError) {
+            console.error(`[refresh-data] Options job queue error:`, optionsQueueError);
+            result.errors.push(
+              `Options job queue failed: ${optionsQueueError.message}`
+            );
+          } else {
+            result.optionsJobQueued = true;
+            console.log(`[refresh-data] Queued options backfill job for ${symbol}`);
+          }
         }
       } catch (optionsError) {
         result.errors.push(`Options job error: ${optionsError.message}`);
