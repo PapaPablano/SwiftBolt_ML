@@ -22,6 +22,11 @@ from .multi_timeframe import (
     fetch_multi_timeframe_data,
 )
 
+from .sr_correlation_analyzer import (
+    SRCorrelationAnalyzer,
+    analyze_sr_redundancy,
+)
+
 __all__ = [
     # Technical indicators
     "add_all_technical_features",
@@ -41,4 +46,7 @@ __all__ = [
     "MultiTimeframeFeatures",
     "compute_multi_timeframe_features_for_symbol",
     "fetch_multi_timeframe_data",
+    # S/R Correlation
+    "SRCorrelationAnalyzer",
+    "analyze_sr_redundancy",
 ]

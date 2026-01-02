@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-01-01T18:08:33.223160",
+  "settings": {
+    "min_bars_for_training": 20,
+    "min_bars_for_high_confidence": 504,
+    "forecast_horizons": [
+      "1D",
+      "1W"
+    ]
+  },
+  "data_info": {
+    "n_bars": 600,
+    "start_date": "2023-01-02T00:00:00",
+    "end_date": "2025-04-18T00:00:00"
+  },
+  "data_validation": {
+    "is_valid": true,
+    "issues": [],
+    "rows_flagged": 0,
+    "quality_score": 1.0,
+    "total_rows": 600
+  },
+  "forecaster": {
+    "1D": {
+      "error": "No valid predictions generated"
+    },
+    "1W": {
+      "error": "No valid predictions generated"
+    },
+    "1M": {
+      "error": "No valid predictions generated"
+    }
+  },
+  "calibration": {
+    "total_samples": 500,
+    "buckets": {
+      "40-50%": {
+        "predicted_confidence": 0.4465842135182745,
+        "actual_accuracy": 0.30097087378640774,
+        "n_samples": 103,
+        "is_calibrated": 

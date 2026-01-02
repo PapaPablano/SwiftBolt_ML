@@ -35,7 +35,8 @@ class Settings(BaseSettings):
         "5M",
         "6M",
     ]
-    min_bars_for_training: int = 20  # Lowered to allow forecasts with limited data
+    min_bars_for_training: int = 100  # Minimum for statistical significance
+    min_bars_for_high_confidence: int = 504  # 2 years for high-quality forecasts (market cycle)
     max_training_bars: int = 780  # ~3 years of daily data for long horizons
     use_ensemble_forecaster: bool = True  # Use ensemble (RF+XGBoost) vs RF-only
     confidence_threshold: float = 0.6

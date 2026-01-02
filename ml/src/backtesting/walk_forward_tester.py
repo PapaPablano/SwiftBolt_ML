@@ -73,17 +73,41 @@ class WalkForwardBacktester:
         Number of bars for testing (1 month of daily bars)
     step_size: int (default: 5)
         Number of bars to roll forward (weekly retraining)
+    horizon: str (optional)
+        Forecast horizon for auto-configured windows
     """
+
+    # Horizon-specific window configuration
+    # Longer horizons need more training data and longer test windows
+    HORIZON_WINDOWS = {
+        "1D": {"train": 126, "test": 10, "step": 2},   # 6mo train, 2wk test
+        "1W": {"train": 252, "test": 25, "step": 5},   # 1yr train, 5wk test
+        "1M": {"train": 504, "test": 60, "step": 20},  # 2yr train, 3mo test
+        "2M": {"train": 504, "test": 90, "step": 30},  # 2yr train, 4.5mo test
+        "3M": {"train": 756, "test": 120, "step": 40}, # 3yr train, 6mo test
+        "4M": {"train": 756, "test": 150, "step": 50}, # 3yr train, 7.5mo test
+        "5M": {"train": 756, "test": 165, "step": 55}, # 3yr train, 8mo test
+        "6M": {"train": 756, "test": 180, "step": 60}, # 3yr train, 9mo test
+    }
 
     def __init__(
         self,
         train_window: int = 252,
         test_window: int = 21,
         step_size: int = 5,
+        horizon: str | None = None,
     ) -> None:
-        self.train_window = train_window
-        self.test_window = test_window
-        self.step_size = step_size
+        # Use horizon-optimized windows if provided
+        if horizon and horizon in self.HORIZON_WINDOWS:
+            config = self.HORIZON_WINDOWS[horizon]
+            self.train_window = config["train"]
+            self.test_window = config["test"]
+            self.step_size = config["step"]
+            logger.info(f"Using horizon-optimized windows for {horizon}: {config}")
+        else:
+            self.train_window = train_window
+            self.test_window = test_window
+            self.step_size = step_size
 
     def backtest(
         self,

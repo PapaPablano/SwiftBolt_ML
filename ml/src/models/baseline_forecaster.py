@@ -2,16 +2,18 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import RobustScaler
 
 from config.settings import settings
+from src.data.data_validator import OHLCValidator, ValidationResult
 from src.features.adaptive_thresholds import AdaptiveThresholds
 from src.features.temporal_indicators import TemporalFeatureEngineer
+from src.monitoring.confidence_calibrator import ConfidenceCalibrator
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +27,9 @@ class BaselineForecaster:
 
     def __init__(self) -> None:
         """Initialize the forecaster."""
-        self.scaler = StandardScaler()
+        # RobustScaler uses median/IQR instead of mean/std
+        # Better for OHLC data with gaps and outliers
+        self.scaler = RobustScaler()
         self.model = RandomForestClassifier(
             n_estimators=100,
             max_depth=10,
@@ -207,7 +211,11 @@ class BaselineForecaster:
         return label, confidence, probabilities
 
     def generate_forecast(
-        self, df: pd.DataFrame, horizon: str
+        self,
+        df: pd.DataFrame,
+        horizon: str,
+        calibrator: Optional[ConfidenceCalibrator] = None,
+        validate_data: bool = True,
     ) -> dict[str, Any]:
         """
         Generate a complete forecast with label, confidence, and future points.
@@ -215,15 +223,40 @@ class BaselineForecaster:
         Args:
             df: DataFrame with OHLC + technical indicators
             horizon: Forecast horizon ("1D", "1W", etc.)
+            calibrator: Optional confidence calibrator for adjusting scores
+            validate_data: Whether to validate OHLC data before processing
 
         Returns:
             Forecast dictionary with label, confidence, and points
         """
+        # Validate data if requested
+        data_quality_multiplier = 1.0
+        validation_result: Optional[ValidationResult] = None
+
+        if validate_data:
+            validator = OHLCValidator()
+            df, validation_result = validator.validate(df, fix_issues=True)
+
+            if validation_result and not validation_result.is_valid:
+                logger.warning(
+                    f"Data quality issues detected: {validation_result.issues}"
+                )
+                # Apply slight confidence penalty for data with issues
+                data_quality_multiplier = max(
+                    0.9, 1.0 - (validation_result.rows_flagged / len(df) * 0.2)
+                )
+
         # Parse horizon
         horizon_days = self._parse_horizon(horizon)
 
         # Prepare training data
         X, y = self.prepare_training_data(df, horizon_days=horizon_days)
+
+        # Calculate data quality multiplier based on sample size
+        # Less data = lower confidence (per improvement plan 1.1)
+        sample_size_multiplier = min(
+            1.0, len(X) / settings.min_bars_for_high_confidence
+        )
 
         # Train model
         self.train(X, y)
@@ -234,22 +267,58 @@ class BaselineForecaster:
         last_ts = pd.to_datetime(df["ts"].iloc[-1]).to_pydatetime()
 
         # Predict
-        label, confidence, probabilities = self.predict(last_features)
+        label, raw_confidence, probabilities = self.predict(last_features)
+
+        # Apply confidence adjustments
+        adjusted_confidence = raw_confidence
+
+        # 1. Apply calibration if calibrator is provided
+        if calibrator and calibrator.is_fitted:
+            adjusted_confidence = calibrator.calibrate(adjusted_confidence)
+            logger.info(
+                f"Calibration: {raw_confidence:.3f} -> {adjusted_confidence:.3f}"
+            )
+
+        # 2. Apply data quality multiplier
+        adjusted_confidence *= data_quality_multiplier
+
+        # 3. Apply sample size multiplier
+        adjusted_confidence *= sample_size_multiplier
+
+        # Ensure confidence stays in valid range
+        adjusted_confidence = float(np.clip(adjusted_confidence, 0.40, 0.95))
+
+        if adjusted_confidence != raw_confidence:
+            logger.info(
+                f"Final confidence: {raw_confidence:.3f} -> {adjusted_confidence:.3f} "
+                f"(data_qual={data_quality_multiplier:.2f}, "
+                f"sample_size={sample_size_multiplier:.2f})"
+            )
 
         # Convert probabilities array to dict for _generate_forecast_points
         proba_dict = dict(zip(self.model.classes_, probabilities[-1]))
 
         # Generate forecast points with probability-based directional estimates
         points = self._generate_forecast_points(
-            last_ts, last_close, label, confidence, horizon_days, proba_dict
+            last_ts, last_close, label, adjusted_confidence, horizon_days,
+            proba_dict
         )
 
         return {
             "label": label,
-            "confidence": confidence,
+            "confidence": adjusted_confidence,
+            "raw_confidence": raw_confidence,
             "horizon": horizon,
             "points": points,
             "probabilities": probabilities,
+            "data_quality": {
+                "validation_issues": (
+                    validation_result.issues if validation_result else []
+                ),
+                "quality_multiplier": data_quality_multiplier,
+                "sample_size_multiplier": sample_size_multiplier,
+                "n_training_samples": len(X),
+            },
         }
 
     def _parse_horizon(self, horizon: str) -> int:

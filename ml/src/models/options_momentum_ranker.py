@@ -81,6 +81,8 @@ class IVStatistics:
     iv_median: float
     iv_current: float
     days_of_data: int = 252
+    last_updated: datetime | None = None
+    max_age_hours: int = 4
 
     @property
     def iv_rank(self) -> float:
@@ -98,6 +100,73 @@ class IVStatistics:
     def is_expensive(self) -> bool:
         """IV is in top 70% of range."""
         return self.iv_rank > 70
+
+    @property
+    def is_stale(self) -> bool:
+        """Check if IV data is stale (> max_age_hours old)."""
+        if self.last_updated is None:
+            return True
+        age = datetime.now() - self.last_updated
+        return age.total_seconds() > (self.max_age_hours * 3600)
+
+    @property
+    def staleness_penalty(self) -> float:
+        """Calculate confidence penalty for stale data (0-0.2)."""
+        if not self.is_stale:
+            return 0.0
+        if self.last_updated is None:
+            return 0.2
+
+        age_hours = (datetime.now() - self.last_updated).total_seconds() / 3600
+        # Linear penalty: 0 at max_age, 0.2 at 2x max_age
+        excess_hours = age_hours - self.max_age_hours
+        return min(0.2, excess_hours / self.max_age_hours * 0.2)
+
+    def is_iv_curve_reasonable(self, iv_by_strike: dict) -> bool:
+        """
+        Check if IV curve is smooth (no >5% jumps between adjacent strikes).
+
+        Large IV jumps between strikes indicate bad data or illiquidity.
+
+        Args:
+            iv_by_strike: Dict mapping strike price to IV
+
+        Returns:
+            True if IV curve is smooth, False if suspicious jumps exist
+        """
+        if len(iv_by_strike) < 2:
+            return True
+
+        strikes = sorted(iv_by_strike.keys())
+        for i in range(1, len(strikes)):
+            iv_current = iv_by_strike[strikes[i]]
+            iv_prev = iv_by_strike[strikes[i - 1]]
+
+            if iv_prev > 0:
+                iv_jump_pct = abs(iv_current - iv_prev) / iv_prev * 100
+                if iv_jump_pct > 5.0:  # >5% jump is suspicious
+                    logger.warning(
+                        f"Suspicious IV jump: {strikes[i-1]}={iv_prev:.2%} -> "
+                        f"{strikes[i]}={iv_current:.2%} ({iv_jump_pct:.1f}%)"
+                    )
+                    return False
+
+        return True
+
+    @property
+    def data_quality_score(self) -> float:
+        """
+        Combined data quality score (0-1).
+
+        Factors:
+        - Freshness (0.5 weight)
+        - Days of data coverage (0.5 weight)
+        """
+        freshness_score = 1.0 - self.staleness_penalty
+        # Data coverage score: 1.0 at 252 days, lower for less
+        coverage_score = min(1.0, self.days_of_data / 252)
+
+        return freshness_score * 0.5 + coverage_score * 0.5
 
 
 class OptionsMomentumRanker:
@@ -158,6 +227,9 @@ class OptionsMomentumRanker:
     GREEKS_SPREAD_THRESHOLD = 2.0
     BUY_COMPOSITE_THRESHOLD = 65
 
+    # Temporal smoothing (reduces daily ranking churn)
+    MOMENTUM_SMOOTHING_WINDOW = 3  # 3-day EMA for momentum stability
+
     def __init__(
         self,
         momentum_weight: float = 0.40,
@@ -194,6 +266,7 @@ class OptionsMomentumRanker:
         iv_stats: Optional[IVStatistics] = None,
         options_history: Optional[pd.DataFrame] = None,
         underlying_trend: str = "neutral",
+        previous_rankings: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
         """
         Rank options using the Momentum-Value-Greeks framework.
@@ -208,6 +281,7 @@ class OptionsMomentumRanker:
             iv_stats: 52-week IV statistics for the underlying
             options_history: Historical options data (5+ days) for momentum
             underlying_trend: bullish/neutral/bearish
+            previous_rankings: Previous day's rankings for temporal smoothing
 
         Returns:
             DataFrame with added scoring columns and sorted by composite_rank
@@ -223,6 +297,14 @@ class OptionsMomentumRanker:
         df = self._calculate_momentum_scores(df, options_history)
         df = self._calculate_greeks_scores(df, underlying_trend)
 
+        # Apply IV staleness penalty if applicable
+        if iv_stats and iv_stats.is_stale:
+            staleness_penalty = iv_stats.staleness_penalty
+            logger.warning(
+                f"IV data is stale, applying {staleness_penalty:.1%} penalty"
+            )
+            df["value_score"] *= (1 - staleness_penalty)
+
         # Calculate composite rank (0-100)
         df["composite_rank"] = (
             df["momentum_score"] * self.MOMENTUM_WEIGHT +
@@ -230,16 +312,76 @@ class OptionsMomentumRanker:
             df["greeks_score"] * self.GREEKS_WEIGHT
         )
 
+        # Apply temporal smoothing if previous rankings available
+        if previous_rankings is not None and not previous_rankings.empty:
+            df = self._apply_temporal_smoothing(df, previous_rankings)
+
         # Generate signals
         df = self._generate_signals(df)
 
         # Sort by composite rank
-        df = df.sort_values("composite_rank", ascending=False).reset_index(drop=True)
+        df = df.sort_values(
+            "composite_rank", ascending=False
+        ).reset_index(drop=True)
 
         # Log statistics
         self._log_ranking_stats(df)
 
         return df
+
+    def _apply_temporal_smoothing(
+        self,
+        current: pd.DataFrame,
+        previous: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """
+        Apply EMA smoothing to momentum scores to reduce churn.
+
+        Formula: smoothed = alpha * current + (1 - alpha) * previous
+        Where alpha = 2 / (window + 1) for EMA
+
+        Only smooths momentum_score and composite_rank, NOT raw Greeks.
+        """
+        alpha = 2 / (self.MOMENTUM_SMOOTHING_WINDOW + 1)  # ~0.5 for 3-day
+
+        # Match contracts between current and previous
+        for idx, row in current.iterrows():
+            contract_id = row.get(
+                "contract_symbol",
+                f"{row['strike']}_{row['side']}"
+            )
+
+            # Find previous momentum score
+            if "contract_symbol" in previous.columns:
+                prev_match = previous[
+                    previous["contract_symbol"] == contract_id
+                ]
+            else:
+                prev_match = previous[
+                    (previous["strike"] == row["strike"]) &
+                    (previous["side"] == row["side"])
+                ]
+
+            if len(prev_match) > 0:
+                prev_momentum = prev_match.iloc[0].get(
+                    "momentum_score", row["momentum_score"]
+                )
+
+                # EMA smoothing on momentum score
+                smoothed = (
+                    alpha * row["momentum_score"] +
+                    (1 - alpha) * prev_momentum
+                )
+                current.at[idx, "momentum_score"] = smoothed
+
+                # Recalculate composite with smoothed momentum
+                current.at[idx, "composite_rank"] = (
+                    smoothed * self.MOMENTUM_WEIGHT +
+                    row["value_score"] * self.VALUE_WEIGHT +
+                    row["greeks_score"] * self.GREEKS_WEIGHT
+                )
+
+        return current
 
     def _normalize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """Normalize column names for consistent processing."""

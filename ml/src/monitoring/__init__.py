@@ -1,6 +1,8 @@
 """Monitoring utilities for ML models and data pipelines."""
 
 from .drift_detector import DriftDetector, DriftResult
+from .confidence_calibrator import ConfidenceCalibrator, CalibrationResult
+from .price_monitor import PriceMonitor, RefreshTrigger, check_price_triggers
 
 
 # Lazy import for forecast_staleness to avoid supabase dependency in tests
@@ -13,5 +15,10 @@ def check_forecast_staleness(*args, **kwargs):
 __all__ = [
     "DriftDetector",
     "DriftResult",
+    "ConfidenceCalibrator",
+    "CalibrationResult",
+    "PriceMonitor",
+    "RefreshTrigger",
     "check_forecast_staleness",
+    "check_price_triggers",
 ]
