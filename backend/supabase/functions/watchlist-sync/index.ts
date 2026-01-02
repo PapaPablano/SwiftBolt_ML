@@ -19,6 +19,10 @@ interface WatchlistItem {
     forecast: string | null;
     ranking: string | null;
   };
+  avgDailyVolumeAll?: number | null;
+  avgDailyVolume10d?: number | null;
+  avgLastPriceAll?: number | null;
+  avgLastPrice10d?: number | null;
 }
 
 serve(async (req) => {
@@ -141,6 +145,13 @@ serve(async (req) => {
           { p_symbol: symbol.ticker }
         );
 
+        // Fetch OHLC averages for the newly added symbol
+        const { data: averages } = await supabaseClient.rpc(
+          "get_symbol_ohlc_averages",
+          { p_symbol_ids: [symbol.id] }
+        );
+        const avgRow = averages?.[0];
+
         return new Response(
           JSON.stringify({
             success: true,
@@ -148,6 +159,10 @@ serve(async (req) => {
             symbol: symbol.ticker,
             watchlistId,
             jobStatus: jobStatus || [],
+            avgDailyVolumeAll: avgRow?.avg_daily_volume_all ?? null,
+            avgDailyVolume10d: avgRow?.avg_daily_volume_10d ?? null,
+            avgLastPriceAll: avgRow?.avg_close_all ?? null,
+            avgLastPrice10d: avgRow?.avg_close_10d ?? null,
           }),
           {
             status: 200,
@@ -213,6 +228,22 @@ serve(async (req) => {
 
         if (listError) throw listError;
 
+        const symbolIds = (items || []).map((item: any) => item.symbol_id).filter(Boolean);
+
+        const { data: averages, error: averagesError } = await supabaseClient.rpc(
+          "get_symbol_ohlc_averages",
+          { p_symbol_ids: symbolIds }
+        );
+
+        if (averagesError) {
+          console.error("[watchlist-sync] Failed to fetch OHLC averages:", averagesError);
+        }
+
+        const averagesBySymbolId = new Map<string, any>();
+        for (const row of averages || []) {
+          averagesBySymbolId.set(row.symbol_id, row);
+        }
+
         // Get job status for each symbol
         const watchlistItems: WatchlistItem[] = await Promise.all(
           (items || []).map(async (item) => {
@@ -224,6 +255,8 @@ serve(async (req) => {
             const forecastJob = jobStatus?.find((j: any) => j.job_type === "forecast");
             const rankingJob = jobStatus?.find((j: any) => j.job_type === "ranking");
 
+            const avgRow = averagesBySymbolId.get(item.symbol_id);
+
             return {
               symbol: item.symbols.ticker,
               addedAt: item.added_at,
@@ -231,6 +264,10 @@ serve(async (req) => {
                 forecast: forecastJob?.status || null,
                 ranking: rankingJob?.status || null,
               },
+              avgDailyVolumeAll: avgRow?.avg_daily_volume_all ?? null,
+              avgDailyVolume10d: avgRow?.avg_daily_volume_10d ?? null,
+              avgLastPriceAll: avgRow?.avg_close_all ?? null,
+              avgLastPrice10d: avgRow?.avg_close_10d ?? null,
             };
           })
         );

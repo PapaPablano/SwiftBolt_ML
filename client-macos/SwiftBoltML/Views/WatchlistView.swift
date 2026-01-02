@@ -97,6 +97,34 @@ struct WatchlistRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
+                if symbol.avgDailyVolumeAll != nil || symbol.avgDailyVolume10d != nil || symbol.avgLastPriceAll != nil || symbol.avgLastPrice10d != nil {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text("Avg Vol")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text("All: \(formatCompact(symbol.avgDailyVolumeAll))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text("10D: \(formatCompact(symbol.avgDailyVolume10d))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        HStack(spacing: 6) {
+                            Text("Avg Px")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text("All: \(formatPrice(symbol.avgLastPriceAll))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text("10D: \(formatPrice(symbol.avgLastPrice10d))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 // Job status indicators
                 if let status = jobStatus {
                     HStack(spacing: 6) {
@@ -138,6 +166,26 @@ struct WatchlistRow: View {
                 NSCursor.pop()
             }
         }
+    }
+
+    private func formatCompact(_ value: Double?) -> String {
+        guard let value else { return "-" }
+        let absValue = abs(value)
+        if absValue >= 1_000_000_000 {
+            return String(format: "%.2fB", value / 1_000_000_000)
+        }
+        if absValue >= 1_000_000 {
+            return String(format: "%.2fM", value / 1_000_000)
+        }
+        if absValue >= 1_000 {
+            return String(format: "%.1fK", value / 1_000)
+        }
+        return String(format: "%.0f", value)
+    }
+
+    private func formatPrice(_ value: Double?) -> String {
+        guard let value else { return "-" }
+        return String(format: "$%.2f", value)
     }
 
     private func jobStatusBadge(label: String, status: JobStatusState) -> some View {

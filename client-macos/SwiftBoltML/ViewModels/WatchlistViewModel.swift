@@ -36,7 +36,18 @@ final class WatchlistViewModel: ObservableObject {
             )
 
             if response.success {
-                watchedSymbols.append(symbol)
+                // Create symbol with OHLC averages from response
+                let enrichedSymbol = Symbol(
+                    id: symbol.id,
+                    ticker: symbol.ticker,
+                    assetType: symbol.assetType,
+                    description: symbol.description,
+                    avgDailyVolumeAll: response.avgDailyVolumeAll,
+                    avgDailyVolume10d: response.avgDailyVolume10d,
+                    avgLastPriceAll: response.avgLastPriceAll,
+                    avgLastPrice10d: response.avgLastPrice10d
+                )
+                watchedSymbols.append(enrichedSymbol)
                 saveWatchlist()
 
                 // Update job status if provided
@@ -119,7 +130,13 @@ final class WatchlistViewModel: ObservableObject {
             if response.success, let items = response.items {
                 // Convert items to Symbol objects
                 watchedSymbols = items.map { item in
-                    Symbol(ticker: item.symbol)
+                    Symbol(
+                        ticker: item.symbol,
+                        avgDailyVolumeAll: item.avgDailyVolumeAll,
+                        avgDailyVolume10d: item.avgDailyVolume10d,
+                        avgLastPriceAll: item.avgLastPriceAll,
+                        avgLastPrice10d: item.avgLastPrice10d
+                    )
                 }
 
                 // Update job statuses

@@ -23,12 +23,21 @@ struct WatchlistSyncResponse: Codable {
     let watchlistId: String?
     let items: [WatchlistItemResponse]?
     let jobStatus: [JobStatus]?
+    // OHLC averages returned by "add" action
+    let avgDailyVolumeAll: Double?
+    let avgDailyVolume10d: Double?
+    let avgLastPriceAll: Double?
+    let avgLastPrice10d: Double?
 }
 
 struct WatchlistItemResponse: Codable {
     let symbol: String
     let addedAt: String
     let jobStatus: WatchlistJobStatus?
+    let avgDailyVolumeAll: Double?
+    let avgDailyVolume10d: Double?
+    let avgLastPriceAll: Double?
+    let avgLastPrice10d: Double?
 
     var addedDate: Date? {
         ISO8601DateFormatter().date(from: addedAt)
