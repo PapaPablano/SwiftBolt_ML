@@ -84,7 +84,7 @@ final class WatchlistViewModel: ObservableObject {
             )
 
             if response.success {
-                watchedSymbols.removeAll { $0.id == symbol.id }
+                watchedSymbols.removeAll { $0.ticker == symbol.ticker }
                 jobStatuses.removeValue(forKey: symbol.ticker)
                 saveWatchlist()
                 print("[WatchlistViewModel] ✅ Removed \(symbol.ticker) from watchlist")
@@ -100,7 +100,7 @@ final class WatchlistViewModel: ObservableObject {
     }
 
     func isWatched(_ symbol: Symbol) -> Bool {
-        watchedSymbols.contains { $0.id == symbol.id }
+        watchedSymbols.contains { $0.ticker == symbol.ticker }
     }
 
     func toggleSymbol(_ symbol: Symbol) async {

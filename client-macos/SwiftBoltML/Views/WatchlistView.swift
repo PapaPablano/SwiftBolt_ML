@@ -52,7 +52,7 @@ struct WatchlistView: View {
                         ForEach(watchlistViewModel.watchedSymbols) { symbol in
                             WatchlistRow(
                                 symbol: symbol,
-                                isSelected: appViewModel.selectedSymbol?.id == symbol.id,
+                                isSelected: appViewModel.selectedSymbol?.ticker == symbol.ticker,
                                 onSelect: {
                                     appViewModel.selectSymbol(symbol)
                                 },

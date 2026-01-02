@@ -33,7 +33,7 @@ struct QuoteData: Decodable, Equatable {
     let averageVolume: Double
     let week52High: Double
     let week52Low: Double
-    let lastTradeTime: String
+    let lastTradeTime: Date
 
     enum CodingKeys: String, CodingKey {
         case symbol
@@ -51,6 +51,34 @@ struct QuoteData: Decodable, Equatable {
         case week52High = "week_52_high"
         case week52Low = "week_52_low"
         case lastTradeTime = "last_trade_time"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        symbol = try container.decode(String.self, forKey: .symbol)
+        last = try container.decode(Double.self, forKey: .last)
+        bid = try container.decode(Double.self, forKey: .bid)
+        ask = try container.decode(Double.self, forKey: .ask)
+        open = try container.decode(Double.self, forKey: .open)
+        high = try container.decode(Double.self, forKey: .high)
+        low = try container.decode(Double.self, forKey: .low)
+        close = try container.decode(Double.self, forKey: .close)
+        volume = try container.decode(Double.self, forKey: .volume)
+        change = try container.decode(Double.self, forKey: .change)
+        changePercentage = try container.decode(Double.self, forKey: .changePercentage)
+        averageVolume = try container.decode(Double.self, forKey: .averageVolume)
+        week52High = try container.decode(Double.self, forKey: .week52High)
+        week52Low = try container.decode(Double.self, forKey: .week52Low)
+
+        // Handle last_trade_time as either number (ms timestamp) or string
+        if let timestamp = try? container.decode(Double.self, forKey: .lastTradeTime) {
+            lastTradeTime = Date(timeIntervalSince1970: timestamp / 1000)
+        } else if let dateString = try? container.decode(String.self, forKey: .lastTradeTime) {
+            let formatter = ISO8601DateFormatter()
+            lastTradeTime = formatter.date(from: dateString) ?? Date()
+        } else {
+            lastTradeTime = Date()
+        }
     }
 }
 
