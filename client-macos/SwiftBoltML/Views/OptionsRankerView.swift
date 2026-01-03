@@ -99,7 +99,11 @@ struct AllContractsView: View {
             ScrollView {
                 LazyVStack(spacing: 8) {
                     ForEach(rankerViewModel.filteredRankings) { rank in
-                        RankedOptionRow(rank: rank, symbol: symbol)
+                        RankedOptionRow(
+                            rank: rank,
+                            symbol: symbol,
+                            liveQuote: rankerViewModel.liveQuotes[rank.contractSymbol]
+                        )
                             .padding(.horizontal)
                             .onTapGesture {
                                 selectedRank = rank
@@ -166,6 +170,20 @@ struct RankerHeader: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Sync data & generate new rankings")
+
+                if rankerViewModel.isRefreshingQuotes {
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                        Text("Refreshing quotes…")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                } else if let status = quoteStatusText() {
+                    Text(status)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
 
                 Text("\(rankerViewModel.filteredRankings.count) contracts")
                     .font(.caption)
@@ -336,10 +354,26 @@ struct RankerHeader: View {
         formatter.dateFormat = "MMM d, yyyy"
         return formatter.string(from: date)
     }
+
+    private func quoteStatusText() -> String? {
+        if rankerViewModel.liveQuotes.isEmpty, rankerViewModel.lastQuoteRefresh == nil {
+            return "Quotes pending (using snapshot)"
+        }
+
+        guard let last = rankerViewModel.lastQuoteRefresh else {
+            return nil
+        }
+
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        let relative = formatter.localizedString(for: last, relativeTo: Date())
+        return "Quotes \(relative)"
+    }
 }
 
 struct RankedOptionRow: View {
     let rank: OptionRank
+    let liveQuote: OptionContractQuote?
     let symbol: String
     @State private var isHovering = false
     @State private var showStrikeAnalysis = false
@@ -386,60 +420,31 @@ struct RankedOptionRow: View {
                     quoteStack
                 }
 
-                HStack(spacing: 12) {
-                    if let dte = rank.daysToExpiry {
-                        Label("\(dte)d", systemImage: "calendar")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if let ivRank = rank.ivRank {
-                        Label("IV Rank \(Int(ivRank))%", systemImage: "chart.bar.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    } else if let iv = rank.impliedVol {
-                        Label("\(Int(iv * 100))% IV", systemImage: "waveform.path.ecg")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if let delta = rank.delta {
-                        Label("Δ \(String(format: "%.2f", delta))", systemImage: "triangle.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    if let volume = rank.volume {
-                        Text("Vol: \(formatNumber(volume))")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if let sp = rank.spreadPctDisplay {
-                        Text("Spr: \(String(format: "%.1f", sp))%")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if let liq = rank.liquidityScore {
-                        Text("Liq: \(String(format: "%.2f", liq))")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if rank.runAtDate != nil {
-                        Text("Age: \(rank.markAgeLabel)")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    
-                    // Liquidity confidence indicator
-                    if rank.isLowLiquidity {
-                        Label(rank.liquidityLabel, systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption2)
-                            .foregroundStyle(rank.liquidityColor)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        if let dte = rank.daysToExpiry {
+                            metricBlock(title: "DTE", value: "\(dte)d", systemImage: "calendar")
+                        }
+                        if let ivRank = rank.ivRank {
+                            metricBlock(title: "IV Rank", value: "\(Int(ivRank))%", systemImage: "chart.bar.fill")
+                        } else if let iv = rank.impliedVol {
+                            metricBlock(title: "IV", value: "\(Int(iv * 100))%", systemImage: "waveform.path.ecg")
+                        }
+                        if let delta = rank.delta {
+                            metricBlock(title: "Delta", value: String(format: "%.2f", delta), systemImage: "triangle.fill")
+                        }
+                        if let volume = rank.volume {
+                            metricBlock(title: "Vol", value: formatNumber(volume), systemImage: "chart.bar.xaxis")
+                        }
+                        if let sp = rank.spreadPctDisplay {
+                            metricBlock(title: "Spread %", value: String(format: "%.1f%%", sp), systemImage: "arrow.left.and.right")
+                        }
+                        if let liq = rank.liquidityScore {
+                            metricBlock(title: "Liquidity", value: String(format: "%.2f", liq), systemImage: "drop.fill", color: rank.liquidityColor)
+                        }
+                        if rank.runAtDate != nil {
+                            metricBlock(title: "Snapshot", value: rank.markAgeLabel, systemImage: "clock", color: quoteAgeColor)
+                        }
                     }
                 }
             }
@@ -490,20 +495,24 @@ struct RankedOptionRow: View {
 
     @ViewBuilder
     private var quoteStack: some View {
-        if let bid = rank.bid, let ask = rank.ask {
+        let displayBid = liveQuote?.bid ?? rank.bid
+        let displayAsk = liveQuote?.ask ?? rank.ask
+        let displayMark = liveQuote?.mark ?? rank.derivedMark
+
+        if let bid = displayBid, let ask = displayAsk {
             VStack(alignment: .trailing, spacing: 2) {
                 Text("Bid / Ask")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 HStack(spacing: 4) {
                     Text("$\(String(format: "%.2f", bid))")
-                        .font(.subheadline.bold())
+                        .font(.title3.bold())
                         .foregroundStyle(.green)
                     Text("/")
-                        .font(.subheadline.bold())
+                        .font(.title3.bold())
                         .foregroundStyle(.secondary)
                     Text("$\(String(format: "%.2f", ask))")
-                        .font(.subheadline.bold())
+                        .font(.title3.bold())
                         .foregroundStyle(.red)
                 }
                 if let label = quoteAgeLabel {
@@ -512,13 +521,13 @@ struct RankedOptionRow: View {
                         .foregroundStyle(quoteAgeColor)
                 }
             }
-        } else if let mark = rank.derivedMark {
+        } else if let mark = displayMark {
             VStack(alignment: .trailing, spacing: 2) {
                 Text("Mid (cached)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Text("$\(String(format: "%.2f", mark))")
-                    .font(.subheadline.bold())
+                    .font(.title3.bold())
                 if let label = quoteAgeLabel {
                     Text(label)
                         .font(.caption2)
@@ -548,17 +557,13 @@ struct RankedOptionRow: View {
     @ViewBuilder
     private func signalBadge(_ signal: String) -> some View {
         let (color, icon) = signalStyle(signal)
-        HStack(spacing: 2) {
-            Image(systemName: icon)
-                .font(.caption2)
-            Text(signal)
-                .font(.caption2.bold())
-        }
-        .padding(.horizontal, 5)
-        .padding(.vertical, 2)
-        .background(color.opacity(0.2))
-        .foregroundStyle(color)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        Image(systemName: icon)
+            .font(.caption.bold())
+            .foregroundStyle(.white)
+            .frame(width: 20, height: 20)
+            .background(color)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .help(signal)
     }
 
     private func signalStyle(_ signal: String) -> (Color, String) {
@@ -581,6 +586,22 @@ struct RankedOptionRow: View {
             return String(format: "%.1fK", Double(number) / 1000)
         }
         return String(number)
+    }
+
+    private func metricBlock(
+        title: String,
+        value: String,
+        systemImage: String,
+        color: Color = .secondary
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Label(title, systemImage: systemImage)
+                .font(.caption2)
+                .foregroundStyle(color)
+            Text(value)
+                .font(.body.bold())
+                .foregroundStyle(.primary)
+        }
     }
 }
 

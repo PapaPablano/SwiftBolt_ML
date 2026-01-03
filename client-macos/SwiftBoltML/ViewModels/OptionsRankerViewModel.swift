@@ -38,6 +38,9 @@ class OptionsRankerViewModel: ObservableObject {
     @Published var sortOption: RankingSortOption = .composite
     @Published var minScore: Double = 0.0
     @Published var rankingMode: RankingMode = .entry
+    @Published var liveQuotes: [String: OptionContractQuote] = [:]
+    @Published var lastQuoteRefresh: Date?
+    @Published var isRefreshingQuotes: Bool = false
 
     // GA Strategy
     @Published var gaStrategy: GAStrategy?
@@ -122,6 +125,8 @@ class OptionsRankerViewModel: ObservableObject {
             isLoading = false
 
             print("[OptionsRanker] Loaded \(rankings.count) ranked options for \(symbol)")
+
+            await refreshQuotes(for: symbol)
         } catch {
             errorMessage = error.localizedDescription
             rankingStatus = .unavailable
@@ -162,6 +167,33 @@ class OptionsRankerViewModel: ObservableObject {
         }
 
         isGeneratingRankings = false
+    }
+
+    func refreshQuotes(for symbol: String) async {
+        guard !rankings.isEmpty else { return }
+        let contracts = rankings.map { $0.contractSymbol }
+        guard !contracts.isEmpty else { return }
+
+        isRefreshingQuotes = true
+
+        do {
+            let response = try await APIClient.shared.fetchOptionsQuotes(
+                symbol: symbol,
+                contracts: Array(contracts.prefix(120))
+            )
+
+            var quoteMap: [String: OptionContractQuote] = [:]
+            for quote in response.quotes {
+                quoteMap[quote.contractSymbol] = quote
+            }
+
+            liveQuotes = quoteMap
+            lastQuoteRefresh = ISO8601DateFormatter().date(from: response.timestamp)
+        } catch {
+            print("[OptionsRanker] Failed to refresh quotes: \(error)")
+        }
+
+        isRefreshingQuotes = false
     }
     
     /// Coordinated refresh: trigger inline ranking job which fetches fresh data and ranks

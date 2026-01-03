@@ -10,6 +10,48 @@ struct OptionsRankingsResponse: Codable {
     let filters: RankingFilters
 }
 
+struct OptionsQuotesResponse: Codable {
+    let symbol: String
+    let timestamp: String
+    let chainTimestamp: String
+    let totalRequested: Int
+    let totalReturned: Int
+    let quotes: [OptionContractQuote]
+
+    enum CodingKeys: String, CodingKey {
+        case symbol
+        case timestamp
+        case chainTimestamp = "chain_timestamp"
+        case totalRequested = "total_requested"
+        case totalReturned = "total_returned"
+        case quotes
+    }
+}
+
+struct OptionContractQuote: Codable {
+    let contractSymbol: String
+    let bid: Double?
+    let ask: Double?
+    let mark: Double?
+    let last: Double?
+    let volume: Double?
+    let openInterest: Double?
+    let impliedVol: Double?
+    let updatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case contractSymbol = "contract_symbol"
+        case bid
+        case ask
+        case mark
+        case last
+        case volume
+        case openInterest = "open_interest"
+        case impliedVol = "implied_vol"
+        case updatedAt = "updated_at"
+    }
+}
+
 struct RankingFilters: Codable {
     let expiry: String?
     let side: OptionSide?

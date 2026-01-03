@@ -244,6 +244,20 @@ actor APIClient {
         return try await performRequest(request)
     }
 
+    func fetchOptionsQuotes(symbol: String, contracts: [String]) async throws -> OptionsQuotesResponse {
+        guard !contracts.isEmpty else {
+            throw APIError.invalidURL
+        }
+
+        struct OptionsQuotesRequest: Encodable {
+            let symbol: String
+            let contracts: [String]
+        }
+
+        let body = OptionsQuotesRequest(symbol: symbol, contracts: contracts)
+        return try await post(endpoint: "options-quotes", body: body)
+    }
+
     func scanWatchlist(symbols: [String]) async throws -> ScannerWatchlistResponse {
         guard let components = URLComponents(string: "\(baseURL)/scanner-watchlist") else {
             throw APIError.invalidURL
