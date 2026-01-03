@@ -88,7 +88,11 @@ class SupabaseDatabase:
             return df
 
         except Exception as e:
-            logger.error(f"Error fetching OHLC bars for {symbol}: {e}")
+            logger.error(
+                "Error fetching OHLC bars for %s: %s",
+                symbol,
+                e,
+            )
             raise
 
     def get_symbol_id(self, symbol: str) -> str:
@@ -111,7 +115,11 @@ class SupabaseDatabase:
             )
             return response.data["id"]
         except Exception as e:
-            logger.error(f"Error fetching symbol_id for {symbol}: {e}")
+            logger.error(
+                "Error fetching symbol_id for %s: %s",
+                symbol,
+                e,
+            )
             raise
 
     def upsert_forecast(
@@ -151,15 +159,7 @@ class SupabaseDatabase:
             synthesis_data: Optional 3-layer forecast synthesis data
         """
         try:
-            # Check if forecast exists
-            existing = (
-                self.client.table("ml_forecasts")
-                .select("id")
-                .eq("symbol_id", symbol_id)
-                .eq("horizon", horizon)
-                .execute()
-            )
-
+            # Build forecast data for upsert keyed by (symbol_id, horizon)
             forecast_data = {
                 "symbol_id": symbol_id,
                 "horizon": horizon,
@@ -209,18 +209,11 @@ class SupabaseDatabase:
             if synthesis_data is not None:
                 forecast_data["synthesis_data"] = synthesis_data
 
-            if existing.data:
-                # Delete existing forecast first to avoid trigger issues
-                (
-                    self.client.table("ml_forecasts")
-                    .delete()
-                    .eq("symbol_id", symbol_id)
-                    .eq("horizon", horizon)
-                    .execute()
-                )
-
-            # Always insert (after deleting if it existed)
-            self.client.table("ml_forecasts").insert(forecast_data).execute()
+            # Upsert (insert or update on conflict) - no delete
+            self.client.table("ml_forecasts").upsert(
+                forecast_data,
+                on_conflict="symbol_id,horizon",
+            ).execute()
 
             logger.info(
                 "Saved forecast: %s - %s (confidence: %.2f%%)",
@@ -230,7 +223,10 @@ class SupabaseDatabase:
             )
 
         except Exception as e:
-            logger.error(f"Error upserting forecast: {e}")
+            logger.error(
+                "Error upserting forecast: %s",
+                e,
+            )
             raise
 
     def upsert_supertrend_signals(
@@ -541,7 +537,9 @@ class SupabaseDatabase:
                 "bid": _safe_float(row.get("bid", 0)),
                 "ask": _safe_float(row.get("ask", 0)),
                 "last": _safe_float(row.get("last", 0)),
-                "underlying_price": _safe_float(row.get("underlying_price", 0)),
+                "underlying_price": _safe_float(
+                    row.get("underlying_price", 0)
+                ),
                 "volume": _safe_int(row.get("volume", 0)),
                 "open_interest": _safe_int(row.get("open_interest", 0)),
                 "delta": _safe_float(row.get("delta", 0)),
@@ -561,9 +559,15 @@ class SupabaseDatabase:
                 on_conflict="contract_symbol,snapshot_time",
             ).execute()
             inserted = len(records)
-            logger.info(f"Inserted {inserted} options snapshots")
+            logger.info(
+                "Inserted %s options snapshots",
+                inserted,
+            )
         except Exception as e:
-            logger.error(f"Error inserting options snapshots: {e}")
+            logger.error(
+                "Error inserting options snapshots: %s",
+                e,
+            )
             raise
 
         return inserted
@@ -615,7 +619,9 @@ class SupabaseDatabase:
                 if "last_price" in df.columns and "last" not in df.columns:
                     df["last"] = df["last_price"]
                 logger.info(
-                    f"Fetched {len(df)} from price_history for {symbol}"
+                    "Fetched %s from price_history for %s",
+                    len(df),
+                    symbol,
                 )
                 return df
 
@@ -640,12 +646,18 @@ class SupabaseDatabase:
             df["snapshot_time"] = pd.to_datetime(df["snapshot_time"])
 
             logger.info(
-                f"Fetched {len(df)} from options_snapshots for {symbol}"
+                "Fetched %s from options_snapshots for %s",
+                len(df),
+                symbol,
             )
             return df
 
         except Exception as e:
-            logger.error(f"Error fetching options history for {symbol}: {e}")
+            logger.error(
+                "Error fetching options history for %s: %s",
+                symbol,
+                e,
+            )
             return pd.DataFrame()
 
     def get_snapshot_count(
@@ -665,13 +677,17 @@ class SupabaseDatabase:
         try:
             symbol_id = self.get_symbol_id(symbol)
 
+            cutoff = (
+                pd.Timestamp.now() - pd.Timedelta(days=days_back)
+            ).isoformat()
+
             response = (
                 self.client.table("options_snapshots")
                 .select("snapshot_time")
                 .eq("underlying_symbol_id", symbol_id)
                 .gte(
                     "snapshot_time",
-                    (pd.Timestamp.now() - pd.Timedelta(days=days_back)).isoformat(),
+                    cutoff,
                 )
                 .execute()
             )
@@ -687,7 +703,11 @@ class SupabaseDatabase:
             return unique_days
 
         except Exception as e:
-            logger.warning(f"Error getting snapshot count for {symbol}: {e}")
+            logger.warning(
+                "Error getting snapshot count for %s: %s",
+                symbol,
+                e,
+            )
             return 0
 
     def get_latest_options_snapshot(
@@ -735,11 +755,19 @@ class SupabaseDatabase:
             df = pd.DataFrame(response.data)
             df["snapshot_time"] = pd.to_datetime(df["snapshot_time"])
 
-            logger.info(f"Fetched latest snapshot for {symbol}: {len(df)} contracts")
+            logger.info(
+                "Fetched latest snapshot for %s: %s contracts",
+                symbol,
+                len(df),
+            )
             return df
 
         except Exception as e:
-            logger.error(f"Error fetching latest snapshot for {symbol}: {e}")
+            logger.error(
+                "Error fetching latest snapshot for %s: %s",
+                symbol,
+                e,
+            )
             return pd.DataFrame()
 
     def fetch_historical_forecasts_for_calibration(
@@ -748,7 +776,8 @@ class SupabaseDatabase:
         min_samples: int = 100,
     ) -> pd.DataFrame | None:
         """
-        Fetch historical forecasts with their outcomes for confidence calibration.
+        Fetch historical forecasts with their outcomes for confidence
+        calibration.
 
         Joins ml_forecasts with forecast_evaluations to get:
         - confidence: The predicted confidence
@@ -782,9 +811,11 @@ class SupabaseDatabase:
             )
 
             if not response.data or len(response.data) < min_samples:
+                sample_count = len(response.data) if response.data else 0
                 logger.info(
-                    f"Insufficient calibration data: {len(response.data) if response.data else 0} "
-                    f"samples (need {min_samples})"
+                    "Insufficient calibration data: %s samples (need %s)",
+                    sample_count,
+                    min_samples,
                 )
                 return None
 
@@ -792,18 +823,29 @@ class SupabaseDatabase:
             data = []
             for row in response.data:
                 forecast_data = row.get("ml_forecasts", {})
-                data.append({
-                    "confidence": forecast_data.get("confidence", 0.5),
-                    "predicted_label": row.get("predicted_label", "neutral"),
-                    "actual_label": row.get("actual_label", "neutral"),
-                })
+                data.append(
+                    {
+                        "confidence": forecast_data.get("confidence", 0.5),
+                        "predicted_label": row.get(
+                            "predicted_label",
+                            "neutral",
+                        ),
+                        "actual_label": row.get("actual_label", "neutral"),
+                    }
+                )
 
             df = pd.DataFrame(data)
-            logger.info(f"Fetched {len(df)} forecasts for calibration")
+            logger.info(
+                "Fetched %s forecasts for calibration",
+                len(df),
+            )
             return df
 
         except Exception as e:
-            logger.warning(f"Could not fetch calibration data: {e}")
+            logger.warning(
+                "Could not fetch calibration data: %s",
+                e,
+            )
             return None
 
     def close(self) -> None:

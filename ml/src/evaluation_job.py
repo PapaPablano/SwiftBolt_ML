@@ -50,14 +50,48 @@ class ForecastEvaluator:
             List of forecast dicts pending evaluation
         """
         # Use the database function we created
-        result = db.client.rpc(
-            "get_pending_evaluations",
-            {"p_horizon": horizon}
-        ).execute()
+        result = (
+            db.client.rpc(
+                "get_pending_evaluations",
+                {"p_horizon": horizon},
+            )
+            .execute()
+        )
 
         forecasts = result.data or []
-        logger.info(f"Found {len(forecasts)} pending {horizon} evaluations")
-        return forecasts
+        logger.info(
+            "Found %s pending %s evaluations",
+            len(forecasts),
+            horizon,
+        )
+
+        # De-duplicate overlapping forecasts: keep the latest per
+        # symbol+horizon+forecast-day
+        deduped: dict[tuple[str, str, str], dict] = {}
+        for f in forecasts:
+            symbol = f.get("symbol")
+            h = f.get("horizon")
+            created_at = f.get("created_at")
+            if not symbol or not h or not created_at:
+                continue
+            dt = pd.to_datetime(created_at)
+            key = (symbol, h, dt.date().isoformat())
+            prev = deduped.get(key)
+            if prev is None:
+                deduped[key] = f
+                continue
+            prev_dt = pd.to_datetime(prev.get("created_at"))
+            if dt > prev_dt:
+                deduped[key] = f
+
+        deduped_list = list(deduped.values())
+        logger.info(
+            "After de-duplication: %s/%s pending %s evaluations",
+            len(deduped_list),
+            len(forecasts),
+            horizon,
+        )
+        return deduped_list
 
     def get_realized_price(
         self,
@@ -87,7 +121,9 @@ class ForecastEvaluator:
             df_before = df[df["ts"] <= target_date]
 
             if df_before.empty:
-                logger.warning(f"No price data for {symbol} before {target_date}")
+                logger.warning(
+                    "No price data for %s before %s", symbol, target_date
+                )
                 return None
 
             # Get the most recent bar before/on target date
@@ -154,7 +190,10 @@ class ForecastEvaluator:
             # Get actual price at evaluation date
             realized_price = self.get_realized_price(symbol, eval_date)
             if realized_price is None:
-                logger.warning(f"Could not get realized price for {symbol} at {eval_date}")
+                logger.warning(
+                    "Could not get realized price for %s at %s",
+                    symbol, eval_date
+                )
                 return None
 
             # Get forecast start price (first point or from bars)
@@ -187,7 +226,7 @@ class ForecastEvaluator:
                 "predicted_value": predicted_value,
                 "predicted_confidence": confidence,
                 "forecast_date": forecast_date.isoformat(),
-                "evaluation_date": datetime.now().isoformat(),
+                "evaluation_date": eval_date.isoformat(),
                 "realized_price": realized_price,
                 "realized_return": realized_return,
                 "realized_label": realized_label,
@@ -224,7 +263,11 @@ class ForecastEvaluator:
             True if saved successfully
         """
         try:
-            db.client.table("forecast_evaluations").insert(evaluation).execute()
+            (
+                db.client.table("forecast_evaluations")
+                .insert(evaluation)
+                .execute()
+            )
             self.evaluations_added += 1
             return True
         except Exception as e:
@@ -271,29 +314,36 @@ class ForecastEvaluator:
             max_error = max(e["price_error_pct"] for e in evals)
 
             # By direction
-            bullish_evals = [e for e in evals if e["predicted_label"] == "bullish"]
-            bearish_evals = [e for e in evals if e["predicted_label"] == "bearish"]
-            neutral_evals = [e for e in evals if e["predicted_label"] == "neutral"]
+            bullish_evals = [
+                e for e in evals if e["predicted_label"] == "bullish"
+            ]
+            bearish_evals = [
+                e for e in evals if e["predicted_label"] == "bearish"
+            ]
+            neutral_evals = [
+                e for e in evals if e["predicted_label"] == "neutral"
+            ]
 
-            bullish_acc = (
-                sum(1 for e in bullish_evals if e["direction_correct"]) / len(bullish_evals)
-                if bullish_evals else None
-            )
-            bearish_acc = (
-                sum(1 for e in bearish_evals if e["direction_correct"]) / len(bearish_evals)
-                if bearish_evals else None
-            )
-            neutral_acc = (
-                sum(1 for e in neutral_evals if e["direction_correct"]) / len(neutral_evals)
-                if neutral_evals else None
-            )
+            def _dir_acc(ev_list: list) -> float | None:
+                if not ev_list:
+                    return None
+                correct = sum(1 for e in ev_list if e["direction_correct"])
+                return correct / len(ev_list)
+
+            bullish_acc = _dir_acc(bullish_evals)
+            bearish_acc = _dir_acc(bearish_evals)
+            neutral_acc = _dir_acc(neutral_evals)
 
             # Get current weights
             weights_result = db.client.rpc(
                 "get_model_weights",
                 {"p_horizon": horizon}
             ).execute()
-            weights = weights_result.data[0] if weights_result.data else {"rf_weight": 0.5, "gb_weight": 0.5}
+            default_weights = {"rf_weight": 0.5, "gb_weight": 0.5}
+            if weights_result.data:
+                weights = weights_result.data[0]
+            else:
+                weights = default_weights
 
             # Insert/update performance history
             history_record = {
@@ -325,7 +375,9 @@ class ForecastEvaluator:
             )
 
         except Exception as e:
-            logger.error(f"Error updating performance history: {e}", exc_info=True)
+            logger.error(
+                "Error updating performance history: %s", e, exc_info=True
+            )
 
     def trigger_weight_update(self) -> dict:
         """
@@ -389,12 +441,15 @@ def run_evaluation_job(horizons: list[str] | None = None) -> dict[str, Any]:
         # Update performance history
         evaluator.update_performance_history(horizon)
 
-        results["horizons_processed"].append({
-            "horizon": horizon,
-            "evaluated": horizon_total,
-            "correct": horizon_correct,
-            "accuracy": horizon_correct / horizon_total if horizon_total > 0 else 0,
-        })
+        acc = horizon_correct / horizon_total if horizon_total > 0 else 0
+        results["horizons_processed"].append(
+            {
+                "horizon": horizon,
+                "evaluated": horizon_total,
+                "correct": horizon_correct,
+                "accuracy": acc,
+            }
+        )
         results["total_evaluated"] += horizon_total
         results["total_correct"] += horizon_correct
 
