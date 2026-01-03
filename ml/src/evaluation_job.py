@@ -225,13 +225,52 @@ class ForecastEvaluator:
             price_error = abs(predicted_value - realized_price)
             price_error_pct = price_error / start_price
 
-            # Check individual model predictions (from stored metadata)
-            # These would come from the ml_forecasts.training_stats or similar
             rf_prediction = None
             gb_prediction = None
             rf_correct = None
             gb_correct = None
+            rf_weight = None
+            gb_weight = None
+            synth_supertrend_component = None
+            synth_polynomial_component = None
+            synth_ml_component = None
+
             model_agreement = forecast.get("model_agreement")
+            try:
+                meta = (
+                    db.client.table("ml_forecasts")
+                    .select("training_stats,synthesis_data,model_agreement")
+                    .eq("id", forecast["forecast_id"])
+                    .single()
+                    .execute()
+                )
+                if meta.data:
+                    ts = meta.data.get("training_stats") or {}
+                    if isinstance(ts, dict):
+                        rf_prediction = ts.get("rf_prediction")
+                        gb_prediction = ts.get("gb_prediction")
+                        rf_weight = ts.get("rf_weight")
+                        gb_weight = ts.get("gb_weight")
+
+                    syn = meta.data.get("synthesis_data") or {}
+                    if isinstance(syn, dict):
+                        synth_supertrend_component = syn.get(
+                            "supertrend_component"
+                        )
+                        synth_polynomial_component = syn.get(
+                            "polynomial_component"
+                        )
+                        synth_ml_component = syn.get("ml_component")
+
+                    if model_agreement is None:
+                        model_agreement = meta.data.get("model_agreement")
+            except Exception as e:
+                logger.debug("Could not fetch forecast metadata: %s", e)
+
+            if rf_prediction is not None:
+                rf_correct = str(rf_prediction).lower() == realized_label
+            if gb_prediction is not None:
+                gb_correct = str(gb_prediction).lower() == realized_label
 
             evaluation = {
                 "forecast_id": forecast["forecast_id"],
@@ -254,6 +293,11 @@ class ForecastEvaluator:
                 "rf_correct": rf_correct,
                 "gb_correct": gb_correct,
                 "model_agreement": model_agreement,
+                "rf_weight": rf_weight,
+                "gb_weight": gb_weight,
+                "synth_supertrend_component": synth_supertrend_component,
+                "synth_polynomial_component": synth_polynomial_component,
+                "synth_ml_component": synth_ml_component,
             }
 
             logger.info(

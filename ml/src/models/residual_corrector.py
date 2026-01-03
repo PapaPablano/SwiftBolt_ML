@@ -11,6 +11,7 @@ class ResidualCorrectionResult:
     log_residual_pred: float
     method: str
     n_samples: int
+    ewma_sigma: float | None = None
 
 
 class ResidualCorrector:
@@ -61,6 +62,17 @@ class ResidualCorrector:
             m = (1.0 - self.ewma_alpha) * m + self.ewma_alpha * float(v)
         return float(m)
 
+    def _ewma_sigma(self, x: np.ndarray) -> float:
+        m = 0.0
+        v = 0.0
+        for val in x:
+            x_t = float(val)
+            m_prev = m
+            m = (1.0 - self.ewma_alpha) * m + self.ewma_alpha * x_t
+            err = x_t - m_prev
+            v = (1.0 - self.ewma_alpha) * v + self.ewma_alpha * (err * err)
+        return float(math.sqrt(max(0.0, v)))
+
     def fit_predict(
         self,
         log_residuals: np.ndarray,
@@ -68,12 +80,15 @@ class ResidualCorrector:
         x = np.asarray(log_residuals, dtype=float)
         x = x[np.isfinite(x)]
 
+        sigma = self._ewma_sigma(x) if x.size > 0 else None
+
         if x.size == 0:
             return ResidualCorrectionResult(
                 correction_factor=1.0,
                 log_residual_pred=0.0,
                 method="none",
                 n_samples=0,
+                ewma_sigma=sigma,
             )
 
         if x.size < self.min_samples:
@@ -83,6 +98,7 @@ class ResidualCorrector:
                 log_residual_pred=float(pred),
                 method="ewma",
                 n_samples=int(x.size),
+                ewma_sigma=sigma,
             )
 
         try:
@@ -103,6 +119,7 @@ class ResidualCorrector:
                 log_residual_pred=float(pred),
                 method="arma_101",
                 n_samples=int(x.size),
+                ewma_sigma=sigma,
             )
         except Exception:
             pred = self._ewma_mean(x)
@@ -111,4 +128,5 @@ class ResidualCorrector:
                 log_residual_pred=float(pred),
                 method="ewma_fallback",
                 n_samples=int(x.size),
+                ewma_sigma=sigma,
             )

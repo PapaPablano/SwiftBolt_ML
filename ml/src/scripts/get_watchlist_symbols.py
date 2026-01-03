@@ -17,15 +17,23 @@ def get_watchlist_symbols() -> list[str]:
         List of unique ticker symbols
     """
     try:
-        # Query all symbols from the symbols table that have watchlist entries
-        # This assumes there's a relationship between watchlists and symbols
-        response = db.client.table("symbols").select("ticker").execute()
+        response = (
+            db.client.table("watchlist_items")
+            .select("symbol_id(ticker)")
+            .execute()
+        )
 
         if not response.data:
             return []
 
         # Get unique tickers
-        symbols = sorted(set(row["ticker"] for row in response.data))
+        symbols = sorted(
+            set(
+                row.get("symbol_id", {}).get("ticker")
+                for row in response.data
+                if row.get("symbol_id", {}).get("ticker")
+            )
+        )
         return symbols
 
     except Exception as e:

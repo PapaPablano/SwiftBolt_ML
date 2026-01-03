@@ -39,6 +39,10 @@ from src.forecast_synthesizer import (  # noqa: E402
 )
 from src.forecast_weights import get_default_weights  # noqa: E402
 from src.models.residual_corrector import ResidualCorrector  # noqa: E402
+from src.models.conformal_interval import (  # noqa: E402
+    ConformalIntervalCalibrator,
+    conformal_bounds,
+)
 
 
 # Global calibrator instance (loaded once, reused across symbols)
@@ -83,6 +87,58 @@ def _bool_env(name: str, default: bool = False) -> bool:
     if val is None:
         return default
     return val.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _get_symbol_layer_weights(
+    symbol_id: str,
+    horizon: str,
+) -> dict[str, float] | None:
+    if not _bool_env("ENABLE_SYMBOL_WEIGHTS", default=False):
+        return None
+
+    row = db.fetch_symbol_model_weights(symbol_id=symbol_id, horizon=horizon)
+    if not row:
+        return None
+
+    try:
+        min_samples = int(os.getenv("SYMBOL_WEIGHT_MIN_SAMPLES", "20"))
+    except Exception:
+        min_samples = 20
+
+    diag = row.get("diagnostics")
+    if isinstance(diag, dict):
+        n = diag.get("n_samples")
+        try:
+            if n is not None and int(n) < min_samples:
+                return None
+        except Exception:
+            return None
+
+    sw = row.get("synth_weights")
+    if not isinstance(sw, dict):
+        return None
+
+    lw = sw.get("layer_weights")
+    if not isinstance(lw, dict):
+        return None
+
+    out: dict[str, float] = {}
+    for k in ("supertrend_component", "sr_component", "ensemble_component"):
+        v = lw.get(k)
+        if v is None:
+            continue
+        try:
+            out[k] = float(v)
+        except Exception:
+            continue
+
+    if not out:
+        return None
+
+    s = sum(out.values())
+    if s <= 0:
+        return None
+    return {k: v / s for k, v in out.items()}
 
 
 def _apply_residual_correction_1d(
@@ -152,6 +208,7 @@ def _apply_residual_correction_1d(
         "n_samples": result.n_samples,
         "log_residual_pred": result.log_residual_pred,
         "correction_factor": result.correction_factor,
+        "ewma_sigma": result.ewma_sigma,
     }
     corrected["training_stats"] = training_stats
 
@@ -161,6 +218,92 @@ def _apply_residual_correction_1d(
         result.correction_factor,
         result.method,
         result.n_samples,
+    )
+    return corrected
+
+
+def _apply_conformal_intervals_1d(
+    symbol: str,
+    forecast: dict,
+) -> dict:
+    if forecast.get("horizon") != "1D":
+        return forecast
+
+    if not _bool_env("ENABLE_CONFORMAL_INTERVALS", default=False):
+        return forecast
+
+    training_stats = forecast.get("training_stats")
+    if isinstance(training_stats, dict):
+        already = training_stats.get("conformal_intervals")
+        if isinstance(already, dict) and already.get("enabled") is True:
+            return forecast
+
+    try:
+        coverage = float(os.getenv("CONFORMAL_COVERAGE", "0.90"))
+    except Exception:
+        coverage = 0.90
+
+    try:
+        min_samples = int(os.getenv("CONFORMAL_MIN_SAMPLES", "30"))
+    except Exception:
+        min_samples = 30
+
+    evals = db.fetch_recent_forecast_evaluations(
+        symbol=symbol,
+        horizon="1D",
+        limit=250,
+    )
+    calibrator = ConformalIntervalCalibrator(min_samples=min_samples)
+    fit = calibrator.fit(evals, coverage=coverage)
+
+    corrected = forecast.copy()
+    points = corrected.get("points") or []
+    if fit.enabled and points:
+        new_points = []
+        for p in points:
+            p2 = dict(p)
+            try:
+                v = float(p2.get("value"))
+            except Exception:
+                new_points.append(p2)
+                continue
+
+            lo, hi = conformal_bounds(v, fit.q_abs_log_residual)
+            p2["lower"] = round(lo, 2)
+            p2["upper"] = round(hi, 2)
+            new_points.append(p2)
+        corrected["points"] = new_points
+
+        synthesis = corrected.get("synthesis")
+        if isinstance(synthesis, dict):
+            try:
+                t = float(synthesis.get("target"))
+                lo, hi = conformal_bounds(t, fit.q_abs_log_residual)
+                synthesis["lower_band"] = float(lo)
+                synthesis["upper_band"] = float(hi)
+            except Exception:
+                pass
+
+    training_stats = corrected.get("training_stats")
+    if not isinstance(training_stats, dict):
+        training_stats = {}
+    training_stats = training_stats.copy()
+    training_stats["conformal_intervals"] = {
+        "enabled": fit.enabled,
+        "method": fit.method,
+        "n_samples": fit.n_samples,
+        "coverage": fit.coverage,
+        "q_abs_log_residual": fit.q_abs_log_residual,
+    }
+    corrected["training_stats"] = training_stats
+
+    logger.info(
+        "Conformal intervals for %s 1D: enabled=%s n=%s coverage=%.2f q=%.4f",
+        symbol,
+        fit.enabled,
+        fit.n_samples,
+        fit.coverage,
+        fit.q_abs_log_residual,
     )
     return corrected
 
@@ -693,8 +836,7 @@ def process_symbol(symbol: str) -> None:
                 # Create and train ensemble
                 forecaster = EnsembleForecaster(
                     horizon=horizon,
-                    rf_weight=0.5,
-                    gb_weight=0.5,
+                    symbol_id=symbol_id,
                 )
                 forecaster.train(X, y)
 
@@ -714,6 +856,31 @@ def process_symbol(symbol: str) -> None:
                     ensemble_result=ensemble_pred,
                     symbol=symbol,
                 )
+
+                lw = _get_symbol_layer_weights(symbol_id=symbol_id, horizon=horizon)
+                if lw is not None:
+                    try:
+                        old_target = float(synth_result.target)
+                        st = float(synth_result.supertrend_component)
+                        sr = float(synth_result.polynomial_component)
+                        ml = float(synth_result.ml_component)
+                        new_target = (
+                            st * lw.get("supertrend_component", 0.0)
+                            + sr * lw.get("sr_component", 0.0)
+                            + ml * lw.get("ensemble_component", 0.0)
+                        )
+                        delta = new_target - old_target
+                        synth_result.target = round(new_target, 2)
+                        synth_result.lower_band = round(
+                            float(synth_result.lower_band) + delta,
+                            2,
+                        )
+                        synth_result.upper_band = round(
+                            float(synth_result.upper_band) + delta,
+                            2,
+                        )
+                    except Exception:
+                        lw = None
 
                 # Generate forecast points from synthesizer result
                 horizon_days = baseline._parse_horizon(horizon)
@@ -750,6 +917,18 @@ def process_symbol(symbol: str) -> None:
                         "ml_component": synth_result.ml_component,
                     },
                 }
+
+                ts = forecast.get("training_stats")
+                if not isinstance(ts, dict):
+                    ts = {}
+                ts = ts.copy()
+                ts["rf_weight"] = getattr(forecaster, "rf_weight", None)
+                ts["gb_weight"] = getattr(forecaster, "gb_weight", None)
+                ts["rf_prediction"] = forecast.get("rf_prediction")
+                ts["gb_prediction"] = forecast.get("gb_prediction")
+                if lw is not None:
+                    ts["symbol_layer_weights"] = lw
+                forecast["training_stats"] = ts
 
                 # Apply S/R constraints (adds sr_levels metadata)
                 forecast = apply_sr_constraints(
@@ -858,6 +1037,7 @@ def process_symbol(symbol: str) -> None:
                 }
 
             forecast = _apply_residual_correction_1d(symbol, forecast)
+            forecast = _apply_conformal_intervals_1d(symbol, forecast)
 
             # Quality monitoring (log-only)
             quality_score = ForecastQualityMonitor.compute_quality_score(

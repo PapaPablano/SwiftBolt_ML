@@ -31,6 +31,7 @@ class EnsembleForecaster:
     def __init__(
         self,
         horizon: str = "1D",
+        symbol_id: str | None = None,
         rf_weight: float | None = None,
         gb_weight: float | None = None,
         use_db_weights: bool = True,
@@ -42,7 +43,7 @@ class EnsembleForecaster:
             horizon: Forecast horizon ("1D" or "1W")
             rf_weight: Weight for Random Forest predictions (0-1). If None, uses DB.
             gb_weight: Weight for Gradient Boosting predictions (0-1). If None, uses DB.
-            use_db_weights: If True and weights are None, fetch from model_weights table.
+            use_db_weights: If True and weights are None, fetch from DB.
 
         Note: Weights should sum to 1.0
         """
@@ -52,11 +53,15 @@ class EnsembleForecaster:
         )
 
         self.horizon = horizon
+        self.symbol_id = symbol_id
 
         # Try to load weights from database if not provided
         if rf_weight is None or gb_weight is None:
             if use_db_weights:
-                db_weights = self._load_weights_from_db(horizon)
+                db_weights = self._load_weights_from_db(
+                    horizon=horizon,
+                    symbol_id=symbol_id,
+                )
                 rf_weight = db_weights.get("rf_weight", 0.5)
                 gb_weight = db_weights.get("gb_weight", 0.5)
             else:
@@ -80,7 +85,11 @@ class EnsembleForecaster:
             horizon,
         )
 
-    def _load_weights_from_db(self, horizon: str) -> Dict[str, float]:
+    def _load_weights_from_db(
+        self,
+        horizon: str,
+        symbol_id: str | None = None,
+    ) -> Dict[str, float]:
         """
         Load model weights from database.
 
@@ -92,6 +101,44 @@ class EnsembleForecaster:
         """
         try:
             from src.data.supabase_db import db
+
+            if symbol_id:
+                row = db.fetch_symbol_model_weights(
+                    symbol_id=symbol_id,
+                    horizon=horizon,
+                )
+                if row:
+                    try:
+                        import os
+
+                        min_samples = int(os.getenv("SYMBOL_WEIGHT_MIN_SAMPLES", "20"))
+                    except Exception:
+                        min_samples = 20
+
+                    diag = row.get("diagnostics")
+                    if isinstance(diag, dict):
+                        n = diag.get("n_samples")
+                        try:
+                            if n is not None and int(n) < min_samples:
+                                row = None
+                        except Exception:
+                            row = None
+
+                if row:
+                    rf = row.get("rf_weight")
+                    gb = row.get("gb_weight")
+                    if rf is not None and gb is not None:
+                        logger.info(
+                            "Loaded per-symbol weights for %s (%s): RF=%.2f, GB=%.2f",
+                            symbol_id,
+                            horizon,
+                            float(rf),
+                            float(gb),
+                        )
+                        return {
+                            "rf_weight": float(rf),
+                            "gb_weight": float(gb),
+                        }
 
             result = db.client.rpc(
                 "get_model_weights",

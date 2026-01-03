@@ -165,6 +165,72 @@ class SupabaseDatabase:
             )
             return pd.DataFrame()
 
+    def fetch_symbol_model_weights(
+        self,
+        symbol_id: str,
+        horizon: str,
+    ) -> dict[str, Any] | None:
+        try:
+            response = (
+                self.client.table("symbol_model_weights")
+                .select(
+                    "rf_weight, gb_weight, synth_weights, "
+                    "diagnostics, last_updated"
+                )
+                .eq("symbol_id", symbol_id)
+                .eq("horizon", horizon)
+                .order("last_updated", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if not response.data:
+                return None
+            return dict(response.data[0])
+        except Exception as e:
+            logger.warning(
+                "Could not fetch symbol model weights for %s (%s): %s",
+                symbol_id,
+                horizon,
+                e,
+            )
+            return None
+
+    def upsert_symbol_model_weights(
+        self,
+        symbol_id: str,
+        horizon: str,
+        rf_weight: float | None = None,
+        gb_weight: float | None = None,
+        synth_weights: dict[str, Any] | None = None,
+        diagnostics: dict[str, Any] | None = None,
+    ) -> None:
+        try:
+            payload: dict[str, Any] = {
+                "symbol_id": symbol_id,
+                "horizon": horizon,
+                "last_updated": pd.Timestamp.utcnow().isoformat(),
+            }
+            if rf_weight is not None:
+                payload["rf_weight"] = float(rf_weight)
+            if gb_weight is not None:
+                payload["gb_weight"] = float(gb_weight)
+            if synth_weights is not None:
+                payload["synth_weights"] = synth_weights
+            if diagnostics is not None:
+                payload["diagnostics"] = diagnostics
+
+            self.client.table("symbol_model_weights").upsert(
+                payload,
+                on_conflict="symbol_id,horizon",
+            ).execute()
+        except Exception as e:
+            logger.warning(
+                "Could not upsert symbol model weights for %s (%s): %s",
+                symbol_id,
+                horizon,
+                e,
+            )
+
     def get_nth_future_close_after(
         self,
         symbol: str,
