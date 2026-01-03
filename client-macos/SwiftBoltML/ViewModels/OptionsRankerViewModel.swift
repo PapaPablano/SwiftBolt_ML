@@ -164,37 +164,10 @@ class OptionsRankerViewModel: ObservableObject {
         isGeneratingRankings = false
     }
     
-    /// Coordinated refresh: sync fresh data first, then queue options ranking job
+    /// Coordinated refresh: trigger inline ranking job which fetches fresh data and ranks
     func syncAndRank(for symbol: String) async {
-        isGeneratingRankings = true
-        errorMessage = nil
-        rankingStatus = .unknown
-
-        print("[OptionsRanker] Starting coordinated sync & rank for \(symbol)...")
-
-        do {
-            // Step 1: Refresh data and queue options ranking job
-            let refreshResponse = try await APIClient.shared.refreshData(
-                symbol: symbol,
-                refreshML: true,
-                refreshOptions: true
-            )
-            print("[OptionsRanker] Data sync complete: \(refreshResponse.message)")
-            
-            // Step 2: Wait for job to process (estimate ~30 seconds)
-            print("[OptionsRanker] Waiting for ranking job to complete...")
-            try await Task.sleep(nanoseconds: 30 * 1_000_000_000)
-            
-            // Step 3: Reload rankings
-            await loadRankings(for: symbol)
-            print("[OptionsRanker] Sync & rank completed for \(symbol)")
-            
-        } catch {
-            errorMessage = "Sync failed: \(error.localizedDescription)"
-            print("[OptionsRanker] Error in sync & rank: \(error)")
-        }
-
-        isGeneratingRankings = false
+        // Use the same inline ranking process as triggerRankingJob
+        await triggerRankingJob(for: symbol)
     }
 
     private func updateRankingStatus() {

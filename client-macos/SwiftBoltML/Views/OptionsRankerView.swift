@@ -605,7 +605,7 @@ struct EmptyRankerView: View {
             }
             .buttonStyle(.borderedProminent)
 
-            Text("This will take about 30 seconds")
+            Text("This takes about 5 seconds")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -623,7 +623,7 @@ struct GeneratingRankingsView: View {
             Text("Generating ML rankings...")
                 .font(.headline)
 
-            Text("This may take 20-30 seconds while we score options contracts")
+            Text("Scoring options contracts...")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
