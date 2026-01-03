@@ -1175,6 +1175,191 @@ class OptionsMomentumRanker:
         )
 
 
+class CalibratedMomentumRanker(OptionsMomentumRanker):
+    """
+    Extended ranker with calibration and regime-conditioning.
+
+    Implements Perplexity's recommendations:
+    1. Calibration-to-forward-return using isotonic regression
+    2. Regime-conditioning weights based on trend/vol regime
+    3. Integration with ranking monitor for alerts
+    """
+
+    def __init__(
+        self,
+        momentum_weight: float = 0.40,
+        value_weight: float = 0.35,
+        greeks_weight: float = 0.25,
+        enable_calibration: bool = True,
+        enable_regime_conditioning: bool = True,
+    ):
+        """
+        Initialize calibrated ranker.
+
+        Args:
+            momentum_weight: Base momentum weight
+            value_weight: Base value weight
+            greeks_weight: Base greeks weight
+            enable_calibration: Apply isotonic calibration
+            enable_regime_conditioning: Adjust weights by regime
+        """
+        super().__init__(momentum_weight, value_weight, greeks_weight)
+
+        self.enable_calibration = enable_calibration
+        self.enable_regime_conditioning = enable_regime_conditioning
+
+        self._calibrator = None
+        self._regime_conditioner = None
+
+        if enable_calibration:
+            from .ranking_calibrator import IsotonicCalibrator
+            self._calibrator = IsotonicCalibrator()
+
+        if enable_regime_conditioning:
+            from .regime_conditioner import RegimeConditioner
+            self._regime_conditioner = RegimeConditioner()
+
+    def fit_calibrator(
+        self,
+        historical_scores: np.ndarray,
+        forward_returns: np.ndarray,
+    ) -> None:
+        """
+        Fit the calibrator on historical data.
+
+        Should be called periodically (e.g., weekly) with recent data.
+
+        Args:
+            historical_scores: Past composite_rank values
+            forward_returns: Corresponding forward returns
+        """
+        if self._calibrator is None:
+            logger.warning("Calibration disabled, skipping fit")
+            return
+
+        result = self._calibrator.fit(historical_scores, forward_returns)
+        logger.info(f"Calibrator fitted: {result}")
+
+    def rank_options_calibrated(
+        self,
+        options_df: pd.DataFrame,
+        iv_stats: Optional[IVStatistics] = None,
+        options_history: Optional[pd.DataFrame] = None,
+        underlying_df: Optional[pd.DataFrame] = None,
+        underlying_trend: str = "neutral",
+        previous_rankings: Optional[pd.DataFrame] = None,
+        ranking_mode: str = "entry",
+    ) -> pd.DataFrame:
+        """
+        Rank options with calibration and regime-conditioning.
+
+        This is the enhanced entry point that:
+        1. Detects market regime from underlying OHLC
+        2. Adjusts weights based on regime
+        3. Applies base ranking
+        4. Calibrates scores to forward return percentiles
+
+        Args:
+            options_df: Options chain data
+            iv_stats: IV statistics
+            options_history: Historical options data
+            underlying_df: OHLC data for regime detection
+            underlying_trend: Fallback trend if no OHLC
+            previous_rankings: Previous rankings for smoothing
+            ranking_mode: 'entry' or 'exit'
+
+        Returns:
+            DataFrame with calibrated rankings
+        """
+        # Step 1: Detect regime and get conditioned weights
+        regime_state = None
+        if self.enable_regime_conditioning and underlying_df is not None:
+            if len(underlying_df) >= 20:
+                regime_state = self._regime_conditioner.detect_regime(underlying_df)
+                weights = self._regime_conditioner.get_regime_weights(regime_state)
+
+                # Temporarily override weights
+                orig_momentum = self.MOMENTUM_WEIGHT
+                orig_value = self.VALUE_WEIGHT
+                orig_greeks = self.GREEKS_WEIGHT
+
+                self.MOMENTUM_WEIGHT = weights.momentum
+                self.VALUE_WEIGHT = weights.value
+                self.GREEKS_WEIGHT = weights.greeks
+
+                logger.info(
+                    f"Regime: {regime_state.trend_regime.value}/"
+                    f"{regime_state.vol_regime.value}, "
+                    f"Weights: M={weights.momentum:.0%}, "
+                    f"V={weights.value:.0%}, G={weights.greeks:.0%}"
+                )
+
+        # Step 2: Apply base ranking
+        ranked_df = self.rank_options(
+            options_df,
+            iv_stats=iv_stats,
+            options_history=options_history,
+            underlying_trend=underlying_trend,
+            previous_rankings=previous_rankings,
+            ranking_mode=ranking_mode,
+        )
+
+        # Restore original weights if we changed them
+        if regime_state is not None:
+            self.MOMENTUM_WEIGHT = orig_momentum
+            self.VALUE_WEIGHT = orig_value
+            self.GREEKS_WEIGHT = orig_greeks
+
+        # Step 3: Apply calibration
+        if self.enable_calibration and self._calibrator._is_fitted:
+            ranked_df = self._calibrator.calibrate_rankings(
+                ranked_df, score_col="composite_rank"
+            )
+
+            # Use calibrated rank as primary sort
+            ranked_df = ranked_df.sort_values(
+                "calibrated_rank", ascending=False
+            ).reset_index(drop=True)
+
+            logger.info(
+                f"Calibrated: range {ranked_df['calibrated_rank'].min():.1f}-"
+                f"{ranked_df['calibrated_rank'].max():.1f}, "
+                f"P(+) range {ranked_df['calibrated_positive_prob'].min():.2f}-"
+                f"{ranked_df['calibrated_positive_prob'].max():.2f}"
+            )
+        else:
+            # Add placeholder columns if not calibrated
+            ranked_df["calibrated_return_pct"] = ranked_df["composite_rank"]
+            ranked_df["calibrated_positive_prob"] = 0.5
+            ranked_df["calibrated_rank"] = ranked_df["composite_rank"]
+
+        # Step 4: Add regime metadata
+        if regime_state is not None:
+            ranked_df["trend_regime"] = regime_state.trend_regime.value
+            ranked_df["vol_regime"] = regime_state.vol_regime.value
+            ranked_df["regime_adx"] = regime_state.adx
+            ranked_df["regime_atr_pct"] = regime_state.atr_pct
+
+            # Apply signal emphasis based on regime
+            emphasis = self._regime_conditioner.get_signal_emphasis(regime_state)
+            ranked_df["signal_emphasis_runner"] = emphasis["runner"]
+            ranked_df["signal_emphasis_discount"] = emphasis["discount"]
+            ranked_df["signal_emphasis_greeks"] = emphasis["greeks"]
+
+        return ranked_df
+
+    def save_calibrator(self, path: str) -> None:
+        """Save calibrator state to file."""
+        if self._calibrator is not None:
+            self._calibrator.save(path)
+
+    def load_calibrator(self, path: str) -> None:
+        """Load calibrator state from file."""
+        if self._calibrator is not None:
+            from .ranking_calibrator import IsotonicCalibrator
+            self._calibrator = IsotonicCalibrator.load(path)
+
+
 class IVHistoryCalculator:
     """Calculate IV statistics from historical data."""
 

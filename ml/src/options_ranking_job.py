@@ -22,8 +22,10 @@ from config.settings import settings
 from src.data.supabase_db import db
 from src.models.options_momentum_ranker import (
     OptionsMomentumRanker,
+    CalibratedMomentumRanker,
     IVStatistics,
 )
+from src.models.ranking_monitor import RankingMonitor, RankingEvaluationJob
 from src.options_historical_backfill import ensure_options_history
 
 logging.basicConfig(
@@ -378,15 +380,25 @@ def determine_trend(df_ohlc: pd.DataFrame) -> str:
     return "neutral"
 
 
-def process_symbol_options(symbol: str, ranking_mode: str = "entry") -> None:
+def process_symbol_options(
+    symbol: str,
+    ranking_mode: str = "entry",
+    use_calibration: bool = True,
+    use_regime_conditioning: bool = True,
+) -> None:
     """
     Process options for a single symbol: fetch data, rank contracts, save rankings.
 
-    Uses OptionsMomentumRanker exclusively for all scoring. The Momentum Framework
-    produces composite_rank (0-100) based on value, momentum, and greeks analysis.
+    Uses CalibratedMomentumRanker with:
+    - Isotonic calibration to forward return percentiles
+    - Regime-conditioned weights (trend/vol regime)
+    - Integration with ranking monitor for alerts
 
     Args:
         symbol: Stock ticker symbol
+        ranking_mode: 'entry' or 'exit'
+        use_calibration: Apply isotonic calibration
+        use_regime_conditioning: Adjust weights by market regime
     """
     logger.info(f"Processing options for {symbol}...")
 
@@ -412,7 +424,8 @@ def process_symbol_options(symbol: str, ranking_mode: str = "entry") -> None:
         historical_vol = returns.std() * (252**0.5)  # Annualized
 
         logger.info(
-            f"{symbol}: price=${underlying_price:.2f}, HV={historical_vol:.2%}, trend={underlying_trend}"
+            f"{symbol}: price=${underlying_price:.2f}, "
+            f"HV={historical_vol:.2%}, trend={underlying_trend}"
         )
 
         # Fetch options chain from API
@@ -429,7 +442,6 @@ def process_symbol_options(symbol: str, ranking_mode: str = "entry") -> None:
         iv_stats = fetch_iv_stats(symbol_id)
 
         # Ensure historical options data exists for momentum calculations
-        # This will backfill from Tradier if needed
         logger.info(f"Ensuring historical options data for {symbol}...")
         options_history = ensure_options_history(symbol, required_days=5)
 
@@ -439,22 +451,54 @@ def process_symbol_options(symbol: str, ranking_mode: str = "entry") -> None:
                 "momentum scores will be estimated"
             )
 
-        # Apply Momentum Framework scoring (single ranker, no chaining)
-        momentum_ranker = OptionsMomentumRanker()
+        # Use CalibratedMomentumRanker with regime conditioning
+        ranker = CalibratedMomentumRanker(
+            enable_calibration=use_calibration,
+            enable_regime_conditioning=use_regime_conditioning,
+        )
+
+        # Try to load existing calibrator if available
+        calibrator_path = Path(__file__).parent / f"calibrators/{symbol}_cal.json"
+        if calibrator_path.exists() and use_calibration:
+            try:
+                ranker.load_calibrator(str(calibrator_path))
+                logger.info(f"Loaded calibrator from {calibrator_path}")
+            except Exception as e:
+                logger.warning(f"Could not load calibrator: {e}")
 
         previous_rankings = fetch_previous_rankings(symbol_id, ranking_mode)
-        ranked_df = momentum_ranker.rank_options(
+
+        # Use calibrated ranking with regime conditioning
+        ranked_df = ranker.rank_options_calibrated(
             options_df,
             iv_stats=iv_stats,
             options_history=options_history if not options_history.empty else None,
+            underlying_df=df_ohlc if use_regime_conditioning else None,
             underlying_trend=underlying_trend,
-            previous_rankings=previous_rankings if not previous_rankings.empty else None,
+            previous_rankings=(
+                previous_rankings if not previous_rankings.empty else None
+            ),
             ranking_mode=ranking_mode,
         )
 
+        # Log regime info if available
+        if "trend_regime" in ranked_df.columns:
+            regime_info = ranked_df.iloc[0]
+            logger.info(
+                f"Regime: {regime_info.get('trend_regime', 'N/A')}/"
+                f"{regime_info.get('vol_regime', 'N/A')}, "
+                f"ADX={regime_info.get('regime_adx', 0):.1f}"
+            )
+
+        # Log calibration info if available
+        if "calibrated_positive_prob" in ranked_df.columns:
+            top_prob = ranked_df["calibrated_positive_prob"].max()
+            logger.info(f"Top calibrated P(+): {top_prob:.2%}")
+
         logger.info(
-            f"Momentum Framework: scored {len(ranked_df)} contracts, "
-            f"composite range {ranked_df['composite_rank'].min():.1f}-{ranked_df['composite_rank'].max():.1f}"
+            f"Ranked {len(ranked_df)} contracts, "
+            f"composite range {ranked_df['composite_rank'].min():.1f}-"
+            f"{ranked_df['composite_rank'].max():.1f}"
         )
 
         # Log signal counts
