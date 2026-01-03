@@ -95,6 +95,114 @@ class SupabaseDatabase:
             )
             raise
 
+    def get_last_close_at_or_before(
+        self,
+        symbol: str,
+        target_ts,
+        timeframe: str = "d1",
+    ) -> tuple[pd.Timestamp, float] | None:
+        try:
+            symbol_id = self.get_symbol_id(symbol)
+            ts_iso = pd.to_datetime(target_ts).isoformat()
+            response = (
+                self.client.table("ohlc_bars")
+                .select("ts, close")
+                .eq("symbol_id", symbol_id)
+                .eq("timeframe", timeframe)
+                .lte("ts", ts_iso)
+                .order("ts", desc=True)
+                .limit(1)
+                .execute()
+            )
+
+            if not response.data:
+                return None
+
+            row = response.data[0]
+            return (pd.to_datetime(row["ts"]), float(row["close"]))
+        except Exception as e:
+            logger.warning(
+                "Error fetching last close for %s (%s): %s",
+                symbol,
+                timeframe,
+                e,
+            )
+            return None
+
+    def fetch_recent_forecast_evaluations(
+        self,
+        symbol: str,
+        horizon: str = "1D",
+        limit: int = 60,
+    ) -> pd.DataFrame:
+        try:
+            response = (
+                self.client.table("forecast_evaluations")
+                .select(
+                    "evaluation_date, predicted_value, realized_price, "
+                    "price_error, price_error_pct"
+                )
+                .eq("symbol", symbol.upper())
+                .eq("horizon", horizon)
+                .order("evaluation_date", desc=True)
+                .limit(limit)
+                .execute()
+            )
+
+            df = pd.DataFrame(response.data or [])
+            if df.empty:
+                return df
+
+            df["evaluation_date"] = pd.to_datetime(df["evaluation_date"])
+            df = df.sort_values("evaluation_date").reset_index(drop=True)
+            return df
+        except Exception as e:
+            logger.warning(
+                "Error fetching forecast evaluations for %s (%s): %s",
+                symbol,
+                horizon,
+                e,
+            )
+            return pd.DataFrame()
+
+    def get_nth_future_close_after(
+        self,
+        symbol: str,
+        after_ts,
+        n: int = 1,
+        timeframe: str = "d1",
+    ) -> tuple[pd.Timestamp, float] | None:
+        if n <= 0:
+            return None
+
+        try:
+            symbol_id = self.get_symbol_id(symbol)
+            ts_iso = pd.to_datetime(after_ts).isoformat()
+            response = (
+                self.client.table("ohlc_bars")
+                .select("ts, close")
+                .eq("symbol_id", symbol_id)
+                .eq("timeframe", timeframe)
+                .gt("ts", ts_iso)
+                .order("ts", desc=False)
+                .limit(n)
+                .execute()
+            )
+
+            if not response.data or len(response.data) < n:
+                return None
+
+            row = response.data[n - 1]
+            return (pd.to_datetime(row["ts"]), float(row["close"]))
+        except Exception as e:
+            logger.warning(
+                "Error fetching future close for %s (%s): %s",
+                symbol,
+                timeframe,
+                e,
+            )
+            return None
+
     def get_symbol_id(self, symbol: str) -> str:
         """
         Get the UUID for a symbol ticker.

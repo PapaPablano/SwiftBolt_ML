@@ -8,7 +8,7 @@ Compares past ML forecasts to actual market outcomes and:
 
 import logging
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -177,29 +177,45 @@ class ForecastEvaluator:
                 logger.warning(f"No points in forecast for {symbol}")
                 return None
 
-            # Calculate evaluation date based on horizon
+            # Resolve evaluation to the next trading-day close (daily bars)
             if horizon == "1D":
-                eval_date = forecast_date + timedelta(days=1)
+                trading_steps = 1
             elif horizon == "1W":
-                eval_date = forecast_date + timedelta(days=5)
+                trading_steps = 5
             elif horizon == "1M":
-                eval_date = forecast_date + timedelta(days=20)
+                trading_steps = 20
             else:
-                eval_date = forecast_date + timedelta(days=1)
+                trading_steps = 1
 
-            # Get actual price at evaluation date
-            realized_price = self.get_realized_price(symbol, eval_date)
-            if realized_price is None:
+            realized = db.get_nth_future_close_after(
+                symbol,
+                forecast_date,
+                n=trading_steps,
+                timeframe="d1",
+            )
+            if realized is None:
                 logger.warning(
-                    "Could not get realized price for %s at %s",
-                    symbol, eval_date
+                    (
+                        "Could not get realized trading-day close for %s (%s) "
+                        "after %s"
+                    ),
+                    symbol,
+                    horizon,
+                    forecast_date,
                 )
                 return None
 
-            # Get forecast start price (first point or from bars)
-            start_price = self.get_realized_price(symbol, forecast_date)
-            if start_price is None:
+            eval_ts, realized_price = realized
+
+            start = db.get_last_close_at_or_before(
+                symbol,
+                forecast_date,
+                timeframe="d1",
+            )
+            if start is None:
                 start_price = predicted_value / 1.02  # Rough estimate
+            else:
+                _, start_price = start
 
             # Calculate metrics
             realized_return = (realized_price - start_price) / start_price
@@ -226,7 +242,7 @@ class ForecastEvaluator:
                 "predicted_value": predicted_value,
                 "predicted_confidence": confidence,
                 "forecast_date": forecast_date.isoformat(),
-                "evaluation_date": eval_date.isoformat(),
+                "evaluation_date": eval_ts.isoformat(),
                 "realized_price": realized_price,
                 "realized_return": realized_return,
                 "realized_label": realized_label,

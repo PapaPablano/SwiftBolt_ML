@@ -111,6 +111,30 @@ class ForecastSynthesizer:
         else:
             atr = supertrend_info.get('atr', current_price * 0.02)  # Default 2%
 
+        if atr is None or (isinstance(atr, float) and np.isnan(atr)):
+            atr = supertrend_info.get('atr')
+
+        if atr is None or (isinstance(atr, float) and np.isnan(atr)):
+            if all(c in df.columns for c in ['high', 'low', 'close']) and len(df) > 1:
+                high = df['high'].astype(float)
+                low = df['low'].astype(float)
+                close = df['close'].astype(float)
+                prev_close = close.shift(1)
+                tr = pd.concat(
+                    [
+                        (high - low).abs(),
+                        (high - prev_close).abs(),
+                        (low - prev_close).abs(),
+                    ],
+                    axis=1,
+                ).max(axis=1)
+                atr = float(tr.tail(14).mean())
+
+        if atr is None or (isinstance(atr, float) and np.isnan(atr)):
+            atr = current_price * 0.02
+
+        atr = float(atr)
+
         # SuperTrend suggests target move = atr × strength × performance
         st_target_move = atr * signal_strength * (0.5 + 0.5 * performance_idx)
 

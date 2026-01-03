@@ -1,6 +1,8 @@
 """Main ML forecasting job that generates predictions for all symbols."""
 
+import argparse
 import logging
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -36,6 +38,7 @@ from src.forecast_synthesizer import (  # noqa: E402
     ForecastResult,
 )
 from src.forecast_weights import get_default_weights  # noqa: E402
+from src.models.residual_corrector import ResidualCorrector  # noqa: E402
 
 
 # Global calibrator instance (loaded once, reused across symbols)
@@ -50,20 +53,23 @@ def get_calibrator() -> ConfidenceCalibrator:
         # Try to load historical data for calibration
         try:
             historical = db.fetch_historical_forecasts_for_calibration(
-                lookback_days=90, min_samples=100
+                lookback_days=90,
+                min_samples=100,
             )
             if historical is not None and len(historical) >= 100:
                 _calibrator.fit(historical)
                 logger.info(
-                    f"Confidence calibrator fitted with {len(historical)} samples"
+                    "Confidence calibrator fitted with %s samples",
+                    len(historical),
                 )
             else:
                 logger.info(
                     "Insufficient historical data for calibration, using raw confidence"
                 )
         except Exception as e:
-            logger.warning(f"Could not load calibration data: {e}")
+            logger.warning("Could not load calibration data: %s", e)
     return _calibrator
+
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -72,7 +78,97 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def convert_sr_to_synthesizer_format(sr_levels: dict, current_price: float) -> dict:
+def _bool_env(name: str, default: bool = False) -> bool:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return val.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _apply_residual_correction_1d(
+    symbol: str,
+    forecast: dict,
+) -> dict:
+    if forecast.get("horizon") != "1D":
+        return forecast
+
+    if not _bool_env("ENABLE_RESIDUAL_CORRECTOR", default=False):
+        return forecast
+
+    training_stats = forecast.get("training_stats")
+    if isinstance(training_stats, dict):
+        already = training_stats.get("residual_correction")
+        if isinstance(already, dict) and already.get("enabled") is True:
+            return forecast
+
+    evals = db.fetch_recent_forecast_evaluations(
+        symbol=symbol,
+        horizon="1D",
+        limit=60,
+    )
+    corrector = ResidualCorrector(min_samples=20)
+    log_residuals = corrector.compute_log_residuals(evals)
+    result = corrector.fit_predict(log_residuals)
+
+    if result.correction_factor == 1.0:
+        return forecast
+
+    corrected = forecast.copy()
+
+    points = corrected.get("points") or []
+    new_points = []
+    for p in points:
+        p2 = dict(p)
+        for key in ("value", "lower", "upper"):
+            if key in p2 and p2[key] is not None:
+                try:
+                    p2[key] = round(
+                        float(p2[key]) * result.correction_factor,
+                        2,
+                    )
+                except Exception:
+                    pass
+        new_points.append(p2)
+    corrected["points"] = new_points
+
+    synthesis = corrected.get("synthesis")
+    if isinstance(synthesis, dict):
+        for key in ("target", "lower_band", "upper_band"):
+            if key in synthesis and synthesis[key] is not None:
+                try:
+                    synthesis[key] = (
+                        float(synthesis[key]) * result.correction_factor
+                    )
+                except Exception:
+                    pass
+
+    training_stats = corrected.get("training_stats")
+    if not isinstance(training_stats, dict):
+        training_stats = {}
+    training_stats = training_stats.copy()
+    training_stats["residual_correction"] = {
+        "enabled": True,
+        "method": result.method,
+        "n_samples": result.n_samples,
+        "log_residual_pred": result.log_residual_pred,
+        "correction_factor": result.correction_factor,
+    }
+    corrected["training_stats"] = training_stats
+
+    logger.info(
+        "Residual correction applied for %s 1D: factor=%.4f method=%s n=%s",
+        symbol,
+        result.correction_factor,
+        result.method,
+        result.n_samples,
+    )
+    return corrected
+
+
+def convert_sr_to_synthesizer_format(
+    sr_levels: dict,
+    current_price: float,
+) -> dict:
     """
     Convert SupportResistanceDetector output to format expected by ForecastSynthesizer.
 
@@ -689,9 +785,11 @@ def process_symbol(symbol: str) -> None:
 
                 if adjusted_confidence != raw_confidence:
                     logger.info(
-                        f"  Confidence adjusted: {raw_confidence:.2f} -> "
-                        f"{adjusted_confidence:.2f}"
+                        f"Final confidence: {raw_confidence:.3f} -> {adjusted_confidence:.3f} "
+                        f"(data_qual={data_quality_multiplier:.2f}, "
+                        f"sample_size={sample_size_multiplier:.2f})"
                     )
+
             else:
                 # Fallback to baseline forecaster with synthesizer
                 baseline_forecaster = BaselineForecaster()
@@ -758,6 +856,8 @@ def process_symbol(symbol: str) -> None:
                     "validation_issues": validation_result.issues,
                     "n_training_samples": len(df) - 50,  # Approximate
                 }
+
+            forecast = _apply_residual_correction_1d(symbol, forecast)
 
             # Quality monitoring (log-only)
             quality_score = ForecastQualityMonitor.compute_quality_score(
@@ -834,16 +934,25 @@ def process_symbol(symbol: str) -> None:
 
 def main() -> None:
     """Main forecasting job entry point."""
+    parser = argparse.ArgumentParser(add_help=True)
+    parser.add_argument("--symbol", type=str, default=None)
+    args = parser.parse_args()
+
     logger.info("=" * 80)
     logger.info("Starting ML Forecasting Job")
-    logger.info(f"Processing {len(settings.symbols_to_process)} symbols")
+    if args.symbol:
+        logger.info("Processing single symbol: %s", args.symbol)
+    else:
+        logger.info("Processing %s symbols", len(settings.symbols_to_process))
     logger.info(f"Horizons: {settings.forecast_horizons}")
     logger.info("=" * 80)
 
     symbols_processed = 0
     symbols_failed = 0
 
-    for symbol in settings.symbols_to_process:
+    symbols = [args.symbol] if args.symbol else list(settings.symbols_to_process)
+
+    for symbol in symbols:
         try:
             process_symbol(symbol)
             symbols_processed += 1
