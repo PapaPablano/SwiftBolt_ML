@@ -489,6 +489,63 @@ struct RankedOptionRow: View {
     }
 
     @ViewBuilder
+    private var quoteStack: some View {
+        if let bid = rank.bid, let ask = rank.ask {
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("Bid / Ask")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text("$\(String(format: "%.2f", bid))")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.green)
+                    Text("/")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.secondary)
+                    Text("$\(String(format: "%.2f", ask))")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.red)
+                }
+                if let label = quoteAgeLabel {
+                    Text(label)
+                        .font(.caption2)
+                        .foregroundStyle(quoteAgeColor)
+                }
+            }
+        } else if let mark = rank.derivedMark {
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("Mid (cached)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text("$\(String(format: "%.2f", mark))")
+                    .font(.subheadline.bold())
+                if let label = quoteAgeLabel {
+                    Text(label)
+                        .font(.caption2)
+                        .foregroundStyle(quoteAgeColor)
+                }
+            }
+        } else {
+            Text("No quote")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var quoteAgeLabel: String? {
+        guard let _ = rank.markAgeSeconds else { return nil }
+        if let secs = rank.markAgeSeconds, secs > 900 {
+            return "Stale \(rank.markAgeLabel)"
+        }
+        return "Cached \(rank.markAgeLabel)"
+    }
+
+    private var quoteAgeColor: Color {
+        guard let secs = rank.markAgeSeconds else { return .secondary }
+        return secs > 900 ? .orange : .secondary
+    }
+
+    @ViewBuilder
     private func signalBadge(_ signal: String) -> some View {
         let (color, icon) = signalStyle(signal)
         HStack(spacing: 2) {
