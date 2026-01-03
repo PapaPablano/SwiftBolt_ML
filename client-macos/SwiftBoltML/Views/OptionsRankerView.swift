@@ -176,6 +176,34 @@ struct RankerHeader: View {
 
             // Filters
             VStack(spacing: 8) {
+                // Row 0: Entry/Exit Mode Toggle
+                HStack {
+                    Text("Ranking Mode")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+
+                    Picker("", selection: $rankerViewModel.rankingMode) {
+                        Text("Entry").tag(RankingMode.entry)
+                        Text("Exit").tag(RankingMode.exit)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 140)
+
+                    Spacer()
+
+                    // Mode description
+                    Text(rankerViewModel.rankingMode == .entry
+                        ? "Find undervalued contracts to buy"
+                        : "Find contracts with momentum to sell")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .onChange(of: rankerViewModel.rankingMode) { _, _ in
+                    Task {
+                        await rankerViewModel.loadRankings(for: symbol)
+                    }
+                }
+
                 // Row 1: Expiry, Side, Signal
                 HStack {
                     // Expiry filter

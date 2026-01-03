@@ -13,8 +13,9 @@ struct PredictionsView: View {
             Picker("", selection: $selectedTab) {
                 Text("Overview").tag(0)
                 Text("Model Performance").tag(1)
-                Text("Feature Importance").tag(2)
-                Text("Forecast Accuracy").tag(3)
+                Text("Statistical Validation").tag(2)
+                Text("Feature Importance").tag(3)
+                Text("Forecast Accuracy").tag(4)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 24)
@@ -38,8 +39,10 @@ struct PredictionsView: View {
                         case 1:
                             ModelPerformanceTabView(viewModel: viewModel)
                         case 2:
-                            FeatureImportanceTabView()
+                            StatisticalValidationTabView(viewModel: viewModel)
                         case 3:
+                            FeatureImportanceTabView()
+                        case 4:
                             ForecastAccuracyTabView()
                         default:
                             EmptyView()
@@ -511,6 +514,421 @@ struct SymbolPerformanceRow: View {
         case "bearish": return .red
         default: return .orange
         }
+    }
+}
+
+// MARK: - Statistical Validation Tab
+
+struct StatisticalValidationTabView: View {
+    @ObservedObject var viewModel: PredictionsViewModel
+
+    var body: some View {
+        VStack(spacing: 20) {
+            // Core Metrics Section
+            DashboardCard(title: "Core Validation Metrics", icon: "target", iconColor: .red) {
+                VStack(spacing: 0) {
+                    // Header
+                    HStack(spacing: 0) {
+                        Text("Metric")
+                            .frame(width: 120, alignment: .leading)
+                        Text("Answers")
+                            .frame(width: 180, alignment: .leading)
+                        Text("Week")
+                            .frame(width: 50, alignment: .center)
+                        Text("Setup")
+                            .frame(width: 80, alignment: .center)
+                        Text("Target")
+                            .frame(width: 100, alignment: .center)
+                        Spacer()
+                        Text("Current")
+                            .frame(width: 100, alignment: .trailing)
+                    }
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 16)
+                    .background(Color.gray.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                    // Metrics rows
+                    ValidationMetricRow(
+                        metric: "Precision@10",
+                        question: "Are top picks good?",
+                        week: 1,
+                        difficulty: .easy,
+                        target: "75%+",
+                        currentValue: viewModel.validationMetrics?.precisionAt10,
+                        formatter: { String(format: "%.1f%%", $0 * 100) },
+                        isGood: { $0 >= 0.75 }
+                    )
+                    Divider()
+
+                    ValidationMetricRow(
+                        metric: "Win Rate",
+                        question: "% trades profitable?",
+                        week: 1,
+                        difficulty: .easy,
+                        target: "55%+",
+                        currentValue: viewModel.validationMetrics?.winRate,
+                        formatter: { String(format: "%.1f%%", $0 * 100) },
+                        isGood: { $0 >= 0.55 }
+                    )
+                    Divider()
+
+                    ValidationMetricRow(
+                        metric: "Expectancy",
+                        question: "Profit per trade?",
+                        week: 1,
+                        difficulty: .easy,
+                        target: "+0.5% to +2%",
+                        currentValue: viewModel.validationMetrics?.expectancy,
+                        formatter: { String(format: "%+.2f%%", $0 * 100) },
+                        isGood: { $0 >= 0.005 && $0 <= 0.02 }
+                    )
+                    Divider()
+
+                    ValidationMetricRow(
+                        metric: "Sharpe Ratio",
+                        question: "Risk-adjusted return?",
+                        week: 2,
+                        difficulty: .medium,
+                        target: "1.5+",
+                        currentValue: viewModel.validationMetrics?.sharpeRatio,
+                        formatter: { String(format: "%.2f", $0) },
+                        isGood: { $0 >= 1.5 }
+                    )
+                    Divider()
+
+                    ValidationMetricRow(
+                        metric: "Kendall Tau",
+                        question: "Rank → Profit correlation?",
+                        week: 2,
+                        difficulty: .medium,
+                        target: "0.30+",
+                        currentValue: viewModel.validationMetrics?.kendallTau,
+                        formatter: { String(format: "%.3f", $0) },
+                        isGood: { $0 >= 0.30 }
+                    )
+                    Divider()
+
+                    ValidationMetricRow(
+                        metric: "Monte Carlo",
+                        question: "Real edge or luck?",
+                        week: 2,
+                        difficulty: .hard,
+                        target: "<5% luck",
+                        currentValue: viewModel.validationMetrics?.monteCarloLuck,
+                        formatter: { String(format: "%.1f%% luck", $0 * 100) },
+                        isGood: { $0 < 0.05 }
+                    )
+                    Divider()
+
+                    ValidationMetricRow(
+                        metric: "t-test p-value",
+                        question: "Statistically significant?",
+                        week: 3,
+                        difficulty: .hard,
+                        target: "<0.05",
+                        currentValue: viewModel.validationMetrics?.tTestPValue,
+                        formatter: { String(format: "%.4f", $0) },
+                        isGood: { $0 < 0.05 }
+                    )
+                }
+                .padding(.top, 8)
+            }
+
+            // Visual Summary Cards
+            HStack(spacing: 16) {
+                ValidationSummaryCard(
+                    title: "Model Edge",
+                    subtitle: "vs Random",
+                    value: viewModel.validationMetrics?.modelEdge ?? 0,
+                    target: 0.10,
+                    color: .blue
+                )
+
+                ValidationSummaryCard(
+                    title: "Confidence",
+                    subtitle: "Calibration",
+                    value: viewModel.validationMetrics?.confidenceCalibration ?? 0,
+                    target: 0.90,
+                    color: .purple
+                )
+
+                ValidationSummaryCard(
+                    title: "Consistency",
+                    subtitle: "Across Symbols",
+                    value: viewModel.validationMetrics?.consistency ?? 0,
+                    target: 0.70,
+                    color: .green
+                )
+
+                ValidationSummaryCard(
+                    title: "Robustness",
+                    subtitle: "Out-of-Sample",
+                    value: viewModel.validationMetrics?.robustness ?? 0,
+                    target: 0.60,
+                    color: .orange
+                )
+            }
+            .frame(height: 140)
+
+            // Implementation Levels
+            DashboardCard(title: "Implementation Levels", icon: "slider.horizontal.3", iconColor: .blue) {
+                HStack(alignment: .top, spacing: 16) {
+                    ImplementationLevelCard(
+                        level: 1,
+                        title: "Basic",
+                        description: "Win rate, Precision@10, Expectancy",
+                        status: .complete,
+                        color: .green
+                    )
+
+                    ImplementationLevelCard(
+                        level: 2,
+                        title: "Intermediate",
+                        description: "Sharpe Ratio, Kendall Tau, Monte Carlo",
+                        status: .inProgress,
+                        color: .orange
+                    )
+
+                    ImplementationLevelCard(
+                        level: 3,
+                        title: "Advanced",
+                        description: "t-test, Walk-forward, Regime analysis",
+                        status: .planned,
+                        color: .gray
+                    )
+                }
+                .padding(.top, 8)
+            }
+        }
+    }
+}
+
+// MARK: - Validation Metric Row
+
+enum MetricDifficulty {
+    case easy, medium, hard
+
+    var stars: Int {
+        switch self {
+        case .easy: return 1
+        case .medium: return 2
+        case .hard: return 3
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .easy: return "Easy"
+        case .medium: return "Medium"
+        case .hard: return "Hard"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .easy: return .green
+        case .medium: return .orange
+        case .hard: return .red
+        }
+    }
+}
+
+struct ValidationMetricRow<T: BinaryFloatingPoint>: View {
+    let metric: String
+    let question: String
+    let week: Int
+    let difficulty: MetricDifficulty
+    let target: String
+    let currentValue: T?
+    let formatter: (T) -> String
+    let isGood: (T) -> Bool
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text(metric)
+                .font(.subheadline.bold())
+                .frame(width: 120, alignment: .leading)
+
+            Text(question)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 180, alignment: .leading)
+
+            Text("\(week)")
+                .font(.caption)
+                .frame(width: 50, alignment: .center)
+
+            // Difficulty stars
+            HStack(spacing: 2) {
+                ForEach(0..<difficulty.stars, id: \.self) { _ in
+                    Image(systemName: "star.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.yellow)
+                }
+                Text(difficulty.label)
+                    .font(.caption2)
+                    .foregroundStyle(difficulty.color)
+            }
+            .frame(width: 80, alignment: .center)
+
+            Text(target)
+                .font(.caption.bold())
+                .foregroundStyle(.blue)
+                .frame(width: 100, alignment: .center)
+
+            Spacer()
+
+            // Current value
+            if let value = currentValue {
+                let good = isGood(value)
+                HStack(spacing: 4) {
+                    Image(systemName: good ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .foregroundStyle(good ? .green : .red)
+                        .font(.caption)
+                    Text(formatter(value))
+                        .font(.system(.caption, design: .monospaced).bold())
+                        .foregroundStyle(good ? .green : .red)
+                }
+                .frame(width: 100, alignment: .trailing)
+            } else {
+                Text("—")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 100, alignment: .trailing)
+            }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+    }
+}
+
+// MARK: - Validation Summary Card
+
+struct ValidationSummaryCard: View {
+    let title: String
+    let subtitle: String
+    let value: Double
+    let target: Double
+    let color: Color
+
+    private var isGood: Bool { value >= target }
+    private var percentage: Double { min(value / target, 1.0) }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            // Circular progress
+            ZStack {
+                Circle()
+                    .stroke(color.opacity(0.2), lineWidth: 8)
+
+                Circle()
+                    .trim(from: 0, to: percentage)
+                    .stroke(color, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+
+                VStack(spacing: 0) {
+                    Text("\(Int(value * 100))")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundStyle(isGood ? .green : color)
+                    Text("%")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 70, height: 70)
+
+            VStack(spacing: 2) {
+                Text(title)
+                    .font(.subheadline.bold())
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            // Target indicator
+            HStack(spacing: 4) {
+                Image(systemName: isGood ? "checkmark.circle.fill" : "target")
+                    .font(.caption2)
+                Text("Target: \(Int(target * 100))%")
+                    .font(.caption2)
+            }
+            .foregroundStyle(isGood ? .green : .secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+// MARK: - Implementation Level Card
+
+enum ImplementationStatus {
+    case complete, inProgress, planned
+
+    var label: String {
+        switch self {
+        case .complete: return "Complete"
+        case .inProgress: return "In Progress"
+        case .planned: return "Planned"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .complete: return "checkmark.circle.fill"
+        case .inProgress: return "clock.fill"
+        case .planned: return "calendar"
+        }
+    }
+}
+
+struct ImplementationLevelCard: View {
+    let level: Int
+    let title: String
+    let description: String
+    let status: ImplementationStatus
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Level \(level)")
+                    .font(.caption.bold())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(color)
+                    .clipShape(Capsule())
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Image(systemName: status.icon)
+                        .font(.caption2)
+                    Text(status.label)
+                        .font(.caption2)
+                }
+                .foregroundStyle(color)
+            }
+
+            Text(title)
+                .font(.headline)
+
+            Text(description)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+
+            Spacer()
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
 

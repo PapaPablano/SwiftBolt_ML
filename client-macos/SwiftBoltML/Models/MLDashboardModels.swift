@@ -8,6 +8,7 @@ struct MLDashboardResponse: Decodable {
     let symbolPerformance: [SymbolPerformance]
     let featureStats: [FeatureStats]
     let confidenceDistribution: ConfidenceDistribution
+    let validationMetrics: ValidationMetrics?
 
     enum CodingKeys: String, CodingKey {
         case overview
@@ -15,6 +16,7 @@ struct MLDashboardResponse: Decodable {
         case symbolPerformance = "symbolPerformance"
         case featureStats = "featureStats"
         case confidenceDistribution = "confidenceDistribution"
+        case validationMetrics = "validationMetrics"
     }
 }
 
@@ -178,5 +180,42 @@ struct ConfidenceDistribution: Decodable {
 
     var lowPct: Double {
         total > 0 ? Double(low) / Double(total) : 0
+    }
+}
+
+// MARK: - Validation Metrics
+
+struct ValidationMetrics: Decodable {
+    // Core metrics (Week 1 - Easy)
+    let precisionAt10: Double?
+    let winRate: Double?
+    let expectancy: Double?
+
+    // Intermediate metrics (Week 2 - Medium)
+    let sharpeRatio: Double?
+    let kendallTau: Double?
+    let monteCarloLuck: Double?
+
+    // Advanced metrics (Week 3 - Hard)
+    let tTestPValue: Double?
+
+    // Summary metrics
+    let modelEdge: Double?
+    let confidenceCalibration: Double?
+    let consistency: Double?
+    let robustness: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case precisionAt10 = "precision_at_10"
+        case winRate = "win_rate"
+        case expectancy
+        case sharpeRatio = "sharpe_ratio"
+        case kendallTau = "kendall_tau"
+        case monteCarloLuck = "monte_carlo_luck"
+        case tTestPValue = "t_test_p_value"
+        case modelEdge = "model_edge"
+        case confidenceCalibration = "confidence_calibration"
+        case consistency
+        case robustness
     }
 }

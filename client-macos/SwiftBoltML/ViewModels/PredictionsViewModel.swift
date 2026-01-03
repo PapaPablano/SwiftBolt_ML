@@ -31,6 +31,10 @@ class PredictionsViewModel: ObservableObject {
         dashboardData?.confidenceDistribution
     }
 
+    var validationMetrics: ValidationMetrics? {
+        dashboardData?.validationMetrics
+    }
+
     // Grouped features by category
     var featuresByCategory: [String: [FeatureStats]] {
         Dictionary(grouping: featureStats, by: { $0.category })

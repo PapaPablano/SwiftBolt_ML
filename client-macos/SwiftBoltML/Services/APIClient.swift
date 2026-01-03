@@ -83,6 +83,25 @@ actor APIClient {
         // Debug: print raw response
         if let jsonString = String(data: data, encoding: .utf8) {
             print("[DEBUG] API Response body: \(jsonString.prefix(500))")
+            #if DEBUG
+            if let urlString = request.url?.absoluteString, urlString.contains("/ml-dashboard") {
+                do {
+                    if let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        let hasValidation = obj["validationMetrics"] != nil
+                        print("[DEBUG] ml-dashboard has validationMetrics: \(hasValidation)")
+                        if let vm = obj["validationMetrics"] as? [String: Any] {
+                            let sharpe = vm["sharpe_ratio"] ?? "nil"
+                            let kendall = vm["kendall_tau"] ?? "nil"
+                            let ttest = vm["t_test_p_value"] ?? "nil"
+                            let mc = vm["monte_carlo_luck"] ?? "nil"
+                            print("[DEBUG] validationMetrics(sharpe_ratio=\(sharpe), kendall_tau=\(kendall), monte_carlo_luck=\(mc), t_test_p_value=\(ttest))")
+                        }
+                    }
+                } catch {
+                    print("[DEBUG] ml-dashboard JSON parse error: \(error)")
+                }
+            }
+            #endif
         }
 
         do {

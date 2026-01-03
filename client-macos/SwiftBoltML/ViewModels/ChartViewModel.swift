@@ -633,13 +633,12 @@ final class ChartViewModel: ObservableObject {
             let response = try await APIClient.shared.fetchQuotes(symbols: [symbol.ticker])
             marketState = response.marketState
             if let quote = response.quotes.first {
-                let timestamp = isoDateFormatter.date(from: quote.lastTradeTime) ?? Date()
                 liveQuote = LiveQuote(
                     symbol: quote.symbol,
                     last: quote.last,
                     change: quote.change,
                     changePercent: quote.changePercentage,
-                    timestamp: timestamp
+                    timestamp: quote.lastTradeTime
                 )
             }
         } catch {
