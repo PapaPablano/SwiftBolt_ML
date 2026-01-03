@@ -41,6 +41,8 @@ class OptionsRankerViewModel: ObservableObject {
     @Published var liveQuotes: [String: OptionContractQuote] = [:]
     @Published var lastQuoteRefresh: Date?
     @Published var isRefreshingQuotes: Bool = false
+    @Published var minPriceInput: String = ""
+    @Published var maxPriceInput: String = ""
 
     // GA Strategy
     @Published var gaStrategy: GAStrategy?
@@ -57,8 +59,20 @@ class OptionsRankerViewModel: ObservableObject {
         case unavailable  // No data exists
     }
 
+    private func parsePrice(_ input: String) -> Double? {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let sanitized = trimmed
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: "")
+        return Double(sanitized)
+    }
+
     var filteredRankings: [OptionRank] {
-        rankings
+        let minPrice = parsePrice(minPriceInput)
+        let maxPrice = parsePrice(maxPriceInput)
+
+        return rankings
             .filter { rank in
                 // Score filter using effective composite rank (0-100)
                 let score = rank.effectiveCompositeRank / 100
@@ -82,6 +96,25 @@ class OptionsRankerViewModel: ObservableObject {
                 case .greeks:
                     return rank.signalGreeks == true
                 }
+            }
+            .filter { rank in
+                guard minPrice != nil || maxPrice != nil else {
+                    return true
+                }
+
+                guard let price = rank.derivedMark ?? rank.mark ?? rank.lastPrice else {
+                    return false
+                }
+
+                if let minPrice {
+                    guard price >= minPrice else { return false }
+                }
+
+                if let maxPrice {
+                    guard price <= maxPrice else { return false }
+                }
+
+                return true
             }
             .sorted { lhs, rhs in
                 switch sortOption {
@@ -236,6 +269,11 @@ class OptionsRankerViewModel: ObservableObject {
 
     func setUseGAFilter(_ enabled: Bool) {
         useGAFilter = enabled
+    }
+
+    func clearPriceFilters() {
+        minPriceInput = ""
+        maxPriceInput = ""
     }
 
     // MARK: - GA Strategy

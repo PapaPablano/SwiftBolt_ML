@@ -101,8 +101,8 @@ struct AllContractsView: View {
                     ForEach(rankerViewModel.filteredRankings) { rank in
                         RankedOptionRow(
                             rank: rank,
-                            symbol: symbol,
-                            liveQuote: rankerViewModel.liveQuotes[rank.contractSymbol]
+                            liveQuote: rankerViewModel.liveQuotes[rank.contractSymbol],
+                            symbol: symbol
                         )
                             .padding(.horizontal)
                             .onTapGesture {
@@ -313,6 +313,35 @@ struct RankerHeader: View {
                             .tint(.purple)
                     }
                 }
+
+                // Row 3: Price range filter
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Price Range")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Clear") {
+                            rankerViewModel.clearPriceFilters()
+                        }
+                        .font(.caption2)
+                        .buttonStyle(.borderless)
+                        .disabled(rankerViewModel.minPriceInput.isEmpty && rankerViewModel.maxPriceInput.isEmpty)
+                    }
+
+                    HStack(spacing: 8) {
+                        TextField("Min $", text: $rankerViewModel.minPriceInput)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 80)
+
+                        Text("–")
+                            .foregroundStyle(.secondary)
+
+                        TextField("Max $", text: $rankerViewModel.maxPriceInput)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 80)
+                    }
+                }
             }
             .padding(.horizontal)
             .padding(.bottom, 12)
@@ -409,6 +438,16 @@ struct RankedOptionRow: View {
                         .background(rank.side == .call ? Color.green.opacity(0.2) : Color.red.opacity(0.2))
                         .foregroundStyle(rank.side == .call ? .green : .red)
                         .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                    if let dte = rank.daysToExpiry {
+                        Text("DTE \(dte)")
+                            .font(.caption2.bold())
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.accentColor.opacity(0.15))
+                            .foregroundStyle(.secondary)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
 
                     // Signal badges
                     ForEach(rank.activeSignals, id: \.self) { signal in

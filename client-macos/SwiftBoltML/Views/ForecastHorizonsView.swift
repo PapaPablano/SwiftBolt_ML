@@ -18,6 +18,7 @@ struct ForecastHorizonsView: View {
                 target: firstPoint.value,
                 currentPrice: currentPrice
             )
+            let timelinePosition = ForecastDisplayData.tradingDayEstimate(for: series.horizon)
             return ForecastDisplayData(
                 horizon: series.horizon,
                 target: firstPoint.value,
@@ -29,12 +30,11 @@ struct ForecastHorizonsView: View {
                 deltaPct: ForecastDisplayData.deltaPct(
                     target: firstPoint.value,
                     currentPrice: currentPrice
-                )
+                ),
+                timelinePosition: timelinePosition
             )
         }
-        .sorted { lhs, rhs in
-            ForecastDisplayData.sortIndex(for: lhs.horizon) < ForecastDisplayData.sortIndex(for: rhs.horizon)
-        }
+        .sorted { $0.timelinePosition < $1.timelinePosition }
     }
 
     private var bestSeries: ForecastDisplayData? {
@@ -43,6 +43,16 @@ struct ForecastHorizonsView: View {
 
     private var longestHorizonLabel: String? {
         displaySeries.last?.horizon.uppercased()
+    }
+
+    private var horizonCountText: String? {
+        let count = displaySeries.count
+        return count > 0 ? "\(count) horizons" : nil
+    }
+
+    private var longRangeCount: Int {
+        let monthlyThreshold = ForecastDisplayData.tradingDayEstimate(for: "1m")
+        return displaySeries.filter { $0.timelinePosition >= monthlyThreshold }.count
     }
 
     private var minLower: Double {
@@ -152,13 +162,33 @@ struct ForecastHorizonsView: View {
                 }
             }
 
-            if let longest = longestHorizonLabel {
-                Text("Longest \(longest)")
-                    .font(.caption2.bold())
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Color.white.opacity(0.1))
-                    .clipShape(Capsule())
+            HStack(spacing: 6) {
+                if let longest = longestHorizonLabel {
+                    Text("Longest \(longest)")
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.1))
+                        .clipShape(Capsule())
+                }
+
+                if let countText = horizonCountText {
+                    Text(countText)
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Capsule())
+                }
+
+                if longRangeCount > 0 {
+                    Text("\(longRangeCount) long-range")
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Capsule())
+                }
             }
 
             Image(systemName: "chevron.down")
@@ -224,6 +254,8 @@ struct ForecastHorizonsView: View {
                     scaleRange: minLower...maxUpper,
                     currentPrice: currentPrice
                 )
+
+                ForecastTimelineView(series: displaySeries)
             }
 
             if let currentPrice {
@@ -467,6 +499,72 @@ private struct HorizonRangeBand: View {
     }
 }
 
+// MARK: - Timeline
+
+private struct ForecastTimelineView: View {
+    let series: [ForecastDisplayData]
+
+    private var minPosition: Double {
+        series.map(\.timelinePosition).min() ?? 0
+    }
+
+    private var maxPosition: Double {
+        series.map(\.timelinePosition).max() ?? 1
+    }
+
+    private var normalizedSeries: [ForecastDisplayData] {
+        let minPos = minPosition
+        let maxPos = max(minPosition + 1, maxPosition)
+        return series.map { data in
+            var normalized = data
+            normalized.normalizedTimelinePosition = (data.timelinePosition - minPos) / (maxPos - minPos)
+            return normalized
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Forecast Timeline")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            GeometryReader { geometry in
+                let width = geometry.size.width
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.08))
+                        .frame(height: 6)
+
+                    ForEach(normalizedSeries) { data in
+                        let x = width * data.normalizedTimelinePosition
+                        VStack(spacing: 4) {
+                            Circle()
+                                .fill(data.color)
+                                .frame(width: 18, height: 18)
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white, lineWidth: 2)
+                                )
+                                .overlay(
+                                    Text(data.shortHorizonLabel)
+                                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                                        .foregroundColor(.white)
+                                )
+                            Text(data.horizon.uppercased())
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .offset(x: max(0, min(x - 9, width - 18)))
+                        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: series.count)
+                    }
+                }
+            }
+            .frame(height: 44)
+        }
+        .padding(.top, 12)
+    }
+}
+
 // MARK: - Sparkline
 
 private struct ForecastSparkline: View {
@@ -551,6 +649,8 @@ private struct ForecastDisplayData: Identifiable {
     let points: [ForecastPoint]
     let color: Color
     let deltaPct: Double?
+    let timelinePosition: Double
+    var normalizedTimelinePosition: Double = 0
 
     var formattedTarget: String {
         guard let target else { return "—" }
@@ -566,6 +666,16 @@ private struct ForecastDisplayData: Identifiable {
         guard let lower, let upper else { return nil }
         let spreadPct = (upper - lower) / ((upper + lower) / 2)
         return String(format: "%.2f%%", spreadPct * 100)
+    }
+
+    var shortHorizonLabel: String {
+        let lowercased = horizon.lowercased()
+        if lowercased.contains("15") { return "15m" }
+        if lowercased.contains("1h") { return "1h" }
+        if lowercased.contains("4h") { return "4h" }
+        if lowercased.contains("1d") { return "1d" }
+        if lowercased.contains("1w") { return "1w" }
+        return horizon.lowercased()
     }
 
     static func confidenceScore(for point: ForecastPoint) -> Int {
@@ -589,15 +699,22 @@ private struct ForecastDisplayData: Identifiable {
         return (target - currentPrice) / currentPrice
     }
 
-    static func sortIndex(for horizon: String) -> Int {
+    static func tradingDayEstimate(for horizon: String) -> Double {
         let normalized = horizon.lowercased()
-        if normalized.contains("15") { return 0 }
-        if normalized.contains("1h") { return 1 }
-        if normalized.contains("4h") { return 2 }
-        if normalized.contains("1d") || normalized.contains("daily") { return 3 }
-        if normalized.contains("1w") || normalized.contains("weekly") { return 4 }
-        if normalized.contains("1m") || normalized.contains("monthly") { return 5 }
-        return 10
+        if normalized.contains("15") { return 0.03 }
+        if normalized.contains("30") { return 0.06 }
+        if normalized.contains("1h") { return 0.1 }
+        if normalized.contains("4h") { return 0.3 }
+        if normalized.contains("1d") || normalized.contains("daily") { return 1 }
+        if normalized.contains("1w") || normalized.contains("weekly") { return 5 }
+        if normalized.contains("1m") || normalized.contains("monthly") { return 21 }
+        if normalized.contains("2m") { return 42 }
+        if normalized.contains("3m") { return 63 }
+        if normalized.contains("4m") { return 84 }
+        if normalized.contains("5m") { return 105 }
+        if normalized.contains("6m") { return 126 }
+        if normalized.contains("1y") || normalized.contains("12m") { return 252 }
+        return 250
     }
 }
 
