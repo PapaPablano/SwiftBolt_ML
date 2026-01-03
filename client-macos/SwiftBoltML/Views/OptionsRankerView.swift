@@ -383,10 +383,7 @@ struct RankedOptionRow: View {
 
                     Spacer()
 
-                    if let mark = rank.derivedMark {
-                        Text("$\(String(format: "%.2f", mark))")
-                            .font(.subheadline.bold())
-                    }
+                    quoteStack
                 }
 
                 HStack(spacing: 12) {
