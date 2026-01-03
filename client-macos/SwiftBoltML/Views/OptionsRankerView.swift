@@ -462,7 +462,7 @@ struct RankedOptionRow: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         if let dte = rank.daysToExpiry {
-                            metricBlock(title: "DTE", value: "\(dte)d", systemImage: "calendar")
+                            dteMetricChip(dte: dte)
                         }
                         if let ivRank = rank.ivRank {
                             metricBlock(title: "IV Rank", value: "\(Int(ivRank))%", systemImage: "chart.bar.fill")
@@ -641,6 +641,21 @@ struct RankedOptionRow: View {
                 .font(.body.bold())
                 .foregroundStyle(.primary)
         }
+    }
+
+    private func dteMetricChip(dte: Int) -> some View {
+        HStack(spacing: 4) {
+            Text("DTE:")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text("\(dte)")
+                .font(.body.bold().monospacedDigit())
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.accentColor.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
