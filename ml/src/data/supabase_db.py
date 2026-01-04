@@ -1022,6 +1022,379 @@ class SupabaseDatabase:
             )
             return None
 
+    # ========================================================================
+    # INTRADAY CALIBRATION METHODS
+    # ========================================================================
+
+    def upsert_intraday_forecast(
+        self,
+        symbol_id: str,
+        symbol: str,
+        horizon: str,
+        timeframe: str,
+        overall_label: str,
+        confidence: float,
+        target_price: float,
+        current_price: float,
+        supertrend_component: float,
+        sr_component: float,
+        ensemble_component: float,
+        supertrend_direction: str,
+        ensemble_label: str,
+        layers_agreeing: int,
+        expires_at: str,
+    ) -> str | None:
+        """
+        Insert an intraday forecast for weight calibration.
+
+        Args:
+            symbol_id: UUID of the symbol
+            symbol: Stock ticker
+            horizon: '15m' or '1h'
+            timeframe: 'm15' or 'h1'
+            overall_label: Predicted direction
+            confidence: Prediction confidence
+            target_price: Predicted target price
+            current_price: Current price at forecast time
+            supertrend_component: SuperTrend component value
+            sr_component: S/R component value
+            ensemble_component: Ensemble ML component value
+            supertrend_direction: SuperTrend direction
+            ensemble_label: Ensemble predicted label
+            layers_agreeing: Number of agreeing layers
+            expires_at: When forecast expires (ISO string)
+
+        Returns:
+            Forecast UUID if successful, None otherwise
+        """
+        try:
+            forecast_data = {
+                "symbol_id": symbol_id,
+                "symbol": symbol.upper(),
+                "horizon": horizon,
+                "timeframe": timeframe,
+                "overall_label": overall_label,
+                "confidence": confidence,
+                "target_price": target_price,
+                "current_price": current_price,
+                "supertrend_component": supertrend_component,
+                "sr_component": sr_component,
+                "ensemble_component": ensemble_component,
+                "supertrend_direction": supertrend_direction,
+                "ensemble_label": ensemble_label,
+                "layers_agreeing": layers_agreeing,
+                "expires_at": expires_at,
+            }
+
+            response = (
+                self.client.table("ml_forecasts_intraday")
+                .insert(forecast_data)
+                .execute()
+            )
+
+            if response.data:
+                forecast_id = response.data[0]["id"]
+                logger.debug(
+                    "Saved intraday %s forecast for %s: %s",
+                    horizon,
+                    symbol,
+                    overall_label,
+                )
+                return forecast_id
+            return None
+
+        except Exception as e:
+            logger.error(
+                "Error upserting intraday forecast for %s: %s",
+                symbol,
+                e,
+            )
+            return None
+
+    def get_pending_intraday_evaluations(
+        self,
+        horizon: str | None = None,
+    ) -> list[dict]:
+        """
+        Get intraday forecasts that have expired and need evaluation.
+
+        Args:
+            horizon: Optional filter for '15m' or '1h'
+
+        Returns:
+            List of forecast dicts awaiting evaluation
+        """
+        try:
+            response = self.client.rpc(
+                "get_pending_intraday_evaluations",
+                {"p_horizon": horizon},
+            ).execute()
+
+            return response.data or []
+
+        except Exception as e:
+            logger.error("Error fetching pending intraday evaluations: %s", e)
+            return []
+
+    def save_intraday_evaluation(
+        self,
+        forecast_id: str,
+        symbol_id: str,
+        symbol: str,
+        horizon: str,
+        predicted_label: str,
+        predicted_price: float,
+        predicted_confidence: float,
+        realized_price: float,
+        realized_return: float,
+        realized_label: str,
+        direction_correct: bool,
+        price_error: float,
+        price_error_pct: float,
+        supertrend_direction_correct: bool,
+        sr_containment: bool,
+        ensemble_direction_correct: bool,
+        forecast_created_at: str,
+    ) -> bool:
+        """
+        Save an intraday forecast evaluation result.
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            eval_data = {
+                "forecast_id": forecast_id,
+                "symbol_id": symbol_id,
+                "symbol": symbol.upper(),
+                "horizon": horizon,
+                "predicted_label": predicted_label,
+                "predicted_price": predicted_price,
+                "predicted_confidence": predicted_confidence,
+                "realized_price": realized_price,
+                "realized_return": realized_return,
+                "realized_label": realized_label,
+                "direction_correct": direction_correct,
+                "price_error": price_error,
+                "price_error_pct": price_error_pct,
+                "supertrend_direction_correct": supertrend_direction_correct,
+                "sr_containment": sr_containment,
+                "ensemble_direction_correct": ensemble_direction_correct,
+                "forecast_created_at": forecast_created_at,
+            }
+
+            self.client.table("ml_forecast_evaluations_intraday").insert(
+                eval_data
+            ).execute()
+
+            logger.debug(
+                "Saved intraday evaluation for %s %s: correct=%s",
+                symbol,
+                horizon,
+                direction_correct,
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                "Error saving intraday evaluation for %s: %s",
+                symbol,
+                e,
+            )
+            return False
+
+    def get_intraday_calibration_stats(
+        self,
+        symbol_id: str,
+        lookback_hours: int = 72,
+    ) -> dict | None:
+        """
+        Get aggregated stats for intraday calibration.
+
+        Args:
+            symbol_id: UUID of the symbol
+            lookback_hours: Hours of history to consider
+
+        Returns:
+            Dict with per-horizon accuracy stats
+        """
+        try:
+            response = self.client.rpc(
+                "get_intraday_calibration_data",
+                {
+                    "p_symbol_id": symbol_id,
+                    "p_lookback_hours": lookback_hours,
+                },
+            ).execute()
+
+            if not response.data:
+                return None
+
+            return {row["horizon"]: row for row in response.data}
+
+        except Exception as e:
+            logger.error(
+                "Error fetching intraday calibration stats: %s",
+                e,
+            )
+            return None
+
+    def get_intraday_evaluations_for_calibration(
+        self,
+        symbol_id: str,
+        lookback_hours: int = 72,
+    ) -> pd.DataFrame:
+        """
+        Get raw intraday evaluation data for weight optimization.
+
+        Args:
+            symbol_id: UUID of the symbol
+            lookback_hours: Hours of history to fetch
+
+        Returns:
+            DataFrame with evaluation data and component values
+        """
+        try:
+            response = self.client.rpc(
+                "get_intraday_evaluations_for_calibration",
+                {
+                    "p_symbol_id": symbol_id,
+                    "p_lookback_hours": lookback_hours,
+                },
+            ).execute()
+
+            if not response.data:
+                return pd.DataFrame()
+
+            df = pd.DataFrame(response.data)
+            df["evaluated_at"] = pd.to_datetime(df["evaluated_at"])
+            return df
+
+        except Exception as e:
+            logger.error(
+                "Error fetching intraday evaluations for calibration: %s",
+                e,
+            )
+            return pd.DataFrame()
+
+    def update_symbol_weights_from_intraday(
+        self,
+        symbol_id: str,
+        horizon: str,
+        supertrend_weight: float,
+        sr_weight: float,
+        ensemble_weight: float,
+        sample_count: int,
+        accuracy: float,
+    ) -> bool:
+        """
+        Update symbol model weights with intraday-calibrated values.
+
+        Args:
+            symbol_id: UUID of the symbol
+            horizon: Forecast horizon
+            supertrend_weight: Calibrated SuperTrend weight
+            sr_weight: Calibrated S/R weight
+            ensemble_weight: Calibrated ensemble weight
+            sample_count: Number of samples used for calibration
+            accuracy: Achieved accuracy with these weights
+
+        Returns:
+            True if successful
+        """
+        try:
+            weight_data = {
+                "symbol_id": symbol_id,
+                "horizon": horizon,
+                "synth_weights": {
+                    "layer_weights": {
+                        "supertrend_component": supertrend_weight,
+                        "sr_component": sr_weight,
+                        "ensemble_component": ensemble_weight,
+                    }
+                },
+                "calibration_source": "intraday",
+                "intraday_sample_count": sample_count,
+                "intraday_accuracy": accuracy,
+                "last_updated": pd.Timestamp.now().isoformat(),
+            }
+
+            # Upsert - update if exists, insert if new
+            self.client.table("symbol_model_weights").upsert(
+                weight_data,
+                on_conflict="symbol_id,horizon",
+            ).execute()
+
+            logger.info(
+                "Updated symbol weights for %s %s from intraday: "
+                "ST=%.2f, SR=%.2f, ML=%.2f (n=%d, acc=%.1f%%)",
+                symbol_id,
+                horizon,
+                supertrend_weight,
+                sr_weight,
+                ensemble_weight,
+                sample_count,
+                accuracy * 100,
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                "Error updating symbol weights from intraday: %s",
+                e,
+            )
+            return False
+
+    def get_calibrated_weights(
+        self,
+        symbol_id: str,
+        horizon: str,
+        min_samples: int = 50,
+    ) -> dict | None:
+        """
+        Get intraday-calibrated weights for a symbol if available.
+
+        Args:
+            symbol_id: UUID of the symbol
+            horizon: Forecast horizon
+            min_samples: Minimum samples required to use calibrated weights
+
+        Returns:
+            Dict with layer weights or None if not enough data
+        """
+        try:
+            response = (
+                self.client.table("symbol_model_weights")
+                .select("synth_weights, calibration_source, intraday_sample_count")
+                .eq("symbol_id", symbol_id)
+                .eq("horizon", horizon)
+                .single()
+                .execute()
+            )
+
+            if not response.data:
+                return None
+
+            data = response.data
+            source = data.get("calibration_source")
+            sample_count = data.get("intraday_sample_count", 0)
+
+            # Only use intraday weights if sufficient samples
+            if source == "intraday" and sample_count >= min_samples:
+                synth_weights = data.get("synth_weights", {})
+                return synth_weights.get("layer_weights")
+
+            return None
+
+        except Exception as e:
+            logger.debug(
+                "No calibrated weights for %s %s: %s",
+                symbol_id,
+                horizon,
+                e,
+            )
+            return None
+
     def close(self) -> None:
         """Close the Supabase client (no-op for REST API)."""
         logger.info("Supabase client closed")

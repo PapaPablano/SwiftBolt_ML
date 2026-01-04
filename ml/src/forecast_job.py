@@ -97,6 +97,51 @@ def _get_symbol_layer_weights(
     symbol_id: str,
     horizon: str,
 ) -> dict[str, float] | None:
+    """
+    Get layer weights for forecast synthesis.
+
+    Priority order:
+    1. Intraday-calibrated weights (if enabled and sufficient samples)
+    2. Daily-trained symbol weights (if enabled)
+    3. None (uses default weights)
+    """
+    # === Priority 1: Intraday-calibrated weights ===
+    if settings.enable_intraday_calibration:
+        try:
+            intraday_min = settings.intraday_calibration_min_samples
+        except Exception:
+            intraday_min = 50
+
+        calibrated = db.get_calibrated_weights(
+            symbol_id=symbol_id,
+            horizon=horizon,
+            min_samples=intraday_min,
+        )
+
+        if calibrated is not None:
+            # Weights already in correct format from DB
+            # (supertrend_component, sr_component, ensemble_component)
+            out = {}
+            for k in ("supertrend_component", "sr_component", "ensemble_component"):
+                v = calibrated.get(k)
+                if v is not None:
+                    try:
+                        out[k] = float(v)
+                    except (TypeError, ValueError):
+                        continue
+
+            if out:
+                s = sum(out.values())
+                if s > 0:
+                    logger.debug(
+                        "Using intraday-calibrated weights for %s %s: %s",
+                        symbol_id,
+                        horizon,
+                        out,
+                    )
+                    return {k: v / s for k, v in out.items()}
+
+    # === Priority 2: Daily-trained symbol weights ===
     if not _bool_env("ENABLE_SYMBOL_WEIGHTS", default=False):
         return None
 

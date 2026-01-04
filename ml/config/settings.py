@@ -51,6 +51,15 @@ class Settings(BaseSettings):
     max_feature_count: int = 40
     feature_selection_cv_splits: int = 5
 
+    # Intraday Weight Calibration Configuration
+    intraday_horizons: list[str] = ["15m", "1h"]
+    intraday_calibration_min_samples: int = 50  # ~2 days of 15min data
+    intraday_lookback_hours: int = 72  # 3 days of historical data for calibration
+    intraday_weight_update_frequency_hours: int = 4
+    intraday_min_bars: int = 100  # Minimum bars for intraday forecasting
+    enable_intraday_calibration: bool = True
+    intraday_symbols: list[str] = ["AAPL", "NVDA", "AMD", "PLTR", "CRWD", "AMZN", "MU"]
+
     # Job Configuration
     symbols_to_process: list[str] = ["AAPL", "SPY", "TSLA", "NVDA", "MSFT"]
     batch_size: int = 10

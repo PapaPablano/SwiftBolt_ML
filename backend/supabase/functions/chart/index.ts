@@ -425,7 +425,37 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    // 7. Return response with ML forecasts
+    // 7. Validate ML forecast label against current price direction
+    // This catches "stale forecasts" where price has moved past the target
+    if (mlSummary && bars.length > 0) {
+      const currentPrice = bars[bars.length - 1].close;
+      const forecast1D = mlSummary.horizons.find(h => h.horizon === "1D");
+
+      if (forecast1D && forecast1D.points.length > 0) {
+        const targetPrice = forecast1D.points[forecast1D.points.length - 1].value;
+        const priceChange = (targetPrice - currentPrice) / currentPrice;
+        const storedLabel = mlSummary.overallLabel?.toLowerCase();
+
+        // Detect label/price mismatch (stale forecast)
+        const isBearishWithHigherTarget = storedLabel === "bearish" && priceChange > 0.005; // >0.5% up
+        const isBullishWithLowerTarget = storedLabel === "bullish" && priceChange < -0.005; // >0.5% down
+
+        if (isBearishWithHigherTarget || isBullishWithLowerTarget) {
+          // Correct the label to match actual price direction
+          const correctedLabel = priceChange > 0 ? "bullish" : priceChange < 0 ? "bearish" : "neutral";
+          console.log(`[Chart] Stale forecast detected for ${ticker}: stored=${storedLabel}, target=${targetPrice.toFixed(2)}, current=${currentPrice.toFixed(2)}, change=${(priceChange*100).toFixed(2)}%, correcting to ${correctedLabel}`);
+
+          mlSummary = {
+            ...mlSummary,
+            overallLabel: correctedLabel,
+            // Reduce confidence for corrected forecasts (signal that data is stale)
+            confidence: Math.max(0.35, mlSummary.confidence * 0.7),
+          };
+        }
+      }
+    }
+
+    // 8. Return response with ML forecasts
     const response: ChartResponse = {
       symbol: ticker,
       assetType: assetType,
