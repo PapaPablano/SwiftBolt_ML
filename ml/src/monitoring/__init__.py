@@ -3,6 +3,7 @@
 from .drift_detector import DriftDetector, DriftResult
 from .confidence_calibrator import ConfidenceCalibrator, CalibrationResult
 from .price_monitor import PriceMonitor, RefreshTrigger, check_price_triggers
+from .forecast_validator import ForecastValidator, ValidationMetrics
 
 
 # Lazy import for forecast_staleness to avoid supabase dependency in tests
@@ -19,6 +20,8 @@ __all__ = [
     "CalibrationResult",
     "PriceMonitor",
     "RefreshTrigger",
+    "ForecastValidator",
+    "ValidationMetrics",
     "check_forecast_staleness",
     "check_price_triggers",
 ]

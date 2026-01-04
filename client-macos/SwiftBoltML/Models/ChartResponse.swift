@@ -109,7 +109,77 @@ struct MLSummary: Codable, Equatable {
     let srLevels: SRLevels?
     let srDensity: Int?
 
-    // Note: API returns camelCase keys, no custom CodingKeys needed
+    // Enhanced ensemble fields (optional - present when ENABLE_ENHANCED_ENSEMBLE=true)
+    let ensembleType: String?  // "RF+GB" or "Enhanced5"
+    let modelAgreement: Double?  // 0-1, how much models agree
+    let trainingStats: TrainingStats?
+
+    var isEnhancedEnsemble: Bool {
+        ensembleType == "Enhanced5"
+    }
+}
+
+// MARK: - Training Stats (Enhanced Ensemble)
+
+struct TrainingStats: Codable, Equatable {
+    // Basic stats
+    let trainingTimeSeconds: Double?
+    let nSamples: Int?
+    let nFeatures: Int?
+
+    // Model weights
+    let rfWeight: Double?
+    let gbWeight: Double?
+    let modelWeights: [String: Double]?
+
+    // Enhanced ensemble specific
+    let enhancedEnsemble: Bool?
+    let nModels: Int?
+    let componentPredictions: [String: String]?
+    let forecastReturn: Double?
+    let forecastVolatility: Double?
+    let ciLower: Double?
+    let ciUpper: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case trainingTimeSeconds = "training_time_seconds"
+        case nSamples = "n_samples"
+        case nFeatures = "n_features"
+        case rfWeight = "rf_weight"
+        case gbWeight = "gb_weight"
+        case modelWeights = "model_weights"
+        case enhancedEnsemble = "enhanced_ensemble"
+        case nModels = "n_models"
+        case componentPredictions = "component_predictions"
+        case forecastReturn = "forecast_return"
+        case forecastVolatility = "forecast_volatility"
+        case ciLower = "ci_lower"
+        case ciUpper = "ci_upper"
+    }
+
+    /// Returns sorted model weights for display
+    var sortedWeights: [(model: String, weight: Double)] {
+        guard let weights = modelWeights else {
+            // Fallback to RF/GB weights
+            var result: [(String, Double)] = []
+            if let rf = rfWeight { result.append(("rf", rf)) }
+            if let gb = gbWeight { result.append(("gb", gb)) }
+            return result.sorted { $0.1 > $1.1 }
+        }
+        return weights.map { ($0.key, $0.value) }.sorted { $0.1 > $1.1 }
+    }
+
+    /// Model display name
+    func displayName(for model: String) -> String {
+        switch model.lowercased() {
+        case "rf": return "Random Forest"
+        case "gb": return "Gradient Boost"
+        case "arima_garch": return "ARIMA-GARCH"
+        case "prophet": return "Prophet"
+        case "lstm": return "LSTM"
+        default: return model.uppercased()
+        }
+    }
 }
 
 struct ForecastSeries: Codable, Equatable {

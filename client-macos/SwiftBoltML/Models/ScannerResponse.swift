@@ -9,6 +9,40 @@ struct TriggerRankingResponse: Codable {
     let jobId: String
     let estimatedCompletionSeconds: Int
     let queuePosition: Int?
+    let ranksInserted: Int?
+    let snapshotsSaved: Int?
+    let durationMs: Int?
+    let mlForecast: RankingMLForecast?
+}
+
+// MARK: - ML Forecast for Options Ranking
+
+struct RankingMLForecast: Codable {
+    let label: String              // "Bullish", "Neutral", "Bearish"
+    let confidence: Double         // 0-1
+    let ensembleType: String?      // "RF+GB" or "Enhanced5"
+    let modelAgreement: Double?    // 0-1
+    let nModels: Int?              // Number of models in ensemble
+    let isFresh: Bool              // Whether forecast is recent enough to use
+    let forecastAgeHours: Double?  // How old the forecast is
+
+    var labelColor: MLTrendLabel? {
+        MLTrendLabel(rawValue: label.lowercased())
+    }
+
+    var isEnhancedEnsemble: Bool {
+        ensembleType == "Enhanced5"
+    }
+
+    var agreementLevel: String {
+        guard let agreement = modelAgreement else { return "Unknown" }
+        switch agreement {
+        case 0.8...: return "Strong"
+        case 0.6..<0.8: return "Moderate"
+        case 0.4..<0.6: return "Mixed"
+        default: return "Weak"
+        }
+    }
 }
 
 // MARK: - ML Trend Label

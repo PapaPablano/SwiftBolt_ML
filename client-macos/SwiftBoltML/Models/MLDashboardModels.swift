@@ -9,6 +9,7 @@ struct MLDashboardResponse: Decodable {
     let featureStats: [FeatureStats]
     let confidenceDistribution: ConfidenceDistribution
     let validationMetrics: ValidationMetrics?
+    let enhancedEnsemble: EnhancedEnsembleMetrics?
 
     enum CodingKeys: String, CodingKey {
         case overview
@@ -17,6 +18,7 @@ struct MLDashboardResponse: Decodable {
         case featureStats = "featureStats"
         case confidenceDistribution = "confidenceDistribution"
         case validationMetrics = "validationMetrics"
+        case enhancedEnsemble = "enhancedEnsemble"
     }
 }
 
@@ -217,5 +219,57 @@ struct ValidationMetrics: Decodable {
         case confidenceCalibration = "confidence_calibration"
         case consistency
         case robustness
+    }
+}
+
+// MARK: - Enhanced Ensemble Metrics (5-Model Architecture)
+
+struct EnhancedEnsembleMetrics: Decodable {
+    let enabled: Bool
+    let nForecasts: Int
+    let nModels: Int
+    let modelWeights: [String: Double]
+    let avgAgreement: Double
+    let modelAccuracy: [String: Double?]
+    let forecastVolatility: Double?
+    let ciCoverage: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case nForecasts = "nForecasts"
+        case nModels = "nModels"
+        case modelWeights = "modelWeights"
+        case avgAgreement = "avgAgreement"
+        case modelAccuracy = "modelAccuracy"
+        case forecastVolatility = "forecastVolatility"
+        case ciCoverage = "ciCoverage"
+    }
+
+    /// Returns model names sorted by weight (highest first)
+    var sortedModelsByWeight: [(name: String, weight: Double)] {
+        modelWeights.map { ($0.key, $0.value) }
+            .sorted { $0.1 > $1.1 }
+    }
+
+    /// Model display names
+    func displayName(for model: String) -> String {
+        switch model.lowercased() {
+        case "rf": return "Random Forest"
+        case "gb": return "Gradient Boost"
+        case "arima_garch", "arima-garch": return "ARIMA-GARCH"
+        case "prophet": return "Prophet"
+        case "lstm": return "LSTM"
+        default: return model.uppercased()
+        }
+    }
+
+    /// Agreement level description
+    var agreementLevel: String {
+        switch avgAgreement {
+        case 0.8...: return "Strong"
+        case 0.6..<0.8: return "Moderate"
+        case 0.4..<0.6: return "Mixed"
+        default: return "Weak"
+        }
     }
 }

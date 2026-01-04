@@ -4,6 +4,7 @@
 //
 // This function fetches options chain data, computes rankings using
 // the Momentum-Value-Greeks framework, and saves results to options_ranks.
+// NOW INTEGRATES ML FORECASTS to bias rankings based on directional signals.
 // Works synchronously - no external Python worker needed.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
@@ -13,6 +14,20 @@ import { getProviderRouter } from "../_shared/providers/factory.ts";
 
 interface TriggerRankingRequest {
   symbol: string;
+}
+
+// ML Forecast data for directional bias
+interface MLForecast {
+  forecast_id: string;
+  overall_label: string;  // "Bullish", "Neutral", "Bearish"
+  confidence: number;     // 0-1
+  ensemble_type: string | null;  // "RF+GB" or "Enhanced5"
+  model_agreement: number | null;  // 0-1
+  forecast_return: number | null;
+  forecast_volatility: number | null;
+  n_models: number | null;
+  forecast_age_hours: number;
+  is_fresh: boolean;
 }
 
 interface OptionContract {
@@ -69,6 +84,10 @@ interface RankedOption {
 const MOMENTUM_WEIGHT = 0.30;
 const VALUE_WEIGHT = 0.35;
 const GREEKS_WEIGHT = 0.35;
+
+// Forecast integration weights
+const FORECAST_DIRECTIONAL_BOOST = 15;  // Points to add/subtract based on direction alignment
+const FORECAST_CONFIDENCE_MULTIPLIER = 1.5;  // Scale boost by confidence
 
 // Thresholds
 const OPTIMAL_DELTA_TARGET = 0.55;
@@ -164,7 +183,36 @@ function calculateGreeksScore(
   return Math.max(0, Math.min(100, greeksScore));
 }
 
-function rankOptions(calls: OptionContract[], puts: OptionContract[]): RankedOption[] {
+// Calculate forecast-based directional adjustment
+function calculateForecastAdjustment(
+  side: "call" | "put",
+  forecast: MLForecast | null
+): number {
+  if (!forecast || !forecast.is_fresh) {
+    return 0;  // No adjustment if forecast is stale or missing
+  }
+
+  const label = forecast.overall_label.toLowerCase();
+  const confidence = forecast.confidence || 0.5;
+  const agreement = forecast.model_agreement || 0.5;
+
+  // Scale boost by confidence and agreement
+  const effectiveStrength = confidence * (0.5 + 0.5 * agreement);
+  const baseBoost = FORECAST_DIRECTIONAL_BOOST * effectiveStrength * FORECAST_CONFIDENCE_MULTIPLIER;
+
+  if (label === "bullish") {
+    // Boost calls, penalize puts
+    return side === "call" ? baseBoost : -baseBoost * 0.5;
+  } else if (label === "bearish") {
+    // Boost puts, penalize calls
+    return side === "put" ? baseBoost : -baseBoost * 0.5;
+  }
+
+  // Neutral - no adjustment
+  return 0;
+}
+
+function rankOptions(calls: OptionContract[], puts: OptionContract[], forecast: MLForecast | null = null): RankedOption[] {
   const allContracts = [
     ...calls.map(c => ({ ...c, side: "call" as const })),
     ...puts.map(p => ({ ...p, side: "put" as const })),
@@ -190,11 +238,15 @@ function rankOptions(calls: OptionContract[], puts: OptionContract[]): RankedOpt
       contract.side, contract.mark
     );
 
-    // Composite rank
-    const compositeRank =
+    // Composite rank with forecast adjustment
+    const baseCompositeRank =
       momentumScore * MOMENTUM_WEIGHT +
       valueScore * VALUE_WEIGHT +
       greeksScore * GREEKS_WEIGHT;
+
+    // Apply forecast directional boost/penalty
+    const forecastAdjustment = calculateForecastAdjustment(contract.side, forecast);
+    const compositeRank = Math.max(0, Math.min(100, baseCompositeRank + forecastAdjustment));
 
     // Generate signals
     const signalDiscount =
@@ -404,8 +456,29 @@ serve(async (req: Request): Promise<Response> => {
       console.warn(`[Ranking Job] Snapshot save failed (non-fatal):`, snapErr);
     }
 
-    // Rank the options
-    const rankedOptions = rankOptions(calls, puts);
+    // Fetch ML forecast for directional bias
+    let mlForecast: MLForecast | null = null;
+    try {
+      const { data: forecastData } = await supabase
+        .rpc("get_forecast_for_options", { p_symbol: symbol, p_horizon: "1D" });
+
+      if (forecastData && forecastData.length > 0) {
+        mlForecast = forecastData[0] as MLForecast;
+        console.log(
+          `[Ranking Job] Using ML forecast: ${mlForecast.overall_label} ` +
+          `(conf=${(mlForecast.confidence * 100).toFixed(0)}%, ` +
+          `fresh=${mlForecast.is_fresh}, ` +
+          `type=${mlForecast.ensemble_type || "RF+GB"})`
+        );
+      } else {
+        console.log(`[Ranking Job] No ML forecast available for ${symbol}`);
+      }
+    } catch (forecastErr) {
+      console.warn(`[Ranking Job] Failed to fetch ML forecast (non-fatal):`, forecastErr);
+    }
+
+    // Rank the options with forecast integration
+    const rankedOptions = rankOptions(calls, puts, mlForecast);
     console.log(`[Ranking Job] Ranked ${rankedOptions.length} options for ${symbol}`);
 
     if (rankedOptions.length === 0) {
@@ -494,6 +567,16 @@ serve(async (req: Request): Promise<Response> => {
         rank: Math.round(o.composite_rank * 10) / 10,
         signals: o.signals,
       })),
+      // ML Forecast integration metadata
+      mlForecast: mlForecast ? {
+        label: mlForecast.overall_label,
+        confidence: mlForecast.confidence,
+        ensembleType: mlForecast.ensemble_type,
+        modelAgreement: mlForecast.model_agreement,
+        nModels: mlForecast.n_models,
+        isFresh: mlForecast.is_fresh,
+        forecastAgeHours: Math.round(mlForecast.forecast_age_hours * 10) / 10,
+      } : null,
     });
 
   } catch (err) {
