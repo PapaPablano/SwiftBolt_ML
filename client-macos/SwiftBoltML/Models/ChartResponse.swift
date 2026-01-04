@@ -192,4 +192,50 @@ struct ForecastPoint: Codable, Equatable {
     let value: Double
     let lower: Double
     let upper: Double
+
+    enum CodingKeys: String, CodingKey {
+        case ts, value, lower, upper
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        // Handle ts as either Int or String
+        if let intValue = try? container.decode(Int.self, forKey: .ts) {
+            ts = intValue
+        } else if let stringValue = try? container.decode(String.self, forKey: .ts) {
+            // Try parsing as integer timestamp
+            if let parsed = Int(stringValue) {
+                ts = parsed
+            } else {
+                // Try parsing as ISO8601 date string
+                let formatter = ISO8601DateFormatter()
+                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                if let date = formatter.date(from: stringValue) {
+                    ts = Int(date.timeIntervalSince1970)
+                } else {
+                    // Try without fractional seconds
+                    formatter.formatOptions = [.withInternetDateTime]
+                    if let date = formatter.date(from: stringValue) {
+                        ts = Int(date.timeIntervalSince1970)
+                    } else {
+                        throw DecodingError.dataCorruptedError(forKey: .ts, in: container, debugDescription: "Cannot parse ts as Int or Date string: \(stringValue)")
+                    }
+                }
+            }
+        } else {
+            throw DecodingError.dataCorruptedError(forKey: .ts, in: container, debugDescription: "ts must be Int or String")
+        }
+
+        value = try container.decode(Double.self, forKey: .value)
+        lower = try container.decode(Double.self, forKey: .lower)
+        upper = try container.decode(Double.self, forKey: .upper)
+    }
+
+    init(ts: Int, value: Double, lower: Double, upper: Double) {
+        self.ts = ts
+        self.value = value
+        self.lower = lower
+        self.upper = upper
+    }
 }

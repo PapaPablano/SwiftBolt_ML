@@ -429,12 +429,14 @@ struct ChartErrorView: View {
 }
 
 struct EmptyChartView: View {
+    var message: String? = nil
+
     var body: some View {
         VStack {
             Image(systemName: "chart.line.flattrend.xyaxis")
                 .font(.largeTitle)
                 .foregroundStyle(.secondary)
-            Text("No chart data available")
+            Text(message ?? "No chart data available")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
