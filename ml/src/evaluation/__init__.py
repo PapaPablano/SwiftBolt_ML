@@ -16,6 +16,17 @@ from .options_ranking_validation import (
     ExecutionRealism,
 )
 
+# Option B Forecast Accuracy Framework
+from ..forecast_validator import (
+    ForecastOutcome,
+    ForecastEvaluation,
+    ForecastAccuracySummary,
+    evaluate_single_forecast,
+    summarize_forecast_accuracy,
+    evaluate_forecast_batch,
+    get_tolerance_for_horizon,
+)
+
 __all__ = [
     # Walk-forward CV
     "WalkForwardCV",
@@ -33,4 +44,12 @@ __all__ = [
     "LeakageDetector",
     "LeakageCheckResult",
     "ExecutionRealism",
+    # Option B Forecast Accuracy Framework
+    "ForecastOutcome",
+    "ForecastEvaluation",
+    "ForecastAccuracySummary",
+    "evaluate_single_forecast",
+    "summarize_forecast_accuracy",
+    "evaluate_forecast_batch",
+    "get_tolerance_for_horizon",
 ]

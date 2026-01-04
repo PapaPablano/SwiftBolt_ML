@@ -9,13 +9,12 @@ import logging
 import sys
 from pathlib import Path
 
-import pandas as pd
-
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings  # noqa: E402
 from src.data.supabase_db import db  # noqa: E402
+from src.forecast_validator import evaluate_single_forecast  # noqa: E402
 
 
 logging.basicConfig(
@@ -28,6 +27,12 @@ logger = logging.getLogger(__name__)
 # Direction thresholds for classifying returns
 BULLISH_THRESHOLD = 0.002  # +0.2% = bullish
 BEARISH_THRESHOLD = -0.002  # -0.2% = bearish
+
+# Intraday horizons map to Option B tolerance (all <3 days = 1%)
+INTRADAY_HORIZON_DAYS = {
+    "15m": 1,  # Treat as 1-day horizon for tolerance calc
+    "1h": 1,   # Treat as 1-day horizon for tolerance calc
+}
 
 
 def classify_return(pct_return: float) -> str:
@@ -112,6 +117,21 @@ def evaluate_forecast(forecast: dict) -> dict | None:
         upper_bound = max(sr_component, st_component, current_price) * 1.02
         sr_containment = lower_bound <= realized_price <= upper_bound
 
+        # Option B Framework evaluation
+        # Get bands from forecast (use sr_component range as proxy)
+        forecast_low = float(forecast.get("lower_band", lower_bound))
+        forecast_high = float(forecast.get("upper_band", upper_bound))
+        horizon_days = INTRADAY_HORIZON_DAYS.get(horizon, 1)
+
+        option_b_eval = evaluate_single_forecast(
+            forecast_low=forecast_low,
+            forecast_mid=predicted_price,
+            forecast_high=forecast_high,
+            horizon_days=horizon_days,
+            actual_close=realized_price,
+            prior_close=current_price,
+        )
+
         return {
             "forecast_id": forecast_id,
             "symbol_id": symbol_id,
@@ -130,6 +150,12 @@ def evaluate_forecast(forecast: dict) -> dict | None:
             "sr_containment": sr_containment,
             "ensemble_direction_correct": ensemble_direction_correct,
             "forecast_created_at": created_at,
+            # Option B Framework fields
+            "option_b_outcome": option_b_eval.outcome.value,
+            "option_b_direction_correct": option_b_eval.direction_correct,
+            "option_b_within_tolerance": option_b_eval.within_tolerance,
+            "option_b_mape": option_b_eval.mape,
+            "option_b_bias": option_b_eval.bias,
         }
 
     except Exception as e:
@@ -190,19 +216,30 @@ def evaluate_pending_forecasts(horizon: str | None = None) -> tuple[int, int]:
             sr_containment=eval_result["sr_containment"],
             ensemble_direction_correct=eval_result["ensemble_direction_correct"],
             forecast_created_at=eval_result["forecast_created_at"],
+            # Option B Framework fields
+            option_b_outcome=eval_result.get("option_b_outcome"),
+            option_b_direction_correct=eval_result.get("option_b_direction_correct"),
+            option_b_within_tolerance=eval_result.get("option_b_within_tolerance"),
+            option_b_mape=eval_result.get("option_b_mape"),
+            option_b_bias=eval_result.get("option_b_bias"),
         )
 
         if saved:
             success_count += 1
-            status = "✓" if eval_result["direction_correct"] else "✗"
+            # Show Option B outcome in log
+            outcome = eval_result.get("option_b_outcome", "N/A")
+            status = "✓" if outcome == "FULL_HIT" else (
+                "◐" if outcome in ("DIRECTIONAL_HIT", "DIRECTIONAL_ONLY") else "✗"
+            )
             logger.info(
-                "%s %s %s: pred=%s actual=%s price_err=%.2f%%",
+                "%s %s %s: %s pred=%s actual=%s MAPE=%.2f%%",
                 status,
                 eval_result["symbol"],
                 eval_result["horizon"],
+                outcome,
                 eval_result["predicted_label"],
                 eval_result["realized_label"],
-                eval_result["price_error_pct"] * 100,
+                eval_result.get("option_b_mape", 0),
             )
         else:
             fail_count += 1

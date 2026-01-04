@@ -1155,6 +1155,11 @@ class SupabaseDatabase:
         sr_containment: bool,
         ensemble_direction_correct: bool,
         forecast_created_at: str,
+        option_b_outcome: str | None = None,
+        option_b_direction_correct: bool | None = None,
+        option_b_within_tolerance: bool | None = None,
+        option_b_mape: float | None = None,
+        option_b_bias: float | None = None,
     ) -> bool:
         """
         Save an intraday forecast evaluation result.
@@ -1182,6 +1187,18 @@ class SupabaseDatabase:
                 "ensemble_direction_correct": ensemble_direction_correct,
                 "forecast_created_at": forecast_created_at,
             }
+            
+            # Add Option B fields if provided
+            if option_b_outcome is not None:
+                eval_data["option_b_outcome"] = option_b_outcome
+            if option_b_direction_correct is not None:
+                eval_data["option_b_direction_correct"] = option_b_direction_correct
+            if option_b_within_tolerance is not None:
+                eval_data["option_b_within_tolerance"] = option_b_within_tolerance
+            if option_b_mape is not None:
+                eval_data["option_b_mape"] = option_b_mape
+            if option_b_bias is not None:
+                eval_data["option_b_bias"] = option_b_bias
 
             self.client.table("ml_forecast_evaluations_intraday").insert(
                 eval_data

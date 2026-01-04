@@ -9,12 +9,324 @@ Tracks:
 
 Edge = (Dir_Acc × 0.35) + (Target_Acc × 0.35) + (Band_Eff × 0.20) + (Conf_Cal × 0.10)
 Target: Overall Edge > 55% (vs 50% coin flip)
+
+Option B Framework (Primary Metric):
+- FULL_HIT: Direction correct AND price within band ± tolerance
+- DIRECTIONAL_HIT: Direction correct AND price within 2x tolerance
+- DIRECTIONAL_ONLY: Direction correct but price beyond 2x tolerance
+- MISS: Direction incorrect
+
+Tolerance by horizon:
+- 1-3 days: ±1% of mid-price
+- 4-10 days: ±2% of mid-price
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from dataclasses import dataclass
+from enum import Enum
 import numpy as np
-from datetime import datetime
+
+
+class ForecastOutcome(Enum):
+    """Four-tier outcome classification for Option B framework."""
+    FULL_HIT = "FULL_HIT"           # Direction ✓ + Price within band ± tolerance
+    DIRECTIONAL_HIT = "DIRECTIONAL_HIT"  # Direction ✓ + Price within 2x tolerance
+    DIRECTIONAL_ONLY = "DIRECTIONAL_ONLY"  # Direction ✓ + Price beyond 2x tolerance
+    MISS = "MISS"                   # Direction ✗
+
+
+@dataclass
+class ForecastEvaluation:
+    """Result of evaluating a single forecast against actual outcome."""
+    outcome: ForecastOutcome
+    direction_correct: bool
+    within_band: bool
+    within_tolerance: bool
+    within_2x_tolerance: bool
+    mape: float  # Mean Absolute Percentage Error
+    bias: float  # forecast - actual (positive = over-forecast)
+    coverage: int  # 1 if within band, 0 otherwise
+    horizon_days: int
+    tolerance_pct: float
+    
+    def to_dict(self) -> Dict:
+        return {
+            "outcome": self.outcome.value,
+            "direction_correct": self.direction_correct,
+            "within_band": self.within_band,
+            "within_tolerance": self.within_tolerance,
+            "within_2x_tolerance": self.within_2x_tolerance,
+            "mape": round(self.mape, 4),
+            "bias": round(self.bias, 4),
+            "coverage": self.coverage,
+            "horizon_days": self.horizon_days,
+            "tolerance_pct": self.tolerance_pct
+        }
+
+
+@dataclass
+class ForecastAccuracySummary:
+    """Aggregated accuracy metrics following Option B framework."""
+    total_forecasts: int
+    directional_accuracy: float  # % direction correct
+    full_hit_rate: float         # % FULL_HIT
+    directional_hit_rate: float  # % DIRECTIONAL_HIT
+    directional_only_rate: float # % DIRECTIONAL_ONLY
+    miss_rate: float             # % MISS
+    mape: float                  # Mean MAPE across all forecasts
+    bias: float                  # Mean bias (systematic over/under)
+    empirical_coverage: float    # % within predicted bands
+    outcome_counts: Dict[str, int]
+    by_horizon: Dict[int, Dict]  # Breakdown by horizon
+    
+    def to_dict(self) -> Dict:
+        return {
+            "total_forecasts": self.total_forecasts,
+            "primary_metrics": {
+                "directional_accuracy": f"{self.directional_accuracy:.1%}",
+                "full_hit_rate": f"{self.full_hit_rate:.1%}",
+            },
+            "outcome_distribution": {
+                "full_hit": f"{self.full_hit_rate:.1%}",
+                "directional_hit": f"{self.directional_hit_rate:.1%}",
+                "directional_only": f"{self.directional_only_rate:.1%}",
+                "miss": f"{self.miss_rate:.1%}",
+            },
+            "diagnostic_metrics": {
+                "mape": f"{self.mape:.2f}%",
+                "bias": f"{self.bias:+.4f}",
+                "empirical_coverage": f"{self.empirical_coverage:.1%}",
+            },
+            "outcome_counts": self.outcome_counts,
+            "by_horizon": self.by_horizon
+        }
+    
+    def get_status(self) -> str:
+        """Return health status based on metrics."""
+        if self.directional_accuracy >= 0.54 and self.full_hit_rate >= 0.42:
+            return "OPTIMAL"
+        elif self.directional_accuracy >= 0.52 and self.full_hit_rate >= 0.35:
+            return "ACCEPTABLE"
+        elif self.directional_accuracy >= 0.50:
+            return "MARGINAL"
+        else:
+            return "DEGRADED"
+
+
+def get_tolerance_for_horizon(horizon_days: int) -> float:
+    """
+    Get tolerance percentage based on forecast horizon.
+    
+    Args:
+        horizon_days: Number of days in forecast horizon
+        
+    Returns:
+        Tolerance as decimal (0.01 = 1%, 0.02 = 2%)
+    """
+    if horizon_days <= 3:
+        return 0.01  # ±1% for 1-3 day horizons
+    else:
+        return 0.02  # ±2% for 4-10 day horizons
+
+
+def evaluate_single_forecast(
+    forecast_low: float,
+    forecast_mid: float,
+    forecast_high: float,
+    horizon_days: int,
+    actual_close: float,
+    prior_close: float
+) -> ForecastEvaluation:
+    """
+    Evaluate a single forecast against actual outcome using Option B framework.
+    
+    Args:
+        forecast_low: Lower band estimate
+        forecast_mid: Mid-point/target estimate
+        forecast_high: Upper band estimate
+        horizon_days: Forecast horizon (1-10 days)
+        actual_close: Realized close price at horizon
+        prior_close: Previous day's close (for direction calculation)
+    
+    Returns:
+        ForecastEvaluation with outcome classification and metrics
+    """
+    # Step 1: Direction evaluation
+    direction_forecast_up = forecast_mid > prior_close
+    direction_actual_up = actual_close > prior_close
+    direction_correct = direction_forecast_up == direction_actual_up
+    
+    # Step 2: Tolerance calculation
+    tolerance = get_tolerance_for_horizon(horizon_days)
+    
+    # Band with tolerance
+    band_low_with_tol = forecast_mid * (1 - tolerance)
+    band_high_with_tol = forecast_mid * (1 + tolerance)
+    
+    # 2x tolerance for directional hit
+    band_low_2x = forecast_mid * (1 - 2 * tolerance)
+    band_high_2x = forecast_mid * (1 + 2 * tolerance)
+    
+    # Step 3: Band evaluation
+    within_original_band = forecast_low <= actual_close <= forecast_high
+    within_tolerance = band_low_with_tol <= actual_close <= band_high_with_tol
+    within_2x_tolerance = band_low_2x <= actual_close <= band_high_2x
+    
+    # Step 4: Outcome classification
+    if direction_correct and within_tolerance:
+        outcome = ForecastOutcome.FULL_HIT
+    elif direction_correct and within_2x_tolerance:
+        outcome = ForecastOutcome.DIRECTIONAL_HIT
+    elif direction_correct:
+        outcome = ForecastOutcome.DIRECTIONAL_ONLY
+    else:
+        outcome = ForecastOutcome.MISS
+    
+    # Step 5: Calculate auxiliary metrics
+    mape = abs(actual_close - forecast_mid) / actual_close * 100 if actual_close != 0 else 0
+    bias = forecast_mid - actual_close
+    coverage = 1 if within_original_band else 0
+    
+    return ForecastEvaluation(
+        outcome=outcome,
+        direction_correct=direction_correct,
+        within_band=within_original_band,
+        within_tolerance=within_tolerance,
+        within_2x_tolerance=within_2x_tolerance,
+        mape=mape,
+        bias=bias,
+        coverage=coverage,
+        horizon_days=horizon_days,
+        tolerance_pct=tolerance * 100
+    )
+
+
+def summarize_forecast_accuracy(
+    evaluations: List[ForecastEvaluation],
+    filter_horizon: Optional[int] = None
+) -> ForecastAccuracySummary:
+    """
+    Aggregate individual forecast evaluations into portfolio metrics.
+    
+    Args:
+        evaluations: List of ForecastEvaluation objects
+        filter_horizon: Optional horizon to filter by (None = all)
+    
+    Returns:
+        ForecastAccuracySummary with aggregated metrics
+    """
+    if filter_horizon is not None:
+        evaluations = [e for e in evaluations if e.horizon_days == filter_horizon]
+    
+    if not evaluations:
+        return ForecastAccuracySummary(
+            total_forecasts=0,
+            directional_accuracy=0.0,
+            full_hit_rate=0.0,
+            directional_hit_rate=0.0,
+            directional_only_rate=0.0,
+            miss_rate=0.0,
+            mape=0.0,
+            bias=0.0,
+            empirical_coverage=0.0,
+            outcome_counts={},
+            by_horizon={}
+        )
+    
+    n = len(evaluations)
+    
+    # Count outcomes
+    outcome_counts = {
+        ForecastOutcome.FULL_HIT.value: 0,
+        ForecastOutcome.DIRECTIONAL_HIT.value: 0,
+        ForecastOutcome.DIRECTIONAL_ONLY.value: 0,
+        ForecastOutcome.MISS.value: 0
+    }
+    for e in evaluations:
+        outcome_counts[e.outcome.value] += 1
+    
+    # Primary metrics
+    directional_accuracy = sum(1 for e in evaluations if e.direction_correct) / n
+    full_hit_rate = outcome_counts[ForecastOutcome.FULL_HIT.value] / n
+    directional_hit_rate = outcome_counts[ForecastOutcome.DIRECTIONAL_HIT.value] / n
+    directional_only_rate = outcome_counts[ForecastOutcome.DIRECTIONAL_ONLY.value] / n
+    miss_rate = outcome_counts[ForecastOutcome.MISS.value] / n
+    
+    # Diagnostic metrics
+    mape = np.mean([e.mape for e in evaluations])
+    bias = np.mean([e.bias for e in evaluations])
+    empirical_coverage = np.mean([e.coverage for e in evaluations])
+    
+    # Breakdown by horizon
+    horizons = set(e.horizon_days for e in evaluations)
+    by_horizon = {}
+    for h in sorted(horizons):
+        h_evals = [e for e in evaluations if e.horizon_days == h]
+        h_n = len(h_evals)
+        if h_n > 0:
+            by_horizon[h] = {
+                "count": h_n,
+                "directional_accuracy": sum(1 for e in h_evals if e.direction_correct) / h_n,
+                "full_hit_rate": sum(1 for e in h_evals if e.outcome == ForecastOutcome.FULL_HIT) / h_n,
+                "mape": np.mean([e.mape for e in h_evals]),
+                "tolerance": get_tolerance_for_horizon(h) * 100
+            }
+    
+    return ForecastAccuracySummary(
+        total_forecasts=n,
+        directional_accuracy=directional_accuracy,
+        full_hit_rate=full_hit_rate,
+        directional_hit_rate=directional_hit_rate,
+        directional_only_rate=directional_only_rate,
+        miss_rate=miss_rate,
+        mape=mape,
+        bias=bias,
+        empirical_coverage=empirical_coverage,
+        outcome_counts=outcome_counts,
+        by_horizon=by_horizon
+    )
+
+
+def evaluate_forecast_batch(forecasts: List[Dict]) -> ForecastAccuracySummary:
+    """
+    Convenience function to evaluate a batch of forecasts.
+    
+    Args:
+        forecasts: List of dicts with:
+            - forecast_low: float
+            - forecast_mid: float (or forecast_target)
+            - forecast_high: float
+            - horizon_days: int (default 1)
+            - actual_close: float
+            - prior_close: float (or actual_open as fallback)
+    
+    Returns:
+        ForecastAccuracySummary with aggregated metrics
+    """
+    evaluations = []
+    
+    for f in forecasts:
+        forecast_low = f.get('forecast_low', f.get('lower_band', 0))
+        forecast_mid = f.get('forecast_mid', f.get('forecast_target', 0))
+        forecast_high = f.get('forecast_high', f.get('upper_band', 0))
+        horizon_days = f.get('horizon_days', 1)
+        actual_close = f.get('actual_close', 0)
+        prior_close = f.get('prior_close', f.get('actual_open', 0))
+        
+        if forecast_mid == 0 or actual_close == 0 or prior_close == 0:
+            continue
+        
+        eval_result = evaluate_single_forecast(
+            forecast_low=forecast_low,
+            forecast_mid=forecast_mid,
+            forecast_high=forecast_high,
+            horizon_days=horizon_days,
+            actual_close=actual_close,
+            prior_close=prior_close
+        )
+        evaluations.append(eval_result)
+    
+    return summarize_forecast_accuracy(evaluations)
 
 
 @dataclass
