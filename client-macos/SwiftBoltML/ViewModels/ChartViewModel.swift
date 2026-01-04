@@ -81,6 +81,15 @@ final class ChartViewModel: ObservableObject {
         chartData?.bars ?? []
     }
 
+    private func scheduleIndicatorRecalculation() {
+        guard !bars.isEmpty else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.recalculateSRIndicators()
+            self.recalculateAIIndicators()
+        }
+    }
+
     deinit {
         liveQuoteTask?.cancel()
     }
@@ -398,7 +407,6 @@ final class ChartViewModel: ObservableObject {
     /// Recalculate all AI indicators (SuperTrend AI, etc.)
     func recalculateAIIndicators() {
         guard !bars.isEmpty else { return }
-
         superTrendAIIndicator.calculate(bars: bars)
     }
 
@@ -476,10 +484,7 @@ final class ChartViewModel: ObservableObject {
                 errorMessage = nil
 
                 // Recalculate S&R indicators with new data
-                recalculateSRIndicators()
-
-                // Recalculate AI indicators (SuperTrend AI)
-                recalculateAIIndicators()
+                scheduleIndicatorRecalculation()
             } catch {
                 guard !Task.isCancelled else {
                     print("[DEBUG] ChartViewModel.loadChart() - CANCELLED (error path)")

@@ -43,10 +43,6 @@ final class AppViewModel: ObservableObject {
             self?.objectWillChange.send()
         }.store(in: &cancellables)
 
-        // Relay searchViewModel changes to trigger AppViewModel updates
-        searchViewModel.objectWillChange.sink { [weak self] _ in
-            self?.objectWillChange.send()
-        }.store(in: &cancellables)
     }
 
     private func handleSymbolChange() {

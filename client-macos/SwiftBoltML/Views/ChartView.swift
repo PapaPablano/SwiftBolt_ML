@@ -108,66 +108,69 @@ struct ChartView: View {
                         await chartViewModel.loadChart()
                     }
                 }
-            } else if let chartData = chartViewModel.chartData, !chartData.bars.isEmpty {
-                // ✅ Always render the chart if we have bars
-                VStack(spacing: 0) {
-                    if let mlSummary = chartData.mlSummary {
-                        let referencePrice = chartViewModel.liveQuote?.last ?? chartData.bars.last?.close
-                        ForecastHorizonsView(
-                            horizons: mlSummary.horizons,
-                            currentPrice: referencePrice,
-                            mlSummary: mlSummary
-                        )
-                        .padding(.horizontal)
-                        .padding(.top, 8)
-                    }
-
-                    AdvancedChartView(
-                        bars: chartData.bars,
-                        sma20: chartViewModel.sma20,
-                        sma50: chartViewModel.sma50,
-                        ema9: chartViewModel.ema9,
-                        ema21: chartViewModel.ema21,
-                        rsi: chartViewModel.rsi,
-                        config: chartViewModel.indicatorConfig,
-                        mlSummary: chartData.mlSummary,
-                        macdLine: chartViewModel.macdLine,
-                        macdSignal: chartViewModel.macdSignal,
-                        macdHistogram: chartViewModel.macdHistogram,
-                        stochasticK: chartViewModel.stochasticK,
-                        stochasticD: chartViewModel.stochasticD,
-                        kdjK: chartViewModel.kdjK,
-                        kdjD: chartViewModel.kdjD,
-                        kdjJ: chartViewModel.kdjJ,
-                        adxLine: chartViewModel.adxLine,
-                        plusDI: chartViewModel.plusDI,
-                        minusDI: chartViewModel.minusDI,
-                        superTrendLine: chartViewModel.superTrendLine,
-                        superTrendTrend: chartViewModel.superTrendTrend,
-                        superTrendStrength: chartViewModel.superTrendStrength,
-                        bollingerUpper: chartViewModel.bollingerUpper,
-                        bollingerMiddle: chartViewModel.bollingerMiddle,
-                        bollingerLower: chartViewModel.bollingerLower,
-                        atr: chartViewModel.atr,
-                        pivotIndicator: chartViewModel.pivotLevelsIndicator,
-                        polyIndicator: chartViewModel.polynomialSRIndicator,
-                        logisticIndicator: chartViewModel.logisticSRIndicator,
-                        superTrendAIIndicator: chartViewModel.superTrendAIIndicator,
-                        superTrendAISignals: chartViewModel.superTrendAISignals
-                    )
-                    .padding()
-                    .id("advanced-chart-\(chartData.symbol)-\(chartData.bars.count)-\(chartData.bars.first?.ts.timeIntervalSince1970 ?? 0)-\(chartData.bars.last?.close ?? 0)")
-
-                    if let latestBar = chartData.bars.last {
-                        OHLCBarView(bar: latestBar)
+            } else if let chartData = chartViewModel.chartData {
+                if chartData.bars.count < 2 {
+                    let message = chartData.bars.isEmpty
+                        ? "No chart data available"
+                        : "Waiting for enough data to plot indicators…"
+                    EmptyChartView(message: message)
+                } else {
+                    VStack(spacing: 0) {
+                        if let mlSummary = chartData.mlSummary {
+                            let referencePrice = chartViewModel.liveQuote?.last ?? chartData.bars.last?.close
+                            ForecastHorizonsView(
+                                horizons: mlSummary.horizons,
+                                currentPrice: referencePrice,
+                                mlSummary: mlSummary
+                            )
                             .padding(.horizontal)
-                            .padding(.bottom)
+                            .padding(.top, 8)
+                        }
+
+                        AdvancedChartView(
+                            bars: chartData.bars,
+                            sma20: chartViewModel.sma20,
+                            sma50: chartViewModel.sma50,
+                            ema9: chartViewModel.ema9,
+                            ema21: chartViewModel.ema21,
+                            rsi: chartViewModel.rsi,
+                            config: chartViewModel.indicatorConfig,
+                            mlSummary: chartData.mlSummary,
+                            macdLine: chartViewModel.macdLine,
+                            macdSignal: chartViewModel.macdSignal,
+                            macdHistogram: chartViewModel.macdHistogram,
+                            stochasticK: chartViewModel.stochasticK,
+                            stochasticD: chartViewModel.stochasticD,
+                            kdjK: chartViewModel.kdjK,
+                            kdjD: chartViewModel.kdjD,
+                            kdjJ: chartViewModel.kdjJ,
+                            adxLine: chartViewModel.adxLine,
+                            plusDI: chartViewModel.plusDI,
+                            minusDI: chartViewModel.minusDI,
+                            superTrendLine: chartViewModel.superTrendLine,
+                            superTrendTrend: chartViewModel.superTrendTrend,
+                            superTrendStrength: chartViewModel.superTrendStrength,
+                            bollingerUpper: chartViewModel.bollingerUpper,
+                            bollingerMiddle: chartViewModel.bollingerMiddle,
+                            bollingerLower: chartViewModel.bollingerLower,
+                            atr: chartViewModel.atr,
+                            pivotIndicator: chartViewModel.pivotLevelsIndicator,
+                            polyIndicator: chartViewModel.polynomialSRIndicator,
+                            logisticIndicator: chartViewModel.logisticSRIndicator,
+                            superTrendAIIndicator: chartViewModel.superTrendAIIndicator,
+                            superTrendAISignals: chartViewModel.superTrendAISignals
+                        )
+                        .padding()
+                        .id("advanced-chart-\(chartData.symbol)-\(chartData.bars.count)-\(chartData.bars.first?.ts.timeIntervalSince1970 ?? 0)-\(chartData.bars.last?.close ?? 0)")
+
+                        if let latestBar = chartData.bars.last {
+                            OHLCBarView(bar: latestBar)
+                                .padding(.horizontal)
+                                .padding(.bottom)
+                        }
                     }
+                    .id("chart-container-\(chartData.symbol)-\(chartData.bars.count)")
                 }
-                .id("chart-container-\(chartData.symbol)-\(chartData.bars.count)")
-            } else if let chartData = chartViewModel.chartData, chartData.bars.isEmpty {
-                // Data loaded, but empty
-                EmptyChartView()
             } else {
                 // No request has been made yet (first launch & no symbol)
                 Color.clear

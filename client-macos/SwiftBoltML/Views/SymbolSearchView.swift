@@ -23,26 +23,30 @@ struct SymbolSearchView: View {
             )
             .padding()
 
-            if !searchViewModel.searchResults.isEmpty {
-                let _ = print("[DEBUG] 🟠 Showing SearchResultsList with \(searchViewModel.searchResults.count) results")
-                SearchResultsList(
-                    results: searchViewModel.searchResults,
-                    onSelect: { symbol in
-                        print("[DEBUG] ========================================")
-                        print("[DEBUG] SymbolSearchView - User tapped symbol")
-                        print("[DEBUG] - Ticker: \(symbol.ticker)")
-                        print("[DEBUG] - Asset Type: \(symbol.assetType)")
-                        print("[DEBUG] - Calling appViewModel.selectSymbol()...")
-                        print("[DEBUG] ========================================")
-                        appViewModel.selectSymbol(symbol)
-                    }
-                )
-            } else if let error = searchViewModel.errorMessage {
-                let _ = print("[DEBUG] 🔴 Showing error banner: \(error)")
-                ErrorBanner(message: error)
-                    .padding(.horizontal)
+            if searchViewModel.isActive {
+                if !searchViewModel.searchResults.isEmpty {
+                    let _ = print("[DEBUG] 🟠 Showing SearchResultsList with \(searchViewModel.searchResults.count) results")
+                    SearchResultsList(
+                        results: searchViewModel.searchResults,
+                        onSelect: { symbol in
+                            print("[DEBUG] ========================================")
+                            print("[DEBUG] SymbolSearchView - User tapped symbol")
+                            print("[DEBUG] - Ticker: \(symbol.ticker)")
+                            print("[DEBUG] - Asset Type: \(symbol.assetType)")
+                            print("[DEBUG] - Calling appViewModel.selectSymbol()...")
+                            print("[DEBUG] ========================================")
+                            appViewModel.selectSymbol(symbol)
+                        }
+                    )
+                } else if let error = searchViewModel.errorMessage {
+                    let _ = print("[DEBUG] 🔴 Showing error banner: \(error)")
+                    ErrorBanner(message: error)
+                        .padding(.horizontal)
+                } else {
+                    let _ = print("[DEBUG] ⚪ No search results, no error - showing nothing")
+                    Color.clear.frame(height: 0)
+                }
             } else {
-                let _ = print("[DEBUG] ⚪ No search results, no error - showing nothing")
                 Color.clear.frame(height: 0)
             }
         }

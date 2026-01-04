@@ -26,6 +26,11 @@ final class SymbolSearchViewModel: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
 
+    var isActive: Bool {
+        let hasQuery = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return hasQuery || isSearching || !searchResults.isEmpty || errorMessage != nil
+    }
+
     private func handleQueryChange(_ query: String) {
         searchTask?.cancel()
 
