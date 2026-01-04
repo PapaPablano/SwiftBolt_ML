@@ -32,6 +32,10 @@ from src.monitoring.confidence_calibrator import (  # noqa: E402
 )
 from src.models.baseline_forecaster import BaselineForecaster  # noqa: E402
 from src.models.ensemble_forecaster import EnsembleForecaster  # noqa: E402
+from src.models.enhanced_ensemble_integration import (  # noqa: E402
+    get_production_ensemble,
+    export_monitoring_metrics,
+)
 from src.strategies.supertrend_ai import SuperTrendAI  # noqa: E402
 from src.forecast_synthesizer import (  # noqa: E402
     ForecastSynthesizer,
@@ -822,8 +826,9 @@ def process_symbol(symbol: str) -> None:
         for horizon in settings.forecast_horizons:
             logger.info(f"Generating {horizon} forecast for {symbol}")
 
-            # Use ensemble forecaster (RF + GB) for better accuracy
+            # Use ensemble forecaster for better accuracy
             use_ensemble = getattr(settings, "use_ensemble_forecaster", True)
+            use_enhanced = _bool_env("ENABLE_ENHANCED_ENSEMBLE", default=False)
 
             if use_ensemble:
                 # Prepare data for ensemble
@@ -833,16 +838,32 @@ def process_symbol(symbol: str) -> None:
                     horizon_days=baseline._parse_horizon(horizon),
                 )
 
-                # Create and train ensemble
-                forecaster = EnsembleForecaster(
-                    horizon=horizon,
-                    symbol_id=symbol_id,
-                )
-                forecaster.train(X, y)
+                # Create and train ensemble (enhanced or basic)
+                if use_enhanced:
+                    # Use new 5-model ensemble with monitoring
+                    forecaster = get_production_ensemble(
+                        horizon=horizon,
+                        symbol_id=symbol_id,
+                    )
+                    forecaster.train(X, y, ohlc_df=df)
+                    logger.info(
+                        "Using enhanced ensemble: %d models",
+                        forecaster.n_models,
+                    )
+                else:
+                    # Use basic RF+GB ensemble
+                    forecaster = EnsembleForecaster(
+                        horizon=horizon,
+                        symbol_id=symbol_id,
+                    )
+                    forecaster.train(X, y)
 
                 # Generate prediction
                 last_features = X.tail(1)
-                ensemble_pred = forecaster.predict(last_features)
+                if use_enhanced:
+                    ensemble_pred = forecaster.predict(last_features, ohlc_df=df)
+                else:
+                    ensemble_pred = forecaster.predict(last_features)
 
                 # Get ensemble probabilities for directional forecasts
                 ensemble_probs = ensemble_pred.get("probabilities", {})
@@ -890,6 +911,14 @@ def process_symbol(symbol: str) -> None:
                     horizon_days,
                 )
 
+                # Determine ensemble type and extract predictions
+                if use_enhanced:
+                    ensemble_type = "Enhanced5"
+                    model_preds = ensemble_pred.get("component_predictions", {})
+                else:
+                    ensemble_type = "RF+GB"
+                    model_preds = {}
+
                 forecast = {
                     "label": synth_result.direction.lower(),
                     "confidence": synth_result.confidence,
@@ -899,7 +928,7 @@ def process_symbol(symbol: str) -> None:
                     "rf_prediction": ensemble_pred.get("rf_prediction"),
                     "gb_prediction": ensemble_pred.get("gb_prediction"),
                     "agreement": ensemble_pred.get("agreement"),
-                    "ensemble_type": "RF+GB",
+                    "ensemble_type": ensemble_type,
                     "backtest": (
                         backtest_metrics.__dict__ if backtest_metrics else None
                     ),
@@ -928,6 +957,18 @@ def process_symbol(symbol: str) -> None:
                 ts["gb_prediction"] = forecast.get("gb_prediction")
                 if lw is not None:
                     ts["symbol_layer_weights"] = lw
+
+                # Add enhanced ensemble metadata
+                if use_enhanced:
+                    ts["enhanced_ensemble"] = True
+                    ts["n_models"] = getattr(forecaster, "n_models", 5)
+                    ts["model_weights"] = ensemble_pred.get("weights", {})
+                    ts["component_predictions"] = model_preds
+                    ts["forecast_return"] = ensemble_pred.get("forecast_return")
+                    ts["forecast_volatility"] = ensemble_pred.get("forecast_volatility")
+                    ts["ci_lower"] = ensemble_pred.get("ci_lower")
+                    ts["ci_upper"] = ensemble_pred.get("ci_upper")
+
                 forecast["training_stats"] = ts
 
                 # Apply S/R constraints (adds sr_levels metadata)
@@ -1145,6 +1186,18 @@ def main() -> None:
     logger.info(f"Processed: {symbols_processed}")
     logger.info(f"Failed: {symbols_failed}")
     logger.info("=" * 80)
+
+    # Export monitoring metrics if enhanced ensemble was used
+    if _bool_env("ENABLE_ENHANCED_ENSEMBLE", default=False):
+        try:
+            metrics = export_monitoring_metrics()
+            n_preds = metrics.get("n_predictions", 0)
+            accuracy = metrics.get("rolling_accuracy", 0)
+            logger.info(
+                f"Monitoring: {n_preds} predictions, {accuracy:.1%} accuracy"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to export monitoring metrics: {e}")
 
     # Close database connections
     db.close()

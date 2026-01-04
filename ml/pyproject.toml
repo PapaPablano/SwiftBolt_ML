@@ -39,6 +39,10 @@ dashboard = [
     "streamlit>=1.28.0",
     "plotly>=5.18.0",
 ]
+ensemble = [
+    "prophet>=1.1.0",  # Facebook Prophet for seasonality
+    "tensorflow>=2.10.0",  # LSTM neural network
+]
 
 [tool.ruff]
 target-version = "py311"

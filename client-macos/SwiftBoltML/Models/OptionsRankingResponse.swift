@@ -133,7 +133,15 @@ struct OptionRank: Codable, Identifiable {
 
     // Computed properties
     var expiryDate: Date? {
-        ISO8601DateFormatter().date(from: expiry)
+        if let isoDate = ISO8601DateFormatter().date(from: expiry) {
+            return isoDate
+        }
+
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: expiry)
     }
 
     var daysToExpiry: Int? {

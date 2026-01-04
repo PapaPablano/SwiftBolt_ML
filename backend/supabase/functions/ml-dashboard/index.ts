@@ -110,6 +110,18 @@ interface ValidationMetrics {
   robustness: number | null;
 }
 
+// Enhanced ensemble metrics (5-model architecture)
+interface EnhancedEnsembleMetrics {
+  enabled: boolean;
+  nForecasts: number;
+  nModels: number;
+  modelWeights: Record<string, number>;
+  avgAgreement: number;
+  modelAccuracy: Record<string, number | null>;
+  forecastVolatility: number | null;
+  ciCoverage: number | null;  // Confidence interval coverage
+}
+
 interface MLDashboardResponse {
   overview: {
     totalForecasts: number;
@@ -133,6 +145,8 @@ interface MLDashboardResponse {
   dataQuality?: DataQualityMetrics;
   // NEW: Statistical validation metrics
   validationMetrics?: ValidationMetrics;
+  // NEW: Enhanced 5-model ensemble metrics
+  enhancedEnsemble?: EnhancedEnsembleMetrics;
 }
 
 // NEW: Accuracy metrics from feedback loop
@@ -795,7 +809,92 @@ serve(async (req: Request): Promise<Response> => {
       console.log("[ml-dashboard] Validation metrics not available:", validationErr);
     }
 
-    // 10. Build response
+    // 10. Get enhanced ensemble metrics (5-model architecture)
+    let enhancedEnsemble: EnhancedEnsembleMetrics | undefined;
+    try {
+      // Query forecasts with enhanced_ensemble=true in training_stats
+      const { data: enhancedData } = await supabase
+        .from("ml_forecasts")
+        .select("training_stats, model_agreement")
+        .not("training_stats", "is", null)
+        .order("run_at", { ascending: false })
+        .limit(100);
+
+      if (enhancedData && enhancedData.length > 0) {
+        // Filter for enhanced ensemble forecasts
+        const enhancedForecasts = enhancedData.filter((f: any) => {
+          const ts = f.training_stats;
+          return ts && ts.enhanced_ensemble === true;
+        });
+
+        if (enhancedForecasts.length > 0) {
+          // Aggregate metrics
+          const weights: Record<string, number[]> = {};
+          const agreements: number[] = [];
+          const volatilities: number[] = [];
+          let totalModels = 0;
+
+          for (const f of enhancedForecasts) {
+            const ts = f.training_stats;
+
+            // Collect model weights
+            const modelWeights = ts.model_weights || {};
+            for (const [model, weight] of Object.entries(modelWeights)) {
+              if (!weights[model]) weights[model] = [];
+              weights[model].push(weight as number);
+            }
+
+            // Collect agreement
+            if (f.model_agreement !== null) {
+              agreements.push(f.model_agreement);
+            }
+
+            // Collect volatility
+            if (ts.forecast_volatility !== null) {
+              volatilities.push(ts.forecast_volatility);
+            }
+
+            // Track model count
+            if (ts.n_models) {
+              totalModels = Math.max(totalModels, ts.n_models);
+            }
+          }
+
+          // Calculate averages
+          const avgWeights: Record<string, number> = {};
+          for (const [model, vals] of Object.entries(weights)) {
+            avgWeights[model] = vals.reduce((a, b) => a + b, 0) / vals.length;
+          }
+
+          const avgAgreement = agreements.length > 0
+            ? agreements.reduce((a, b) => a + b, 0) / agreements.length
+            : 0;
+
+          const avgVolatility = volatilities.length > 0
+            ? volatilities.reduce((a, b) => a + b, 0) / volatilities.length
+            : null;
+
+          enhancedEnsemble = {
+            enabled: true,
+            nForecasts: enhancedForecasts.length,
+            nModels: totalModels || 5,
+            modelWeights: avgWeights,
+            avgAgreement: Math.round(avgAgreement * 1000) / 1000,
+            modelAccuracy: {}, // Will be populated from evaluations
+            forecastVolatility: avgVolatility !== null
+              ? Math.round(avgVolatility * 10000) / 10000
+              : null,
+            ciCoverage: null, // Requires realized prices
+          };
+
+          console.log(`[ml-dashboard] Enhanced ensemble: ${enhancedForecasts.length} forecasts, ${totalModels} models`);
+        }
+      }
+    } catch (enhancedErr) {
+      console.log("[ml-dashboard] Enhanced ensemble metrics not available:", enhancedErr);
+    }
+
+    // 11. Build response
     const response: MLDashboardResponse = {
       overview: {
         totalForecasts: allForecasts.length,
@@ -814,6 +913,7 @@ serve(async (req: Request): Promise<Response> => {
       modelWeights,
       dataQuality,
       validationMetrics,
+      enhancedEnsemble,
     };
 
     console.log(`[ml-dashboard] Returning dashboard data: ${allForecasts.length} forecasts, ${symbolMap.size} symbols`);

@@ -7,6 +7,7 @@ Compares past ML forecasts to actual market outcomes and:
 """
 
 import logging
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +20,18 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings  # noqa: E402
 from src.data.supabase_db import db  # noqa: E402
+from src.models.enhanced_ensemble_integration import (  # noqa: E402
+    record_forecast_outcome,
+    export_monitoring_metrics,
+)
+
+
+def _bool_env(name: str, default: bool = False) -> bool:
+    """Get boolean from environment variable."""
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return val.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -498,6 +511,26 @@ def run_evaluation_job(horizons: list[str] | None = None) -> dict[str, Any]:
                     if evaluation["direction_correct"]:
                         horizon_correct += 1
 
+                    # Record to PerformanceMonitor if enhanced ensemble enabled
+                    if _bool_env("ENABLE_ENHANCED_ENSEMBLE", default=False):
+                        try:
+                            ts = forecast.get("training_stats") or {}
+                            record_forecast_outcome(
+                                symbol=evaluation["symbol"],
+                                horizon=evaluation["horizon"],
+                                prediction=evaluation["predicted_label"],
+                                actual=evaluation["realized_label"],
+                                confidence=evaluation["predicted_confidence"],
+                                agreement=evaluation.get("model_agreement") or 0.5,
+                                probabilities=ts.get("probabilities", {}),
+                                weights=ts.get("model_weights", {}),
+                                model_predictions=ts.get(
+                                    "component_predictions", {}
+                                ),
+                            )
+                        except Exception as e:
+                            logger.debug("Performance monitor error: %s", e)
+
         # Update performance history
         evaluator.update_performance_history(horizon)
 
@@ -531,6 +564,24 @@ def run_evaluation_job(horizons: list[str] | None = None) -> dict[str, Any]:
     logger.info(f"Accuracy: {results['overall_accuracy']*100:.1f}%")
     logger.info(f"Errors: {results['errors']}")
     logger.info("=" * 80)
+
+    # Export enhanced ensemble monitoring metrics
+    if _bool_env("ENABLE_ENHANCED_ENSEMBLE", default=False):
+        try:
+            metrics = export_monitoring_metrics()
+            results["enhanced_monitoring"] = {
+                "n_predictions": metrics.get("n_predictions", 0),
+                "rolling_accuracy": metrics.get("rolling_accuracy", 0),
+                "calibration_error": metrics.get("calibration_error", 0),
+                "alerts": metrics.get("recent_alerts", []),
+            }
+            logger.info(
+                "Enhanced monitoring: %d predictions, %.1f%% accuracy",
+                metrics.get("n_predictions", 0),
+                metrics.get("rolling_accuracy", 0) * 100,
+            )
+        except Exception as e:
+            logger.warning("Failed to export monitoring metrics: %s", e)
 
     # Close database connections
     db.close()
