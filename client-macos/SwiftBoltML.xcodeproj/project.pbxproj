@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		OHC10001233456780000001 /* OptionHistoryChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = OHC20001233456780000001 /* OptionHistoryChartView.swift */; };
 		0B281429F99B764ACF20AE52 /* OptionsRankerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */; };
 		136FE9F67FA29A26AE074312 /* MultiTimeframeConsensusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144206D7859B6361AEFE13D9 /* MultiTimeframeConsensusView.swift */; };
 		1469ED89052E948868C57E9E /* PivotLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CE2E34EE4D81F3060BC9AF1 /* PivotLevel.swift */; };
@@ -18,12 +17,15 @@
 		29A803E54D93C7BF1DAAF99A /* ForecastAccuracyTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2105D896E918ACDCE342EFA /* ForecastAccuracyTabView.swift */; };
 		2B0B27F844CF7F11D77399D7 /* ScannerResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BED859934C91510459C2BF0 /* ScannerResponse.swift */; };
 		2FC800BC68800F807D6266D0 /* AnalysisViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB6D0158AE11968F0D3B3C2 /* AnalysisViewModel.swift */; };
+		4529AC756E5F22D03E743400 /* ChartBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B29181F82545367180388B23 /* ChartBridge.swift */; };
 		5923E745F36FE9C0C2BAA37F /* SuperTrendAIIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B73A321AD0316BC1B2434132 /* SuperTrendAIIndicator.swift */; };
+		5B4804E93563C0B541E658BF /* index.html in Resources */ = {isa = PBXBuildFile; fileRef = D16118E869A5401A364A0832 /* index.html */; };
 		611D5562963D3AAE070CC72B /* EnhancedPredictionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A51D8136CB3AF96EBB360E /* EnhancedPredictionModels.swift */; };
 		731BC29C18688AD83AF0A16E /* StrikePriceComparisonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE33C7CA7CA515703FFF0B5D /* StrikePriceComparisonView.swift */; };
 		75E6EC514BD3BA75308497C8 /* PredictionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9956271A37FA42982A5F0DDC /* PredictionsViewModel.swift */; };
 		7CA2B280BFC9ADD0E5544234 /* SupportResistanceOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F857540C973ADC971FC52E92 /* SupportResistanceOverlayView.swift */; };
 		80B1B38AB6AA986B4B10DD85 /* MLAccuracyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC81FDA448EE43BF7946EB61 /* MLAccuracyModels.swift */; };
+		89DD292B67C2CFAB0A8731F5 /* WebChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F050475A57EE1E86842D9FB8 /* WebChartView.swift */; };
 		A1000001233456780000001 /* SwiftBoltMLApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001233456780000001 /* SwiftBoltMLApp.swift */; };
 		A1000002233456780000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000002233456780000002 /* ContentView.swift */; };
 		A1000003233456780000003 /* DevToolsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000003233456780000003 /* DevToolsView.swift */; };
@@ -55,12 +57,13 @@
 		A8052D8012DDF9B50B591DA6 /* AnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 310341ABEED26BABB738BEF2 /* AnalysisView.swift */; };
 		AE84055563B44B634DC4CA59 /* SuperTrendChartData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78170FE468AE321CB9A91BD5 /* SuperTrendChartData.swift */; };
 		BD25768D5DDFD833E346DDB5 /* DataHealthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33A7027FA21F544B41C22B1F /* DataHealthView.swift */; };
+		BD413BF34398B9C3212F86C9 /* chart.js in Resources */ = {isa = PBXBuildFile; fileRef = D7A8F9A56AC9A504B07BE56A /* chart.js */; };
 		C01BE4658F2DADDC3E59B1DC /* PredictionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B744048995733E3EF70004 /* PredictionsView.swift */; };
 		DB5DC3A92A28C05E8315D9E8 /* LogisticRegressionIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA6C3F9FCEAD53FBEF384F10 /* LogisticRegressionIndicator.swift */; };
 		DC8011B65E28852181663316 /* ForecastExplainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 848DB246B70C854F2FE0A63C /* ForecastExplainerView.swift */; };
-		F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */; };
 		E2C1E2A5492FE1CCBEFC9CCD /* PolynomialRegressionIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A702F82DACC8241B3B9A8BA /* PolynomialRegressionIndicator.swift */; };
 		EAB197F7318F24B608BAA78D /* MLDashboardModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 495F16DC7FC5729654ADE6C7 /* MLDashboardModels.swift */; };
+		EBE85EE02C19C722FFEA64F4 /* lightweight-charts.standalone.production.js in Resources */ = {isa = PBXBuildFile; fileRef = F903565D8F0B0D702A53E8B0 /* lightweight-charts.standalone.production.js */; };
 		F60BB96C2EF036FA0044BE7E /* OptionContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96A2EF036FA0044BE7E /* OptionContract.swift */; };
 		F60BB96D2EF036FA0044BE7E /* OptionsChainResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96B2EF036FA0044BE7E /* OptionsChainResponse.swift */; };
 		F60BB96F2EF0371A0044BE7E /* OptionsChainViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96E2EF0371A0044BE7E /* OptionsChainViewModel.swift */; };
@@ -68,11 +71,13 @@
 		F6161BC02EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6161BBF2EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift */; };
 		F6161BC12EF2D49A0065ABA1 /* OptionRankDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6161BBE2EF2D49A0065ABA1 /* OptionRankDetailView.swift */; };
 		F64681A92EF0E00900FBEF04 /* MLReportCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F64681A82EF0E00900FBEF04 /* MLReportCard.swift */; };
+		F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */; };
+		FF7F2A0E2FD7B4A0009F9712 /* QuoteResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */; };
+		OHC10001233456780000001 /* OptionHistoryChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = OHC20001233456780000001 /* OptionHistoryChartView.swift */; };
 		SA0000012345678900000003 /* StrikeAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SA0000012345678900000004 /* StrikeAnalysisView.swift */; };
-		TRGA0000123456789ABCDEF /* GAStrategyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */; };
 		SR0000012345678900000001 /* SupportResistanceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000002 /* SupportResistanceModels.swift */; };
 		SR0000012345678900000003 /* SupportResistanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000004 /* SupportResistanceView.swift */; };
-		FF7F2A0E2FD7B4A0009F9712 /* QuoteResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */; };
+		TRGA0000123456789ABCDEF /* GAStrategyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -124,13 +129,16 @@
 		A2000029233456780000029 /* SuperTrendPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperTrendPanelView.swift; sourceTree = "<group>"; };
 		A3000001233456780000001 /* SwiftBoltML.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftBoltML.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1B744048995733E3EF70004 /* PredictionsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PredictionsView.swift; sourceTree = "<group>"; };
+		B29181F82545367180388B23 /* ChartBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ChartBridge.swift; sourceTree = "<group>"; };
 		B73A321AD0316BC1B2434132 /* SuperTrendAIIndicator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SuperTrendAIIndicator.swift; sourceTree = "<group>"; };
 		BC81FDA448EE43BF7946EB61 /* MLAccuracyModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MLAccuracyModels.swift; path = MLAccuracyModels.swift; sourceTree = "<group>"; };
+		D16118E869A5401A364A0832 /* index.html */ = {isa = PBXFileReference; includeInIndex = 1; name = index.html; path = index.html; sourceTree = "<group>"; };
 		D2105D896E918ACDCE342EFA /* ForecastAccuracyTabView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ForecastAccuracyTabView.swift; path = ForecastAccuracyTabView.swift; sourceTree = "<group>"; };
 		D749EA683B66324ED10E4516 /* SuperTrendChartView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SuperTrendChartView.swift; sourceTree = "<group>"; };
+		D7A8F9A56AC9A504B07BE56A /* chart.js */ = {isa = PBXFileReference; includeInIndex = 1; name = chart.js; path = chart.js; sourceTree = "<group>"; };
 		EA6C3F9FCEAD53FBEF384F10 /* LogisticRegressionIndicator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LogisticRegressionIndicator.swift; sourceTree = "<group>"; };
 		EE33C7CA7CA515703FFF0B5D /* StrikePriceComparisonView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StrikePriceComparisonView.swift; sourceTree = "<group>"; };
-		OHC20001233456780000001 /* OptionHistoryChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionHistoryChartView.swift; sourceTree = "<group>"; };
+		F050475A57EE1E86842D9FB8 /* WebChartView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WebChartView.swift; sourceTree = "<group>"; };
 		F60BB96A2EF036FA0044BE7E /* OptionContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionContract.swift; sourceTree = "<group>"; };
 		F60BB96B2EF036FA0044BE7E /* OptionsChainResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainResponse.swift; sourceTree = "<group>"; };
 		F60BB96E2EF0371A0044BE7E /* OptionsChainViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainViewModel.swift; sourceTree = "<group>"; };
@@ -140,11 +148,13 @@
 		F64681A82EF0E00900FBEF04 /* MLReportCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLReportCard.swift; sourceTree = "<group>"; };
 		F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastHorizonsView.swift; sourceTree = "<group>"; };
 		F857540C973ADC971FC52E92 /* SupportResistanceOverlayView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SupportResistanceOverlayView.swift; sourceTree = "<group>"; };
+		F903565D8F0B0D702A53E8B0 /* lightweight-charts.standalone.production.js */ = {isa = PBXFileReference; includeInIndex = 1; name = "lightweight-charts.standalone.production.js"; path = "lightweight-charts.standalone.production.js"; sourceTree = "<group>"; };
+		FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuoteResponse.swift; sourceTree = "<group>"; };
+		OHC20001233456780000001 /* OptionHistoryChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionHistoryChartView.swift; sourceTree = "<group>"; };
 		SA0000012345678900000004 /* StrikeAnalysisView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrikeAnalysisView.swift; sourceTree = "<group>"; };
 		SR0000012345678900000002 /* SupportResistanceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportResistanceModels.swift; sourceTree = "<group>"; };
 		SR0000012345678900000004 /* SupportResistanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportResistanceView.swift; sourceTree = "<group>"; };
 		TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GAStrategyModels.swift; sourceTree = "<group>"; };
-		FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuoteResponse.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -177,6 +187,7 @@
 				A2000022233456780000022 /* Assets.xcassets */,
 				A2000020233456780000020 /* Info.plist */,
 				A2000021233456780000021 /* SwiftBoltML.entitlements */,
+				F89BDDD0E2F7083E6DF7258B /* Resources */,
 			);
 			path = SwiftBoltML;
 			sourceTree = "<group>";
@@ -221,6 +232,7 @@
 				F857540C973ADC971FC52E92 /* SupportResistanceOverlayView.swift */,
 				D749EA683B66324ED10E4516 /* SuperTrendChartView.swift */,
 				F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */,
+				F050475A57EE1E86842D9FB8 /* WebChartView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -277,6 +289,7 @@
 				9A702F82DACC8241B3B9A8BA /* PolynomialRegressionIndicator.swift */,
 				EA6C3F9FCEAD53FBEF384F10 /* LogisticRegressionIndicator.swift */,
 				B73A321AD0316BC1B2434132 /* SuperTrendAIIndicator.swift */,
+				B29181F82545367180388B23 /* ChartBridge.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -287,6 +300,26 @@
 				A3000001233456780000001 /* SwiftBoltML.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		C34636807DE7E893C0A4EAC6 /* WebChart */ = {
+			isa = PBXGroup;
+			children = (
+				D16118E869A5401A364A0832 /* index.html */,
+				D7A8F9A56AC9A504B07BE56A /* chart.js */,
+				F903565D8F0B0D702A53E8B0 /* lightweight-charts.standalone.production.js */,
+			);
+			name = WebChart;
+			path = WebChart;
+			sourceTree = "<group>";
+		};
+		F89BDDD0E2F7083E6DF7258B /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				C34636807DE7E893C0A4EAC6 /* WebChart */,
+			);
+			name = Resources;
+			path = Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -348,6 +381,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1000020233456780000020 /* Assets.xcassets in Resources */,
+				5B4804E93563C0B541E658BF /* index.html in Resources */,
+				BD413BF34398B9C3212F86C9 /* chart.js in Resources */,
+				EBE85EE02C19C722FFEA64F4 /* lightweight-charts.standalone.production.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -423,6 +459,8 @@
 				26A69A6B13674A40E8339202 /* OptionsRankerViewModel.swift in Sources */,
 				2FC800BC68800F807D6266D0 /* AnalysisViewModel.swift in Sources */,
 				A8052D8012DDF9B50B591DA6 /* AnalysisView.swift in Sources */,
+				4529AC756E5F22D03E743400 /* ChartBridge.swift in Sources */,
+				89DD292B67C2CFAB0A8731F5 /* WebChartView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

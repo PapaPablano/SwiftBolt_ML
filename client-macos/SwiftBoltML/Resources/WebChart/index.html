@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SwiftBolt Chart</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1e1e1e;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+        }
+
+        #chart-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        /* Loading state */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #888;
+            font-size: 14px;
+        }
+
+        /* Attribution footer (required by Apache 2.0) */
+        #attribution {
+            position: absolute;
+            bottom: 4px;
+            right: 8px;
+            font-size: 10px;
+            color: #555;
+            z-index: 100;
+        }
+
+        #attribution a {
+            color: #666;
+            text-decoration: none;
+        }
+
+        #attribution a:hover {
+            color: #888;
+            text-decoration: underline;
+        }
+
+        /* Crosshair tooltip */
+        .chart-tooltip {
+            position: absolute;
+            display: none;
+            padding: 8px 12px;
+            background: rgba(30, 30, 30, 0.95);
+            border: 1px solid #333;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #e0e0e0;
+            pointer-events: none;
+            z-index: 1000;
+            white-space: nowrap;
+        }
+
+        .chart-tooltip .price {
+            font-weight: 600;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+
+        .chart-tooltip .bullish { color: #26a69a; }
+        .chart-tooltip .bearish { color: #ef5350; }
+        .chart-tooltip .neutral { color: #888; }
+
+        /* Legend */
+        #legend {
+            position: absolute;
+            top: 8px;
+            left: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            font-size: 11px;
+            color: #aaa;
+            z-index: 100;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .legend-color {
+            width: 10px;
+            height: 3px;
+            border-radius: 1px;
+        }
+    </style>
+</head>
+<body>
+    <div id="chart-container" class="loading">Loading chart...</div>
+
+    <div id="legend"></div>
+
+    <div id="attribution">
+        Charts powered by <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView</a>
+    </div>
+
+    <div id="tooltip" class="chart-tooltip"></div>
+
+    <!-- Lightweight Charts Library (vendored for offline support) -->
+    <script src="lightweight-charts.standalone.production.js"></script>
+
+    <!-- Chart API -->
+    <script src="chart.js"></script>
+</body>
+</html>
