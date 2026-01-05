@@ -71,7 +71,7 @@ async function fetchPolygonBars(
   const url = new URL(
     `${POLYGON_BASE_URL}/v2/aggs/ticker/${symbol.toUpperCase()}/range/${multiplier}/${timespan}/${fromStr}/${toStr}`
   );
-  url.searchParams.set("adjusted", "true");
+  url.searchParams.set("adjusted", "false"); // Use unadjusted prices for accurate historical data
   url.searchParams.set("sort", "asc");
   url.searchParams.set("limit", "50000");
   url.searchParams.set("apiKey", POLYGON_API_KEY!);
