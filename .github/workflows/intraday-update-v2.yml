@@ -1,0 +1,102 @@
+name: Intraday Update V2 (Tradier)
+
+on:
+  schedule:
+    # Run every 15 minutes during market hours (9:30 AM - 4:15 PM ET)
+    # Cron is in UTC, so adjust for ET (UTC-5 or UTC-4 during DST)
+    - cron: '30-59/15 14-20 * * 1-5'  # 9:30 AM - 3:59 PM ET
+    - cron: '0-15/15 21 * * 1-5'      # 4:00 PM - 4:15 PM ET
+  workflow_dispatch:
+    inputs:
+      symbols:
+        description: 'Comma-separated symbols (leave empty for all watchlist)'
+        required: false
+        type: string
+
+jobs:
+  update-intraday:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Check market status
+        id: market
+        run: |
+          # Check if market is open
+          RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.TRADIER_TOKEN }}" \
+            "https://api.tradier.com/v1/markets/clock")
+          
+          STATE=$(echo $RESPONSE | jq -r '.clock.state')
+          echo "Market state: $STATE"
+          echo "state=$STATE" >> $GITHUB_OUTPUT
+          
+          if [ "$STATE" != "open" ]; then
+            echo "Market is closed, checking if within lock window..."
+            # Allow updates for 5 minutes after close
+            CURRENT_TIME=$(date -u +%H%M)
+            # 4:05 PM ET = 21:05 UTC (or 20:05 during DST)
+            if [ $CURRENT_TIME -gt 2105 ]; then
+              echo "Past lock time, exiting"
+              exit 0
+            fi
+          fi
+
+      - name: Update intraday data
+        if: steps.market.outputs.state == 'open' || github.event_name == 'workflow_dispatch'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
+        run: |
+          cd backend/supabase/functions
+          
+          # Create temporary script to run intraday updates
+          cat > run_intraday.ts << 'EOF'
+          import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+          import { IntradayServiceV2, getWatchlistSymbols } from './_shared/intraday-service-v2.ts';
+          
+          const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+          const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+          const tradierToken = Deno.env.get('TRADIER_TOKEN')!;
+          
+          const service = new IntradayServiceV2(supabaseUrl, supabaseKey, tradierToken);
+          
+          // Get symbols
+          const inputSymbols = Deno.env.get('INPUT_SYMBOLS');
+          let symbols: string[];
+          
+          if (inputSymbols) {
+            symbols = inputSymbols.split(',').map(s => s.trim());
+          } else {
+            symbols = await getWatchlistSymbols(supabaseUrl, supabaseKey, 100);
+          }
+          
+          console.log(`Updating intraday data for ${symbols.length} symbols`);
+          
+          const result = await service.updateBatch(symbols);
+          
+          console.log(`✅ Successful: ${result.successful.length}`);
+          console.log(`❌ Failed: ${result.failed.length}`);
+          
+          if (result.failed.length > 0) {
+            console.log('Failed symbols:', result.failed);
+          }
+          EOF
+          
+          # Run the script
+          INPUT_SYMBOLS="${{ github.event.inputs.symbols }}" deno run --allow-net --allow-env run_intraday.ts
+
+      - name: Report status
+        if: always()
+        run: |
+          echo "Intraday update completed"
+          echo "Workflow: ${{ github.workflow }}"
+          echo "Run ID: ${{ github.run_id }}"
