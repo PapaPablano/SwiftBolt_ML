@@ -501,8 +501,8 @@ final class ChartBridge: NSObject, ObservableObject {
         }, options: LineOptions(
             color: "#4a90e2",
             lineWidth: 2,
-            priceLineVisible: false,
-            lastValueVisible: true
+            lineStyle: 0,
+            name: "Intraday"
         )))
     }
     
@@ -529,10 +529,8 @@ final class ChartBridge: NSObject, ObservableObject {
             upperData: upperPoints,
             lowerData: lowerPoints,
             options: ForecastOptions(
-                midColor: "#9c27b0",
-                upperColor: "rgba(156, 39, 176, 0.2)",
-                lowerColor: "rgba(156, 39, 176, 0.2)",
-                lineStyle: 2  // Dashed
+                color: "#9c27b0",
+                bandColor: "rgba(156, 39, 176, 0.2)"
             )
         ))
     }
