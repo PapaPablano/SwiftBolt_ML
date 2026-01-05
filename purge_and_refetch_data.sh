@@ -22,12 +22,19 @@ fi
 
 # Load environment variables
 if [ -f .env ]; then
-    export $(cat .env | grep -v '^#' | xargs)
+    set -a
+    source .env
+    set +a
+fi
+
+# Support both SUPABASE_SERVICE_KEY and SUPABASE_SERVICE_ROLE_KEY
+if [ -n "$SUPABASE_SERVICE_KEY" ]; then
+    export SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_KEY"
 fi
 
 # Check for required env vars
 if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-    echo "❌ Error: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set"
+    echo "❌ Error: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_KEY) must be set"
     exit 1
 fi
 
@@ -35,33 +42,39 @@ echo ""
 echo "Step 1: Deleting corrupted data from database..."
 echo "=================================================="
 
-# Delete all ohlc_bars data
-psql "$DATABASE_URL" <<EOF
--- Backup count before deletion
-SELECT 
-    COUNT(*) as total_bars,
-    COUNT(DISTINCT symbol_id) as total_symbols,
-    COUNT(DISTINCT timeframe) as total_timeframes
-FROM ohlc_bars;
-
--- Delete all bars (will be re-fetched)
-DELETE FROM ohlc_bars WHERE is_adjusted = true OR is_adjusted IS NULL;
-
--- Show remaining count (should be 0 or only unadjusted data)
-SELECT COUNT(*) as remaining_bars FROM ohlc_bars;
-EOF
-
-echo "✅ Database purged"
+# Use Supabase REST API to delete data (more reliable than direct psql)
+echo "⚠️  Manual step required: Delete corrupted OHLC data"
+echo ""
+echo "Run this SQL in your Supabase SQL Editor:"
+echo "-------------------------------------------"
+echo "-- Check current data"
+echo "SELECT COUNT(*) as total_bars, COUNT(DISTINCT symbol_id) as symbols FROM ohlc_bars;"
+echo ""
+echo "-- Delete adjusted/corrupted data"
+echo "DELETE FROM ohlc_bars WHERE is_adjusted = true OR is_adjusted IS NULL;"
+echo ""
+echo "-- Verify deletion"
+echo "SELECT COUNT(*) as remaining_bars FROM ohlc_bars;"
+echo "-------------------------------------------"
+echo ""
+read -p "Press ENTER after you've deleted the data in Supabase SQL Editor..."
+echo "✅ Proceeding with re-fetch"
 echo ""
 
 # Get list of symbols to re-fetch
 echo "Step 2: Fetching list of symbols..."
 echo "=================================================="
 
-SYMBOLS=$(psql "$DATABASE_URL" -t -c "SELECT ticker FROM symbols WHERE asset_type = 'stock' ORDER BY ticker;")
+# Fetch symbols via Supabase REST API
+SYMBOLS_JSON=$(curl -s "$SUPABASE_URL/rest/v1/symbols?asset_type=eq.stock&select=ticker&order=ticker" \
+    -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+    -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY")
+
+SYMBOLS=$(echo "$SYMBOLS_JSON" | grep -o '"ticker":"[^"]*"' | cut -d'"' -f4)
 
 if [ -z "$SYMBOLS" ]; then
     echo "❌ No symbols found in database"
+    echo "Response: $SYMBOLS_JSON"
     exit 1
 fi
 

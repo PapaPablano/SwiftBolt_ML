@@ -78,7 +78,7 @@ def fetch_polygon_bars(
         f"{multiplier}/{timespan}/{from_str}/{to_str}"
     )
     params = {
-        "adjusted": "true",
+        "adjusted": "false",  # Use unadjusted prices for accurate historical data
         "sort": "asc",
         "limit": "50000",
         "apiKey": POLYGON_API_KEY,
