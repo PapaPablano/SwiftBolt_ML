@@ -32,9 +32,21 @@ jobs:
         run: |
           # Check if market is open
           RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.TRADIER_TOKEN }}" \
+            -H "Accept: application/json" \
             "https://api.tradier.com/v1/markets/clock")
           
-          STATE=$(echo $RESPONSE | jq -r '.clock.state')
+          echo "API Response: $RESPONSE"
+          
+          # Check if response is valid JSON
+          if ! echo "$RESPONSE" | jq empty 2>/dev/null; then
+            echo "Invalid JSON response from Tradier API"
+            echo "Response: $RESPONSE"
+            echo "Continuing anyway (may be weekend/holiday)"
+            echo "state=closed" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          STATE=$(echo "$RESPONSE" | jq -r '.clock.state // "closed"')
           echo "Market state: $STATE"
           echo "state=$STATE" >> $GITHUB_OUTPUT
           
