@@ -122,7 +122,7 @@ CREATE OR REPLACE FUNCTION get_chart_data_v2(
   p_end_date TIMESTAMP
 )
 RETURNS TABLE (
-  ts TIMESTAMP,
+  ts TEXT,
   open DECIMAL(10, 4),
   high DECIMAL(10, 4),
   low DECIMAL(10, 4),
@@ -139,7 +139,7 @@ RETURNS TABLE (
 BEGIN
   RETURN QUERY
   SELECT 
-    o.ts,
+    to_char(o.ts AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS ts,
     o.open,
     o.high,
     o.low,
