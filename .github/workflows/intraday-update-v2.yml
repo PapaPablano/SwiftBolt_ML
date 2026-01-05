@@ -25,7 +25,7 @@ jobs:
       - name: Setup Deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.x
+          deno-version: v2.x
 
       - name: Check market status
         id: market
@@ -69,6 +69,12 @@ jobs:
           TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
         run: |
           cd backend/supabase/functions
+          
+          # Remove lockfile if it causes issues (dependencies will be fetched fresh)
+          if [ -f "../deno.lock" ]; then
+            echo "Removing incompatible lockfile"
+            rm ../deno.lock
+          fi
           
           # Create temporary script to run intraday updates
           cat > run_intraday.ts << 'EOF'
