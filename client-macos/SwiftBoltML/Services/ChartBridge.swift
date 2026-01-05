@@ -26,6 +26,8 @@ enum ChartCommand: Encodable {
     case setKDJ(kData: [LightweightDataPoint], dData: [LightweightDataPoint], jData: [LightweightDataPoint])
     case setADX(adxData: [LightweightDataPoint], plusDI: [LightweightDataPoint], minusDI: [LightweightDataPoint])
     case setATR(data: [LightweightDataPoint])
+    case setVolume(data: [VolumeDataPoint])
+    case setSuperTrend(data: [LightweightDataPoint], trendData: [LightweightDataPoint])
     case hidePanel(panel: String)
 
     // Custom encoding to match JS API
@@ -33,6 +35,7 @@ enum ChartCommand: Encodable {
         case type, options, data, candle, id, midData, upperData, lowerData
         case seriesId, markers, price, from, to
         case line, signal, histogram, kData, dData, jData, adxData, plusDI, minusDI, panel
+        case trendData
     }
 
     func encode(to encoder: Encoder) throws {
@@ -124,6 +127,15 @@ enum ChartCommand: Encodable {
             try container.encode("setATR", forKey: .type)
             try container.encode(data, forKey: .data)
 
+        case .setVolume(let data):
+            try container.encode("setVolume", forKey: .type)
+            try container.encode(data, forKey: .data)
+
+        case .setSuperTrend(let data, let trendData):
+            try container.encode("setSuperTrend", forKey: .type)
+            try container.encode(data, forKey: .data)
+            try container.encode(trendData, forKey: .trendData)
+
         case .hidePanel(let panel):
             try container.encode("hidePanel", forKey: .type)
             try container.encode(panel, forKey: .panel)
@@ -146,6 +158,14 @@ struct LightweightCandle: Encodable {
 struct LightweightDataPoint: Encodable {
     let time: Int  // Unix timestamp in seconds
     let value: Double
+}
+
+/// Volume data point with direction for coloring
+struct VolumeDataPoint: Encodable {
+    let time: Int  // Unix timestamp in seconds
+    let value: Double
+    let direction: String  // "up" or "down"
+    let color: String?
 }
 
 /// Chart initialization options
@@ -426,6 +446,42 @@ final class ChartBridge: NSObject, ObservableObject {
     /// Hide an oscillator panel
     func hidePanel(_ panel: String) {
         send(.hidePanel(panel: panel))
+    }
+
+    /// Set Volume data with color based on price direction
+    func setVolume(bars: [OHLCBar]) {
+        let volumeData = bars.enumerated().map { index, bar -> VolumeDataPoint in
+            // Determine direction by comparing close to open
+            let direction = bar.close >= bar.open ? "up" : "down"
+            return VolumeDataPoint(
+                time: Int(bar.ts.timeIntervalSince1970),
+                value: bar.volume,
+                direction: direction,
+                color: nil  // Let JS apply default colors
+            )
+        }
+        send(.setVolume(data: volumeData))
+    }
+
+    /// Set SuperTrend with trend-based coloring
+    func setSuperTrend(data: [IndicatorDataPoint], trend: [IndicatorDataPoint]) {
+        let stPoints = data.compactMap { point -> LightweightDataPoint? in
+            guard let value = point.value else { return nil }
+            return LightweightDataPoint(
+                time: Int(point.date.timeIntervalSince1970),
+                value: value
+            )
+        }
+        
+        let trendPoints = trend.compactMap { point -> LightweightDataPoint? in
+            guard let value = point.value else { return nil }
+            return LightweightDataPoint(
+                time: Int(point.date.timeIntervalSince1970),
+                value: value
+            )
+        }
+        
+        send(.setSuperTrend(data: stPoints, trendData: trendPoints))
     }
 
     // MARK: - Private Helpers

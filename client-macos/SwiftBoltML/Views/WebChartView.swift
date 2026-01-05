@@ -148,13 +148,11 @@ struct WebChartView: NSViewRepresentable {
                 )
             }
 
-            // SuperTrend line
+            // SuperTrend with trend-based coloring
             if config.showSuperTrend {
-                bridge.setIndicator(
-                    id: "supertrend",
-                    name: "SuperTrend",
+                bridge.setSuperTrend(
                     data: parent.viewModel.superTrendLine,
-                    color: "#00e676"  // Will be overridden by trend direction
+                    trend: parent.viewModel.superTrendTrend
                 )
             }
 
@@ -164,6 +162,13 @@ struct WebChartView: NSViewRepresentable {
                 if !signals.isEmpty {
                     bridge.setSignals(signals)
                 }
+            }
+
+            // Volume sub-panel
+            if config.showVolume {
+                bridge.setVolume(bars: data.bars)
+            } else {
+                bridge.hidePanel("volume")
             }
 
             // Oscillator sub-panels

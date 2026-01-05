@@ -27,7 +27,8 @@
         stochastic: { id: 'stochastic-panel', height: 100, scaleMin: 0, scaleMax: 100 },
         kdj: { id: 'kdj-panel', height: 100, scaleMin: 0, scaleMax: 100 },
         adx: { id: 'adx-panel', height: 100, scaleMin: 0, scaleMax: 100 },
-        atr: { id: 'atr-panel', height: 80 }
+        atr: { id: 'atr-panel', height: 80 },
+        volume: { id: 'volume-panel', height: 120 }
     };
 
     // Color palette (matches ChartColors.swift)
@@ -78,6 +79,10 @@
 
         // ATR
         atr: '#00bcd4',
+
+        // Volume
+        volumeUp: '#26a69a80',    // Semi-transparent green
+        volumeDown: '#ef535080',  // Semi-transparent red
 
         // Grid & text
         grid: '#2a2a2a',
@@ -866,6 +871,109 @@
         },
 
         /**
+         * Set Volume data with color based on price direction
+         */
+        setVolume: function(data) {
+            const chart = getOrCreateSubPanel('volume');
+            if (!chart) return;
+
+            if (!state.subSeries.volume.histogram) {
+                state.subSeries.volume.histogram = chart.addHistogramSeries({
+                    priceLineVisible: false,
+                    lastValueVisible: false,
+                    priceFormat: {
+                        type: 'volume'
+                    }
+                });
+            }
+
+            // Color volume bars based on price direction (green=up, red=down)
+            const coloredData = data.map(v => ({
+                time: v.time,
+                value: v.value,
+                color: v.color || (v.direction === 'up' ? colors.volumeUp : colors.volumeDown)
+            }));
+
+            state.subSeries.volume.histogram.setData(coloredData);
+
+            // Sync time scale
+            if (state.chart) {
+                const range = state.chart.timeScale().getVisibleRange();
+                if (range) chart.timeScale().setVisibleRange(range);
+            }
+
+            console.log('[ChartJS] Volume set:', data.length);
+        },
+
+        /**
+         * Set SuperTrend with dynamic coloring based on trend
+         */
+        setSuperTrend: function(data, trendData) {
+            if (!state.chart) return;
+
+            // Remove existing SuperTrend series if any
+            if (state.series.supertrend_bull) {
+                state.chart.removeSeries(state.series.supertrend_bull);
+                delete state.series.supertrend_bull;
+            }
+            if (state.series.supertrend_bear) {
+                state.chart.removeSeries(state.series.supertrend_bear);
+                delete state.series.supertrend_bear;
+            }
+
+            // Split data into bullish and bearish segments
+            const bullishData = [];
+            const bearishData = [];
+
+            for (let i = 0; i < data.length; i++) {
+                const point = data[i];
+                const trend = trendData && trendData[i] ? trendData[i].value : 0;
+
+                if (trend > 0) {
+                    // Bullish trend
+                    bullishData.push(point);
+                    // Add null to bearish to create gap
+                    if (bearishData.length > 0 && bearishData[bearishData.length - 1].value !== null) {
+                        bearishData.push({ time: point.time, value: null });
+                    }
+                } else if (trend < 0) {
+                    // Bearish trend
+                    bearishData.push(point);
+                    // Add null to bullish to create gap
+                    if (bullishData.length > 0 && bullishData[bullishData.length - 1].value !== null) {
+                        bullishData.push({ time: point.time, value: null });
+                    }
+                }
+            }
+
+            // Add bullish line (green)
+            if (bullishData.length > 0) {
+                state.series.supertrend_bull = state.chart.addLineSeries({
+                    color: colors.superTrendBull,
+                    lineWidth: 2,
+                    priceLineVisible: false,
+                    crosshairMarkerVisible: true,
+                    lastValueVisible: false
+                });
+                state.series.supertrend_bull.setData(bullishData);
+            }
+
+            // Add bearish line (red)
+            if (bearishData.length > 0) {
+                state.series.supertrend_bear = state.chart.addLineSeries({
+                    color: colors.superTrendBear,
+                    lineWidth: 2,
+                    priceLineVisible: false,
+                    crosshairMarkerVisible: true,
+                    lastValueVisible: false
+                });
+                state.series.supertrend_bear.setData(bearishData);
+            }
+
+            console.log('[ChartJS] SuperTrend set: bull=' + bullishData.length + ', bear=' + bearishData.length);
+        },
+
+        /**
          * Hide a sub-panel
          */
         hidePanel: function(panelName) {
@@ -963,6 +1071,12 @@
                     break;
                 case 'setATR':
                     this.setATR(cmd.data);
+                    break;
+                case 'setVolume':
+                    this.setVolume(cmd.data);
+                    break;
+                case 'setSuperTrend':
+                    this.setSuperTrend(cmd.data, cmd.trendData);
                     break;
                 case 'hidePanel':
                     this.hidePanel(cmd.panel);
