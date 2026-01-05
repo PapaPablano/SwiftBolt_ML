@@ -481,6 +481,62 @@ final class ChartBridge: NSObject, ObservableObject {
         send(.setVolume(data: volumeData))
     }
 
+    /// Set intraday overlay (highlighted bars for today's data)
+    func setIntradayOverlay(from bars: [OHLCBar]) {
+        guard !bars.isEmpty else { return }
+        
+        let candles = bars.map { bar in
+            LightweightCandle(
+                time: Int(bar.ts.timeIntervalSince1970),
+                open: bar.open,
+                high: bar.high,
+                low: bar.low,
+                close: bar.close
+            )
+        }
+        
+        // Use a special series for intraday with different styling
+        send(.setLine(id: "intraday_overlay", data: candles.map { candle in
+            LightweightDataPoint(time: candle.time, value: candle.close)
+        }, options: LineOptions(
+            color: "#4a90e2",
+            lineWidth: 2,
+            priceLineVisible: false,
+            lastValueVisible: true
+        )))
+    }
+    
+    /// Set forecast layer (dashed line with confidence bands)
+    func setForecastLayer(from bars: [OHLCBar]) {
+        guard !bars.isEmpty else { return }
+        
+        let midPoints = bars.map { bar in
+            LightweightDataPoint(time: Int(bar.ts.timeIntervalSince1970), value: bar.close)
+        }
+        
+        let upperPoints = bars.compactMap { bar -> LightweightDataPoint? in
+            guard let upper = bar.upperBand else { return nil }
+            return LightweightDataPoint(time: Int(bar.ts.timeIntervalSince1970), value: upper)
+        }
+        
+        let lowerPoints = bars.compactMap { bar -> LightweightDataPoint? in
+            guard let lower = bar.lowerBand else { return nil }
+            return LightweightDataPoint(time: Int(bar.ts.timeIntervalSince1970), value: lower)
+        }
+        
+        send(.setForecast(
+            midData: midPoints,
+            upperData: upperPoints,
+            lowerData: lowerPoints,
+            options: ForecastOptions(
+                midColor: "#9c27b0",
+                upperColor: "rgba(156, 39, 176, 0.2)",
+                lowerColor: "rgba(156, 39, 176, 0.2)",
+                lineStyle: 2  // Dashed
+            )
+        ))
+    }
+    
     /// Set SuperTrend with trend-based coloring and strength data
     func setSuperTrend(data: [IndicatorDataPoint], trend: [IndicatorDataPoint], strength: [IndicatorDataPoint] = []) {
         // IMPORTANT: Keep arrays aligned by index - only include points where SuperTrend value is valid

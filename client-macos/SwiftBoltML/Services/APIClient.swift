@@ -189,6 +189,22 @@ actor APIClient {
         )
         return try await performRequest(request)
     }
+    
+    func fetchChartV2(symbol: String, days: Int = 60, includeForecast: Bool = true, forecastDays: Int = 10) async throws -> ChartDataV2Response {
+        let body: [String: Any] = [
+            "symbol": symbol,
+            "days": days,
+            "includeForecast": includeForecast,
+            "forecastDays": forecastDays
+        ]
+        
+        let request = try makeRequest(
+            endpoint: "chart-data-v2",
+            method: "POST",
+            body: body
+        )
+        return try await performRequest(request)
+    }
 
     func fetchNews(symbol: String? = nil) async throws -> NewsResponse {
         var queryItems: [URLQueryItem] = []

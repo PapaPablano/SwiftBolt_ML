@@ -7,6 +7,11 @@ struct OHLCBar: Codable, Identifiable, Equatable {
     let low: Double
     let close: Double
     let volume: Double
+    
+    // Forecast-specific fields (optional)
+    let upperBand: Double?
+    let lowerBand: Double?
+    let confidenceScore: Double?
 
     var id: Date { ts }
 
@@ -38,15 +43,21 @@ struct OHLCBar: Codable, Identifiable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case ts, open, high, low, close, volume
+        case upperBand = "upper_band"
+        case lowerBand = "lower_band"
+        case confidenceScore = "confidence_score"
     }
 
-    init(ts: Date, open: Double, high: Double, low: Double, close: Double, volume: Double) {
+    init(ts: Date, open: Double, high: Double, low: Double, close: Double, volume: Double, upperBand: Double? = nil, lowerBand: Double? = nil, confidenceScore: Double? = nil) {
         self.ts = ts
         self.open = open
         self.high = high
         self.low = low
         self.close = close
         self.volume = volume
+        self.upperBand = upperBand
+        self.lowerBand = lowerBand
+        self.confidenceScore = confidenceScore
     }
 
     init(from decoder: Decoder) throws {
@@ -90,6 +101,11 @@ struct OHLCBar: Codable, Identifiable, Equatable {
         self.low = try container.decode(Double.self, forKey: .low)
         self.close = try container.decode(Double.self, forKey: .close)
         self.volume = try container.decode(Double.self, forKey: .volume)
+        
+        // Decode optional forecast fields
+        self.upperBand = try container.decodeIfPresent(Double.self, forKey: .upperBand)
+        self.lowerBand = try container.decodeIfPresent(Double.self, forKey: .lowerBand)
+        self.confidenceScore = try container.decodeIfPresent(Double.self, forKey: .confidenceScore)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -100,5 +116,8 @@ struct OHLCBar: Codable, Identifiable, Equatable {
         try container.encode(low, forKey: .low)
         try container.encode(close, forKey: .close)
         try container.encode(volume, forKey: .volume)
+        try container.encodeIfPresent(upperBand, forKey: .upperBand)
+        try container.encodeIfPresent(lowerBand, forKey: .lowerBand)
+        try container.encodeIfPresent(confidenceScore, forKey: .confidenceScore)
     }
 }

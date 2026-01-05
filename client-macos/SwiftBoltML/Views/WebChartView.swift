@@ -27,13 +27,26 @@ struct WebChartView: NSViewRepresentable {
         }
 
         func setupDataBindings() {
-            // Subscribe to chart data changes
+            // Subscribe to V2 chart data changes (layered data)
+            parent.viewModel.$chartDataV2
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] chartDataV2 in
+                    guard let self = self,
+                          self.parent.bridge.isReady,
+                          let data = chartDataV2 else { return }
+
+                    self.updateChartV2(with: data)
+                }
+                .store(in: &cancellables)
+            
+            // Subscribe to legacy chart data changes (fallback)
             parent.viewModel.$chartData
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] chartData in
                     guard let self = self,
                           self.parent.bridge.isReady,
-                          let data = chartData else { return }
+                          let data = chartData,
+                          self.parent.viewModel.chartDataV2 == nil else { return }
 
                     self.updateChart(with: data)
                 }
@@ -46,13 +59,138 @@ struct WebChartView: NSViewRepresentable {
                     guard let self = self, isReady else { return }
 
                     // Load initial data when bridge becomes ready
-                    if !self.hasLoadedInitialData,
-                       let data = self.parent.viewModel.chartData {
-                        self.updateChart(with: data)
-                        self.hasLoadedInitialData = true
+                    if !self.hasLoadedInitialData {
+                        if let dataV2 = self.parent.viewModel.chartDataV2 {
+                            self.updateChartV2(with: dataV2)
+                            self.hasLoadedInitialData = true
+                        } else if let data = self.parent.viewModel.chartData {
+                            self.updateChart(with: data)
+                            self.hasLoadedInitialData = true
+                        }
                     }
                 }
                 .store(in: &cancellables)
+        }
+
+        private func updateChartV2(with data: ChartDataV2Response) {
+            let bridge = parent.bridge
+            
+            print("[WebChartView] Updating chart with V2 layered data")
+            print("[WebChartView] - Historical: \(data.layers.historical.count) bars")
+            print("[WebChartView] - Intraday: \(data.layers.intraday.count) bars")
+            print("[WebChartView] - Forecast: \(data.layers.forecast.count) bars")
+            
+            // Set historical candlestick data (solid, primary color)
+            bridge.setCandles(from: data.layers.historical.data)
+            
+            // Add intraday overlay if present (highlighted, different color)
+            if data.hasIntraday {
+                bridge.setIntradayOverlay(from: data.layers.intraday.data)
+            }
+            
+            // Add forecast data if present (dashed line with confidence bands)
+            if data.hasForecast {
+                bridge.setForecastLayer(from: data.layers.forecast.data)
+            }
+            
+            // Set indicators based on config (using combined historical + intraday data)
+            let config = parent.viewModel.indicatorConfig
+            let allBars = data.allBars
+            
+            if config.showSMA20 {
+                bridge.setIndicator(
+                    id: "sma20",
+                    name: "SMA(20)",
+                    data: parent.viewModel.sma20,
+                    color: "#4db8ff"
+                )
+            }
+            
+            if config.showSMA50 {
+                bridge.setIndicator(
+                    id: "sma50",
+                    name: "SMA(50)",
+                    data: parent.viewModel.sma50,
+                    color: "#ffa600"
+                )
+            }
+            
+            if config.showEMA9 {
+                bridge.setIndicator(
+                    id: "ema9",
+                    name: "EMA(9)",
+                    data: parent.viewModel.ema9,
+                    color: "#00ffbf"
+                )
+            }
+            
+            if config.showEMA21 {
+                bridge.setIndicator(
+                    id: "ema21",
+                    name: "EMA(21)",
+                    data: parent.viewModel.ema21,
+                    color: "#ff80b3"
+                )
+            }
+            
+            if config.showSMA200 {
+                bridge.setIndicator(
+                    id: "sma200",
+                    name: "SMA(200)",
+                    data: parent.viewModel.sma200,
+                    color: "#ff5555"
+                )
+            }
+            
+            if config.showBollingerBands {
+                bridge.setIndicator(
+                    id: "bb_upper",
+                    name: "BB Upper",
+                    data: parent.viewModel.bollingerUpper,
+                    color: "#9966ff"
+                )
+                bridge.setIndicator(
+                    id: "bb_middle",
+                    name: "BB Middle",
+                    data: parent.viewModel.bollingerMiddle,
+                    color: "#9966ff"
+                )
+                bridge.setIndicator(
+                    id: "bb_lower",
+                    name: "BB Lower",
+                    data: parent.viewModel.bollingerLower,
+                    color: "#9966ff"
+                )
+            }
+            
+            if config.showSuperTrend {
+                let superTrendLine = parent.viewModel.superTrendLine
+                let trendValues = parent.viewModel.superTrendTrend
+                let aiFactorValues = parent.viewModel.superTrendAIFactor
+                
+                let minCount = min(superTrendLine.count, trendValues.count, allBars.count)
+                if minCount > 0 {
+                    let trendData = (0..<minCount).map { i in
+                        IndicatorDataPoint(
+                            bar: allBars[i],
+                            value: Double(trendValues[i])
+                        )
+                    }
+                    
+                    let factorData = (0..<min(minCount, aiFactorValues.count)).map { i in
+                        IndicatorDataPoint(
+                            bar: allBars[i],
+                            value: aiFactorValues[i]
+                        )
+                    }
+                    
+                    bridge.setSuperTrend(
+                        data: Array(superTrendLine.prefix(minCount)),
+                        trend: trendData,
+                        strength: factorData
+                    )
+                }
+            }
         }
 
         private func updateChart(with data: ChartResponse) {

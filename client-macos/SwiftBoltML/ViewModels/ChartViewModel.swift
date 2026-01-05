@@ -25,9 +25,11 @@ final class ChartViewModel: ObservableObject {
             invalidateIndicatorCache()
         }
     }
+    @Published private(set) var chartDataV2: ChartDataV2Response?
     @Published private(set) var isLoading: Bool = false
     @Published var errorMessage: String?
     @Published var indicatorConfig = IndicatorConfig()
+    @Published var useV2API: Bool = true
 
     // Refresh state
     @Published private(set) var isRefreshing: Bool = false
@@ -464,23 +466,59 @@ final class ChartViewModel: ObservableObject {
         // Create new task
         loadTask = Task {
             do {
-                let response = try await APIClient.shared.fetchChart(
-                    symbol: symbol.ticker,
-                    timeframe: timeframe
-                )
+                if useV2API {
+                    // Use new V2 API with layered data
+                    let response = try await APIClient.shared.fetchChartV2(
+                        symbol: symbol.ticker,
+                        days: 60,
+                        includeForecast: true,
+                        forecastDays: 10
+                    )
+                    
+                    // Check if task was cancelled
+                    guard !Task.isCancelled else {
+                        print("[DEBUG] ChartViewModel.loadChart() - CANCELLED")
+                        isLoading = false
+                        return
+                    }
+                    
+                    print("[DEBUG] ChartViewModel.loadChart() V2 - SUCCESS!")
+                    print("[DEBUG] - Historical: \(response.layers.historical.count) bars")
+                    print("[DEBUG] - Intraday: \(response.layers.intraday.count) bars")
+                    print("[DEBUG] - Forecast: \(response.layers.forecast.count) bars")
+                    chartDataV2 = response
+                    
+                    // Also populate legacy chartData for backward compatibility
+                    chartData = ChartResponse(
+                        symbol: response.symbol,
+                        assetType: "stock",
+                        timeframe: response.timeframe,
+                        bars: response.allBars,
+                        mlSummary: nil,
+                        indicators: nil,
+                        superTrendAI: nil
+                    )
+                } else {
+                    // Use legacy API
+                    let response = try await APIClient.shared.fetchChart(
+                        symbol: symbol.ticker,
+                        timeframe: timeframe
+                    )
 
-                // Check if task was cancelled
-                guard !Task.isCancelled else {
-                    print("[DEBUG] ChartViewModel.loadChart() - CANCELLED")
-                    isLoading = false
-                    return
+                    // Check if task was cancelled
+                    guard !Task.isCancelled else {
+                        print("[DEBUG] ChartViewModel.loadChart() - CANCELLED")
+                        isLoading = false
+                        return
+                    }
+
+                    print("[DEBUG] ChartViewModel.loadChart() - SUCCESS!")
+                    print("[DEBUG] - Received \(response.bars.count) bars")
+                    print("[DEBUG] - Setting chartData property...")
+                    chartData = response
+                    print("[DEBUG] - chartData is now: \(chartData == nil ? "nil" : "non-nil with \(chartData!.bars.count) bars")")
                 }
-
-                print("[DEBUG] ChartViewModel.loadChart() - SUCCESS!")
-                print("[DEBUG] - Received \(response.bars.count) bars")
-                print("[DEBUG] - Setting chartData property...")
-                chartData = response
-                print("[DEBUG] - chartData is now: \(chartData == nil ? "nil" : "non-nil with \(chartData!.bars.count) bars")")
+                
                 errorMessage = nil
 
                 // Recalculate S&R indicators with new data
@@ -496,6 +534,7 @@ final class ChartViewModel: ObservableObject {
                 print("[DEBUG] - Error message: \(error.localizedDescription)")
                 errorMessage = error.localizedDescription
                 chartData = nil
+                chartDataV2 = nil
             }
 
             isLoading = false
