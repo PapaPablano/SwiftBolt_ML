@@ -746,4 +746,7 @@ struct IndicatorConfig {
     var showPivotLevels: Bool = false        // BigBeluga multi-timeframe pivots
     var showPolynomialSR: Bool = false       // Polynomial regression S&R
     var showLogisticSR: Bool = false         // Logistic regression ML S&R
+
+    // Chart Renderer
+    var useWebChart: Bool = false            // Use Lightweight Charts (WKWebView) instead of Swift Charts
 }

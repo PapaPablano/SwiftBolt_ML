@@ -327,12 +327,12 @@ extension ChartBridge: WKScriptMessageHandler {
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
-        guard let dict = message.body as? [String: Any],
-              let type = dict["type"] as? String else {
-            return
-        }
-
+        // Capture the body on the main actor since WKScriptMessage.body is MainActor-isolated
         Task { @MainActor in
+            guard let dict = message.body as? [String: Any],
+                  let type = dict["type"] as? String else {
+                return
+            }
             handleMessage(type: type, data: dict)
         }
     }

@@ -276,19 +276,7 @@ struct WebChartPreviewContainer: View {
             ))
         }
 
-        // Create sample response
-        let response = ChartResponse(
-            symbol: "SAMPLE",
-            assetType: "stock",
-            timeframe: "d1",
-            bars: bars,
-            mlSummary: nil,
-            indicators: nil,
-            superTrendAI: nil
-        )
-
-        // This would need a proper setter on ChartViewModel
-        // For now this is just for demonstration
+        // For preview, just print the sample bar count
         print("[Preview] Would load \(bars.count) sample bars")
     }
 }

@@ -127,41 +127,48 @@ struct ChartView: View {
                             .padding(.top, 8)
                         }
 
-                        AdvancedChartView(
-                            bars: chartData.bars,
-                            sma20: chartViewModel.sma20,
-                            sma50: chartViewModel.sma50,
-                            ema9: chartViewModel.ema9,
-                            ema21: chartViewModel.ema21,
-                            rsi: chartViewModel.rsi,
-                            config: chartViewModel.indicatorConfig,
-                            mlSummary: chartData.mlSummary,
-                            macdLine: chartViewModel.macdLine,
-                            macdSignal: chartViewModel.macdSignal,
-                            macdHistogram: chartViewModel.macdHistogram,
-                            stochasticK: chartViewModel.stochasticK,
-                            stochasticD: chartViewModel.stochasticD,
-                            kdjK: chartViewModel.kdjK,
-                            kdjD: chartViewModel.kdjD,
-                            kdjJ: chartViewModel.kdjJ,
-                            adxLine: chartViewModel.adxLine,
-                            plusDI: chartViewModel.plusDI,
-                            minusDI: chartViewModel.minusDI,
-                            superTrendLine: chartViewModel.superTrendLine,
-                            superTrendTrend: chartViewModel.superTrendTrend,
-                            superTrendStrength: chartViewModel.superTrendStrength,
-                            bollingerUpper: chartViewModel.bollingerUpper,
-                            bollingerMiddle: chartViewModel.bollingerMiddle,
-                            bollingerLower: chartViewModel.bollingerLower,
-                            atr: chartViewModel.atr,
-                            pivotIndicator: chartViewModel.pivotLevelsIndicator,
-                            polyIndicator: chartViewModel.polynomialSRIndicator,
-                            logisticIndicator: chartViewModel.logisticSRIndicator,
-                            superTrendAIIndicator: chartViewModel.superTrendAIIndicator,
-                            superTrendAISignals: chartViewModel.superTrendAISignals
-                        )
-                        .padding()
-                        .id("advanced-chart-\(chartData.symbol)-\(chartData.bars.count)-\(chartData.bars.first?.ts.timeIntervalSince1970 ?? 0)-\(chartData.bars.last?.close ?? 0)")
+                        // Choose chart renderer based on config
+                        if chartViewModel.indicatorConfig.useWebChart {
+                            WebChartView(viewModel: chartViewModel)
+                                .padding()
+                                .id("web-chart-\(chartData.symbol)-\(chartData.bars.count)")
+                        } else {
+                            AdvancedChartView(
+                                bars: chartData.bars,
+                                sma20: chartViewModel.sma20,
+                                sma50: chartViewModel.sma50,
+                                ema9: chartViewModel.ema9,
+                                ema21: chartViewModel.ema21,
+                                rsi: chartViewModel.rsi,
+                                config: chartViewModel.indicatorConfig,
+                                mlSummary: chartData.mlSummary,
+                                macdLine: chartViewModel.macdLine,
+                                macdSignal: chartViewModel.macdSignal,
+                                macdHistogram: chartViewModel.macdHistogram,
+                                stochasticK: chartViewModel.stochasticK,
+                                stochasticD: chartViewModel.stochasticD,
+                                kdjK: chartViewModel.kdjK,
+                                kdjD: chartViewModel.kdjD,
+                                kdjJ: chartViewModel.kdjJ,
+                                adxLine: chartViewModel.adxLine,
+                                plusDI: chartViewModel.plusDI,
+                                minusDI: chartViewModel.minusDI,
+                                superTrendLine: chartViewModel.superTrendLine,
+                                superTrendTrend: chartViewModel.superTrendTrend,
+                                superTrendStrength: chartViewModel.superTrendStrength,
+                                bollingerUpper: chartViewModel.bollingerUpper,
+                                bollingerMiddle: chartViewModel.bollingerMiddle,
+                                bollingerLower: chartViewModel.bollingerLower,
+                                atr: chartViewModel.atr,
+                                pivotIndicator: chartViewModel.pivotLevelsIndicator,
+                                polyIndicator: chartViewModel.polynomialSRIndicator,
+                                logisticIndicator: chartViewModel.logisticSRIndicator,
+                                superTrendAIIndicator: chartViewModel.superTrendAIIndicator,
+                                superTrendAISignals: chartViewModel.superTrendAISignals
+                            )
+                            .padding()
+                            .id("advanced-chart-\(chartData.symbol)-\(chartData.bars.count)-\(chartData.bars.first?.ts.timeIntervalSince1970 ?? 0)-\(chartData.bars.last?.close ?? 0)")
+                        }
 
                         if let latestBar = chartData.bars.last {
                             OHLCBarView(bar: latestBar)
@@ -486,6 +493,13 @@ struct IndicatorToggleMenu: View {
 
             Section("Display") {
                 Toggle("Volume", isOn: $config.showVolume)
+            }
+
+            Divider()
+
+            Section("Chart Renderer") {
+                Toggle("Use TradingView Charts", isOn: $config.useWebChart)
+                    .help("Switch to Lightweight Charts (WKWebView) for TradingView-style UX and better performance with large datasets")
             }
         } label: {
             Label("Indicators", systemImage: "chart.line.uptrend.xyaxis")
