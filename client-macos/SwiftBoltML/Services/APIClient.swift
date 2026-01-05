@@ -34,7 +34,7 @@ actor APIClient {
         self.session = URLSession.shared
     }
 
-    private func makeRequest(endpoint: String, queryItems: [URLQueryItem]? = nil) throws -> URLRequest {
+    private func makeRequest(endpoint: String, queryItems: [URLQueryItem]? = nil, method: String = "GET", body: [String: Any]? = nil) throws -> URLRequest {
         guard var components = URLComponents(string: "\(baseURL)/\(endpoint)") else {
             throw APIError.invalidURL
         }
@@ -48,9 +48,13 @@ actor APIClient {
         }
 
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        request.httpMethod = method
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        if let body = body {
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
 
         return request
     }

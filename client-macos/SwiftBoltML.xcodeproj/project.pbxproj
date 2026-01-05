@@ -7,10 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A1B347CC5E0F954A36BA01DC3E /* OptionContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21131DB1B4BA641EE87E3B141 /* OptionContract.swift */; };
-		A14706E26C5AA94C30BF27B907 /* OptionsChainResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2AF4864D6320841BD9F0EE8CE /* OptionsChainResponse.swift */; };
-		A16BF00852A5CE40D38071D833 /* OptionsChainViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22356DD43AE194792860F15E6 /* OptionsChainViewModel.swift */; };
-		A1C5AFCF58126A4D3C9AE73497 /* OptionsChainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A23A81C0BD8EDC4A46895FF663 /* OptionsChainView.swift */; };
 		0B281429F99B764ACF20AE52 /* OptionsRankerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */; };
 		136FE9F67FA29A26AE074312 /* MultiTimeframeConsensusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144206D7859B6361AEFE13D9 /* MultiTimeframeConsensusView.swift */; };
 		1469ED89052E948868C57E9E /* PivotLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CE2E34EE4D81F3060BC9AF1 /* PivotLevel.swift */; };
@@ -40,7 +36,7 @@
 		A1000008233456780000008 /* Symbol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000008233456780000008 /* Symbol.swift */; };
 		A1000009233456780000009 /* OHLCBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000009233456780000009 /* OHLCBar.swift */; };
 		A1000010233456780000010 /* ChartResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000010233456780000010 /* ChartResponse.swift */; };
-		A1000099233456780000099 /* ChartDataV2Response.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000099233456780000099 /* ChartDataV2Response.swift */; };
+		BDE40B47AF240844B1A78E5F /* ChartDataV2Response.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDC622175EEC874C2B9768AB /* ChartDataV2Response.swift */; };
 		A1000011233456780000011 /* NewsItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000011233456780000011 /* NewsItem.swift */; };
 		A1000012233456780000012 /* NewsResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000012233456780000012 /* NewsResponse.swift */; };
 		A1000013233456780000013 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000013233456780000013 /* APIClient.swift */; };
@@ -86,10 +82,6 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		A21131DB1B4BA641EE87E3B141 /* OptionContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionContract.swift; sourceTree = "<group>"; };
-		A2AF4864D6320841BD9F0EE8CE /* OptionsChainResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainResponse.swift; sourceTree = "<group>"; };
-		A22356DD43AE194792860F15E6 /* OptionsChainViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainViewModel.swift; sourceTree = "<group>"; };
-		A23A81C0BD8EDC4A46895FF663 /* OptionsChainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainView.swift; sourceTree = "<group>"; };
 		0128CA566A7D864E3938B3FA /* OptionsRankerViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerViewModel.swift; sourceTree = "<group>"; };
 		07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerView.swift; sourceTree = "<group>"; };
 		0A4D3D1FC85DBCBD8C45CCA5 /* WatchlistModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchlistModels.swift; sourceTree = "<group>"; };
@@ -117,7 +109,7 @@
 		A2000008233456780000008 /* Symbol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Symbol.swift; sourceTree = "<group>"; };
 		A2000009233456780000009 /* OHLCBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OHLCBar.swift; sourceTree = "<group>"; };
 		A2000010233456780000010 /* ChartResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartResponse.swift; sourceTree = "<group>"; };
-		A2000099233456780000099 /* ChartDataV2Response.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartDataV2Response.swift; sourceTree = "<group>"; };
+		CDC622175EEC874C2B9768AB /* ChartDataV2Response.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartDataV2Response.swift; sourceTree = "<group>"; };
 		A2000011233456780000011 /* NewsItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewsItem.swift; sourceTree = "<group>"; };
 		A2000012233456780000012 /* NewsResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewsResponse.swift; sourceTree = "<group>"; };
 		A2000013233456780000013 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
@@ -244,7 +236,6 @@
 				F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */,
 				F050475A57EE1E86842D9FB8 /* WebChartView.swift */,
 			);
-				A23A81C0BD8EDC4A46895FF663 /* OptionsChainView.swift */,
 			path = Views;
 			sourceTree = "<group>";
 		};
@@ -261,7 +252,6 @@
 				0128CA566A7D864E3938B3FA /* OptionsRankerViewModel.swift */,
 				2FB6D0158AE11968F0D3B3C2 /* AnalysisViewModel.swift */,
 			);
-				A22356DD43AE194792860F15E6 /* OptionsChainViewModel.swift */,
 			path = ViewModels;
 			sourceTree = "<group>";
 		};
@@ -271,7 +261,7 @@
 				A2000008233456780000008 /* Symbol.swift */,
 				A2000009233456780000009 /* OHLCBar.swift */,
 				A2000010233456780000010 /* ChartResponse.swift */,
-				A2000099233456780000099 /* ChartDataV2Response.swift */,
+				CDC622175EEC874C2B9768AB /* ChartDataV2Response.swift */,
 				F60BB96A2EF036FA0044BE7E /* OptionContract.swift */,
 				F60BB96B2EF036FA0044BE7E /* OptionsChainResponse.swift */,
 				A2000011233456780000011 /* NewsItem.swift */,
@@ -288,8 +278,6 @@
 				78170FE468AE321CB9A91BD5 /* SuperTrendChartData.swift */,
 				FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */,
 			);
-				A21131DB1B4BA641EE87E3B141 /* OptionContract.swift */,
-				A2AF4864D6320841BD9F0EE8CE /* OptionsChainResponse.swift */,
 			path = Models;
 			sourceTree = "<group>";
 		};
@@ -421,7 +409,7 @@
 				F60BB96C2EF036FA0044BE7E /* OptionContract.swift in Sources */,
 				F60BB96D2EF036FA0044BE7E /* OptionsChainResponse.swift in Sources */,
 				A1000010233456780000010 /* ChartResponse.swift in Sources */,
-				A1000099233456780000099 /* ChartDataV2Response.swift in Sources */,
+				BDE40B47AF240844B1A78E5F /* ChartDataV2Response.swift in Sources */,
 				A1000011233456780000011 /* NewsItem.swift in Sources */,
 				A1000012233456780000012 /* NewsResponse.swift in Sources */,
 				A1000013233456780000013 /* APIClient.swift in Sources */,
@@ -478,10 +466,6 @@
 				4529AC756E5F22D03E743400 /* ChartBridge.swift in Sources */,
 				89DD292B67C2CFAB0A8731F5 /* WebChartView.swift in Sources */,
 			);
-				A1B347CC5E0F954A36BA01DC3E /* OptionContract.swift in Sources */,
-				A14706E26C5AA94C30BF27B907 /* OptionsChainResponse.swift in Sources */,
-				A16BF00852A5CE40D38071D833 /* OptionsChainViewModel.swift in Sources */,
-				A1C5AFCF58126A4D3C9AE73497 /* OptionsChainView.swift in Sources */,
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
