@@ -117,12 +117,105 @@ struct WebChartView: NSViewRepresentable {
                 )
             }
 
+            if config.showSMA200 {
+                bridge.setIndicator(
+                    id: "sma200",
+                    name: "SMA(200)",
+                    data: parent.viewModel.sma200,
+                    color: "#ff5555"
+                )
+            }
+
+            // Bollinger Bands
+            if config.showBollingerBands {
+                bridge.setIndicator(
+                    id: "bb_upper",
+                    name: "BB Upper",
+                    data: parent.viewModel.bollingerUpper,
+                    color: "#9966ff"
+                )
+                bridge.setIndicator(
+                    id: "bb_middle",
+                    name: "BB Middle",
+                    data: parent.viewModel.bollingerMiddle,
+                    color: "#9966ff"
+                )
+                bridge.setIndicator(
+                    id: "bb_lower",
+                    name: "BB Lower",
+                    data: parent.viewModel.bollingerLower,
+                    color: "#9966ff"
+                )
+            }
+
+            // SuperTrend line
+            if config.showSuperTrend {
+                bridge.setIndicator(
+                    id: "supertrend",
+                    name: "SuperTrend",
+                    data: parent.viewModel.superTrendLine,
+                    color: "#00e676"  // Will be overridden by trend direction
+                )
+            }
+
             // Add SuperTrend AI signals if enabled
             if config.showSignalMarkers {
                 let signals = parent.viewModel.superTrendAISignals
                 if !signals.isEmpty {
                     bridge.setSignals(signals)
                 }
+            }
+
+            // Oscillator sub-panels
+            if config.showRSI {
+                bridge.setRSI(data: parent.viewModel.rsi)
+            } else {
+                bridge.hidePanel("rsi")
+            }
+
+            if config.showMACD {
+                bridge.setMACD(
+                    line: parent.viewModel.macdLine,
+                    signal: parent.viewModel.macdSignal,
+                    histogram: parent.viewModel.macdHistogram
+                )
+            } else {
+                bridge.hidePanel("macd")
+            }
+
+            if config.showStochastic {
+                bridge.setStochastic(
+                    k: parent.viewModel.stochasticK,
+                    d: parent.viewModel.stochasticD
+                )
+            } else {
+                bridge.hidePanel("stochastic")
+            }
+
+            if config.showKDJ {
+                bridge.setKDJ(
+                    k: parent.viewModel.kdjK,
+                    d: parent.viewModel.kdjD,
+                    j: parent.viewModel.kdjJ
+                )
+            } else {
+                bridge.hidePanel("kdj")
+            }
+
+            if config.showADX {
+                bridge.setADX(
+                    adx: parent.viewModel.adxLine,
+                    plusDI: parent.viewModel.plusDI,
+                    minusDI: parent.viewModel.minusDI
+                )
+            } else {
+                bridge.hidePanel("adx")
+            }
+
+            if config.showATR {
+                bridge.setATR(data: parent.viewModel.atr)
+            } else {
+                bridge.hidePanel("atr")
             }
 
             print("[WebChartView] Chart updated with \(data.bars.count) bars")

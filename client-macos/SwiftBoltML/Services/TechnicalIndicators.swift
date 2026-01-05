@@ -748,5 +748,5 @@ struct IndicatorConfig {
     var showLogisticSR: Bool = false         // Logistic regression ML S&R
 
     // Chart Renderer
-    var useWebChart: Bool = false            // Use Lightweight Charts (WKWebView) instead of Swift Charts
+    var useWebChart: Bool = true             // Use Lightweight Charts (WKWebView) - default for TradingView UX
 }

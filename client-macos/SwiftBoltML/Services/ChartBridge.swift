@@ -19,10 +19,20 @@ enum ChartCommand: Encodable {
     case scrollToRealTime
     case fitContent
 
+    // Oscillator sub-panels
+    case setRSI(data: [LightweightDataPoint])
+    case setMACD(line: [LightweightDataPoint], signal: [LightweightDataPoint], histogram: [LightweightDataPoint])
+    case setStochastic(kData: [LightweightDataPoint], dData: [LightweightDataPoint])
+    case setKDJ(kData: [LightweightDataPoint], dData: [LightweightDataPoint], jData: [LightweightDataPoint])
+    case setADX(adxData: [LightweightDataPoint], plusDI: [LightweightDataPoint], minusDI: [LightweightDataPoint])
+    case setATR(data: [LightweightDataPoint])
+    case hidePanel(panel: String)
+
     // Custom encoding to match JS API
     private enum CodingKeys: String, CodingKey {
         case type, options, data, candle, id, midData, upperData, lowerData
         case seriesId, markers, price, from, to
+        case line, signal, histogram, kData, dData, jData, adxData, plusDI, minusDI, panel
     }
 
     func encode(to encoder: Encoder) throws {
@@ -82,6 +92,41 @@ enum ChartCommand: Encodable {
 
         case .fitContent:
             try container.encode("fitContent", forKey: .type)
+
+        case .setRSI(let data):
+            try container.encode("setRSI", forKey: .type)
+            try container.encode(data, forKey: .data)
+
+        case .setMACD(let line, let signal, let histogram):
+            try container.encode("setMACD", forKey: .type)
+            try container.encode(line, forKey: .line)
+            try container.encode(signal, forKey: .signal)
+            try container.encode(histogram, forKey: .histogram)
+
+        case .setStochastic(let kData, let dData):
+            try container.encode("setStochastic", forKey: .type)
+            try container.encode(kData, forKey: .kData)
+            try container.encode(dData, forKey: .dData)
+
+        case .setKDJ(let kData, let dData, let jData):
+            try container.encode("setKDJ", forKey: .type)
+            try container.encode(kData, forKey: .kData)
+            try container.encode(dData, forKey: .dData)
+            try container.encode(jData, forKey: .jData)
+
+        case .setADX(let adxData, let plusDI, let minusDI):
+            try container.encode("setADX", forKey: .type)
+            try container.encode(adxData, forKey: .adxData)
+            try container.encode(plusDI, forKey: .plusDI)
+            try container.encode(minusDI, forKey: .minusDI)
+
+        case .setATR(let data):
+            try container.encode("setATR", forKey: .type)
+            try container.encode(data, forKey: .data)
+
+        case .hidePanel(let panel):
+            try container.encode("hidePanel", forKey: .type)
+            try container.encode(panel, forKey: .panel)
         }
     }
 }
@@ -289,6 +334,98 @@ final class ChartBridge: NSObject, ObservableObject {
             let options = PriceLineOptions(color: "#ff5959", lineStyle: 2, title: "R")
             send(.addPriceLine(seriesId: "candles", price: resistance, options: options))
         }
+    }
+
+    // MARK: - Oscillator Panel Methods
+
+    /// Set RSI indicator data
+    func setRSI(data: [IndicatorDataPoint]) {
+        let points = data.compactMap { point -> LightweightDataPoint? in
+            guard let value = point.value else { return nil }
+            return LightweightDataPoint(
+                time: Int(point.date.timeIntervalSince1970),
+                value: value
+            )
+        }
+        send(.setRSI(data: points))
+    }
+
+    /// Set MACD indicator data
+    func setMACD(line: [IndicatorDataPoint], signal: [IndicatorDataPoint], histogram: [IndicatorDataPoint]) {
+        let linePoints = line.compactMap { point -> LightweightDataPoint? in
+            guard let value = point.value else { return nil }
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
+        }
+        let signalPoints = signal.compactMap { point -> LightweightDataPoint? in
+            guard let value = point.value else { return nil }
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
+        }
+        let histPoints = histogram.compactMap { point -> LightweightDataPoint? in
+            guard let value = point.value else { return nil }
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
+        }
+        send(.setMACD(line: linePoints, signal: signalPoints, histogram: histPoints))
+    }
+
+    /// Set Stochastic indicator data
+    func setStochastic(k: [IndicatorDataPoint], d: [IndicatorDataPoint]) {
+        let kPoints = k.compactMap { point -> LightweightDataPoint? in
+            guard let value = point.value else { return nil }
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
+        }
+        let dPoints = d.compactMap { point -> LightweightDataPoint? in
+            guard let value = point.value else { return nil }
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
+        }
+        send(.setStochastic(kData: kPoints, dData: dPoints))
+    }
+
+    /// Set KDJ indicator data
+    func setKDJ(k: [IndicatorDataPoint], d: [IndicatorDataPoint], j: [IndicatorDataPoint]) {
+        let kPoints = k.compactMap { point -> LightweightDataPoint? in
+            guard let value = point.value else { return nil }
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
+        }
+        let dPoints = d.compactMap { point -> LightweightDataPoint? in
+            guard let value = point.value else { return nil }
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
+        }
+        let jPoints = j.compactMap { point -> LightweightDataPoint? in
+            guard let value = point.value else { return nil }
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
+        }
+        send(.setKDJ(kData: kPoints, dData: dPoints, jData: jPoints))
+    }
+
+    /// Set ADX indicator data
+    func setADX(adx: [IndicatorDataPoint], plusDI: [IndicatorDataPoint], minusDI: [IndicatorDataPoint]) {
+        let adxPoints = adx.compactMap { point -> LightweightDataPoint? in
+            guard let value = point.value else { return nil }
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
+        }
+        let plusPoints = plusDI.compactMap { point -> LightweightDataPoint? in
+            guard let value = point.value else { return nil }
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
+        }
+        let minusPoints = minusDI.compactMap { point -> LightweightDataPoint? in
+            guard let value = point.value else { return nil }
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
+        }
+        send(.setADX(adxData: adxPoints, plusDI: plusPoints, minusDI: minusPoints))
+    }
+
+    /// Set ATR indicator data
+    func setATR(data: [IndicatorDataPoint]) {
+        let points = data.compactMap { point -> LightweightDataPoint? in
+            guard let value = point.value else { return nil }
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
+        }
+        send(.setATR(data: points))
+    }
+
+    /// Hide an oscillator panel
+    func hidePanel(_ panel: String) {
+        send(.hidePanel(panel: panel))
     }
 
     // MARK: - Private Helpers

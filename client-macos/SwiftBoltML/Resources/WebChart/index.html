@@ -19,10 +19,43 @@
             font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
         }
 
-        #chart-container {
+        #charts-wrapper {
             width: 100%;
             height: 100%;
+            display: flex;
+            flex-direction: column;
             position: relative;
+        }
+
+        #chart-container {
+            width: 100%;
+            flex: 1;
+            min-height: 200px;
+            position: relative;
+        }
+
+        .sub-panel {
+            width: 100%;
+            height: 100px;
+            position: relative;
+            border-top: 1px solid #333;
+            display: none;
+        }
+
+        .sub-panel.active {
+            display: block;
+        }
+
+        .sub-panel-label {
+            position: absolute;
+            top: 4px;
+            left: 8px;
+            font-size: 10px;
+            color: #888;
+            z-index: 10;
+            background: rgba(30, 30, 30, 0.8);
+            padding: 2px 6px;
+            border-radius: 3px;
         }
 
         /* Loading state */
@@ -105,7 +138,29 @@
     </style>
 </head>
 <body>
-    <div id="chart-container" class="loading">Loading chart...</div>
+    <div id="charts-wrapper">
+        <div id="chart-container" class="loading">Loading chart...</div>
+
+        <!-- Sub-panels for oscillators -->
+        <div id="rsi-panel" class="sub-panel">
+            <div class="sub-panel-label">RSI (14)</div>
+        </div>
+        <div id="macd-panel" class="sub-panel">
+            <div class="sub-panel-label">MACD (12,26,9)</div>
+        </div>
+        <div id="stochastic-panel" class="sub-panel">
+            <div class="sub-panel-label">Stochastic (14,3)</div>
+        </div>
+        <div id="kdj-panel" class="sub-panel">
+            <div class="sub-panel-label">KDJ (9,3,3)</div>
+        </div>
+        <div id="adx-panel" class="sub-panel">
+            <div class="sub-panel-label">ADX (14)</div>
+        </div>
+        <div id="atr-panel" class="sub-panel">
+            <div class="sub-panel-label">ATR (14)</div>
+        </div>
+    </div>
 
     <div id="legend"></div>
 
