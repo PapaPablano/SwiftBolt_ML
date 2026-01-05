@@ -425,9 +425,23 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    // 7. Validate ML forecast label against current price direction
-    // This catches "stale forecasts" where price has moved past the target
+    // 7. Filter ML forecast points to only show FUTURE predictions
+    // Forecasts should NOT overlay on historical price data
     if (mlSummary && bars.length > 0) {
+      const latestBarTs = new Date(bars[bars.length - 1].ts).getTime();
+      
+      // Filter each horizon's points to only include future timestamps
+      mlSummary.horizons = mlSummary.horizons.map(horizon => ({
+        ...horizon,
+        points: horizon.points.filter((point) => {
+          const pointTs = typeof point.ts === 'number' 
+            ? point.ts * 1000  // Unix timestamp in seconds -> milliseconds
+            : new Date(point.ts).getTime();
+          return pointTs > latestBarTs;
+        }),
+      }));
+
+      // Validate ML forecast label against current price direction
       const currentPrice = bars[bars.length - 1].close;
       const forecast1D = mlSummary.horizons.find(h => h.horizon === "1D");
 
@@ -453,6 +467,8 @@ serve(async (req: Request): Promise<Response> => {
           };
         }
       }
+
+      console.log(`[Chart] Filtered ML forecasts to future-only for ${ticker}`);
     }
 
     // 8. Return response with ML forecasts
