@@ -150,10 +150,26 @@ struct WebChartView: NSViewRepresentable {
 
             // SuperTrend with trend-based coloring
             if config.showSuperTrend {
-                bridge.setSuperTrend(
-                    data: parent.viewModel.superTrendLine,
-                    trend: parent.viewModel.superTrendTrend
-                )
+                let superTrendLine = parent.viewModel.superTrendLine
+                let trendValues = parent.viewModel.superTrendTrend
+                    
+                // Ensure arrays are same length
+                let minCount = min(superTrendLine.count, trendValues.count)
+                if minCount > 0 {
+                    let trendData = (0..<minCount).map { i in
+                        IndicatorDataPoint(
+                            bar: data.bars[i],
+                            value: Double(trendValues[i])
+                        )
+                    }
+                    
+                    print("[WebChartView] SuperTrend: \(minCount) points, first trend=\(trendValues.first ?? 0), last trend=\(trendValues.last ?? 0)")
+                    
+                    bridge.setSuperTrend(
+                        data: Array(superTrendLine.prefix(minCount)),
+                        trend: trendData
+                    )
+                }
             }
 
             // Add SuperTrend AI signals if enabled

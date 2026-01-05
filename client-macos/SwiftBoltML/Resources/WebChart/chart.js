@@ -911,6 +911,16 @@
         setSuperTrend: function(data, trendData) {
             if (!state.chart) return;
 
+            console.log('[ChartJS] setSuperTrend called with', data.length, 'data points,', trendData.length, 'trend points');
+            if (data.length > 0) {
+                console.log('[ChartJS] First data point:', data[0]);
+                console.log('[ChartJS] Last data point:', data[data.length - 1]);
+            }
+            if (trendData.length > 0) {
+                console.log('[ChartJS] First trend:', trendData[0]);
+                console.log('[ChartJS] Last trend:', trendData[trendData.length - 1]);
+            }
+
             // Remove existing SuperTrend series if any
             if (state.series.supertrend_bull) {
                 state.chart.removeSeries(state.series.supertrend_bull);
@@ -921,56 +931,68 @@
                 delete state.series.supertrend_bear;
             }
 
-            // Split data into bullish and bearish segments
-            const bullishData = [];
-            const bearishData = [];
+            // Create continuous segments that change color on trend switches
+            // Build array of segments, each segment is one continuous color
+            const segments = [];
+            let currentSegment = null;
+            let prevTrend = null;
 
             for (let i = 0; i < data.length; i++) {
                 const point = data[i];
                 const trend = trendData && trendData[i] ? trendData[i].value : 0;
+                const isBullish = trend === 1 || trend > 0.5;
 
-                if (trend > 0) {
-                    // Bullish trend
-                    bullishData.push(point);
-                    // Add null to bearish to create gap
-                    if (bearishData.length > 0 && bearishData[bearishData.length - 1].value !== null) {
-                        bearishData.push({ time: point.time, value: null });
+                // Start new segment on trend change or first point
+                if (prevTrend === null || prevTrend !== isBullish) {
+                    // If transitioning, add the transition point to previous segment for continuity
+                    if (currentSegment && currentSegment.data.length > 0) {
+                        currentSegment.data.push(point);
                     }
-                } else if (trend < 0) {
-                    // Bearish trend
-                    bearishData.push(point);
-                    // Add null to bullish to create gap
-                    if (bullishData.length > 0 && bullishData[bullishData.length - 1].value !== null) {
-                        bullishData.push({ time: point.time, value: null });
-                    }
+                    
+                    // Start new segment
+                    currentSegment = {
+                        isBullish: isBullish,
+                        data: [point]
+                    };
+                    segments.push(currentSegment);
+                } else {
+                    // Continue current segment
+                    currentSegment.data.push(point);
                 }
+                
+                prevTrend = isBullish;
             }
 
-            // Add bullish line (green)
-            if (bullishData.length > 0) {
-                state.series.supertrend_bull = state.chart.addLineSeries({
-                    color: colors.superTrendBull,
-                    lineWidth: 2,
-                    priceLineVisible: false,
-                    crosshairMarkerVisible: true,
-                    lastValueVisible: false
-                });
-                state.series.supertrend_bull.setData(bullishData);
-            }
+            console.log('[ChartJS] SuperTrend segments:', segments.length);
 
-            // Add bearish line (red)
-            if (bearishData.length > 0) {
-                state.series.supertrend_bear = state.chart.addLineSeries({
-                    color: colors.superTrendBear,
-                    lineWidth: 2,
-                    priceLineVisible: false,
-                    crosshairMarkerVisible: true,
-                    lastValueVisible: false
-                });
-                state.series.supertrend_bear.setData(bearishData);
+            // Render each segment as a separate line series with appropriate color
+            // Store all series in an array for cleanup
+            if (!state.series.supertrend_segments) {
+                state.series.supertrend_segments = [];
             }
+            
+            // Clear old segment series
+            state.series.supertrend_segments.forEach(series => {
+                state.chart.removeSeries(series);
+            });
+            state.series.supertrend_segments = [];
 
-            console.log('[ChartJS] SuperTrend set: bull=' + bullishData.length + ', bear=' + bearishData.length);
+            // Add each segment
+            segments.forEach((segment, index) => {
+                if (segment.data.length > 0) {
+                    const series = state.chart.addLineSeries({
+                        color: segment.isBullish ? colors.superTrendBull : colors.superTrendBear,
+                        lineWidth: 2,
+                        priceLineVisible: false,
+                        crosshairMarkerVisible: true,
+                        lastValueVisible: index === segments.length - 1  // Only show last value on final segment
+                    });
+                    series.setData(segment.data);
+                    state.series.supertrend_segments.push(series);
+                }
+            });
+
+            console.log('[ChartJS] SuperTrend rendered with ' + segments.length + ' color segments');
         },
 
         /**
