@@ -297,11 +297,14 @@
             height: config.height,
             rightPriceScale: {
                 borderColor: '#333',
-                scaleMargins: { top: 0.1, bottom: 0.1 },
-                autoScale: config.scaleMin === undefined,
+                scaleMargins: { 
+                    top: panelName === 'volume' ? 0.05 : 0.1, 
+                    bottom: panelName === 'volume' ? 0.05 : 0.1 
+                },
+                autoScale: true,
+                visible: true,
                 ...(config.scaleMin !== undefined && {
-                    minValue: config.scaleMin,
-                    maxValue: config.scaleMax
+                    mode: LightweightCharts.PriceScaleMode.Normal
                 })
             },
             timeScale: {
@@ -877,13 +880,28 @@
             const chart = getOrCreateSubPanel('volume');
             if (!chart) return;
 
+            // Initialize subSeries.volume if needed
+            if (!state.subSeries.volume) {
+                state.subSeries.volume = {};
+            }
+
             if (!state.subSeries.volume.histogram) {
                 state.subSeries.volume.histogram = chart.addHistogramSeries({
                     priceLineVisible: false,
-                    lastValueVisible: false,
+                    lastValueVisible: true,
                     priceFormat: {
                         type: 'volume'
-                    }
+                    },
+                    priceScaleId: 'right'
+                });
+                
+                // Configure price scale for volume
+                chart.priceScale('right').applyOptions({
+                    scaleMargins: {
+                        top: 0.1,
+                        bottom: 0.0
+                    },
+                    autoScale: true
                 });
             }
 
@@ -907,92 +925,84 @@
 
         /**
          * Set SuperTrend with dynamic coloring based on trend
+         * Creates separate line segments that disconnect at trend changes
+         * Adds BUY/SELL markers at signal points
          */
-        setSuperTrend: function(data, trendData) {
-            if (!state.chart) return;
+        setSuperTrend: function(data, trendData, strengthData) {
+            console.log('[ChartJS] setSuperTrend called, points:', data.length);
 
-            console.log('[ChartJS] setSuperTrend called with', data.length, 'data points,', trendData.length, 'trend points');
-            if (data.length > 0) {
-                console.log('[ChartJS] First data point:', data[0]);
-                console.log('[ChartJS] Last data point:', data[data.length - 1]);
-            }
-            if (trendData.length > 0) {
-                console.log('[ChartJS] First trend:', trendData[0]);
-                console.log('[ChartJS] Last trend:', trendData[trendData.length - 1]);
+            if (!state.chart) {
+                console.error('[ChartJS] Chart not initialized');
+                return;
             }
 
-            // Remove existing SuperTrend series if any
-            if (state.series.supertrend_bull) {
-                state.chart.removeSeries(state.series.supertrend_bull);
-                delete state.series.supertrend_bull;
+            // Remove existing SuperTrend series
+            if (state.series.supertrend_segments) {
+                state.series.supertrend_segments.forEach(s => state.chart.removeSeries(s));
             }
-            if (state.series.supertrend_bear) {
-                state.chart.removeSeries(state.series.supertrend_bear);
-                delete state.series.supertrend_bear;
-            }
+            state.series.supertrend_segments = [];
 
-            // Create continuous segments that change color on trend switches
-            // Build array of segments, each segment is one continuous color
+            // Build segments - each segment is a continuous line of same trend
+            // Disconnect at trend changes (no connecting line between segments)
+            // Note: Signal markers are handled separately via setSignals()
             const segments = [];
             let currentSegment = null;
-            let prevTrend = null;
+            let lastTrend = null;
 
             for (let i = 0; i < data.length; i++) {
                 const point = data[i];
                 const trend = trendData && trendData[i] ? trendData[i].value : 0;
-                const isBullish = trend === 1 || trend > 0.5;
+                // Trend is 1 for bullish, -1 for bearish (or 0/1 in some cases)
+                const isBullish = trend === 1 || trend > 0;
 
-                // Start new segment on trend change or first point
-                if (prevTrend === null || prevTrend !== isBullish) {
-                    // If transitioning, add the transition point to previous segment for continuity
-                    if (currentSegment && currentSegment.data.length > 0) {
-                        currentSegment.data.push(point);
+                // Detect trend change
+                if (lastTrend !== null && lastTrend !== isBullish) {
+                    // End current segment
+                    if (currentSegment && currentSegment.points.length > 0) {
+                        segments.push(currentSegment);
                     }
-                    
                     // Start new segment
                     currentSegment = {
                         isBullish: isBullish,
-                        data: [point]
+                        points: [{ time: point.time, value: point.value }]
                     };
-                    segments.push(currentSegment);
                 } else {
-                    // Continue current segment
-                    currentSegment.data.push(point);
+                    // Continue current segment or start first one
+                    if (!currentSegment) {
+                        currentSegment = {
+                            isBullish: isBullish,
+                            points: []
+                        };
+                    }
+                    currentSegment.points.push({ time: point.time, value: point.value });
                 }
-                
-                prevTrend = isBullish;
+
+                lastTrend = isBullish;
+            }
+
+            // Push final segment
+            if (currentSegment && currentSegment.points.length > 0) {
+                segments.push(currentSegment);
             }
 
             console.log('[ChartJS] SuperTrend segments:', segments.length);
 
-            // Render each segment as a separate line series with appropriate color
-            // Store all series in an array for cleanup
-            if (!state.series.supertrend_segments) {
-                state.series.supertrend_segments = [];
-            }
-            
-            // Clear old segment series
-            state.series.supertrend_segments.forEach(series => {
-                state.chart.removeSeries(series);
-            });
-            state.series.supertrend_segments = [];
-
-            // Add each segment
-            segments.forEach((segment, index) => {
-                if (segment.data.length > 0) {
+            // Create a line series for each segment
+            segments.forEach((seg, idx) => {
+                if (seg.points.length > 0) {
                     const series = state.chart.addLineSeries({
-                        color: segment.isBullish ? colors.superTrendBull : colors.superTrendBear,
+                        color: seg.isBullish ? colors.superTrendBull : colors.superTrendBear,
                         lineWidth: 2,
                         priceLineVisible: false,
-                        crosshairMarkerVisible: true,
-                        lastValueVisible: index === segments.length - 1  // Only show last value on final segment
+                        crosshairMarkerVisible: false,
+                        lastValueVisible: idx === segments.length - 1
                     });
-                    series.setData(segment.data);
+                    series.setData(seg.points);
                     state.series.supertrend_segments.push(series);
                 }
             });
-
-            console.log('[ChartJS] SuperTrend rendered with ' + segments.length + ' color segments');
+            
+            console.log('[ChartJS] SuperTrend rendering complete');
         },
 
         /**

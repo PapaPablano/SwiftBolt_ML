@@ -729,7 +729,7 @@ struct IndicatorConfig {
     // Volatility/Trend
     var showBollingerBands: Bool = false
     var showADX: Bool = false
-    var showSuperTrend: Bool = true  // Enabled by default for SuperTrend AI
+    var showSuperTrend: Bool = true  // Enabled - rendered as overlay on main chart (note: Lightweight Charts limitation means separate color segments)
     var showATR: Bool = false
 
     // SuperTrend Mode
@@ -740,7 +740,7 @@ struct IndicatorConfig {
     var showSignalMarkers: Bool = true
     var showConfidenceBadges: Bool = true
     var showAdaptiveMA: Bool = true  // Show adaptive moving average of SuperTrend
-    var showSuperTrendAIPanel: Bool = false  // Show dedicated SuperTrend AI panel
+    var showSuperTrendAIPanel: Bool = false  // Disabled - SuperTrend now integrated into main chart
 
     // Support & Resistance Indicators
     var showPivotLevels: Bool = false        // BigBeluga multi-timeframe pivots

@@ -60,13 +60,16 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     df = TechnicalIndicatorsCorrect.calculate_bollinger_bands(df, period=20, std_dev=2.0)
 
     # ADX (CRITICAL FIX: Wilder's smoothing, not rolling mean)
+    # TRADINGVIEW-VALIDATED: period=14
     df = TechnicalIndicatorsCorrect.calculate_adx_correct(df, period=14)
 
     # KDJ (CRITICAL FIX: Exponential smoothing, not SMA)
-    df = TechnicalIndicatorsCorrect.calculate_kdj_correct(df, period=9, k_smooth=3, d_smooth=3)
+    # TRADINGVIEW-VALIDATED: period=9, k_smooth=5, d_smooth=5 (EMA smoothing)
+    df = TechnicalIndicatorsCorrect.calculate_kdj_correct(df, period=9, k_smooth=5, d_smooth=5)
 
     # SuperTrend (WAS MISSING - now implemented with 20% weight)
-    df = TechnicalIndicatorsCorrect.calculate_supertrend(df, period=10, multiplier=3.0)
+    # TRADINGVIEW-VALIDATED: period=7, multiplier=2.0
+    df = TechnicalIndicatorsCorrect.calculate_supertrend(df, period=7, multiplier=2.0)
 
     # ATR (for normalization only, NOT as directional signal)
     df["atr_14"] = TechnicalIndicatorsCorrect.calculate_atr(df, period=14)

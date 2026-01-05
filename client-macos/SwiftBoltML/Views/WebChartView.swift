@@ -148,10 +148,11 @@ struct WebChartView: NSViewRepresentable {
                 )
             }
 
-            // SuperTrend with trend-based coloring
+            // SuperTrend with trend-based coloring and AI factor
             if config.showSuperTrend {
                 let superTrendLine = parent.viewModel.superTrendLine
                 let trendValues = parent.viewModel.superTrendTrend
+                let aiFactorValues = parent.viewModel.superTrendAIFactor  // Use AI adaptive factor
                     
                 // Ensure arrays are same length
                 let minCount = min(superTrendLine.count, trendValues.count)
@@ -163,20 +164,51 @@ struct WebChartView: NSViewRepresentable {
                         )
                     }
                     
-                    print("[WebChartView] SuperTrend: \(minCount) points, first trend=\(trendValues.first ?? 0), last trend=\(trendValues.last ?? 0)")
+                    // Convert AI factor array to IndicatorDataPoint
+                    let factorData = (0..<min(minCount, aiFactorValues.count)).map { i in
+                        IndicatorDataPoint(
+                            bar: data.bars[i],
+                            value: aiFactorValues[i]
+                        )
+                    }
+                    
+                    print("[WebChartView] SuperTrend: \(minCount) points, AI factors: \(aiFactorValues.prefix(5))")
                     
                     bridge.setSuperTrend(
                         data: Array(superTrendLine.prefix(minCount)),
-                        trend: trendData
+                        trend: trendData,
+                        strength: factorData
                     )
                 }
             }
 
-            // Add SuperTrend AI signals if enabled
+            // Add SuperTrend AI signals if enabled (filtered to match visual segments)
             if config.showSignalMarkers {
-                let signals = parent.viewModel.superTrendAISignals
-                if !signals.isEmpty {
-                    bridge.setSignals(signals)
+                let allSignals = parent.viewModel.superTrendAISignals
+                let trendValues = parent.viewModel.superTrendTrend
+                
+                // Filter signals to only show when visual line segment changes
+                // (not every minor trend oscillation)
+                var filteredSignals: [SuperTrendSignal] = []
+                var lastVisualTrend: Int? = nil
+                
+                for signal in allSignals {
+                    let idx = signal.barIndex
+                    guard idx < trendValues.count else { continue }
+                    
+                    let currentTrend = trendValues[idx]
+                    let visualTrendChanged = lastVisualTrend == nil || 
+                                            (lastVisualTrend == 1 && currentTrend != 1) ||
+                                            (lastVisualTrend != 1 && currentTrend == 1)
+                    
+                    if visualTrendChanged {
+                        filteredSignals.append(signal)
+                        lastVisualTrend = currentTrend
+                    }
+                }
+                
+                if !filteredSignals.isEmpty {
+                    bridge.setSignals(filteredSignals)
                 }
             }
 

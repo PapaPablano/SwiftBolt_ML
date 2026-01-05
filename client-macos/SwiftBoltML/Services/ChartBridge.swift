@@ -27,7 +27,7 @@ enum ChartCommand: Encodable {
     case setADX(adxData: [LightweightDataPoint], plusDI: [LightweightDataPoint], minusDI: [LightweightDataPoint])
     case setATR(data: [LightweightDataPoint])
     case setVolume(data: [VolumeDataPoint])
-    case setSuperTrend(data: [LightweightDataPoint], trendData: [LightweightDataPoint])
+    case setSuperTrend(data: [LightweightDataPoint], trendData: [LightweightDataPoint], strengthData: [LightweightDataPoint])
     case hidePanel(panel: String)
 
     // Custom encoding to match JS API
@@ -35,7 +35,7 @@ enum ChartCommand: Encodable {
         case type, options, data, candle, id, midData, upperData, lowerData
         case seriesId, markers, price, from, to
         case line, signal, histogram, kData, dData, jData, adxData, plusDI, minusDI, panel
-        case trendData
+        case trendData, strengthData
     }
 
     func encode(to encoder: Encoder) throws {
@@ -131,10 +131,11 @@ enum ChartCommand: Encodable {
             try container.encode("setVolume", forKey: .type)
             try container.encode(data, forKey: .data)
 
-        case .setSuperTrend(let data, let trendData):
+        case .setSuperTrend(let data, let trendData, let strengthData):
             try container.encode("setSuperTrend", forKey: .type)
             try container.encode(data, forKey: .data)
             try container.encode(trendData, forKey: .trendData)
+            try container.encode(strengthData, forKey: .strengthData)
 
         case .hidePanel(let panel):
             try container.encode("hidePanel", forKey: .type)
@@ -278,9 +279,9 @@ final class ChartBridge: NSObject, ObservableObject {
 
     // MARK: - Convenience Methods
 
-    /// Set candlestick data from OHLCBar array
+    /// Set candlestick data
     func setCandles(from bars: [OHLCBar]) {
-        let candles = bars.map { bar in
+        let candleData = bars.map { bar in
             LightweightCandle(
                 time: Int(bar.ts.timeIntervalSince1970),
                 open: bar.open,
@@ -289,7 +290,15 @@ final class ChartBridge: NSObject, ObservableObject {
                 close: bar.close
             )
         }
-        send(.setCandles(data: candles))
+        
+        // Debug: Log first and last candles to verify data
+        if let first = bars.first, let last = bars.last {
+            print("[ChartBridge] Candles: \(bars.count) bars")
+            print("[ChartBridge] First: \(first.ts) O:\(first.open) H:\(first.high) L:\(first.low) C:\(first.close)")
+            print("[ChartBridge] Last: \(last.ts) O:\(last.open) H:\(last.high) L:\(last.low) C:\(last.close)")
+        }
+        
+        send(.setCandles(data: candleData))
     }
 
     /// Set line indicator data
@@ -331,13 +340,22 @@ final class ChartBridge: NSObject, ObservableObject {
         send(.setForecast(midData: midData, upperData: upperData, lowerData: lowerData, options: options))
     }
 
-    /// Add buy/sell signal markers
+    /// Add buy/sell signal markers with AI factor positioned on SuperTrend line
     func setSignals(_ signals: [SuperTrendSignal], on seriesId: String = "candles") {
         let markers = signals.map { signal in
-            ChartMarker(
+            let factorText = String(format: " %.1fx", signal.factor)
+            let labelText = (signal.type == .buy ? "BUY" : "SELL") + factorText
+            
+            // BUY signals: green line is BELOW price (support), so label goes below
+            // SELL signals: red line is ABOVE price (resistance), so label goes above
+            return ChartMarker(
                 time: Int(signal.date.timeIntervalSince1970),
                 type: signal.type == .buy ? "buy" : "sell",
-                text: signal.type == .buy ? "BUY" : "SELL"
+                text: labelText,
+                color: signal.type == .buy ? "#26a69a" : "#ef5350",
+                position: signal.type == .buy ? "belowBar" : "aboveBar",  // BUY below, SELL above
+                shape: signal.type == .buy ? "arrowUp" : "arrowDown",
+                size: 2
             )
         }
         send(.setMarkers(seriesId: seriesId, markers: markers))
@@ -463,25 +481,40 @@ final class ChartBridge: NSObject, ObservableObject {
         send(.setVolume(data: volumeData))
     }
 
-    /// Set SuperTrend with trend-based coloring
-    func setSuperTrend(data: [IndicatorDataPoint], trend: [IndicatorDataPoint]) {
-        let stPoints = data.compactMap { point -> LightweightDataPoint? in
-            guard let value = point.value else { return nil }
-            return LightweightDataPoint(
-                time: Int(point.date.timeIntervalSince1970),
-                value: value
-            )
+    /// Set SuperTrend with trend-based coloring and strength data
+    func setSuperTrend(data: [IndicatorDataPoint], trend: [IndicatorDataPoint], strength: [IndicatorDataPoint] = []) {
+        // IMPORTANT: Keep arrays aligned by index - only include points where SuperTrend value is valid
+        var stPoints: [LightweightDataPoint] = []
+        var trendPoints: [LightweightDataPoint] = []
+        var strengthPoints: [LightweightDataPoint] = []
+        
+        let count = min(data.count, trend.count)
+        for i in 0..<count {
+            // Only include if SuperTrend value is valid (not nil)
+            guard let stValue = data[i].value else { continue }
+            
+            // Use trend value (should always be 0 or 1)
+            let trendValue = trend[i].value ?? 0
+            
+            // Get strength value if available
+            let strengthValue = i < strength.count ? (strength[i].value ?? 0) : 0
+            
+            stPoints.append(LightweightDataPoint(
+                time: Int(data[i].date.timeIntervalSince1970),
+                value: stValue
+            ))
+            trendPoints.append(LightweightDataPoint(
+                time: Int(trend[i].date.timeIntervalSince1970),
+                value: trendValue
+            ))
+            strengthPoints.append(LightweightDataPoint(
+                time: Int(data[i].date.timeIntervalSince1970),
+                value: strengthValue
+            ))
         }
         
-        let trendPoints = trend.compactMap { point -> LightweightDataPoint? in
-            guard let value = point.value else { return nil }
-            return LightweightDataPoint(
-                time: Int(point.date.timeIntervalSince1970),
-                value: value
-            )
-        }
-        
-        send(.setSuperTrend(data: stPoints, trendData: trendPoints))
+        print("[ChartBridge] SuperTrend: \(stPoints.count) aligned points")
+        send(.setSuperTrend(data: stPoints, trendData: trendPoints, strengthData: strengthPoints))
     }
 
     // MARK: - Private Helpers
