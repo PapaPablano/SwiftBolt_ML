@@ -15,6 +15,10 @@ on:
     - cron: '30 21 * * 1-5'
   workflow_dispatch:  # Allow manual trigger
 
+concurrency:
+  group: options-scrape-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   scrape-options:
     runs-on: ubuntu-latest
@@ -44,12 +48,20 @@ jobs:
         run: |
           echo "Triggering options scrape for all watchlist symbols..."
           echo "Time: ${{ steps.market.outputs.time }}"
+          current_hour=$(TZ="America/New_York" date +%H)
+          max_expirations=4
+          if [ "$current_hour" -ge 16 ]; then
+            max_expirations=10
+          fi
+
+          payload=$(jq -cn --argjson max_expirations "$max_expirations" '{all_watchlist:true, max_expirations:$max_expirations}')
+          echo "Payload: $payload"
 
           response=$(curl -s -w "\n%{http_code}" -X POST \
             "${{ secrets.SUPABASE_URL }}/functions/v1/options-scrape" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             -H "Content-Type: application/json" \
-            -d '{"all_watchlist": true, "max_expirations": 4}')
+            -d "$payload")
 
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | sed '$d')
@@ -79,7 +91,7 @@ jobs:
           echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Time | ${{ steps.market.outputs.time }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Total Options | ${{ env.TOTAL_OPTIONS }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Total Options | ${{ env.TOTAL_OPTIONS || '0' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Schedule" >> $GITHUB_STEP_SUMMARY
           echo "- 10:00 AM ET (30 min after open)" >> $GITHUB_STEP_SUMMARY

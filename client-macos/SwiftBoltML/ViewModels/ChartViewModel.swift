@@ -728,7 +728,7 @@ final class ChartViewModel: ObservableObject {
             return
         }
         
-        let bars = chartData.layers.allBars
+        let bars = chartData.allBars
         guard !bars.isEmpty else {
             volumeProfile = []
             return

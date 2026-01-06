@@ -1,10 +1,6 @@
 name: Nightly Options Backfill
 
 on:
-  # Nightly run after market close (02:00 UTC = 20:00 CST / 21:00 EST)
-  schedule:
-    - cron: "0 15 * * 1-5"  # Weekdays at 09:00 CST (15:00 UTC) to align with manual run
-
   # Manual trigger (GitHub UI -> Actions -> Run workflow)
   workflow_dispatch:
     inputs:

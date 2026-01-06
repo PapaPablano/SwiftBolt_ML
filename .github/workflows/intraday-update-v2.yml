@@ -13,6 +13,10 @@ on:
         required: false
         type: string
 
+concurrency:
+  group: intraday-update-v2-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   update-intraday:
     runs-on: ubuntu-latest

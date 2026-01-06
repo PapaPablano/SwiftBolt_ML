@@ -1210,7 +1210,7 @@
                     this.setVolume(cmd.data);
                     break;
                 case 'setSuperTrend':
-                    this.setSuperTrend(cmd.data, cmd.trendData);
+                    this.setSuperTrend(cmd.data, cmd.trendData, cmd.strengthData);
                     break;
                 case 'hidePanel':
                     this.hidePanel(cmd.panel);

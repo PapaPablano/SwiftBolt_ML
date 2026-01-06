@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		WC734A8413BAD142EF9439139C /* WebChartControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */; };
 		0B281429F99B764ACF20AE52 /* OptionsRankerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */; };
 		136FE9F67FA29A26AE074312 /* MultiTimeframeConsensusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144206D7859B6361AEFE13D9 /* MultiTimeframeConsensusView.swift */; };
 		1469ED89052E948868C57E9E /* PivotLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CE2E34EE4D81F3060BC9AF1 /* PivotLevel.swift */; };
@@ -65,9 +66,11 @@
 		E2C1E2A5492FE1CCBEFC9CCD /* PolynomialRegressionIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A702F82DACC8241B3B9A8BA /* PolynomialRegressionIndicator.swift */; };
 		EAB197F7318F24B608BAA78D /* MLDashboardModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 495F16DC7FC5729654ADE6C7 /* MLDashboardModels.swift */; };
 		EBE85EE02C19C722FFEA64F4 /* lightweight-charts.standalone.production.js in Resources */ = {isa = PBXBuildFile; fileRef = F903565D8F0B0D702A53E8B0 /* lightweight-charts.standalone.production.js */; };
+		C0A1B2C3D4E5F60718293A4B /* heikin-ashi.js in Resources */ = {isa = PBXBuildFile; fileRef = E634B03F26BB41088DCBCDA5 /* heikin-ashi.js */; };
+		D0A1B2C3D4E5F60718293A4B /* tooltip-enhanced.js in Resources */ = {isa = PBXBuildFile; fileRef = 73AD50F0BE1D403ABA5D67BA /* tooltip-enhanced.js */; };
 		F60BB96C2EF036FA0044BE7E /* OptionContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96A2EF036FA0044BE7E /* OptionContract.swift */; };
 		F60BB96D2EF036FA0044BE7E /* OptionsChainResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96B2EF036FA0044BE7E /* OptionsChainResponse.swift */; };
-		F60BB96F2EF0371A0044BE7E /* OptionsChainViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96E2EF0371A0044BE7E /* OptionsChainViewModel.swift */; };
+		F60BB96F2EF0371A0044BE7E /* OptionsChainViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96E2EF036FA0044BE7E /* OptionsChainViewModel.swift */; };
 		F60BB9712EF037360044BE7E /* OptionsChainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB9702EF037360044BE7E /* OptionsChainView.swift */; };
 		F6161BC02EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6161BBF2EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift */; };
 		F6161BC12EF2D49A0065ABA1 /* OptionRankDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6161BBE2EF2D49A0065ABA1 /* OptionRankDetailView.swift */; };
@@ -79,9 +82,11 @@
 		SR0000012345678900000001 /* SupportResistanceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000002 /* SupportResistanceModels.swift */; };
 		SR0000012345678900000003 /* SupportResistanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000004 /* SupportResistanceView.swift */; };
 		TRGA0000123456789ABCDEF /* GAStrategyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */; };
+		4282817D7B404958B635FB33 /* WebChartControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03A95F9FD34F4A4BB3BE9013 /* WebChartControlsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebChartControlsView.swift; sourceTree = "<group>"; };
 		0128CA566A7D864E3938B3FA /* OptionsRankerViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerViewModel.swift; sourceTree = "<group>"; };
 		07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerView.swift; sourceTree = "<group>"; };
 		0A4D3D1FC85DBCBD8C45CCA5 /* WatchlistModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchlistModels.swift; sourceTree = "<group>"; };
@@ -157,6 +162,9 @@
 		SR0000012345678900000002 /* SupportResistanceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportResistanceModels.swift; sourceTree = "<group>"; };
 		SR0000012345678900000004 /* SupportResistanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportResistanceView.swift; sourceTree = "<group>"; };
 		TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GAStrategyModels.swift; sourceTree = "<group>"; };
+		03A95F9FD34F4A4BB3BE9013 /* WebChartControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebChartControlsView.swift; sourceTree = "<group>"; };
+		E634B03F26BB41088DCBCDA5 /* heikin-ashi.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = heikin-ashi.js; sourceTree = "<group>"; };
+		73AD50F0BE1D403ABA5D67BA /* tooltip-enhanced.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = tooltip-enhanced.js; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -236,6 +244,7 @@
 				F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */,
 				F050475A57EE1E86842D9FB8 /* WebChartView.swift */,
 			);
+				WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */,
 			path = Views;
 			sourceTree = "<group>";
 		};
@@ -311,7 +320,9 @@
 				D16118E869A5401A364A0832 /* index.html */,
 				D7A8F9A56AC9A504B07BE56A /* chart.js */,
 				F903565D8F0B0D702A53E8B0 /* lightweight-charts.standalone.production.js */,
-			);
+			
+				E634B03F26BB41088DCBCDA5 /* heikin-ashi.js */,
+				73AD50F0BE1D403ABA5D67BA /* tooltip-enhanced.js */,);
 			name = WebChart;
 			path = WebChart;
 			sourceTree = "<group>";
@@ -387,6 +398,8 @@
 				5B4804E93563C0B541E658BF /* index.html in Resources */,
 				BD413BF34398B9C3212F86C9 /* chart.js in Resources */,
 				EBE85EE02C19C722FFEA64F4 /* lightweight-charts.standalone.production.js in Resources */,
+				C0A1B2C3D4E5F60718293A4B /* heikin-ashi.js in Resources */,
+				D0A1B2C3D4E5F60718293A4B /* tooltip-enhanced.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -466,6 +479,7 @@
 				4529AC756E5F22D03E743400 /* ChartBridge.swift in Sources */,
 				89DD292B67C2CFAB0A8731F5 /* WebChartView.swift in Sources */,
 			);
+				WC734A8413BAD142EF9439139C /* WebChartControlsView.swift in Sources */,
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */

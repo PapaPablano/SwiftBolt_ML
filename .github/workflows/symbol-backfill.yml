@@ -18,6 +18,10 @@ on:
         type: boolean
         default: false
 
+concurrency:
+  group: symbol-backfill-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   process-backfill-queue:
     runs-on: ubuntu-latest

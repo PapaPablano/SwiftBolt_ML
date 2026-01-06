@@ -1,27 +1,6 @@
 name: Intraday Data Update
 
 on:
-  schedule:
-    # Every 15 minutes during market hours (EST/UTC-5, weekdays only)
-    # Market: 9:30 AM - 4:00 PM ET = 14:30 - 21:00 UTC
-
-    # 9:45 AM ET = 14:45 UTC (15 min after open)
-    - cron: '45 14 * * 1-5'
-    # 10:00 AM, 10:15, 10:30, 10:45 ET
-    - cron: '0,15,30,45 15 * * 1-5'
-    # 11:00 AM - 11:45 AM ET
-    - cron: '0,15,30,45 16 * * 1-5'
-    # 12:00 PM - 12:45 PM ET
-    - cron: '0,15,30,45 17 * * 1-5'
-    # 1:00 PM - 1:45 PM ET
-    - cron: '0,15,30,45 18 * * 1-5'
-    # 2:00 PM - 2:45 PM ET
-    - cron: '0,15,30,45 19 * * 1-5'
-    # 3:00 PM - 3:45 PM ET
-    - cron: '0,15,30,45 20 * * 1-5'
-    # 4:00 PM ET (market close) - final update
-    - cron: '0 21 * * 1-5'
-
   workflow_dispatch:  # Allow manual trigger
     inputs:
       symbols:
@@ -112,8 +91,8 @@ jobs:
           echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Time | ${{ steps.market.outputs.time }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Market State | ${{ env.MARKET_STATE }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Symbols Updated | ${{ env.SYMBOLS_UPDATED }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Market State | ${{ env.MARKET_STATE || 'unknown' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Symbols Updated | ${{ env.SYMBOLS_UPDATED || '0' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Schedule" >> $GITHUB_STEP_SUMMARY
           echo "Updates every 15 minutes during market hours (9:30 AM - 4:00 PM ET)" >> $GITHUB_STEP_SUMMARY

@@ -129,9 +129,17 @@ struct ChartView: View {
 
                         // Choose chart renderer based on config
                         if chartViewModel.indicatorConfig.useWebChart {
-                            WebChartView(viewModel: chartViewModel)
-                                .padding()
-                                .id("web-chart-\(chartData.symbol)-\(chartData.bars.count)")
+                            VStack(spacing: 0) {
+                                // WebChart Advanced Controls
+                                WebChartControlsView(viewModel: chartViewModel)
+                                    .padding(.horizontal)
+                                    .padding(.top, 8)
+                                
+                                // WebChart Display
+                                WebChartView(viewModel: chartViewModel)
+                                    .padding()
+                                    .id("web-chart-\(chartData.symbol)-\(chartData.bars.count)")
+                            }
                         } else {
                             AdvancedChartView(
                                 bars: chartData.bars,

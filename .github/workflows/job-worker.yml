@@ -18,6 +18,10 @@ on:
           - backfill
           - ranking
 
+concurrency:
+  group: job-worker-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   process-jobs:
     runs-on: ubuntu-latest
