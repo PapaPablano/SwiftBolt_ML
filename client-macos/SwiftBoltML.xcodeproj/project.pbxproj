@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+56BCC553C667467C9F9DE1FA /* HydrationBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7156051C39BF4F2F832E38AA /* HydrationBanner.swift */; };
+296D2C72648D45A18BC89C2B /* EnsureCoverageResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10E36986FAE84774B166FF52 /* EnsureCoverageResponse.swift */; };
 		0B281429F99B764ACF20AE52 /* OptionsRankerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */; };
 		136FE9F67FA29A26AE074312 /* MultiTimeframeConsensusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144206D7859B6361AEFE13D9 /* MultiTimeframeConsensusView.swift */; };
 		1469ED89052E948868C57E9E /* PivotLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CE2E34EE4D81F3060BC9AF1 /* PivotLevel.swift */; };
@@ -86,6 +88,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+7156051C39BF4F2F832E38AA /* HydrationBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HydrationBanner.swift; sourceTree = "<group>"; };
+10E36986FAE84774B166FF52 /* EnsureCoverageResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnsureCoverageResponse.swift; sourceTree = "<group>"; };
 		0128CA566A7D864E3938B3FA /* OptionsRankerViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerViewModel.swift; sourceTree = "<group>"; };
 		07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerView.swift; sourceTree = "<group>"; };
 		0A4D3D1FC85DBCBD8C45CCA5 /* WatchlistModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchlistModels.swift; sourceTree = "<group>"; };
@@ -245,7 +249,8 @@
 				F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */,
 				F050475A57EE1E86842D9FB8 /* WebChartView.swift */,
 				WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */,
-			);
+			
+				7156051C39BF4F2F832E38AA /* HydrationBanner.swift */,);
 			path = Views;
 			sourceTree = "<group>";
 		};
@@ -287,7 +292,8 @@
 				9CE2E34EE4D81F3060BC9AF1 /* PivotLevel.swift */,
 				78170FE468AE321CB9A91BD5 /* SuperTrendChartData.swift */,
 				FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */,
-			);
+			
+				10E36986FAE84774B166FF52 /* EnsureCoverageResponse.swift */,);
 			path = Models;
 			sourceTree = "<group>";
 		};
@@ -487,7 +493,9 @@
 				4529AC756E5F22D03E743400 /* ChartBridge.swift in Sources */,
 				89DD292B67C2CFAB0A8731F5 /* WebChartView.swift in Sources */,
 				WC734A8413BAD142EF9439139C /* WebChartControlsView.swift in Sources */,
-			);
+			
+				296D2C72648D45A18BC89C2B /* EnsureCoverageResponse.swift in Sources */,
+				56BCC553C667467C9F9DE1FA /* HydrationBanner.swift in Sources */,);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
