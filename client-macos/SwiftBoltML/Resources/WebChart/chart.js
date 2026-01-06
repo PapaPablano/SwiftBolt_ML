@@ -274,6 +274,11 @@
      * Create or get a sub-panel chart
      */
     function getOrCreateSubPanel(panelName) {
+        // Ensure sub-series bucket exists
+        if (!state.subSeries[panelName]) {
+            state.subSeries[panelName] = {};
+        }
+
         if (state.subPanels[panelName]) {
             return state.subPanels[panelName];
         }
@@ -599,11 +604,24 @@
         },
 
         /**
+         * Remove volume profile overlay
+         */
+        removeVolumeProfile: function() {
+            if (state.series.volumeProfile && state.chart) {
+                state.chart.removeSeries(state.series.volumeProfile);
+                delete state.series.volumeProfile;
+                console.log('[ChartJS] Volume profile removed');
+            }
+        },
+
+        /**
          * Set RSI data
          */
         setRSI: function(data) {
             const chart = getOrCreateSubPanel('rsi');
             if (!chart) return;
+
+            if (!state.subSeries.rsi) state.subSeries.rsi = {};
 
             // Add overbought/oversold lines
             if (!state.subSeries.rsi.overbought) {
@@ -654,6 +672,7 @@
         setMACD: function(line, signal, histogram) {
             const chart = getOrCreateSubPanel('macd');
             if (!chart) return;
+            if (!state.subSeries.macd) state.subSeries.macd = {};
 
             // Histogram (must be added first for proper layering)
             if (!state.subSeries.macd.histogram) {
@@ -707,6 +726,7 @@
         setStochastic: function(kData, dData) {
             const chart = getOrCreateSubPanel('stochastic');
             if (!chart) return;
+            if (!state.subSeries.stochastic) state.subSeries.stochastic = {};
 
             // Add overbought/oversold lines
             if (!state.subSeries.stochastic.overbought) {
@@ -768,6 +788,7 @@
         setKDJ: function(kData, dData, jData) {
             const chart = getOrCreateSubPanel('kdj');
             if (!chart) return;
+            if (!state.subSeries.kdj) state.subSeries.kdj = {};
 
             // J line (most volatile)
             if (!state.subSeries.kdj.j) {
@@ -817,6 +838,7 @@
         setADX: function(adxData, plusDI, minusDI) {
             const chart = getOrCreateSubPanel('adx');
             if (!chart) return;
+            if (!state.subSeries.adx) state.subSeries.adx = {};
 
             // +DI
             if (!state.subSeries.adx.plusDI) {
@@ -866,6 +888,7 @@
         setATR: function(data) {
             const chart = getOrCreateSubPanel('atr');
             if (!chart) return;
+            if (!state.subSeries.atr) state.subSeries.atr = {};
 
             if (!state.subSeries.atr.line) {
                 state.subSeries.atr.line = chart.addLineSeries({
@@ -1151,81 +1174,93 @@
                 return;
             }
 
-            switch (cmd.type) {
-                case 'init':
-                    this.init(cmd.options);
-                    break;
-                case 'setCandles':
-                    this.setCandles(cmd.data);
-                    break;
-                case 'updateCandle':
-                    this.updateCandle(cmd.candle);
-                    break;
-                case 'setLine':
-                    this.setLine(cmd.id, cmd.data, cmd.options || {});
-                    break;
-                case 'setForecast':
-                    this.setForecast(cmd.midData, cmd.upperData, cmd.lowerData, cmd.options || {});
-                    break;
-                case 'setMarkers':
-                    this.setMarkers(cmd.seriesId, cmd.markers);
-                    break;
-                case 'addPriceLine':
-                    this.addPriceLine(cmd.seriesId, cmd.price, cmd.options || {});
-                    break;
-                case 'removeSeries':
-                    this.removeSeries(cmd.id);
-                    break;
-                case 'clearIndicators':
-                    this.clearIndicators();
-                    break;
-                case 'setVisibleRange':
-                    this.setVisibleRange(cmd.from, cmd.to);
-                    break;
-                case 'scrollToRealTime':
-                    this.scrollToRealTime();
-                    break;
-                case 'fitContent':
-                    this.fitContent();
-                    break;
-                case 'setRSI':
-                    this.setRSI(cmd.data);
-                    break;
-                case 'setMACD':
-                    this.setMACD(cmd.line, cmd.signal, cmd.histogram);
-                    break;
-                case 'setStochastic':
-                    this.setStochastic(cmd.kData, cmd.dData);
-                    break;
-                case 'setKDJ':
-                    this.setKDJ(cmd.kData, cmd.dData, cmd.jData);
-                    break;
-                case 'setADX':
-                    this.setADX(cmd.adxData, cmd.plusDI, cmd.minusDI);
-                    break;
-                case 'setATR':
-                    this.setATR(cmd.data);
-                    break;
-                case 'setVolume':
-                    this.setVolume(cmd.data);
-                    break;
-                case 'setSuperTrend':
-                    this.setSuperTrend(cmd.data, cmd.trendData, cmd.strengthData);
-                    break;
-                case 'hidePanel':
-                    this.hidePanel(cmd.panel);
-                    break;
-                case 'toggleHeikinAshi':
-                    this.toggleHeikinAshi(cmd.enabled);
-                    break;
-                case 'setVolumeProfile':
-                    this.setVolumeProfile(cmd.data);
-                    break;
-                case 'updateLiveBar':
-                    this.updateLiveBar(cmd.bar, cmd.duration);
-                    break;
-                default:
-                    console.warn('[ChartJS] Unknown command type:', cmd.type);
+            try {
+                switch (cmd.type) {
+                    case 'init':
+                        this.init(cmd.options);
+                        break;
+                    case 'setCandles':
+                        this.setCandles(cmd.data);
+                        break;
+                    case 'updateCandle':
+                        this.updateCandle(cmd.candle);
+                        break;
+                    case 'setLine':
+                        this.setLine(cmd.id, cmd.data, cmd.options || {});
+                        break;
+                    case 'setForecast':
+                        this.setForecast(cmd.midData, cmd.upperData, cmd.lowerData, cmd.options || {});
+                        break;
+                    case 'setMarkers':
+                        this.setMarkers(cmd.seriesId, cmd.markers);
+                        break;
+                    case 'addPriceLine':
+                        this.addPriceLine(cmd.seriesId, cmd.price, cmd.options || {});
+                        break;
+                    case 'removeSeries':
+                        this.removeSeries(cmd.id);
+                        break;
+                    case 'clearIndicators':
+                        this.clearIndicators();
+                        break;
+                    case 'setVisibleRange':
+                        this.setVisibleRange(cmd.from, cmd.to);
+                        break;
+                    case 'scrollToRealTime':
+                        this.scrollToRealTime();
+                        break;
+                    case 'fitContent':
+                        this.fitContent();
+                        break;
+                    case 'setRSI':
+                        this.setRSI(cmd.data);
+                        break;
+                    case 'setMACD':
+                        this.setMACD(cmd.line, cmd.signal, cmd.histogram);
+                        break;
+                    case 'setStochastic':
+                        this.setStochastic(cmd.kData, cmd.dData);
+                        break;
+                    case 'setKDJ':
+                        this.setKDJ(cmd.kData, cmd.dData, cmd.jData);
+                        break;
+                    case 'setADX':
+                        this.setADX(cmd.adxData, cmd.plusDI, cmd.minusDI);
+                        break;
+                    case 'setATR':
+                        this.setATR(cmd.data);
+                        break;
+                    case 'setVolume':
+                        this.setVolume(cmd.data);
+                        break;
+                    case 'setSuperTrend':
+                        this.setSuperTrend(cmd.data, cmd.trendData, cmd.strengthData);
+                        break;
+                    case 'hidePanel':
+                        this.hidePanel(cmd.panel);
+                        break;
+                    case 'toggleHeikinAshi':
+                        this.toggleHeikinAshi(cmd.enabled);
+                        break;
+                    case 'setVolumeProfile':
+                        this.setVolumeProfile(cmd.data);
+                        break;
+                    case 'updateLiveBar':
+                        this.updateLiveBar(cmd.bar, cmd.duration);
+                        break;
+                    case 'removeVolumeProfile':
+                        this.removeVolumeProfile();
+                        break;
+                    default:
+                        console.warn('[ChartJS] Unknown command type:', cmd.type);
+                }
+            } catch (err) {
+                console.error('[ChartJS] Command error:', cmd.type, err);
+                sendToSwift('jsError', {
+                    message: err.message,
+                    type: cmd.type,
+                    stack: err.stack
+                });
             }
         }
     };

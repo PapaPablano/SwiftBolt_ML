@@ -32,8 +32,17 @@ final class ChartViewModel: ObservableObject {
     @Published var useV2API: Bool = true
     
     // WebChart Advanced Features
-    @Published var useHeikinAshi: Bool = false
-    @Published var showVolumeProfile: Bool = false
+    @Published var useHeikinAshi: Bool = true
+    @Published var showVolumeProfile: Bool = false {
+        didSet {
+            guard showVolumeProfile != oldValue else { return }
+            if showVolumeProfile {
+                calculateVolumeProfile()
+            } else {
+                volumeProfile = []
+            }
+        }
+    }
     @Published private(set) var volumeProfile: [[String: Any]] = []
 
     // Refresh state

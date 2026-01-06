@@ -94,7 +94,7 @@ struct ChartView: View {
                 .disabled(chartViewModel.isRefreshing)
                 .padding(.trailing, 8)
 
-                IndicatorToggleMenu(config: $appViewModel.chartViewModel.indicatorConfig)
+                IndicatorToggleMenu(chartViewModel: chartViewModel, config: $appViewModel.chartViewModel.indicatorConfig)
             }
             .padding(.horizontal)
             .padding(.top, 8)
@@ -130,11 +130,6 @@ struct ChartView: View {
                         // Choose chart renderer based on config
                         if chartViewModel.indicatorConfig.useWebChart {
                             VStack(spacing: 0) {
-                                // WebChart Advanced Controls
-                                WebChartControlsView(viewModel: chartViewModel)
-                                    .padding(.horizontal)
-                                    .padding(.top, 8)
-                                
                                 // WebChart Display
                                 WebChartView(viewModel: chartViewModel)
                                     .padding()
@@ -460,10 +455,18 @@ struct EmptyChartView: View {
 }
 
 struct IndicatorToggleMenu: View {
+    @ObservedObject var chartViewModel: ChartViewModel
     @Binding var config: IndicatorConfig
 
     var body: some View {
         Menu {
+            Section("Chart Options") {
+                Toggle("Heikin-Ashi", isOn: $chartViewModel.useHeikinAshi)
+                    .disabled(!config.useWebChart)
+                Toggle("Volume Profile", isOn: $chartViewModel.showVolumeProfile)
+                    .disabled(!config.useWebChart)
+            }
+
             Section("Moving Averages") {
                 Toggle("SMA(20)", isOn: $config.showSMA20)
                 Toggle("SMA(50)", isOn: $config.showSMA50)

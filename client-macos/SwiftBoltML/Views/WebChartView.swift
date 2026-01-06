@@ -13,6 +13,7 @@ struct WebChartView: NSViewRepresentable {
         var parent: WebChartView
         var cancellables = Set<AnyCancellable>()
         var hasLoadedInitialData = false
+        var hasAppliedInitialZoom = false
 
         init(_ parent: WebChartView) {
             self.parent = parent
@@ -90,6 +91,32 @@ struct WebChartView: NSViewRepresentable {
                     self.parent.bridge.setVolumeProfile(data: profile)
                 }
                 .store(in: &cancellables)
+
+            // Subscribe to indicator config changes (re-apply overlays/subpanels)
+            parent.viewModel.$indicatorConfig
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    guard let self = self, self.parent.bridge.isReady else { return }
+                    if let dataV2 = self.parent.viewModel.chartDataV2 {
+                        self.updateChartV2(with: dataV2)
+                    } else if let data = self.parent.viewModel.chartData {
+                        self.updateChart(with: data)
+                    }
+                }
+                .store(in: &cancellables)
+
+            // Subscribe to volume profile toggle to remove overlay when disabled
+            parent.viewModel.$showVolumeProfile
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] enabled in
+                    guard let self = self, self.parent.bridge.isReady else { return }
+                    if !enabled {
+                        self.parent.bridge.removeVolumeProfile()
+                    } else if !self.parent.viewModel.volumeProfile.isEmpty {
+                        self.parent.bridge.setVolumeProfile(data: self.parent.viewModel.volumeProfile)
+                    }
+                }
+                .store(in: &cancellables)
         }
 
         private func updateChartV2(with data: ChartDataV2Response) {
@@ -100,6 +127,9 @@ struct WebChartView: NSViewRepresentable {
             print("[WebChartView] - Intraday: \(data.layers.intraday.count) bars")
             print("[WebChartView] - Forecast: \(data.layers.forecast.count) bars")
             
+            // Clear previous overlays/indicators (keeps candles)
+            bridge.send(.clearIndicators)
+
             // Set historical candlestick data (solid, primary color)
             bridge.setCandles(from: data.layers.historical.data)
             
@@ -211,10 +241,15 @@ struct WebChartView: NSViewRepresentable {
                     )
                 }
             }
+
+            applyInitialZoomIfNeeded(bars: (data.layers.historical.data + data.layers.intraday.data))
         }
 
         private func updateChart(with data: ChartResponse) {
             let bridge = parent.bridge
+
+            // Clear previous overlays/indicators (keeps candles)
+            bridge.send(.clearIndicators)
 
             // Set candlestick data
             bridge.setCandles(from: data.bars)
@@ -430,6 +465,30 @@ struct WebChartView: NSViewRepresentable {
             }
 
             print("[WebChartView] Chart updated with \(data.bars.count) bars")
+
+            applyInitialZoomIfNeeded(bars: data.bars)
+        }
+
+        private func applyInitialZoomIfNeeded(bars: [OHLCBar]) {
+            guard !hasAppliedInitialZoom else { return }
+            guard parent.bridge.isReady else { return }
+
+            let sorted = bars.sorted { $0.ts < $1.ts }
+            guard let last = sorted.last else { return }
+
+            let endDate = last.ts
+            let startTarget = endDate.addingTimeInterval(-90 * 24 * 60 * 60)
+            let startBar = sorted.first(where: { $0.ts >= startTarget }) ?? sorted.first
+            guard let start = startBar else { return }
+
+            parent.bridge.send(
+                .setVisibleRange(
+                    from: Int(start.ts.timeIntervalSince1970),
+                    to: Int(endDate.timeIntervalSince1970)
+                )
+            )
+
+            hasAppliedInitialZoom = true
         }
     }
 

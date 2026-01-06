@@ -179,9 +179,15 @@ struct AdvancedChartView: View {
 
         // Initialize visible range to show most recent bars
         let count = bars.count
-        let initialBarsToShow = min(100, count)
         let endIndex = max(0, count - 1)
-        let startIndex = max(0, endIndex - initialBarsToShow + 1)
+        let ninetyDaysAgo = bars.last?.ts.addingTimeInterval(-90 * 24 * 60 * 60)
+        let startIndex: Int
+        if let ninetyDaysAgo {
+            startIndex = bars.firstIndex(where: { $0.ts >= ninetyDaysAgo }) ?? max(0, endIndex - 100 + 1)
+        } else {
+            startIndex = max(0, endIndex - 100 + 1)
+        }
+        let initialBarsToShow = max(10, min(count, endIndex - startIndex + 1))
         _visibleRange = State(initialValue: startIndex...endIndex)
         _barsToShow = State(initialValue: initialBarsToShow)
         _scrollPosition = State(initialValue: startIndex)

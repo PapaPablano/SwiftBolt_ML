@@ -148,7 +148,7 @@
 		F050475A57EE1E86842D9FB8 /* WebChartView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WebChartView.swift; sourceTree = "<group>"; };
 		F60BB96A2EF036FA0044BE7E /* OptionContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionContract.swift; sourceTree = "<group>"; };
 		F60BB96B2EF036FA0044BE7E /* OptionsChainResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainResponse.swift; sourceTree = "<group>"; };
-		F60BB96E2EF0371A0044BE7E /* OptionsChainViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainViewModel.swift; sourceTree = "<group>"; };
+		F60BB96E2EF036FA0044BE7E /* OptionsChainViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OptionsChainViewModel.swift; path = SwiftBoltML/ViewModels/OptionsChainViewModel.swift; sourceTree = SOURCE_ROOT; };
 		F60BB9702EF037360044BE7E /* OptionsChainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainView.swift; sourceTree = "<group>"; };
 		F6161BBE2EF2D49A0065ABA1 /* OptionRankDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionRankDetailView.swift; sourceTree = "<group>"; };
 		F6161BBF2EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsRankerExpiryView.swift; sourceTree = "<group>"; };
@@ -243,8 +243,8 @@
 				D749EA683B66324ED10E4516 /* SuperTrendChartView.swift */,
 				F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */,
 				F050475A57EE1E86842D9FB8 /* WebChartView.swift */,
-			);
 				WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */,
+			);
 			path = Views;
 			sourceTree = "<group>";
 		};
@@ -320,9 +320,9 @@
 				D16118E869A5401A364A0832 /* index.html */,
 				D7A8F9A56AC9A504B07BE56A /* chart.js */,
 				F903565D8F0B0D702A53E8B0 /* lightweight-charts.standalone.production.js */,
-			
 				E634B03F26BB41088DCBCDA5 /* heikin-ashi.js */,
-				73AD50F0BE1D403ABA5D67BA /* tooltip-enhanced.js */,);
+				73AD50F0BE1D403ABA5D67BA /* tooltip-enhanced.js */,
+			);
 			name = WebChart;
 			path = WebChart;
 			sourceTree = "<group>";
@@ -478,8 +478,8 @@
 				A8052D8012DDF9B50B591DA6 /* AnalysisView.swift in Sources */,
 				4529AC756E5F22D03E743400 /* ChartBridge.swift in Sources */,
 				89DD292B67C2CFAB0A8731F5 /* WebChartView.swift in Sources */,
-			);
 				WC734A8413BAD142EF9439139C /* WebChartControlsView.swift in Sources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */

@@ -145,7 +145,7 @@ struct OptionsChainHeader: View {
 
                 Picker("", selection: Binding(
                     get: { viewModel.selectedExpiration },
-                    set: { viewModel.selectExpiration($0) }
+                    set: { (expiration: TimeInterval?) in viewModel.selectExpiration(expiration) }
                 )) {
                     Text("All").tag(nil as TimeInterval?)
                     ForEach(viewModel.availableExpirations, id: \.self) { expiration in

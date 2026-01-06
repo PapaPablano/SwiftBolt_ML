@@ -29,6 +29,7 @@ enum ChartCommand: Encodable {
     case setVolume(data: [VolumeDataPoint])
     case setSuperTrend(data: [LightweightDataPoint], trendData: [LightweightDataPoint], strengthData: [LightweightDataPoint])
     case hidePanel(panel: String)
+    case removeVolumeProfile
 
     // Custom encoding to match JS API
     private enum CodingKeys: String, CodingKey {
@@ -140,6 +141,9 @@ enum ChartCommand: Encodable {
         case .hidePanel(let panel):
             try container.encode("hidePanel", forKey: .type)
             try container.encode(panel, forKey: .panel)
+
+        case .removeVolumeProfile:
+            try container.encode("removeVolumeProfile", forKey: .type)
         }
     }
 }
@@ -237,6 +241,7 @@ final class ChartBridge: NSObject, ObservableObject {
     @Published private(set) var isReady = false
     @Published private(set) var lastCrosshairData: ChartEvent.OHLC?
     @Published private(set) var visibleRange: (from: Int, to: Int)?
+    @Published private(set) var lastJSError: String?
 
     // MARK: - Private State
 
@@ -569,6 +574,12 @@ final class ChartBridge: NSObject, ObservableObject {
         print("[ChartBridge] Volume profile set: \(data.count) levels")
     }
     
+    /// Remove volume profile overlay
+    func removeVolumeProfile() {
+        send(.removeVolumeProfile)
+        print("[ChartBridge] Volume profile removed")
+    }
+    
     /// Update live bar with animation
     func updateLiveBar(bar: OHLCBar, duration: Int = 500) {
         let barData: [String: Any] = [
@@ -701,6 +712,16 @@ extension ChartBridge: WKScriptMessageHandler {
                let to = data["to"] as? Int {
                 visibleRange = (from, to)
                 eventPublisher.send(.visibleRangeChange(from: from, to: to))
+            }
+
+        case "jsError":
+            let message = data["message"] as? String ?? "Unknown JS error"
+            let cmdType = data["type"] as? String ?? "unknown"
+            let stack = data["stack"] as? String ?? ""
+            lastJSError = message
+            print("[ChartBridge] JS error for command '\(cmdType)': \(message)")
+            if !stack.isEmpty {
+                print("[ChartBridge] JS stack: \(stack)")
             }
 
         default:
