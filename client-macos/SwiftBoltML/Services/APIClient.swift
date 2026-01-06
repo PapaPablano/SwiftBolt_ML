@@ -277,13 +277,15 @@ actor APIClient {
     
     /// Trigger both intraday and historical backfill for a symbol
     func triggerCompleteBackfill(symbol: String) async {
-        // Trigger both backfills in parallel
-        async let intraday = triggerIntradayBackfill(symbol: symbol, backfillDays: 10)
-        async let historical = triggerHistoricalBackfill(symbol: symbol)
-        
-        await intraday
-        await historical
-        
+        // Trigger both backfills in parallel using TaskGroup
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                await self.triggerIntradayBackfill(symbol: symbol, backfillDays: 10)
+            }
+            group.addTask {
+                await self.triggerHistoricalBackfill(symbol: symbol)
+            }
+        }
         print("[DEBUG] Complete backfill triggered for \(symbol) (intraday + historical)")
     }
 
