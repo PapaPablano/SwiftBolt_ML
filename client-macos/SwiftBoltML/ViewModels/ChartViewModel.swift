@@ -60,6 +60,11 @@ final class ChartViewModel: ObservableObject {
     @Published var lastUserRefreshResult: UserRefreshResponse?
     @Published private(set) var liveQuote: LiveQuote?
     @Published private(set) var marketState: String?
+    
+    // SPEC-8: Backfill orchestration state
+    @Published private(set) var isHydrating: Bool = false
+    @Published private(set) var backfillProgress: Int = 0
+    @Published private(set) var backfillJobId: String?
 
     // MARK: - Cached Indicator Storage
 
@@ -469,6 +474,13 @@ final class ChartViewModel: ObservableObject {
         print("[DEBUG] - Starting chart data fetch...")
         isLoading = true
         errorMessage = nil
+        
+        // SPEC-8: Trigger non-blocking coverage check for intraday timeframes
+        if timeframe.isIntraday {
+            Task.detached { [weak self] in
+                await self?.ensureCoverageAsync(symbol: symbol.ticker)
+            }
+        }
 
         // Create new task
         loadTask = Task {
@@ -701,7 +713,8 @@ final class ChartViewModel: ObservableObject {
 
     private func runLiveQuoteLoop() async {
         while !Task.isCancelled {
-            guard await selectedSymbol != nil else {
+            let hasSymbol = await MainActor.run { selectedSymbol != nil }
+            guard hasSymbol else {
                 await MainActor.run { self.liveQuote = nil }
                 do {
                     try await Task.sleep(nanoseconds: liveQuoteInterval)
@@ -709,7 +722,8 @@ final class ChartViewModel: ObservableObject {
                 continue
             }
 
-            if await isMarketHours() {
+            let marketOpen = await MainActor.run { isMarketHours() }
+            if marketOpen {
                 await fetchLiveQuote()
             } else {
                 await MainActor.run { self.liveQuote = nil }
@@ -722,7 +736,8 @@ final class ChartViewModel: ObservableObject {
     }
 
     private func fetchLiveQuote() async {
-        guard let symbol = await selectedSymbol else { return }
+        let symbol = await MainActor.run { selectedSymbol }
+        guard let symbol = symbol else { return }
         do {
             let response = try await APIClient.shared.fetchQuotes(symbols: [symbol.ticker])
             await MainActor.run {
@@ -760,6 +775,46 @@ final class ChartViewModel: ObservableObject {
         let closeMinutes = 16 * 60
 
         return minutes >= openMinutes && minutes <= closeMinutes
+    }
+    
+    // MARK: - SPEC-8: Backfill Orchestration
+    
+    /// Non-blocking coverage check for intraday data
+    /// Triggers server-side backfill if needed without blocking UI
+    private func ensureCoverageAsync(symbol: String) async {
+        let windowDays = timeframe.backfillWindowDays
+        let toDate = Date()
+        let fromDate = toDate.addingTimeInterval(-Double(windowDays) * 86400)
+        
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        
+        let fromTs = formatter.string(from: fromDate)
+        let toTs = formatter.string(from: toDate)
+        
+        do {
+            let response = try await APIClient.shared.ensureCoverage(
+                symbol: symbol,
+                timeframe: timeframe.apiToken,
+                fromTs: fromTs,
+                toTs: toTs
+            )
+            
+            await MainActor.run {
+                self.backfillJobId = response.jobId
+                self.isHydrating = !response.hasCoverage
+                
+                if response.hasCoverage {
+                    print("[DEBUG] Coverage exists for \(symbol) \(timeframe.apiToken)")
+                } else {
+                    print("[DEBUG] Backfill job created: \(response.jobId ?? "nil")")
+                    // TODO: Subscribe to Realtime updates for progress
+                    // For MVP, we'll poll or let the user refresh manually
+                }
+            }
+        } catch {
+            print("[DEBUG] ensureCoverage failed (non-fatal): \(error)")
+        }
     }
     
     // MARK: - Volume Profile Calculator

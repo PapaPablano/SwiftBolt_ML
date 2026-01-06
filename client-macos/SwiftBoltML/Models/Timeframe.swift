@@ -40,4 +40,13 @@ public enum Timeframe: String, CaseIterable, Codable, Hashable, Identifiable {
         case .w1:  return (7,  3.0)
         }
     }
+    
+    /// SPEC-8: Backfill window in days for coverage checks
+    var backfillWindowDays: Int {
+        switch self {
+        case .m15: return 30
+        case .h1, .h4: return 90
+        case .d1, .w1: return 365
+        }
+    }
 }

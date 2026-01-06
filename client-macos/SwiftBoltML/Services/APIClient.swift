@@ -293,6 +293,24 @@ final class APIClient {
         }
         print("[DEBUG] Complete backfill triggered for \(symbol) (intraday + historical)")
     }
+    
+    /// SPEC-8: Ensure coverage for symbol/timeframe (non-blocking backfill orchestration)
+    func ensureCoverage(symbol: String, timeframe: String, fromTs: String, toTs: String) async throws -> EnsureCoverageResponse {
+        let body: [String: Any] = [
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "fromTs": fromTs,
+            "toTs": toTs
+        ]
+        
+        let request = try makeRequest(
+            endpoint: "functions/v1/ensure-coverage",
+            method: "POST",
+            body: body
+        )
+        
+        return try await performRequest(request)
+    }
 
     func fetchNews(symbol: String? = nil) async throws -> NewsResponse {
         var queryItems: [URLQueryItem] = []
