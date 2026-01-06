@@ -104,6 +104,11 @@ struct AdvancedChartView: View {
     @State private var selectedIndex: Int?
 
     @State private var superTrendAIUpdateTick: Int = 0
+    @State private var savedVisibleRange: ClosedRange<Int>?
+    /// Tokenized indicator config to detect toggle changes
+    private var configToken: String {
+        "\(config.showRSI)-\(config.showMACD)-\(config.showStochastic)-\(config.showKDJ)-\(config.showADX)-\(config.showATR)-\(config.showVolume)-\(config.showSuperTrend)-\(config.showSuperTrendAIPanel)"
+    }
 
     // Chart pan/zoom state
     @State private var visibleRange: ClosedRange<Int>
@@ -198,17 +203,18 @@ struct AdvancedChartView: View {
         bars.enumerated().map { (index: $0.offset, bar: $0.element) }
     }
 
-    // Visible bars based on scroll position
+    // Visible bars based on scroll position - optimized to avoid O(N) mapping
     private var visibleBars: [(index: Int, bar: OHLCBar)] {
-        let startIdx = max(0, scrollPosition)
-        let endIdx = min(bars.count - 1, scrollPosition + barsToShow - 1)
+        let startIdx = max(0, visibleRange.lowerBound - 20) // 20 bar buffer
+        let endIdx = min(bars.count - 1, visibleRange.upperBound + 20)
         guard startIdx <= endIdx else { return [] }
-        return indexedBars.filter { $0.index >= startIdx && $0.index <= endIdx }
-    }
-
-    // Map indicator data points to bar indices
-    private func indicatorIndex(for date: Date) -> Int? {
-        bars.firstIndex(where: { Calendar.current.isDate($0.ts, equalTo: date, toGranularity: .second) })
+        
+        var result: [(index: Int, bar: OHLCBar)] = []
+        result.reserveCapacity(endIdx - startIdx + 1)
+        for i in startIdx...endIdx {
+            result.append((index: i, bar: bars[i]))
+        }
+        return result
     }
 
     // Calculate dynamic height for price chart based on active panels
@@ -346,10 +352,24 @@ struct AdvancedChartView: View {
             // Reset to latest bars when data changes
             if oldCount != newCount && newCount > 0 {
                 resetToLatest()
+                // Clear selection to avoid stale overlays
+                selectedBar = nil
+                selectedIndex = nil
             }
         }
         .onReceive(superTrendAIIndicator?.objectWillChange.eraseToAnyPublisher() ?? Empty().eraseToAnyPublisher()) { _ in
             superTrendAIUpdateTick += 1
+        }
+        // Preserve visible range when indicator config toggles
+        .onChange(of: configToken, initial: false) { _, _ in
+            let saved = visibleRange
+            DispatchQueue.main.async {
+                let clampedStart = max(0, min(saved.lowerBound, maxChartIndex))
+                let clampedEnd = min(maxChartIndex, max(saved.upperBound, clampedStart))
+                visibleRange = clampedStart...clampedEnd
+                barsToShow = clampedEnd - clampedStart + 1
+                scrollPosition = clampedStart
+            }
         }
     }
 
@@ -671,8 +691,8 @@ struct AdvancedChartView: View {
     private var priceChart: some View {
         Chart {
             // Candlesticks - using index for even spacing
-            // Native scrolling handles visibility, so iterate all bars
-            ForEach(indexedBars, id: \.bar.id) { item in
+            // Native scrolling handles visibility, so iterate visible bars with buffer
+            ForEach(visibleBars, id: \.bar.id) { item in
                 candlestickMarks(index: item.index, bar: item.bar)
             }
 
@@ -698,6 +718,7 @@ struct AdvancedChartView: View {
             // SuperTrend Overlay
             if config.showSuperTrend {
                 superTrendOverlay
+                superTrendFlipAnnotations
             }
 
             // SuperTrend AI Buy/Sell Signals
@@ -825,17 +846,7 @@ struct AdvancedChartView: View {
             .foregroundStyle(Color.green.opacity(0.08))
 
             // RSI line
-            ForEach(rsi) { point in
-                if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
-                    LineMark(
-                        x: .value("Index", index),
-                        y: .value("RSI", value)
-                    )
-                    .foregroundStyle(ChartColors.rsi)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5))
-                    .interpolationMethod(.catmullRom)
-                }
-            }
+            indicatorLine(rsi, color: ChartColors.rsi, label: "RSI")
 
             // Overbought line (80)
             RuleMark(y: .value("Overbought", 80))
@@ -893,12 +904,17 @@ struct AdvancedChartView: View {
     // MARK: - Volume Chart
 
     private var volumeChartView: some View {
-        Chart(visibleBars, id: \.bar.id) { item in
-            BarMark(
-                x: .value("Index", item.index),
-                y: .value("Volume", item.bar.volume)
-            )
-            .foregroundStyle(item.bar.close >= item.bar.open ? Color.green.opacity(0.5) : Color.red.opacity(0.5))
+        Chart {
+            ForEach(Array(visibleRange), id: \.self) { index in
+                if index < bars.count {
+                    let bar = bars[index]
+                    BarMark(
+                        x: .value("Index", index),
+                        y: .value("Volume", bar.volume)
+                    )
+                    .foregroundStyle(bar.close >= bar.open ? Color.green.opacity(0.5) : Color.red.opacity(0.5))
+                }
+            }
         }
         .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
         .chartXAxis(.hidden)
@@ -922,6 +938,39 @@ struct AdvancedChartView: View {
     }
 
     // MARK: - Helper Views
+
+    // Downsamples data for better performance on large datasets
+    private func downsampled(_ data: [IndicatorDataPoint]) -> [CGPoint] {
+        let pixelWidth = 1200.0 // Target width
+        let threshold = Int(pixelWidth * 2) 
+        
+        let start = max(0, visibleRange.lowerBound)
+        let end = min(data.count - 1, visibleRange.upperBound)
+        guard start <= end else { return [] }
+        
+        // If count is small, return all points directly
+        if (end - start + 1) <= threshold {
+            var points: [CGPoint] = []
+            points.reserveCapacity(end - start + 1)
+            for i in start...end {
+                if let val = data[i].value {
+                    points.append(CGPoint(x: Double(i), y: val))
+                }
+            }
+            return points
+        }
+        
+        // Collect points for downsampling
+        var validPoints: [CGPoint] = []
+        validPoints.reserveCapacity(end - start + 1)
+        for i in start...end {
+            if let val = data[i].value {
+                validPoints.append(CGPoint(x: Double(i), y: val))
+            }
+        }
+        
+        return Downsampler.lttb(points: validPoints, threshold: threshold)
+    }
 
     @ChartContentBuilder
     private func candlestickMarks(index: Int, bar: OHLCBar) -> some ChartContent {
@@ -950,16 +999,15 @@ struct AdvancedChartView: View {
 
     @ChartContentBuilder
     private func indicatorLine(_ data: [IndicatorDataPoint], color: Color, label: String) -> some ChartContent {
-        ForEach(data) { point in
-            if let value = point.value, let index = indicatorIndex(for: point.date) {
-                LineMark(
-                    x: .value("Index", index),
-                    y: .value(label, value)
-                )
-                .foregroundStyle(color)
-                .lineStyle(StrokeStyle(lineWidth: 2))
-                .interpolationMethod(.catmullRom)
-            }
+        let points = downsampled(data)
+        ForEach(points.indices, id: \.self) { i in
+            let pt = points[i]
+            LineMark(
+                x: .value("Index", pt.x),
+                y: .value(label, pt.y)
+            )
+            .foregroundStyle(color)
+            .lineStyle(StrokeStyle(lineWidth: 2))
         }
     }
 
@@ -1271,12 +1319,16 @@ struct AdvancedChartView: View {
     private func visibleIndicatorValues(from data: [IndicatorDataPoint]) -> [Double] {
         let startIdx = max(0, scrollPosition)
         let endIdx = min(bars.count - 1, scrollPosition + barsToShow - 1)
-        return data.compactMap { point -> Double? in
-            guard let value = point.value,
-                  let index = indicatorIndex(for: point.date),
-                  index >= startIdx && index <= endIdx else { return nil }
-            return value
+        
+        var values: [Double] = []
+        if startIdx <= endIdx {
+            for i in startIdx...endIdx {
+                if i < data.count, let value = data[i].value {
+                    values.append(value)
+                }
+            }
         }
+        return values
     }
 
     private var visibleMinPrice: Double {
@@ -1583,8 +1635,8 @@ struct AdvancedChartView: View {
     @ChartContentBuilder
     private var bollingerBandsOverlay: some ChartContent {
         // Upper band
-        ForEach(bollingerUpper) { point in
-            if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
+        ForEach(Array(visibleRange), id: \.self) { index in
+            if index < bollingerUpper.count, let value = bollingerUpper[index].value {
                 LineMark(
                     x: .value("Index", index),
                     y: .value("BB Upper", value)
@@ -1596,8 +1648,8 @@ struct AdvancedChartView: View {
         }
 
         // Middle band (SMA)
-        ForEach(bollingerMiddle) { point in
-            if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
+        ForEach(Array(visibleRange), id: \.self) { index in
+            if index < bollingerMiddle.count, let value = bollingerMiddle[index].value {
                 LineMark(
                     x: .value("Index", index),
                     y: .value("BB Middle", value)
@@ -1609,8 +1661,8 @@ struct AdvancedChartView: View {
         }
 
         // Lower band
-        ForEach(bollingerLower) { point in
-            if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
+        ForEach(Array(visibleRange), id: \.self) { index in
+            if index < bollingerLower.count, let value = bollingerLower[index].value {
                 LineMark(
                     x: .value("Index", index),
                     y: .value("BB Lower", value)
@@ -1622,12 +1674,10 @@ struct AdvancedChartView: View {
         }
 
         // Fill area between upper and lower bands
-        ForEach(Array(zip(bollingerUpper, bollingerLower).enumerated()), id: \.offset) { _, pair in
-            let (upper, lower) = pair
-            if let upperVal = upper.value,
-               let lowerVal = lower.value,
-               let index = indicatorIndex(for: upper.date),
-               visibleRange.contains(index) {
+        ForEach(Array(visibleRange), id: \.self) { index in
+            if index < bollingerUpper.count, index < bollingerLower.count,
+               let upperVal = bollingerUpper[index].value,
+               let lowerVal = bollingerLower[index].value {
                 AreaMark(
                     x: .value("Index", index),
                     yStart: .value("Lower", lowerVal),
@@ -1675,8 +1725,135 @@ struct AdvancedChartView: View {
         }
     }
 
-    // MARK: - SuperTrend AI Signal Markers
+    // MARK: - SuperTrend Flip Annotations
 
+    @ChartContentBuilder
+    private var superTrendFlipAnnotations: some ChartContent {
+        ForEach(findSuperTrendFlips(), id: \.index) { flip in
+            // Dot on the line
+            PointMark(
+                x: .value("Index", flip.index),
+                y: .value("SuperTrend", flip.price)
+            )
+            .symbol {
+                Circle()
+                    .fill(flip.isBullish ? ChartColors.superTrendBull : ChartColors.superTrendBear)
+                    .frame(width: 6, height: 6)
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white, lineWidth: 1)
+                    )
+            }
+            
+            // Factor Label Tag
+            PointMark(
+                x: .value("Index", flip.index),
+                y: .value("SuperTrend", flip.price)
+            )
+            .symbol {
+                Color.clear
+                    .frame(width: 1, height: 1)
+            }
+            .annotation(position: flip.isBullish ? .bottom : .top, spacing: 4) {
+                factorTag(value: flip.factor, color: flip.isBullish ? ChartColors.superTrendBull : ChartColors.superTrendBear, pointingUp: flip.isBullish)
+            }
+        }
+    }
+
+    private struct SuperTrendFlip {
+        let index: Int
+        let price: Double
+        let isBullish: Bool
+        let factor: Double
+    }
+
+    private func findSuperTrendFlips() -> [SuperTrendFlip] {
+        var flips: [SuperTrendFlip] = []
+        let rangeStart = max(1, visibleRange.lowerBound)
+        let rangeEnd = min(bars.count - 1, visibleRange.upperBound)
+        
+        guard rangeStart <= rangeEnd else { return [] }
+
+        // Use AI data if available
+        let useAI = !aiSuperTrendLine.isEmpty && !aiSuperTrendTrend.isEmpty
+        let aiFactors = superTrendAIIndicator?.result?.adaptiveFactor ?? []
+        
+        for i in rangeStart...rangeEnd {
+            let currTrend: Int
+            let prevTrend: Int
+            let currValue: Double
+            let factor: Double
+            
+            if useAI {
+                guard i < aiSuperTrendTrend.count, i-1 >= 0, i-1 < aiSuperTrendTrend.count,
+                      i < aiSuperTrendLine.count, let val = aiSuperTrendLine[i] else { continue }
+                currTrend = aiSuperTrendTrend[i]
+                prevTrend = aiSuperTrendTrend[i-1]
+                currValue = val
+                factor = (i < aiFactors.count) ? aiFactors[i] : 1.0
+            } else {
+                guard i < superTrendTrend.count, i-1 >= 0, i-1 < superTrendTrend.count,
+                      i < superTrendLine.count, let val = superTrendLine[i].value else { continue }
+                currTrend = superTrendTrend[i]
+                prevTrend = superTrendTrend[i-1]
+                currValue = val
+                factor = 3.0 // Default for standard SuperTrend
+            }
+            
+            if currTrend != prevTrend {
+                flips.append(SuperTrendFlip(
+                    index: i,
+                    price: currValue,
+                    isBullish: currTrend == 1,
+                    factor: factor
+                ))
+            }
+        }
+        
+        return flips
+    }
+    
+    private func factorTag(value: Double, color: Color, pointingUp: Bool) -> some View {
+        Text(String(format: "%.0f", value))
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(
+                GeometryReader { geo in
+                    Path { path in
+                        let w = geo.size.width
+                        let h = geo.size.height
+                        
+                        if pointingUp {
+                            // Point at top (for annotation below point)
+                            path.move(to: CGPoint(x: w/2, y: 0)) // Point
+                            path.addLine(to: CGPoint(x: w/2 + 5, y: 5))
+                            path.addLine(to: CGPoint(x: w, y: 5))
+                            path.addLine(to: CGPoint(x: w, y: h))
+                            path.addLine(to: CGPoint(x: 0, y: h))
+                            path.addLine(to: CGPoint(x: 0, y: 5))
+                            path.addLine(to: CGPoint(x: w/2 - 5, y: 5))
+                        } else {
+                            // Point at bottom (for annotation above point)
+                            path.move(to: CGPoint(x: 0, y: 0))
+                            path.addLine(to: CGPoint(x: w, y: 0))
+                            path.addLine(to: CGPoint(x: w, y: h - 5))
+                            path.addLine(to: CGPoint(x: w/2 + 5, y: h - 5))
+                            path.addLine(to: CGPoint(x: w/2, y: h)) // Point
+                            path.addLine(to: CGPoint(x: w/2 - 5, y: h - 5))
+                            path.addLine(to: CGPoint(x: 0, y: h - 5))
+                        }
+                        path.closeSubpath()
+                    }
+                    .fill(color)
+                }
+            )
+            .offset(y: pointingUp ? 5 : -5)
+    }
+
+    // MARK: - SuperTrend AI Signal Markers
+    
     @ChartContentBuilder
     private var superTrendSignalMarkers: some ChartContent {
         ForEach(superTrendAISignals) { signal in
@@ -1686,22 +1863,19 @@ struct AdvancedChartView: View {
 
             if signal.barIndex >= startIdx && signal.barIndex <= endIdx {
                 // Get SuperTrend line value at this bar for positioning
-                // Priority: 1) SuperTrend AI line (now displayed), 2) Regular SuperTrend, 3) Bar price
                 let stValue: Double = {
-                    // Use SuperTrend AI line first (this is what's now displayed on the chart)
                     if signal.barIndex < aiSuperTrendLine.count,
                        let aiValue = aiSuperTrendLine[signal.barIndex] {
                         return aiValue
                     }
-                    // Fallback to regular SuperTrend line
                     if signal.barIndex < superTrendLine.count,
                        let value = superTrendLine[signal.barIndex].value {
                         return value
                     }
-                    return signal.price  // Final fallback to bar price
+                    return signal.price
                 }()
 
-                // Signal marker point - positioned at SuperTrend line
+                // Signal marker point
                 PointMark(
                     x: .value("Index", signal.barIndex),
                     y: .value("Price", stValue)
@@ -1711,7 +1885,7 @@ struct AdvancedChartView: View {
                 }
                 .symbolSize(180)
 
-                // Signal annotation with label - positioned at SuperTrend line
+                // Signal annotation with label
                 PointMark(
                     x: .value("Index", signal.barIndex),
                     y: .value("Price", stValue)
@@ -1719,7 +1893,7 @@ struct AdvancedChartView: View {
                 .annotation(position: signal.type == .buy ? .bottom : .top, spacing: 4) {
                     signalAnnotation(for: signal)
                 }
-                .opacity(0)  // Hidden point, just for annotation positioning
+                .opacity(0)
             }
         }
     }
@@ -1752,41 +1926,13 @@ struct AdvancedChartView: View {
             }
             return signal.factor
         }()
-
-        let factorMin = superTrendAIIndicator?.settings.factorMin ?? 1.0
-        let factorMax = superTrendAIIndicator?.settings.factorMax ?? 5.0
-        let factorBars: Int = {
-            guard let f = factorAtSignal else { return 1 }
-            let span = max(1e-9, factorMax - factorMin)
-            let t = max(0.0, min(1.0, (f - factorMin) / span))
-            let scaled = Int((t * 4.0).rounded())
-            return min(5, max(1, 1 + scaled))
-        }()
-
-        return VStack(spacing: 2) {
-            Text(signal.type == .buy ? "BUY" : "SELL")
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(color)
-
-            // Strength indicator (bars)
-            HStack(spacing: 1) {
-                ForEach(0..<factorBars, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(color)
-                        .frame(width: 3, height: 6)
-                }
-            }
-        }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 2)
-        .background(
-            RoundedRectangle(cornerRadius: 4)
-                .fill(color.opacity(0.15))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(color.opacity(0.5), lineWidth: 0.5)
-                )
-        )
+        
+        let displayValue = factorAtSignal ?? 0.0
+        let isBuy = signal.type == .buy
+        
+        // Buy signal -> Position .bottom -> Point Up
+        // Sell signal -> Position .top -> Point Down
+        return factorTag(value: displayValue, color: color, pointingUp: isBuy)
     }
 
     // MARK: - Pivot Level Chart Marks (Native Swift Charts)

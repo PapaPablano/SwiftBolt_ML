@@ -9,11 +9,13 @@ struct WebChartView: NSViewRepresentable {
     @StateObject private var bridge = ChartBridge()
 
     /// Coordinator handles WKWebView lifecycle and data updates
+    @MainActor
     class Coordinator: NSObject, WKNavigationDelegate {
         var parent: WebChartView
         var cancellables = Set<AnyCancellable>()
         var hasLoadedInitialData = false
         var hasAppliedInitialZoom = false
+        var lastVisibleRange: (from: Int, to: Int)?
 
         init(_ parent: WebChartView) {
             self.parent = parent
@@ -39,7 +41,18 @@ struct WebChartView: NSViewRepresentable {
                     self.updateChartV2(with: data)
                 }
                 .store(in: &cancellables)
-            
+
+            // Track visible range emitted from JS so we can preserve it on indicator toggles
+            parent.bridge.eventPublisher
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] event in
+                    guard let self else { return }
+                    if case let .visibleRangeChange(from, to) = event {
+                        self.lastVisibleRange = (from, to)
+                    }
+                }
+                .store(in: &cancellables)
+
             // Subscribe to legacy chart data changes (fallback)
             parent.viewModel.$chartData
                 .receive(on: DispatchQueue.main)
@@ -94,7 +107,8 @@ struct WebChartView: NSViewRepresentable {
 
             // Subscribe to indicator config changes (re-apply overlays/subpanels)
             parent.viewModel.$indicatorConfig
-                .receive(on: DispatchQueue.main)
+                .removeDuplicates()
+                .debounce(for: .milliseconds(150), scheduler: DispatchQueue.main)
                 .sink { [weak self] _ in
                     guard let self = self, self.parent.bridge.isReady else { return }
                     if let dataV2 = self.parent.viewModel.chartDataV2 {
@@ -121,6 +135,8 @@ struct WebChartView: NSViewRepresentable {
 
         private func updateChartV2(with data: ChartDataV2Response) {
             let bridge = parent.bridge
+            // Preserve current visible range to avoid reset when toggling indicators
+            let preservedRange = lastVisibleRange ?? bridge.visibleRange
             
             print("[WebChartView] Updating chart with V2 layered data")
             print("[WebChartView] - Historical: \(data.layers.historical.count) bars")
@@ -239,14 +255,159 @@ struct WebChartView: NSViewRepresentable {
                         trend: trendData,
                         strength: factorData
                     )
+
+                    // Add inline markers at SuperTrend flips with AI factor badge
+                    let markers = superTrendFlipMarkers(
+                        bars: allBars,
+                        superTrendLine: superTrendLine,
+                        trendValues: trendValues,
+                        factorValues: aiFactorValues
+                    )
+                    if !markers.isEmpty {
+                        bridge.setMarkers(markers, seriesId: "supertrend")
+                    }
                 }
             }
 
+            // Volume sub-panel
+            if config.showVolume {
+                bridge.setVolume(bars: allBars)
+            } else {
+                bridge.hidePanel("volume")
+            }
+
+            // Oscillator sub-panels
+            if config.showRSI {
+                bridge.setRSI(data: parent.viewModel.rsi)
+            } else {
+                bridge.hidePanel("rsi")
+            }
+
+            if config.showMACD {
+                bridge.setMACD(
+                    line: parent.viewModel.macdLine,
+                    signal: parent.viewModel.macdSignal,
+                    histogram: parent.viewModel.macdHistogram
+                )
+            } else {
+                bridge.hidePanel("macd")
+            }
+
+            if config.showStochastic {
+                bridge.setStochastic(
+                    k: parent.viewModel.stochasticK,
+                    d: parent.viewModel.stochasticD
+                )
+            } else {
+                bridge.hidePanel("stochastic")
+            }
+
+            if config.showKDJ {
+                bridge.setKDJ(
+                    k: parent.viewModel.kdjK,
+                    d: parent.viewModel.kdjD,
+                    j: parent.viewModel.kdjJ
+                )
+            } else {
+                bridge.hidePanel("kdj")
+            }
+
+            if config.showADX {
+                bridge.setADX(
+                    adx: parent.viewModel.adxLine,
+                    plusDI: parent.viewModel.plusDI,
+                    minusDI: parent.viewModel.minusDI
+                )
+            } else {
+                bridge.hidePanel("adx")
+            }
+
+            if config.showATR {
+                bridge.setATR(data: parent.viewModel.atr)
+            } else {
+                bridge.hidePanel("atr")
+            }
+
             applyInitialZoomIfNeeded(bars: (data.layers.historical.data + data.layers.intraday.data))
+
+            // Restore prior visible range after overlays are applied
+            if let preservedRange {
+                bridge.send(.setVisibleRange(from: preservedRange.from, to: preservedRange.to))
+            }
+            
+            // Set Support & Resistance Indicators
+            if config.showPolynomialSR {
+                if let poly = parent.viewModel.polynomialSRIndicator.resistanceLine {
+                    let resPoints = poly.predictedPoints.map { pt in
+                        // Convert bar index to approximate timestamp
+                        // Note: This is an approximation. Ideally we'd map index -> timestamp from bars array
+                        // For now, we rely on the JS side to handle index-based series or improve this mapping
+                        // A better approach:
+                        if Int(pt.x) < allBars.count && Int(pt.x) >= 0 {
+                            return LightweightDataPoint(time: Int(allBars[Int(pt.x)].ts.timeIntervalSince1970), value: pt.y)
+                        }
+                        return nil
+                    }.compactMap { $0 }
+                    
+                    let supPoints = parent.viewModel.polynomialSRIndicator.supportLine?.predictedPoints.map { pt in
+                        if Int(pt.x) < allBars.count && Int(pt.x) >= 0 {
+                            return LightweightDataPoint(time: Int(allBars[Int(pt.x)].ts.timeIntervalSince1970), value: pt.y)
+                        }
+                        return nil
+                    }.compactMap { $0 } ?? []
+                    
+                    bridge.send(.setPolynomialSR(resistance: resPoints, support: supPoints))
+                }
+            } else {
+                bridge.send(.removeSeries(id: "poly-res"))
+                bridge.send(.removeSeries(id: "poly-sup"))
+            }
+            
+            if config.showPivotLevels {
+                let levels = parent.viewModel.pivotLevelsIndicator.pivotLevels.map { level in
+                    SRLevel(
+                        price: level.levelHigh > 0 ? level.levelHigh : level.levelLow,
+                        color: level.levelHigh > 0 ? "#FF5252" : "#4CAF50", // Red for Res, Green for Sup
+                        title: "Pivot \(level.length)",
+                        lineWidth: 1,
+                        lineStyle: 2 // Dashed
+                    )
+                }
+                bridge.send(.setPivotLevels(levels: levels))
+            } else {
+                bridge.send(.removePriceLines(category: "pivots"))
+            }
+            
+            if config.showLogisticSR {
+                var levels: [SRLevel] = []
+                for level in parent.viewModel.logisticSRIndicator.supportLevels {
+                    levels.append(SRLevel(
+                        price: level.level,
+                        color: "#089981", // Teal
+                        title: "ML Sup",
+                        lineWidth: 2,
+                        lineStyle: 0 // Solid
+                    ))
+                }
+                for level in parent.viewModel.logisticSRIndicator.resistanceLevels {
+                    levels.append(SRLevel(
+                        price: level.level,
+                        color: "#F23645", // Red
+                        title: "ML Res",
+                        lineWidth: 2,
+                        lineStyle: 0 // Solid
+                    ))
+                }
+                bridge.send(.setLogisticSR(levels: levels))
+            } else {
+                bridge.send(.removePriceLines(category: "logistic"))
+            }
         }
 
         private func updateChart(with data: ChartResponse) {
             let bridge = parent.bridge
+            // Preserve current visible range to avoid reset when toggling indicators
+            let preservedRange = lastVisibleRange ?? bridge.visibleRange
 
             // Clear previous overlays/indicators (keeps candles)
             bridge.send(.clearIndicators)
@@ -372,6 +533,17 @@ struct WebChartView: NSViewRepresentable {
                         trend: trendData,
                         strength: factorData
                     )
+
+                    // Add inline markers at SuperTrend flips with AI factor badge
+                    let markers = superTrendFlipMarkers(
+                        bars: data.bars,
+                        superTrendLine: superTrendLine,
+                        trendValues: trendValues,
+                        factorValues: aiFactorValues
+                    )
+                    if !markers.isEmpty {
+                        bridge.setMarkers(markers, seriesId: "supertrend")
+                    }
                 }
             }
 
@@ -467,6 +639,11 @@ struct WebChartView: NSViewRepresentable {
             print("[WebChartView] Chart updated with \(data.bars.count) bars")
 
             applyInitialZoomIfNeeded(bars: data.bars)
+
+            // Restore prior visible range after overlays are applied
+            if let preservedRange {
+                bridge.send(.setVisibleRange(from: preservedRange.from, to: preservedRange.to))
+            }
         }
 
         private func applyInitialZoomIfNeeded(bars: [OHLCBar]) {
@@ -490,6 +667,41 @@ struct WebChartView: NSViewRepresentable {
 
             hasAppliedInitialZoom = true
         }
+
+        /// Build markers for SuperTrend flips with AI factor badges
+        private func superTrendFlipMarkers(
+            bars: [OHLCBar],
+            superTrendLine: [IndicatorDataPoint],
+            trendValues: [Int],
+            factorValues: [Double]
+        ) -> [ChartMarker] {
+            let count = min(bars.count, superTrendLine.count, trendValues.count)
+            guard count > 1 else { return [] }
+
+            var markers: [ChartMarker] = []
+            for i in 1..<count {
+                let prevTrend = trendValues[i - 1]
+                let currTrend = trendValues[i]
+                guard prevTrend != currTrend else { continue }
+
+                let factor = i < factorValues.count ? factorValues[i] : 1.0
+                let labelText = String(format: "%.0f", factor)
+                let isBullish = currTrend == 1
+                let color = isBullish ? "#26a69a" : "#ef5350"
+
+                let marker = ChartMarker(
+                    time: Int(bars[i].ts.timeIntervalSince1970),
+                    type: isBullish ? "buy" : "sell",
+                    text: labelText,
+                    color: color,
+                    position: isBullish ? "belowBar" : "aboveBar",
+                    shape: isBullish ? "arrowUp" : "arrowDown",
+                    size: 2
+                )
+                markers.append(marker)
+            }
+            return markers
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -499,6 +711,7 @@ struct WebChartView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         // Configure WKWebView
         let config = WKWebViewConfiguration()
+        config.defaultWebpagePreferences.allowsContentJavaScript = true
 
         // Enable developer extras for debugging (optional, remove in production)
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
@@ -553,6 +766,16 @@ struct WebChartView: NSViewRepresentable {
         }
 
         // Fallback: try to find in Resources folder (for development)
+        #if DEBUG
+        if let devRoot = ProcessInfo.processInfo.environment["WEBCHART_DEV_ROOT"] {
+            let htmlURL = URL(fileURLWithPath: devRoot).appendingPathComponent("index.html")
+            if FileManager.default.fileExists(atPath: htmlURL.path) {
+                webView.loadFileURL(htmlURL, allowingReadAccessTo: htmlURL.deletingLastPathComponent())
+                print("[WebChartView] Loading chart from env WEBCHART_DEV_ROOT: \(htmlURL)")
+                return
+            }
+        }
+
         let resourcesPath = "/Users/ericpeterson/SwiftBolt_ML/client-macos/SwiftBoltML/Resources/WebChart"
         let htmlPath = "\(resourcesPath)/index.html"
 
@@ -563,6 +786,7 @@ struct WebChartView: NSViewRepresentable {
             print("[WebChartView] Loading chart from development path: \(htmlURL)")
             return
         }
+        #endif
 
         print("[WebChartView] ERROR: Could not find chart HTML file")
     }
@@ -571,6 +795,7 @@ struct WebChartView: NSViewRepresentable {
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
         // Remove message handler to prevent memory leaks
         nsView.configuration.userContentController.removeScriptMessageHandler(forName: "bridge")
+        nsView.navigationDelegate = nil
         coordinator.cancellables.removeAll()
     }
 }

@@ -28,115 +28,48 @@ enum ChartCommand: Encodable {
     case setATR(data: [LightweightDataPoint])
     case setVolume(data: [VolumeDataPoint])
     case setSuperTrend(data: [LightweightDataPoint], trendData: [LightweightDataPoint], strengthData: [LightweightDataPoint])
+    case setPolynomialSR(resistance: [LightweightDataPoint], support: [LightweightDataPoint])
+    case setPivotLevels(levels: [SRLevel])
+    case setLogisticSR(levels: [SRLevel])
     case hidePanel(panel: String)
     case removeVolumeProfile
+    case removePriceLines(category: String)
 
     // Custom encoding to match JS API
     private enum CodingKeys: String, CodingKey {
         case type, options, data, candle, id, midData, upperData, lowerData
         case seriesId, markers, price, from, to
         case line, signal, histogram, kData, dData, jData, adxData, plusDI, minusDI, panel
-        case trendData, strengthData
+        case trendData, strengthData, resistance, support, levels, category
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
 
         switch self {
-        case .initialize(let options):
-            try container.encode("init", forKey: .type)
-            try container.encodeIfPresent(options, forKey: .options)
-
-        case .setCandles(let data):
-            try container.encode("setCandles", forKey: .type)
-            try container.encode(data, forKey: .data)
-
-        case .updateCandle(let candle):
-            try container.encode("updateCandle", forKey: .type)
-            try container.encode(candle, forKey: .candle)
-
-        case .setLine(let id, let data, let options):
-            try container.encode("setLine", forKey: .type)
-            try container.encode(id, forKey: .id)
-            try container.encode(data, forKey: .data)
-            try container.encodeIfPresent(options, forKey: .options)
-
-        case .setForecast(let midData, let upperData, let lowerData, let options):
-            try container.encode("setForecast", forKey: .type)
-            try container.encode(midData, forKey: .midData)
-            try container.encode(upperData, forKey: .upperData)
-            try container.encode(lowerData, forKey: .lowerData)
-            try container.encodeIfPresent(options, forKey: .options)
-
-        case .setMarkers(let seriesId, let markers):
-            try container.encode("setMarkers", forKey: .type)
-            try container.encode(seriesId, forKey: .seriesId)
-            try container.encode(markers, forKey: .markers)
-
-        case .addPriceLine(let seriesId, let price, let options):
-            try container.encode("addPriceLine", forKey: .type)
-            try container.encode(seriesId, forKey: .seriesId)
-            try container.encode(price, forKey: .price)
-            try container.encodeIfPresent(options, forKey: .options)
-
-        case .removeSeries(let id):
-            try container.encode("removeSeries", forKey: .type)
-            try container.encode(id, forKey: .id)
-
-        case .clearIndicators:
-            try container.encode("clearIndicators", forKey: .type)
-
-        case .setVisibleRange(let from, let to):
-            try container.encode("setVisibleRange", forKey: .type)
-            try container.encode(from, forKey: .from)
-            try container.encode(to, forKey: .to)
-
-        case .scrollToRealTime:
-            try container.encode("scrollToRealTime", forKey: .type)
-
-        case .fitContent:
-            try container.encode("fitContent", forKey: .type)
-
-        case .setRSI(let data):
-            try container.encode("setRSI", forKey: .type)
-            try container.encode(data, forKey: .data)
-
-        case .setMACD(let line, let signal, let histogram):
-            try container.encode("setMACD", forKey: .type)
-            try container.encode(line, forKey: .line)
-            try container.encode(signal, forKey: .signal)
-            try container.encode(histogram, forKey: .histogram)
-
-        case .setStochastic(let kData, let dData):
-            try container.encode("setStochastic", forKey: .type)
-            try container.encode(kData, forKey: .kData)
-            try container.encode(dData, forKey: .dData)
-
-        case .setKDJ(let kData, let dData, let jData):
-            try container.encode("setKDJ", forKey: .type)
-            try container.encode(kData, forKey: .kData)
-            try container.encode(dData, forKey: .dData)
-            try container.encode(jData, forKey: .jData)
-
-        case .setADX(let adxData, let plusDI, let minusDI):
-            try container.encode("setADX", forKey: .type)
-            try container.encode(adxData, forKey: .adxData)
-            try container.encode(plusDI, forKey: .plusDI)
-            try container.encode(minusDI, forKey: .minusDI)
-
-        case .setATR(let data):
-            try container.encode("setATR", forKey: .type)
-            try container.encode(data, forKey: .data)
-
-        case .setVolume(let data):
-            try container.encode("setVolume", forKey: .type)
-            try container.encode(data, forKey: .data)
-
+        // ... (existing cases)
         case .setSuperTrend(let data, let trendData, let strengthData):
             try container.encode("setSuperTrend", forKey: .type)
             try container.encode(data, forKey: .data)
             try container.encode(trendData, forKey: .trendData)
             try container.encode(strengthData, forKey: .strengthData)
+
+        case .setPolynomialSR(let resistance, let support):
+            try container.encode("setPolynomialSR", forKey: .type)
+            try container.encode(resistance, forKey: .resistance)
+            try container.encode(support, forKey: .support)
+
+        case .setPivotLevels(let levels):
+            try container.encode("setPivotLevels", forKey: .type)
+            try container.encode(levels, forKey: .levels)
+
+        case .setLogisticSR(let levels):
+            try container.encode("setLogisticSR", forKey: .type)
+            try container.encode(levels, forKey: .levels)
+
+        case .removePriceLines(let category):
+            try container.encode("removePriceLines", forKey: .type)
+            try container.encode(category, forKey: .category)
 
         case .hidePanel(let panel):
             try container.encode("hidePanel", forKey: .type)
@@ -144,8 +77,101 @@ enum ChartCommand: Encodable {
 
         case .removeVolumeProfile:
             try container.encode("removeVolumeProfile", forKey: .type)
+        // ...
+        default:
+            // Fallback for cases handled in previous chunks or not shown
+            // Since we are replacing the enum, we need to ensure all cases are covered.
+            // But 'default' isn't valid for enum switch unless we missed one.
+            // Let's rely on the previous code block context to fill in the rest if needed, 
+            // but here I am modifying the enum definition and encode. 
+            // I will paste the surrounding cases to be safe.
+            break 
+        }
+        
+        // Handling the rest of the cases from context
+        switch self {
+        case .initialize(let options):
+            try container.encode("init", forKey: .type)
+            try container.encodeIfPresent(options, forKey: .options)
+        case .setCandles(let data):
+            try container.encode("setCandles", forKey: .type)
+            try container.encode(data, forKey: .data)
+        case .updateCandle(let candle):
+            try container.encode("updateCandle", forKey: .type)
+            try container.encode(candle, forKey: .candle)
+        case .setLine(let id, let data, let options):
+            try container.encode("setLine", forKey: .type)
+            try container.encode(id, forKey: .id)
+            try container.encode(data, forKey: .data)
+            try container.encodeIfPresent(options, forKey: .options)
+        case .setForecast(let midData, let upperData, let lowerData, let options):
+            try container.encode("setForecast", forKey: .type)
+            try container.encode(midData, forKey: .midData)
+            try container.encode(upperData, forKey: .upperData)
+            try container.encode(lowerData, forKey: .lowerData)
+            try container.encodeIfPresent(options, forKey: .options)
+        case .setMarkers(let seriesId, let markers):
+            try container.encode("setMarkers", forKey: .type)
+            try container.encode(seriesId, forKey: .seriesId)
+            try container.encode(markers, forKey: .markers)
+        case .addPriceLine(let seriesId, let price, let options):
+            try container.encode("addPriceLine", forKey: .type)
+            try container.encode(seriesId, forKey: .seriesId)
+            try container.encode(price, forKey: .price)
+            try container.encodeIfPresent(options, forKey: .options)
+        case .removeSeries(let id):
+            try container.encode("removeSeries", forKey: .type)
+            try container.encode(id, forKey: .id)
+        case .clearIndicators:
+            try container.encode("clearIndicators", forKey: .type)
+        case .setVisibleRange(let from, let to):
+            try container.encode("setVisibleRange", forKey: .type)
+            try container.encode(from, forKey: .from)
+            try container.encode(to, forKey: .to)
+        case .scrollToRealTime:
+            try container.encode("scrollToRealTime", forKey: .type)
+        case .fitContent:
+            try container.encode("fitContent", forKey: .type)
+        case .setRSI(let data):
+            try container.encode("setRSI", forKey: .type)
+            try container.encode(data, forKey: .data)
+        case .setMACD(let line, let signal, let histogram):
+            try container.encode("setMACD", forKey: .type)
+            try container.encode(line, forKey: .line)
+            try container.encode(signal, forKey: .signal)
+            try container.encode(histogram, forKey: .histogram)
+        case .setStochastic(let kData, let dData):
+            try container.encode("setStochastic", forKey: .type)
+            try container.encode(kData, forKey: .kData)
+            try container.encode(dData, forKey: .dData)
+        case .setKDJ(let kData, let dData, let jData):
+            try container.encode("setKDJ", forKey: .type)
+            try container.encode(kData, forKey: .kData)
+            try container.encode(dData, forKey: .dData)
+            try container.encode(jData, forKey: .jData)
+        case .setADX(let adxData, let plusDI, let minusDI):
+            try container.encode("setADX", forKey: .type)
+            try container.encode(adxData, forKey: .adxData)
+            try container.encode(plusDI, forKey: .plusDI)
+            try container.encode(minusDI, forKey: .minusDI)
+        case .setATR(let data):
+            try container.encode("setATR", forKey: .type)
+            try container.encode(data, forKey: .data)
+        case .setVolume(let data):
+            try container.encode("setVolume", forKey: .type)
+            try container.encode(data, forKey: .data)
+        default: break
         }
     }
+}
+
+/// S&R Level for WebChart
+struct SRLevel: Encodable {
+    let price: Double
+    let color: String
+    let title: String
+    let lineWidth: Int
+    let lineStyle: Int // 0=Solid, 1=Dotted, 2=Dashed
 }
 
 // MARK: - Data Models for Lightweight Charts
@@ -360,19 +386,22 @@ final class ChartBridge: NSObject, ObservableObject {
         let markers = signals.map { signal in
             let factorText = String(format: " %.1fx", signal.factor)
             let labelText = (signal.type == .buy ? "BUY" : "SELL") + factorText
-            
-            // BUY signals: green line is BELOW price (support), so label goes below
-            // SELL signals: red line is ABOVE price (resistance), so label goes above
+
             return ChartMarker(
                 time: Int(signal.date.timeIntervalSince1970),
                 type: signal.type == .buy ? "buy" : "sell",
                 text: labelText,
                 color: signal.type == .buy ? "#26a69a" : "#ef5350",
-                position: signal.type == .buy ? "belowBar" : "aboveBar",  // BUY below, SELL above
+                position: signal.type == .buy ? "belowBar" : "aboveBar",
                 shape: signal.type == .buy ? "arrowUp" : "arrowDown",
                 size: 2
             )
         }
+        setMarkers(markers, seriesId: seriesId)
+    }
+
+    /// Set arbitrary markers on a series
+    func setMarkers(_ markers: [ChartMarker], seriesId: String = "candles") {
         send(.setMarkers(seriesId: seriesId, markers: markers))
     }
 

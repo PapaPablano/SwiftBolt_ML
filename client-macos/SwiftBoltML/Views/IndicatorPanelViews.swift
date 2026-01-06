@@ -1,5 +1,39 @@
 import SwiftUI
 import Charts
+import CoreGraphics
+
+// Helper to downsample data for better performance
+private func downsample(_ data: [IndicatorDataPoint], visibleRange: ClosedRange<Int>) -> [CGPoint] {
+    let pixelWidth = 600.0 // Approximate panel width
+    let threshold = Int(pixelWidth * 2)
+    
+    let start = max(0, visibleRange.lowerBound)
+    let end = min(data.count - 1, visibleRange.upperBound)
+    guard start <= end else { return [] }
+    
+    // If count is small, return all points directly
+    if (end - start + 1) <= threshold {
+        var points: [CGPoint] = []
+        points.reserveCapacity(end - start + 1)
+        for i in start...end {
+            if let val = data[i].value {
+                points.append(CGPoint(x: Double(i), y: val))
+            }
+        }
+        return points
+    }
+    
+    // Collect points for downsampling
+    var validPoints: [CGPoint] = []
+    validPoints.reserveCapacity(end - start + 1)
+    for i in start...end {
+        if let val = data[i].value {
+            validPoints.append(CGPoint(x: Double(i), y: val))
+        }
+    }
+    
+    return Downsampler.lttb(points: validPoints, threshold: threshold)
+}
 
 // MARK: - MACD Panel View
 
@@ -10,49 +44,48 @@ struct MACDPanelView: View {
     let histogram: [IndicatorDataPoint]
     let visibleRange: ClosedRange<Int>
 
-    private func indicatorIndex(for date: Date) -> Int? {
-        bars.firstIndex(where: { Calendar.current.isDate($0.ts, equalTo: date, toGranularity: .second) })
-    }
-
     var body: some View {
         Chart {
             // MACD Histogram (bars) - rendered first so lines are on top
-            ForEach(histogram) { point in
-                if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
-                    BarMark(
-                        x: .value("Index", index),
-                        y: .value("Histogram", value)
-                    )
-                    .foregroundStyle(value >= 0 ? ChartColors.macdHistogramPos.opacity(0.6) : ChartColors.macdHistogramNeg.opacity(0.6))
-                }
+            let histPoints = downsample(histogram, visibleRange: visibleRange)
+            ForEach(histPoints.indices, id: \.self) { i in
+                let pt = histPoints[i]
+                let index = Int(pt.x)
+                let value = pt.y
+                
+                BarMark(
+                    x: .value("Index", index),
+                    y: .value("Histogram", value)
+                )
+                .foregroundStyle(value >= 0 ? ChartColors.macdHistogramPos.opacity(0.6) : ChartColors.macdHistogramNeg.opacity(0.6))
             }
 
             // MACD Line (cyan - fast line)
-            ForEach(macdLine) { point in
-                if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
-                    LineMark(
-                        x: .value("Index", index),
-                        y: .value("MACD", value),
-                        series: .value("Series", "MACD")
-                    )
-                    .foregroundStyle(ChartColors.macdLine)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5))
-                    .interpolationMethod(.catmullRom)
-                }
+            let macdPoints = downsample(macdLine, visibleRange: visibleRange)
+            ForEach(macdPoints.indices, id: \.self) { i in
+                let pt = macdPoints[i]
+                LineMark(
+                    x: .value("Index", pt.x),
+                    y: .value("MACD", pt.y),
+                    series: .value("Series", "MACD")
+                )
+                .foregroundStyle(ChartColors.macdLine)
+                .lineStyle(StrokeStyle(lineWidth: 2.5))
+                .interpolationMethod(.catmullRom)
             }
 
             // Signal Line (orange - slow line)
-            ForEach(signalLine) { point in
-                if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
-                    LineMark(
-                        x: .value("Index", index),
-                        y: .value("Signal", value),
-                        series: .value("Series", "Signal")
-                    )
-                    .foregroundStyle(ChartColors.macdSignal)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5))
-                    .interpolationMethod(.catmullRom)
-                }
+            let signalPoints = downsample(signalLine, visibleRange: visibleRange)
+            ForEach(signalPoints.indices, id: \.self) { i in
+                let pt = signalPoints[i]
+                LineMark(
+                    x: .value("Index", pt.x),
+                    y: .value("Signal", pt.y),
+                    series: .value("Series", "Signal")
+                )
+                .foregroundStyle(ChartColors.macdSignal)
+                .lineStyle(StrokeStyle(lineWidth: 2.5))
+                .interpolationMethod(.catmullRom)
             }
 
             // Zero line
@@ -98,10 +131,6 @@ struct StochasticPanelView: View {
     let dLine: [IndicatorDataPoint]
     let visibleRange: ClosedRange<Int>
 
-    private func indicatorIndex(for date: Date) -> Int? {
-        bars.firstIndex(where: { Calendar.current.isDate($0.ts, equalTo: date, toGranularity: .second) })
-    }
-
     var body: some View {
         Chart {
             // Overbought zone shading (80-100)
@@ -123,31 +152,31 @@ struct StochasticPanelView: View {
             .foregroundStyle(Color.green.opacity(0.08))
 
             // %K Line (cyan - faster line)
-            ForEach(kLine) { point in
-                if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
-                    LineMark(
-                        x: .value("Index", index),
-                        y: .value("%K", value),
-                        series: .value("Series", "K")
-                    )
-                    .foregroundStyle(ChartColors.stochasticK)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5))
-                    .interpolationMethod(.catmullRom)
-                }
+            let kPoints = downsample(kLine, visibleRange: visibleRange)
+            ForEach(kPoints.indices, id: \.self) { i in
+                let pt = kPoints[i]
+                LineMark(
+                    x: .value("Index", pt.x),
+                    y: .value("%K", pt.y),
+                    series: .value("Series", "K")
+                )
+                .foregroundStyle(ChartColors.stochasticK)
+                .lineStyle(StrokeStyle(lineWidth: 2.5))
+                .interpolationMethod(.catmullRom)
             }
 
             // %D Line (orange - slower line)
-            ForEach(dLine) { point in
-                if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
-                    LineMark(
-                        x: .value("Index", index),
-                        y: .value("%D", value),
-                        series: .value("Series", "D")
-                    )
-                    .foregroundStyle(ChartColors.stochasticD)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5))
-                    .interpolationMethod(.catmullRom)
-                }
+            let dPoints = downsample(dLine, visibleRange: visibleRange)
+            ForEach(dPoints.indices, id: \.self) { i in
+                let pt = dPoints[i]
+                LineMark(
+                    x: .value("Index", pt.x),
+                    y: .value("%D", pt.y),
+                    series: .value("Series", "D")
+                )
+                .foregroundStyle(ChartColors.stochasticD)
+                .lineStyle(StrokeStyle(lineWidth: 2.5))
+                .interpolationMethod(.catmullRom)
             }
 
             // Overbought (80)
@@ -188,10 +217,6 @@ struct KDJPanelView: View {
     let jLine: [IndicatorDataPoint]
     let visibleRange: ClosedRange<Int>
 
-    private func indicatorIndex(for date: Date) -> Int? {
-        bars.firstIndex(where: { Calendar.current.isDate($0.ts, equalTo: date, toGranularity: .second) })
-    }
-
     var body: some View {
         Chart {
             // Overbought zone shading (80-120)
@@ -213,45 +238,45 @@ struct KDJPanelView: View {
             .foregroundStyle(Color.green.opacity(0.08))
 
             // K Line (BRIGHT RED - most visible)
-            ForEach(kLine) { point in
-                if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
-                    LineMark(
-                        x: .value("Index", index),
-                        y: .value("K", value),
-                        series: .value("Series", "KDJ-K")
-                    )
-                    .foregroundStyle(ChartColors.kdjK)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5))
-                    .interpolationMethod(.catmullRom)
-                }
+            let kPoints = downsample(kLine, visibleRange: visibleRange)
+            ForEach(kPoints.indices, id: \.self) { i in
+                let pt = kPoints[i]
+                LineMark(
+                    x: .value("Index", pt.x),
+                    y: .value("K", pt.y),
+                    series: .value("Series", "KDJ-K")
+                )
+                .foregroundStyle(ChartColors.kdjK)
+                .lineStyle(StrokeStyle(lineWidth: 2.5))
+                .interpolationMethod(.catmullRom)
             }
 
             // D Line (BRIGHT GREEN - clearly distinct)
-            ForEach(dLine) { point in
-                if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
-                    LineMark(
-                        x: .value("Index", index),
-                        y: .value("D", value),
-                        series: .value("Series", "KDJ-D")
-                    )
-                    .foregroundStyle(ChartColors.kdjD)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5))
-                    .interpolationMethod(.catmullRom)
-                }
+            let dPoints = downsample(dLine, visibleRange: visibleRange)
+            ForEach(dPoints.indices, id: \.self) { i in
+                let pt = dPoints[i]
+                LineMark(
+                    x: .value("Index", pt.x),
+                    y: .value("D", pt.y),
+                    series: .value("Series", "KDJ-D")
+                )
+                .foregroundStyle(ChartColors.kdjD)
+                .lineStyle(StrokeStyle(lineWidth: 2.5))
+                .interpolationMethod(.catmullRom)
             }
 
             // J Line (BRIGHT BLUE - third distinct color)
-            ForEach(jLine) { point in
-                if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
-                    LineMark(
-                        x: .value("Index", index),
-                        y: .value("J", value),
-                        series: .value("Series", "KDJ-J")
-                    )
-                    .foregroundStyle(ChartColors.kdjJ)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5))
-                    .interpolationMethod(.catmullRom)
-                }
+            let jPoints = downsample(jLine, visibleRange: visibleRange)
+            ForEach(jPoints.indices, id: \.self) { i in
+                let pt = jPoints[i]
+                LineMark(
+                    x: .value("Index", pt.x),
+                    y: .value("J", pt.y),
+                    series: .value("Series", "KDJ-J")
+                )
+                .foregroundStyle(ChartColors.kdjJ)
+                .lineStyle(StrokeStyle(lineWidth: 2.5))
+                .interpolationMethod(.catmullRom)
             }
 
             // Overbought (80)
@@ -305,16 +330,11 @@ struct ADXPanelView: View {
     /// Threshold for trend confirmation (default 20)
     var limit: Double = 20
 
-    private func indicatorIndex(for date: Date) -> Int? {
-        bars.firstIndex(where: { Calendar.current.isDate($0.ts, equalTo: date, toGranularity: .second) })
-    }
-    
     /// Determine if bullish (+DI > -DI) at given index
     private func isBullish(at index: Int) -> Bool {
-        guard let plusPoint = plusDI.first(where: { indicatorIndex(for: $0.date) == index }),
-              let minusPoint = minusDI.first(where: { indicatorIndex(for: $0.date) == index }),
-              let plusVal = plusPoint.value,
-              let minusVal = minusPoint.value else {
+        guard index < plusDI.count, index < minusDI.count,
+              let plusVal = plusDI[index].value,
+              let minusVal = minusDI[index].value else {
             return true // Default to bullish if data missing
         }
         return plusVal > minusVal
@@ -384,15 +404,18 @@ struct ADXPanelView: View {
             .foregroundStyle(Color.orange.opacity(0.06))
 
             // ADX Histogram - Green for bullish, Red for bearish
-            ForEach(adxLine) { point in
-                if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
-                    let bullish = isBullish(at: index)
-                    BarMark(
-                        x: .value("Index", index),
-                        y: .value("ADX", value)
-                    )
-                    .foregroundStyle(adxColor(value: value, bullish: bullish))
-                }
+            let adxPoints = downsample(adxLine, visibleRange: visibleRange)
+            ForEach(adxPoints.indices, id: \.self) { i in
+                let pt = adxPoints[i]
+                let index = Int(pt.x)
+                let value = pt.y
+                let bullish = isBullish(at: index)
+                
+                BarMark(
+                    x: .value("Index", index),
+                    y: .value("ADX", value)
+                )
+                .foregroundStyle(adxColor(value: value, bullish: bullish))
             }
 
             // Threshold lines
@@ -470,19 +493,27 @@ struct ATRPanelView: View {
     let atrLine: [IndicatorDataPoint]
     let visibleRange: ClosedRange<Int>
 
-    private func indicatorIndex(for date: Date) -> Int? {
-        bars.firstIndex(where: { Calendar.current.isDate($0.ts, equalTo: date, toGranularity: .second) })
-    }
-
     private var visibleATRRange: ClosedRange<Double> {
-        let visibleValues = atrLine.compactMap { point -> Double? in
-            guard let value = point.value,
-                  let index = indicatorIndex(for: point.date),
-                  visibleRange.contains(index) else { return nil }
-            return value
+        // Efficiently find min/max in visible range using indices
+        var minVal: Double = Double.infinity
+        var maxVal: Double = -Double.infinity
+        var found = false
+        
+        let start = max(0, visibleRange.lowerBound)
+        let end = min(atrLine.count - 1, visibleRange.upperBound)
+        
+        if start <= end {
+            for i in start...end {
+                if let val = atrLine[i].value {
+                    minVal = min(minVal, val)
+                    maxVal = max(maxVal, val)
+                    found = true
+                }
+            }
         }
-        let minVal = visibleValues.min() ?? 0
-        let maxVal = visibleValues.max() ?? 1
+        
+        if !found { return 0...1 }
+        
         let padding = (maxVal - minVal) * 0.15
         return max(0, minVal - padding)...(maxVal + padding)
     }
@@ -490,34 +521,33 @@ struct ATRPanelView: View {
     var body: some View {
         Chart {
             // ATR area fill
-            ForEach(atrLine) { point in
-                if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
-                    AreaMark(
-                        x: .value("Index", index),
-                        y: .value("ATR", value)
+            let atrPoints = downsample(atrLine, visibleRange: visibleRange)
+            ForEach(atrPoints.indices, id: \.self) { i in
+                let pt = atrPoints[i]
+                AreaMark(
+                    x: .value("Index", pt.x),
+                    y: .value("ATR", pt.y)
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [ChartColors.atr.opacity(0.2), ChartColors.atr.opacity(0.02)],
+                        startPoint: .top,
+                        endPoint: .bottom
                     )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [ChartColors.atr.opacity(0.2), ChartColors.atr.opacity(0.02)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .interpolationMethod(.catmullRom)
-                }
+                )
+                .interpolationMethod(.catmullRom)
             }
 
             // ATR line
-            ForEach(atrLine) { point in
-                if let value = point.value, let index = indicatorIndex(for: point.date), visibleRange.contains(index) {
-                    LineMark(
-                        x: .value("Index", index),
-                        y: .value("ATR", value)
-                    )
-                    .foregroundStyle(ChartColors.atr)
-                    .lineStyle(StrokeStyle(lineWidth: 2.5))
-                    .interpolationMethod(.catmullRom)
-                }
+            ForEach(atrPoints.indices, id: \.self) { i in
+                let pt = atrPoints[i]
+                LineMark(
+                    x: .value("Index", pt.x),
+                    y: .value("ATR", pt.y)
+                )
+                .foregroundStyle(ChartColors.atr)
+                .lineStyle(StrokeStyle(lineWidth: 2.5))
+                .interpolationMethod(.catmullRom)
             }
         }
         .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)

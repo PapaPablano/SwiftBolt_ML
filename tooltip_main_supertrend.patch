@@ -1,0 +1,16 @@
+--- tooltip-enhanced.js
++++ tooltip-enhanced.supertrend.patched.js
+@@ -74,7 +74,12 @@
+                 ${change >= 0 ? '+' : ''}${change.toFixed(2)} (${changePercent}%)
+             </div>
+             ${volume ? `<div class="tooltip-volume">Vol: ${formatVolume(volume)}</div>` : ''}
+-        `;
++        ${typeof data.stLine === 'number' ? `
++    <div class="tooltip-row">
++        <span class="label">SuperTrend:</span>
++        <span class="value ${data.trend === 1 ? 'bullish' : 'bearish'}">${(Number(data.stLine)).toFixed(2)} (${data.trend === 1 ? 'Uptrend' : 'Downtrend'})</span>
++    </div>
++` : ''}`;
+     }
+ 
+     /**

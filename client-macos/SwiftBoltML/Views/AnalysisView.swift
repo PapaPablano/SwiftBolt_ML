@@ -3,6 +3,7 @@ import SwiftUI
 struct AnalysisView: View {
     @EnvironmentObject var appViewModel: AppViewModel
     @StateObject private var analysisViewModel = AnalysisViewModel()
+    @State private var loadTask: Task<Void, Never>?
 
     private var chartViewModel: ChartViewModel {
         appViewModel.chartViewModel
@@ -41,20 +42,30 @@ struct AnalysisView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .onChange(of: appViewModel.selectedSymbol) { oldValue, newValue in
+            loadTask?.cancel()
             if let symbol = newValue?.ticker {
-                Task {
+                loadTask = Task {
                     await analysisViewModel.loadAlerts(for: symbol)
-                    await analysisViewModel.loadEnhancedInsights(for: symbol)
-                    await analysisViewModel.loadSupportResistance(for: symbol)
+                    if !Task.isCancelled {
+                        await analysisViewModel.loadEnhancedInsights(for: symbol)
+                    }
+                    if !Task.isCancelled {
+                        await analysisViewModel.loadSupportResistance(for: symbol)
+                    }
                 }
             }
         }
         .onAppear {
+            loadTask?.cancel()
             if let symbol = appViewModel.selectedSymbol?.ticker {
-                Task {
+                loadTask = Task {
                     await analysisViewModel.loadAlerts(for: symbol)
-                    await analysisViewModel.loadEnhancedInsights(for: symbol)
-                    await analysisViewModel.loadSupportResistance(for: symbol)
+                    if !Task.isCancelled {
+                        await analysisViewModel.loadEnhancedInsights(for: symbol)
+                    }
+                    if !Task.isCancelled {
+                        await analysisViewModel.loadSupportResistance(for: symbol)
+                    }
                 }
             }
         }

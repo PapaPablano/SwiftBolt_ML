@@ -507,6 +507,7 @@ final class ChartViewModel: ObservableObject {
                     chartDataV2 = response
 
                     // Also populate legacy chartData for indicator calculations
+                    // This triggers didSet -> invalidateIndicatorCache
                     chartData = ChartResponse(
                         symbol: response.symbol,
                         assetType: "stock",
@@ -516,6 +517,9 @@ final class ChartViewModel: ObservableObject {
                         indicators: nil,
                         superTrendAI: nil
                     )
+                    
+                    // Explicitly recalculate indicators with new data
+                    scheduleIndicatorRecalculation()
                 } else {
                     // Use legacy API
                     let response = try await APIClient.shared.fetchChart(
@@ -535,12 +539,12 @@ final class ChartViewModel: ObservableObject {
                     print("[DEBUG] - Setting chartData property...")
                     chartData = response
                     print("[DEBUG] - chartData is now: \(chartData == nil ? "nil" : "non-nil with \(chartData!.bars.count) bars")")
+                    
+                    // Explicitly recalculate indicators with new data
+                    scheduleIndicatorRecalculation()
                 }
                 
                 errorMessage = nil
-
-                // Recalculate S&R indicators with new data
-                scheduleIndicatorRecalculation()
             } catch {
                 guard !Task.isCancelled else {
                     print("[DEBUG] ChartViewModel.loadChart() - CANCELLED (error path)")

@@ -41,7 +41,7 @@
      * Build tooltip content for main chart panel
      */
     function buildMainTooltip(data) {
-        const { time, open, high, low, close, volume } = data;
+        const { time, open, high, low, close, volume, stLine, trend } = data;
         const change = close - open;
         const changePercent = ((change / open) * 100).toFixed(2);
         const colorClass = change >= 0 ? 'bullish' : 'bearish';
@@ -74,6 +74,12 @@
                 ${change >= 0 ? '+' : ''}${change.toFixed(2)} (${changePercent}%)
             </div>
             ${volume ? `<div class="tooltip-volume">Vol: ${formatVolume(volume)}</div>` : ''}
+            ${typeof stLine === 'number' ? `
+                <div class="tooltip-row">
+                    <span class="label">SuperTrend:</span>
+                    <span class="value ${trend === 1 ? 'bullish' : 'bearish'}">$${stLine.toFixed(2)} (${trend === 1 ? 'Uptrend' : 'Downtrend'})</span>
+                </div>
+            ` : ''}
         `;
     }
 
