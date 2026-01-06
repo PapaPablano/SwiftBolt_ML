@@ -23,7 +23,7 @@ enum APIError: LocalizedError {
     }
 }
 
-actor APIClient {
+final class APIClient {
     static let shared = APIClient()
 
     private let baseURL: String
@@ -31,7 +31,12 @@ actor APIClient {
 
     private init() {
         self.baseURL = Config.supabaseURL
-        self.session = URLSession.shared
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForResource = 30
+        config.waitsForConnectivity = false
+        config.httpMaximumConnectionsPerHost = 6
+        self.session = URLSession(configuration: config)
     }
 
     private func makeRequest(endpoint: String, queryItems: [URLQueryItem]? = nil, method: String = "GET", body: [String: Any]? = nil) throws -> URLRequest {

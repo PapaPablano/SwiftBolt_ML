@@ -13,7 +13,6 @@ final class ChartViewModel: ObservableObject {
                 liveQuote = nil
                 stopLiveQuoteUpdates()
                 if let symbol = selectedSymbol {
-                    startLiveQuoteUpdates()
                     // Trigger complete backfill (intraday + historical) in background (fire and forget)
                     Task {
                         await APIClient.shared.triggerCompleteBackfill(symbol: symbol.ticker)
@@ -519,6 +518,11 @@ final class ChartViewModel: ObservableObject {
                     
                     // Explicitly recalculate indicators with new data
                     scheduleIndicatorRecalculation()
+                    
+                    // Start live quotes after first successful chart load
+                    if liveQuoteTask == nil || liveQuoteTask?.isCancelled == true {
+                        startLiveQuoteUpdates()
+                    }
                 } else {
                     // Use legacy API
                     let response = try await APIClient.shared.fetchChart(
@@ -541,6 +545,11 @@ final class ChartViewModel: ObservableObject {
                     
                     // Explicitly recalculate indicators with new data
                     scheduleIndicatorRecalculation()
+                    
+                    // Start live quotes after first successful chart load
+                    if liveQuoteTask == nil || liveQuoteTask?.isCancelled == true {
+                        startLiveQuoteUpdates()
+                    }
                 }
                 
                 errorMessage = nil
@@ -680,7 +689,7 @@ final class ChartViewModel: ObservableObject {
 
     private func startLiveQuoteUpdates() {
         liveQuoteTask?.cancel()
-        liveQuoteTask = Task { [weak self] in
+        liveQuoteTask = Task(priority: .utility) { [weak self] in
             await self?.runLiveQuoteLoop()
         }
     }
@@ -690,41 +699,47 @@ final class ChartViewModel: ObservableObject {
         liveQuoteTask = nil
     }
 
-    @MainActor
     private func runLiveQuoteLoop() async {
         while !Task.isCancelled {
-            guard selectedSymbol != nil else {
-                liveQuote = nil
-                try? await Task.sleep(nanoseconds: liveQuoteInterval)
+            guard await selectedSymbol != nil else {
+                await MainActor.run { self.liveQuote = nil }
+                do {
+                    try await Task.sleep(nanoseconds: liveQuoteInterval)
+                } catch { break }
                 continue
             }
 
-            if isMarketHours() {
+            if await isMarketHours() {
                 await fetchLiveQuote()
             } else {
-                liveQuote = nil
+                await MainActor.run { self.liveQuote = nil }
             }
 
-            try? await Task.sleep(nanoseconds: liveQuoteInterval)
+            do {
+                try await Task.sleep(nanoseconds: liveQuoteInterval)
+            } catch { break }
         }
     }
 
     private func fetchLiveQuote() async {
-        guard let symbol = selectedSymbol else { return }
+        guard let symbol = await selectedSymbol else { return }
         do {
             let response = try await APIClient.shared.fetchQuotes(symbols: [symbol.ticker])
-            marketState = response.marketState
-            if let quote = response.quotes.first {
-                liveQuote = LiveQuote(
-                    symbol: quote.symbol,
-                    last: quote.last,
-                    change: quote.change,
-                    changePercent: quote.changePercentage,
-                    timestamp: quote.lastTradeTime
-                )
+            await MainActor.run {
+                self.marketState = response.marketState
+                if let quote = response.quotes.first {
+                    self.liveQuote = LiveQuote(
+                        symbol: quote.symbol,
+                        last: quote.last,
+                        change: quote.change,
+                        changePercent: quote.changePercentage,
+                        timestamp: quote.lastTradeTime
+                    )
+                }
             }
         } catch {
-            print("[DEBUG] ChartViewModel.fetchLiveQuote() - ERROR: \(error)")
+            // Log but don't spam
+            print("[DEBUG] fetchLiveQuote error: \(error)")
         }
     }
 

@@ -31,7 +31,7 @@ struct DebugPanel: View {
                     .font(.subheadline.bold())
                 Text("  • selectedSymbol: \(chartViewModel.selectedSymbol?.ticker ?? "nil")")
                     .monospaced()
-                Text("  • timeframe: \(chartViewModel.timeframe)")
+                Text("  • timeframe: \(chartViewModel.timeframe.displayName)")
                     .monospaced()
                 Text("  • isLoading: \(chartViewModel.isLoading ? "true" : "false")")
                     .monospaced()
