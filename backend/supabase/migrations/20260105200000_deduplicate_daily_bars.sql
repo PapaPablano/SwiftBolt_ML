@@ -1,13 +1,19 @@
 -- Fix duplicate daily bars by selecting only one bar per day
 -- For d1 timeframe, we should only return the most recent bar for each date
 
+-- Fix timestamp format in get_chart_data_v2 to include timezone indicator
+-- This fixes Swift ISO8601 parsing errors
+-- Updated to use TIMESTAMPTZ to match NOW() and Edge Function calls
+
+-- Drop both possible signatures to ensure clean migration
 DROP FUNCTION IF EXISTS get_chart_data_v2(UUID, VARCHAR(10), TIMESTAMP, TIMESTAMP);
+DROP FUNCTION IF EXISTS get_chart_data_v2(UUID, VARCHAR(10), TIMESTAMP WITH TIME ZONE, TIMESTAMP WITH TIME ZONE);
 
 CREATE OR REPLACE FUNCTION get_chart_data_v2(
   p_symbol_id UUID,
   p_timeframe VARCHAR(10),
-  p_start_date TIMESTAMP,
-  p_end_date TIMESTAMP
+  p_start_date TIMESTAMP WITH TIME ZONE,
+  p_end_date TIMESTAMP WITH TIME ZONE
 )
 RETURNS TABLE (
   ts TEXT,
