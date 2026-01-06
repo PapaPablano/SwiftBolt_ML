@@ -194,13 +194,16 @@ actor APIClient {
         return try await performRequest(request)
     }
     
-    func fetchChartV2(symbol: String, days: Int = 60, includeForecast: Bool = true, forecastDays: Int = 10) async throws -> ChartDataV2Response {
+    func fetchChartV2(symbol: String, timeframe: String = "1d", days: Int = 60, includeForecast: Bool = true, forecastDays: Int = 10) async throws -> ChartDataV2Response {
         let body: [String: Any] = [
             "symbol": symbol,
+            "timeframe": timeframe,
             "days": days,
             "includeForecast": includeForecast,
             "forecastDays": forecastDays
         ]
+        
+        print("[DEBUG] APIClient.fetchChartV2() - Sending timeframe: \(timeframe)")
         
         let request = try makeRequest(
             endpoint: "chart-data-v2",

@@ -19,8 +19,9 @@ interface UpdateRequest {
   symbol?: string;
   symbols?: string[];
   all_watchlist?: boolean;
-  interval?: string; // 1min, 5min, 15min
+  interval?: string; // 1min, 5min, 15min (default: 15min for chart compatibility)
   include_extended?: boolean; // Include pre/post market
+  backfill_days?: number; // Number of days to backfill (max 20 for Tradier)
 }
 
 interface IntradayBar {
@@ -64,13 +65,17 @@ async function getQuote(symbol: string, apiKey: string): Promise<any> {
 async function getIntradayBars(
   symbol: string,
   apiKey: string,
-  interval: string = "5min",
-  sessionFilter: string = "open"
+  interval: string = "15min",
+  sessionFilter: string = "open",
+  startDate?: string,
+  endDate?: string
 ): Promise<IntradayBar[]> {
   const today = new Date().toISOString().split("T")[0];
+  const start = startDate || today;
+  const end = endDate || today;
 
   const data = await tradierFetch(
-    `/markets/timesales?symbol=${symbol}&interval=${interval}&start=${today}&end=${today}&session_filter=${sessionFilter}`,
+    `/markets/timesales?symbol=${symbol}&interval=${interval}&start=${start}&end=${end}&session_filter=${sessionFilter}`,
     apiKey
   );
 
@@ -146,8 +151,9 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const body: UpdateRequest = await req.json();
-    const interval = body.interval || "5min";
+    const interval = body.interval || "15min"; // Default to 15min for chart compatibility
     const sessionFilter = body.include_extended ? "all" : "open";
+    const backfillDays = Math.min(body.backfill_days || 0, 20); // Tradier limits to ~20 days
 
     // Check market status
     const clock = await getMarketClock(tradierApiKey);
@@ -203,8 +209,17 @@ serve(async (req: Request): Promise<Response> => {
           continue;
         }
 
+        // Calculate date range for backfill
+        const endDate = new Date().toISOString().split("T")[0];
+        let startDate = endDate;
+        if (backfillDays > 0) {
+          const start = new Date();
+          start.setDate(start.getDate() - backfillDays);
+          startDate = start.toISOString().split("T")[0];
+        }
+
         // Fetch intraday bars
-        const intradayBars = await getIntradayBars(symbol, tradierApiKey, interval, sessionFilter);
+        const intradayBars = await getIntradayBars(symbol, tradierApiKey, interval, sessionFilter, startDate, endDate);
 
         // Get current quote for most recent price
         const quote = await getQuote(symbol, tradierApiKey);
@@ -220,6 +235,41 @@ serve(async (req: Request): Promise<Response> => {
         // Use quote for most current values if available
         const currentPrice = quote?.last || quote?.close || dailyAgg.close;
         const currentVolume = quote?.volume || dailyAgg.volume;
+
+        // Store raw intraday bars in intraday_bars table for 15m/1h/4h chart views
+        if (intradayBars.length > 0) {
+          // Map interval to timeframe format
+          const timeframeMap: Record<string, string> = {
+            "1min": "1m",
+            "5min": "5m",
+            "15min": "15m",
+          };
+          const tfValue = timeframeMap[interval] || "5m";
+
+          // Prepare bars for upsert
+          const intradayRows = intradayBars.map((bar) => ({
+            symbol_id: symbolRecord.id,
+            timeframe: tfValue,
+            ts: bar.time,
+            open: bar.open,
+            high: bar.high,
+            low: bar.low,
+            close: bar.close,
+            volume: bar.volume,
+            vwap: bar.vwap || null,
+          }));
+
+          // Batch upsert intraday bars
+          const { error: intradayError } = await supabase
+            .from("intraday_bars")
+            .upsert(intradayRows, { onConflict: "symbol_id,timeframe,ts" });
+
+          if (intradayError) {
+            console.warn(`[intraday-update] Failed to store intraday bars for ${symbol}: ${intradayError.message}`);
+          } else {
+            console.log(`[intraday-update] Stored ${intradayRows.length} intraday bars for ${symbol} (${tfValue})`);
+          }
+        }
 
         // Update or insert today's daily bar
         const { error: upsertError } = await supabase

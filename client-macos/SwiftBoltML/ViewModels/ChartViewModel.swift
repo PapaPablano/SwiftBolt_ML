@@ -2,7 +2,7 @@ import Foundation
 
 @MainActor
 final class ChartViewModel: ObservableObject {
-    static let availableTimeframes = ["m15", "h1", "h4", "d1", "w1"]
+    static let availableTimeframes = Timeframe.allCases
 
     @Published var selectedSymbol: Symbol? {
         didSet {
@@ -18,7 +18,12 @@ final class ChartViewModel: ObservableObject {
             }
         }
     }
-    @Published var timeframe: String = "d1"
+    @Published var timeframe: Timeframe = .d1 {
+        didSet {
+            print("[DEBUG] 🕒 timeframe changed to \(timeframe.rawValue) (apiToken=\(timeframe.apiToken))")
+            Task { await loadChart() }
+        }
+    }
     @Published private(set) var chartData: ChartResponse? {
         didSet {
             // Invalidate indicator cache when chart data changes
@@ -282,24 +287,8 @@ final class ChartViewModel: ObservableObject {
     // MARK: - SuperTrend Indicator
 
     /// Adaptive SuperTrend parameters based on timeframe
-    /// - Intraday (15M, 1H): Tighter settings for faster signals
-    /// - Swing (4H, D): Standard settings
-    /// - Position (W): Wider settings for less noise
     private var superTrendParams: (period: Int, multiplier: Double) {
-        switch timeframe {
-        case "m15":
-            return (period: 7, multiplier: 2.0)   // Fast, tight stops
-        case "h1":
-            return (period: 8, multiplier: 2.5)   // Slightly wider
-        case "h4":
-            return (period: 10, multiplier: 3.0)  // Standard
-        case "d1":
-            return (period: 10, multiplier: 3.0)  // Standard
-        case "w1":
-            return (period: 14, multiplier: 4.0)  // Wide, less noise
-        default:
-            return (period: 10, multiplier: 3.0)  // Default
-        }
+        timeframe.superTrendParams
     }
 
     var superTrendResult: TechnicalIndicators.SuperTrendResult? {
@@ -472,7 +461,8 @@ final class ChartViewModel: ObservableObject {
 
         print("[DEBUG] - Symbol: \(symbol.ticker)")
         print("[DEBUG] - Asset Type: \(symbol.assetType)")
-        print("[DEBUG] - Timeframe: \(timeframe)")
+        print("[DEBUG] - Timeframe: \(timeframe.rawValue) (sending: \(timeframe.apiToken))")
+        print("[DEBUG] - Is Intraday: \(timeframe.isIntraday)")
         print("[DEBUG] - Starting chart data fetch...")
         isLoading = true
         errorMessage = nil
@@ -487,6 +477,7 @@ final class ChartViewModel: ObservableObject {
                     // - Forecast: ML predictions (future dates)
                     let response = try await APIClient.shared.fetchChartV2(
                         symbol: symbol.ticker,
+                        timeframe: timeframe.apiToken,
                         days: 730,  // Request 2 years of historical data
                         includeForecast: true,
                         forecastDays: 10
@@ -506,13 +497,17 @@ final class ChartViewModel: ObservableObject {
 
                     chartDataV2 = response
 
+                    // Build bars from correct layer based on timeframe
+                    let bars = buildBars(from: response, for: timeframe)
+                    print("[DEBUG] - Built \(bars.count) bars from \(timeframe.isIntraday ? "intraday" : "historical") layer")
+
                     // Also populate legacy chartData for indicator calculations
                     // This triggers didSet -> invalidateIndicatorCache
                     chartData = ChartResponse(
                         symbol: response.symbol,
                         assetType: "stock",
                         timeframe: response.timeframe,
-                        bars: response.allBars,
+                        bars: bars,
                         mlSummary: nil,
                         indicators: nil,
                         superTrendAI: nil
@@ -524,7 +519,7 @@ final class ChartViewModel: ObservableObject {
                     // Use legacy API
                     let response = try await APIClient.shared.fetchChart(
                         symbol: symbol.ticker,
-                        timeframe: timeframe
+                        timeframe: timeframe.apiToken
                     )
 
                     // Check if task was cancelled
@@ -568,10 +563,27 @@ final class ChartViewModel: ObservableObject {
         await loadTask?.value
     }
 
-    func setTimeframe(_ newTimeframe: String) async {
-        guard Self.availableTimeframes.contains(newTimeframe) else { return }
+    func setTimeframe(_ newTimeframe: Timeframe) async {
         timeframe = newTimeframe
-        await loadChart()
+        // loadChart() will be called automatically by didSet
+    }
+    
+    /// Helper to build bars from correct data layer based on timeframe
+    private func buildBars(from response: ChartDataV2Response, for timeframe: Timeframe) -> [OHLCBar] {
+        let src = timeframe.isIntraday
+            ? response.layers.intraday.data   // Use intraday for m15/h1/h4
+            : response.layers.historical.data // Use historical for d1/w1
+        
+        return src.map { bar in
+            OHLCBar(
+                ts: bar.ts,
+                open: bar.open,
+                high: bar.high,
+                low: bar.low,
+                close: bar.close,
+                volume: bar.volume
+            )
+        }
     }
 
     func setSymbol(_ symbol: Symbol?) async {

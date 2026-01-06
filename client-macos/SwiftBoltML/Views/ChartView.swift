@@ -327,15 +327,15 @@ struct PriceChangeView: View {
 }
 
 struct TimeframePicker: View {
-    let selectedTimeframe: String
-    let onSelect: (String) -> Void
+    let selectedTimeframe: Timeframe
+    let onSelect: (Timeframe) -> Void
 
-    private let timeframes: [(String, String)] = [
-        ("m15", "15M"),
-        ("h1", "1H"),
-        ("h4", "4H"),
-        ("d1", "D"),
-        ("w1", "W")
+    private let timeframes: [(Timeframe, String)] = [
+        (.m15, "15M"),
+        (.h1, "1H"),
+        (.h4, "4H"),
+        (.d1, "D"),
+        (.w1, "W")
     ]
 
     var body: some View {
