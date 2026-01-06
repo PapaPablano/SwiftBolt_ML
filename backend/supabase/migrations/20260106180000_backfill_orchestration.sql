@@ -44,9 +44,10 @@ create index if not exists idx_backfill_chunks_job on backfill_chunks(job_id, st
 create or replace function get_coverage(p_symbol text, p_timeframe text)
 returns table(from_ts timestamptz, to_ts timestamptz)
 language sql stable as $$
-  select min(ts) as from_ts, max(ts) as to_ts
-  from ohlc_bars_v2
-  where symbol = p_symbol and timeframe = p_timeframe;
+  select min(b.ts) as from_ts, max(b.ts) as to_ts
+  from ohlc_bars_v2 b
+  join symbols s on s.id = b.symbol_id
+  where s.ticker = p_symbol and b.timeframe = p_timeframe;
 $$;
 
 -- Claim N chunks using SKIP LOCKED (prevents duplicate workers)
@@ -135,18 +136,21 @@ create or replace function has_coverage(
 returns boolean
 language sql stable as $$
   select exists(
-    select 1 from ohlc_bars_v2
-    where symbol = p_symbol
-      and timeframe = p_timeframe
-      and ts >= p_from_ts
-      and ts <= p_to_ts
+    select 1 from ohlc_bars_v2 b
+    join symbols s on s.id = b.symbol_id
+    where s.ticker = p_symbol
+      and b.timeframe = p_timeframe
+      and b.ts >= p_from_ts
+      and b.ts <= p_to_ts
     limit 1
   ) and (
-    select min(ts) from ohlc_bars_v2
-    where symbol = p_symbol and timeframe = p_timeframe
+    select min(b.ts) from ohlc_bars_v2 b
+    join symbols s on s.id = b.symbol_id
+    where s.ticker = p_symbol and b.timeframe = p_timeframe
   ) <= p_from_ts and (
-    select max(ts) from ohlc_bars_v2
-    where symbol = p_symbol and timeframe = p_timeframe
+    select max(b.ts) from ohlc_bars_v2 b
+    join symbols s on s.id = b.symbol_id
+    where s.ticker = p_symbol and b.timeframe = p_timeframe
   ) >= p_to_ts;
 $$;
 

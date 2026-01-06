@@ -1,20 +1,26 @@
 -- SPEC-8: Cron schedule for backfill worker
 -- Calls run-backfill-worker Edge Function every minute
 
--- Enable pg_cron extension if not already enabled
-create extension if not exists pg_cron;
+-- Note: Service role key must be set via Supabase Dashboard with superuser privileges:
+-- Go to SQL Editor and run:
+-- ALTER DATABASE postgres SET app.settings.service_role_key = 'your-service-role-key';
 
--- Store service role key in a secure setting (set via Supabase dashboard or CLI)
--- This should be set as: ALTER DATABASE postgres SET app.settings.service_role_key = 'your-service-role-key';
--- For now, we'll reference it from the setting
+-- Remove existing job if it exists
+do $$
+begin
+  perform cron.unschedule('backfill-worker-every-minute');
+exception when others then
+  null; -- Ignore if job doesn't exist
+end $$;
 
 -- Schedule the backfill worker to run every minute
+-- URL is hardcoded since it's not sensitive and doesn't change
 select cron.schedule(
   'backfill-worker-every-minute',
   '* * * * *',
   $$
     select net.http_post(
-      url := current_setting('app.settings.supabase_url', true) || '/functions/v1/run-backfill-worker',
+      url := 'https://cygflaemtmwiwaviclks.supabase.co/functions/v1/run-backfill-worker',
       headers := jsonb_build_object(
         'Content-Type', 'application/json',
         'Authorization', 'Bearer ' || current_setting('app.settings.service_role_key', true)
