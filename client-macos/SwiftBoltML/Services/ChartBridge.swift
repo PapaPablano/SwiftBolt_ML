@@ -281,7 +281,10 @@ final class ChartBridge: NSObject, ObservableObject {
 
     /// Set candlestick data
     func setCandles(from bars: [OHLCBar]) {
-        let candleData = bars.map { bar in
+        // CRITICAL: Sort bars by timestamp to ensure chronological order
+        let sortedBars = bars.sorted { $0.ts < $1.ts }
+        
+        let candleData = sortedBars.map { bar in
             LightweightCandle(
                 time: Int(bar.ts.timeIntervalSince1970 * 1000),  // Convert to milliseconds
                 open: bar.open,
@@ -292,10 +295,17 @@ final class ChartBridge: NSObject, ObservableObject {
         }
         
         // Debug: Log first and last candles to verify data
-        if let first = bars.first, let last = bars.last {
-            print("[ChartBridge] Candles: \(bars.count) bars")
+        if let first = sortedBars.first, let last = sortedBars.last {
+            print("[ChartBridge] Candles: \(sortedBars.count) bars")
             print("[ChartBridge] First: \(first.ts) O:\(first.open) H:\(first.high) L:\(first.low) C:\(first.close)")
             print("[ChartBridge] Last: \(last.ts) O:\(last.open) H:\(last.high) L:\(last.low) C:\(last.close)")
+        }
+        
+        // Debug: Check for duplicate timestamps
+        let timestamps = candleData.map { $0.time }
+        let uniqueTimestamps = Set(timestamps)
+        if timestamps.count != uniqueTimestamps.count {
+            print("[ChartBridge] ⚠️ WARNING: Found \(timestamps.count - uniqueTimestamps.count) duplicate timestamps!")
         }
         
         send(.setCandles(data: candleData))
