@@ -75,6 +75,7 @@
 		F6161BC12EF2D49A0065ABA1 /* OptionRankDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6161BBE2EF2D49A0065ABA1 /* OptionRankDetailView.swift */; };
 		F64681A92EF0E00900FBEF04 /* MLReportCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F64681A82EF0E00900FBEF04 /* MLReportCard.swift */; };
 		F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */; };
+		F6FD04842F0D8B0C00AF337E /* Timeframe.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6FD04832F0D8B0C00AF337E /* Timeframe.swift */; };
 		FF7F2A0E2FD7B4A0009F9712 /* QuoteResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */; };
 		OHC10001233456780000001 /* OptionHistoryChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = OHC20001233456780000001 /* OptionHistoryChartView.swift */; };
 		SA0000012345678900000003 /* StrikeAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SA0000012345678900000004 /* StrikeAnalysisView.swift */; };
@@ -154,6 +155,7 @@
 		F6161BBF2EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsRankerExpiryView.swift; sourceTree = "<group>"; };
 		F64681A82EF0E00900FBEF04 /* MLReportCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLReportCard.swift; sourceTree = "<group>"; };
 		F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastHorizonsView.swift; sourceTree = "<group>"; };
+		F6FD04832F0D8B0C00AF337E /* Timeframe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Timeframe.swift; sourceTree = "<group>"; };
 		F857540C973ADC971FC52E92 /* SupportResistanceOverlayView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SupportResistanceOverlayView.swift; sourceTree = "<group>"; };
 		F903565D8F0B0D702A53E8B0 /* lightweight-charts.standalone.production.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = "lightweight-charts.standalone.production.js"; sourceTree = "<group>"; };
 		FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuoteResponse.swift; sourceTree = "<group>"; };
@@ -265,6 +267,7 @@
 		A5000006233456780000006 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				F6FD04832F0D8B0C00AF337E /* Timeframe.swift */,
 				A2000008233456780000008 /* Symbol.swift */,
 				A2000009233456780000009 /* OHLCBar.swift */,
 				A2000010233456780000010 /* ChartResponse.swift */,
@@ -434,6 +437,7 @@
 				A1000015233456780000015 /* KeychainService.swift in Sources */,
 				A1000016233456780000016 /* SymbolSearchViewModel.swift in Sources */,
 				A1000017233456780000017 /* ChartViewModel.swift in Sources */,
+				F6FD04842F0D8B0C00AF337E /* Timeframe.swift in Sources */,
 				F60BB9712EF037360044BE7E /* OptionsChainView.swift in Sources */,
 				F64681A92EF0E00900FBEF04 /* MLReportCard.swift in Sources */,
 				A1000018233456780000018 /* NewsViewModel.swift in Sources */,
