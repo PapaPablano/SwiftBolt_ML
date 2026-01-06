@@ -52,7 +52,7 @@ class SupabaseDatabase:
 
             # Fetch OHLC bars
             query = (
-                self.client.table("ohlc_bars")
+                self.client.table("ohlc_bars_v2")
                 .select("ts, open, high, low, close, volume")
                 .eq("symbol_id", symbol_id)
                 .eq("timeframe", timeframe)
@@ -105,7 +105,7 @@ class SupabaseDatabase:
             symbol_id = self.get_symbol_id(symbol)
             ts_iso = pd.to_datetime(target_ts).isoformat()
             response = (
-                self.client.table("ohlc_bars")
+                self.client.table("ohlc_bars_v2")
                 .select("ts, close")
                 .eq("symbol_id", symbol_id)
                 .eq("timeframe", timeframe)
@@ -245,7 +245,7 @@ class SupabaseDatabase:
             symbol_id = self.get_symbol_id(symbol)
             ts_iso = pd.to_datetime(after_ts).isoformat()
             response = (
-                self.client.table("ohlc_bars")
+                self.client.table("ohlc_bars_v2")
                 .select("ts, close")
                 .eq("symbol_id", symbol_id)
                 .eq("timeframe", timeframe)

@@ -17,7 +17,10 @@
         subSeries: {},      // Series within sub-panels
         lastCrosshairData: null,
         theme: 'dark',
-        isReady: false
+        isReady: false,
+        useHeikinAshi: false,
+        originalBars: [],   // Store original OHLC data
+        heikinAshiBars: []  // Store transformed HA data
     };
 
     // Sub-panel configurations
@@ -420,12 +423,22 @@
 
             // Ensure data is sorted by time
             const sortedData = [...data].sort((a, b) => a.time - b.time);
-            state.series.candles.setData(sortedData);
+            
+            // Store original bars
+            state.originalBars = sortedData;
+            
+            // Apply Heikin-Ashi if enabled
+            const displayData = state.useHeikinAshi ? calculateHeikinAshi(sortedData) : sortedData;
+            if (state.useHeikinAshi) {
+                state.heikinAshiBars = displayData;
+            }
+            
+            state.series.candles.setData(displayData);
 
             // Fit content
             state.chart.timeScale().fitContent();
 
-            console.log('[ChartJS] Candles set:', sortedData.length);
+            console.log('[ChartJS] Candles set:', sortedData.length, 'HA:', state.useHeikinAshi);
         },
 
         /**
@@ -1041,6 +1054,95 @@
         },
 
         /**
+         * Toggle Heikin-Ashi candlesticks
+         */
+        toggleHeikinAshi: function(enabled) {
+            state.useHeikinAshi = enabled;
+            
+            if (!state.series.candles || state.originalBars.length === 0) {
+                console.log('[ChartJS] No candle data to transform');
+                return;
+            }
+            
+            // Apply transformation and update display
+            const displayData = enabled ? calculateHeikinAshi(state.originalBars) : state.originalBars;
+            if (enabled) {
+                state.heikinAshiBars = displayData;
+            }
+            
+            state.series.candles.setData(displayData);
+            
+            // Update candle colors for HA mode
+            if (enabled) {
+                state.series.candles.applyOptions({
+                    upColor: '#32CD32',
+                    downColor: '#FF6B6B',
+                    borderUpColor: '#32CD32',
+                    borderDownColor: '#FF6B6B',
+                    wickUpColor: '#32CD32',
+                    wickDownColor: '#FF6B6B'
+                });
+            } else {
+                state.series.candles.applyOptions(candlestickOptions);
+            }
+            
+            console.log('[ChartJS] Heikin-Ashi toggled:', enabled);
+        },
+
+        /**
+         * Set volume profile data (right-side histogram)
+         */
+        setVolumeProfile: function(profileData) {
+            if (!state.chart) {
+                console.error('[ChartJS] Chart not initialized');
+                return;
+            }
+            
+            // Create volume profile series if not exists
+            if (!state.series.volumeProfile) {
+                state.series.volumeProfile = state.chart.addHistogramSeries({
+                    color: '#26a69a',
+                    priceFormat: {
+                        type: 'volume',
+                    },
+                    priceScaleId: 'volume-profile',
+                    overlay: true
+                });
+            }
+            
+            // Convert profile data to histogram format
+            const currentTime = Math.floor(Date.now() / 1000);
+            const histData = profileData.map(item => ({
+                time: currentTime,
+                value: item.volumePercentage || item.volume,
+                color: item.pointOfControl ? '#FF6B6B' : '#26a69a'
+            }));
+            
+            state.series.volumeProfile.setData(histData);
+            console.log('[ChartJS] Volume profile set:', profileData.length, 'levels');
+        },
+
+        /**
+         * Update live bar with animation
+         */
+        updateLiveBar: function(newBar, duration = 500) {
+            if (!state.series.candles || state.originalBars.length === 0) return;
+            
+            // Update the last bar in original data
+            state.originalBars[state.originalBars.length - 1] = newBar;
+            
+            // Apply HA transformation if enabled
+            const displayBar = state.useHeikinAshi ? 
+                calculateHeikinAshi(state.originalBars).slice(-1)[0] : 
+                newBar;
+            
+            // Animate the update (simple version - just update)
+            state.series.candles.update(displayBar);
+            
+            console.log('[ChartJS] Live bar updated');
+        },
+
+        /**
          * Apply a command object (for batched updates from Swift)
          */
         apply: function(cmd) {
@@ -1112,6 +1214,15 @@
                     break;
                 case 'hidePanel':
                     this.hidePanel(cmd.panel);
+                    break;
+                case 'toggleHeikinAshi':
+                    this.toggleHeikinAshi(cmd.enabled);
+                    break;
+                case 'setVolumeProfile':
+                    this.setVolumeProfile(cmd.data);
+                    break;
+                case 'updateLiveBar':
+                    this.updateLiveBar(cmd.bar, cmd.duration);
                     break;
                 default:
                     console.warn('[ChartJS] Unknown command type:', cmd.type);

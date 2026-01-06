@@ -30,6 +30,11 @@ final class ChartViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var indicatorConfig = IndicatorConfig()
     @Published var useV2API: Bool = true
+    
+    // WebChart Advanced Features
+    @Published var useHeikinAshi: Bool = false
+    @Published var showVolumeProfile: Bool = false
+    @Published private(set) var volumeProfile: [[String: Any]] = []
 
     // Refresh state
     @Published private(set) var isRefreshing: Bool = false
@@ -711,5 +716,56 @@ final class ChartViewModel: ObservableObject {
         let closeMinutes = 16 * 60
 
         return minutes >= openMinutes && minutes <= closeMinutes
+    }
+    
+    // MARK: - Volume Profile Calculator
+    
+    /// Calculate volume profile from OHLC bars
+    /// Groups volume by price levels to identify support/resistance zones
+    func calculateVolumeProfile(bucketSize: Double = 0.50) {
+        guard let chartData = chartDataV2 else {
+            volumeProfile = []
+            return
+        }
+        
+        let bars = chartData.layers.allBars
+        guard !bars.isEmpty else {
+            volumeProfile = []
+            return
+        }
+        
+        var volumeByPrice: [Double: Double] = [:]
+        
+        // Distribute volume across price levels
+        for bar in bars {
+            let priceRange = bar.high - bar.low
+            guard priceRange > 0 else { continue }
+            
+            let numLevels = max(1, Int(ceil(priceRange / bucketSize)))
+            let volumePerLevel = bar.volume / Double(numLevels)
+            
+            var price = floor(bar.low / bucketSize) * bucketSize
+            while price <= bar.high {
+                let bucket = round(price / bucketSize) * bucketSize
+                volumeByPrice[bucket, default: 0] += volumePerLevel
+                price += bucketSize
+            }
+        }
+        
+        // Calculate total volume and find POC
+        let totalVolume = volumeByPrice.values.reduce(0, +)
+        let maxVolume = volumeByPrice.values.max() ?? 0
+        
+        // Convert to profile data format
+        volumeProfile = volumeByPrice.map { price, volume in
+            [
+                "price": price,
+                "volume": volume,
+                "volumePercentage": (volume / totalVolume) * 100,
+                "pointOfControl": abs(volume - maxVolume) < 0.01
+            ]
+        }.sorted { ($0["price"] as? Double ?? 0) < ($1["price"] as? Double ?? 0) }
+        
+        print("[ChartViewModel] Volume profile calculated: \(volumeProfile.count) levels, POC at \(volumeByPrice.first(where: { $0.value == maxVolume })?.key ?? 0)")
     }
 }

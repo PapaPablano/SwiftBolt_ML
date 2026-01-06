@@ -286,7 +286,7 @@ final class ChartBridge: NSObject, ObservableObject {
         
         let candleData = sortedBars.map { bar in
             LightweightCandle(
-                time: Int(bar.ts.timeIntervalSince1970 * 1000),  // Convert to milliseconds
+                time: Int(bar.ts.timeIntervalSince1970),  // Unix timestamp in seconds
                 open: bar.open,
                 high: bar.high,
                 low: bar.low,
@@ -316,7 +316,7 @@ final class ChartBridge: NSObject, ObservableObject {
         let points = data.compactMap { point -> LightweightDataPoint? in
             guard let value = point.value else { return nil }
             return LightweightDataPoint(
-                time: Int(point.date.timeIntervalSince1970 * 1000),
+                time: Int(point.date.timeIntervalSince1970),
                 value: value
             )
         }
@@ -359,7 +359,7 @@ final class ChartBridge: NSObject, ObservableObject {
             // BUY signals: green line is BELOW price (support), so label goes below
             // SELL signals: red line is ABOVE price (resistance), so label goes above
             return ChartMarker(
-                time: Int(signal.date.timeIntervalSince1970 * 1000),
+                time: Int(signal.date.timeIntervalSince1970),
                 type: signal.type == .buy ? "buy" : "sell",
                 text: labelText,
                 color: signal.type == .buy ? "#26a69a" : "#ef5350",
@@ -391,7 +391,7 @@ final class ChartBridge: NSObject, ObservableObject {
         let points = data.compactMap { point -> LightweightDataPoint? in
             guard let value = point.value else { return nil }
             return LightweightDataPoint(
-                time: Int(point.date.timeIntervalSince1970 * 1000),
+                time: Int(point.date.timeIntervalSince1970),
                 value: value
             )
         }
@@ -402,15 +402,15 @@ final class ChartBridge: NSObject, ObservableObject {
     func setMACD(line: [IndicatorDataPoint], signal: [IndicatorDataPoint], histogram: [IndicatorDataPoint]) {
         let linePoints = line.compactMap { point -> LightweightDataPoint? in
             guard let value = point.value else { return nil }
-            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970 * 1000), value: value)
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
         }
         let signalPoints = signal.compactMap { point -> LightweightDataPoint? in
             guard let value = point.value else { return nil }
-            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970 * 1000), value: value)
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
         }
         let histPoints = histogram.compactMap { point -> LightweightDataPoint? in
             guard let value = point.value else { return nil }
-            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970 * 1000), value: value)
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
         }
         send(.setMACD(line: linePoints, signal: signalPoints, histogram: histPoints))
     }
@@ -419,11 +419,11 @@ final class ChartBridge: NSObject, ObservableObject {
     func setStochastic(k: [IndicatorDataPoint], d: [IndicatorDataPoint]) {
         let kPoints = k.compactMap { point -> LightweightDataPoint? in
             guard let value = point.value else { return nil }
-            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970 * 1000), value: value)
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
         }
         let dPoints = d.compactMap { point -> LightweightDataPoint? in
             guard let value = point.value else { return nil }
-            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970 * 1000), value: value)
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
         }
         send(.setStochastic(kData: kPoints, dData: dPoints))
     }
@@ -432,15 +432,15 @@ final class ChartBridge: NSObject, ObservableObject {
     func setKDJ(k: [IndicatorDataPoint], d: [IndicatorDataPoint], j: [IndicatorDataPoint]) {
         let kPoints = k.compactMap { point -> LightweightDataPoint? in
             guard let value = point.value else { return nil }
-            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970 * 1000), value: value)
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
         }
         let dPoints = d.compactMap { point -> LightweightDataPoint? in
             guard let value = point.value else { return nil }
-            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970 * 1000), value: value)
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
         }
         let jPoints = j.compactMap { point -> LightweightDataPoint? in
             guard let value = point.value else { return nil }
-            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970 * 1000), value: value)
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
         }
         send(.setKDJ(kData: kPoints, dData: dPoints, jData: jPoints))
     }
@@ -449,15 +449,15 @@ final class ChartBridge: NSObject, ObservableObject {
     func setADX(adx: [IndicatorDataPoint], plusDI: [IndicatorDataPoint], minusDI: [IndicatorDataPoint]) {
         let adxPoints = adx.compactMap { point -> LightweightDataPoint? in
             guard let value = point.value else { return nil }
-            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970 * 1000), value: value)
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
         }
         let plusPoints = plusDI.compactMap { point -> LightweightDataPoint? in
             guard let value = point.value else { return nil }
-            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970 * 1000), value: value)
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
         }
         let minusPoints = minusDI.compactMap { point -> LightweightDataPoint? in
             guard let value = point.value else { return nil }
-            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970 * 1000), value: value)
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
         }
         send(.setADX(adxData: adxPoints, plusDI: plusPoints, minusDI: minusPoints))
     }
@@ -466,7 +466,7 @@ final class ChartBridge: NSObject, ObservableObject {
     func setATR(data: [IndicatorDataPoint]) {
         let points = data.compactMap { point -> LightweightDataPoint? in
             guard let value = point.value else { return nil }
-            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970 * 1000), value: value)
+            return LightweightDataPoint(time: Int(point.date.timeIntervalSince1970), value: value)
         }
         send(.setATR(data: points))
     }
@@ -482,7 +482,7 @@ final class ChartBridge: NSObject, ObservableObject {
             // Determine direction by comparing close to open
             let direction = bar.close >= bar.open ? "up" : "down"
             return VolumeDataPoint(
-                time: Int(bar.ts.timeIntervalSince1970 * 1000),
+                time: Int(bar.ts.timeIntervalSince1970),
                 value: bar.volume,
                 direction: direction,
                 color: nil  // Let JS apply default colors
@@ -497,7 +497,7 @@ final class ChartBridge: NSObject, ObservableObject {
         
         let candles = bars.map { bar in
             LightweightCandle(
-                time: Int(bar.ts.timeIntervalSince1970 * 1000),
+                time: Int(bar.ts.timeIntervalSince1970),
                 open: bar.open,
                 high: bar.high,
                 low: bar.low,
@@ -521,17 +521,17 @@ final class ChartBridge: NSObject, ObservableObject {
         guard !bars.isEmpty else { return }
         
         let midPoints = bars.map { bar in
-            LightweightDataPoint(time: Int(bar.ts.timeIntervalSince1970 * 1000), value: bar.close)
+            LightweightDataPoint(time: Int(bar.ts.timeIntervalSince1970), value: bar.close)
         }
         
         let upperPoints = bars.compactMap { bar -> LightweightDataPoint? in
             guard let upper = bar.upperBand else { return nil }
-            return LightweightDataPoint(time: Int(bar.ts.timeIntervalSince1970 * 1000), value: upper)
+            return LightweightDataPoint(time: Int(bar.ts.timeIntervalSince1970), value: upper)
         }
         
         let lowerPoints = bars.compactMap { bar -> LightweightDataPoint? in
             guard let lower = bar.lowerBand else { return nil }
-            return LightweightDataPoint(time: Int(bar.ts.timeIntervalSince1970 * 1000), value: lower)
+            return LightweightDataPoint(time: Int(bar.ts.timeIntervalSince1970), value: lower)
         }
         
         send(.setForecast(
@@ -543,6 +543,52 @@ final class ChartBridge: NSObject, ObservableObject {
                 bandColor: "rgba(156, 39, 176, 0.2)"
             )
         ))
+    }
+    
+    /// Toggle Heikin-Ashi candlestick display
+    func toggleHeikinAshi(enabled: Bool) {
+        let command = """
+        window.chartApi.toggleHeikinAshi(\(enabled));
+        """
+        executeJS(command)
+        print("[ChartBridge] Heikin-Ashi toggled: \(enabled)")
+    }
+    
+    /// Set volume profile data
+    func setVolumeProfile(data: [[String: Any]]) {
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: data),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            print("[ChartBridge] Failed to encode volume profile data")
+            return
+        }
+        
+        let command = """
+        window.chartApi.setVolumeProfile(\(jsonString));
+        """
+        executeJS(command)
+        print("[ChartBridge] Volume profile set: \(data.count) levels")
+    }
+    
+    /// Update live bar with animation
+    func updateLiveBar(bar: OHLCBar, duration: Int = 500) {
+        let barData: [String: Any] = [
+            "time": Int(bar.ts.timeIntervalSince1970),
+            "open": bar.open,
+            "high": bar.high,
+            "low": bar.low,
+            "close": bar.close
+        ]
+        
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: barData),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            print("[ChartBridge] Failed to encode bar data")
+            return
+        }
+        
+        let command = """
+        window.chartApi.updateLiveBar(\(jsonString), \(duration));
+        """
+        executeJS(command)
     }
     
     /// Set SuperTrend with trend-based coloring and strength data
@@ -564,15 +610,15 @@ final class ChartBridge: NSObject, ObservableObject {
             let strengthValue = i < strength.count ? (strength[i].value ?? 0) : 0
             
             stPoints.append(LightweightDataPoint(
-                time: Int(data[i].date.timeIntervalSince1970 * 1000),
+                time: Int(data[i].date.timeIntervalSince1970),
                 value: stValue
             ))
             trendPoints.append(LightweightDataPoint(
-                time: Int(trend[i].date.timeIntervalSince1970 * 1000),
+                time: Int(trend[i].date.timeIntervalSince1970),
                 value: trendValue
             ))
             strengthPoints.append(LightweightDataPoint(
-                time: Int(data[i].date.timeIntervalSince1970 * 1000),
+                time: Int(data[i].date.timeIntervalSince1970),
                 value: strengthValue
             ))
         }

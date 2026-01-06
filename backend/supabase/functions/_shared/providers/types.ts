@@ -1,7 +1,7 @@
 // Provider-agnostic types for market data
 // These types define the unified abstraction layer over Finnhub and Massive
 
-export type ProviderId = "finnhub" | "massive" | "yahoo";
+export type ProviderId = "finnhub" | "massive" | "yahoo" | "tradier";
 
 export type Timeframe = "m1" | "m5" | "m15" | "m30" | "h1" | "h4" | "d1" | "w1" | "mn1";
 

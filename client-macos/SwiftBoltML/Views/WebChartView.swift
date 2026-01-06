@@ -70,6 +70,26 @@ struct WebChartView: NSViewRepresentable {
                     }
                 }
                 .store(in: &cancellables)
+            
+            // Subscribe to Heikin-Ashi toggle
+            parent.viewModel.$useHeikinAshi
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] enabled in
+                    guard let self = self, self.parent.bridge.isReady else { return }
+                    self.parent.bridge.toggleHeikinAshi(enabled: enabled)
+                }
+                .store(in: &cancellables)
+            
+            // Subscribe to volume profile changes
+            parent.viewModel.$volumeProfile
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] profile in
+                    guard let self = self, 
+                          self.parent.bridge.isReady,
+                          !profile.isEmpty else { return }
+                    self.parent.bridge.setVolumeProfile(data: profile)
+                }
+                .store(in: &cancellables)
         }
 
         private func updateChartV2(with data: ChartDataV2Response) {

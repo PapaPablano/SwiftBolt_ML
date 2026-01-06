@@ -111,7 +111,7 @@ serve(async (req: Request): Promise<Response> => {
       try {
         // Get the latest bar timestamp for this symbol/timeframe
         const { data: latestBar } = await supabase
-          .from("ohlc_bars")
+          .from("ohlc_bars_v2")
           .select("ts")
           .eq("symbol_id", symbolId)
           .eq("timeframe", timeframe)
@@ -123,7 +123,7 @@ serve(async (req: Request): Promise<Response> => {
         
         // Count existing bars
         const { count: existingCount } = await supabase
-          .from("ohlc_bars")
+          .from("ohlc_bars_v2")
           .select("*", { count: "exact", head: true })
           .eq("symbol_id", symbolId)
           .eq("timeframe", timeframe);
@@ -196,7 +196,7 @@ serve(async (req: Request): Promise<Response> => {
           }));
 
           const { error: upsertError } = await supabase
-            .from("ohlc_bars")
+            .from("ohlc_bars_v2")
             .upsert(barsToInsert, {
               onConflict: "symbol_id,timeframe,ts",
               ignoreDuplicates: false,

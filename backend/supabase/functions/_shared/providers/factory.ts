@@ -7,6 +7,7 @@ import { getRateLimits } from "../config/rate-limits.ts";
 import { FinnhubClient } from "./finnhub-client.ts";
 import { MassiveClient } from "./massive-client.ts";
 import { YahooFinanceClient } from "./yahoo-finance-client.ts";
+import { TradierClient } from "./tradier-client.ts";
 import { ProviderRouter } from "./router.ts";
 import type { ProviderId } from "./types.ts";
 
@@ -38,9 +39,14 @@ export function initializeProviders(): ProviderRouter {
   // Initialize provider clients
   const finnhubApiKey = Deno.env.get("FINNHUB_API_KEY");
   const massiveApiKey = Deno.env.get("MASSIVE_API_KEY");
+  const tradierApiKey = Deno.env.get("TRADIER_API_KEY");
 
   if (!finnhubApiKey || !massiveApiKey) {
     throw new Error("Missing required API keys: FINNHUB_API_KEY and MASSIVE_API_KEY");
+  }
+
+  if (!tradierApiKey) {
+    console.warn("[Provider Factory] TRADIER_API_KEY not set - intraday data will be limited");
   }
 
   const finnhubClient = new FinnhubClient(
@@ -59,14 +65,42 @@ export function initializeProviders(): ProviderRouter {
     cacheInstance
   );
 
+  const tradierClient = tradierApiKey ? new TradierClient(tradierApiKey) : null;
+
   console.log("[Provider Factory] Provider clients initialized");
 
-  // Initialize router with default policy
-  routerInstance = new ProviderRouter({
+  // Initialize router with custom policy for intraday vs historical data
+  const providers: Record<string, any> = {
     finnhub: finnhubClient,
     massive: massiveClient,
     yahoo: yahooFinanceClient,
-  });
+  };
+
+  if (tradierClient) {
+    providers.tradier = tradierClient;
+  }
+
+  // Custom policy: Tradier for intraday (m15, h1), Yahoo for historical (d1, w1)
+  const policy = {
+    quote: {
+      primary: "tradier" as ProviderId,
+      fallback: "finnhub" as ProviderId,
+    },
+    historicalBars: {
+      primary: "yahoo" as ProviderId, // Yahoo for historical, Tradier for intraday (handled in router)
+      fallback: "finnhub" as ProviderId,
+    },
+    news: {
+      primary: "finnhub" as ProviderId,
+      fallback: undefined,
+    },
+    optionsChain: {
+      primary: "yahoo" as ProviderId,
+      fallback: undefined,
+    },
+  };
+
+  routerInstance = new ProviderRouter(providers, policy);
 
   console.log("[Provider Factory] Provider router initialized");
 

@@ -122,7 +122,24 @@ export class ProviderRouter {
   }
 
   async getHistoricalBars(request: HistoricalBarsRequest): Promise<Bar[]> {
-    const { primary, fallback } = this.policy.historicalBars;
+    // Smart routing: Tradier for intraday (m15, h1), Yahoo for historical (d1, w1)
+    const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(request.timeframe);
+    const tradierProvider = this.providers.get("tradier");
+    
+    let primary: ProviderId;
+    let fallback: ProviderId | undefined;
+    
+    if (isIntraday && tradierProvider) {
+      // Use Tradier for real-time intraday data
+      primary = "tradier";
+      fallback = this.policy.historicalBars.primary; // Yahoo as fallback
+      console.log(`[Router] Using Tradier for intraday timeframe: ${request.timeframe}`);
+    } else {
+      // Use configured policy for daily/weekly data
+      primary = this.policy.historicalBars.primary;
+      fallback = this.policy.historicalBars.fallback;
+      console.log(`[Router] Using ${primary} for historical timeframe: ${request.timeframe}`);
+    }
 
     try {
       const provider = await this.selectProvider(primary, fallback);
