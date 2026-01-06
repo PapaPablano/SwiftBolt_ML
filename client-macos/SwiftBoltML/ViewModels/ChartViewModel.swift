@@ -467,10 +467,13 @@ final class ChartViewModel: ObservableObject {
         loadTask = Task {
             do {
                 if useV2API {
-                    // Use new V2 API with layered data
+                    // Use V2 API with strict data layer separation:
+                    // - Historical: Polygon (verified, dates < today)
+                    // - Intraday: Tradier (live, today only)
+                    // - Forecast: ML predictions (future dates)
                     let response = try await APIClient.shared.fetchChartV2(
                         symbol: symbol.ticker,
-                        days: 365,  // Request 1 year of data
+                        days: 730,  // Request 2 years of historical data
                         includeForecast: true,
                         forecastDays: 10
                     )
@@ -483,41 +486,22 @@ final class ChartViewModel: ObservableObject {
                     }
 
                     print("[DEBUG] ChartViewModel.loadChart() V2 - SUCCESS!")
-                    print("[DEBUG] - Historical: \(response.layers.historical.count) bars")
-                    print("[DEBUG] - Intraday: \(response.layers.intraday.count) bars")
-                    print("[DEBUG] - Forecast: \(response.layers.forecast.count) bars")
+                    print("[DEBUG] - Historical (Polygon): \(response.layers.historical.count) bars")
+                    print("[DEBUG] - Intraday (Tradier): \(response.layers.intraday.count) bars")
+                    print("[DEBUG] - Forecast (ML): \(response.layers.forecast.count) bars")
 
-                    // If V2 returns too little historical data, fall back to V1 API
-                    if response.layers.historical.count < 100 {
-                        print("[DEBUG] V2 API returned insufficient data (\(response.layers.historical.count) bars), falling back to V1 API")
-                        let legacyResponse = try await APIClient.shared.fetchChart(
-                            symbol: symbol.ticker,
-                            timeframe: timeframe
-                        )
+                    chartDataV2 = response
 
-                        guard !Task.isCancelled else {
-                            print("[DEBUG] ChartViewModel.loadChart() - CANCELLED (fallback)")
-                            isLoading = false
-                            return
-                        }
-
-                        print("[DEBUG] ChartViewModel.loadChart() V1 fallback - \(legacyResponse.bars.count) bars")
-                        chartData = legacyResponse
-                        chartDataV2 = nil  // Clear V2 data so WebChartView uses V1
-                    } else {
-                        chartDataV2 = response
-
-                        // Also populate legacy chartData for backward compatibility
-                        chartData = ChartResponse(
-                            symbol: response.symbol,
-                            assetType: "stock",
-                            timeframe: response.timeframe,
-                            bars: response.allBars,
-                            mlSummary: nil,
-                            indicators: nil,
-                            superTrendAI: nil
-                        )
-                    }
+                    // Also populate legacy chartData for indicator calculations
+                    chartData = ChartResponse(
+                        symbol: response.symbol,
+                        assetType: "stock",
+                        timeframe: response.timeframe,
+                        bars: response.allBars,
+                        mlSummary: nil,
+                        indicators: nil,
+                        superTrendAI: nil
+                    )
                 } else {
                     // Use legacy API
                     let response = try await APIClient.shared.fetchChart(

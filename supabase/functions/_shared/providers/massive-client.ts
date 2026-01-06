@@ -253,7 +253,7 @@ export class MassiveClient implements DataProviderAbstraction {
     const url = new URL(
       `${this.baseURL}/v2/aggs/ticker/${ticker}/range/${multiplier}/${timespan}/${formatTimestamp(start)}/${formatTimestamp(end)}`
     );
-    url.searchParams.set("adjusted", "true");
+    url.searchParams.set("adjusted", "false");  // ALWAYS use unadjusted prices
     url.searchParams.set("sort", "asc");
     url.searchParams.set("limit", "50000"); // Max limit
     url.searchParams.set("apiKey", this.apiKey);

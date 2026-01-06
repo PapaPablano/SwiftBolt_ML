@@ -95,7 +95,7 @@ export async function fetchCandles(
   const url = new URL(
     `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/${multiplier}/${timespan}/${formatDate(from)}/${formatDate(now)}`
   );
-  url.searchParams.set("adjusted", "true");
+  url.searchParams.set("adjusted", "false");  // ALWAYS use unadjusted prices
   url.searchParams.set("sort", "asc");
   url.searchParams.set("limit", barCount.toString());
   url.searchParams.set("apiKey", apiKey);
