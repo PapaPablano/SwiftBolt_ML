@@ -139,8 +139,8 @@ enum CongestionLevel {
 // MARK: - S/R Chart Overlay Models
 
 struct SRChartOverlay {
-    let supportLevels: [SRLevel]
-    let resistanceLevels: [SRLevel]
+    let supportLevels: [SROverlayLevel]
+    let resistanceLevels: [SROverlayLevel]
     let currentPrice: Double
 
     init(srLevels: SRLevels, currentPrice: Double) {
@@ -148,38 +148,38 @@ struct SRChartOverlay {
 
         // Create support levels
         self.supportLevels = (srLevels.allSupports ?? []).enumerated().map { index, price in
-            SRLevel(
+            SROverlayLevel(
                 price: price,
-                type: .support,
+                type: SROverlayLevelType.support,
                 isNearest: index == 0,
-                distancePercent: ((currentPrice - price) / currentPrice) * 100
+                distancePercent: ((currentPrice - price) / max(currentPrice, 1e-9)) * 100
             )
         }
 
         // Create resistance levels
         self.resistanceLevels = (srLevels.allResistances ?? []).enumerated().map { index, price in
-            SRLevel(
+            SROverlayLevel(
                 price: price,
-                type: .resistance,
+                type: SROverlayLevelType.resistance,
                 isNearest: index == 0,
-                distancePercent: ((price - currentPrice) / currentPrice) * 100
+                distancePercent: ((price - currentPrice) / max(currentPrice, 1e-9)) * 100
             )
         }
     }
 
-    var allLevels: [SRLevel] {
+    var allLevels: [SROverlayLevel] {
         supportLevels + resistanceLevels
     }
 
-    var significantLevels: [SRLevel] {
+    var significantLevels: [SROverlayLevel] {
         allLevels.filter { $0.distancePercent < 5.0 }  // Within 5% of current price
     }
 }
 
-struct SRLevel: Identifiable {
+struct SROverlayLevel: Identifiable {
     let id = UUID()
     let price: Double
-    let type: SRLevelType
+    let type: SROverlayLevelType
     let isNearest: Bool
     let distancePercent: Double
 
@@ -202,7 +202,7 @@ struct SRLevel: Identifiable {
     }
 }
 
-enum SRLevelType {
+enum SROverlayLevelType {
     case support
     case resistance
 

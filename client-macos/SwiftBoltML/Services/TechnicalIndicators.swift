@@ -718,7 +718,7 @@ struct IndicatorConfig {
     var showEMA21: Bool = false
 
     // Volume
-    var showVolume: Bool = true
+    var showVolume: Bool = false
 
     // Oscillators
     var showRSI: Bool = false

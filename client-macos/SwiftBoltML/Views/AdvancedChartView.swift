@@ -235,6 +235,16 @@ struct AdvancedChartView: View {
         return max(250, height)
     }
 
+    // Clamp visible range to real bars only (excludes forecast bars)
+    // Prevents sub-panels from rendering in forecast-only space
+    private var visibleBarsOnlyRange: ClosedRange<Int> {
+        let lastBar = max(0, bars.count - 1)
+        guard lastBar >= 0 else { return 0...0 }
+        let start = max(0, min(visibleRange.lowerBound, lastBar))
+        let end = max(start, min(visibleRange.upperBound, lastBar))
+        return start...end
+    }
+
     var body: some View {
         ScrollView(.vertical, showsIndicators: true) {
             VStack(spacing: 0) {
@@ -255,6 +265,8 @@ struct AdvancedChartView: View {
                     Divider()
                     rsiChartView
                         .frame(height: 100)
+                        .id("rsi-\(visibleBarsOnlyRange.lowerBound)-\(visibleBarsOnlyRange.upperBound)-\(rsi.count)-\(bars.count)")
+                        .allowsHitTesting(false)
                 }
 
                 // MACD Panel
@@ -265,9 +277,11 @@ struct AdvancedChartView: View {
                         macdLine: macdLine,
                         signalLine: macdSignal,
                         histogram: macdHistogram,
-                        visibleRange: visibleRange
+                        visibleRange: visibleBarsOnlyRange
                     )
                     .frame(height: 100)
+                    .id("macd-\(visibleBarsOnlyRange.lowerBound)-\(visibleBarsOnlyRange.upperBound)-\(macdLine.count)-\(macdSignal.count)-\(macdHistogram.count)")
+                    .allowsHitTesting(false)
                 }
 
                 // Stochastic Panel
@@ -277,9 +291,11 @@ struct AdvancedChartView: View {
                         bars: bars,
                         kLine: stochasticK,
                         dLine: stochasticD,
-                        visibleRange: visibleRange
+                        visibleRange: visibleBarsOnlyRange
                     )
                     .frame(height: 100)
+                    .id("stoch-\(visibleBarsOnlyRange.lowerBound)-\(visibleBarsOnlyRange.upperBound)-\(stochasticK.count)-\(stochasticD.count)")
+                    .allowsHitTesting(false)
                 }
 
                 // KDJ Panel
@@ -290,9 +306,11 @@ struct AdvancedChartView: View {
                         kLine: kdjK,
                         dLine: kdjD,
                         jLine: kdjJ,
-                        visibleRange: visibleRange
+                        visibleRange: visibleBarsOnlyRange
                     )
                     .frame(height: 100)
+                    .id("kdj-\(visibleBarsOnlyRange.lowerBound)-\(visibleBarsOnlyRange.upperBound)-\(kdjK.count)-\(kdjD.count)-\(kdjJ.count)")
+                    .allowsHitTesting(false)
                 }
 
                 // ADX Panel
@@ -303,9 +321,11 @@ struct AdvancedChartView: View {
                         adxLine: adxLine,
                         plusDI: plusDI,
                         minusDI: minusDI,
-                        visibleRange: visibleRange
+                        visibleRange: visibleBarsOnlyRange
                     )
                     .frame(height: 100)
+                    .id("adx-\(visibleBarsOnlyRange.lowerBound)-\(visibleBarsOnlyRange.upperBound)-\(adxLine.count)-\(plusDI.count)-\(minusDI.count)")
+                    .allowsHitTesting(false)
                 }
 
                 // ATR Panel
@@ -314,9 +334,11 @@ struct AdvancedChartView: View {
                     ATRPanelView(
                         bars: bars,
                         atrLine: atr,
-                        visibleRange: visibleRange
+                        visibleRange: visibleBarsOnlyRange
                     )
                     .frame(height: 80)
+                    .id("atr-\(visibleBarsOnlyRange.lowerBound)-\(visibleBarsOnlyRange.upperBound)-\(atr.count)")
+                    .allowsHitTesting(false)
                 }
 
                 // SuperTrend Strength Panel (shown when SuperTrend is enabled)
@@ -345,8 +367,11 @@ struct AdvancedChartView: View {
                     Divider()
                     volumeChartView
                         .frame(height: 80)
+                        .id("vol-\(visibleBarsOnlyRange.lowerBound)-\(visibleBarsOnlyRange.upperBound)-\(bars.count)")
+                        .allowsHitTesting(false)
                 }
             }
+            .id(configToken) // Force VStack rebuild when any panel visibility changes
         }
         .onChange(of: bars.count) { oldCount, newCount in
             // Reset to latest bars when data changes
@@ -829,8 +854,8 @@ struct AdvancedChartView: View {
         Chart {
             // RSI overbought zone shading (80-100)
             RectangleMark(
-                xStart: .value("Start", visibleRange.lowerBound),
-                xEnd: .value("End", visibleRange.upperBound),
+                xStart: .value("Start", visibleBarsOnlyRange.lowerBound),
+                xEnd: .value("End", visibleBarsOnlyRange.upperBound),
                 yStart: .value("Low", 80),
                 yEnd: .value("High", 100)
             )
@@ -838,8 +863,8 @@ struct AdvancedChartView: View {
 
             // RSI oversold zone shading (0-20)
             RectangleMark(
-                xStart: .value("Start", visibleRange.lowerBound),
-                xEnd: .value("End", visibleRange.upperBound),
+                xStart: .value("Start", visibleBarsOnlyRange.lowerBound),
+                xEnd: .value("End", visibleBarsOnlyRange.upperBound),
                 yStart: .value("Low", 0),
                 yEnd: .value("High", 20)
             )
@@ -869,7 +894,7 @@ struct AdvancedChartView: View {
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
             }
         }
-        .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
+        .chartXScale(domain: visibleBarsOnlyRange)
         .chartYScale(domain: 0...100)  // Full range with adjusted reference lines
         .chartXAxis(.hidden)
         .chartYAxis {
@@ -905,7 +930,7 @@ struct AdvancedChartView: View {
 
     private var volumeChartView: some View {
         Chart {
-            ForEach(Array(visibleRange), id: \.self) { index in
+            ForEach(Array(visibleBarsOnlyRange), id: \.self) { index in
                 if index < bars.count {
                     let bar = bars[index]
                     BarMark(
@@ -916,7 +941,7 @@ struct AdvancedChartView: View {
                 }
             }
         }
-        .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
+        .chartXScale(domain: visibleBarsOnlyRange)
         .chartXAxis(.hidden)
         .chartYAxis {
             AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { value in
@@ -969,7 +994,66 @@ struct AdvancedChartView: View {
             }
         }
         
-        return Downsampler.lttb(points: validPoints, threshold: threshold)
+        return lttbDownsample(validPoints, threshold: threshold)
+    }
+    
+    @inline(__always)
+    private func lttbDownsample(_ points: [CGPoint], threshold: Int) -> [CGPoint] {
+        let n = points.count
+        if threshold >= n || threshold < 3 { return points }
+
+        var sampled: [CGPoint] = []
+        sampled.reserveCapacity(threshold)
+        sampled.append(points[0])
+
+        let bucketSize = Double(n - 2) / Double(threshold - 2)
+        var aIndex = 0
+
+        for i in 0..<(threshold - 2) {
+            let start = Int(floor(Double(i) * bucketSize)) + 1
+            let end   = Int(floor(Double(i + 1) * bucketSize)) + 1
+            let rangeEnd = min(end, n - 1)
+
+            // Average of this bucket (excluding edges)
+            var avgX = 0.0, avgY = 0.0, count = 0.0
+            if rangeEnd > start {
+                for j in start..<rangeEnd {
+                    avgX += Double(points[j].x)
+                    avgY += Double(points[j].y)
+                    count += 1.0
+                }
+                avgX /= max(count, 1.0)
+                avgY /= max(count, 1.0)
+            } else {
+                // Fallback: use A if this bucket is empty
+                let fallback = points[min(max(rangeEnd, 0), n - 1)]
+                avgX = Double(fallback.x)
+                avgY = Double(fallback.y)
+            }
+
+            // Pick point maximizing triangle area with A and avg
+            let a = points[aIndex]
+            var maxArea = -Double.greatestFiniteMagnitude
+            var maxIdx = start
+
+            for j in start..<rangeEnd {
+                let p = points[j]
+                let area = abs(
+                    (Double(a.x) - avgX) * (Double(p.y) - Double(a.y)) -
+                    (Double(a.x) - Double(p.x)) * (avgY - Double(a.y))
+                )
+                if area > maxArea {
+                    maxArea = area
+                    maxIdx = j
+                }
+            }
+
+            sampled.append(points[maxIdx])
+            aIndex = maxIdx
+        }
+
+        sampled.append(points[n - 1])
+        return sampled
     }
 
     @ChartContentBuilder
@@ -1000,11 +1084,11 @@ struct AdvancedChartView: View {
     @ChartContentBuilder
     private func indicatorLine(_ data: [IndicatorDataPoint], color: Color, label: String) -> some ChartContent {
         let points = downsampled(data)
-        ForEach(points.indices, id: \.self) { i in
-            let pt = points[i]
+        ForEach(Array(points.enumerated()), id: \.offset) { pair in
+            let pt = pair.element
             LineMark(
-                x: .value("Index", pt.x),
-                y: .value(label, pt.y)
+                x: .value("Index", Int(pt.x.rounded())),
+                y: .value(label, Double(pt.y))
             )
             .foregroundStyle(color)
             .lineStyle(StrokeStyle(lineWidth: 2))

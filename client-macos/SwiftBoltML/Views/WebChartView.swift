@@ -107,7 +107,26 @@ struct WebChartView: NSViewRepresentable {
 
             // Subscribe to indicator config changes (re-apply overlays/subpanels)
             parent.viewModel.$indicatorConfig
-                .removeDuplicates()
+                .removeDuplicates(by: { lhs, rhs in
+                    lhs.showSMA20 == rhs.showSMA20 &&
+                    lhs.showSMA50 == rhs.showSMA50 &&
+                    lhs.showEMA9 == rhs.showEMA9 &&
+                    lhs.showEMA21 == rhs.showEMA21 &&
+                    lhs.showSMA200 == rhs.showSMA200 &&
+                    lhs.showBollingerBands == rhs.showBollingerBands &&
+                    lhs.showSuperTrend == rhs.showSuperTrend &&
+                    lhs.showVolume == rhs.showVolume &&
+                    lhs.showRSI == rhs.showRSI &&
+                    lhs.showMACD == rhs.showMACD &&
+                    lhs.showStochastic == rhs.showStochastic &&
+                    lhs.showKDJ == rhs.showKDJ &&
+                    lhs.showADX == rhs.showADX &&
+                    lhs.showATR == rhs.showATR &&
+                    lhs.showPolynomialSR == rhs.showPolynomialSR &&
+                    lhs.showPivotLevels == rhs.showPivotLevels &&
+                    lhs.showLogisticSR == rhs.showLogisticSR &&
+                    lhs.showSignalMarkers == rhs.showSignalMarkers
+                })
                 .debounce(for: .milliseconds(150), scheduler: DispatchQueue.main)
                 .sink { [weak self] _ in
                     guard let self = self, self.parent.bridge.isReady else { return }
@@ -338,23 +357,24 @@ struct WebChartView: NSViewRepresentable {
             // Set Support & Resistance Indicators
             if config.showPolynomialSR {
                 if let poly = parent.viewModel.polynomialSRIndicator.resistanceLine {
-                    let resPoints = poly.predictedPoints.map { pt in
-                        // Convert bar index to approximate timestamp
-                        // Note: This is an approximation. Ideally we'd map index -> timestamp from bars array
-                        // For now, we rely on the JS side to handle index-based series or improve this mapping
-                        // A better approach:
-                        if Int(pt.x) < allBars.count && Int(pt.x) >= 0 {
-                            return LightweightDataPoint(time: Int(allBars[Int(pt.x)].ts.timeIntervalSince1970), value: pt.y)
-                        }
-                        return nil
-                    }.compactMap { $0 }
+                    let resPoints: [LightweightDataPoint] = poly.predictedPoints.compactMap { pt in
+                        let i = Int(pt.x)
+                        guard i >= 0, i < allBars.count else { return nil }
+                        return LightweightDataPoint(
+                            time: Int(allBars[i].ts.timeIntervalSince1970),
+                            value: Double(pt.y)
+                        )
+                    }
                     
-                    let supPoints = parent.viewModel.polynomialSRIndicator.supportLine?.predictedPoints.map { pt in
-                        if Int(pt.x) < allBars.count && Int(pt.x) >= 0 {
-                            return LightweightDataPoint(time: Int(allBars[Int(pt.x)].ts.timeIntervalSince1970), value: pt.y)
-                        }
-                        return nil
-                    }.compactMap { $0 } ?? []
+                    let supPoints: [LightweightDataPoint] =
+                        parent.viewModel.polynomialSRIndicator.supportLine?.predictedPoints.compactMap { pt in
+                            let i = Int(pt.x)
+                            guard i >= 0, i < allBars.count else { return nil }
+                            return LightweightDataPoint(
+                                time: Int(allBars[i].ts.timeIntervalSince1970),
+                                value: Double(pt.y)
+                            )
+                        } ?? []
                     
                     bridge.send(.setPolynomialSR(resistance: resPoints, support: supPoints))
                 }

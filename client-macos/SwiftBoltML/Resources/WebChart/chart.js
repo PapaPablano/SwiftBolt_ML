@@ -15,7 +15,6 @@
         series: {},
         subPanels: {},      // Sub-panel charts for oscillators
         subSeries: {},      // Series within sub-panels
-        subPanelHandlers: {}, // Track which sub-panels have crosshair handlers
         priceLines: [],     // Track added price lines for cleanup
         lastCrosshairData: null,
         theme: 'dark',
@@ -188,95 +187,53 @@
     }
 
     /**
-     * Setup crosshair handler for sub-panels to show panel-specific tooltips
-     */
-    function setupPanelCrosshair(panelName, chart, resolveValues) {
-        if (!chart || !window.enhancedTooltip) return;
-        if (!state.subPanelHandlers) state.subPanelHandlers = {};
-        if (state.subPanelHandlers[panelName]) return; // Already wired
-
-        chart.subscribeCrosshairMove((param) => {
-            if (!param.time || !param.point || param.point.x < 0 || param.point.y < 0) {
-                window.enhancedTooltip.hide();
-                return;
-            }
-            try {
-                const payload = resolveValues(param);
-                if (!payload) { 
-                    window.enhancedTooltip.hide(); 
-                    return; 
-                }
-                window.enhancedTooltip.update(panelName, payload);
-                window.enhancedTooltip.show(param.point.x + 12, param.point.y + 12);
-            } catch (e) {
-                console.warn('[ChartJS] sub-panel tooltip error for', panelName, e);
-                window.enhancedTooltip.hide();
-            }
-        });
-
-        state.subPanelHandlers[panelName] = true;
-    }
-
-    /**
      * Handle crosshair move for tooltip
      */
     function setupCrosshairHandler() {
-        if (!state.chart) return;
+    if (!state.chart) return;
 
-        state.chart.subscribeCrosshairMove((param) => {
-            const tooltip = document.getElementById('tooltip');
+    state.chart.subscribeCrosshairMove((param) => {
+        const tooltip = document.getElementById('tooltip');
 
-            // When crosshair is off-canvas or no time, hide
-            if (!param.time || !param.point || param.point.x < 0 || param.point.y < 0) {
-                if (tooltip) tooltip.style.display = 'none';
-                if (window.enhancedTooltip) window.enhancedTooltip.hide();
-                return;
+        // When crosshair is off-canvas or no time, hide
+        if (!param.time || !param.point || param.point.x < 0 || param.point.y < 0) {
+            if (tooltip) tooltip.style.display = 'none';
+            if (window.enhancedTooltip) window.enhancedTooltip.hide();
+            return;
+        }
+
+        // Get main candle data at the crosshair
+        const candleData = param.seriesData.get(state.series.candles);
+        if (!candleData) {
+            if (tooltip) tooltip.style.display = 'none';
+            if (window.enhancedTooltip) window.enhancedTooltip.hide();
+            return;
+        }
+
+        const { open, high, low, close } = candleData;
+
+        // Try to get volume from a dedicated series if present
+        let volume = undefined;
+        try {
+            if (state.series.volume) {
+                const volData = param.seriesData.get(state.series.volume);
+                if (volData && typeof volData.value === 'number') volume = volData.value;
+                else if (volData && typeof volData.volume === 'number') volume = volData.volume;
             }
+        } catch {}
 
-            // Get main candle data at the crosshair
-            const candleData = param.seriesData.get(state.series.candles);
-            if (!candleData) {
-                if (tooltip) tooltip.style.display = 'none';
-                if (window.enhancedTooltip) window.enhancedTooltip.hide();
-                return;
-            }
+        // Update & show the enhanced tooltip (fallback to hiding if not loaded)
+        if (window.enhancedTooltip && typeof window.enhancedTooltip.update === 'function') {
+            window.enhancedTooltip.update('main', { time: param.time, open, high, low, close, volume });
+            window.enhancedTooltip.show(param.point.x + 12, param.point.y + 12);
+        } else {
+            if (tooltip) tooltip.style.display = 'none';
+        }
 
-            const { open, high, low, close } = candleData;
-
-            // Try to get volume from a dedicated series if present
-            let volume = undefined;
-            try {
-                if (state.series.volume) {
-                    const volData = param.seriesData.get(state.series.volume);
-                    if (volData && typeof volData.value === 'number') volume = volData.value;
-                    else if (volData && typeof volData.volume === 'number') volume = volData.volume;
-                }
-            } catch {}
-
-            // Optional: compute SuperTrend line and trend at this time
-            let stLine, stTrend;
-            try {
-                if (state.series && state.series.supertrend) {
-                    const stPoint = param.seriesData.get(state.series.supertrend);
-                    if (stPoint && typeof stPoint.value === 'number') {
-                        stLine = stPoint.value;
-                        stTrend = (typeof close === 'number' && typeof stLine === 'number' && close >= stLine) ? 1 : -1;
-                    }
-                }
-            } catch {}
-
-            // Update & show the enhanced tooltip (fallback to hiding if not loaded)
-            if (window.enhancedTooltip && typeof window.enhancedTooltip.update === 'function') {
-                window.enhancedTooltip.update('main', { time: param.time, open, high, low, close, volume, stLine, trend: stTrend });
-                window.enhancedTooltip.show(param.point.x + 12, param.point.y + 12);
-            } else {
-                if (tooltip) tooltip.style.display = 'none';
-            }
-
-            // Sync crosshair by time to sub-panels
-            syncCrosshair(param.time);
-        });
-    }
+        // Sync crosshair by time to sub-panels
+        syncCrosshair(param.time);
+    });
+}
 
 /**
 * Handle visible range changes (for lazy loading)
@@ -517,6 +474,62 @@ console.log('[ChartJS] Price lines removed for category:', category);
 },
 
 /**
+* Set candlestick data
+*/
+setCandles: function(data) {
+    if (!state.chart) {
+        console.error('[ChartJS] Chart not initialized');
+        return;
+    }
+
+    // Create candlestick series if it doesn't exist
+    if (!state.series.candles) {
+        state.series.candles = state.chart.addCandlestickSeries(candlestickOptions);
+        console.log('[ChartJS] Candlestick series created');
+    }
+
+    // Store original data for Heikin-Ashi transformation
+    state.originalBars = [...data];
+
+    // Sort data by time
+    const sortedData = [...data].sort((a, b) => a.time - b.time);
+
+    // Apply Heikin-Ashi transformation if enabled
+    const displayData = state.useHeikinAshi ? calculateHeikinAshi(sortedData) : sortedData;
+    if (state.useHeikinAshi) {
+        state.heikinAshiBars = displayData;
+    }
+
+    // Set the data
+    state.series.candles.setData(displayData);
+
+    console.log('[ChartJS] Candles set:', sortedData.length, 'bars, HA:', state.useHeikinAshi);
+},
+
+/**
+* Update a single candlestick (for live updates)
+*/
+updateCandle: function(candle) {
+    if (!state.series.candles) {
+        console.warn('[ChartJS] No candle series to update');
+        return;
+    }
+
+    // Update original bars
+    if (state.originalBars.length > 0) {
+        state.originalBars[state.originalBars.length - 1] = candle;
+    }
+
+    // Apply HA transformation if enabled
+    const displayCandle = state.useHeikinAshi ? 
+        calculateHeikinAshi(state.originalBars).slice(-1)[0] : 
+        candle;
+
+    state.series.candles.update(displayCandle);
+    console.log('[ChartJS] Candle updated');
+},
+
+/**
 * Add a line series (for indicators, forecasts)
 */
 addLine: function(id, options = {}) {
@@ -541,24 +554,24 @@ addLine: function(id, options = {}) {
          * Set data for a line series
          */
         setLine: function(id, data, options = {}) {
-            if (!state.chart) return;
+    if (!state.chart) return;
 
-            let series = state.series[id];
-            if (!series) {
-                series = this.addLine(id, options);
-            }
+    let series = state.series[id];
+    if (!series) {
+        series = this.addLine(id, options);
+    }
 
-            const sortedData = [...data].sort((a, b) => a.time - b.time);
-            series.setData(sortedData);
+    const sortedData = [...data].sort((a, b) => a.time - b.time);
+    series.setData(sortedData);
 
-            // Update legend if name provided
-            if (options.name && sortedData.length > 0) {
-                const lastValue = sortedData[sortedData.length - 1].value;
-                updateLegend(id, options.name, lastValue, options.color || colors.sma20);
-            }
+    // Update legend if name provided
+    if (options.name && sortedData.length > 0) {
+        const lastValue = sortedData[sortedData.length - 1].value;
+        updateLegend(id, options.name, lastValue, options.color || colors.sma20);
+    }
 
-            console.log('[ChartJS] Line data set:', id, sortedData.length);
-        },
+    console.log('[ChartJS] Line data set:', id, sortedData.length);
+},
 
         /**
          * Add forecast overlay with confidence bands
@@ -691,13 +704,6 @@ addLine: function(id, options = {}) {
                 if (range) chart.timeScale().setVisibleRange(range);
             }
 
-            // Wire enhanced tooltip for RSI panel
-            setupPanelCrosshair('rsi', chart, (param) => {
-                const p = param.seriesData.get(state.subSeries.rsi && state.subSeries.rsi.line);
-                if (!p || typeof p.value !== 'number') return null;
-                return { rsi: p.value };
-            });
-
             console.log('[ChartJS] RSI set:', data.length);
         },
 
@@ -751,17 +757,6 @@ addLine: function(id, options = {}) {
                 const range = state.chart.timeScale().getVisibleRange();
                 if (range) chart.timeScale().setVisibleRange(range);
             }
-
-            // Wire enhanced tooltip for MACD panel
-            setupPanelCrosshair('macd', chart, (param) => {
-                const macd = state.subSeries.macd; 
-                if (!macd) return null;
-                const m = param.seriesData.get(macd.line);
-                const s = param.seriesData.get(macd.signal);
-                const h = param.seriesData.get(macd.histogram);
-                if (!m || !s || !h) return null;
-                return { macdLine: m.value, signal: s.value, histogram: h.value };
-            });
 
             console.log('[ChartJS] MACD set:', line.length);
         },
@@ -824,16 +819,6 @@ addLine: function(id, options = {}) {
                 const range = state.chart.timeScale().getVisibleRange();
                 if (range) chart.timeScale().setVisibleRange(range);
             }
-
-            // Wire enhanced tooltip for Stochastic panel
-            setupPanelCrosshair('stochastic', chart, (param) => {
-                const st = state.subSeries.stochastic; 
-                if (!st) return null;
-                const k = param.seriesData.get(st.k);
-                const d = param.seriesData.get(st.d);
-                if (!k || !d) return null;
-                return { kValue: k.value, dValue: d.value };
-            });
 
             console.log('[ChartJS] Stochastic set:', kData.length);
         },
@@ -1011,13 +996,6 @@ addLine: function(id, options = {}) {
                 const range = state.chart.timeScale().getVisibleRange();
                 if (range) chart.timeScale().setVisibleRange(range);
             }
-
-            // Wire enhanced tooltip for Volume panel
-            setupPanelCrosshair('volume', chart, (param) => {
-                const v = state.subSeries.volume && param.seriesData.get(state.subSeries.volume.histogram);
-                if (!v) return null;
-                return { volume: v.value, volumeMA: undefined };
-            });
 
             console.log('[ChartJS] Volume set:', data.length);
         },

@@ -2,6 +2,71 @@ import SwiftUI
 import Charts
 import CoreGraphics
 
+// === LTTB DOWNSAMPLER (local, to avoid scope/import issues) ===
+@inline(__always)
+private func lttbDownsample(points: [CGPoint], threshold: Int) -> [CGPoint] {
+    let n = points.count
+    guard threshold > 2, n > threshold else { return points }
+    var sampled: [CGPoint] = []
+    sampled.reserveCapacity(threshold)
+
+    let bucketSize = Double(n - 2) / Double(threshold - 2)
+
+    // Always include first point
+    sampled.append(points[0])
+
+    var a = 0
+    for i in 0..<(threshold - 2) {
+        let start = Int(floor((Double(i) + 1.0) * bucketSize)) + 1
+        let end   = Int(floor((Double(i) + 2.0) * bucketSize)) + 1
+        let rangeEnd = min(end, n - 1)
+
+        // Compute average of next bucket
+        var avgX = 0.0, avgY = 0.0
+        let rCount = max(1, rangeEnd - start)
+        if rCount > 0 {
+            for j in start..<rangeEnd {
+                avgX += Double(points[j].x)
+                avgY += Double(points[j].y)
+            }
+            avgX /= Double(rCount)
+            avgY /= Double(rCount)
+        } else {
+            avgX = Double(points[a].x)
+            avgY = Double(points[a].y)
+        }
+
+        // Pick point with largest triangle area relative to A and avg
+        let rangeStart = Int(floor(Double(i) * bucketSize)) + 1
+        let rangeStartClamped = min(max(rangeStart, 1), n - 2)
+        let rangeLimit = min(rangeEnd, n - 1)
+
+        var maxArea = -1.0
+        var nextA = rangeStartClamped
+
+        let ax = Double(points[a].x), ay = Double(points[a].y)
+
+        if rangeStartClamped < rangeLimit {
+            for j in rangeStartClamped..<rangeLimit {
+                let bx = Double(points[j].x), by = Double(points[j].y)
+                // triangle area via cross product
+                let area = abs((ax - avgX) * (by - ay) - (ax - bx) * (avgY - ay))
+                if area > maxArea {
+                    maxArea = area
+                    nextA = j
+                }
+            }
+        }
+
+        sampled.append(points[nextA])
+        a = nextA
+    }
+
+    // Always include last point
+    sampled.append(points[n - 1])
+    return sampled
+}
+
 // Helper to downsample data for better performance
 private func downsample(_ data: [IndicatorDataPoint], visibleRange: ClosedRange<Int>) -> [CGPoint] {
     let pixelWidth = 600.0 // Approximate panel width
@@ -32,7 +97,7 @@ private func downsample(_ data: [IndicatorDataPoint], visibleRange: ClosedRange<
         }
     }
     
-    return Downsampler.lttb(points: validPoints, threshold: threshold)
+    return lttbDownsample(points: validPoints, threshold: threshold)
 }
 
 // MARK: - MACD Panel View
@@ -45,13 +110,17 @@ struct MACDPanelView: View {
     let visibleRange: ClosedRange<Int>
 
     var body: some View {
+        // Precompute all points outside Chart for deterministic rendering
+        let histPoints = downsample(histogram, visibleRange: visibleRange)
+        let macdPoints = downsample(macdLine, visibleRange: visibleRange)
+        let signalPoints = downsample(signalLine, visibleRange: visibleRange)
+        
         Chart {
             // MACD Histogram (bars) - rendered first so lines are on top
-            let histPoints = downsample(histogram, visibleRange: visibleRange)
-            ForEach(histPoints.indices, id: \.self) { i in
+            ForEach(0..<histPoints.count, id: \.self) { i in
                 let pt = histPoints[i]
-                let index = Int(pt.x)
-                let value = pt.y
+                let index = Int(Double(pt.x).rounded())
+                let value = Double(pt.y)
                 
                 BarMark(
                     x: .value("Index", index),
@@ -61,12 +130,11 @@ struct MACDPanelView: View {
             }
 
             // MACD Line (cyan - fast line)
-            let macdPoints = downsample(macdLine, visibleRange: visibleRange)
-            ForEach(macdPoints.indices, id: \.self) { i in
+            ForEach(0..<macdPoints.count, id: \.self) { i in
                 let pt = macdPoints[i]
                 LineMark(
-                    x: .value("Index", pt.x),
-                    y: .value("MACD", pt.y),
+                    x: .value("Index", Double(pt.x)),
+                    y: .value("MACD", Double(pt.y)),
                     series: .value("Series", "MACD")
                 )
                 .foregroundStyle(ChartColors.macdLine)
@@ -75,12 +143,11 @@ struct MACDPanelView: View {
             }
 
             // Signal Line (orange - slow line)
-            let signalPoints = downsample(signalLine, visibleRange: visibleRange)
-            ForEach(signalPoints.indices, id: \.self) { i in
+            ForEach(0..<signalPoints.count, id: \.self) { i in
                 let pt = signalPoints[i]
                 LineMark(
-                    x: .value("Index", pt.x),
-                    y: .value("Signal", pt.y),
+                    x: .value("Index", Double(pt.x)),
+                    y: .value("Signal", Double(pt.y)),
                     series: .value("Series", "Signal")
                 )
                 .foregroundStyle(ChartColors.macdSignal)
@@ -93,6 +160,7 @@ struct MACDPanelView: View {
                 .foregroundStyle(ChartColors.midline)
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
         }
+        .id(histPoints.count ^ macdPoints.count ^ signalPoints.count ^ visibleRange.lowerBound ^ visibleRange.upperBound)
         .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
         .chartXAxis(.hidden)
         .chartYAxis {
@@ -120,6 +188,7 @@ struct MACDPanelView: View {
             }
             .padding(.horizontal, 8)
         }
+        .allowsHitTesting(false) // forward pan/zoom gestures to the main chart
     }
 }
 
@@ -132,6 +201,10 @@ struct StochasticPanelView: View {
     let visibleRange: ClosedRange<Int>
 
     var body: some View {
+        // Precompute all points outside Chart for deterministic rendering
+        let kPoints = downsample(kLine, visibleRange: visibleRange)
+        let dPoints = downsample(dLine, visibleRange: visibleRange)
+        
         Chart {
             // Overbought zone shading (80-100)
             RectangleMark(
@@ -152,12 +225,11 @@ struct StochasticPanelView: View {
             .foregroundStyle(Color.green.opacity(0.08))
 
             // %K Line (cyan - faster line)
-            let kPoints = downsample(kLine, visibleRange: visibleRange)
-            ForEach(kPoints.indices, id: \.self) { i in
+            ForEach(0..<kPoints.count, id: \.self) { i in
                 let pt = kPoints[i]
                 LineMark(
-                    x: .value("Index", pt.x),
-                    y: .value("%K", pt.y),
+                    x: .value("Index", Double(pt.x)),
+                    y: .value("%K", Double(pt.y)),
                     series: .value("Series", "K")
                 )
                 .foregroundStyle(ChartColors.stochasticK)
@@ -166,12 +238,11 @@ struct StochasticPanelView: View {
             }
 
             // %D Line (orange - slower line)
-            let dPoints = downsample(dLine, visibleRange: visibleRange)
-            ForEach(dPoints.indices, id: \.self) { i in
+            ForEach(0..<dPoints.count, id: \.self) { i in
                 let pt = dPoints[i]
                 LineMark(
-                    x: .value("Index", pt.x),
-                    y: .value("%D", pt.y),
+                    x: .value("Index", Double(pt.x)),
+                    y: .value("%D", Double(pt.y)),
                     series: .value("Series", "D")
                 )
                 .foregroundStyle(ChartColors.stochasticD)
@@ -189,6 +260,7 @@ struct StochasticPanelView: View {
                 .foregroundStyle(ChartColors.oversold)
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
         }
+        .id(kPoints.count ^ dPoints.count ^ visibleRange.lowerBound ^ visibleRange.upperBound)
         .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
         .chartYScale(domain: 0...100)
         .chartXAxis(.hidden)
@@ -205,6 +277,7 @@ struct StochasticPanelView: View {
             }
             .padding(.horizontal, 8)
         }
+        .allowsHitTesting(false) // forward pan/zoom gestures to the main chart
     }
 }
 
@@ -218,6 +291,11 @@ struct KDJPanelView: View {
     let visibleRange: ClosedRange<Int>
 
     var body: some View {
+        // Precompute all points outside Chart for deterministic rendering
+        let kPoints = downsample(kLine, visibleRange: visibleRange)
+        let dPoints = downsample(dLine, visibleRange: visibleRange)
+        let jPoints = downsample(jLine, visibleRange: visibleRange)
+        
         Chart {
             // Overbought zone shading (80-120)
             RectangleMark(
@@ -238,12 +316,11 @@ struct KDJPanelView: View {
             .foregroundStyle(Color.green.opacity(0.08))
 
             // K Line (BRIGHT RED - most visible)
-            let kPoints = downsample(kLine, visibleRange: visibleRange)
-            ForEach(kPoints.indices, id: \.self) { i in
+            ForEach(0..<kPoints.count, id: \.self) { i in
                 let pt = kPoints[i]
                 LineMark(
-                    x: .value("Index", pt.x),
-                    y: .value("K", pt.y),
+                    x: .value("Index", Double(pt.x)),
+                    y: .value("K", Double(pt.y)),
                     series: .value("Series", "KDJ-K")
                 )
                 .foregroundStyle(ChartColors.kdjK)
@@ -252,12 +329,11 @@ struct KDJPanelView: View {
             }
 
             // D Line (BRIGHT GREEN - clearly distinct)
-            let dPoints = downsample(dLine, visibleRange: visibleRange)
-            ForEach(dPoints.indices, id: \.self) { i in
+            ForEach(0..<dPoints.count, id: \.self) { i in
                 let pt = dPoints[i]
                 LineMark(
-                    x: .value("Index", pt.x),
-                    y: .value("D", pt.y),
+                    x: .value("Index", Double(pt.x)),
+                    y: .value("D", Double(pt.y)),
                     series: .value("Series", "KDJ-D")
                 )
                 .foregroundStyle(ChartColors.kdjD)
@@ -266,12 +342,11 @@ struct KDJPanelView: View {
             }
 
             // J Line (BRIGHT BLUE - third distinct color)
-            let jPoints = downsample(jLine, visibleRange: visibleRange)
-            ForEach(jPoints.indices, id: \.self) { i in
+            ForEach(0..<jPoints.count, id: \.self) { i in
                 let pt = jPoints[i]
                 LineMark(
-                    x: .value("Index", pt.x),
-                    y: .value("J", pt.y),
+                    x: .value("Index", Double(pt.x)),
+                    y: .value("J", Double(pt.y)),
                     series: .value("Series", "KDJ-J")
                 )
                 .foregroundStyle(ChartColors.kdjJ)
@@ -289,6 +364,7 @@ struct KDJPanelView: View {
                 .foregroundStyle(ChartColors.oversold)
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
         }
+        .id(kPoints.count ^ dPoints.count ^ jPoints.count ^ visibleRange.lowerBound ^ visibleRange.upperBound)
         .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
         .chartYScale(domain: -20...120)  // J can exceed 0-100
         .chartXAxis(.hidden)
@@ -306,19 +382,11 @@ struct KDJPanelView: View {
             }
             .padding(.horizontal, 8)
         }
+        .allowsHitTesting(false) // forward pan/zoom gestures to the main chart
     }
 }
 
 // MARK: - ADX Panel View
-/// ADX indicator panel with histogram display
-/// - Green histogram bars when +DI > -DI (bullish trend)
-/// - Red histogram bars when -DI > +DI (bearish trend)
-/// - Color intensity based on ADX value (trend strength)
-/// ADX interpretation:
-///   0-20: No trend / ranging market
-///   20-30: Trend beginning
-///   30-50: Strong trend
-///   50+: Very strong trend (possible exhaustion)
 
 struct ADXPanelView: View {
     let bars: [OHLCBar]
@@ -327,162 +395,76 @@ struct ADXPanelView: View {
     let minusDI: [IndicatorDataPoint]
     let visibleRange: ClosedRange<Int>
     
-    /// Threshold for trend confirmation (default 20)
-    var limit: Double = 20
-
-    /// Determine if bullish (+DI > -DI) at given index
-    private func isBullish(at index: Int) -> Bool {
-        guard index < plusDI.count, index < minusDI.count,
-              let plusVal = plusDI[index].value,
-              let minusVal = minusDI[index].value else {
-            return true // Default to bullish if data missing
-        }
-        return plusVal > minusVal
-    }
-    
-    /// Get ADX color based on value and direction
-    private func adxColor(value: Double, bullish: Bool) -> Color {
-        let baseColor = bullish ? ChartColors.plusDI : ChartColors.minusDI
-        // Intensity based on ADX strength
-        if value >= limit {
-            return baseColor
-        } else {
-            return baseColor.opacity(0.5)
-        }
-    }
-    
-    /// Current trend status text
-    private var trendStatus: String {
-        guard let lastADX = adxLine.last?.value else { return "N/A" }
-        let bullish = isBullishAtEnd
-        let direction = bullish ? "Bullish" : "Bearish"
-        
-        if lastADX < 20 {
-            return "Ranging"
-        } else if lastADX < 30 {
-            return "\(direction) Starting"
-        } else if lastADX < 50 {
-            return "Strong \(direction)"
-        } else {
-            return "Very Strong \(direction)"
-        }
-    }
-    
-    private var isBullishAtEnd: Bool {
-        guard let lastPlus = plusDI.last?.value,
-              let lastMinus = minusDI.last?.value else { return true }
-        return lastPlus > lastMinus
-    }
-
     var body: some View {
+        // Precompute all points outside Chart for deterministic rendering
+        let adxPoints = downsample(adxLine, visibleRange: visibleRange)
+        let plusPoints = downsample(plusDI, visibleRange: visibleRange)
+        let minusPoints = downsample(minusDI, visibleRange: visibleRange)
+        
         Chart {
-            // Ranging zone shading (0-20) - gray/neutral
-            RectangleMark(
-                xStart: .value("Start", visibleRange.lowerBound),
-                xEnd: .value("End", visibleRange.upperBound),
-                yStart: .value("Low", 0),
-                yEnd: .value("High", 20)
-            )
-            .foregroundStyle(Color.gray.opacity(0.08))
-            
-            // Strong trend zone shading (30-50)
-            RectangleMark(
-                xStart: .value("Start", visibleRange.lowerBound),
-                xEnd: .value("End", visibleRange.upperBound),
-                yStart: .value("Low", 30),
-                yEnd: .value("High", 50)
-            )
-            .foregroundStyle(Color.yellow.opacity(0.06))
-            
-            // Very strong trend zone (50+)
-            RectangleMark(
-                xStart: .value("Start", visibleRange.lowerBound),
-                xEnd: .value("End", visibleRange.upperBound),
-                yStart: .value("Low", 50),
-                yEnd: .value("High", 100)
-            )
-            .foregroundStyle(Color.orange.opacity(0.06))
-
             // ADX Histogram - Green for bullish, Red for bearish
-            let adxPoints = downsample(adxLine, visibleRange: visibleRange)
-            ForEach(adxPoints.indices, id: \.self) { i in
+            ForEach(0..<adxPoints.count, id: \.self) { i in
                 let pt = adxPoints[i]
-                let index = Int(pt.x)
-                let value = pt.y
-                let bullish = isBullish(at: index)
+                let index = Int(Double(pt.x).rounded())
+                let value = Double(pt.y)
                 
                 BarMark(
                     x: .value("Index", index),
                     y: .value("ADX", value)
                 )
-                .foregroundStyle(adxColor(value: value, bullish: bullish))
+                .foregroundStyle(value >= 25 ? ChartColors.adx.opacity(0.6) : ChartColors.adx.opacity(0.3))
             }
-
-            // Threshold lines
-            // Limit line (20 - trend begins)
-            RuleMark(y: .value("Limit", 20))
+            
+            // +DI Line (green)
+            ForEach(0..<plusPoints.count, id: \.self) { i in
+                let pt = plusPoints[i]
+                LineMark(
+                    x: .value("Index", Double(pt.x)),
+                    y: .value("+DI", Double(pt.y)),
+                    series: .value("Series", "+DI")
+                )
+                .foregroundStyle(ChartColors.plusDI)
+                .lineStyle(StrokeStyle(lineWidth: 2))
+                .interpolationMethod(.catmullRom)
+            }
+            
+            // -DI Line (red)
+            ForEach(0..<minusPoints.count, id: \.self) { i in
+                let pt = minusPoints[i]
+                LineMark(
+                    x: .value("Index", Double(pt.x)),
+                    y: .value("-DI", Double(pt.y)),
+                    series: .value("Series", "-DI")
+                )
+                .foregroundStyle(ChartColors.minusDI)
+                .lineStyle(StrokeStyle(lineWidth: 2))
+                .interpolationMethod(.catmullRom)
+            }
+            
+            // Trend strength threshold (25)
+            RuleMark(y: .value("Threshold", 25))
                 .foregroundStyle(ChartColors.midline)
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 3]))
-            
-            // Strong trend line (30)
-            RuleMark(y: .value("Strong", 30))
-                .foregroundStyle(Color.yellow.opacity(0.5))
-                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 2]))
-            
-            // Very strong / exhaustion line (50)
-            RuleMark(y: .value("VeryStrong", 50))
-                .foregroundStyle(Color.orange.opacity(0.5))
-                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 2]))
-            
-            // Zero line
-            RuleMark(y: .value("Zero", 0))
-                .foregroundStyle(ChartColors.midline.opacity(0.3))
         }
+        .id(adxPoints.count ^ plusPoints.count ^ minusPoints.count ^ visibleRange.lowerBound ^ visibleRange.upperBound)
         .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
         .chartYScale(domain: 0...100)
         .chartXAxis(.hidden)
         .chartYAxis {
-            AxisMarks(position: .trailing, values: [0, 20, 30, 50]) { _ in
+            AxisMarks(position: .trailing, values: [0, 25, 50, 75, 100]) { _ in
                 AxisGridLine()
                 AxisValueLabel()
             }
         }
         .chartLegend(position: .top, alignment: .leading) {
             HStack(spacing: 12) {
-                // ADX value with trend color
-                if let lastADX = adxLine.last?.value {
-                    HStack(spacing: 4) {
-                        Rectangle()
-                            .fill(isBullishAtEnd ? ChartColors.plusDI : ChartColors.minusDI)
-                            .frame(width: 10, height: 10)
-                            .cornerRadius(2)
-                        Text("ADX")
-                            .font(.caption)
-                        Text(String(format: "%.1f", lastADX))
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                
-                // Trend status badge
-                Text(trendStatus)
-                    .font(.caption.bold())
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(isBullishAtEnd ? ChartColors.plusDI.opacity(0.2) : ChartColors.minusDI.opacity(0.2))
-                    )
-                    .foregroundStyle(isBullishAtEnd ? ChartColors.plusDI : ChartColors.minusDI)
-                
-                Spacer()
-                
-                // +DI / -DI values
+                LegendItem(color: ChartColors.adx, label: "ADX", value: adxLine.last?.value)
                 LegendItem(color: ChartColors.plusDI, label: "+DI", value: plusDI.last?.value)
                 LegendItem(color: ChartColors.minusDI, label: "-DI", value: minusDI.last?.value)
             }
             .padding(.horizontal, 8)
         }
+        .allowsHitTesting(false) // forward pan/zoom gestures to the main chart
     }
 }
 
@@ -492,11 +474,11 @@ struct ATRPanelView: View {
     let bars: [OHLCBar]
     let atrLine: [IndicatorDataPoint]
     let visibleRange: ClosedRange<Int>
-
+    
+    /// Determine visible ATR range for chart
     private var visibleATRRange: ClosedRange<Double> {
-        // Efficiently find min/max in visible range using indices
-        var minVal: Double = Double.infinity
-        var maxVal: Double = -Double.infinity
+        var minVal = Double.infinity
+        var maxVal = -Double.infinity
         var found = false
         
         let start = max(0, visibleRange.lowerBound)
@@ -504,52 +486,58 @@ struct ATRPanelView: View {
         
         if start <= end {
             for i in start...end {
-                if let val = atrLine[i].value {
-                    minVal = min(minVal, val)
-                    maxVal = max(maxVal, val)
+                if let v = atrLine[i].value {
+                    minVal = min(minVal, v)
+                    maxVal = max(maxVal, v)
                     found = true
                 }
             }
         }
+        guard found else { return 0...1 }
         
-        if !found { return 0...1 }
-        
-        let padding = (maxVal - minVal) * 0.15
-        return max(0, minVal - padding)...(maxVal + padding)
+        let span = max(1e-6, maxVal - minVal)            // never zero
+        let pad  = max(span * 0.15, 1e-6)                // always some padding
+        let lo   = max(0, minVal - pad)
+        let hi   = max(lo + 1e-6, maxVal + pad)          // ensure hi > lo
+        return lo...hi
     }
 
     var body: some View {
+        // Precompute all points outside Chart for deterministic rendering
+        let atrPoints = downsample(atrLine, visibleRange: visibleRange)
+        
         Chart {
             // ATR area fill
-            let atrPoints = downsample(atrLine, visibleRange: visibleRange)
-            ForEach(atrPoints.indices, id: \.self) { i in
+            ForEach(0..<atrPoints.count, id: \.self) { i in
                 let pt = atrPoints[i]
                 AreaMark(
-                    x: .value("Index", pt.x),
-                    y: .value("ATR", pt.y)
+                    x: .value("Index", Double(pt.x)),
+                    yStart: .value("Zero", 0),
+                    yEnd: .value("ATR", Double(pt.y))
                 )
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [ChartColors.atr.opacity(0.2), ChartColors.atr.opacity(0.02)],
+                        gradient: Gradient(colors: [ChartColors.atr.opacity(0.3), ChartColors.atr.opacity(0.05)]),
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
-                .interpolationMethod(.catmullRom)
             }
 
             // ATR line
-            ForEach(atrPoints.indices, id: \.self) { i in
+            ForEach(0..<atrPoints.count, id: \.self) { i in
                 let pt = atrPoints[i]
                 LineMark(
-                    x: .value("Index", pt.x),
-                    y: .value("ATR", pt.y)
+                    x: .value("Index", Double(pt.x)),
+                    y: .value("ATR", Double(pt.y)),
+                    series: .value("Series", "ATR")
                 )
                 .foregroundStyle(ChartColors.atr)
                 .lineStyle(StrokeStyle(lineWidth: 2.5))
                 .interpolationMethod(.catmullRom)
             }
         }
+        .id(atrPoints.count ^ visibleRange.lowerBound ^ visibleRange.upperBound)
         .chartXScale(domain: visibleRange.lowerBound...visibleRange.upperBound)
         .chartYScale(domain: visibleATRRange)
         .chartXAxis(.hidden)
@@ -585,5 +573,6 @@ struct ATRPanelView: View {
             }
             .padding(.horizontal, 8)
         }
+        .allowsHitTesting(false) // forward pan/zoom gestures to the main chart
     }
 }
