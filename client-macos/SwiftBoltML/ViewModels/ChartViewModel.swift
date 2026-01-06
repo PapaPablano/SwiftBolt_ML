@@ -792,38 +792,30 @@ final class ChartViewModel: ObservableObject {
     /// Non-blocking coverage check for intraday data
     /// Triggers server-side backfill if needed without blocking UI
     private func ensureCoverageAsync(symbol: String) async {
-        let windowDays = timeframe.backfillWindowDays
-        let toDate = Date()
-        let fromDate = toDate.addingTimeInterval(-Double(windowDays) * 86400)
-        
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        
-        let fromTs = formatter.string(from: fromDate)
-        let toTs = formatter.string(from: toDate)
+        let windowDays = timeframe.isIntraday ? 5 : 7
         
         do {
             let response = try await APIClient.shared.ensureCoverage(
                 symbol: symbol,
                 timeframe: timeframe.apiToken,
-                fromTs: fromTs,
-                toTs: toTs
+                windowDays: windowDays
             )
             
             await MainActor.run {
-                self.backfillJobId = response.jobId
-                self.isHydrating = !response.hasCoverage
+                self.backfillJobId = response.jobDefId
+                self.isHydrating = (response.status == "gaps_detected")
                 
-                if response.hasCoverage {
-                    print("[DEBUG] Coverage exists for \(symbol) \(timeframe.apiToken)")
+                if response.status == "coverage_complete" {
+                    print("[DEBUG] ✅ Coverage complete for \(symbol) \(timeframe.apiToken)")
                 } else {
-                    print("[DEBUG] Backfill job created: \(response.jobId ?? "nil")")
+                    print("[DEBUG] 🔄 Gaps detected for \(symbol) \(timeframe.apiToken), orchestrator will hydrate")
+                    print("[DEBUG] - Job def ID: \(response.jobDefId)")
+                    print("[DEBUG] - Gaps found: \(response.coverageStatus.gapsFound)")
                     // TODO: Subscribe to Realtime updates for progress
-                    // For MVP, we'll poll or let the user refresh manually
                 }
             }
         } catch {
-            print("[DEBUG] ensureCoverage failed (non-fatal): \(error)")
+            print("[DEBUG] ⚠️ ensureCoverage failed (non-fatal): \(error)")
         }
     }
     

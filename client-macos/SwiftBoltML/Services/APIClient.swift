@@ -302,12 +302,11 @@ final class APIClient {
     }
     
     /// SPEC-8: Ensure coverage for symbol/timeframe (non-blocking backfill orchestration)
-    func ensureCoverage(symbol: String, timeframe: String, fromTs: String, toTs: String) async throws -> EnsureCoverageResponse {
+    func ensureCoverage(symbol: String, timeframe: String, windowDays: Int = 7) async throws -> EnsureCoverageResponse {
         let body: [String: Any] = [
             "symbol": symbol,
             "timeframe": timeframe,
-            "fromTs": fromTs,
-            "toTs": toTs
+            "window_days": windowDays
         ]
         
         var request = URLRequest(url: fnURL("ensure-coverage"))
@@ -316,6 +315,7 @@ final class APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
+        print("[DEBUG] ensureCoverage: \(symbol)/\(timeframe) windowDays=\(windowDays)")
         return try await performRequest(request)
     }
 
