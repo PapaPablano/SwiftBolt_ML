@@ -96,11 +96,15 @@ struct OHLCBar: Codable, Identifiable, Equatable {
         }
 
         self.ts = date
-        self.open = try container.decode(Double.self, forKey: .open)
-        self.high = try container.decode(Double.self, forKey: .high)
-        self.low = try container.decode(Double.self, forKey: .low)
-        self.close = try container.decode(Double.self, forKey: .close)
-        self.volume = try container.decode(Double.self, forKey: .volume)
+
+        // Handle nullable OHLC values (forecast bars may have null open/volume)
+        // Use close as fallback for open (forecast bars have close but not open)
+        let closeValue = try container.decode(Double.self, forKey: .close)
+        self.close = closeValue
+        self.open = try container.decodeIfPresent(Double.self, forKey: .open) ?? closeValue
+        self.high = try container.decodeIfPresent(Double.self, forKey: .high) ?? closeValue
+        self.low = try container.decodeIfPresent(Double.self, forKey: .low) ?? closeValue
+        self.volume = try container.decodeIfPresent(Double.self, forKey: .volume) ?? 0.0
         
         // Decode optional forecast fields
         self.upperBand = try container.decodeIfPresent(Double.self, forKey: .upperBand)

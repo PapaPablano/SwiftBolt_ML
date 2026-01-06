@@ -453,7 +453,7 @@ struct WebChartView: NSViewRepresentable {
     }
 
     private func loadChart(in webView: WKWebView) {
-        // First try to find the resources in the app bundle
+        // First try to find the resources in the app bundle (may be in WebChart subdirectory or at root)
         if let htmlURL = Bundle.main.url(
             forResource: "index",
             withExtension: "html",
@@ -461,7 +461,15 @@ struct WebChartView: NSViewRepresentable {
         ) {
             let directoryURL = htmlURL.deletingLastPathComponent()
             webView.loadFileURL(htmlURL, allowingReadAccessTo: directoryURL)
-            print("[WebChartView] Loading chart from bundle: \(htmlURL)")
+            print("[WebChartView] Loading chart from bundle subdirectory: \(htmlURL)")
+            return
+        }
+
+        // Try finding at bundle root (when resources are not in subdirectory)
+        if let htmlURL = Bundle.main.url(forResource: "index", withExtension: "html"),
+           let resourcesURL = Bundle.main.resourceURL {
+            webView.loadFileURL(htmlURL, allowingReadAccessTo: resourcesURL)
+            print("[WebChartView] Loading chart from bundle root: \(htmlURL)")
             return
         }
 
