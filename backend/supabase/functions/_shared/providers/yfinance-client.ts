@@ -90,6 +90,19 @@ export class YFinanceClient implements DataProviderAbstraction {
     throw new Error("YFinance client does not support news");
   }
 
+  async healthCheck(): Promise<boolean> {
+    try {
+      // Quick check with AAPL quote
+      const url = `${this.baseUrl}/AAPL?interval=1d&range=1d`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0" },
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
   private convertTimeframe(timeframe: string): string {
     // Map our timeframes to yfinance intervals
     const mapping: Record<string, string> = {

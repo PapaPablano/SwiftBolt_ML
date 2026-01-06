@@ -192,7 +192,7 @@ serve(async (req: Request): Promise<Response> => {
             low: bar.low,
             close: bar.close,
             volume: bar.volume,
-            provider: "massive",
+            provider: "yfinance",
           }));
 
           const { error: upsertError } = await supabase

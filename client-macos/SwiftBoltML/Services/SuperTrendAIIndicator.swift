@@ -16,17 +16,19 @@ struct KMeansClustering {
         var count: Int { memberIndices.count }
     }
 
-    /// Run K-Means clustering on 1D data
+    /// Run K-Means clustering on 1D data with multiple runs for robustness
     /// - Parameters:
     ///   - data: Array of values to cluster
     ///   - k: Number of clusters (typically 3: below-average, average, exceptional)
     ///   - maxIterations: Maximum iterations for convergence
+    ///   - numRuns: Number of times to run K-means (keeps best result)
     ///   - initialCentroids: Optional initial centroid values (uses quartiles if nil)
     /// - Returns: Array of K clusters sorted by centroid value (ascending)
     static func cluster(
         data: [Double],
         k: Int = 3,
         maxIterations: Int = 100,
+        numRuns: Int = 3,
         initialCentroids: [Double]? = nil
     ) -> [Cluster] {
         guard data.count >= k else {
@@ -34,6 +36,37 @@ struct KMeansClustering {
             return [Cluster(centroid: data.first ?? 0, memberIndices: Array(0..<data.count))]
         }
 
+        var bestClusters: [Cluster] = []
+        var bestInertia = Double.infinity
+
+        // Run K-means multiple times and keep best result (lowest inertia)
+        for run in 0..<numRuns {
+            let clusters = runKMeans(
+                data: data,
+                k: k,
+                maxIterations: maxIterations,
+                initialCentroids: run == 0 ? initialCentroids : nil
+            )
+
+            // Calculate inertia (sum of squared distances to centroids)
+            let inertia = calculateInertia(data: data, clusters: clusters)
+
+            if inertia < bestInertia {
+                bestInertia = inertia
+                bestClusters = clusters
+            }
+        }
+
+        return bestClusters
+    }
+
+    /// Single K-means run
+    private static func runKMeans(
+        data: [Double],
+        k: Int,
+        maxIterations: Int,
+        initialCentroids: [Double]?
+    ) -> [Cluster] {
         // Initialize centroids using quartiles for faster convergence
         var centroids: [Double]
         if let initial = initialCentroids, initial.count == k {
@@ -97,6 +130,19 @@ struct KMeansClustering {
         // Index 0 = lowest performers, Index k-1 = highest performers
         return clusters.sorted { $0.centroid < $1.centroid }
     }
+
+    /// Calculate inertia (sum of squared distances to centroids)
+    /// Lower inertia = better clustering
+    private static func calculateInertia(data: [Double], clusters: [Cluster]) -> Double {
+        var inertia = 0.0
+        for cluster in clusters {
+            for memberIdx in cluster.memberIndices {
+                let distance = data[memberIdx] - cluster.centroid
+                inertia += distance * distance
+            }
+        }
+        return inertia
+    }
 }
 
 // MARK: - Factor Performance Tracker
@@ -148,6 +194,7 @@ class SuperTrendAIIndicator: ObservableObject {
         var numClusters: Int = 3  // K=3: below-average, average, exceptional
         var fromCluster: Int = 2  // 0=worst, 1=middle, 2=best (exceptional performers)
         var maxIterations: Int = 100
+        var numRuns: Int = 3  // Run K-means multiple times, keep best (LuxAlgo robustness)
 
         // Adaptive Moving Average
         var adaptiveMALength: Int = 14
@@ -405,7 +452,8 @@ class SuperTrendAIIndicator: ObservableObject {
             let clusters = KMeansClustering.cluster(
                 data: currentPerformances,
                 k: settings.numClusters,
-                maxIterations: settings.maxIterations
+                maxIterations: settings.maxIterations,
+                numRuns: settings.numRuns
             )
 
             // Select cluster (0=worst, 1=middle, 2=best for K=3)

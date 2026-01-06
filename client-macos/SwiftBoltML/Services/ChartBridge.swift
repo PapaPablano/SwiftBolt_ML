@@ -391,7 +391,7 @@ final class ChartBridge: NSObject, ObservableObject {
         let points = data.compactMap { point -> LightweightDataPoint? in
             guard let value = point.value else { return nil }
             return LightweightDataPoint(
-                time: Int(point.date.timeIntervalSince1970),
+                time: Int(point.date.timeIntervalSince1970 * 1000),
                 value: value
             )
         }

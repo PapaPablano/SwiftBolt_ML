@@ -1,6 +1,6 @@
-name: Daily Historical Sync (Polygon)
+name: Daily Historical Sync (Yahoo Finance)
 
-# Syncs yesterday's verified data from Polygon to ohlc_bars_v2
+# Syncs yesterday's verified data from Yahoo Finance to ohlc_bars_v2
 # This ensures the historical layer is always up-to-date after market close
 
 on:
@@ -43,7 +43,6 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
         run: |
           cd ml
 
@@ -54,14 +53,13 @@ jobs:
             # Specific symbols provided
             IFS=',' read -ra SYMBOL_ARRAY <<< "$SYMBOLS"
             for symbol in "${SYMBOL_ARRAY[@]}"; do
-              echo "Syncing $symbol..."
-              python src/scripts/deep_backfill_ohlc_v2.py --symbol "$symbol" --force
-              sleep 13  # Rate limit (5 req/min for Polygon free tier)
+              echo "Syncing $symbol with Yahoo Finance..."
+              python src/scripts/backfill_ohlc_yfinance.py --symbol "$symbol" --days 730
             done
           else
             # All watchlist symbols
-            echo "Syncing all watchlist symbols..."
-            python src/scripts/deep_backfill_ohlc_v2.py --all --force
+            echo "Syncing all watchlist symbols with Yahoo Finance..."
+            python src/scripts/backfill_ohlc_yfinance.py --days 730
           fi
 
       - name: Cleanup stale intraday data

@@ -44,18 +44,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r ml/requirements.txt
 
-      # Scheduled run: backfill all watchlist symbols (incremental mode)
+      # Scheduled run: backfill all watchlist symbols using Yahoo Finance
       - name: Backfill (scheduled)
         if: github.event_name == 'schedule'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
-          MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
         run: |
           cd ml
-          # Backfill all watchlist symbols in incremental mode (only fetch new bars)
-          python src/scripts/backfill_ohlc.py --all --incremental
+          # Backfill all watchlist symbols using Yahoo Finance (free, no rate limits)
+          python src/scripts/backfill_ohlc_yfinance.py --days 730
 
       # Manual run: optional symbol/timeframe
       - name: Backfill (manual)
@@ -63,27 +61,19 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
-          MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
         run: |
           cd ml
 
           SYMBOL="${{ github.event.inputs.symbol }}"
-          TIMEFRAME="${{ github.event.inputs.timeframe }}"
-          ALL_TIMEFRAMES="${{ github.event.inputs.all_timeframes }}"
-
-          # Build args based on inputs
-          EXTRA_ARGS=""
-          if [ "$ALL_TIMEFRAMES" = "true" ]; then
-            EXTRA_ARGS="--all-timeframes"
-          fi
 
           if [ -n "$SYMBOL" ]; then
             # Single symbol provided
-            python src/scripts/backfill_ohlc.py --symbol "$SYMBOL" --timeframe "$TIMEFRAME" $EXTRA_ARGS
+            echo "Backfilling $SYMBOL with Yahoo Finance..."
+            python src/scripts/backfill_ohlc_yfinance.py --symbol "$SYMBOL" --days 730
           else
             # No symbol provided, backfill all watchlist symbols
-            python src/scripts/backfill_ohlc.py --all --timeframe "$TIMEFRAME" $EXTRA_ARGS
+            echo "Backfilling all watchlist symbols with Yahoo Finance..."
+            python src/scripts/backfill_ohlc_yfinance.py --days 730
           fi
 
       - name: Job summary
@@ -96,11 +86,12 @@ jobs:
           if [ "${{ github.event_name }}" = "schedule" ]; then
             echo "- **Schedule**: Every 6 hours (0 */6 * * * UTC)" >> $GITHUB_STEP_SUMMARY
             echo "- **Run times**: 00:00, 06:00, 12:00, 18:00 UTC" >> $GITHUB_STEP_SUMMARY
+            echo "- **Data Source**: Yahoo Finance (free, no rate limits)" >> $GITHUB_STEP_SUMMARY
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "- **Symbol**: ${{ github.event.inputs.symbol || 'All watchlist symbols' }}" >> $GITHUB_STEP_SUMMARY
-            echo "- **Timeframe**: ${{ github.event.inputs.timeframe || 'd1' }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Data Source**: Yahoo Finance" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
           echo "- Check the Actions logs for detailed results" >> $GITHUB_STEP_SUMMARY
-          echo "- Verify data in Supabase \`ohlc_bars\` table" >> $GITHUB_STEP_SUMMARY
+          echo "- Verify data in Supabase \`ohlc_bars_v2\` table with provider='yfinance'" >> $GITHUB_STEP_SUMMARY

@@ -1,23 +1,23 @@
-// symbol-backfill: Deep backfill OHLC data for a symbol using Polygon API
+// symbol-backfill: Deep backfill OHLC data for a symbol using Yahoo Finance
 // POST /symbol-backfill { symbol, timeframes?, force? }
 //
 // Triggered when a symbol is added to a watchlist to ensure historical data is available.
-// Uses Polygon (Massive) API for maximum historical data (2+ years for daily).
+// Uses Yahoo Finance for historical data (free, reliable, no API key required).
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
-const POLYGON_API_KEY = Deno.env.get("MASSIVE_API_KEY") || Deno.env.get("POLYGON_API_KEY");
-const POLYGON_BASE_URL = "https://api.polygon.io";
+const YFINANCE_BASE_URL = "https://query1.finance.yahoo.com/v8/finance/chart";
 
 // Timeframe configurations: how much history to fetch
-const TIMEFRAME_CONFIG: Record<string, { multiplier: number; timespan: string; maxDays: number }> = {
-  m15: { multiplier: 15, timespan: "minute", maxDays: 60 },
-  h1: { multiplier: 1, timespan: "hour", maxDays: 180 },
-  h4: { multiplier: 4, timespan: "hour", maxDays: 365 },
-  d1: { multiplier: 1, timespan: "day", maxDays: 730 },  // 2 years
-  w1: { multiplier: 1, timespan: "week", maxDays: 1825 }, // 5 years
+// Yahoo Finance intervals: 1m, 5m, 15m, 30m, 1h, 1d, 1wk, 1mo
+const TIMEFRAME_CONFIG: Record<string, { interval: string; maxDays: number }> = {
+  m15: { interval: "15m", maxDays: 60 },
+  h1: { interval: "1h", maxDays: 730 },
+  h4: { interval: "1h", maxDays: 730 }, // Use 1h, aggregate if needed
+  d1: { interval: "1d", maxDays: 730 },  // 2 years
+  w1: { interval: "1wk", maxDays: 1825 }, // 5 years
 };
 
 // Default timeframes to backfill (most important first)
@@ -44,7 +44,7 @@ interface BackfillResponse {
   durationMs: number;
 }
 
-async function fetchPolygonBars(
+async function fetchYahooFinanceBars(
   symbol: string,
   timeframe: string,
   startDate: Date,
@@ -55,53 +55,73 @@ async function fetchPolygonBars(
     throw new Error(`Invalid timeframe: ${timeframe}`);
   }
 
-  const { multiplier, timespan } = config;
+  const { interval } = config;
 
-  // Format dates based on timespan
-  let fromStr: string;
-  let toStr: string;
-  if (timespan === "day" || timespan === "week" || timespan === "month") {
-    fromStr = startDate.toISOString().split("T")[0];
-    toStr = endDate.toISOString().split("T")[0];
-  } else {
-    fromStr = startDate.getTime().toString();
-    toStr = endDate.getTime().toString();
-  }
+  // Yahoo Finance uses Unix timestamps in seconds
+  const period1 = Math.floor(startDate.getTime() / 1000);
+  const period2 = Math.floor(endDate.getTime() / 1000);
 
-  const url = new URL(
-    `${POLYGON_BASE_URL}/v2/aggs/ticker/${symbol.toUpperCase()}/range/${multiplier}/${timespan}/${fromStr}/${toStr}`
-  );
-  url.searchParams.set("adjusted", "false"); // Use unadjusted prices for accurate historical data
-  url.searchParams.set("sort", "asc");
-  url.searchParams.set("limit", "50000");
-  url.searchParams.set("apiKey", POLYGON_API_KEY!);
+  const url = `${YFINANCE_BASE_URL}/${symbol.toUpperCase()}?interval=${interval}&period1=${period1}&period2=${period2}`;
 
-  console.log(`[SymbolBackfill] Fetching ${symbol} ${timeframe} from ${fromStr} to ${toStr}`);
+  console.log(`[SymbolBackfill] Fetching ${symbol} ${timeframe} from Yahoo Finance (${interval})`);
 
-  const response = await fetch(url.toString());
+  const response = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0" },
+  });
+
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Polygon API error: ${response.status} - ${text}`);
+    throw new Error(`Yahoo Finance API error: ${response.status} - ${text}`);
   }
 
   const data = await response.json();
+  const result = data.chart?.result?.[0];
 
-  if (data.status === "ERROR") {
-    throw new Error(`Polygon API error: ${JSON.stringify(data)}`);
+  if (!result) {
+    console.log(`[SymbolBackfill] No data returned from Yahoo Finance for ${symbol}`);
+    return [];
   }
 
-  const results = data.results || [];
-  console.log(`[SymbolBackfill] Received ${results.length} bars for ${symbol} ${timeframe}`);
+  const timestamps = result.timestamp || [];
+  const quotes = result.indicators?.quote?.[0];
 
-  // Transform to our format
-  return results.map((r: { t: number; o: number; h: number; l: number; c: number; v: number }) => ({
-    ts: new Date(r.t).toISOString(),
-    open: r.o,
-    high: r.h,
-    low: r.l,
-    close: r.c,
-    volume: r.v,
-  }));
+  if (!quotes || timestamps.length === 0) {
+    console.log(`[SymbolBackfill] Empty dataset from Yahoo Finance for ${symbol}`);
+    return [];
+  }
+
+  const bars: { ts: string; open: number; high: number; low: number; close: number; volume: number }[] = [];
+
+  for (let i = 0; i < timestamps.length; i++) {
+    // Skip bars with null values
+    if (
+      quotes.open[i] === null ||
+      quotes.high[i] === null ||
+      quotes.low[i] === null ||
+      quotes.close[i] === null
+    ) {
+      continue;
+    }
+
+    // Validate data quality - skip bars with extreme intraday ranges (>25%)
+    const intradayRange = (quotes.high[i] - quotes.low[i]) / quotes.close[i];
+    if (intradayRange > 0.25) {
+      console.log(`[SymbolBackfill] Skipping bar with extreme range: ${intradayRange * 100}%`);
+      continue;
+    }
+
+    bars.push({
+      ts: new Date(timestamps[i] * 1000).toISOString(),
+      open: quotes.open[i],
+      high: quotes.high[i],
+      low: quotes.low[i],
+      close: quotes.close[i],
+      volume: quotes.volume[i] || 0,
+    });
+  }
+
+  console.log(`[SymbolBackfill] Received ${bars.length} valid bars for ${symbol} ${timeframe}`);
+  return bars;
 }
 
 async function getExistingCoverage(
@@ -170,11 +190,11 @@ async function backfillTimeframe(
     const endDate = new Date();
     const startDate = new Date(endDate.getTime() - config.maxDays * 24 * 60 * 60 * 1000);
 
-    // Fetch from Polygon
-    const bars = await fetchPolygonBars(symbol, timeframe, startDate, endDate);
+    // Fetch from Yahoo Finance
+    const bars = await fetchYahooFinanceBars(symbol, timeframe, startDate, endDate);
 
     if (bars.length === 0) {
-      return { timeframe, barsInserted: 0, error: "No data returned from Polygon" };
+      return { timeframe, barsInserted: 0, error: "No data returned from Yahoo Finance" };
     }
 
     // Upsert to database
@@ -187,7 +207,7 @@ async function backfillTimeframe(
       low: bar.low,
       close: bar.close,
       volume: bar.volume,
-      provider: "massive",
+      provider: "yfinance",
     }));
 
     const { error: upsertError } = await supabase
@@ -228,10 +248,7 @@ serve(async (req: Request): Promise<Response> => {
     return errorResponse("Method not allowed", 405);
   }
 
-  // Check API key
-  if (!POLYGON_API_KEY) {
-    return errorResponse("MASSIVE_API_KEY not configured", 500);
-  }
+  // Yahoo Finance doesn't require an API key
 
   const startTime = Date.now();
 
@@ -290,11 +307,9 @@ serve(async (req: Request): Promise<Response> => {
       results.push(result);
       totalBars += result.barsInserted;
 
-      // Rate limiting: Polygon free tier = 5 req/min
-      // Wait 12 seconds between timeframes to stay under limit
+      // Yahoo Finance has no rate limits, but add small delay to be polite
       if (timeframes.indexOf(tf) < timeframes.length - 1) {
-        console.log(`[SymbolBackfill] Rate limit delay (12s)...`);
-        await new Promise((resolve) => setTimeout(resolve, 12000));
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
     }
 
