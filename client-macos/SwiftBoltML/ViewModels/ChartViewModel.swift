@@ -472,7 +472,7 @@ final class ChartViewModel: ObservableObject {
         errorMessage = nil
         
         // SPEC-8: Trigger non-blocking coverage check for intraday timeframes
-        if timeframe.isIntraday {
+        if timeframe.isIntraday && Config.ensureCoverageEnabled {
             Task.detached { [weak self] in
                 await self?.ensureCoverageAsync(symbol: symbol.ticker)
             }
@@ -571,9 +571,21 @@ final class ChartViewModel: ObservableObject {
 
                 print("[DEBUG] ChartViewModel.loadChart() - ERROR: \(error)")
                 print("[DEBUG] - Error message: \(error.localizedDescription)")
-                errorMessage = error.localizedDescription
-                chartData = nil
-                chartDataV2 = nil
+                
+                // Graceful fallback for intraday failures
+                if case APIError.httpError(let status, _) = error, timeframe.isIntraday, status >= 500 {
+                    print("[DEBUG] Intraday failed (\(status)), keeping previous bars and showing notice")
+                    errorMessage = "Intraday data unavailable — showing daily data"
+                    // Keep existing chartData; optionally trigger daily fallback
+                    // Task { await self.loadDailyFallback(symbol: symbol.ticker) }
+                } else {
+                    errorMessage = error.localizedDescription
+                    // Only clear data for non-recoverable errors
+                    if !timeframe.isIntraday || chartData == nil {
+                        chartData = nil
+                        chartDataV2 = nil
+                    }
+                }
             }
 
             isLoading = false

@@ -85,6 +85,8 @@ serve(async (req) => {
     }
 
     // Fetch data using the v2 function
+    console.log(`[chart-data-v2] Fetching: symbol_id=${symbolId}, timeframe=${timeframe}, start=${startDate.toISOString()}, end=${endDate.toISOString()}`);
+    
     const { data: chartData, error: chartError } = await supabase
       .rpc('get_chart_data_v2', {
         p_symbol_id: symbolId,
@@ -94,12 +96,20 @@ serve(async (req) => {
       });
 
     if (chartError) {
-      console.error('Chart query error:', chartError);
+      console.error('[chart-data-v2] RPC error:', chartError);
+      console.error('[chart-data-v2] Error details:', JSON.stringify(chartError, null, 2));
       return new Response(
-        JSON.stringify({ error: 'Failed to fetch chart data', details: chartError.message }),
+        JSON.stringify({ 
+          error: 'Failed to fetch chart data', 
+          details: chartError.message,
+          hint: chartError.hint || null,
+          code: chartError.code || null
+        }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    console.log(`[chart-data-v2] Success: received ${chartData?.length || 0} bars`);
 
     // Separate data into layers for client-side rendering
     const historical: ChartBar[] = [];

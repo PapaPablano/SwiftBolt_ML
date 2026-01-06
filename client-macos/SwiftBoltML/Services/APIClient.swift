@@ -26,11 +26,13 @@ enum APIError: LocalizedError {
 final class APIClient {
     static let shared = APIClient()
 
-    private let baseURL: String
+    private let baseURL: URL
+    private let functionsBase: URL
     private let session: URLSession
 
     private init() {
-        self.baseURL = Config.supabaseURL
+        self.baseURL = URL(string: Config.supabaseURL)!
+        self.functionsBase = baseURL.appendingPathComponent("functions/v1")
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 30
@@ -38,9 +40,14 @@ final class APIClient {
         config.httpMaximumConnectionsPerHost = 6
         self.session = URLSession(configuration: config)
     }
+    
+    /// Helper to build Edge Function URLs without duplicating paths
+    private func fnURL(_ name: String) -> URL {
+        functionsBase.appendingPathComponent(name)
+    }
 
     private func makeRequest(endpoint: String, queryItems: [URLQueryItem]? = nil, method: String = "GET", body: [String: Any]? = nil) throws -> URLRequest {
-        guard var components = URLComponents(string: "\(baseURL)/\(endpoint)") else {
+        guard var components = URLComponents(string: baseURL.appendingPathComponent(endpoint).absoluteString) else {
             throw APIError.invalidURL
         }
 
@@ -124,7 +131,7 @@ final class APIClient {
 
     // Generic GET method
     func get<R: Decodable>(endpoint: String, queryParams: [String: String] = [:]) async throws -> R {
-        guard var components = URLComponents(string: "\(baseURL)/\(endpoint)") else {
+        guard var components = URLComponents(string: baseURL.appendingPathComponent(endpoint).absoluteString) else {
             throw APIError.invalidURL
         }
 
@@ -161,7 +168,7 @@ final class APIClient {
 
     // Generic POST method
     func post<T: Encodable, R: Decodable>(endpoint: String, body: T) async throws -> R {
-        guard let components = URLComponents(string: "\(baseURL)/\(endpoint)") else {
+        guard let components = URLComponents(string: baseURL.appendingPathComponent(endpoint).absoluteString) else {
             throw APIError.invalidURL
         }
 
@@ -303,11 +310,11 @@ final class APIClient {
             "toTs": toTs
         ]
         
-        let request = try makeRequest(
-            endpoint: "functions/v1/ensure-coverage",
-            method: "POST",
-            body: body
-        )
+        var request = URLRequest(url: fnURL("ensure-coverage"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
         return try await performRequest(request)
     }
@@ -381,7 +388,7 @@ final class APIClient {
     }
 
     func scanWatchlist(symbols: [String]) async throws -> ScannerWatchlistResponse {
-        guard let components = URLComponents(string: "\(baseURL)/scanner-watchlist") else {
+        guard let components = URLComponents(string: baseURL.appendingPathComponent("scanner-watchlist").absoluteString) else {
             throw APIError.invalidURL
         }
 
@@ -401,7 +408,7 @@ final class APIClient {
     }
 
     func triggerRankingJob(for symbol: String) async throws -> TriggerRankingResponse {
-        guard let components = URLComponents(string: "\(baseURL)/trigger-ranking-job") else {
+        guard let components = URLComponents(string: baseURL.appendingPathComponent("trigger-ranking-job").absoluteString) else {
             throw APIError.invalidURL
         }
 
