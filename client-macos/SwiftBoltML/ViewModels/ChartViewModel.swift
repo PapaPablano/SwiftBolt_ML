@@ -12,12 +12,8 @@ final class ChartViewModel: ObservableObject {
             if selectedSymbol?.id != oldValue?.id {
                 liveQuote = nil
                 stopLiveQuoteUpdates()
-                if let symbol = selectedSymbol {
-                    // Trigger complete backfill (intraday + historical) in background (fire and forget)
-                    Task {
-                        await APIClient.shared.triggerCompleteBackfill(symbol: symbol.ticker)
-                    }
-                }
+                // Trigger chart load on symbol change
+                Task { await loadChart() }
             }
         }
     }
@@ -490,6 +486,7 @@ final class ChartViewModel: ObservableObject {
                     // - Historical: Polygon (verified, dates < today)
                     // - Intraday: Tradier (live, today only)
                     // - Forecast: ML predictions (future dates)
+                    print("[DEBUG] Requesting chart-data-v2 symbol=\(symbol.ticker) timeframe=\(timeframe.apiToken)")
                     let response = try await APIClient.shared.fetchChartV2(
                         symbol: symbol.ticker,
                         timeframe: timeframe.apiToken,
@@ -595,20 +592,21 @@ final class ChartViewModel: ObservableObject {
     
     /// Helper to build bars from correct data layer based on timeframe
     private func buildBars(from response: ChartDataV2Response, for timeframe: Timeframe) -> [OHLCBar] {
-        let src = timeframe.isIntraday
-            ? response.layers.intraday.data   // Use intraday for m15/h1/h4
-            : response.layers.historical.data // Use historical for d1/w1
+        // Prefer correct layer, but fall back if empty
+        let intraday = response.layers.intraday.data
+        let historical = response.layers.historical.data
         
-        return src.map { bar in
-            OHLCBar(
-                ts: bar.ts,
-                open: bar.open,
-                high: bar.high,
-                low: bar.low,
-                close: bar.close,
-                volume: bar.volume
-            )
+        let src: [OHLCBar]
+        switch timeframe {
+        case .m15, .h1, .h4:
+            src = !intraday.isEmpty ? intraday : historical
+        case .d1, .w1:
+            src = !historical.isEmpty ? historical : intraday
         }
+        
+        print("[DEBUG] buildBars → hist: \(historical.count) | intraday: \(intraday.count) | selected: \(src.count) for \(timeframe.apiToken)")
+        
+        return src
     }
 
     func setSymbol(_ symbol: Symbol?) async {

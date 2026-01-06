@@ -8,14 +8,14 @@ public enum Timeframe: String, CaseIterable, Codable, Hashable, Identifiable {
     /// Is this an intraday timeframe?
     var isIntraday: Bool { self == .m15 || self == .h1 || self == .h4 }
 
-    /// Token sent to your API (adjust if your API expects m15/h1/h4)
+    /// Token sent to your API
     var apiToken: String {
         switch self {
         case .m15: return "15m"
         case .h1:  return "1h"
         case .h4:  return "4h"
-        case .d1:  return "1d"
-        case .w1:  return "1w"
+        case .d1:  return "d1"
+        case .w1:  return "w1"
         }
     }
 
