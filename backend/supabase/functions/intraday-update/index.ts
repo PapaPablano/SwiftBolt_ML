@@ -209,6 +209,19 @@ serve(async (req: Request): Promise<Response> => {
           continue;
         }
 
+        // Check if backfill is needed
+        const { data: needsBackfill } = await supabase
+          .rpc('needs_intraday_backfill', { p_symbol_id: symbolRecord.id });
+
+        if (!needsBackfill && backfillDays > 0) {
+          console.log(`[intraday-update] ${symbol} already has recent intraday data, skipping backfill`);
+          results[symbol] = { skipped: true, reason: 'Already backfilled recently' };
+          continue;
+        }
+
+        // Mark backfill as started
+        await supabase.rpc('mark_backfill_started', { p_symbol_id: symbolRecord.id });
+
         // Calculate date range for backfill
         const endDate = new Date().toISOString().split("T")[0];
         let startDate = endDate;
@@ -304,6 +317,13 @@ serve(async (req: Request): Promise<Response> => {
           market_open: isMarketOpen,
         };
 
+        // Mark backfill as completed
+        await supabase.rpc('mark_backfill_completed', {
+          p_symbol_id: symbolRecord.id,
+          p_bar_count: intradayBars.length,
+          p_backfill_days: backfillDays
+        });
+
         console.log(`[intraday-update] Updated ${symbol}: ${intradayBars.length} bars, price=${currentPrice}`);
 
         // Small delay to avoid rate limiting
@@ -312,6 +332,20 @@ serve(async (req: Request): Promise<Response> => {
         const errMsg = err instanceof Error ? err.message : String(err);
         errors.push(`Error updating ${symbol}: ${errMsg}`);
         console.error(`[intraday-update] Error for ${symbol}:`, err);
+        
+        // Mark backfill as failed
+        const { data: symbolData } = await supabase
+          .from("symbols")
+          .select("id")
+          .eq("ticker", symbol)
+          .single();
+        
+        if (symbolData) {
+          await supabase.rpc('mark_backfill_failed', {
+            p_symbol_id: symbolData.id,
+            p_error_message: errMsg
+          });
+        }
       }
     }
 

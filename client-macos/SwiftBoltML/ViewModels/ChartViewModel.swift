@@ -12,8 +12,12 @@ final class ChartViewModel: ObservableObject {
             if selectedSymbol?.id != oldValue?.id {
                 liveQuote = nil
                 stopLiveQuoteUpdates()
-                if selectedSymbol != nil {
+                if let symbol = selectedSymbol {
                     startLiveQuoteUpdates()
+                    // Trigger complete backfill (intraday + historical) in background (fire and forget)
+                    Task {
+                        await APIClient.shared.triggerCompleteBackfill(symbol: symbol.ticker)
+                    }
                 }
             }
         }

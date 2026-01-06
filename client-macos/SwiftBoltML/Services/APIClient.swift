@@ -212,6 +212,80 @@ actor APIClient {
         )
         return try await performRequest(request)
     }
+    
+    /// Trigger intraday backfill for a symbol (runs in background, doesn't block)
+    func triggerIntradayBackfill(symbol: String, backfillDays: Int = 10) async {
+        do {
+            let body: [String: Any] = [
+                "symbol": symbol,
+                "interval": "15min",
+                "backfill_days": backfillDays
+            ]
+            
+            let request = try makeRequest(
+                endpoint: "intraday-update",
+                method: "POST",
+                body: body
+            )
+            
+            // Fire and forget - don't wait for response
+            Task.detached {
+                do {
+                    let (_, response) = try await URLSession.shared.data(for: request)
+                    if let httpResponse = response as? HTTPURLResponse {
+                        print("[DEBUG] Intraday backfill triggered for \(symbol): HTTP \(httpResponse.statusCode)")
+                    }
+                } catch {
+                    print("[DEBUG] Intraday backfill request failed for \(symbol): \(error.localizedDescription)")
+                }
+            }
+        } catch {
+            print("[DEBUG] Failed to create intraday backfill request for \(symbol): \(error.localizedDescription)")
+        }
+    }
+    
+    /// Trigger yfinance historical backfill for a symbol (runs in background, doesn't block)
+    func triggerHistoricalBackfill(symbol: String, timeframes: [String] = ["d1", "h1", "w1"], force: Bool = false) async {
+        do {
+            let body: [String: Any] = [
+                "symbol": symbol,
+                "timeframes": timeframes,
+                "force": force
+            ]
+            
+            let request = try makeRequest(
+                endpoint: "symbol-backfill",
+                method: "POST",
+                body: body
+            )
+            
+            // Fire and forget - don't wait for response
+            Task.detached {
+                do {
+                    let (_, response) = try await URLSession.shared.data(for: request)
+                    if let httpResponse = response as? HTTPURLResponse {
+                        print("[DEBUG] Historical backfill triggered for \(symbol): HTTP \(httpResponse.statusCode)")
+                    }
+                } catch {
+                    print("[DEBUG] Historical backfill request failed for \(symbol): \(error.localizedDescription)")
+                }
+            }
+        } catch {
+            print("[DEBUG] Failed to create historical backfill request for \(symbol): \(error.localizedDescription)")
+        }
+    }
+    
+    /// Trigger both intraday and historical backfill for a symbol
+    func triggerCompleteBackfill(symbol: String) async {
+        // Trigger both backfills in parallel
+        async let intraday = triggerIntradayBackfill(symbol: symbol, backfillDays: 10)
+        async let historical = triggerHistoricalBackfill(symbol: symbol)
+        
+        await intraday
+        await historical
+        
+        print("[DEBUG] Complete backfill triggered for \(symbol) (intraday + historical)")
+    }
 
     func fetchNews(symbol: String? = nil) async throws -> NewsResponse {
         var queryItems: [URLQueryItem] = []
