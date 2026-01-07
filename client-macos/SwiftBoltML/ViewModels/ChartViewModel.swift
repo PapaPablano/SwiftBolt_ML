@@ -446,7 +446,7 @@ final class ChartViewModel: ObservableObject {
         case superTrendAI
     }
 
-    func loadChart() async {
+    func loadChart(retryOnCancel: Bool = true) async {
         // Cancel any existing load operation
         loadTask?.cancel()
 
@@ -567,6 +567,15 @@ final class ChartViewModel: ObservableObject {
                 
                 errorMessage = nil
             } catch {
+                // Handle URLError.cancelled with automatic retry
+                if let urlErr = error as? URLError, urlErr.code == .cancelled, retryOnCancel {
+                    print("[DEBUG] ChartViewModel.loadChart() - CANCELLED by competing load, retrying in 150ms...")
+                    isLoading = false
+                    try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
+                    await loadChart(retryOnCancel: false)
+                    return
+                }
+                
                 guard !Task.isCancelled else {
                     print("[DEBUG] ChartViewModel.loadChart() - CANCELLED (error path)")
                     isLoading = false
@@ -626,8 +635,9 @@ final class ChartViewModel: ObservableObject {
     }
 
     func setSymbol(_ symbol: Symbol?) async {
+        // Setting selectedSymbol triggers didSet which calls loadChart() automatically
+        // Do NOT call loadChart() explicitly here to avoid duplicate/cancelled requests
         selectedSymbol = symbol
-        await loadChart()
     }
 
     func clearData() {

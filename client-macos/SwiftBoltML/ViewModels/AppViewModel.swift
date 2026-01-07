@@ -71,6 +71,8 @@ final class AppViewModel: ObservableObject {
         optionsChainViewModel.clearData()
 
         print("[DEBUG] - Setting chartViewModel.selectedSymbol to: \(selectedSymbol?.ticker ?? "nil")")
+        // Setting selectedSymbol triggers didSet which calls loadChart() automatically
+        // Do NOT call loadChart() explicitly here to avoid duplicate/cancelled requests
         chartViewModel.selectedSymbol = selectedSymbol
         print("[DEBUG] - chartViewModel.selectedSymbol (AFTER): \(chartViewModel.selectedSymbol?.ticker ?? "nil")")
 
@@ -80,13 +82,14 @@ final class AppViewModel: ObservableObject {
             return
         }
 
-        print("[DEBUG] - Calling chartViewModel.loadChart() and newsViewModel.loadNews()...")
+        print("[DEBUG] - Loading news and options (chart loads via didSet)...")
 
-        async let chartLoad: () = chartViewModel.loadChart()
+        // Chart loading is handled by chartViewModel.selectedSymbol.didSet
+        // Only load news and options here to avoid duplicate chart requests
         async let newsLoad: () = newsViewModel.loadNews(for: selectedSymbol?.ticker)
         async let optionsLoad: () = optionsChainViewModel.loadOptionsChain(for: selectedSymbol?.ticker ?? "")
 
-        _ = await (chartLoad, newsLoad, optionsLoad)
+        _ = await (newsLoad, optionsLoad)
         print("[DEBUG] AppViewModel.refreshData() COMPLETED")
         print("[DEBUG] ========================================")
     }

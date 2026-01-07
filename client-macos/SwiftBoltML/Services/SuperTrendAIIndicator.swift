@@ -550,26 +550,30 @@ class SuperTrendAIIndicator: ObservableObject {
         )
     }
 
-    /// Calculate adaptive moving average of SuperTrend
+    /// Calculate adaptive moving average of SuperTrend (bounds-safe)
     private func calculateAdaptiveMA(supertrend: [Double?], length: Int) -> [Double?] {
-        var ma: [Double?] = Array(repeating: nil, count: supertrend.count)
+        guard length > 0, !supertrend.isEmpty else {
+            return Array(repeating: nil, count: supertrend.count)
+        }
 
-        for i in length..<supertrend.count {
+        var ma = Array(repeating: Double?.none, count: supertrend.count)
+
+        for i in 0..<supertrend.count {
+            // Clamp window to available history
+            let window = min(length, i + 1)
+            let start = i + 1 - window
+
             var sum = 0.0
             var count = 0
 
-            for j in (i - length + 1)...i {
-                if let value = supertrend[j] {
-                    sum += value
-                    count += 1
+            if start <= i {
+                for j in start...i {
+                    if let v = supertrend[j] { sum += v; count += 1 }
                 }
             }
 
-            if count > 0 {
-                ma[i] = sum / Double(count)
-            }
+            ma[i] = count > 0 ? sum / Double(count) : nil
         }
-
         return ma
     }
 
