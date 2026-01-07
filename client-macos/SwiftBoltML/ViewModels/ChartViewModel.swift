@@ -491,7 +491,7 @@ final class ChartViewModel: ObservableObject {
                     // - Intraday: Tradier (live, today only)
                     // - Forecast: ML predictions (future dates)
                     print("[DEBUG] Requesting chart-data-v2 symbol=\(symbol.ticker) timeframe=\(timeframe.apiToken)")
-                    let response = try await APIClient.shared.fetchChartV2(
+                    var response = try await APIClient.shared.fetchChartV2(
                         symbol: symbol.ticker,
                         timeframe: timeframe.apiToken,
                         days: 730,  // Request 2 years of historical data
