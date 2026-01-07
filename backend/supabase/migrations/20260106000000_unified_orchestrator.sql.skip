@@ -40,9 +40,7 @@ create table if not exists job_runs (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   -- Idempotency hash for deduplication
-  idx_hash text generated always as (
-    md5((symbol||'|'||timeframe||'|'||coalesce(slice_from::text,'')||'|'||coalesce(slice_to::text,'')))
-  ) stored
+  idx_hash text
 );
 
 create index idx_job_runs_symbol_tf_status on job_runs(symbol, timeframe, status);
@@ -92,6 +90,25 @@ after update on job_runs
 for each row
 when (NEW.status = 'success')
 execute function update_coverage_status();
+
+-- Trigger to populate idx_hash on insert/update
+create or replace function set_job_run_idx_hash()
+returns trigger as $$
+begin
+  NEW.idx_hash := md5(
+    NEW.symbol || '|' || 
+    NEW.timeframe || '|' || 
+    coalesce(to_char(NEW.slice_from, 'YYYY-MM-DD HH24:MI:SS'), '') || '|' || 
+    coalesce(to_char(NEW.slice_to, 'YYYY-MM-DD HH24:MI:SS'), '')
+  );
+  return NEW;
+end;
+$$ language plpgsql immutable;
+
+create trigger trigger_set_idx_hash
+before insert or update on job_runs
+for each row
+execute function set_job_run_idx_hash();
 
 -- Function to get coverage gaps for a symbol/timeframe
 create or replace function get_coverage_gaps(
