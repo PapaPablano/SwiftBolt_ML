@@ -12,6 +12,8 @@ final class ChartViewModel: ObservableObject {
             if selectedSymbol?.id != oldValue?.id {
                 liveQuote = nil
                 stopLiveQuoteUpdates()
+                stopRealtimeSubscription()
+                hydrationBanner = nil
                 // Trigger chart load on symbol change
                 Task { await loadChart() }
             }
@@ -59,8 +61,9 @@ final class ChartViewModel: ObservableObject {
     
     // SPEC-8: Backfill orchestration state
     @Published private(set) var isHydrating: Bool = false
-    @Published private(set) var backfillProgress: Int = 0
+    @Published private(set) var backfillProgress: Double = 0
     @Published private(set) var backfillJobId: String?
+    @Published var hydrationBanner: String?
 
     // MARK: - Cached Indicator Storage
 
@@ -94,6 +97,7 @@ final class ChartViewModel: ObservableObject {
 
     private var loadTask: Task<Void, Never>?
     private var liveQuoteTask: Task<Void, Never>?
+    private var realtimeTask: Task<Void, Never>?
     private let liveQuoteInterval: UInt64 = 60 * 1_000_000_000  // 60 seconds
     private let marketTimeZone = TimeZone(identifier: "America/New_York") ?? .current
     private let isoDateFormatter: ISO8601DateFormatter = {
@@ -807,16 +811,91 @@ final class ChartViewModel: ObservableObject {
                 
                 if response.status == "coverage_complete" {
                     print("[DEBUG] ✅ Coverage complete for \(symbol) \(timeframe.apiToken)")
+                    self.hydrationBanner = nil
                 } else {
                     print("[DEBUG] 🔄 Gaps detected for \(symbol) \(timeframe.apiToken), orchestrator will hydrate")
                     print("[DEBUG] - Job def ID: \(response.jobDefId)")
                     print("[DEBUG] - Gaps found: \(response.coverageStatus.gapsFound)")
-                    // TODO: Subscribe to Realtime updates for progress
+                    
+                    // Subscribe to Realtime updates for progress
+                    self.subscribeToJobProgress(symbol: symbol, timeframe: timeframe.apiToken)
                 }
             }
         } catch {
             print("[DEBUG] ⚠️ ensureCoverage failed (non-fatal): \(error)")
         }
+    }
+    
+    // MARK: - SPEC-8: Realtime Progress Subscription
+    
+    /// Subscribe to job_runs table for real-time progress updates
+    private func subscribeToJobProgress(symbol: String, timeframe: String) {
+        // Cancel existing subscription
+        realtimeTask?.cancel()
+        
+        realtimeTask = Task {
+            do {
+                let url = URL(string: "\(Config.supabaseURL)/realtime/v1/websocket?apikey=\(Config.supabaseAnonKey)&vsn=1.0.0")!
+                let session = URLSession(configuration: .default)
+                let (asyncBytes, response) = try await session.bytes(from: url)
+                
+                guard let httpResponse = response as? HTTPURLResponse,
+                      httpResponse.statusCode == 200 else {
+                    print("[DEBUG] ⚠️ Realtime connection failed")
+                    return
+                }
+                
+                print("[DEBUG] 🔌 Realtime connected for \(symbol)/\(timeframe)")
+                
+                // Listen for progress updates
+                for try await line in asyncBytes.lines {
+                    guard !Task.isCancelled else { break }
+                    
+                    // Parse Realtime message and extract progress
+                    if let data = line.data(using: .utf8),
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let payload = json["payload"] as? [String: Any],
+                       let record = payload["record"] as? [String: Any],
+                       let recordSymbol = record["symbol"] as? String,
+                       let recordTimeframe = record["timeframe"] as? String,
+                       recordSymbol == symbol && recordTimeframe == timeframe {
+                        
+                        let progress = record["progress_percent"] as? Double ?? 0
+                        let status = record["status"] as? String ?? "queued"
+                        
+                        await MainActor.run {
+                            self.backfillProgress = progress
+                            
+                            if progress >= 100 || status == "success" {
+                                self.isHydrating = false
+                                self.hydrationBanner = nil
+                                print("[DEBUG] ✅ Hydration complete for \(symbol)/\(timeframe)")
+                                // Reload chart to show new data
+                                Task { await self.loadChart() }
+                            } else if status == "running" {
+                                let pct = Int(progress)
+                                self.hydrationBanner = "Hydrating \(symbol) \(timeframe)… \(pct)%"
+                                print("[DEBUG] 🔄 Progress: \(pct)%")
+                            } else if status == "failed" {
+                                self.isHydrating = false
+                                self.hydrationBanner = "Hydration failed"
+                                print("[DEBUG] ❌ Hydration failed for \(symbol)/\(timeframe)")
+                            }
+                        }
+                    }
+                }
+            } catch {
+                if !Task.isCancelled {
+                    print("[DEBUG] ⚠️ Realtime subscription error: \(error)")
+                }
+            }
+        }
+    }
+    
+    /// Stop Realtime subscription
+    private func stopRealtimeSubscription() {
+        realtimeTask?.cancel()
+        realtimeTask = nil
     }
     
     // MARK: - Volume Profile Calculator
