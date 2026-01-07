@@ -72,6 +72,10 @@ struct WebChartView: NSViewRepresentable {
                 .sink { [weak self] isReady in
                     guard let self = self, isReady else { return }
 
+                    // Sync chart settings when bridge becomes ready (before loading data)
+                    // This ensures HA state matches Swift's default (true) vs JS default (false)
+                    self.parent.bridge.toggleHeikinAshi(enabled: self.parent.viewModel.useHeikinAshi)
+
                     // Load initial data when bridge becomes ready
                     if !self.hasLoadedInitialData {
                         if let dataV2 = self.parent.viewModel.chartDataV2 {

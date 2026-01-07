@@ -128,12 +128,14 @@ struct ChartView: View {
                         }
 
                         // Choose chart renderer based on config
+                        // Note: Use stable IDs (symbol only) to prevent unnecessary view recreation
+                        // Data updates are handled via Combine subscriptions, not view recreation
                         if chartViewModel.indicatorConfig.useWebChart {
                             VStack(spacing: 0) {
-                                // WebChart Display
+                                // WebChart Display - stable ID prevents WKWebView recreation on timeframe change
                                 WebChartView(viewModel: chartViewModel)
                                     .padding()
-                                    .id("web-chart-\(chartData.symbol)-\(chartData.bars.count)")
+                                    .id("web-chart-\(chartData.symbol)")
                             }
                         } else {
                             AdvancedChartView(
@@ -170,7 +172,7 @@ struct ChartView: View {
                                 superTrendAISignals: chartViewModel.superTrendAISignals
                             )
                             .padding()
-                            .id("advanced-chart-\(chartData.symbol)-\(chartData.bars.count)-\(chartData.bars.first?.ts.timeIntervalSince1970 ?? 0)-\(chartData.bars.last?.close ?? 0)")
+                            .id("advanced-chart-\(chartData.symbol)")
                         }
 
                         if let latestBar = chartData.bars.last {
@@ -179,7 +181,7 @@ struct ChartView: View {
                                 .padding(.bottom)
                         }
                     }
-                    .id("chart-container-\(chartData.symbol)-\(chartData.bars.count)")
+                    .id("chart-container-\(chartData.symbol)")
                 }
             } else {
                 // No request has been made yet (first launch & no symbol)
