@@ -5,6 +5,9 @@ struct ChartDataV2Response: Codable, Equatable {
     let timeframe: String
     let layers: ChartLayers
     let metadata: ChartMetadata
+    let mlSummary: MLSummary?
+    let indicators: IndicatorData?
+    let superTrendAI: SuperTrendAIData?
 }
 
 struct ChartLayers: Codable, Equatable {

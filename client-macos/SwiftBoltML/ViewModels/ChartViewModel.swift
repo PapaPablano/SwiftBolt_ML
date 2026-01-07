@@ -506,27 +506,30 @@ final class ChartViewModel: ObservableObject {
                         return
                     }
 
-                    print("[DEBUG] ChartViewModel.loadChart() V2 - SUCCESS!")
-                    print("[DEBUG] - Historical (Polygon): \(response.layers.historical.count) bars")
-                    print("[DEBUG] - Intraday (Tradier): \(response.layers.intraday.count) bars")
-                    print("[DEBUG] - Forecast (ML): \(response.layers.forecast.count) bars")
-
-                    chartDataV2 = response
-
-                    // Build bars from correct layer based on timeframe
+                    // Prefer correct layer, but fall back if empty
                     let bars = buildBars(from: response, for: timeframe)
-                    print("[DEBUG] - Built \(bars.count) bars from \(timeframe.isIntraday ? "intraday" : "historical") layer")
-
+                    
+                    print("[DEBUG] ChartViewModel.loadChart() - V2 SUCCESS!")
+                    print("[DEBUG] - Historical bars: \(response.layers.historical.count)")
+                    print("[DEBUG] - Intraday bars: \(response.layers.intraday.count)")
+                    print("[DEBUG] - Forecast bars: \(response.layers.forecast.count)")
+                    print("[DEBUG] - Selected bars: \(bars.count)")
+                    print("[DEBUG] - ML Summary: \(response.mlSummary != nil ? "present" : "nil")")
+                    print("[DEBUG] - Indicators: \(response.indicators != nil ? "present" : "nil")")
+                    
+                    chartDataV2 = response
+                    
                     // Also populate legacy chartData for indicator calculations
                     // This triggers didSet -> invalidateIndicatorCache
+                    // Now includes ML enrichment from V2 response
                     chartData = ChartResponse(
                         symbol: response.symbol,
                         assetType: "stock",
                         timeframe: response.timeframe,
                         bars: bars,
-                        mlSummary: nil,
-                        indicators: nil,
-                        superTrendAI: nil
+                        mlSummary: response.mlSummary,
+                        indicators: response.indicators,
+                        superTrendAI: response.superTrendAI
                     )
                     
                     // Explicitly recalculate indicators with new data

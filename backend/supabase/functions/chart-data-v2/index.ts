@@ -6,6 +6,11 @@
  * - Historical: Polygon data (dates < today)
  * - Intraday: Tradier data (today only)
  * - Forecast: ML predictions (dates > today)
+ * 
+ * Enhanced with ML enrichment:
+ * - Intraday forecasts (15m, 1h horizons)
+ * - SuperTrend AI indicators
+ * - Support/Resistance levels
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
@@ -17,6 +22,7 @@ interface ChartRequest {
   days?: number;
   includeForecast?: boolean;
   forecastDays?: number;
+  includeMLData?: boolean;
 }
 
 interface ChartBar {
@@ -41,7 +47,7 @@ serve(async (req) => {
   }
 
   try {
-    const { symbol, timeframe = 'd1', days = 60, includeForecast = true, forecastDays = 10 } = 
+    const { symbol, timeframe = 'd1', days = 60, includeForecast = true, forecastDays = 10, includeMLData = true } = 
       await req.json() as ChartRequest;
 
     if (!symbol) {
@@ -126,6 +132,111 @@ serve(async (req) => {
       }
     }
 
+    // Fetch ML enrichment data if requested
+    let mlSummary = null;
+    let superTrendAI = null;
+    let indicators = null;
+
+    if (includeMLData) {
+      try {
+        // Fetch intraday forecast if timeframe is intraday
+        const isIntraday = ['m15', 'h1', 'h4'].includes(timeframe);
+        
+        if (isIntraday) {
+          // Map timeframe to horizon
+          const horizonMap: Record<string, string> = {
+            'm15': '15m',
+            'h1': '1h',
+            'h4': '1h', // Use 1h forecast for 4h charts
+          };
+          const horizon = horizonMap[timeframe] || '1h';
+
+          // Fetch latest intraday forecast
+          const { data: intradayForecast } = await supabase
+            .from('ml_forecasts_intraday')
+            .select('*')
+            .eq('symbol_id', symbolId)
+            .eq('horizon', horizon)
+            .gte('expires_at', new Date().toISOString())
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (intradayForecast) {
+            mlSummary = {
+              overallLabel: intradayForecast.overall_label,
+              confidence: intradayForecast.confidence,
+              horizons: [{
+                horizon: horizon,
+                points: [{
+                  ts: Math.floor(new Date(intradayForecast.expires_at).getTime() / 1000),
+                  value: intradayForecast.target_price,
+                  lower: intradayForecast.target_price * 0.98,
+                  upper: intradayForecast.target_price * 1.02,
+                }]
+              }],
+              srLevels: null,
+              srDensity: null,
+            };
+
+            indicators = {
+              supertrendFactor: null,
+              supertrendPerformance: null,
+              supertrendSignal: intradayForecast.supertrend_direction === 'BULLISH' ? 1 : 
+                                 intradayForecast.supertrend_direction === 'BEARISH' ? -1 : 0,
+              trendLabel: intradayForecast.overall_label,
+              trendConfidence: Math.round(intradayForecast.confidence * 10),
+              stopLevel: null,
+              trendDurationBars: null,
+              rsi: null,
+              adx: null,
+              macdHistogram: null,
+              kdjJ: null,
+            };
+          }
+        } else {
+          // Fetch daily forecast for daily/weekly timeframes
+          const { data: dailyForecast } = await supabase
+            .from('ml_forecasts')
+            .select('*')
+            .eq('symbol_id', symbolId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (dailyForecast && dailyForecast.points) {
+            mlSummary = {
+              overallLabel: dailyForecast.overall_label,
+              confidence: dailyForecast.confidence,
+              horizons: [{
+                horizon: dailyForecast.horizon,
+                points: dailyForecast.points,
+              }],
+              srLevels: dailyForecast.sr_levels || null,
+              srDensity: dailyForecast.sr_density || null,
+            };
+
+            indicators = {
+              supertrendFactor: dailyForecast.supertrend_factor,
+              supertrendPerformance: dailyForecast.supertrend_performance,
+              supertrendSignal: dailyForecast.supertrend_signal,
+              trendLabel: dailyForecast.trend_label,
+              trendConfidence: dailyForecast.trend_confidence,
+              stopLevel: dailyForecast.stop_level,
+              trendDurationBars: dailyForecast.trend_duration_bars,
+              rsi: dailyForecast.rsi,
+              adx: dailyForecast.adx,
+              macdHistogram: dailyForecast.macd_histogram,
+              kdjJ: dailyForecast.kdj_j,
+            };
+          }
+        }
+      } catch (mlError) {
+        console.error('[chart-data-v2] ML enrichment error:', mlError);
+        // Continue without ML data
+      }
+    }
+
     const response = {
       symbol: symbol.toUpperCase(),
       timeframe,
@@ -153,6 +264,9 @@ serve(async (req) => {
         requested_days: days,
         forecast_days: forecastDays,
       },
+      mlSummary,
+      indicators,
+      superTrendAI: superTrendAI,
     };
 
     return new Response(
