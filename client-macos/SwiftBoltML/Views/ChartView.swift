@@ -189,18 +189,9 @@ struct ChartView: View {
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
-        .onChange(of: chartChangeToken, initial: true) { oldValue, newValue in
-            print("[DEBUG] 🔄 ChartView.onChange - chartData changed!")
-            print("[DEBUG] - Old bars: \(oldValue.barCount) | New bars: \(newValue.barCount)")
-            print("[DEBUG] - Old first ts: \(oldValue.firstTimestamp) | New first ts: \(newValue.firstTimestamp)")
-
-            if let newData = chartViewModel.chartData {
-                print("[DEBUG] - New symbol: \(newData.symbol)")
-                print("[DEBUG] - New timeframe: \(newData.timeframe)")
-            }
-        }
-        .onChange(of: chartViewModel.isLoading) { oldValue, newValue in
-            print("[DEBUG] 🔄 ChartView.onChange - isLoading changed from \(oldValue) to \(newValue)")
+        .task(id: chartViewModel.selectedSymbol?.ticker ?? "" + "|" + chartViewModel.timeframe.rawValue) {
+            // Single deterministic trigger - reload when symbol|timeframe changes
+            await chartViewModel.loadChart()
         }
     }
 

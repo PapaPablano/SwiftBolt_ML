@@ -499,23 +499,54 @@ final class ChartViewModel: ObservableObject {
                         forecastDays: 10
                     )
 
-                    // Check if task was cancelled
                     guard !Task.isCancelled else {
-                        print("[DEBUG] ChartViewModel.loadChart() - CANCELLED")
-                        isLoading = false
+                        print("[DEBUG] Load cancelled after fetch")
                         return
                     }
 
-                    // Prefer correct layer, but fall back if empty
-                    let bars = buildBars(from: response, for: timeframe)
+                    var bars = buildBars(from: response, for: timeframe)
+                    
+                    // Auto-retry if empty: trigger coverage + poll + refetch (ALL timeframes)
+                    if bars.isEmpty {
+                        print("[DEBUG] ⚠️ 0 bars, triggering coverage + poll")
+                        
+                        if let job = try? await APIClient.shared.ensureCoverage(
+                            symbol: symbol.ticker,
+                            timeframe: timeframe.apiToken,
+                            windowDays: timeframe.isIntraday ? 5 : 7
+                        ) {
+                            print("[DEBUG] Coverage job: \(job.jobDefId ?? "unknown")")
+                            
+                            // Poll with exponential backoff
+                            var delay: UInt64 = 400_000_000 // 0.4s
+                            for attempt in 0..<6 {
+                                try await Task.sleep(nanoseconds: delay)
+                                guard !Task.isCancelled else { return }
+                                
+                                let peek = try await APIClient.shared.fetchChartV2(
+                                    symbol: symbol.ticker,
+                                    timeframe: timeframe.apiToken,
+                                    days: 730,
+                                    includeForecast: true,
+                                    forecastDays: 10
+                                )
+                                let peekBars = buildBars(from: peek, for: timeframe)
+                                if !peekBars.isEmpty {
+                                    print("[DEBUG] ✓ Data appeared after \(attempt + 1) polls")
+                                    response = peek
+                                    bars = peekBars
+                                    break
+                                }
+                                delay = min(delay * 2, 3_000_000_000) // cap 3s
+                            }
+                        }
+                    }
                     
                     print("[DEBUG] ChartViewModel.loadChart() - V2 SUCCESS!")
-                    print("[DEBUG] - Historical bars: \(response.layers.historical.count)")
-                    print("[DEBUG] - Intraday bars: \(response.layers.intraday.count)")
-                    print("[DEBUG] - Forecast bars: \(response.layers.forecast.count)")
-                    print("[DEBUG] - Selected bars: \(bars.count)")
-                    print("[DEBUG] - ML Summary: \(response.mlSummary != nil ? "present" : "nil")")
-                    print("[DEBUG] - Indicators: \(response.indicators != nil ? "present" : "nil")")
+                    print("[DEBUG] - Historical: \(response.layers.historical.count)")
+                    print("[DEBUG] - Intraday: \(response.layers.intraday.count)")
+                    print("[DEBUG] - Final bars: \(bars.count)")
+                    print("[DEBUG] - ML: \(response.mlSummary != nil ? "✓" : "✗")")
                     
                     chartDataV2 = response
                     
@@ -569,42 +600,23 @@ final class ChartViewModel: ObservableObject {
                 }
                 
                 errorMessage = nil
+            } catch is CancellationError {
+                // Swallow - new request superseded this one
+                print("[DEBUG] Load cancelled (CancellationError)")
             } catch {
-                // Handle URLError.cancelled with automatic retry
-                if let urlErr = error as? URLError, urlErr.code == .cancelled, retryOnCancel {
-                    print("[DEBUG] ChartViewModel.loadChart() - CANCELLED by competing load, retrying in 150ms...")
-                    isLoading = false
-                    try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
-                    await loadChart(retryOnCancel: false)
-                    return
-                }
-                
                 guard !Task.isCancelled else {
-                    print("[DEBUG] ChartViewModel.loadChart() - CANCELLED (error path)")
-                    isLoading = false
+                    print("[DEBUG] Load cancelled in error handler")
                     return
                 }
 
                 print("[DEBUG] ChartViewModel.loadChart() - ERROR: \(error)")
-                print("[DEBUG] - Error message: \(error.localizedDescription)")
-                
-                // Graceful fallback for intraday failures
-                if case APIError.httpError(let status, _) = error, timeframe.isIntraday, status >= 500 {
-                    print("[DEBUG] Intraday failed (\(status)), keeping previous bars and showing notice")
-                    errorMessage = "Intraday data unavailable — showing daily data"
-                    // Keep existing chartData; optionally trigger daily fallback
-                    // Task { await self.loadDailyFallback(symbol: symbol.ticker) }
-                } else {
-                    errorMessage = error.localizedDescription
-                    // Only clear data for non-recoverable errors
-                    if !timeframe.isIntraday || chartData == nil {
-                        chartData = nil
-                        chartDataV2 = nil
-                    }
-                }
+                errorMessage = error.localizedDescription
+                isLoading = false
             }
 
-            isLoading = false
+            if !Task.isCancelled {
+                isLoading = false
+            }
             print("[DEBUG] ChartViewModel.loadChart() COMPLETED")
             print("[DEBUG] - Final state: chartData=\(chartData == nil ? "nil" : "non-nil"), isLoading=\(isLoading), errorMessage=\(errorMessage ?? "nil")")
             print("[DEBUG] ========================================")

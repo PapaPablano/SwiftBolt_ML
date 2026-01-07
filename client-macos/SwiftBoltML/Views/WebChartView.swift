@@ -158,13 +158,20 @@ struct WebChartView: NSViewRepresentable {
 
         private func updateChartV2(with data: ChartDataV2Response) {
             let bridge = parent.bridge
-            // Preserve current visible range to avoid reset when toggling indicators
             let preservedRange = lastVisibleRange ?? bridge.visibleRange
             
             print("[WebChartView] Updating chart with V2 layered data")
             print("[WebChartView] - Historical: \(data.layers.historical.count) bars")
             print("[WebChartView] - Intraday: \(data.layers.intraday.count) bars")
             print("[WebChartView] - Forecast: \(data.layers.forecast.count) bars")
+            
+            // Guard: only render if we have candles
+            let allBars = data.allBars
+            guard !allBars.isEmpty else {
+                print("[WebChartView] ⚠️ No candles, clearing chart")
+                bridge.send(.clearAll)
+                return
+            }
             
             // Clear previous overlays/indicators (keeps candles)
             bridge.send(.clearIndicators)

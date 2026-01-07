@@ -15,6 +15,7 @@ enum ChartCommand: Encodable {
     case addPriceLine(seriesId: String, price: Double, options: PriceLineOptions?)
     case removeSeries(id: String)
     case clearIndicators
+    case clearAll
     case setVisibleRange(from: Int, to: Int)
     case scrollToRealTime
     case fitContent
@@ -160,6 +161,10 @@ enum ChartCommand: Encodable {
         case .setVolume(let data):
             try container.encode("setVolume", forKey: .type)
             try container.encode(data, forKey: .data)
+        case .clearIndicators:
+            try container.encode("clearIndicators", forKey: .type)
+        case .clearAll:
+            try container.encode("clearAll", forKey: .type)
         default: break
         }
     }
