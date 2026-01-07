@@ -30,10 +30,13 @@ final class WatchlistViewModel: ObservableObject {
                 watchlistId: nil
             )
 
-            let response: WatchlistSyncResponse = try await apiClient.post(
-                endpoint: "watchlist-sync",
-                body: request
-            )
+            var urlRequest = URLRequest(url: Config.functionURL("watchlist-sync"))
+            urlRequest.httpMethod = "POST"
+            urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.httpBody = try JSONEncoder().encode(request)
+            
+            let response: WatchlistSyncResponse = try await apiClient.performRequest(urlRequest)
 
             if response.success {
                 // Create symbol with OHLC averages from response
@@ -78,10 +81,13 @@ final class WatchlistViewModel: ObservableObject {
                 watchlistId: nil
             )
 
-            let response: WatchlistSyncResponse = try await apiClient.post(
-                endpoint: "watchlist-sync",
-                body: request
-            )
+            var urlRequest = URLRequest(url: Config.functionURL("watchlist-sync"))
+            urlRequest.httpMethod = "POST"
+            urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.httpBody = try JSONEncoder().encode(request)
+            
+            let response: WatchlistSyncResponse = try await apiClient.performRequest(urlRequest)
 
             if response.success {
                 watchedSymbols.removeAll { $0.ticker == symbol.ticker }
@@ -122,10 +128,13 @@ final class WatchlistViewModel: ObservableObject {
                 watchlistId: nil
             )
 
-            let response: WatchlistSyncResponse = try await apiClient.post(
-                endpoint: "watchlist-sync",
-                body: request
-            )
+            var urlRequest = URLRequest(url: Config.functionURL("watchlist-sync"))
+            urlRequest.httpMethod = "POST"
+            urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.httpBody = try JSONEncoder().encode(request)
+            
+            let response: WatchlistSyncResponse = try await apiClient.performRequest(urlRequest)
 
             if response.success, let items = response.items {
                 // Convert items to Symbol objects

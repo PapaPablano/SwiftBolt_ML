@@ -835,9 +835,14 @@ final class ChartViewModel: ObservableObject {
         
         realtimeTask = Task {
             do {
+                // Build proper Realtime WebSocket URL with auth
                 let url = URL(string: "\(Config.supabaseURL.absoluteString)/realtime/v1/websocket?apikey=\(Config.supabaseAnonKey)&vsn=1.0.0")!
+                
+                var request = URLRequest(url: url)
+                request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+                
                 let session = URLSession(configuration: .default)
-                let (asyncBytes, response) = try await session.bytes(from: url)
+                let (asyncBytes, response) = try await session.bytes(for: request)
                 
                 guard let httpResponse = response as? HTTPURLResponse,
                       httpResponse.statusCode == 200 else {

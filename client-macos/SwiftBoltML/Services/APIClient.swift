@@ -71,7 +71,7 @@ final class APIClient {
         return request
     }
 
-    private func performRequest<T: Decodable>(_ request: URLRequest) async throws -> T {
+    func performRequest<T: Decodable>(_ request: URLRequest) async throws -> T {
         print("[DEBUG] API Request: \(request.url?.absoluteString ?? "nil")")
 
         let data: Data
