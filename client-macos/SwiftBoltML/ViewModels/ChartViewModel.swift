@@ -835,7 +835,7 @@ final class ChartViewModel: ObservableObject {
         
         realtimeTask = Task {
             do {
-                let url = URL(string: "\(Config.supabaseURL)/realtime/v1/websocket?apikey=\(Config.supabaseAnonKey)&vsn=1.0.0")!
+                let url = URL(string: "\(Config.supabaseURL.absoluteString)/realtime/v1/websocket?apikey=\(Config.supabaseAnonKey)&vsn=1.0.0")!
                 let session = URLSession(configuration: .default)
                 let (asyncBytes, response) = try await session.bytes(from: url)
                 

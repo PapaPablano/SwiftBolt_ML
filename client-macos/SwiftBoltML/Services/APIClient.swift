@@ -31,8 +31,8 @@ final class APIClient {
     private let session: URLSession
 
     private init() {
-        self.baseURL = URL(string: Config.supabaseURL)!
-        self.functionsBase = baseURL.appendingPathComponent("functions/v1")
+        self.baseURL = Config.supabaseURL
+        self.functionsBase = Config.functionsBaseURL
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 30
@@ -42,8 +42,8 @@ final class APIClient {
     }
     
     /// Helper to build Edge Function URLs without duplicating paths
-    private func fnURL(_ name: String) -> URL {
-        functionsBase.appendingPathComponent(name)
+    private func functionURL(_ name: String) -> URL {
+        Config.functionURL(name)
     }
 
     private func makeRequest(endpoint: String, queryItems: [URLQueryItem]? = nil, method: String = "GET", body: [String: Any]? = nil) throws -> URLRequest {
@@ -188,10 +188,20 @@ final class APIClient {
     }
 
     func searchSymbols(query: String) async throws -> [Symbol] {
-        let request = try makeRequest(
-            endpoint: "symbols-search",
-            queryItems: [URLQueryItem(name: "q", value: query)]
-        )
+        guard var components = URLComponents(url: functionURL("symbols-search"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        components.queryItems = [URLQueryItem(name: "q", value: query)]
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
         return try await performRequest(request)
     }
 
@@ -217,11 +227,12 @@ final class APIClient {
         
         print("[DEBUG] APIClient.fetchChartV2() - Sending timeframe: \(timeframe)")
         
-        let request = try makeRequest(
-            endpoint: "chart-data-v2",
-            method: "POST",
-            body: body
-        )
+        var request = URLRequest(url: functionURL("chart-data-v2"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
         return try await performRequest(request)
     }
     
@@ -309,7 +320,7 @@ final class APIClient {
             "window_days": windowDays
         ]
         
-        var request = URLRequest(url: fnURL("ensure-coverage"))
+        var request = URLRequest(url: functionURL("ensure-coverage"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -320,35 +331,58 @@ final class APIClient {
     }
 
     func fetchNews(symbol: String? = nil) async throws -> NewsResponse {
-        var queryItems: [URLQueryItem] = []
-        if let symbol = symbol {
-            queryItems.append(URLQueryItem(name: "symbol", value: symbol))
+        guard var components = URLComponents(url: functionURL("news"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
         }
-
-        let request = try makeRequest(
-            endpoint: "news",
-            queryItems: queryItems.isEmpty ? nil : queryItems
-        )
+        
+        if let symbol = symbol {
+            components.queryItems = [URLQueryItem(name: "symbol", value: symbol)]
+        }
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
         return try await performRequest(request)
     }
 
     func fetchOptionsChain(underlying: String, expiration: TimeInterval? = nil) async throws -> OptionsChainResponse {
+        guard var components = URLComponents(url: functionURL("options-chain"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "underlying", value: underlying)
         ]
-
+        
         if let expiration = expiration {
             queryItems.append(URLQueryItem(name: "expiration", value: String(Int(expiration))))
         }
-
-        let request = try makeRequest(
-            endpoint: "options-chain",
-            queryItems: queryItems
-        )
+        
+        components.queryItems = queryItems
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
         return try await performRequest(request)
     }
 
     func fetchOptionsRankings(symbol: String, expiry: String? = nil, side: OptionSide? = nil, mode: String? = nil, limit: Int = 50) async throws -> OptionsRankingsResponse {
+        guard var components = URLComponents(url: functionURL("options-rankings"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "symbol", value: symbol),
             URLQueryItem(name: "limit", value: String(limit))
@@ -365,11 +399,18 @@ final class APIClient {
         if let mode = mode {
             queryItems.append(URLQueryItem(name: "mode", value: mode))
         }
-
-        let request = try makeRequest(
-            endpoint: "options-rankings",
-            queryItems: queryItems
-        )
+        
+        components.queryItems = queryItems
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
         return try await performRequest(request)
     }
 
@@ -383,20 +424,19 @@ final class APIClient {
             let contracts: [String]
         }
 
+        var request = URLRequest(url: functionURL("options-quotes"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
         let body = OptionsQuotesRequest(symbol: symbol, contracts: contracts)
-        return try await post(endpoint: "options-quotes", body: body)
+        request.httpBody = try JSONEncoder().encode(body)
+        
+        return try await performRequest(request)
     }
 
     func scanWatchlist(symbols: [String]) async throws -> ScannerWatchlistResponse {
-        guard let components = URLComponents(string: baseURL.appendingPathComponent("scanner-watchlist").absoluteString) else {
-            throw APIError.invalidURL
-        }
-
-        guard let url = components.url else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: functionURL("scanner-watchlist"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -408,15 +448,7 @@ final class APIClient {
     }
 
     func triggerRankingJob(for symbol: String) async throws -> TriggerRankingResponse {
-        guard let components = URLComponents(string: baseURL.appendingPathComponent("trigger-ranking-job").absoluteString) else {
-            throw APIError.invalidURL
-        }
-
-        guard let url = components.url else {
-            throw APIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: functionURL("trigger-ranking-job"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -429,17 +461,28 @@ final class APIClient {
     }
     
     func fetchEnhancedPrediction(symbol: String) async throws -> EnhancedPredictionResponse {
-        let request = try makeRequest(
-            endpoint: "enhanced-prediction",
-            queryItems: [URLQueryItem(name: "symbol", value: symbol)]
-        )
+        guard var components = URLComponents(url: functionURL("enhanced-prediction"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        components.queryItems = [URLQueryItem(name: "symbol", value: symbol)]
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
         return try await performRequest(request)
     }
     
     /// Refresh data for a symbol - fetches new bars and optionally queues ML/options jobs
     func refreshData(symbol: String, refreshML: Bool = true, refreshOptions: Bool = false) async throws -> RefreshDataResponse {
-        var request = try makeRequest(endpoint: "refresh-data", queryItems: [])
+        var request = URLRequest(url: functionURL("refresh-data"))
         request.httpMethod = "POST"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body = RefreshDataRequest(symbol: symbol, refreshML: refreshML, refreshOptions: refreshOptions)
@@ -450,8 +493,9 @@ final class APIClient {
     
     /// Comprehensive user-triggered refresh - orchestrates backfill, bars, ML, options, and S/R
     func userRefresh(symbol: String) async throws -> UserRefreshResponse {
-        var request = try makeRequest(endpoint: "user-refresh", queryItems: [])
+        var request = URLRequest(url: functionURL("user-refresh"))
         request.httpMethod = "POST"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body = ["symbol": symbol]
@@ -462,33 +506,59 @@ final class APIClient {
 
     /// Fetch ML dashboard data - aggregate metrics across all symbols
     func fetchMLDashboard() async throws -> MLDashboardResponse {
-        let request = try makeRequest(endpoint: "ml-dashboard")
+        var request = URLRequest(url: functionURL("ml-dashboard"))
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
         return try await performRequest(request)
     }
     
     /// Fetch Support & Resistance levels for a symbol (default 252 bars = 1 year of trading days)
     func fetchSupportResistance(symbol: String, lookback: Int = 252) async throws -> SupportResistanceResponse {
-        let request = try makeRequest(
-            endpoint: "support-resistance",
-            queryItems: [
-                URLQueryItem(name: "symbol", value: symbol),
-                URLQueryItem(name: "lookback", value: String(lookback))
-            ]
-        )
+        guard var components = URLComponents(url: functionURL("support-resistance"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        
+        components.queryItems = [
+            URLQueryItem(name: "symbol", value: symbol),
+            URLQueryItem(name: "lookback", value: String(lookback))
+        ]
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
         return try await performRequest(request)
     }
     
     /// Fetch strike analysis - historical price comparison for an options strike
     func fetchStrikeAnalysis(symbol: String, strike: Double, side: String, lookbackDays: Int = 30) async throws -> StrikeAnalysisResponse {
-        let request = try makeRequest(
-            endpoint: "strike-analysis",
-            queryItems: [
-                URLQueryItem(name: "symbol", value: symbol),
-                URLQueryItem(name: "strike", value: String(strike)),
-                URLQueryItem(name: "side", value: side),
-                URLQueryItem(name: "lookbackDays", value: String(lookbackDays))
-            ]
-        )
+        guard var components = URLComponents(url: functionURL("strike-analysis"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        
+        components.queryItems = [
+            URLQueryItem(name: "symbol", value: symbol),
+            URLQueryItem(name: "strike", value: String(strike)),
+            URLQueryItem(name: "side", value: side),
+            URLQueryItem(name: "lookbackDays", value: String(lookbackDays))
+        ]
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
         return try await performRequest(request)
     }
 
@@ -496,24 +566,48 @@ final class APIClient {
 
     /// Fetch horizon accuracy data (1D vs 1W breakdown)
     func fetchHorizonAccuracy() async throws -> HorizonAccuracyResponse {
-        let request = try makeRequest(
-            endpoint: "ml-dashboard",
-            queryItems: [URLQueryItem(name: "action", value: "horizon_accuracy")]
-        )
+        guard var components = URLComponents(url: functionURL("ml-dashboard"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        components.queryItems = [URLQueryItem(name: "action", value: "horizon_accuracy")]
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
         return try await performRequest(request)
     }
 
     /// Fetch current model weights (RF vs GB)
     func fetchModelWeights() async throws -> [ModelWeightInfo] {
-        let request = try makeRequest(
-            endpoint: "ml-dashboard",
-            queryItems: [URLQueryItem(name: "action", value: "weights")]
-        )
+        guard var components = URLComponents(url: functionURL("ml-dashboard"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        components.queryItems = [URLQueryItem(name: "action", value: "weights")]
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
         return try await performRequest(request)
     }
 
     /// Fetch recent forecast evaluations
     func fetchEvaluations(horizon: String? = nil, symbol: String? = nil, limit: Int = 50) async throws -> [ForecastEvaluation] {
+        guard var components = URLComponents(url: functionURL("ml-dashboard"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        
         var queryItems = [
             URLQueryItem(name: "action", value: "evaluations"),
             URLQueryItem(name: "limit", value: String(limit))
@@ -525,29 +619,63 @@ final class APIClient {
         if let symbol = symbol {
             queryItems.append(URLQueryItem(name: "symbol", value: symbol))
         }
-
-        let request = try makeRequest(endpoint: "ml-dashboard", queryItems: queryItems)
+        
+        components.queryItems = queryItems
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
         return try await performRequest(request)
     }
 
     /// Fetch symbol accuracy by horizon
     func fetchSymbolAccuracy(horizon: String? = nil) async throws -> [SymbolAccuracyData] {
+        guard var components = URLComponents(url: functionURL("ml-dashboard"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        
         var queryItems = [URLQueryItem(name: "action", value: "symbol_accuracy")]
 
         if let horizon = horizon {
             queryItems.append(URLQueryItem(name: "horizon", value: horizon))
         }
-
-        let request = try makeRequest(endpoint: "ml-dashboard", queryItems: queryItems)
+        
+        components.queryItems = queryItems
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
         return try await performRequest(request)
     }
 
     /// Fetch model comparison (RF vs GB performance)
     func fetchModelComparison() async throws -> [ModelComparisonData] {
-        let request = try makeRequest(
-            endpoint: "ml-dashboard",
-            queryItems: [URLQueryItem(name: "action", value: "model_comparison")]
-        )
+        guard var components = URLComponents(url: functionURL("ml-dashboard"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        components.queryItems = [URLQueryItem(name: "action", value: "model_comparison")]
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
         return try await performRequest(request)
     }
 
@@ -555,17 +683,28 @@ final class APIClient {
 
     /// Fetch GA-optimized strategy parameters for a symbol
     func fetchGAStrategy(symbol: String) async throws -> GAStrategyResponse {
-        let request = try makeRequest(
-            endpoint: "ga-strategy",
-            queryItems: [URLQueryItem(name: "symbol", value: symbol)]
-        )
+        guard var components = URLComponents(url: functionURL("ga-strategy"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        components.queryItems = [URLQueryItem(name: "symbol", value: symbol)]
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
         return try await performRequest(request)
     }
 
     /// Trigger GA optimization run for a symbol
     func triggerGAOptimization(symbol: String, generations: Int = 50, trainingDays: Int = 30) async throws -> TriggerOptimizationResponse {
-        var request = try makeRequest(endpoint: "ga-strategy", queryItems: [])
+        var request = URLRequest(url: functionURL("ga-strategy"))
         request.httpMethod = "POST"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body = [
