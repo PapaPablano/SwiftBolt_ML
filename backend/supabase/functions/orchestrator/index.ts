@@ -194,11 +194,34 @@ async function createSlicesForJob(supabase: any, jobDef: JobDefinition): Promise
     const gapTo = new Date(gap.gap_to);
     const sliceMs = config.sliceHours * 60 * 60 * 1000;
 
+    // For intraday jobs, only create slices for today (Tradier limitation)
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+
     let currentFrom = gapFrom;
     let sliceCount = 0;
 
     while (currentFrom < gapTo && sliceCount < config.maxSlicesPerTick) {
       const currentTo = new Date(Math.min(currentFrom.getTime() + sliceMs, gapTo.getTime()));
+
+      // Skip historical intraday slices (Tradier only provides today's data)
+      if (jobDef.job_type === "fetch_intraday" && currentTo < todayStart) {
+        console.log(`[Orchestrator] Skipping historical intraday slice: ${jobDef.symbol}/${jobDef.timeframe} ${currentFrom.toISOString()} (before today)`);
+        currentFrom = currentTo;
+        continue;
+      }
+
+      // For intraday, clamp slice to today's range
+      if (jobDef.job_type === "fetch_intraday") {
+        if (currentFrom < todayStart) {
+          currentFrom = todayStart;
+        }
+        if (currentTo > todayEnd) {
+          // Skip slices that extend beyond today
+          break;
+        }
+      }
 
       // Check if slice already exists (idempotency)
       const { data: exists } = await supabase.rpc("job_slice_exists", {
@@ -241,6 +264,7 @@ async function createSlicesForJob(supabase: any, jobDef: JobDefinition): Promise
 
 /**
  * Dispatch queued jobs to workers
+ * Updated: 2026-01-08 with defensive logging
  */
 async function dispatchQueuedJobs(supabase: any, maxJobs: number): Promise<number> {
   let dispatched = 0;
@@ -249,6 +273,13 @@ async function dispatchQueuedJobs(supabase: any, maxJobs: number): Promise<numbe
     // Claim a queued job
     const { data: claimed, error: claimError } = await supabase
       .rpc("claim_queued_job");
+
+    // Defensive logging: Log claim result
+    console.log(`[Orchestrator] claim_queued_job() result:`, {
+      claimError: claimError ? JSON.stringify(claimError) : null,
+      claimedLength: claimed?.length ?? 0,
+      claimedData: claimed ? JSON.stringify(claimed) : null,
+    });
 
     if (claimError) {
       console.error(`[Orchestrator] Error claiming job:`, claimError);
@@ -261,7 +292,16 @@ async function dispatchQueuedJobs(supabase: any, maxJobs: number): Promise<numbe
     }
 
     const job = claimed[0];
-    console.log(`[Orchestrator] Claimed job: ${job.job_run_id} (${job.symbol}/${job.timeframe})`);
+    
+    // Defensive logging: Log claimed job details
+    console.log(`[Orchestrator] Claimed job details:`, {
+      job_run_id: job.job_run_id,
+      symbol: job.symbol,
+      timeframe: job.timeframe,
+      job_type: job.job_type,
+      slice_from: job.slice_from,
+      slice_to: job.slice_to,
+    });
 
     // Dispatch to appropriate worker
     try {
@@ -317,13 +357,25 @@ async function dispatchFetchBars(supabase: any, job: any) {
     }),
   });
 
+  // Defensive logging: Log worker response
+  console.log(`[Orchestrator] fetch-bars response status:`, {
+    status: response.status,
+    statusText: response.statusText,
+    ok: response.ok,
+    job_run_id: job.job_run_id,
+  });
+
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`fetch-bars failed: ${error}`);
+    const errorBody = await response.text();
+    console.error(`[Orchestrator] fetch-bars error body:`, errorBody);
+    throw new Error(`fetch-bars failed (${response.status}): ${errorBody}`);
   }
 
   const result = await response.json();
-  console.log(`[Orchestrator] fetch-bars result:`, result);
+  console.log(`[Orchestrator] fetch-bars success:`, {
+    job_run_id: job.job_run_id,
+    result: JSON.stringify(result),
+  });
 }
 
 /**
