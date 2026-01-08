@@ -13,6 +13,7 @@ final class ChartViewModel: ObservableObject {
                 liveQuote = nil
                 stopLiveQuoteUpdates()
                 stopRealtimeSubscription()
+                stopHydrationPoller()
                 hydrationBanner = nil
                 // Trigger chart load on symbol change
                 Task { await loadChart() }
@@ -21,6 +22,7 @@ final class ChartViewModel: ObservableObject {
     }
     @Published var timeframe: Timeframe = .d1 {
         didSet {
+            stopHydrationPoller()
             print("[DEBUG] 🕒 timeframe changed to \(timeframe.rawValue) (apiToken=\(timeframe.apiToken))")
             Task { await loadChart() }
         }
@@ -98,6 +100,7 @@ final class ChartViewModel: ObservableObject {
     private var loadTask: Task<Void, Never>?
     private var liveQuoteTask: Task<Void, Never>?
     private var realtimeTask: Task<Void, Never>?
+    private var hydrationPollTask: Task<Void, Never>?
     private let liveQuoteInterval: UInt64 = 60 * 1_000_000_000  // 60 seconds
     private let marketTimeZone = TimeZone(identifier: "America/New_York") ?? .current
     private let isoDateFormatter: ISO8601DateFormatter = {
@@ -450,12 +453,6 @@ final class ChartViewModel: ObservableObject {
         // Cancel any existing load operation
         loadTask?.cancel()
 
-        // Prevent concurrent calls
-        guard !isLoading else {
-            print("[DEBUG] ChartViewModel.loadChart() - ALREADY LOADING, skipping duplicate call")
-            return
-        }
-
         print("[DEBUG] ========================================")
         print("[DEBUG] ChartViewModel.loadChart() CALLED")
         print("[DEBUG] ========================================")
@@ -464,7 +461,23 @@ final class ChartViewModel: ObservableObject {
             print("[DEBUG] ChartViewModel.loadChart() - NO SYMBOL SELECTED, returning")
             chartData = nil
             loadTask = nil
+            isLoading = false
             return
+        }
+
+        // Try to warm-load from cache for immediate display
+        if let cached = ChartCache.loadBars(symbol: symbol.ticker, timeframe: timeframe), !cached.isEmpty {
+            print("[DEBUG] ChartViewModel.loadChart() - Using cached bars: \(cached.count)")
+            // Populate legacy chartData so indicators can render quickly
+            self.chartData = ChartResponse(
+                symbol: symbol.ticker,
+                assetType: symbol.assetType,
+                timeframe: timeframe.apiToken,
+                bars: cached,
+                mlSummary: nil,
+                indicators: nil,
+                superTrendAI: nil
+            )
         }
 
         print("[DEBUG] - Symbol: \(symbol.ticker)")
@@ -515,7 +528,7 @@ final class ChartViewModel: ObservableObject {
                             timeframe: timeframe.apiToken,
                             windowDays: timeframe.isIntraday ? 5 : 7
                         ) {
-                            print("[DEBUG] Coverage job: \(job.jobDefId ?? "unknown")")
+                            print("[DEBUG] Coverage job: \(job.jobDefId)")
                             
                             // Poll with exponential backoff
                             var delay: UInt64 = 400_000_000 // 0.4s
@@ -563,6 +576,9 @@ final class ChartViewModel: ObservableObject {
                         superTrendAI: response.superTrendAI
                     )
                     
+                    // Save bars to cache for instant subsequent loads
+                    ChartCache.saveBars(symbol: symbol.ticker, timeframe: timeframe, bars: bars)
+                    
                     // Explicitly recalculate indicators with new data
                     scheduleIndicatorRecalculation()
                     
@@ -589,6 +605,9 @@ final class ChartViewModel: ObservableObject {
                     print("[DEBUG] - Setting chartData property...")
                     chartData = response
                     print("[DEBUG] - chartData is now: \(chartData == nil ? "nil" : "non-nil with \(chartData!.bars.count) bars")")
+                    
+                    // Save bars to cache
+                    ChartCache.saveBars(symbol: symbol.ticker, timeframe: timeframe, bars: response.bars)
                     
                     // Explicitly recalculate indicators with new data
                     scheduleIndicatorRecalculation()
@@ -837,6 +856,7 @@ final class ChartViewModel: ObservableObject {
                 if response.status == "coverage_complete" {
                     print("[DEBUG] ✅ Coverage complete for \(symbol) \(timeframe.apiToken)")
                     self.hydrationBanner = nil
+                    self.stopHydrationPoller()
                 } else {
                     print("[DEBUG] 🔄 Gaps detected for \(symbol) \(timeframe.apiToken), orchestrator will hydrate")
                     print("[DEBUG] - Job def ID: \(response.jobDefId)")
@@ -844,6 +864,7 @@ final class ChartViewModel: ObservableObject {
                     
                     // Subscribe to Realtime updates for progress
                     self.subscribeToJobProgress(symbol: symbol, timeframe: timeframe.apiToken)
+                    self.startHydrationPoller(symbol: symbol)
                 }
             }
         } catch {
@@ -899,6 +920,7 @@ final class ChartViewModel: ObservableObject {
                             if progress >= 100 || status == "success" {
                                 self.isHydrating = false
                                 self.hydrationBanner = nil
+                                self.stopHydrationPoller()
                                 print("[DEBUG] ✅ Hydration complete for \(symbol)/\(timeframe)")
                                 // Reload chart to show new data
                                 Task { await self.loadChart() }
@@ -926,6 +948,56 @@ final class ChartViewModel: ObservableObject {
     private func stopRealtimeSubscription() {
         realtimeTask?.cancel()
         realtimeTask = nil
+    }
+    
+    // MARK: - Hydration Poller (fallback when Realtime is unavailable)
+    private func startHydrationPoller(symbol: String) {
+        hydrationPollTask?.cancel()
+        hydrationPollTask = Task { [weak self] in
+            guard let self else { return }
+            let maxAttempts = 20 // ~5 minutes at 15s interval
+            for attempt in 0..<maxAttempts {
+                try? await Task.sleep(nanoseconds: 15 * 1_000_000_000)
+                guard !Task.isCancelled else { break }
+                do {
+                    let peek = try await APIClient.shared.fetchChartV2(
+                        symbol: symbol,
+                        timeframe: self.timeframe.apiToken,
+                        days: 730,
+                        includeForecast: true,
+                        forecastDays: 10
+                    )
+                    let peekBars = self.buildBars(from: peek, for: self.timeframe)
+                    if !peekBars.isEmpty {
+                        await MainActor.run {
+                            self.chartDataV2 = peek
+                            self.chartData = ChartResponse(
+                                symbol: peek.symbol,
+                                assetType: "stock",
+                                timeframe: peek.timeframe,
+                                bars: peekBars,
+                                mlSummary: peek.mlSummary,
+                                indicators: peek.indicators,
+                                superTrendAI: peek.superTrendAI
+                            )
+                            self.isHydrating = false
+                            self.hydrationBanner = nil
+                        }
+                        print("[DEBUG] ✅ Hydration poll succeeded at attempt \(attempt + 1)")
+                        // Save to cache
+                        ChartCache.saveBars(symbol: symbol, timeframe: self.timeframe, bars: peekBars)
+                        break
+                    }
+                } catch {
+                    print("[DEBUG] Hydration poll error: \(error)")
+                }
+            }
+        }
+    }
+
+    private func stopHydrationPoller() {
+        hydrationPollTask?.cancel()
+        hydrationPollTask = nil
     }
     
     // MARK: - Volume Profile Calculator
@@ -979,3 +1051,4 @@ final class ChartViewModel: ObservableObject {
         print("[ChartViewModel] Volume profile calculated: \(volumeProfile.count) levels, POC at \(volumeByPrice.first(where: { $0.value == maxVolume })?.key ?? 0)")
     }
 }
+

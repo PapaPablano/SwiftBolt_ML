@@ -419,7 +419,8 @@ color: options.color || '#888',
 lineWidth: options.lineWidth || 1,
 lineStyle: options.lineStyle || LightweightCharts.LineStyle.Dashed,
 axisLabelVisible: options.showLabel !== false,
-title: options.title || ''
+title: options.title || '',
+category: options.category || 'general'
 };
 
 const line = series.createPriceLine(priceLineOptions);
@@ -427,7 +428,7 @@ const line = series.createPriceLine(priceLineOptions);
 state.priceLines.push({ 
 series: series, 
 line: line,
-category: options.category || 'general'
+category: priceLineOptions.category
 });
 return line;
 },
@@ -482,17 +483,15 @@ setCandles: function(data) {
         return;
     }
 
+    // Sort data by time and keep originalBars sorted
+    const sortedData = [...data].sort((a, b) => a.time - b.time);
+    state.originalBars = sortedData;
+
     // Create candlestick series if it doesn't exist
     if (!state.series.candles) {
         state.series.candles = state.chart.addCandlestickSeries(candlestickOptions);
         console.log('[ChartJS] Candlestick series created');
     }
-
-    // Store original data for Heikin-Ashi transformation
-    state.originalBars = [...data];
-
-    // Sort data by time
-    const sortedData = [...data].sort((a, b) => a.time - b.time);
 
     // Apply Heikin-Ashi transformation if enabled
     const displayData = state.useHeikinAshi ? calculateHeikinAshi(sortedData) : sortedData;
@@ -548,6 +547,21 @@ addLine: function(id, options = {}) {
 
     console.log('[ChartJS] Line series added:', id);
     return series;
+},
+
+/**
+* Remove a series by id
+*/
+removeSeries: function(id) {
+    const series = state.series[id];
+    if (series && state.chart) {
+        try { 
+            state.chart.removeSeries(series); 
+        } catch (e) {
+            console.warn('[ChartJS] removeSeries failed', id, e);
+        }
+        delete state.series[id];
+    }
 },
 
         /**
@@ -1316,6 +1330,9 @@ addLine: function(id, options = {}) {
                     case 'removePriceLines':
                         this.removePriceLines(cmd.category);
                         break;
+                    case 'clearAll':
+                        this.clearAll();
+                        break;
                     default:
                         console.warn('[ChartJS] Unknown command type:', cmd.type);
                 }
@@ -1362,7 +1379,8 @@ addLine: function(id, options = {}) {
                     lineWidth: level.lineWidth || 1,
                     lineStyle: level.lineStyle || LightweightCharts.LineStyle.Dashed,
                     title: level.title,
-                    showLabel: true
+                    showLabel: true,
+                    category: 'pivots'
                 });
             });
             console.log('[ChartJS] Pivot levels set:', levels.length);
@@ -1378,18 +1396,36 @@ addLine: function(id, options = {}) {
                     lineWidth: level.lineWidth || 2,
                     lineStyle: level.lineStyle || LightweightCharts.LineStyle.Solid,
                     title: level.title,
-                    showLabel: true
+                    showLabel: true,
+                    category: 'logistic'
                 });
             });
             console.log('[ChartJS] Logistic SR set:', levels.length);
         },
         
         /**
-         * Remove price lines by category (placeholder if we want granular removal later)
-         * Currently clearPriceLines removes all
+         * Clear all series, price lines, and sub-panels
          */
-        removePriceLines: function(category) {
-            this.clearPriceLines();
+        clearAll: function() {
+            try {
+                // Remove all series
+                Object.keys(state.series).forEach(id => {
+                    try {
+                        if (state.series[id] && state.chart) state.chart.removeSeries(state.series[id]);
+                    } catch (e) {}
+                });
+                state.series = {};
+                // Clear price lines
+                this.clearPriceLines();
+                // Reset cached bars
+                state.originalBars = [];
+                state.heikinAshiBars = [];
+                // Hide sub-panels
+                Object.keys(state.subPanels).forEach(name => hideSubPanel(name));
+                console.log('[ChartJS] Cleared all');
+            } catch (e) {
+                console.warn('[ChartJS] clearAll failed', e);
+            }
         }
     };
 

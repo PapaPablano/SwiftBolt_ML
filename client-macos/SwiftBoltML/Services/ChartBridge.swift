@@ -48,49 +48,6 @@ enum ChartCommand: Encodable {
         var container = encoder.container(keyedBy: CodingKeys.self)
 
         switch self {
-        // ... (existing cases)
-        case .setSuperTrend(let data, let trendData, let strengthData):
-            try container.encode("setSuperTrend", forKey: .type)
-            try container.encode(data, forKey: .data)
-            try container.encode(trendData, forKey: .trendData)
-            try container.encode(strengthData, forKey: .strengthData)
-
-        case .setPolynomialSR(let resistance, let support):
-            try container.encode("setPolynomialSR", forKey: .type)
-            try container.encode(resistance, forKey: .resistance)
-            try container.encode(support, forKey: .support)
-
-        case .setPivotLevels(let levels):
-            try container.encode("setPivotLevels", forKey: .type)
-            try container.encode(levels, forKey: .levels)
-
-        case .setLogisticSR(let levels):
-            try container.encode("setLogisticSR", forKey: .type)
-            try container.encode(levels, forKey: .levels)
-
-        case .removePriceLines(let category):
-            try container.encode("removePriceLines", forKey: .type)
-            try container.encode(category, forKey: .category)
-
-        case .hidePanel(let panel):
-            try container.encode("hidePanel", forKey: .type)
-            try container.encode(panel, forKey: .panel)
-
-        case .removeVolumeProfile:
-            try container.encode("removeVolumeProfile", forKey: .type)
-        // ...
-        default:
-            // Fallback for cases handled in previous chunks or not shown
-            // Since we are replacing the enum, we need to ensure all cases are covered.
-            // But 'default' isn't valid for enum switch unless we missed one.
-            // Let's rely on the previous code block context to fill in the rest if needed, 
-            // but here I am modifying the enum definition and encode. 
-            // I will paste the surrounding cases to be safe.
-            break 
-        }
-        
-        // Handling the rest of the cases from context
-        switch self {
         case .initialize(let options):
             try container.encode("init", forKey: .type)
             try container.encodeIfPresent(options, forKey: .options)
@@ -125,6 +82,8 @@ enum ChartCommand: Encodable {
             try container.encode(id, forKey: .id)
         case .clearIndicators:
             try container.encode("clearIndicators", forKey: .type)
+        case .clearAll:
+            try container.encode("clearAll", forKey: .type)
         case .setVisibleRange(let from, let to):
             try container.encode("setVisibleRange", forKey: .type)
             try container.encode(from, forKey: .from)
@@ -161,11 +120,29 @@ enum ChartCommand: Encodable {
         case .setVolume(let data):
             try container.encode("setVolume", forKey: .type)
             try container.encode(data, forKey: .data)
-        case .clearIndicators:
-            try container.encode("clearIndicators", forKey: .type)
-        case .clearAll:
-            try container.encode("clearAll", forKey: .type)
-        default: break
+        case .setSuperTrend(let data, let trendData, let strengthData):
+            try container.encode("setSuperTrend", forKey: .type)
+            try container.encode(data, forKey: .data)
+            try container.encode(trendData, forKey: .trendData)
+            try container.encode(strengthData, forKey: .strengthData)
+        case .setPolynomialSR(let resistance, let support):
+            try container.encode("setPolynomialSR", forKey: .type)
+            try container.encode(resistance, forKey: .resistance)
+            try container.encode(support, forKey: .support)
+        case .setPivotLevels(let levels):
+            try container.encode("setPivotLevels", forKey: .type)
+            try container.encode(levels, forKey: .levels)
+        case .setLogisticSR(let levels):
+            try container.encode("setLogisticSR", forKey: .type)
+            try container.encode(levels, forKey: .levels)
+        case .hidePanel(let panel):
+            try container.encode("hidePanel", forKey: .type)
+            try container.encode(panel, forKey: .panel)
+        case .removeVolumeProfile:
+            try container.encode("removeVolumeProfile", forKey: .type)
+        case .removePriceLines(let category):
+            try container.encode("removePriceLines", forKey: .type)
+            try container.encode(category, forKey: .category)
         }
     }
 }
@@ -517,14 +494,14 @@ final class ChartBridge: NSObject, ObservableObject {
 
     /// Set Volume data with color based on price direction
     func setVolume(bars: [OHLCBar]) {
-        let volumeData = bars.enumerated().map { index, bar -> VolumeDataPoint in
-            // Determine direction by comparing close to open
+        let sortedBars = bars.sorted { $0.ts < $1.ts }
+        let volumeData = sortedBars.map { bar -> VolumeDataPoint in
             let direction = bar.close >= bar.open ? "up" : "down"
             return VolumeDataPoint(
                 time: Int(bar.ts.timeIntervalSince1970),
                 value: bar.volume,
                 direction: direction,
-                color: nil  // Let JS apply default colors
+                color: nil
             )
         }
         send(.setVolume(data: volumeData))
@@ -532,9 +509,10 @@ final class ChartBridge: NSObject, ObservableObject {
 
     /// Set intraday overlay (highlighted bars for today's data)
     func setIntradayOverlay(from bars: [OHLCBar]) {
-        guard !bars.isEmpty else { return }
+        let sortedBars = bars.sorted { $0.ts < $1.ts }
+        guard !sortedBars.isEmpty else { return }
         
-        let candles = bars.map { bar in
+        let candles = sortedBars.map { bar in
             LightweightCandle(
                 time: Int(bar.ts.timeIntervalSince1970),
                 open: bar.open,
@@ -544,7 +522,6 @@ final class ChartBridge: NSObject, ObservableObject {
             )
         }
         
-        // Use a special series for intraday with different styling
         send(.setLine(id: "intraday_overlay", data: candles.map { candle in
             LightweightDataPoint(time: candle.time, value: candle.close)
         }, options: LineOptions(
@@ -763,3 +740,4 @@ extension ChartBridge: WKScriptMessageHandler {
         }
     }
 }
+

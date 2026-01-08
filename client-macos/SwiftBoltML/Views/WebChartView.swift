@@ -173,17 +173,29 @@ struct WebChartView: NSViewRepresentable {
                 return
             }
             
-            // Clear previous overlays/indicators (keeps candles)
-            bridge.send(.clearIndicators)
-
-            // Set historical candlestick data (solid, primary color)
-            bridge.setCandles(from: data.layers.historical.data)
+            // Choose base candles based on timeframe
+            let baseCandles: [OHLCBar]
+            if parent.viewModel.timeframe.isIntraday {
+                // For intraday timeframes, render intraday as main candles (fallback to historical)
+                let intradayBars = data.layers.intraday.data
+                let historicalBars = data.layers.historical.data
+                baseCandles = !intradayBars.isEmpty ? intradayBars : historicalBars
+            } else {
+                // For daily/weekly, combine historical + today's intraday
+                baseCandles = data.layers.historical.data + data.layers.intraday.data
+            }
             
-            // Add intraday overlay if present (highlighted, different color)
-            if data.hasIntraday {
+            // Set candlestick data
+            bridge.setCandles(from: baseCandles)
+            
+            // For non-intraday timeframes, overlay intraday as a line to highlight today
+            if !parent.viewModel.timeframe.isIntraday, data.hasIntraday {
                 bridge.setIntradayOverlay(from: data.layers.intraday.data)
             }
             
+            // Clear previous overlays/indicators (keeps candles)
+            bridge.send(.clearIndicators)
+
             // Add forecast data if present (dashed line with confidence bands)
             if data.hasForecast {
                 bridge.setForecastLayer(from: data.layers.forecast.data)
@@ -191,7 +203,6 @@ struct WebChartView: NSViewRepresentable {
             
             // Set indicators based on config (using combined historical + intraday data)
             let config = parent.viewModel.indicatorConfig
-            let allBars = data.allBars
             
             if config.showSMA20 {
                 bridge.setIndicator(

@@ -11,9 +11,9 @@ public enum Timeframe: String, CaseIterable, Codable, Hashable, Identifiable {
     /// Token sent to your API
     var apiToken: String {
         switch self {
-        case .m15: return "15m"
-        case .h1:  return "1h"
-        case .h4:  return "4h"
+        case .m15: return "m15"
+        case .h1:  return "h1"
+        case .h4:  return "h4"
         case .d1:  return "d1"
         case .w1:  return "w1"
         }
@@ -50,3 +50,4 @@ public enum Timeframe: String, CaseIterable, Codable, Hashable, Identifiable {
         }
     }
 }
+

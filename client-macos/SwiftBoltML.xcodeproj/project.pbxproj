@@ -7,8 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-56BCC553C667467C9F9DE1FA /* HydrationBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7156051C39BF4F2F832E38AA /* HydrationBanner.swift */; };
-296D2C72648D45A18BC89C2B /* EnsureCoverageResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10E36986FAE84774B166FF52 /* EnsureCoverageResponse.swift */; };
 		0B281429F99B764ACF20AE52 /* OptionsRankerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */; };
 		136FE9F67FA29A26AE074312 /* MultiTimeframeConsensusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144206D7859B6361AEFE13D9 /* MultiTimeframeConsensusView.swift */; };
 		1469ED89052E948868C57E9E /* PivotLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CE2E34EE4D81F3060BC9AF1 /* PivotLevel.swift */; };
@@ -16,10 +14,12 @@
 		1B3F554CCC5B9C65482F52FA /* WatchlistModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A4D3D1FC85DBCBD8C45CCA5 /* WatchlistModels.swift */; };
 		1BDFCE3875F6A7EC02CBAA92 /* SuperTrendChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D749EA683B66324ED10E4516 /* SuperTrendChartView.swift */; };
 		26A69A6B13674A40E8339202 /* OptionsRankerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0128CA566A7D864E3938B3FA /* OptionsRankerViewModel.swift */; };
+		296D2C72648D45A18BC89C2B /* EnsureCoverageResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10E36986FAE84774B166FF52 /* EnsureCoverageResponse.swift */; };
 		29A803E54D93C7BF1DAAF99A /* ForecastAccuracyTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2105D896E918ACDCE342EFA /* ForecastAccuracyTabView.swift */; };
 		2B0B27F844CF7F11D77399D7 /* ScannerResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BED859934C91510459C2BF0 /* ScannerResponse.swift */; };
 		2FC800BC68800F807D6266D0 /* AnalysisViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FB6D0158AE11968F0D3B3C2 /* AnalysisViewModel.swift */; };
 		4529AC756E5F22D03E743400 /* ChartBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B29181F82545367180388B23 /* ChartBridge.swift */; };
+		56BCC553C667467C9F9DE1FA /* HydrationBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7156051C39BF4F2F832E38AA /* HydrationBanner.swift */; };
 		5923E745F36FE9C0C2BAA37F /* SuperTrendAIIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B73A321AD0316BC1B2434132 /* SuperTrendAIIndicator.swift */; };
 		5B4804E93563C0B541E658BF /* index.html in Resources */ = {isa = PBXBuildFile; fileRef = D16118E869A5401A364A0832 /* index.html */; };
 		611D5562963D3AAE070CC72B /* EnhancedPredictionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A51D8136CB3AF96EBB360E /* EnhancedPredictionModels.swift */; };
@@ -77,6 +77,7 @@
 		F6161BC12EF2D49A0065ABA1 /* OptionRankDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6161BBE2EF2D49A0065ABA1 /* OptionRankDetailView.swift */; };
 		F64681A92EF0E00900FBEF04 /* MLReportCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F64681A82EF0E00900FBEF04 /* MLReportCard.swift */; };
 		F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */; };
+		F6F972F42F0F72670010C828 /* ChartCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F972F32F0F72670010C828 /* ChartCache.swift */; };
 		F6FD04842F0D8B0C00AF337E /* Timeframe.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6FD04832F0D8B0C00AF337E /* Timeframe.swift */; };
 		FF7F2A0E2FD7B4A0009F9712 /* QuoteResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */; };
 		OHC10001233456780000001 /* OptionHistoryChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = OHC20001233456780000001 /* OptionHistoryChartView.swift */; };
@@ -88,11 +89,10 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-7156051C39BF4F2F832E38AA /* HydrationBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HydrationBanner.swift; sourceTree = "<group>"; };
-10E36986FAE84774B166FF52 /* EnsureCoverageResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnsureCoverageResponse.swift; sourceTree = "<group>"; };
 		0128CA566A7D864E3938B3FA /* OptionsRankerViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerViewModel.swift; sourceTree = "<group>"; };
 		07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerView.swift; sourceTree = "<group>"; };
 		0A4D3D1FC85DBCBD8C45CCA5 /* WatchlistModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchlistModels.swift; sourceTree = "<group>"; };
+		10E36986FAE84774B166FF52 /* EnsureCoverageResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnsureCoverageResponse.swift; sourceTree = "<group>"; };
 		144206D7859B6361AEFE13D9 /* MultiTimeframeConsensusView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MultiTimeframeConsensusView.swift; sourceTree = "<group>"; };
 		248D34C92FA787119F3187CE /* PivotLevelsIndicator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PivotLevelsIndicator.swift; sourceTree = "<group>"; };
 		2FB6D0158AE11968F0D3B3C2 /* AnalysisViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AnalysisViewModel.swift; sourceTree = "<group>"; };
@@ -100,6 +100,7 @@
 		33A7027FA21F544B41C22B1F /* DataHealthView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DataHealthView.swift; sourceTree = "<group>"; };
 		495F16DC7FC5729654ADE6C7 /* MLDashboardModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MLDashboardModels.swift; sourceTree = "<group>"; };
 		6BED859934C91510459C2BF0 /* ScannerResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ScannerResponse.swift; sourceTree = "<group>"; };
+		7156051C39BF4F2F832E38AA /* HydrationBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HydrationBanner.swift; sourceTree = "<group>"; };
 		73AD50F0BE1D403ABA5D67BA /* tooltip-enhanced.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "tooltip-enhanced.js"; sourceTree = "<group>"; };
 		78170FE468AE321CB9A91BD5 /* SuperTrendChartData.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SuperTrendChartData.swift; sourceTree = "<group>"; };
 		83A51D8136CB3AF96EBB360E /* EnhancedPredictionModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EnhancedPredictionModels.swift; sourceTree = "<group>"; };
@@ -159,6 +160,8 @@
 		F6161BBF2EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsRankerExpiryView.swift; sourceTree = "<group>"; };
 		F64681A82EF0E00900FBEF04 /* MLReportCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLReportCard.swift; sourceTree = "<group>"; };
 		F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastHorizonsView.swift; sourceTree = "<group>"; };
+		F6F972F32F0F72670010C828 /* ChartCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartCache.swift; sourceTree = "<group>"; };
+		F6F972F52F0F72B40010C828 /* TestPlan.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = TestPlan.xctestplan; sourceTree = "<group>"; };
 		F6FD04832F0D8B0C00AF337E /* Timeframe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Timeframe.swift; sourceTree = "<group>"; };
 		F857540C973ADC971FC52E92 /* SupportResistanceOverlayView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SupportResistanceOverlayView.swift; sourceTree = "<group>"; };
 		F903565D8F0B0D702A53E8B0 /* lightweight-charts.standalone.production.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = "lightweight-charts.standalone.production.js"; sourceTree = "<group>"; };
@@ -185,6 +188,7 @@
 		A5000001233456780000001 = {
 			isa = PBXGroup;
 			children = (
+				F6F972F52F0F72B40010C828 /* TestPlan.xctestplan */,
 				A5000002233456780000002 /* SwiftBoltML */,
 				A5000010233456780000010 /* Products */,
 				F6FD047F2F0D764400AF337E /* Recovered References */,
@@ -249,8 +253,8 @@
 				F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */,
 				F050475A57EE1E86842D9FB8 /* WebChartView.swift */,
 				WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */,
-			
-				7156051C39BF4F2F832E38AA /* HydrationBanner.swift */,);
+				7156051C39BF4F2F832E38AA /* HydrationBanner.swift */,
+			);
 			path = Views;
 			sourceTree = "<group>";
 		};
@@ -292,8 +296,8 @@
 				9CE2E34EE4D81F3060BC9AF1 /* PivotLevel.swift */,
 				78170FE468AE321CB9A91BD5 /* SuperTrendChartData.swift */,
 				FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */,
-			
-				10E36986FAE84774B166FF52 /* EnsureCoverageResponse.swift */,);
+				10E36986FAE84774B166FF52 /* EnsureCoverageResponse.swift */,
+			);
 			path = Models;
 			sourceTree = "<group>";
 		};
@@ -309,6 +313,7 @@
 				EA6C3F9FCEAD53FBEF384F10 /* LogisticRegressionIndicator.swift */,
 				B73A321AD0316BC1B2434132 /* SuperTrendAIIndicator.swift */,
 				B29181F82545367180388B23 /* ChartBridge.swift */,
+				F6F972F32F0F72670010C828 /* ChartCache.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -474,6 +479,7 @@
 				SR0000012345678900000003 /* SupportResistanceView.swift in Sources */,
 				F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */,
 				SA0000012345678900000003 /* StrikeAnalysisView.swift in Sources */,
+				F6F972F42F0F72670010C828 /* ChartCache.swift in Sources */,
 				80B1B38AB6AA986B4B10DD85 /* MLAccuracyModels.swift in Sources */,
 				TRGA0000123456789ABCDEF /* GAStrategyModels.swift in Sources */,
 				29A803E54D93C7BF1DAAF99A /* ForecastAccuracyTabView.swift in Sources */,
@@ -493,9 +499,9 @@
 				4529AC756E5F22D03E743400 /* ChartBridge.swift in Sources */,
 				89DD292B67C2CFAB0A8731F5 /* WebChartView.swift in Sources */,
 				WC734A8413BAD142EF9439139C /* WebChartControlsView.swift in Sources */,
-			
 				296D2C72648D45A18BC89C2B /* EnsureCoverageResponse.swift in Sources */,
-				56BCC553C667467C9F9DE1FA /* HydrationBanner.swift in Sources */,);
+				56BCC553C667467C9F9DE1FA /* HydrationBanner.swift in Sources */,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */

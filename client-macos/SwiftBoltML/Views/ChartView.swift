@@ -189,7 +189,7 @@ struct ChartView: View {
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
-        .task(id: chartViewModel.selectedSymbol?.ticker ?? "" + "|" + chartViewModel.timeframe.rawValue) {
+        .task(id: (chartViewModel.selectedSymbol?.ticker ?? "") + "|" + chartViewModel.timeframe.rawValue) {
             // Single deterministic trigger - reload when symbol|timeframe changes
             await chartViewModel.loadChart()
         }
