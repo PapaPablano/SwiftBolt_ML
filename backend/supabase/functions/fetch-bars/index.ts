@@ -138,9 +138,22 @@ Deno.serve(async (req) => {
     // Upsert bars into ohlc_bars_v2
     let rowsWritten = 0;
     if (bars.length > 0) {
+      // Get symbol_id from symbols table
+      const { data: symbolData, error: symbolError } = await supabase
+        .from("symbols")
+        .select("id")
+        .eq("ticker", symbol)
+        .single();
+
+      if (symbolError || !symbolData) {
+        throw new Error(`Symbol not found: ${symbol}`);
+      }
+
+      const symbol_id = symbolData.id;
+
       const barsToInsert = bars.map((bar) => ({
-        symbol,
-        timeframe,
+        symbol_id,
+        timeframe: providerTimeframe,
         ts: new Date(bar.timestamp * 1000).toISOString(),
         open: bar.open,
         high: bar.high,
@@ -148,6 +161,7 @@ Deno.serve(async (req) => {
         close: bar.close,
         volume: bar.volume,
         provider,
+        is_intraday: ["m15", "h1", "h4"].includes(providerTimeframe),
         is_forecast: false,
       }));
 
@@ -159,7 +173,7 @@ Deno.serve(async (req) => {
         const { error: upsertError } = await supabase
           .from("ohlc_bars_v2")
           .upsert(batch, {
-            onConflict: "symbol,timeframe,ts",
+            onConflict: "symbol_id,timeframe,ts,provider,is_forecast",
             ignoreDuplicates: false, // Update existing rows
           });
 
