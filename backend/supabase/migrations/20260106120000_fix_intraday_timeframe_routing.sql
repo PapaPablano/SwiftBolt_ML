@@ -1,6 +1,7 @@
 -- Migration: Fix intraday timeframe routing in get_chart_data_v2
--- Problem: When client requests 15m/1h/4h, we need to query intraday_bars table
--- not ohlc_bars_v2 which only has daily data
+-- Problem: Client sends m15/h1/h4 but function was checking for 15m/1h/4h
+-- This caused all intraday requests to fall through to daily/weekly query path
+-- Fix: Use correct timeframe format matching client API tokens (m15, h1, h4)
 
 DROP FUNCTION IF EXISTS get_chart_data_v2(UUID, VARCHAR(10), TIMESTAMP WITH TIME ZONE, TIMESTAMP WITH TIME ZONE);
 
@@ -30,19 +31,19 @@ DECLARE
   v_intraday_tf TEXT;
 BEGIN
   -- Determine if this is an intraday timeframe request
-  v_is_intraday_tf := p_timeframe IN ('15m', '1h', '4h');
-  
+  v_is_intraday_tf := p_timeframe IN ('m15', 'h1', 'h4');
+
   -- Map timeframe to intraday_bars format
   v_intraday_tf := CASE p_timeframe
-    WHEN '15m' THEN '15m'
-    WHEN '1h' THEN '15m'  -- Aggregate 15m bars to 1h
-    WHEN '4h' THEN '15m'  -- Aggregate 15m bars to 4h
+    WHEN 'm15' THEN '15m'
+    WHEN 'h1' THEN '15m'  -- Aggregate 15m bars to 1h
+    WHEN 'h4' THEN '15m'  -- Aggregate 15m bars to 4h
     ELSE '15m'
   END;
 
   IF v_is_intraday_tf THEN
     -- Query intraday_bars table for 15m/1h/4h timeframes
-    IF p_timeframe = '15m' THEN
+    IF p_timeframe = 'm15' THEN
       -- Direct 15m bars
       RETURN QUERY
       SELECT 
@@ -65,8 +66,8 @@ BEGIN
         AND ib.ts >= p_start_date
         AND ib.ts <= p_end_date
       ORDER BY ib.ts ASC;
-      
-    ELSIF p_timeframe = '1h' THEN
+
+    ELSIF p_timeframe = 'h1' THEN
       -- Aggregate 15m bars to 1h
       RETURN QUERY
       WITH hourly_agg AS (
@@ -100,8 +101,8 @@ BEGIN
         NULL::DECIMAL(10,4) AS lower_band
       FROM hourly_agg ha
       ORDER BY ha.hour_ts ASC;
-      
-    ELSIF p_timeframe = '4h' THEN
+
+    ELSIF p_timeframe = 'h4' THEN
       -- Aggregate 15m bars to 4h
       RETURN QUERY
       WITH four_hour_agg AS (
@@ -193,7 +194,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-COMMENT ON FUNCTION get_chart_data_v2 IS 
+COMMENT ON FUNCTION get_chart_data_v2 IS
 'Returns chart data with proper timeframe routing:
-- 15m/1h/4h: Queries intraday_bars table, aggregates as needed
-- 1d/1w: Queries ohlc_bars_v2 with layer separation (yfinance > polygon > tradier > ml_forecast)';
+- m15/h1/h4: Queries intraday_bars table, aggregates as needed
+- d1/w1: Queries ohlc_bars_v2 with layer separation (yfinance > polygon > tradier > ml_forecast)';
