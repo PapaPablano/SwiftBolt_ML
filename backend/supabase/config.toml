@@ -74,6 +74,12 @@ verify_jwt = false  # TODO: Enable JWT verification for production
 [functions.refresh-data]
 verify_jwt = false  # TODO: Enable JWT verification for production
 
+[functions.fetch-bars]
+verify_jwt = false  # Internal function called by orchestrator
+
+[functions.orchestrator]
+verify_jwt = false  # Internal function called by pg_cron
+
 [analytics]
 enabled = false
 
