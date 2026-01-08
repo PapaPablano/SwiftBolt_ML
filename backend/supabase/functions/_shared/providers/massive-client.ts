@@ -427,6 +427,101 @@ export class MassiveClient implements DataProviderAbstraction {
     }
   }
 
+  /**
+   * Fetch paginated m15 bars (unadjusted) for resampling
+   * Respects existing rate limiter and cache
+   * Returns bars with START timestamps (Polygon's t field)
+   */
+  async fetchM15Paginated(
+    symbol: string,
+    startTimestamp: number, // Unix seconds
+    endTimestamp: number    // Unix seconds
+  ): Promise<Bar[]> {
+    const cacheKey = `bars:massive:${symbol}:m15:${startTimestamp}:${endTimestamp}:paginated`;
+    const cached = await this.cache.get<Bar[]>(cacheKey);
+    
+    if (cached) {
+      console.log(`[Massive] Using cached m15 data for ${symbol} (${cached.length} bars)`);
+      return cached;
+    }
+    
+    const ticker = symbol.toUpperCase();
+    const allBars: Bar[] = [];
+    
+    // Format as milliseconds for intraday
+    const formatTs = (ts: number) => (ts * 1000).toString();
+    
+    let nextUrl: string | null = null;
+    let pageCount = 0;
+    const maxPages = 50; // Safety limit (50k bars per page = 2.5M bars max)
+    
+    do {
+      await this.rateLimiter.acquire("massive");
+      
+      const url = nextUrl || new URL(
+        `${this.baseURL}/v2/aggs/ticker/${ticker}/range/15/minute/${formatTs(startTimestamp)}/${formatTs(endTimestamp)}`
+      ).toString();
+      
+      if (!nextUrl) {
+        const urlObj = new URL(url);
+        urlObj.searchParams.set("adjusted", "false");
+        urlObj.searchParams.set("sort", "asc");
+        urlObj.searchParams.set("limit", "50000");
+        urlObj.searchParams.set("apiKey", this.apiKey);
+        nextUrl = urlObj.toString();
+      }
+      
+      console.log(`[Massive] Fetching m15 page ${pageCount + 1} for ${symbol}`);
+      
+      try {
+        const response = await fetch(nextUrl);
+        await this.handleHttpErrors(response);
+        
+        const data: PolygonAggregatesResponse = await response.json();
+        
+        if (data.status === "ERROR") {
+          throw new ProviderError(
+            "Polygon returned error status",
+            "massive",
+            "API_ERROR"
+          );
+        }
+        
+        if (data.results && data.results.length > 0) {
+          const bars: Bar[] = data.results.map((bar) => ({
+            timestamp: bar.t, // ← Polygon's window START (ms)
+            open: bar.o,
+            high: bar.h,
+            low: bar.l,
+            close: bar.c,
+            volume: bar.v,
+          }));
+          
+          allBars.push(...bars);
+          console.log(`[Massive] Page ${pageCount + 1}: ${bars.length} bars (total: ${allBars.length})`);
+        }
+        
+        nextUrl = data.next_url ? `${data.next_url}&apiKey=${this.apiKey}` : null;
+        pageCount++;
+        
+      } catch (error) {
+        console.error(`[Massive] Error fetching m15 page ${pageCount + 1}:`, error);
+        throw this.mapError(error);
+      }
+      
+    } while (nextUrl && pageCount < maxPages);
+    
+    console.log(`[Massive] Fetched ${allBars.length} m15 bars across ${pageCount} pages`);
+    
+    // Cache for 1 hour (m15 is relatively stable)
+    await this.cache.set(cacheKey, allBars, 3600, [
+      `symbol:${symbol}`,
+      "timeframe:m15",
+    ]);
+    
+    return allBars;
+  }
+
   async healthCheck(): Promise<boolean> {
     try {
       // Simple health check: fetch quote for a known symbol

@@ -6,6 +6,8 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { getProviderRouter } from "../_shared/providers/factory.ts";
 import type { Bar } from "../_shared/providers/types.ts";
 import { ProviderError, RateLimitExceededError } from "../_shared/providers/types.ts";
+import { fetchBarsWithResampling } from "../_shared/services/bar-fetcher.ts";
+import { FEATURE_FLAGS, logFeatureFlags } from "../_shared/config/feature-flags.ts";
 
 interface FetchBarsRequest {
   job_run_id: string;
@@ -63,33 +65,42 @@ Deno.serve(async (req) => {
       started_at: new Date().toISOString(),
     });
 
+    // Log feature flags on first run
+    logFeatureFlags();
+
     // Initialize provider router
     const router = getProviderRouter();
 
     // Map timeframe to provider format
     const providerTimeframe = TIMEFRAME_MAP[timeframe] || timeframe;
 
-    // Fetch bars from provider
+    // Fetch bars from provider (with optional resampling)
     const fromDate = new Date(from);
     const toDate = new Date(to);
     
     let bars: Bar[] = [];
     let provider = "unknown";
+    let wasResampled = false;
 
     try {
-      bars = await router.getHistoricalBars({
+      // Use new bar fetcher with resampling support
+      const result = await fetchBarsWithResampling(router, {
         symbol,
-        timeframe: providerTimeframe as any,
-        start: Math.floor(fromDate.getTime() / 1000),
-        end: Math.floor(toDate.getTime() / 1000),
+        timeframe: providerTimeframe,
+        startTimestamp: Math.floor(fromDate.getTime() / 1000),
+        endTimestamp: Math.floor(toDate.getTime() / 1000),
+        includeIndicators: FEATURE_FLAGS.ATTACH_INDICATORS,
       });
 
-      // Determine which provider was used (check router health status)
-      const healthStatus = router.getHealthStatus();
-      const isIntraday = ["m15", "h1", "h4"].includes(providerTimeframe);
-      provider = isIntraday ? "tradier" : "yahoo";
+      bars = result.bars;
+      provider = result.provider;
+      wasResampled = result.wasResampled;
 
-      console.log(`[fetch-bars] Fetched ${bars.length} bars from ${provider}`);
+      if (wasResampled) {
+        console.log(`[fetch-bars] Resampled ${result.originalCount} m15 bars → ${bars.length} ${providerTimeframe} bars from ${provider}`);
+      } else {
+        console.log(`[fetch-bars] Fetched ${bars.length} bars from ${provider}`);
+      }
     } catch (error) {
       console.error(`[fetch-bars] Provider error:`, error);
       
@@ -151,19 +162,30 @@ Deno.serve(async (req) => {
 
       const symbol_id = symbolData.id;
 
-      const barsToInsert = bars.map((bar) => ({
-        symbol_id,
-        timeframe: providerTimeframe,
-        ts: new Date(bar.timestamp * 1000).toISOString(),
-        open: bar.open,
-        high: bar.high,
-        low: bar.low,
-        close: bar.close,
-        volume: bar.volume,
-        provider,
-        is_intraday: ["m15", "h1", "h4"].includes(providerTimeframe),
-        is_forecast: false,
-      }));
+      const barsToInsert = bars
+        .filter((bar) => {
+          // Validate timestamp is reasonable (between 1970 and 2100)
+          const year = new Date(bar.timestamp).getFullYear();
+          if (year < 1970 || year > 2100) {
+            console.warn(`[fetch-bars] Skipping bar with invalid timestamp: ${bar.timestamp} (year: ${year})`);
+            return false;
+          }
+          return true;
+        })
+        .map((bar) => ({
+          symbol_id,
+          timeframe: providerTimeframe,
+          ts: new Date(bar.timestamp).toISOString(),
+          open: bar.open,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close,
+          volume: bar.volume,
+          provider,
+          is_intraday: ["m15", "h1", "h4"].includes(providerTimeframe),
+          is_forecast: false,
+          // Note: Indicators (ema_20, rsi_14, etc.) are computed on-read, not stored
+        }));
 
       // Batch upsert (Supabase has a 1000 row limit per request)
       const batchSize = 1000;
