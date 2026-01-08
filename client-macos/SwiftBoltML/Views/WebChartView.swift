@@ -196,9 +196,15 @@ struct WebChartView: NSViewRepresentable {
             // Clear previous overlays/indicators (keeps candles)
             bridge.send(.clearIndicators)
 
-            // Add forecast data if present (dashed line with confidence bands)
+            // Add forecast data if present
             if data.hasForecast {
-                bridge.setForecastLayer(from: data.layers.forecast.data)
+                if parent.viewModel.timeframe.isIntraday {
+                    // For intraday, show forecast as translucent candlesticks overlay
+                    bridge.setForecastCandles(from: data.layers.forecast.data)
+                } else {
+                    // For higher timeframes, show dashed line with confidence bands
+                    bridge.setForecastLayer(from: data.layers.forecast.data)
+                }
             }
             
             // Set indicators based on config (using combined historical + intraday data)
@@ -695,8 +701,23 @@ struct WebChartView: NSViewRepresentable {
             let sorted = bars.sorted { $0.ts < $1.ts }
             guard let last = sorted.last else { return }
 
+            // Timeframe-aware lookback
+            let lookbackSeconds: TimeInterval
+            switch parent.viewModel.timeframe {
+            case .m15:
+                lookbackSeconds = 5 * 24 * 60 * 60   // last 5 days for 15m
+            case .h1:
+                lookbackSeconds = 30 * 24 * 60 * 60  // last 30 days for 1h
+            case .h4:
+                lookbackSeconds = 90 * 24 * 60 * 60  // last 90 days for 4h
+            case .d1:
+                lookbackSeconds = 180 * 24 * 60 * 60 // last ~6 months for daily
+            case .w1:
+                lookbackSeconds = 2 * 365 * 24 * 60 * 60 // last 2 years for weekly
+            }
+
             let endDate = last.ts
-            let startTarget = endDate.addingTimeInterval(-90 * 24 * 60 * 60)
+            let startTarget = endDate.addingTimeInterval(-lookbackSeconds)
             let startBar = sorted.first(where: { $0.ts >= startTarget }) ?? sorted.first
             guard let start = startBar else { return }
 
@@ -922,3 +943,4 @@ struct WebChartPreviewContainer: View {
 #Preview("Standalone Container") {
     WebChartPreviewContainer()
 }
+

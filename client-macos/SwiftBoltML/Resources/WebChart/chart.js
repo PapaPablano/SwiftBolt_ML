@@ -620,6 +620,36 @@ removeSeries: function(id) {
         },
 
         /**
+         * Set forecast as overlay candlestick series (intraday-specific)
+         */
+        setForecastCandles: function(data) {
+            if (!state.chart) {
+                console.error('[ChartJS] Chart not initialized');
+                return;
+            }
+
+            // Create forecast candle series if it doesn't exist
+            if (!state.series.forecast_candles) {
+                state.series.forecast_candles = state.chart.addCandlestickSeries({
+                    upColor: '#4de68080',
+                    downColor: '#ff595980',
+                    borderUpColor: '#4de680',
+                    borderDownColor: '#ff5959',
+                    wickUpColor: '#4de680',
+                    wickDownColor: '#ff5959',
+                    priceLineVisible: false,
+                    lastValueVisible: true
+                });
+            }
+
+            // Sort data by time and apply
+            const sortedData = [...data].sort((a, b) => a.time - b.time);
+            state.series.forecast_candles.setData(sortedData);
+
+            console.log('[ChartJS] Forecast candles set:', sortedData.length);
+        },
+
+        /**
          * Add markers (buy/sell signals)
          */
         setMarkers: function(seriesId, markers) {
@@ -1257,6 +1287,9 @@ removeSeries: function(id) {
                         break;
                     case 'setForecast':
                         this.setForecast(cmd.midData, cmd.upperData, cmd.lowerData, cmd.options || {});
+                        break;
+                    case 'setForecastCandles':
+                        this.setForecastCandles(cmd.data);
                         break;
                     case 'setMarkers':
                         this.setMarkers(cmd.seriesId, cmd.markers);

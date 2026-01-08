@@ -10,6 +10,7 @@ enum ChartCommand: Encodable {
     case setCandles(data: [LightweightCandle])
     case updateCandle(candle: LightweightCandle)
     case setLine(id: String, data: [LightweightDataPoint], options: LineOptions?)
+    case setForecastCandles(data: [LightweightCandle])
     case setForecast(midData: [LightweightDataPoint], upperData: [LightweightDataPoint], lowerData: [LightweightDataPoint], options: ForecastOptions?)
     case setMarkers(seriesId: String, markers: [ChartMarker])
     case addPriceLine(seriesId: String, price: Double, options: PriceLineOptions?)
@@ -62,6 +63,9 @@ enum ChartCommand: Encodable {
             try container.encode(id, forKey: .id)
             try container.encode(data, forKey: .data)
             try container.encodeIfPresent(options, forKey: .options)
+        case .setForecastCandles(let data):
+            try container.encode("setForecastCandles", forKey: .type)
+            try container.encode(data, forKey: .data)
         case .setForecast(let midData, let upperData, let lowerData, let options):
             try container.encode("setForecast", forKey: .type)
             try container.encode(midData, forKey: .midData)
@@ -532,6 +536,24 @@ final class ChartBridge: NSObject, ObservableObject {
         )))
     }
     
+    /// Set forecast as an overlay candlestick series (for intraday)
+    func setForecastCandles(from bars: [OHLCBar]) {
+        let sortedBars = bars.sorted { $0.ts < $1.ts }
+        guard !sortedBars.isEmpty else { return }
+        
+        let candles = sortedBars.map { bar in
+            LightweightCandle(
+                time: Int(bar.ts.timeIntervalSince1970),
+                open: bar.open,
+                high: bar.high,
+                low: bar.low,
+                close: bar.close
+            )
+        }
+        
+        send(.setForecastCandles(data: candles))
+    }
+    
     /// Set forecast layer (dashed line with confidence bands)
     func setForecastLayer(from bars: [OHLCBar]) {
         guard !bars.isEmpty else { return }
@@ -550,13 +572,20 @@ final class ChartBridge: NSObject, ObservableObject {
             return LightweightDataPoint(time: Int(bar.ts.timeIntervalSince1970), value: lower)
         }
         
+        // Direction-aware color based on forecast slope
+        let firstClose = bars.first?.close ?? 0
+        let lastClose = bars.last?.close ?? 0
+        let isUp = lastClose >= firstClose
+        let color = isUp ? "#4de680" : "#ff5959"
+        let bandColor = isUp ? "rgba(77, 230, 128, 0.2)" : "rgba(255, 89, 89, 0.2)"
+        
         send(.setForecast(
             midData: midPoints,
             upperData: upperPoints,
             lowerData: lowerPoints,
             options: ForecastOptions(
-                color: "#9c27b0",
-                bandColor: "rgba(156, 39, 176, 0.2)"
+                color: color,
+                bandColor: bandColor
             )
         ))
     }

@@ -50,7 +50,11 @@ class OptionsRankerViewModel: ObservableObject {
     @Published var useGAFilter: Bool = false
     @Published var isLoadingGA: Bool = false
 
+    @Published var isAutoRefreshing: Bool = false
+    @Published var autoRefreshInterval: TimeInterval?
+
     private var cancellables = Set<AnyCancellable>()
+    private var quoteTimerCancellable: AnyCancellable?
 
     enum RankingStatus {
         case unknown
@@ -203,6 +207,9 @@ class OptionsRankerViewModel: ObservableObject {
     }
 
     func refreshQuotes(for symbol: String) async {
+        // Avoid overlapping refreshes if a previous request is in-flight
+        if isRefreshingQuotes { return }
+
         guard !rankings.isEmpty else { return }
         let contracts = rankings.map { $0.contractSymbol }
         guard !contracts.isEmpty else { return }
@@ -336,5 +343,53 @@ class OptionsRankerViewModel: ObservableObject {
     func passesGAEntry(rank: OptionRank) -> Bool {
         guard let genes = gaStrategy?.genes else { return true }
         return rank.passesGAFilters(genes)
+    }
+
+    // MARK: - Auto Refresh Quotes
+
+    func startAutoRefresh(for symbol: String) {
+        stopAutoRefresh()
+
+        // Choose interval based on market hours
+        let interval: TimeInterval = isMarketOpen() ? 15 : 90
+        autoRefreshInterval = interval
+        isAutoRefreshing = true
+
+        quoteTimerCancellable = Timer
+            .publish(every: interval, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                Task { [weak self] in
+                    guard let self = self else { return }
+                    await self.refreshQuotes(for: symbol)
+                }
+            }
+    }
+
+    func stopAutoRefresh() {
+        quoteTimerCancellable?.cancel()
+        quoteTimerCancellable = nil
+        isAutoRefreshing = false
+        autoRefreshInterval = nil
+    }
+
+    private func isMarketOpen() -> Bool {
+        // Simple market hours check for NYSE/Nasdaq: 9:30–16:00 ET, Mon–Fri
+        // This is a heuristic; replace with an exchange calendar if available.
+        let tz = TimeZone(identifier: "America/New_York") ?? .current
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = tz
+
+        let now = Date()
+        let comps = calendar.dateComponents([.weekday, .hour, .minute], from: now)
+        guard let weekday = comps.weekday, let hour = comps.hour, let minute = comps.minute else { return false }
+        // Weekday 1=Sun, 7=Sat; open Mon–Fri
+        guard (2...6).contains(weekday) else { return false }
+
+        let minutesSinceMidnight = hour * 60 + minute
+        let openMinutes = 9 * 60 + 30   // 9:30
+        let closeMinutes = 16 * 60      // 16:00
+        return minutesSinceMidnight >= openMinutes && minutesSinceMidnight < closeMinutes
     }
 }

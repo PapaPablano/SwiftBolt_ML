@@ -32,6 +32,7 @@ struct OptionsRankerView: View {
             if let symbol = newValue?.ticker {
                 Task {
                     await rankerViewModel.loadRankings(for: symbol)
+                    rankerViewModel.startAutoRefresh(for: symbol)
                 }
             }
         }
@@ -39,8 +40,12 @@ struct OptionsRankerView: View {
             if let symbol = appViewModel.selectedSymbol?.ticker {
                 Task {
                     await rankerViewModel.loadRankings(for: symbol)
+                    rankerViewModel.startAutoRefresh(for: symbol)
                 }
             }
+        }
+        .onDisappear {
+            rankerViewModel.stopAutoRefresh()
         }
     }
 }
@@ -183,6 +188,18 @@ struct RankerHeader: View {
                     Text(status)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                }
+
+                if rankerViewModel.isAutoRefreshing, let interval = rankerViewModel.autoRefreshInterval {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 6, height: 6)
+                            .shadow(color: .green.opacity(0.6), radius: 3)
+                        Text("LIVE • \(Int(interval))s")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Text("\(rankerViewModel.filteredRankings.count) contracts")
@@ -743,3 +760,4 @@ struct GeneratingRankingsView: View {
         .environmentObject(AppViewModel())
         .frame(width: 400, height: 600)
 }
+
