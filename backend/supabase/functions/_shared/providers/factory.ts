@@ -8,6 +8,7 @@ import { FinnhubClient } from "./finnhub-client.ts";
 import { MassiveClient } from "./massive-client.ts";
 import { YahooFinanceClient } from "./yahoo-finance-client.ts";
 import { TradierClient } from "./tradier-client.ts";
+import { AlpacaClient } from "./alpaca-client.ts";
 import { ProviderRouter } from "./router.ts";
 import type { ProviderId } from "./types.ts";
 
@@ -40,6 +41,8 @@ export function initializeProviders(): ProviderRouter {
   const finnhubApiKey = Deno.env.get("FINNHUB_API_KEY");
   const massiveApiKey = Deno.env.get("MASSIVE_API_KEY");
   const tradierApiKey = Deno.env.get("TRADIER_API_KEY");
+  const alpacaApiKey = Deno.env.get("ALPACA_API_KEY");
+  const alpacaApiSecret = Deno.env.get("ALPACA_API_SECRET");
 
   if (!finnhubApiKey || !massiveApiKey) {
     throw new Error("Missing required API keys: FINNHUB_API_KEY and MASSIVE_API_KEY");
@@ -47,6 +50,10 @@ export function initializeProviders(): ProviderRouter {
 
   if (!tradierApiKey) {
     console.warn("[Provider Factory] TRADIER_API_KEY not set - intraday data will be limited");
+  }
+
+  if (!alpacaApiKey || !alpacaApiSecret) {
+    console.warn("[Provider Factory] ALPACA_API_KEY or ALPACA_API_SECRET not set - Alpaca provider will not be available");
   }
 
   const finnhubClient = new FinnhubClient(
@@ -66,6 +73,7 @@ export function initializeProviders(): ProviderRouter {
   );
 
   const tradierClient = tradierApiKey ? new TradierClient(tradierApiKey) : null;
+  const alpacaClient = (alpacaApiKey && alpacaApiSecret) ? new AlpacaClient(alpacaApiKey, alpacaApiSecret) : null;
 
   console.log("[Provider Factory] Provider clients initialized");
 
@@ -80,19 +88,23 @@ export function initializeProviders(): ProviderRouter {
     providers.tradier = tradierClient;
   }
 
-  // Custom policy: Tradier for intraday (m15, h1), Yahoo for historical (d1, w1)
+  if (alpacaClient) {
+    providers.alpaca = alpacaClient;
+  }
+
+  // Custom policy: Alpaca for real-time, Yahoo for historical, Tradier for intraday
   const policy = {
     quote: {
-      primary: "tradier" as ProviderId,
+      primary: alpacaClient ? "alpaca" as ProviderId : "tradier" as ProviderId,
       fallback: "finnhub" as ProviderId,
     },
     historicalBars: {
-      primary: "yahoo" as ProviderId, // Yahoo for historical, Tradier for intraday (handled in router)
+      primary: alpacaClient ? "alpaca" as ProviderId : "yahoo" as ProviderId, // Alpaca preferred, fallback to Yahoo
       fallback: "finnhub" as ProviderId,
     },
     news: {
-      primary: "finnhub" as ProviderId,
-      fallback: undefined,
+      primary: alpacaClient ? "alpaca" as ProviderId : "finnhub" as ProviderId,
+      fallback: "finnhub" as ProviderId,
     },
     optionsChain: {
       primary: "yahoo" as ProviderId,

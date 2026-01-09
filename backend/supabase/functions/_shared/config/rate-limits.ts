@@ -25,6 +25,21 @@ export function getRateLimits(): Record<ProviderId, RateLimitConfig> {
       maxPerSecond: parseInt(Deno.env.get("MASSIVE_MAX_RPS") || "1", 10),
       maxPerMinute: parseInt(Deno.env.get("MASSIVE_MAX_RPM") || "5", 10),
     },
+    yahoo: {
+      // Yahoo Finance has no official rate limits but be conservative
+      maxPerSecond: parseInt(Deno.env.get("YAHOO_MAX_RPS") || "5", 10),
+      maxPerMinute: parseInt(Deno.env.get("YAHOO_MAX_RPM") || "100", 10),
+    },
+    tradier: {
+      // Tradier: 120 calls/min on free tier
+      maxPerSecond: parseInt(Deno.env.get("TRADIER_MAX_RPS") || "10", 10),
+      maxPerMinute: parseInt(Deno.env.get("TRADIER_MAX_RPM") || "120", 10),
+    },
+    alpaca: {
+      // Free tier: ~200 calls/min, Paid tier: unlimited (set to high value)
+      maxPerSecond: parseInt(Deno.env.get("ALPACA_MAX_RPS") || "10", 10),
+      maxPerMinute: parseInt(Deno.env.get("ALPACA_MAX_RPM") || "200", 10),
+    },
   };
 }
 
