@@ -29,14 +29,14 @@ jobs:
       - name: Process backfill chunk
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           echo "Worker ${{ matrix.worker }} processing chunk..."
           
           RESPONSE=$(curl -f -X POST \
             "${SUPABASE_URL}/functions/v1/backfill-intraday-worker" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
             -d '{}' 2>&1)
           
           EXIT_CODE=$?
