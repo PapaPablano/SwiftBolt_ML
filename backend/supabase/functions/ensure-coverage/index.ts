@@ -22,6 +22,15 @@ interface EnsureCoverageResponse {
     last_success_at: string | null;
     gaps_found: number;
   };
+  backfill_progress?: {
+    total_slices: number;
+    completed_slices: number;
+    running_slices: number;
+    queued_slices: number;
+    failed_slices: number;
+    progress_percent: number;
+    bars_written: number;
+  };
 }
 
 Deno.serve(async (req) => {
@@ -105,14 +114,41 @@ Deno.serve(async (req) => {
     const gapsFound = gaps?.length || 0;
     console.log(`[ensure-coverage] Found ${gapsFound} gaps`);
 
-    // 4. If gaps exist, create job runs (orchestrator will pick them up)
+    // 4. Check backfill progress (for active jobs)
+    const { data: jobRuns } = await supabase
+      .from("job_runs")
+      .select("status, rows_written")
+      .eq("job_def_id", jobDef.id);
+
+    let backfillProgress;
+    if (jobRuns && jobRuns.length > 0) {
+      const totalSlices = jobRuns.length;
+      const completedSlices = jobRuns.filter((j: any) => j.status === "success").length;
+      const runningSlices = jobRuns.filter((j: any) => j.status === "running").length;
+      const queuedSlices = jobRuns.filter((j: any) => j.status === "queued").length;
+      const failedSlices = jobRuns.filter((j: any) => j.status === "failed").length;
+      const progressPercent = Math.round((completedSlices / totalSlices) * 100);
+      const barsWritten = jobRuns.reduce((sum: number, j: any) => sum + (j.rows_written || 0), 0);
+
+      backfillProgress = {
+        total_slices: totalSlices,
+        completed_slices: completedSlices,
+        running_slices: runningSlices,
+        queued_slices: queuedSlices,
+        failed_slices: failedSlices,
+        progress_percent: progressPercent,
+        bars_written: barsWritten,
+      };
+
+      console.log(`[ensure-coverage] Backfill progress: ${progressPercent}% (${completedSlices}/${totalSlices} slices, ${barsWritten} bars)`);
+    }
+
+    // 5. If gaps exist, orchestrator will create more slices
     if (gapsFound > 0) {
-      // The orchestrator will create slices on next tick
-      // We just need to ensure the job definition is enabled
       console.log(`[ensure-coverage] Gaps detected, orchestrator will create slices`);
     }
 
-    // 5. Return response
+    // 6. Return response
     const response: EnsureCoverageResponse = {
       job_def_id: jobDef.id,
       symbol,
@@ -124,6 +160,7 @@ Deno.serve(async (req) => {
         last_success_at: coverage?.last_success_at || null,
         gaps_found: gapsFound,
       },
+      backfill_progress: backfillProgress,
     };
 
     console.log(`[ensure-coverage] Response:`, response);

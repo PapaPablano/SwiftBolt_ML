@@ -194,34 +194,16 @@ async function createSlicesForJob(supabase: any, jobDef: JobDefinition): Promise
     const gapTo = new Date(gap.gap_to);
     const sliceMs = config.sliceHours * 60 * 60 * 1000;
 
-    // For intraday jobs, only create slices for today (Tradier limitation)
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
-
     let currentFrom = gapFrom;
     let sliceCount = 0;
 
     while (currentFrom < gapTo && sliceCount < config.maxSlicesPerTick) {
       const currentTo = new Date(Math.min(currentFrom.getTime() + sliceMs, gapTo.getTime()));
 
-      // Skip historical intraday slices (Tradier only provides today's data)
-      if (jobDef.job_type === "fetch_intraday" && currentTo < todayStart) {
-        console.log(`[Orchestrator] Skipping historical intraday slice: ${jobDef.symbol}/${jobDef.timeframe} ${currentFrom.toISOString()} (before today)`);
-        currentFrom = currentTo;
-        continue;
-      }
-
-      // For intraday, clamp slice to today's range
-      if (jobDef.job_type === "fetch_intraday") {
-        if (currentFrom < todayStart) {
-          currentFrom = todayStart;
-        }
-        if (currentTo > todayEnd) {
-          // Skip slices that extend beyond today
-          break;
-        }
-      }
+      // Router will choose the right provider based on date:
+      // - Historical intraday (before today): Polygon/Massive
+      // - Today's intraday: Tradier
+      // No need to restrict slices here anymore
 
       // Check if slice already exists (idempotency)
       const { data: exists } = await supabase.rpc("job_slice_exists", {

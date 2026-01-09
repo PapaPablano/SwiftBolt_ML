@@ -122,23 +122,38 @@ export class ProviderRouter {
   }
 
   async getHistoricalBars(request: HistoricalBarsRequest): Promise<Bar[]> {
-    // Smart routing: Tradier for intraday (m15, h1), Yahoo for historical (d1, w1)
+    // Smart routing based on timeframe AND date range
     const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(request.timeframe);
     const tradierProvider = this.providers.get("tradier");
-    
+    const massiveProvider = this.providers.get("massive");
+
     let primary: ProviderId;
     let fallback: ProviderId | undefined;
-    
+
     if (isIntraday && tradierProvider) {
-      // Use Tradier for real-time intraday data
-      primary = "tradier";
-      fallback = this.policy.historicalBars.primary; // Yahoo as fallback
-      console.log(`[Router] Using Tradier for intraday timeframe: ${request.timeframe}`);
+      // Determine if this is historical or real-time data
+      const endDate = new Date(request.end * 1000); // Convert Unix seconds to Date
+      const today = new Date();
+      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+      const isHistorical = endDate < todayStart; // Request ends before today
+
+      if (isHistorical && massiveProvider) {
+        // Use Polygon/Massive for historical intraday data (backfill)
+        primary = "massive";
+        fallback = "tradier"; // Tradier as fallback (though won't have the data)
+        console.log(`[Router] Using Polygon for HISTORICAL intraday: ${request.timeframe} (ends ${endDate.toISOString()})`);
+      } else {
+        // Use Tradier for TODAY's intraday data (real-time)
+        primary = "tradier";
+        fallback = "massive"; // Polygon as fallback
+        console.log(`[Router] Using Tradier for TODAY's intraday: ${request.timeframe}`);
+      }
     } else {
       // Use configured policy for daily/weekly data
       primary = this.policy.historicalBars.primary;
       fallback = this.policy.historicalBars.fallback;
-      console.log(`[Router] Using ${primary} for historical timeframe: ${request.timeframe}`);
+      console.log(`[Router] Using ${primary} for daily/weekly timeframe: ${request.timeframe}`);
     }
 
     try {
