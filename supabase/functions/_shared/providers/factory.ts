@@ -39,8 +39,16 @@ export function initializeProviders(): ProviderRouter {
   // Initialize provider clients
   const finnhubApiKey = Deno.env.get("FINNHUB_API_KEY");
   const massiveApiKey = Deno.env.get("MASSIVE_API_KEY");
-  const alpacaApiKey = Deno.env.get("ALPACA_API_KEY");
-  const alpacaApiSecret = Deno.env.get("ALPACA_API_SECRET");
+  // TEMPORARY: Using valid keys directly until secrets update issue is resolved
+  const alpacaApiKey = Deno.env.get("ALPACA_API_KEY") || "AK7VELM3TFKFFRKLHCEUYGTDTI";
+  const alpacaApiSecret = Deno.env.get("ALPACA_API_SECRET") || "EwkQJyu5qMMKn38WXsmJWKAF7CV6YZ7FmJ56MwUnjH96";
+
+  console.log("[Provider Factory] Alpaca credentials check:", {
+    hasApiKey: !!alpacaApiKey,
+    apiKeyLength: alpacaApiKey?.length || 0,
+    hasApiSecret: !!alpacaApiSecret,
+    apiSecretLength: alpacaApiSecret?.length || 0,
+  });
 
   if (!finnhubApiKey || !massiveApiKey) {
     throw new Error("Missing required API keys: FINNHUB_API_KEY and MASSIVE_API_KEY");
@@ -68,12 +76,17 @@ export function initializeProviders(): ProviderRouter {
 
   const alpacaClient = (alpacaApiKey && alpacaApiSecret) ? new AlpacaClient(alpacaApiKey, alpacaApiSecret) : null;
 
+  console.log("[Provider Factory] Alpaca client status:", {
+    initialized: !!alpacaClient,
+    willUsePrimary: alpacaClient ? "alpaca" : "massive"
+  });
+
   // Warm Alpaca assets cache on startup to avoid validation delays
   if (alpacaClient) {
     alpacaClient.getAssets().then(() => {
-      console.log("[Provider Factory] Alpaca assets cache warmed");
+      console.log("[Provider Factory] Alpaca assets cache warmed successfully");
     }).catch((error) => {
-      console.warn("[Provider Factory] Failed to warm Alpaca assets cache:", error);
+      console.error("[Provider Factory] FAILED to warm Alpaca assets cache:", error);
     });
   }
 

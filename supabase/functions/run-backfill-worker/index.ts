@@ -1,6 +1,6 @@
 // SPEC-8: Scheduled backfill worker
 // Processes pending chunks in parallel with provider throttling
-// Updated: 2026-01-09 - Fixed Alpaca integration (factory + endpoint)
+// Updated: 2026-01-09 - TESTING with hardcoded keys (temporary workaround)
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
