@@ -3,21 +3,17 @@
 //
 // This endpoint orchestrates ALL data updates for a symbol:
 // 1. Check if backfill is needed (< 100 d1 bars) and queue if so
-// 2. Fetch latest OHLC bars from provider
+// 2. Queue ensure-coverage jobs for all timeframes (async)
 // 3. Queue ML forecast job (high priority)
 // 4. Queue options ranking job
 // 5. Calculate support/resistance levels
-// 6. Return comprehensive status
+// 6. Return comprehensive status immediately
+//
+// SPEC-8 COMPLIANT: Uses job queue pattern to avoid timeouts
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getProviderRouter } from "../_shared/providers/factory.ts";
-import type { Timeframe } from "../_shared/providers/types.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { corsHeaders } from "../_shared/cors.ts";
 
 interface UserRefreshRequest {
   symbol: string;
@@ -122,12 +118,13 @@ serve(async (req: Request): Promise<Response> => {
       details: { symbolId, assetType: symbolRecord.asset_type },
     });
 
-    // Step 2: Check data coverage and queue backfill if needed
+    // Step 2: Check data coverage and queue backfill if needed (using ohlc_bars_v2)
     const { count: d1BarCount } = await supabase
-      .from("ohlc_bars")
+      .from("ohlc_bars_v2")
       .select("*", { count: "exact", head: true })
       .eq("symbol_id", symbolId)
-      .eq("timeframe", "d1");
+      .eq("timeframe", "d1")
+      .eq("is_forecast", false);
 
     const barCount = d1BarCount || 0;
     summary.backfillNeeded = barCount < 100;
@@ -184,68 +181,51 @@ serve(async (req: Request): Promise<Response> => {
       });
     }
 
-    // Step 3: Fetch latest bars from provider
-    const timeframes: Timeframe[] = ["d1", "h1", "h4", "m15"];
-    let totalNewBars = 0;
+    // Step 3: Queue ensure-coverage jobs for all timeframes (async pattern to avoid timeout)
+    const timeframes = ["d1", "h1", "h4", "15m"];
+    let coverageJobsQueued = 0;
 
     try {
-      const router = getProviderRouter();
-
       for (const timeframe of timeframes) {
-        // Get latest bar timestamp
-        const { data: latestBar } = await supabase
-          .from("ohlc_bars")
-          .select("ts")
-          .eq("symbol_id", symbolId)
-          .eq("timeframe", timeframe)
-          .order("ts", { ascending: false })
-          .limit(1)
-          .single();
+        // Determine job type based on timeframe
+        const isIntraday = ["15m", "h1", "h4"].includes(timeframe);
+        const jobType = isIntraday ? "fetch_intraday" : "fetch_historical";
 
-        const now = Math.floor(Date.now() / 1000);
-        const latestTs = latestBar?.ts ? new Date(latestBar.ts).getTime() / 1000 : now - 86400 * 30;
+        // Upsert job definition (idempotent)
+        const { error: jobDefError } = await supabase
+          .from("job_definitions")
+          .upsert(
+            {
+              symbol,
+              timeframe,
+              job_type: jobType,
+              window_days: 7,
+              priority: 150, // High priority for user-triggered
+              enabled: true,
+            },
+            {
+              onConflict: "symbol,timeframe,job_type",
+              ignoreDuplicates: false,
+            }
+          );
 
-        // Fetch new bars
-        const freshBars = await router.getHistoricalBars({
-          symbol,
-          timeframe,
-          start: Math.floor(latestTs) + 1,
-          end: now,
-        });
-
-        if (freshBars.length > 0) {
-          const barsToInsert = freshBars.map((bar) => ({
-            symbol_id: symbolId,
-            timeframe,
-            ts: new Date(bar.timestamp).toISOString(),
-            open: bar.open,
-            high: bar.high,
-            low: bar.low,
-            close: bar.close,
-            volume: bar.volume,
-            provider: "massive",
-          }));
-
-          await supabase
-            .from("ohlc_bars")
-            .upsert(barsToInsert, { onConflict: "symbol_id,timeframe,ts" });
-
-          totalNewBars += freshBars.length;
+        if (!jobDefError) {
+          coverageJobsQueued++;
         }
       }
 
-      summary.barsUpdated = totalNewBars;
+      summary.barsUpdated = coverageJobsQueued;
       steps.push({
-        step: "fetch_bars",
+        step: "queue_coverage_jobs",
         status: "completed",
-        message: totalNewBars > 0 ? `Updated ${totalNewBars} bars` : "Data is current",
-        details: { newBars: totalNewBars, timeframes },
+        message: `Queued ${coverageJobsQueued} coverage jobs (async)`,
+        details: { timeframes, note: "Jobs will run via orchestrator" },
       });
-    } catch (barError) {
+    } catch (coverageError) {
       steps.push({
-        step: "fetch_bars",
+        step: "queue_coverage_jobs",
         status: "failed",
-        message: barError instanceof Error ? barError.message : "Unknown error",
+        message: coverageError instanceof Error ? coverageError.message : "Unknown error",
       });
     }
 
@@ -343,12 +323,13 @@ serve(async (req: Request): Promise<Response> => {
 
     // Step 6: Calculate S/R levels (synchronous - fast calculation)
     try {
-      // Get recent bars for S/R calculation
+      // Get recent bars for S/R calculation (using ohlc_bars_v2)
       const { data: recentBars } = await supabase
-        .from("ohlc_bars")
+        .from("ohlc_bars_v2")
         .select("ts, open, high, low, close, volume")
         .eq("symbol_id", symbolId)
         .eq("timeframe", "d1")
+        .eq("is_forecast", false)
         .order("ts", { ascending: false })
         .limit(252); // 1 year of trading days
 

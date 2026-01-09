@@ -5,6 +5,11 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { fetchIntradayForDay, type BackfillBar } from "../_shared/backfill-adapter.ts";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
 interface BackfillChunk {
   id: string;
   job_id: string;
@@ -15,7 +20,12 @@ interface BackfillChunk {
   try_count: number;
 }
 
-serve(async () => {
+serve(async (req) => {
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   const startTime = Date.now();
   console.log("[BackfillWorker] Starting worker run");
 
@@ -32,12 +42,18 @@ serve(async () => {
 
     if (claimErr) {
       console.error("[BackfillWorker] Claim error:", claimErr);
-      return new Response(JSON.stringify({ error: claimErr.message }), { status: 500 });
+      return new Response(
+        JSON.stringify({ error: claimErr.message }), 
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     if (!chunks || chunks.length === 0) {
       console.log("[BackfillWorker] No work available");
-      return new Response(JSON.stringify({ message: "no work", processed: 0 }), { status: 200 });
+      return new Response(
+        JSON.stringify({ message: "no work", processed: 0 }), 
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     console.log(`[BackfillWorker] Claimed ${chunks.length} chunks`);
@@ -67,13 +83,16 @@ serve(async () => {
         failed,
         elapsed,
       }),
-      { status: 200 }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("[BackfillWorker] Unexpected error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
-      { status: 500 }
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : String(error),
+        duration_ms: Date.now() - startTime,
+      }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
