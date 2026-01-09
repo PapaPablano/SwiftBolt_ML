@@ -1,9 +1,9 @@
 name: Backfill Intraday Worker
 
 on:
-  schedule:
-    # Run every 5 minutes to process chunks
-    - cron: '*/5 * * * *'
+  # Disabled - redundant with backfill-cron.yml which is working
+  # schedule:
+  #   - cron: '*/5 * * * *'
   workflow_dispatch:
     inputs:
       parallel_workers:
