@@ -175,22 +175,55 @@ struct WebChartView: NSViewRepresentable {
             
             // Choose base candles based on timeframe
             let baseCandles: [OHLCBar]
+            // For intraday timeframes (15m/1h/4h), merge historical + today's intraday for continuity
+            // This ensures the web chart shows a continuous series across backfilled history and live bars
             if parent.viewModel.timeframe.isIntraday {
-                // For intraday timeframes, render intraday as main candles (fallback to historical)
-                let intradayBars = data.layers.intraday.data
-                let historicalBars = data.layers.historical.data
-                baseCandles = !intradayBars.isEmpty ? intradayBars : historicalBars
+                baseCandles = (data.layers.historical.data + data.layers.intraday.data)
             } else {
                 // For daily/weekly, combine historical + today's intraday
                 baseCandles = data.layers.historical.data + data.layers.intraday.data
             }
             
-            // Set candlestick data
-            bridge.setCandles(from: baseCandles)
-            
-            // For non-intraday timeframes, overlay intraday as a line to highlight today
-            if !parent.viewModel.timeframe.isIntraday, data.hasIntraday {
-                bridge.setIntradayOverlay(from: data.layers.intraday.data)
+            // Sanitize candles: sort and enforce strictly increasing timestamps to avoid time jumps
+            let sortedBase = baseCandles.sorted { $0.ts < $1.ts }
+            var uniqueCandles: [OHLCBar] = []
+            uniqueCandles.reserveCapacity(sortedBase.count)
+            var lastTs: Date? = nil
+            for bar in sortedBase {
+                if let lt = lastTs, bar.ts <= lt {
+                    continue // drop non-increasing timestamps
+                }
+                uniqueCandles.append(bar)
+                lastTs = bar.ts
+            }
+
+            // Debug first/last for diagnostics
+            if let first = uniqueCandles.first, let last = uniqueCandles.last {
+                print("[WebChartView] Base candles sanitized: count=\(uniqueCandles.count), first=\(first.ts), last=\(last.ts)")
+            }
+
+            // Set candlestick data using sanitized candles
+            bridge.setCandles(from: uniqueCandles)
+
+            // Intraday-specific forecast confidence badge/overlay
+            if parent.viewModel.timeframe.isIntraday, let ml = data.mlSummary, let lastBar = uniqueCandles.last {
+                // Remove previous confidence lines to avoid duplicates
+                bridge.send(.removePriceLines(category: "forecast-confidence"))
+
+                // Derive a label and color from overall prediction
+                let label = (ml.overallLabel ?? "neutral").lowercased()
+                let color: String
+                switch label {
+                case "bullish": color = "#4de680" // green
+                case "bearish": color = "#ff5959" // red
+                default: color = "#ffbf00" // amber
+                }
+
+                // Add a labeled price line as a badge at the last close
+                let price = lastBar.close
+                let title = "AI: \(label.uppercased()) \(Int((ml.confidence) * 100))%"
+                let options = PriceLineOptions(color: color, lineWidth: 2, lineStyle: 1, showLabel: true, title: title)
+                bridge.send(.addPriceLine(seriesId: "candles", price: price, options: options))
             }
             
             // Clear previous overlays/indicators (keeps candles)
@@ -375,7 +408,7 @@ struct WebChartView: NSViewRepresentable {
                 bridge.hidePanel("atr")
             }
 
-            applyInitialZoomIfNeeded(bars: (data.layers.historical.data + data.layers.intraday.data))
+            applyInitialZoomIfNeeded(bars: uniqueCandles)
 
             // Restore prior visible range after overlays are applied
             if let preservedRange {

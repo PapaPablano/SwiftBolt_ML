@@ -372,6 +372,10 @@ final class ChartViewModel: ObservableObject {
     /// Calculate SuperTrend AI indicator
     func calculateSuperTrendAI() {
         guard !bars.isEmpty else { return }
+        // Adapt AI responsiveness: higher alpha on intraday for faster adaptation
+        var s = superTrendAIIndicator.settings
+        s.performanceMemory = timeframe.isIntraday ? 0.25 : 0.10
+        superTrendAIIndicator.settings = s
         superTrendAIIndicator.calculate(bars: bars)
     }
 
@@ -427,7 +431,7 @@ final class ChartViewModel: ObservableObject {
     /// Recalculate all AI indicators (SuperTrend AI, etc.)
     func recalculateAIIndicators() {
         guard !bars.isEmpty else { return }
-        superTrendAIIndicator.calculate(bars: bars)
+        calculateSuperTrendAI()
     }
 
     /// Recalculate a specific S&R indicator

@@ -248,6 +248,27 @@ enum ChartEvent {
 /// Bridge for Swift ↔ JavaScript communication with Lightweight Charts
 @MainActor
 final class ChartBridge: NSObject, ObservableObject {
+    // MARK: - Debug Configuration
+
+    /// Debug flags to help isolate chart rendering issues
+    struct DebugConfig {
+        /// When true, skips sending overlay data (intraday, forecast layers)
+        var disableOverlays: Bool = false
+        /// When true, skips sending forecast candle data
+        var disableForecasts: Bool = false
+        /// When true, prevents Heikin-Ashi toggle commands
+        var disableHeikinAshi: Bool = false
+        /// When true, filters out bars with >X% price jumps (outliers)
+        var filterOutliers: Bool = false
+        /// Threshold for outlier filtering (default 50% = 0.5)
+        var outlierThreshold: Double = 0.5
+        /// When true, enables verbose logging of all data sent to chart
+        var verboseLogging: Bool = false
+    }
+
+    /// Access this to enable/disable debug features at runtime
+    var debug = DebugConfig()
+
     // MARK: - Published State
 
     @Published private(set) var isReady = false
@@ -299,8 +320,154 @@ final class ChartBridge: NSObject, ObservableObject {
     /// Set candlestick data
     func setCandles(from bars: [OHLCBar]) {
         // CRITICAL: Sort bars by timestamp to ensure chronological order
-        let sortedBars = bars.sorted { $0.ts < $1.ts }
-        
+        var sortedBars = bars.sorted { $0.ts < $1.ts }
+
+        let times = sortedBars.map { Int($0.ts.timeIntervalSince1970) }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // DIAGNOSTIC 1: Year-span sanity check (detect ms vs s or bad timezone)
+        // ═══════════════════════════════════════════════════════════════════════
+        if !sortedBars.isEmpty {
+            let calendar = Calendar.current
+            let years = sortedBars.map { calendar.component(.year, from: $0.ts) }
+            if let minYear = years.min(), let maxYear = years.max() {
+                if maxYear - minYear > 5 {
+                    print("[ChartBridge] ⚠️ YEAR SPAN ALERT: Data spans \(minYear)–\(maxYear) (\(maxYear - minYear) years)")
+                    print("[ChartBridge]    This likely indicates ms vs s timestamp confusion or timezone issues!")
+
+                    // Find where the year changes dramatically
+                    for i in 1..<sortedBars.count {
+                        let prevYear = calendar.component(.year, from: sortedBars[i-1].ts)
+                        let curYear = calendar.component(.year, from: sortedBars[i].ts)
+                        if abs(curYear - prevYear) > 2 {
+                            print("[ChartBridge]    Year jump at [\(i)]: \(sortedBars[i-1].ts) (\(prevYear)) → \(sortedBars[i].ts) (\(curYear))")
+                        }
+                    }
+                } else if debug.verboseLogging {
+                    print("[ChartBridge] ✅ Year span OK: \(minYear)–\(maxYear)")
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // DIAGNOSTIC 2: Non-monotonic timestamp check
+        // ═══════════════════════════════════════════════════════════════════════
+        if times.count > 1 {
+            var nonMonotonicIndices: [(index: Int, from: Date, to: Date)] = []
+            for i in 1..<times.count where times[i] <= times[i-1] {
+                nonMonotonicIndices.append((i, sortedBars[i-1].ts, sortedBars[i].ts))
+            }
+            if !nonMonotonicIndices.isEmpty {
+                print("[ChartBridge] ⚠️ NON-MONOTONIC: \(nonMonotonicIndices.count) timestamp(s) not strictly increasing:")
+                for item in nonMonotonicIndices.prefix(5) {
+                    print("[ChartBridge]    [\(item.index)]: \(item.from) → \(item.to)")
+                }
+            } else if debug.verboseLogging {
+                print("[ChartBridge] ✅ All timestamps strictly increasing")
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // DIAGNOSTIC 3: Large price jump detection (>25% between consecutive bars)
+        // ═══════════════════════════════════════════════════════════════════════
+        if sortedBars.count > 5 {
+            var suspiciousJumps: [(index: Int, date: Date, prevClose: Double, curClose: Double, pctChange: Double)] = []
+            for i in 1..<sortedBars.count {
+                let prevClose = sortedBars[i-1].close
+                let curClose = sortedBars[i].close
+                guard prevClose > 0.0001 else { continue } // Skip near-zero prices
+                let pctChange = abs((curClose - prevClose) / prevClose)
+                if pctChange > 0.25 { // >25% jump
+                    suspiciousJumps.append((i, sortedBars[i].ts, prevClose, curClose, pctChange))
+                }
+            }
+            if !suspiciousJumps.isEmpty {
+                print("[ChartBridge] ⚠️ LARGE PRICE JUMPS: \(suspiciousJumps.count) bars with >25% change:")
+                for jump in suspiciousJumps.prefix(10) {
+                    let pctStr = String(format: "%.1f%%", jump.pctChange * 100)
+                    print("[ChartBridge]    [\(jump.index)] \(jump.date): \(jump.prevClose) → \(jump.curClose) (\(pctStr))")
+                }
+
+                // Check if jumps are OHLC consistency issues (high < low, etc.)
+                var malformedBars: [(index: Int, bar: OHLCBar)] = []
+                for jump in suspiciousJumps {
+                    let bar = sortedBars[jump.index]
+                    let maxOC = max(bar.open, bar.close)
+                    let minOC = min(bar.open, bar.close)
+                    if bar.high < maxOC || bar.low > minOC || bar.high < bar.low {
+                        malformedBars.append((jump.index, bar))
+                    }
+                }
+                if !malformedBars.isEmpty {
+                    print("[ChartBridge] ⚠️ MALFORMED OHLC: \(malformedBars.count) bars have invalid high/low:")
+                    for (idx, bar) in malformedBars.prefix(5) {
+                        print("[ChartBridge]    [\(idx)] O:\(bar.open) H:\(bar.high) L:\(bar.low) C:\(bar.close)")
+                    }
+                }
+            } else {
+                print("[ChartBridge] ✅ No large price jumps (>25%) detected")
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // DIAGNOSTIC 4: Time gap analysis
+        // ═══════════════════════════════════════════════════════════════════════
+        if times.count > 1 {
+            var intervals: [Int] = []
+            intervals.reserveCapacity(times.count - 1)
+            for i in 1..<times.count {
+                intervals.append(times[i] - times[i - 1])
+            }
+            let sortedIntervals = intervals.sorted()
+            let medianInterval = sortedIntervals[sortedIntervals.count / 2]
+            // Consider a gap suspicious if it's > 10x median interval, with a floor of 1 day
+            let threshold = max(medianInterval * 10, 24 * 60 * 60)
+            var largeGaps: [(index: Int, seconds: Int)] = []
+            for i in 0..<intervals.count {
+                if intervals[i] > threshold {
+                    largeGaps.append((index: i, seconds: intervals[i]))
+                }
+            }
+            if !largeGaps.isEmpty {
+                print("[ChartBridge] ⚠️ Detected \(largeGaps.count) large time gaps (> \(threshold)s). Top gaps:")
+                for gap in largeGaps.prefix(3) {
+                    let fromDate = sortedBars[gap.index].ts
+                    let toDate = sortedBars[gap.index + 1].ts
+                    let days = Double(gap.seconds) / 86400.0
+                    print("[ChartBridge]   Gap \(String(format: "%.1f", days)) days between \(fromDate) and \(toDate)")
+                }
+            } else if debug.verboseLogging {
+                print("[ChartBridge] ✅ No large time gaps detected (median interval: \(medianInterval)s)")
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // OPTIONAL: Filter outliers if debug.filterOutliers is enabled
+        // ═══════════════════════════════════════════════════════════════════════
+        if debug.filterOutliers && sortedBars.count > 2 {
+            var filteredBars: [OHLCBar] = [sortedBars[0]]
+            var droppedCount = 0
+            for i in 1..<sortedBars.count {
+                let prevClose = filteredBars.last?.close ?? sortedBars[i-1].close
+                let curClose = sortedBars[i].close
+                guard prevClose > 0.0001 else {
+                    filteredBars.append(sortedBars[i])
+                    continue
+                }
+                let pctChange = abs((curClose - prevClose) / prevClose)
+                if pctChange > debug.outlierThreshold {
+                    droppedCount += 1
+                    print("[ChartBridge] 🚫 FILTERED outlier bar at \(sortedBars[i].ts): \(prevClose) → \(curClose)")
+                } else {
+                    filteredBars.append(sortedBars[i])
+                }
+            }
+            if droppedCount > 0 {
+                print("[ChartBridge] 🚫 Filtered \(droppedCount) outlier bars (threshold: \(debug.outlierThreshold * 100)%)")
+                sortedBars = filteredBars
+            }
+        }
+
         let candleData = sortedBars.map { bar in
             LightweightCandle(
                 time: Int(bar.ts.timeIntervalSince1970),  // Unix timestamp in seconds
@@ -310,28 +477,30 @@ final class ChartBridge: NSObject, ObservableObject {
                 close: bar.close
             )
         }
-        
+
         // Debug: Log first and last candles to verify data
         if let first = sortedBars.first, let last = sortedBars.last {
             print("[ChartBridge] Candles: \(sortedBars.count) bars")
             print("[ChartBridge] First: \(first.ts) O:\(first.open) H:\(first.high) L:\(first.low) C:\(first.close)")
             print("[ChartBridge] Last: \(last.ts) O:\(last.open) H:\(last.high) L:\(last.low) C:\(last.close)")
-            
+
             // Log sample bars throughout dataset to check for gaps/jumps
-            let sampleIndices = [0, sortedBars.count/4, sortedBars.count/2, sortedBars.count*3/4, sortedBars.count-1]
-            print("[ChartBridge] Sample bars:")
-            for idx in sampleIndices where idx < sortedBars.count {
-                let bar = sortedBars[idx]
-                print("  [\(idx)]: \(bar.ts) C:\(bar.close)")
+            if debug.verboseLogging {
+                let sampleIndices = [0, sortedBars.count/4, sortedBars.count/2, sortedBars.count*3/4, sortedBars.count-1]
+                print("[ChartBridge] Sample bars:")
+                for idx in sampleIndices where idx < sortedBars.count {
+                    let bar = sortedBars[idx]
+                    print("  [\(idx)]: \(bar.ts) C:\(bar.close)")
+                }
             }
         }
-        
+
         // Debug: Check for duplicate timestamps
         let timestamps = candleData.map { $0.time }
         let uniqueTimestamps = Set(timestamps)
         if timestamps.count != uniqueTimestamps.count {
             print("[ChartBridge] ⚠️ WARNING: Found \(timestamps.count - uniqueTimestamps.count) duplicate timestamps!")
-            
+
             // Find and log the duplicates
             var seenTimes = Set<Int>()
             var duplicates: [(Int, Date)] = []
@@ -343,10 +512,10 @@ final class ChartBridge: NSObject, ObservableObject {
                 seenTimes.insert(time)
             }
             print("[ChartBridge] Duplicate timestamps: \(duplicates.map { "[\($0.0)]: \($0.1)" }.joined(separator: ", "))")
-        } else {
+        } else if debug.verboseLogging {
             print("[ChartBridge] ✅ No duplicate timestamps detected")
         }
-        
+
         send(.setCandles(data: candleData))
     }
 
@@ -535,9 +704,14 @@ final class ChartBridge: NSObject, ObservableObject {
 
     /// Set intraday overlay (highlighted bars for today's data)
     func setIntradayOverlay(from bars: [OHLCBar]) {
+        if debug.disableOverlays {
+            print("[ChartBridge] 🚫 Skipping intraday overlay (debug.disableOverlays=true)")
+            return
+        }
+
         let sortedBars = bars.sorted { $0.ts < $1.ts }
         guard !sortedBars.isEmpty else { return }
-        
+
         let candles = sortedBars.map { bar in
             LightweightCandle(
                 time: Int(bar.ts.timeIntervalSince1970),
@@ -547,7 +721,7 @@ final class ChartBridge: NSObject, ObservableObject {
                 close: bar.close
             )
         }
-        
+
         send(.setLine(id: "intraday_overlay", data: candles.map { candle in
             LightweightDataPoint(time: candle.time, value: candle.close)
         }, options: LineOptions(

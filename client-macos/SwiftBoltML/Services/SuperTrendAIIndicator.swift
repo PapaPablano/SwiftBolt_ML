@@ -318,6 +318,16 @@ class SuperTrendAIIndicator: ObservableObject {
 
         // Calculate ATR using Wilder's smoothing
         var atr: [Double] = Array(repeating: 0, count: bars.count)
+        
+        if bars.count <= settings.atrLength {
+            // Fallback for short intraday datasets: use average of available true ranges
+            let fallbackATR = trueRanges.reduce(0, +) / Double(max(1, trueRanges.count))
+            for i in 0..<bars.count {
+                atr[i] = fallbackATR
+            }
+            return atr
+        }
+        
         guard bars.count > settings.atrLength else { return atr }
 
         var currentATR = trueRanges.prefix(settings.atrLength).reduce(0, +) / Double(settings.atrLength)
@@ -442,7 +452,7 @@ class SuperTrendAIIndicator: ObservableObject {
         var clusterAssignments: [Int] = Array(repeating: 0, count: bars.count)
 
         // Guard: ensure we have enough bars for the range
-        let startIndex = max(1, settings.atrLength)
+        let startIndex = min(max(1, settings.atrLength), bars.count - 1)
         guard startIndex < bars.count else {
             // Not enough bars for calculation
             return SuperTrendAIResult(
@@ -663,3 +673,4 @@ struct SuperTrendSignal: Identifiable {
         return Int(normalized)
     }
 }
+
