@@ -152,3 +152,39 @@ export class PermissionDeniedError extends ProviderError {
     this.name = "PermissionDeniedError";
   }
 }
+
+export class AuthenticationError extends ProviderError {
+  constructor(provider: ProviderId, message: string = "Authentication failed") {
+    super(
+      message,
+      provider,
+      "AUTHENTICATION_ERROR",
+      401
+    );
+    this.name = "AuthenticationError";
+  }
+}
+
+export class ValidationError extends ProviderError {
+  constructor(provider: ProviderId, message: string) {
+    super(
+      message,
+      provider,
+      "VALIDATION_ERROR",
+      400
+    );
+    this.name = "ValidationError";
+  }
+}
+
+export class ServiceUnavailableError extends ProviderError {
+  constructor(provider: ProviderId, message: string = "Service unavailable") {
+    super(
+      message,
+      provider,
+      "SERVICE_UNAVAILABLE",
+      503
+    );
+    this.name = "ServiceUnavailableError";
+  }
+}

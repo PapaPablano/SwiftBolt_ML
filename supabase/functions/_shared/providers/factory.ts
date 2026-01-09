@@ -15,8 +15,6 @@ import type { ProviderId } from "./types.ts";
 let routerInstance: ProviderRouter | null = null;
 let rateLimiterInstance: TokenBucketRateLimiter | null = null;
 let cacheInstance: MemoryCache | null = null;
-let massiveClientInstance: MassiveClient | null = null;
-let alpacaClientInstance: AlpacaClient | null = null;
 
 /**
  * Initialize the provider system with rate limiting and caching
@@ -48,13 +46,17 @@ export function initializeProviders(): ProviderRouter {
     throw new Error("Missing required API keys: FINNHUB_API_KEY and MASSIVE_API_KEY");
   }
 
+  if (!alpacaApiKey || !alpacaApiSecret) {
+    console.warn("[Provider Factory] ALPACA_API_KEY or ALPACA_API_SECRET not set - Alpaca provider will not be available");
+  }
+
   const finnhubClient = new FinnhubClient(
     finnhubApiKey,
     rateLimiterInstance,
     cacheInstance
   );
 
-  massiveClientInstance = new MassiveClient(
+  const massiveClient = new MassiveClient(
     massiveApiKey,
     rateLimiterInstance,
     cacheInstance
@@ -64,29 +66,51 @@ export function initializeProviders(): ProviderRouter {
     cacheInstance
   );
 
-  // Initialize Alpaca client if credentials are available
-  if (alpacaApiKey && alpacaApiSecret) {
-    alpacaClientInstance = new AlpacaClient(alpacaApiKey, alpacaApiSecret);
-    console.log("[Provider Factory] Alpaca client initialized");
-  } else {
-    console.warn("[Provider Factory] Alpaca credentials not found - Alpaca provider will be unavailable");
+  const alpacaClient = (alpacaApiKey && alpacaApiSecret) ? new AlpacaClient(alpacaApiKey, alpacaApiSecret) : null;
+
+  // Warm Alpaca assets cache on startup to avoid validation delays
+  if (alpacaClient) {
+    alpacaClient.getAssets().then(() => {
+      console.log("[Provider Factory] Alpaca assets cache warmed");
+    }).catch((error) => {
+      console.warn("[Provider Factory] Failed to warm Alpaca assets cache:", error);
+    });
   }
 
   console.log("[Provider Factory] Provider clients initialized");
 
-  // Initialize router with default policy
+  // Initialize router with custom policy for intraday vs historical data
   const providers: Record<string, any> = {
     finnhub: finnhubClient,
-    massive: massiveClientInstance,
+    massive: massiveClient,
     yahoo: yahooFinanceClient,
   };
 
-  // Add Alpaca to router if available
-  if (alpacaClientInstance) {
-    providers.alpaca = alpacaClientInstance;
+  if (alpacaClient) {
+    providers.alpaca = alpacaClient;
   }
 
-  routerInstance = new ProviderRouter(providers);
+  // Custom policy: Alpaca for real-time and historical data
+  const policy = {
+    quote: {
+      primary: alpacaClient ? "alpaca" as ProviderId : "finnhub" as ProviderId,
+      fallback: "finnhub" as ProviderId,
+    },
+    historicalBars: {
+      primary: alpacaClient ? "alpaca" as ProviderId : "massive" as ProviderId, // Alpaca preferred, fallback to Polygon
+      fallback: "finnhub" as ProviderId,
+    },
+    news: {
+      primary: alpacaClient ? "alpaca" as ProviderId : "finnhub" as ProviderId,
+      fallback: "finnhub" as ProviderId,
+    },
+    optionsChain: {
+      primary: "yahoo" as ProviderId,
+      fallback: undefined,
+    },
+  };
+
+  routerInstance = new ProviderRouter(providers, policy);
 
   console.log("[Provider Factory] Provider router initialized");
 
@@ -105,37 +129,21 @@ export function getProviderRouter(): ProviderRouter {
 }
 
 /**
- * Get the singleton MassiveClient (Polygon) instance
- * Initializes providers if not already initialized
- * Returns null if initialization fails
+ * Inject Supabase client into providers for distributed rate limiting
+ * Call this in Edge functions that need coordinated rate limiting
  */
-export function getMassiveClient(): MassiveClient | null {
-  if (!massiveClientInstance) {
-    try {
-      initializeProviders();
-    } catch (error) {
-      console.error("[Provider Factory] Failed to initialize providers:", error);
-      return null;
-    }
+export function injectSupabaseClient(supabase: any): void {
+  if (!routerInstance) {
+    initializeProviders();
   }
-  return massiveClientInstance;
-}
-
-/**
- * Get the singleton AlpacaClient instance
- * Initializes providers if not already initialized
- * Returns null if Alpaca credentials are not configured
- */
-export function getAlpacaClient(): AlpacaClient | null {
-  if (!alpacaClientInstance) {
-    try {
-      initializeProviders();
-    } catch (error) {
-      console.error("[Provider Factory] Failed to initialize providers:", error);
-      return null;
-    }
+  
+  // Inject into Massive/Polygon client
+  const router = routerInstance as any;
+  const massiveProvider = router.providers?.get("massive");
+  if (massiveProvider && typeof massiveProvider.setSupabaseClient === "function") {
+    massiveProvider.setSupabaseClient(supabase);
+    console.log("[Provider Factory] Injected Supabase client into Massive provider");
   }
-  return alpacaClientInstance;
 }
 
 /**

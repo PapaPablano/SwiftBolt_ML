@@ -42,25 +42,22 @@ export interface RouterPolicy {
 
 const DEFAULT_POLICY: RouterPolicy = {
   quote: {
-    primary: "alpaca",
-    fallback: "finnhub",
+    primary: "finnhub",
+    fallback: "massive",
   },
   historicalBars: {
-    primary: "alpaca", // Alpaca for all timeframes (institutional-grade data)
-    fallback: "massive", // Polygon as fallback for intraday
+    primary: "yahoo", // Yahoo Finance has real-time intraday data (no delay!)
+    fallback: "finnhub", // Finnhub as fallback
   },
   news: {
-    primary: "alpaca", // Alpaca provides news from multiple sources
-    fallback: "finnhub",
+    primary: "finnhub", // Massive free tier doesn't support news
+    fallback: undefined,
   },
   optionsChain: {
     primary: "yahoo", // Yahoo Finance provides free options data with 15-min delay
     fallback: undefined,
   },
 };
-
-// Intraday timeframes that should use Polygon (massive)
-const INTRADAY_TIMEFRAMES = new Set(["m1", "m5", "m15", "m30", "h1", "h4"]);
 
 export class ProviderRouter {
   private providers: Map<ProviderId, DataProviderAbstraction>;
@@ -125,12 +122,48 @@ export class ProviderRouter {
   }
 
   async getHistoricalBars(request: HistoricalBarsRequest): Promise<Bar[]> {
-    // Smart routing: Use Polygon (massive) for intraday, Yahoo for daily/weekly
-    const isIntraday = INTRADAY_TIMEFRAMES.has(request.timeframe);
-    const primary: ProviderId = isIntraday ? "massive" : "yahoo";
-    const fallback: ProviderId = isIntraday ? "yahoo" : "massive";
+    // Smart routing: Alpaca first (if available), then timeframe-specific fallbacks
+    const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(request.timeframe);
+    const alpacaProvider = this.providers.get("alpaca");
+    const tradierProvider = this.providers.get("tradier");
+    const massiveProvider = this.providers.get("massive");
 
-    console.log(`[Router] getHistoricalBars: ${request.symbol} ${request.timeframe} -> primary=${primary}, fallback=${fallback}`);
+    let primary: ProviderId;
+    let fallback: ProviderId | undefined;
+
+    // Alpaca is preferred for ALL data types (historical + intraday) when available
+    if (alpacaProvider) {
+      primary = "alpaca";
+      // Fallback depends on timeframe
+      if (isIntraday) {
+        fallback = tradierProvider ? "tradier" : (massiveProvider ? "massive" : this.policy.historicalBars.fallback);
+      } else {
+        fallback = this.policy.historicalBars.fallback;
+      }
+      console.log(`[Router] Using Alpaca (primary) for ${request.timeframe} with fallback: ${fallback || 'none'}`);
+    } else if (isIntraday && tradierProvider) {
+      // No Alpaca: use legacy intraday routing
+      const startDate = new Date(request.start * 1000);
+      const endDate = new Date(request.end * 1000);
+      const today = new Date();
+      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const isHistorical = startDate < todayStart;
+
+      if (isHistorical && massiveProvider) {
+        primary = "massive";
+        fallback = "tradier";
+        console.log(`[Router] Using Polygon for HISTORICAL intraday: ${request.timeframe} (${startDate.toISOString()} -> ${endDate.toISOString()})`);
+      } else {
+        primary = "tradier";
+        fallback = "massive";
+        console.log(`[Router] Using Tradier for TODAY's intraday: ${request.timeframe} (${startDate.toISOString()} -> ${endDate.toISOString()})`);
+      }
+    } else {
+      // Use configured policy for daily/weekly data (no Alpaca, no Tradier)
+      primary = this.policy.historicalBars.primary;
+      fallback = this.policy.historicalBars.fallback;
+      console.log(`[Router] Using ${primary} for daily/weekly timeframe: ${request.timeframe}`);
+    }
 
     try {
       const provider = await this.selectProvider(primary, fallback);

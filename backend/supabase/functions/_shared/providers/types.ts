@@ -1,7 +1,7 @@
 // Provider-agnostic types for market data
 // These types define the unified abstraction layer over Finnhub and Massive
 
-export type ProviderId = "finnhub" | "massive" | "yahoo" | "tradier" | "alpaca";
+export type ProviderId = "finnhub" | "massive" | "yahoo" | "alpaca";
 
 export type Timeframe = "m1" | "m5" | "m15" | "m30" | "h1" | "h4" | "d1" | "w1" | "mn1";
 
@@ -154,7 +154,7 @@ export class PermissionDeniedError extends ProviderError {
 }
 
 export class AuthenticationError extends ProviderError {
-  constructor(provider: ProviderId, message: string = "Invalid or expired API credentials") {
+  constructor(provider: ProviderId, message: string = "Authentication failed") {
     super(
       message,
       provider,
@@ -178,7 +178,7 @@ export class ValidationError extends ProviderError {
 }
 
 export class ServiceUnavailableError extends ProviderError {
-  constructor(provider: ProviderId, message: string = "Service temporarily unavailable") {
+  constructor(provider: ProviderId, message: string = "Service unavailable") {
     super(
       message,
       provider,
