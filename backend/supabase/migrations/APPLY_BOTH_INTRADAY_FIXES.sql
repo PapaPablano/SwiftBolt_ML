@@ -1,0 +1,102 @@
+-- Combined Migration: Fix intraday timeframe issues
+-- Run this in Supabase SQL Editor to apply both fixes at once
+
+-- ============================================================================
+-- FIX 1: Clean up invalid historical intraday job runs
+-- ============================================================================
+
+-- Delete historical intraday job runs (Tradier only provides TODAY's data)
+DELETE FROM job_runs
+WHERE job_type = 'fetch_intraday'
+  AND DATE(slice_to) < CURRENT_DATE
+  AND status IN ('queued', 'failed', 'running');
+
+-- Log the cleanup
+DO $$
+DECLARE
+  deleted_count INTEGER;
+BEGIN
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  RAISE NOTICE 'Cleaned up % historical intraday job runs', deleted_count;
+END $$;
+
+-- ============================================================================
+-- FIX 2: Fix coverage gap detection for intraday timeframes
+-- ============================================================================
+
+DROP FUNCTION IF EXISTS get_coverage_gaps(text, text, int);
+
+CREATE OR REPLACE FUNCTION get_coverage_gaps(
+  p_symbol text,
+  p_timeframe text,
+  p_window_days int default 7
+)
+RETURNS TABLE(
+  gap_from timestamptz,
+  gap_to timestamptz,
+  gap_hours numeric
+) AS $$
+DECLARE
+  v_target_from timestamptz;
+  v_target_to timestamptz;
+  v_coverage_from timestamptz;
+  v_coverage_to timestamptz;
+  v_is_intraday boolean;
+BEGIN
+  -- Detect if this is an intraday timeframe
+  v_is_intraday := p_timeframe IN ('m15', 'h1', 'h4');
+
+  v_target_to := now();
+
+  -- For intraday timeframes, only check TODAY (Tradier limitation)
+  -- For daily/weekly timeframes, check the full window
+  IF v_is_intraday THEN
+    v_target_from := date_trunc('day', now());
+  ELSE
+    v_target_from := v_target_to - (p_window_days || ' days')::interval;
+  END IF;
+
+  -- Get current coverage
+  SELECT from_ts, to_ts INTO v_coverage_from, v_coverage_to
+  FROM coverage_status
+  WHERE symbol = p_symbol AND timeframe = p_timeframe;
+
+  -- If no coverage exists, return the full target range as a gap
+  IF v_coverage_from IS NULL OR v_coverage_to IS NULL THEN
+    RETURN QUERY SELECT v_target_from, v_target_to,
+      EXTRACT(EPOCH FROM (v_target_to - v_target_from)) / 3600.0;
+    RETURN;
+  END IF;
+
+  -- Check for gap at the beginning (coverage starts after target)
+  IF v_coverage_from > v_target_from THEN
+    RETURN QUERY SELECT v_target_from, v_coverage_from,
+      EXTRACT(EPOCH FROM (v_coverage_from - v_target_from)) / 3600.0;
+  END IF;
+
+  -- Check for gap at the end (coverage ends before target)
+  IF v_coverage_to < v_target_to THEN
+    RETURN QUERY SELECT v_coverage_to, v_target_to,
+      EXTRACT(EPOCH FROM (v_target_to - v_coverage_to)) / 3600.0;
+  END IF;
+
+  RETURN;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION get_coverage_gaps IS
+'Identifies coverage gaps for a symbol/timeframe pair.
+For intraday timeframes (m15, h1, h4): Only checks TODAY (Tradier limitation).
+For daily/weekly timeframes (d1, w1): Checks full window_days range.';
+
+-- ============================================================================
+-- SUMMARY
+-- ============================================================================
+
+DO $$
+BEGIN
+  RAISE NOTICE '✓ Intraday fixes applied successfully!';
+  RAISE NOTICE '  - Cleaned up historical intraday job runs';
+  RAISE NOTICE '  - Fixed get_coverage_gaps() to only check TODAY for intraday';
+  RAISE NOTICE 'Next: Refresh your app to test 15M, 1H, 4H timeframes';
+END $$;
