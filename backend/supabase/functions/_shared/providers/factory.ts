@@ -44,16 +44,20 @@ export function initializeProviders(): ProviderRouter {
   const alpacaApiKey = Deno.env.get("ALPACA_API_KEY");
   const alpacaApiSecret = Deno.env.get("ALPACA_API_SECRET");
 
-  if (!finnhubApiKey || !massiveApiKey) {
-    throw new Error("Missing required API keys: FINNHUB_API_KEY and MASSIVE_API_KEY");
-  }
-
-  if (!tradierApiKey) {
-    console.warn("[Provider Factory] TRADIER_API_KEY not set - intraday data will be limited");
+  if (!finnhubApiKey) {
+    throw new Error("Missing required API key: FINNHUB_API_KEY");
   }
 
   if (!alpacaApiKey || !alpacaApiSecret) {
     console.warn("[Provider Factory] ALPACA_API_KEY or ALPACA_API_SECRET not set - Alpaca provider will not be available");
+  }
+
+  if (!massiveApiKey) {
+    console.warn("[Provider Factory] MASSIVE_API_KEY not set - Polygon/Massive provider will not be available");
+  }
+
+  if (!tradierApiKey) {
+    console.warn("[Provider Factory] TRADIER_API_KEY not set - Tradier provider will not be available");
   }
 
   const finnhubClient = new FinnhubClient(
@@ -62,11 +66,11 @@ export function initializeProviders(): ProviderRouter {
     cacheInstance
   );
 
-  const massiveClient = new MassiveClient(
+  const massiveClient = massiveApiKey ? new MassiveClient(
     massiveApiKey,
     rateLimiterInstance,
     cacheInstance
-  );
+  ) : null;
 
   const yahooFinanceClient = new YahooFinanceClient(
     cacheInstance
@@ -77,8 +81,17 @@ export function initializeProviders(): ProviderRouter {
 
   // Warm Alpaca assets cache on startup to avoid validation delays
   if (alpacaClient) {
+    console.log("[Provider Factory] Alpaca credentials check: {");
+    console.log(`  hasApiKey: ${!!alpacaApiKey},`);
+    console.log(`  apiKeyLength: ${alpacaApiKey?.length},`);
+    console.log(`  hasApiSecret: ${!!alpacaApiSecret},`);
+    console.log(`  apiSecretLength: ${alpacaApiSecret?.length}`);
+    console.log("}");
+
+    console.log("[Provider Factory] Alpaca client status: { initialized: true, willUsePrimary: \"alpaca\" }");
+
     alpacaClient.getAssets().then(() => {
-      console.log("[Provider Factory] Alpaca assets cache warmed");
+      console.log("[Provider Factory] Alpaca assets cache warmed successfully");
     }).catch((error) => {
       console.warn("[Provider Factory] Failed to warm Alpaca assets cache:", error);
     });
@@ -89,9 +102,12 @@ export function initializeProviders(): ProviderRouter {
   // Initialize router with custom policy for intraday vs historical data
   const providers: Record<string, any> = {
     finnhub: finnhubClient,
-    massive: massiveClient,
     yahoo: yahooFinanceClient,
   };
+
+  if (massiveClient) {
+    providers.massive = massiveClient;
+  }
 
   if (tradierClient) {
     providers.tradier = tradierClient;
@@ -147,13 +163,15 @@ export function injectSupabaseClient(supabase: any): void {
   if (!routerInstance) {
     initializeProviders();
   }
-  
-  // Inject into Massive/Polygon client
+
+  // Inject into Massive/Polygon client (if available)
   const router = routerInstance as any;
   const massiveProvider = router.providers?.get("massive");
   if (massiveProvider && typeof massiveProvider.setSupabaseClient === "function") {
     massiveProvider.setSupabaseClient(supabase);
     console.log("[Provider Factory] Injected Supabase client into Massive provider");
+  } else {
+    console.log("[Provider Factory] Massive provider not available, skipping Supabase client injection");
   }
 }
 

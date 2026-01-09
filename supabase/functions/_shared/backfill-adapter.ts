@@ -108,7 +108,7 @@ export async function fetchIntradayForDay(
   const providerTimeframe = mapTimeframeToProvider(timeframe);
 
   try {
-    // Use router to fetch bars - it will use the configured provider
+    // Use router to fetch bars - it will use the configured provider (Alpaca primary)
     const router = getProviderRouter();
     const bars = await router.getHistoricalBars({
       symbol,
@@ -117,9 +117,9 @@ export async function fetchIntradayForDay(
       end: toTs,
     });
 
-    // Determine provider based on timeframe
-    // Intraday should come from Polygon (massive), daily from Yahoo
-    const provider = isIntraday ? "polygon" : "yfinance";
+    // Determine provider name based on routing configuration
+    // Alpaca is primary for all data when available, otherwise fallback to Yahoo/Tradier
+    const provider = isIntraday ? "alpaca" : "yfinance";
 
     console.log(`[BackfillAdapter] Received ${bars.length} bars for ${symbol} ${day} (provider: ${provider})`);
 
@@ -127,7 +127,7 @@ export async function fetchIntradayForDay(
     return bars.map((bar: Bar) => ({
       symbol_id: symbolId,
       timeframe: providerTimeframe, // Use canonical format (m15, h1, etc.)
-      ts: new Date(bar.timestamp).toISOString(), // timestamp is in ms from Polygon
+      ts: new Date(bar.timestamp).toISOString(), // timestamp is in ms from provider
       open: bar.open,
       high: bar.high,
       low: bar.low,
