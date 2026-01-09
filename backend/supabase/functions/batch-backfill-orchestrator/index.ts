@@ -110,9 +110,10 @@ async function createBatchJobs(
           batch_number: batchNum,
           total_batches: totalBatches,
           // Required fields for job_definitions schema
-          symbol: primarySymbol, // Use first symbol as primary identifier
+          symbol: `BATCH_${batchNum}`, // Label batch row
           timeframe,
           job_type: config.sliceType === "historical" ? "fetch_historical" : "fetch_intraday",
+          batch_version: 2, // Phase 2 batch processing
           window_days: Math.ceil((endTs - startTs) / (1000 * 60 * 60 * 24)),
           priority: 100,
           enabled: true,

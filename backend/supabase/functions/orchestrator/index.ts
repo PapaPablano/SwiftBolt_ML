@@ -316,48 +316,97 @@ async function dispatchQueuedJobs(supabase: any, maxJobs: number): Promise<numbe
 
 /**
  * Dispatch fetch-bars job (internal function call)
+ * Phase 2: Detects batch jobs and routes to fetch-bars-batch for 50x speedup
  */
 async function dispatchFetchBars(supabase: any, job: any) {
-  console.log(`[Orchestrator] Dispatching fetch-bars for ${job.symbol}/${job.timeframe}`);
-
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-  // Call fetch-bars function
-  const response = await fetch(`${supabaseUrl}/functions/v1/fetch-bars`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${supabaseKey}`,
-    },
-    body: JSON.stringify({
+  // Check if this is a batch job by looking up the job_definition
+  const { data: jobDef } = await supabase
+    .from("job_definitions")
+    .select("symbols_array, batch_version")
+    .eq("id", job.job_def_id)
+    .single();
+
+  const isBatchJob = jobDef?.symbols_array && Array.isArray(jobDef.symbols_array) && jobDef.symbols_array.length > 1;
+
+  if (isBatchJob) {
+    // Phase 2: Batch processing with fetch-bars-batch
+    console.log(`[Orchestrator] Dispatching BATCH job: ${jobDef.symbols_array.length} symbols, ${job.timeframe}`);
+    
+    const response = await fetch(`${supabaseUrl}/functions/v1/fetch-bars-batch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify({
+        job_run_id: job.job_run_id,
+        symbols: jobDef.symbols_array,
+        timeframe: job.timeframe,
+        start: job.slice_from,
+        end: job.slice_to,
+      }),
+    });
+
+    console.log(`[Orchestrator] fetch-bars-batch response:`, {
+      status: response.status,
+      ok: response.ok,
       job_run_id: job.job_run_id,
-      symbol: job.symbol,
-      timeframe: job.timeframe,
-      from: job.slice_from,
-      to: job.slice_to,
-    }),
-  });
+      batch_size: jobDef.symbols_array.length,
+    });
 
-  // Defensive logging: Log worker response
-  console.log(`[Orchestrator] fetch-bars response status:`, {
-    status: response.status,
-    statusText: response.statusText,
-    ok: response.ok,
-    job_run_id: job.job_run_id,
-  });
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(`[Orchestrator] fetch-bars-batch error:`, errorBody);
+      throw new Error(`fetch-bars-batch failed (${response.status}): ${errorBody}`);
+    }
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    console.error(`[Orchestrator] fetch-bars error body:`, errorBody);
-    throw new Error(`fetch-bars failed (${response.status}): ${errorBody}`);
+    const result = await response.json();
+    console.log(`[Orchestrator] fetch-bars-batch success:`, {
+      job_run_id: job.job_run_id,
+      symbols_processed: result.symbols_processed,
+      bars_written: result.bars_written,
+    });
+  } else {
+    // Phase 1: Single-symbol processing with fetch-bars
+    console.log(`[Orchestrator] Dispatching single-symbol fetch-bars for ${job.symbol}/${job.timeframe}`);
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/fetch-bars`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify({
+        job_run_id: job.job_run_id,
+        symbol: job.symbol,
+        timeframe: job.timeframe,
+        from: job.slice_from,
+        to: job.slice_to,
+      }),
+    });
+
+    console.log(`[Orchestrator] fetch-bars response status:`, {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+      job_run_id: job.job_run_id,
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(`[Orchestrator] fetch-bars error body:`, errorBody);
+      throw new Error(`fetch-bars failed (${response.status}): ${errorBody}`);
+    }
+
+    const result = await response.json();
+    console.log(`[Orchestrator] fetch-bars success:`, {
+      job_run_id: job.job_run_id,
+      result: JSON.stringify(result),
+    });
   }
-
-  const result = await response.json();
-  console.log(`[Orchestrator] fetch-bars success:`, {
-    job_run_id: job.job_run_id,
-    result: JSON.stringify(result),
-  });
 }
 
 /**
