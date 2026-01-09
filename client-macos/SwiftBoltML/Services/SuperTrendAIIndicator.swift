@@ -441,8 +441,22 @@ class SuperTrendAIIndicator: ObservableObject {
         var performanceMetrics: [Double?] = Array(repeating: nil, count: bars.count)
         var clusterAssignments: [Int] = Array(repeating: 0, count: bars.count)
 
+        // Guard: ensure we have enough bars for the range
+        let startIndex = max(1, settings.atrLength)
+        guard startIndex < bars.count else {
+            // Not enough bars for calculation
+            return SuperTrendAIResult(
+                supertrend: adaptiveSupertrend,
+                trend: adaptiveTrend,
+                adaptiveFactor: adaptiveFactor,
+                performanceMetrics: performanceMetrics,
+                adaptiveMA: Array(repeating: nil, count: bars.count),
+                clusterAssignments: clusterAssignments
+            )
+        }
+
         // Process each bar
-        for i in max(1, settings.atrLength)..<bars.count {
+        for i in startIndex..<bars.count {
             // Get current performance for all factors
             let currentPerformances = factors.enumerated().map { (idx, _) in
                 performances[idx][i]
