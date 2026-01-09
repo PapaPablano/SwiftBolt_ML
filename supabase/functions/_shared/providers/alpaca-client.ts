@@ -192,13 +192,16 @@ export class AlpacaClient implements DataProviderAbstraction {
         const startDate = this.toUTCISOString(start);
         const endDate = this.toUTCISOString(end);
         
-        let url = `${this.baseUrl}/stocks/${symbol}/bars?` +
+        // Alpaca API uses /stocks/bars?symbols= not /stocks/{symbol}/bars
+        let url = `${this.baseUrl}/stocks/bars?` +
+          `symbols=${symbol}&` +
           `timeframe=${alpacaTimeframe}&` +
           `start=${startDate}&` +
           `end=${endDate}&` +
           `limit=10000&` +
-          `adjustment=split&` +
-          `feed=iex`;
+          `adjustment=raw&` +
+          `feed=sip&` +
+          `sort=asc`;
 
         if (nextPageToken) {
           url += `&page_token=${nextPageToken}`;
