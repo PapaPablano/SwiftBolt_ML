@@ -63,7 +63,7 @@ final class ChartViewModel: ObservableObject {
     
     // SPEC-8: Backfill orchestration state
     @Published private(set) var isHydrating: Bool = false
-    @Published private(set) var backfillProgress: Double = 0
+    @Published private(set) var backfillProgress: EnsureCoverageResponse.BackfillProgress?
     @Published private(set) var backfillJobId: String?
     @Published var hydrationBanner: String?
 
@@ -840,28 +840,39 @@ final class ChartViewModel: ObservableObject {
     /// Non-blocking coverage check for intraday data
     /// Triggers server-side backfill if needed without blocking UI
     private func ensureCoverageAsync(symbol: String) async {
-        let windowDays = timeframe.isIntraday ? 5 : 7
-        
+        // Use 730 days (2 years) for intraday backfill
+        let windowDays = timeframe.isIntraday ? 730 : 365
+
         do {
             let response = try await APIClient.shared.ensureCoverage(
                 symbol: symbol,
                 timeframe: timeframe.apiToken,
                 windowDays: windowDays
             )
-            
+
             await MainActor.run {
                 self.backfillJobId = response.jobDefId
+                self.backfillProgress = response.backfillProgress
                 self.isHydrating = (response.status == "gaps_detected")
-                
+
                 if response.status == "coverage_complete" {
                     print("[DEBUG] ✅ Coverage complete for \(symbol) \(timeframe.apiToken)")
                     self.hydrationBanner = nil
+                    self.backfillProgress = nil
                     self.stopHydrationPoller()
                 } else {
                     print("[DEBUG] 🔄 Gaps detected for \(symbol) \(timeframe.apiToken), orchestrator will hydrate")
                     print("[DEBUG] - Job def ID: \(response.jobDefId)")
                     print("[DEBUG] - Gaps found: \(response.coverageStatus.gapsFound)")
-                    
+
+                    // Update banner with progress
+                    if let progress = response.backfillProgress {
+                        self.hydrationBanner = "Backfilling 2 years... \(progress.progressPercent)% (\(progress.barsWritten) bars)"
+                        print("[DEBUG] - Backfill progress: \(progress.progressPercent)% (\(progress.completedSlices)/\(progress.totalSlices) slices)")
+                    } else {
+                        self.hydrationBanner = "Backfill starting..."
+                    }
+
                     // Subscribe to Realtime updates for progress
                     self.subscribeToJobProgress(symbol: symbol, timeframe: timeframe.apiToken)
                     self.startHydrationPoller(symbol: symbol)
@@ -955,11 +966,39 @@ final class ChartViewModel: ObservableObject {
         hydrationPollTask?.cancel()
         hydrationPollTask = Task { [weak self] in
             guard let self else { return }
-            let maxAttempts = 20 // ~5 minutes at 15s interval
+            // Increase to 40 attempts (~10 minutes) for 2-year backfills
+            let maxAttempts = 40
             for attempt in 0..<maxAttempts {
                 try? await Task.sleep(nanoseconds: 15 * 1_000_000_000)
                 guard !Task.isCancelled else { break }
                 do {
+                    // Poll ensure-coverage for progress updates
+                    let windowDays = self.timeframe.isIntraday ? 730 : 365
+                    let coverageResponse = try await APIClient.shared.ensureCoverage(
+                        symbol: symbol,
+                        timeframe: self.timeframe.apiToken,
+                        windowDays: windowDays
+                    )
+
+                    // Update progress on main thread
+                    await MainActor.run {
+                        self.backfillProgress = coverageResponse.backfillProgress
+
+                        if let progress = coverageResponse.backfillProgress {
+                            self.hydrationBanner = "Backfilling 2 years... \(progress.progressPercent)% (\(progress.barsWritten) bars)"
+                            print("[DEBUG] 📊 Backfill progress: \(progress.progressPercent)% (\(progress.completedSlices)/\(progress.totalSlices) slices, \(progress.barsWritten) bars)")
+
+                            // Check if complete
+                            if progress.progressPercent >= 100 {
+                                self.isHydrating = false
+                                self.hydrationBanner = nil
+                                self.backfillProgress = nil
+                                print("[DEBUG] ✅ Backfill complete!")
+                            }
+                        }
+                    }
+
+                    // Fetch updated chart data
                     let peek = try await APIClient.shared.fetchChartV2(
                         symbol: symbol,
                         timeframe: self.timeframe.apiToken,
@@ -968,26 +1007,37 @@ final class ChartViewModel: ObservableObject {
                         forecastDays: 10
                     )
                     let peekBars = self.buildBars(from: peek, for: self.timeframe)
-                    if !peekBars.isEmpty {
-                        await MainActor.run {
-                            self.chartDataV2 = peek
-                            self.chartData = ChartResponse(
-                                symbol: peek.symbol,
-                                assetType: "stock",
-                                timeframe: peek.timeframe,
-                                bars: peekBars,
-                                mlSummary: peek.mlSummary,
-                                indicators: peek.indicators,
-                                superTrendAI: peek.superTrendAI
-                            )
+
+                    // Always update chart data (progressive refresh)
+                    await MainActor.run {
+                        self.chartDataV2 = peek
+                        self.chartData = ChartResponse(
+                            symbol: peek.symbol,
+                            assetType: "stock",
+                            timeframe: peek.timeframe,
+                            bars: peekBars,
+                            mlSummary: peek.mlSummary,
+                            indicators: peek.indicators,
+                            superTrendAI: peek.superTrendAI
+                        )
+
+                        // Stop polling when backfill is complete
+                        if let progress = self.backfillProgress, progress.progressPercent >= 100 {
                             self.isHydrating = false
                             self.hydrationBanner = nil
+                            self.backfillProgress = nil
                         }
-                        print("[DEBUG] ✅ Hydration poll succeeded at attempt \(attempt + 1)")
-                        // Save to cache
-                        ChartCache.saveBars(symbol: symbol, timeframe: self.timeframe, bars: peekBars)
+                    }
+
+                    // Save to cache
+                    ChartCache.saveBars(symbol: symbol, timeframe: self.timeframe, bars: peekBars)
+
+                    // Stop polling if backfill complete
+                    if let progress = coverageResponse.backfillProgress, progress.progressPercent >= 100 {
+                        print("[DEBUG] ✅ Hydration poll complete at attempt \(attempt + 1)")
                         break
                     }
+
                 } catch {
                     print("[DEBUG] Hydration poll error: \(error)")
                 }

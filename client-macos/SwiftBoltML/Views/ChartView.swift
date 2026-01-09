@@ -99,6 +99,36 @@ struct ChartView: View {
             .padding(.horizontal)
             .padding(.top, 8)
 
+            // Backfill progress banner
+            if let progress = chartViewModel.backfillProgress, progress.progressPercent < 100 {
+                VStack(spacing: 6) {
+                    HStack {
+                        ProgressView(value: Double(progress.progressPercent), total: 100)
+                            .progressViewStyle(.linear)
+                            .frame(maxWidth: 400)
+
+                        Text("\(progress.progressPercent)%")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(width: 40, alignment: .trailing)
+                    }
+
+                    Text("Backfilling 2 years of intraday data... \(progress.barsWritten) bars loaded")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+
+                    Text("\(progress.completedSlices) / \(progress.totalSlices) slices complete")
+                        .font(.caption2)
+                        .foregroundColor(.tertiary)
+                }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .background(.ultraThinMaterial)
+                .cornerRadius(8)
+                .padding(.horizontal)
+                .padding(.top, 4)
+            }
+
             // Simplified conditional logic - check data directly
             if chartViewModel.isLoading {
                 LoadingChartView()
