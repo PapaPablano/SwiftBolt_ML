@@ -50,9 +50,70 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Parse request
-    const request: FetchBarsRequest = await req.json();
+    const body = await req.json();
+    const request: FetchBarsRequest = body;
     const { job_run_id, symbol, timeframe, from, to } = request;
 
+    // PHASE 2: Detect batch jobs and delegate to fetch-bars-batch
+    let symbols: string[] = [];
+    
+    if (Array.isArray(body.symbols_array)) {
+      symbols = body.symbols_array;
+    } else if (Array.isArray(body.symbols)) {
+      symbols = body.symbols;
+    } else if (typeof body.symbols === "string") {
+      symbols = body.symbols.split(",").map((s: string) => s.trim()).filter(Boolean);
+    } else if (symbol) {
+      symbols = [symbol];
+    }
+
+    const isBatch = symbols.length > 1;
+
+    if (isBatch) {
+      console.log(`[fetch-bars] Batch mode detected: ${symbols.length} symbols - delegating to fetch-bars-batch`);
+      
+      const batchResponse = await fetch(
+        `${supabaseUrl}/functions/v1/fetch-bars-batch`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${supabaseKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            symbols,
+            timeframe,
+            start: from,
+            end: to,
+          }),
+        }
+      );
+
+      if (!batchResponse.ok) {
+        const errorText = await batchResponse.text();
+        console.error(`[fetch-bars] fetch-bars-batch failed (${batchResponse.status}):`, errorText);
+        return new Response(
+          JSON.stringify({ error: "Batch endpoint failed", status: batchResponse.status }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const batchResult = await batchResponse.json();
+      console.log(`[fetch-bars] Batch complete: ${batchResult.total_bars} rows for ${symbols.length} symbols`);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          type: "batch",
+          symbols_processed: symbols.length,
+          rows_written: batchResult.total_bars,
+          duration_ms: Date.now() - startTime,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Single-symbol mode (legacy behavior)
     console.log(`[fetch-bars] Starting job ${job_run_id}: ${symbol}/${timeframe} ${from} -> ${to}`);
 
     // Validate inputs

@@ -1,0 +1,62 @@
+name: Phase 2 Batch Backfill Cron
+
+on:
+  schedule:
+    # Run every 10 minutes for batch processing (less frequent than single-symbol)
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Allow manual triggering
+    inputs:
+      symbols_count:
+        description: 'Number of symbols to process (default: all active)'
+        required: false
+        default: 'all'
+      timeframes:
+        description: 'Comma-separated timeframes (default: m15,h1,h4,d1)'
+        required: false
+        default: 'm15,h1,h4,d1'
+
+jobs:
+  trigger-batch-backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Batch Backfill Orchestrator
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          echo "Starting Phase 2 batch backfill orchestrator..."
+          
+          # Build request body based on inputs
+          if [ "${{ github.event.inputs.timeframes }}" != "" ]; then
+            TIMEFRAMES='${{ github.event.inputs.timeframes }}'
+          else
+            TIMEFRAMES="m15,h1,h4,d1"
+          fi
+          
+          # Convert comma-separated timeframes to JSON array
+          TIMEFRAMES_JSON=$(echo $TIMEFRAMES | jq -R 'split(",") | map(gsub("^\\s+|\\s+$";""))')
+          
+          curl -f -X POST \
+            "https://cygflaemtmwiwaviclks.supabase.co/functions/v1/batch-backfill-orchestrator" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -d "{\"timeframes\": ${TIMEFRAMES_JSON}}" \
+            | jq '.'
+        continue-on-error: true
+
+      - name: Check Batch Job Status
+        if: always()
+        env:
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          echo "Checking batch job status..."
+          
+          # Query recent batch jobs
+          curl -f -X POST \
+            "https://cygflaemtmwiwaviclks.supabase.co/rest/v1/rpc/get_batch_job_stats" \
+            -H "Content-Type: application/json" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -d '{}' \
+            | jq '.' || echo "Stats endpoint not available yet"
+          
+          echo "Batch backfill trigger completed at $(date)"
