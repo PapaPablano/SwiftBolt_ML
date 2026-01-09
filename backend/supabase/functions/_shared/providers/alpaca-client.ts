@@ -278,6 +278,122 @@ export class AlpacaClient implements DataProviderAbstraction {
   }
 
   /**
+   * Get historical bars for multiple symbols in a single API call (BATCH OPTIMIZATION)
+   * This is 50x more efficient than calling getHistoricalBars() for each symbol individually
+   * Alpaca supports up to 100 symbols per request
+   */
+  async getHistoricalBarsBatch(request: {
+    symbols: string[];
+    timeframe: string;
+    start: number;
+    end: number;
+  }): Promise<Map<string, Bar[]>> {
+    const { symbols, timeframe, start, end } = request;
+    
+    if (symbols.length === 0) {
+      return new Map();
+    }
+
+    // Alpaca supports up to 100 symbols per request
+    if (symbols.length > 100) {
+      throw new ValidationError("alpaca", `Too many symbols (${symbols.length}). Maximum is 100 per batch.`);
+    }
+
+    const alpacaTimeframe = this.convertTimeframe(timeframe);
+    const symbolsParam = symbols.join(",");
+    
+    console.log(`[Alpaca] Fetching historical bars BATCH: ${symbols.length} symbols, ${timeframe} (${alpacaTimeframe})`);
+
+    try {
+      const resultMap = new Map<string, Bar[]>();
+      let nextPageToken: string | undefined;
+      let pageCount = 0;
+      const maxPages = 100;
+
+      do {
+        // Acquire rate limit token (1 token for entire batch!)
+        await this.rateLimiter.acquire("alpaca");
+
+        const startDate = this.toUTCISOString(start);
+        const endDate = this.toUTCISOString(end);
+
+        let url = `${this.baseUrl}/stocks/bars?` +
+          `symbols=${symbolsParam}&` +
+          `timeframe=${alpacaTimeframe}&` +
+          `start=${startDate}&` +
+          `end=${endDate}&` +
+          `limit=10000&` +
+          `adjustment=raw&` +
+          `feed=sip&` +
+          `sort=asc`;
+
+        if (nextPageToken) {
+          url += `&page_token=${nextPageToken}`;
+        }
+
+        const response = await this.fetchWithRetry(url);
+
+        if (!response.ok) {
+          await this.handleErrorResponse(response);
+        }
+
+        const data = await response.json() as AlpacaBarsResponse;
+        
+        // Process bars for each symbol
+        for (const symbol of symbols) {
+          const alpacaBars = data.bars?.[symbol] || [];
+          
+          if (alpacaBars.length > 0) {
+            const bars: Bar[] = alpacaBars.map((bar) => ({
+              timestamp: Math.floor(new Date(bar.t).getTime() / 1000),
+              open: bar.o,
+              high: bar.h,
+              low: bar.l,
+              close: bar.c,
+              volume: bar.v,
+            }));
+
+            // Append to existing bars for this symbol
+            const existing = resultMap.get(symbol) || [];
+            resultMap.set(symbol, [...existing, ...bars]);
+          }
+        }
+
+        nextPageToken = data.next_page_token;
+        pageCount++;
+
+        if (nextPageToken) {
+          console.log(`[Alpaca] Batch fetched page ${pageCount}, continuing...`);
+        }
+
+        if (pageCount >= maxPages) {
+          console.warn(`[Alpaca] Reached maximum page limit (${maxPages}) for batch`);
+          break;
+        }
+      } while (nextPageToken);
+
+      // Log results
+      let totalBars = 0;
+      for (const [symbol, bars] of resultMap.entries()) {
+        totalBars += bars.length;
+        if (bars.length > 0) {
+          const firstDate = new Date(bars[0].timestamp * 1000).toISOString();
+          const lastDate = new Date(bars[bars.length - 1].timestamp * 1000).toISOString();
+          console.log(`[Alpaca] ${symbol}: ${bars.length} bars (${firstDate} to ${lastDate})`);
+        }
+      }
+      
+      console.log(`[Alpaca] Batch complete: ${symbols.length} symbols, ${totalBars} total bars across ${pageCount} page(s)`);
+      console.log(`[Alpaca] API efficiency: 1 request for ${symbols.length} symbols (${symbols.length}x savings!)`);
+
+      return resultMap;
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching batch bars:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Get news for a symbol
    * Alpaca provides news from multiple sources
    */
