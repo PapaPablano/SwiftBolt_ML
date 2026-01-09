@@ -1,0 +1,27 @@
+name: Backfill Worker Cron
+
+on:
+  schedule:
+    # Run every 5 minutes (GitHub Actions minimum is 5 minutes)
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  trigger-backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Backfill Worker
+        env:
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          curl -f -X POST \
+            "https://cygflaemtmwiwaviclks.supabase.co/functions/v1/trigger-backfill" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -d '{}'
+        continue-on-error: true
+
+      - name: Check Status
+        if: always()
+        run: |
+          echo "Backfill trigger completed at $(date)"
