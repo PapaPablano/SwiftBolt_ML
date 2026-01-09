@@ -884,77 +884,16 @@ final class ChartViewModel: ObservableObject {
     }
     
     // MARK: - SPEC-8: Realtime Progress Subscription
-    
+
     /// Subscribe to job_runs table for real-time progress updates
+    /// Note: Currently using polling approach in startHydrationPoller() instead
+    /// Realtime WebSocket updates are unreliable, polling every 15s works better
     private func subscribeToJobProgress(symbol: String, timeframe: String) {
-        // Cancel existing subscription
-        realtimeTask?.cancel()
-        
-        realtimeTask = Task {
-            do {
-                // Build proper Realtime WebSocket URL with auth
-                let url = URL(string: "\(Config.supabaseURL.absoluteString)/realtime/v1/websocket?apikey=\(Config.supabaseAnonKey)&vsn=1.0.0")!
-                
-                var request = URLRequest(url: url)
-                request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
-                
-                let session = URLSession(configuration: .default)
-                let (asyncBytes, response) = try await session.bytes(for: request)
-                
-                guard let httpResponse = response as? HTTPURLResponse,
-                      httpResponse.statusCode == 200 else {
-                    print("[DEBUG] ⚠️ Realtime connection failed")
-                    return
-                }
-                
-                print("[DEBUG] 🔌 Realtime connected for \(symbol)/\(timeframe)")
-                
-                // Listen for progress updates
-                for try await line in asyncBytes.lines {
-                    guard !Task.isCancelled else { break }
-                    
-                    // Parse Realtime message and extract progress
-                    if let data = line.data(using: .utf8),
-                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                       let payload = json["payload"] as? [String: Any],
-                       let record = payload["record"] as? [String: Any],
-                       let recordSymbol = record["symbol"] as? String,
-                       let recordTimeframe = record["timeframe"] as? String,
-                       recordSymbol == symbol && recordTimeframe == timeframe {
-                        
-                        let progress = record["progress_percent"] as? Double ?? 0
-                        let status = record["status"] as? String ?? "queued"
-                        
-                        await MainActor.run {
-                            self.backfillProgress = progress
-                            
-                            if progress >= 100 || status == "success" {
-                                self.isHydrating = false
-                                self.hydrationBanner = nil
-                                self.stopHydrationPoller()
-                                print("[DEBUG] ✅ Hydration complete for \(symbol)/\(timeframe)")
-                                // Reload chart to show new data
-                                Task { await self.loadChart() }
-                            } else if status == "running" {
-                                let pct = Int(progress)
-                                self.hydrationBanner = "Hydrating \(symbol) \(timeframe)… \(pct)%"
-                                print("[DEBUG] 🔄 Progress: \(pct)%")
-                            } else if status == "failed" {
-                                self.isHydrating = false
-                                self.hydrationBanner = "Hydration failed"
-                                print("[DEBUG] ❌ Hydration failed for \(symbol)/\(timeframe)")
-                            }
-                        }
-                    }
-                }
-            } catch {
-                if !Task.isCancelled {
-                    print("[DEBUG] ⚠️ Realtime subscription error: \(error)")
-                }
-            }
-        }
+        // No-op: Using polling approach instead
+        // See startHydrationPoller() for actual progress tracking
+        print("[DEBUG] Realtime subscription skipped, using polling instead")
     }
-    
+
     /// Stop Realtime subscription
     private func stopRealtimeSubscription() {
         realtimeTask?.cancel()
