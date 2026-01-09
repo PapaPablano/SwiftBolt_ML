@@ -132,22 +132,25 @@ export class ProviderRouter {
 
     if (isIntraday && tradierProvider) {
       // Determine if this is historical or real-time data
-      const endDate = new Date(request.end * 1000); // Convert Unix seconds to Date
+      const startDate = new Date(request.start * 1000); // Convert Unix seconds to Date
+      const endDate = new Date(request.end * 1000);
       const today = new Date();
       const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
-      const isHistorical = endDate < todayStart; // Request ends before today
+      // Check if START date is before today (historical backfill)
+      // This ensures we use Polygon for all historical data, even if the slice extends to today
+      const isHistorical = startDate < todayStart;
 
       if (isHistorical && massiveProvider) {
         // Use Polygon/Massive for historical intraday data (backfill)
         primary = "massive";
         fallback = "tradier"; // Tradier as fallback (though won't have the data)
-        console.log(`[Router] Using Polygon for HISTORICAL intraday: ${request.timeframe} (ends ${endDate.toISOString()})`);
+        console.log(`[Router] Using Polygon for HISTORICAL intraday: ${request.timeframe} (${startDate.toISOString()} -> ${endDate.toISOString()})`);
       } else {
         // Use Tradier for TODAY's intraday data (real-time)
         primary = "tradier";
         fallback = "massive"; // Polygon as fallback
-        console.log(`[Router] Using Tradier for TODAY's intraday: ${request.timeframe}`);
+        console.log(`[Router] Using Tradier for TODAY's intraday: ${request.timeframe} (${startDate.toISOString()} -> ${endDate.toISOString()})`);
       }
     } else {
       // Use configured policy for daily/weekly data

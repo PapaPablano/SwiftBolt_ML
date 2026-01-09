@@ -3,11 +3,12 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { corsHeaders } from "../_shared/cors.ts";
-import { getProviderRouter } from "../_shared/providers/factory.ts";
+import { getProviderRouter, injectSupabaseClient } from "../_shared/providers/factory.ts";
 import type { Bar } from "../_shared/providers/types.ts";
 import { ProviderError, RateLimitExceededError } from "../_shared/providers/types.ts";
 import { fetchBarsWithResampling } from "../_shared/services/bar-fetcher.ts";
 import { FEATURE_FLAGS, logFeatureFlags } from "../_shared/config/feature-flags.ts";
+import { estimatePolygonCost } from "../_shared/rate-limiter/distributed-token-bucket.ts";
 
 interface FetchBarsRequest {
   job_run_id: string;
@@ -68,8 +69,9 @@ Deno.serve(async (req) => {
     // Log feature flags on first run
     logFeatureFlags();
 
-    // Initialize provider router
+    // Initialize provider router and inject Supabase for distributed rate limiting
     const router = getProviderRouter();
+    injectSupabaseClient(supabase);
 
     // Map timeframe to provider format
     const providerTimeframe = TIMEFRAME_MAP[timeframe] || timeframe;
@@ -78,9 +80,19 @@ Deno.serve(async (req) => {
     const fromDate = new Date(from);
     const toDate = new Date(to);
     
+    // Calculate expected cost for Polygon requests
+    const expectedCost = ["m15", "h1", "h4"].includes(providerTimeframe)
+      ? estimatePolygonCost({
+          fromTimestamp: Math.floor(fromDate.getTime() / 1000),
+          toTimestamp: Math.floor(toDate.getTime() / 1000),
+          timeframe: providerTimeframe,
+        })
+      : 1;
+    
     let bars: Bar[] = [];
     let provider = "unknown";
     let wasResampled = false;
+    let actualCost = 0;
 
     try {
       // Use new bar fetcher with resampling support
@@ -95,11 +107,12 @@ Deno.serve(async (req) => {
       bars = result.bars;
       provider = result.provider;
       wasResampled = result.wasResampled;
+      actualCost = result.actualCost || 1; // Track actual API calls made
 
       if (wasResampled) {
-        console.log(`[fetch-bars] Resampled ${result.originalCount} m15 bars → ${bars.length} ${providerTimeframe} bars from ${provider}`);
+        console.log(`[fetch-bars] Resampled ${result.originalCount} m15 bars → ${bars.length} ${providerTimeframe} bars from ${provider} (cost: ${actualCost} API calls)`);
       } else {
-        console.log(`[fetch-bars] Fetched ${bars.length} bars from ${provider}`);
+        console.log(`[fetch-bars] Fetched ${bars.length} bars from ${provider} (cost: ${actualCost} API calls)`);
       }
     } catch (error) {
       console.error(`[fetch-bars] Provider error:`, error);
@@ -223,6 +236,8 @@ Deno.serve(async (req) => {
       rows_written: rowsWritten,
       provider,
       progress_percent: 100,
+      expected_cost: expectedCost,
+      actual_cost: actualCost,
       finished_at: new Date().toISOString(),
     });
 
@@ -267,6 +282,8 @@ async function updateJobStatus(
     progress_percent: number;
     rows_written: number;
     provider: string;
+    expected_cost: number;
+    actual_cost: number;
     error_message: string;
     error_code: string;
     started_at: string;

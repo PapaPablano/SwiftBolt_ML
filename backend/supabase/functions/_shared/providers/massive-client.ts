@@ -18,6 +18,8 @@ import {
 import type { TokenBucketRateLimiter } from "../rate-limiter/token-bucket.ts";
 import type { Cache } from "../cache/interface.ts";
 import { CACHE_TTL } from "../config/rate-limits.ts";
+import { waitForToken, sleepWithJitter } from "../rate-limiter/distributed-token-bucket.ts";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 interface PolygonAggregateResult {
   v: number; // Volume
@@ -157,6 +159,7 @@ export class MassiveClient implements DataProviderAbstraction {
   private readonly baseURL: string;
   private readonly rateLimiter: TokenBucketRateLimiter;
   private readonly cache: Cache;
+  private supabase: SupabaseClient | null = null;
 
   constructor(
     apiKey: string,
@@ -168,6 +171,14 @@ export class MassiveClient implements DataProviderAbstraction {
     this.baseURL = baseURL;
     this.rateLimiter = rateLimiter;
     this.cache = cache;
+  }
+
+  /**
+   * Set Supabase client for distributed token bucket
+   * Call this after construction to enable distributed rate limiting
+   */
+  setSupabaseClient(supabase: SupabaseClient): void {
+    this.supabase = supabase;
   }
 
   async getQuote(symbols: string[]): Promise<Quote[]> {
@@ -182,8 +193,12 @@ export class MassiveClient implements DataProviderAbstraction {
         continue;
       }
 
-      // Acquire rate limit token (strict 5/min limit)
-      await this.rateLimiter.acquire("massive");
+      // Acquire rate limit token from distributed bucket
+      if (this.supabase) {
+        await waitForToken(this.supabase, "polygon", 1);
+      } else {
+        await this.rateLimiter.acquire("massive");
+      }
 
       const url = new URL(`${this.baseURL}/v2/snapshot/locale/us/markets/stocks/tickers/${symbol.toUpperCase()}`);
       url.searchParams.set("apiKey", this.apiKey);
@@ -231,8 +246,12 @@ export class MassiveClient implements DataProviderAbstraction {
       return cached;
     }
 
-    // Acquire rate limit token (strict 5/min limit)
-    await this.rateLimiter.acquire("massive");
+    // Acquire rate limit token from distributed bucket
+    if (this.supabase) {
+      await waitForToken(this.supabase, "polygon", 1);
+    } else {
+      await this.rateLimiter.acquire("massive");
+    }
 
     const config = TIMEFRAME_CONFIG[timeframe];
     if (!config) {
@@ -260,7 +279,7 @@ export class MassiveClient implements DataProviderAbstraction {
 
     try {
       console.log(`[Massive] Fetching candles: ${symbol} ${timeframe}`);
-      const response = await fetch(url.toString());
+      const response = await this.fetchWithRetry(url.toString());
       await this.handleHttpErrors(response);
 
       const data: PolygonAggregatesResponse = await response.json();
@@ -456,7 +475,12 @@ export class MassiveClient implements DataProviderAbstraction {
     const maxPages = 50; // Safety limit (50k bars per page = 2.5M bars max)
     
     do {
-      await this.rateLimiter.acquire("massive");
+      // Acquire token from distributed bucket
+      if (this.supabase) {
+        await waitForToken(this.supabase, "polygon", 1);
+      } else {
+        await this.rateLimiter.acquire("massive");
+      }
       
       const url = nextUrl || new URL(
         `${this.baseURL}/v2/aggs/ticker/${ticker}/range/15/minute/${formatTs(startTimestamp)}/${formatTs(endTimestamp)}`
@@ -474,7 +498,7 @@ export class MassiveClient implements DataProviderAbstraction {
       console.log(`[Massive] Fetching m15 page ${pageCount + 1} for ${symbol}`);
       
       try {
-        const response = await fetch(nextUrl);
+        const response = await this.fetchWithRetry(nextUrl);
         await this.handleHttpErrors(response);
         
         const data: PolygonAggregatesResponse = await response.json();
@@ -503,6 +527,11 @@ export class MassiveClient implements DataProviderAbstraction {
         
         nextUrl = data.next_url ? `${data.next_url}&apiKey=${this.apiKey}` : null;
         pageCount++;
+        
+        // Add jitter between pagination requests to avoid bursts
+        if (nextUrl) {
+          await sleepWithJitter(250, 250);
+        }
         
       } catch (error) {
         console.error(`[Massive] Error fetching m15 page ${pageCount + 1}:`, error);
@@ -559,6 +588,40 @@ export class MassiveClient implements DataProviderAbstraction {
       "HTTP_ERROR",
       response.status
     );
+  }
+
+  /**
+   * Fetch with automatic retry on 429 with Retry-After handling
+   */
+  private async fetchWithRetry(url: string, maxRetries: number = 2): Promise<Response> {
+    let lastError: Error | null = null;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(url);
+        
+        if (response.status === 429) {
+          const retryAfter = parseInt(response.headers.get("Retry-After") ?? "60", 10);
+          console.warn(`[Massive] Rate limit hit, retrying after ${retryAfter}s (attempt ${attempt + 1}/${maxRetries + 1})`);
+          
+          if (attempt < maxRetries) {
+            // Wait with jitter to avoid synchronized retries
+            await sleepWithJitter(retryAfter * 1000, 500);
+            continue;
+          }
+        }
+        
+        return response;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (attempt < maxRetries) {
+          console.warn(`[Massive] Fetch error, retrying (attempt ${attempt + 1}/${maxRetries + 1}):`, error);
+          await sleepWithJitter(1000, 500);
+        }
+      }
+    }
+    
+    throw lastError || new Error("Fetch failed after retries");
   }
 
   private mapError(error: unknown): Error {

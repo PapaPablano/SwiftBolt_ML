@@ -119,6 +119,24 @@ export function getProviderRouter(): ProviderRouter {
 }
 
 /**
+ * Inject Supabase client into providers for distributed rate limiting
+ * Call this in Edge functions that need coordinated rate limiting
+ */
+export function injectSupabaseClient(supabase: any): void {
+  if (!routerInstance) {
+    initializeProviders();
+  }
+  
+  // Inject into Massive/Polygon client
+  const router = routerInstance as any;
+  const massiveProvider = router.providers?.get("massive");
+  if (massiveProvider && typeof massiveProvider.setSupabaseClient === "function") {
+    massiveProvider.setSupabaseClient(supabase);
+    console.log("[Provider Factory] Injected Supabase client into Massive provider");
+  }
+}
+
+/**
  * Get cache statistics for observability
  */
 export async function getCacheStats() {

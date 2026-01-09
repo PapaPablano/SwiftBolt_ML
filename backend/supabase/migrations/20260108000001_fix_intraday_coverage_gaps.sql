@@ -27,13 +27,9 @@ BEGIN
 
   v_target_to := now();
 
-  -- For intraday timeframes, only check TODAY (Tradier limitation)
-  -- For daily/weekly timeframes, check the full window
-  IF v_is_intraday THEN
-    v_target_from := date_trunc('day', now());
-  ELSE
-    v_target_from := v_target_to - (p_window_days || ' days')::interval;
-  END IF;
+  -- Use window_days for both intraday and daily timeframes
+  -- Polygon provides historical intraday data, so we can backfill 2+ years
+  v_target_from := v_target_to - (p_window_days || ' days')::interval;
 
   -- Get current coverage
   SELECT from_ts, to_ts INTO v_coverage_from, v_coverage_to
@@ -65,5 +61,5 @@ $$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION get_coverage_gaps IS
 'Identifies coverage gaps for a symbol/timeframe pair.
-For intraday timeframes (m15, h1, h4): Only checks TODAY (Tradier limitation).
-For daily/weekly timeframes (d1, w1): Checks full window_days range.';
+Uses window_days parameter for both intraday and daily timeframes.
+Polygon provides historical intraday data, enabling 2+ year backfills.';
