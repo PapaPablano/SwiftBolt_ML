@@ -6,6 +6,10 @@ enum APIError: LocalizedError {
     case httpError(statusCode: Int, message: String?)
     case decodingError(Error)
     case networkError(Error)
+    case rateLimitExceeded(retryAfter: Int?)
+    case authenticationError(message: String)
+    case invalidSymbol(symbol: String)
+    case serviceUnavailable(message: String)
 
     var errorDescription: String? {
         switch self {
@@ -19,6 +23,26 @@ enum APIError: LocalizedError {
             return "Failed to decode response: \(error.localizedDescription)"
         case .networkError(let error):
             return "Network error: \(error.localizedDescription)"
+        case .rateLimitExceeded(let retryAfter):
+            if let seconds = retryAfter {
+                return "Rate limit exceeded. Retry after \(seconds) seconds"
+            }
+            return "Rate limit exceeded. Please try again later"
+        case .authenticationError(let message):
+            return "Authentication error: \(message)"
+        case .invalidSymbol(let symbol):
+            return "Invalid or unknown symbol: \(symbol)"
+        case .serviceUnavailable(let message):
+            return "Service temporarily unavailable: \(message)"
+        }
+    }
+    
+    var isRetryable: Bool {
+        switch self {
+        case .rateLimitExceeded, .serviceUnavailable, .networkError:
+            return true
+        case .authenticationError, .invalidSymbol, .invalidURL, .invalidResponse, .httpError, .decodingError:
+            return false
         }
     }
 }
@@ -93,7 +117,27 @@ final class APIClient {
         guard (200...299).contains(httpResponse.statusCode) else {
             let message = String(data: data, encoding: .utf8)
             print("[DEBUG] API Error response: \(message ?? "nil")")
-            throw APIError.httpError(statusCode: httpResponse.statusCode, message: message)
+            
+            // Parse specific error types from backend
+            switch httpResponse.statusCode {
+            case 401, 403:
+                throw APIError.authenticationError(message: message ?? "Authentication failed")
+            case 404:
+                // Try to extract symbol from error message
+                if let msg = message, msg.contains("Symbol") {
+                    let symbol = msg.components(separatedBy: " ").first(where: { $0.uppercased() == $0 && $0.count <= 5 }) ?? "unknown"
+                    throw APIError.invalidSymbol(symbol: symbol)
+                }
+                throw APIError.httpError(statusCode: httpResponse.statusCode, message: message)
+            case 429:
+                // Parse Retry-After header if present
+                let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init)
+                throw APIError.rateLimitExceeded(retryAfter: retryAfter)
+            case 500...599:
+                throw APIError.serviceUnavailable(message: message ?? "Server error")
+            default:
+                throw APIError.httpError(statusCode: httpResponse.statusCode, message: message)
+            }
         }
 
         // Debug: print raw response

@@ -237,18 +237,30 @@ serve(async (req) => {
       }
     }
 
+    // Determine actual providers from data (prefer alpaca if present)
+    const historicalProvider = historical.length > 0 
+      ? (historical.find(b => b.provider === 'alpaca') ? 'alpaca' : 
+         historical.find(b => b.provider === 'yfinance') ? 'yfinance' : 
+         historical.find(b => b.provider === 'polygon') ? 'polygon' : 'unknown')
+      : 'none';
+    
+    const intradayProvider = intraday.length > 0
+      ? (intraday.find(b => b.provider === 'alpaca') ? 'alpaca' :
+         intraday.find(b => b.provider === 'tradier') ? 'tradier' : 'unknown')
+      : 'none';
+
     const response = {
       symbol: symbol.toUpperCase(),
       timeframe,
       layers: {
         historical: {
           count: historical.length,
-          provider: 'polygon',
+          provider: historicalProvider,
           data: historical,
         },
         intraday: {
           count: intraday.length,
-          provider: 'tradier',
+          provider: intradayProvider,
           data: intraday,
         },
         forecast: {

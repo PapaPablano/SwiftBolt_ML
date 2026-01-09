@@ -75,6 +75,15 @@ export function initializeProviders(): ProviderRouter {
   const tradierClient = tradierApiKey ? new TradierClient(tradierApiKey) : null;
   const alpacaClient = (alpacaApiKey && alpacaApiSecret) ? new AlpacaClient(alpacaApiKey, alpacaApiSecret) : null;
 
+  // Warm Alpaca assets cache on startup to avoid validation delays
+  if (alpacaClient) {
+    alpacaClient.getAssets().then(() => {
+      console.log("[Provider Factory] Alpaca assets cache warmed");
+    }).catch((error) => {
+      console.warn("[Provider Factory] Failed to warm Alpaca assets cache:", error);
+    });
+  }
+
   console.log("[Provider Factory] Provider clients initialized");
 
   // Initialize router with custom policy for intraday vs historical data

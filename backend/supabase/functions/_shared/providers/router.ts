@@ -122,38 +122,44 @@ export class ProviderRouter {
   }
 
   async getHistoricalBars(request: HistoricalBarsRequest): Promise<Bar[]> {
-    // Smart routing based on timeframe AND date range
+    // Smart routing: Alpaca first (if available), then timeframe-specific fallbacks
     const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(request.timeframe);
+    const alpacaProvider = this.providers.get("alpaca");
     const tradierProvider = this.providers.get("tradier");
     const massiveProvider = this.providers.get("massive");
 
     let primary: ProviderId;
     let fallback: ProviderId | undefined;
 
-    if (isIntraday && tradierProvider) {
-      // Determine if this is historical or real-time data
-      const startDate = new Date(request.start * 1000); // Convert Unix seconds to Date
+    // Alpaca is preferred for ALL data types (historical + intraday) when available
+    if (alpacaProvider) {
+      primary = "alpaca";
+      // Fallback depends on timeframe
+      if (isIntraday) {
+        fallback = tradierProvider ? "tradier" : (massiveProvider ? "massive" : this.policy.historicalBars.fallback);
+      } else {
+        fallback = this.policy.historicalBars.fallback;
+      }
+      console.log(`[Router] Using Alpaca (primary) for ${request.timeframe} with fallback: ${fallback || 'none'}`);
+    } else if (isIntraday && tradierProvider) {
+      // No Alpaca: use legacy intraday routing
+      const startDate = new Date(request.start * 1000);
       const endDate = new Date(request.end * 1000);
       const today = new Date();
       const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-      // Check if START date is before today (historical backfill)
-      // This ensures we use Polygon for all historical data, even if the slice extends to today
       const isHistorical = startDate < todayStart;
 
       if (isHistorical && massiveProvider) {
-        // Use Polygon/Massive for historical intraday data (backfill)
         primary = "massive";
-        fallback = "tradier"; // Tradier as fallback (though won't have the data)
+        fallback = "tradier";
         console.log(`[Router] Using Polygon for HISTORICAL intraday: ${request.timeframe} (${startDate.toISOString()} -> ${endDate.toISOString()})`);
       } else {
-        // Use Tradier for TODAY's intraday data (real-time)
         primary = "tradier";
-        fallback = "massive"; // Polygon as fallback
+        fallback = "massive";
         console.log(`[Router] Using Tradier for TODAY's intraday: ${request.timeframe} (${startDate.toISOString()} -> ${endDate.toISOString()})`);
       }
     } else {
-      // Use configured policy for daily/weekly data
+      // Use configured policy for daily/weekly data (no Alpaca, no Tradier)
       primary = this.policy.historicalBars.primary;
       fallback = this.policy.historicalBars.fallback;
       console.log(`[Router] Using ${primary} for daily/weekly timeframe: ${request.timeframe}`);

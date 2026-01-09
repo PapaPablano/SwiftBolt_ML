@@ -565,8 +565,8 @@ final class ChartViewModel: ObservableObject {
                     }
                     
                     print("[DEBUG] ChartViewModel.loadChart() - V2 SUCCESS!")
-                    print("[DEBUG] - Historical: \(response.layers.historical.count)")
-                    print("[DEBUG] - Intraday: \(response.layers.intraday.count)")
+                    print("[DEBUG] - Historical: \(response.layers.historical.count) (provider: \(response.layers.historical.provider))")
+                    print("[DEBUG] - Intraday: \(response.layers.intraday.count) (provider: \(response.layers.intraday.provider))")
                     print("[DEBUG] - Final bars: \(bars.count)")
                     print("[DEBUG] - ML: \(response.mlSummary != nil ? "✓" : "✗")")
                     

@@ -255,6 +255,34 @@ supabase secrets set ALPACA_API_SECRET=your-secret
 3. Market closed - no intraday data outside market hours
 4. Invalid timeframe - use supported timeframes only
 
+## Recent Enhancements (January 2026)
+
+### ✅ Pagination Support
+Automatically handles large result sets (>10,000 bars) using `next_page_token`. No code changes required - works transparently.
+
+### ✅ Enhanced Error Handling
+Specific error types for better debugging:
+- `AuthenticationError` (401, 403)
+- `ValidationError` (400, 422)
+- `InvalidSymbolError` (404)
+- `ServiceUnavailableError` (500+)
+- `RateLimitExceededError` (429)
+
+### ✅ Automatic Retry Logic
+Exponential backoff for transient failures (rate limits, server errors). Retries: 1s → 2s → 4s.
+
+### ✅ Symbol Validation
+```typescript
+// Validate symbols before making expensive API calls
+const isValid = await alpacaClient.validateSymbol('AAPL');
+const asset = await alpacaClient.getAsset('AAPL');
+// Returns: { symbol, name, exchange, tradable, ... }
+```
+
+**See**: [`ALPACA_ENHANCEMENTS.md`](./ALPACA_ENHANCEMENTS.md) for full details.
+
+---
+
 ## Future Enhancements
 
 ### WebSocket Streaming (Planned)
