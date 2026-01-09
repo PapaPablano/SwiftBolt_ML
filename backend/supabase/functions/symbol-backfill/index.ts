@@ -12,12 +12,15 @@ const YFINANCE_BASE_URL = "https://query1.finance.yahoo.com/v8/finance/chart";
 
 // Timeframe configurations: how much history to fetch
 // Yahoo Finance intervals: 1m, 5m, 15m, 30m, 1h, 1d, 1wk, 1mo
+// NOTE: Yahoo Finance returns UNADJUSTED prices for OHLC by default.
+// Only 'adjclose' field contains split/dividend adjusted prices.
+// We use the standard OHLC fields which are unadjusted.
 const TIMEFRAME_CONFIG: Record<string, { interval: string; maxDays: number }> = {
   m15: { interval: "15m", maxDays: 60 },
-  h1: { interval: "1h", maxDays: 730 },
-  h4: { interval: "1h", maxDays: 730 }, // Use 1h, aggregate if needed
-  d1: { interval: "1d", maxDays: 730 },  // 2 years
-  w1: { interval: "1wk", maxDays: 1825 }, // 5 years
+  h1: { interval: "1h", maxDays: 730 },  // 2 years
+  h4: { interval: "1h", maxDays: 730 },  // 2 years (aggregate from 1h)
+  d1: { interval: "1d", maxDays: 1825 }, // 5 years (increased from 2)
+  w1: { interval: "1wk", maxDays: 3650 }, // 10 years
 };
 
 // Default timeframes to backfill (most important first)
@@ -130,10 +133,11 @@ async function getExistingCoverage(
   timeframe: string
 ): Promise<{ count: number; latest: Date | null }> {
   const { data, error } = await supabase
-    .from("ohlc_bars")
+    .from("ohlc_bars_v2")
     .select("ts")
     .eq("symbol_id", symbolId)
     .eq("timeframe", timeframe)
+    .eq("is_forecast", false)
     .order("ts", { ascending: false })
     .limit(1);
 
@@ -143,10 +147,11 @@ async function getExistingCoverage(
 
   // Get count
   const { count } = await supabase
-    .from("ohlc_bars")
+    .from("ohlc_bars_v2")
     .select("id", { count: "exact", head: true })
     .eq("symbol_id", symbolId)
-    .eq("timeframe", timeframe);
+    .eq("timeframe", timeframe)
+    .eq("is_forecast", false);
 
   return {
     count: count || 0,
@@ -197,8 +202,33 @@ async function backfillTimeframe(
       return { timeframe, barsInserted: 0, error: "No data returned from Yahoo Finance" };
     }
 
-    // Upsert to database
-    const barsToInsert = bars.map((bar) => ({
+    // Check what timestamps already exist (from any provider)
+    const timestamps = bars.map(b => b.ts);
+    const { data: existingBars } = await supabase
+      .from("ohlc_bars_v2")
+      .select("ts, provider")
+      .eq("symbol_id", symbolId)
+      .eq("timeframe", timeframe)
+      .eq("is_forecast", false)
+      .in("ts", timestamps);
+
+    const existingTimestamps = new Set((existingBars || []).map((b: any) => b.ts));
+
+    // Only insert bars that don't already exist (to avoid provider conflicts)
+    const newBars = bars.filter(bar => !existingTimestamps.has(bar.ts));
+
+    if (newBars.length === 0) {
+      console.log(`[SymbolBackfill] ${symbol} ${timeframe}: All ${bars.length} bars already exist, skipping`);
+      return {
+        timeframe,
+        barsInserted: 0,
+        earliest: bars[0]?.ts,
+        latest: bars[bars.length - 1]?.ts,
+      };
+    }
+
+    // Insert only new bars
+    const barsToInsert = newBars.map((bar) => ({
       symbol_id: symbolId,
       timeframe,
       ts: bar.ts,
@@ -208,26 +238,27 @@ async function backfillTimeframe(
       close: bar.close,
       volume: bar.volume,
       provider: "yfinance",
+      is_intraday: false,  // Historical backfill data
+      is_forecast: false,  // Not a forecast
+      data_status: "verified",  // Historical data is verified
     }));
 
-    const { error: upsertError } = await supabase
-      .from("ohlc_bars")
-      .upsert(barsToInsert, {
-        onConflict: "symbol_id,timeframe,ts",
-      });
+    const { error: insertError } = await supabase
+      .from("ohlc_bars_v2")
+      .insert(barsToInsert);
 
-    if (upsertError) {
-      console.error(`[SymbolBackfill] Upsert error for ${symbol} ${timeframe}:`, upsertError);
-      return { timeframe, barsInserted: 0, error: upsertError.message };
+    if (insertError) {
+      console.error(`[SymbolBackfill] Insert error for ${symbol} ${timeframe}:`, insertError);
+      return { timeframe, barsInserted: 0, error: insertError.message };
     }
 
-    console.log(`[SymbolBackfill] Inserted ${bars.length} bars for ${symbol} ${timeframe}`);
+    console.log(`[SymbolBackfill] Inserted ${newBars.length} bars for ${symbol} ${timeframe}`);
 
     return {
       timeframe,
-      barsInserted: bars.length,
-      earliest: bars[0].ts,
-      latest: bars[bars.length - 1].ts,
+      barsInserted: newBars.length,
+      earliest: newBars[0]?.ts,
+      latest: newBars[newBars.length - 1]?.ts,
     };
   } catch (error) {
     console.error(`[SymbolBackfill] Error for ${symbol} ${timeframe}:`, error);
