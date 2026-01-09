@@ -14,6 +14,7 @@ import type { ProviderId } from "./types.ts";
 let routerInstance: ProviderRouter | null = null;
 let rateLimiterInstance: TokenBucketRateLimiter | null = null;
 let cacheInstance: MemoryCache | null = null;
+let massiveClientInstance: MassiveClient | null = null;
 
 /**
  * Initialize the provider system with rate limiting and caching
@@ -49,7 +50,7 @@ export function initializeProviders(): ProviderRouter {
     cacheInstance
   );
 
-  const massiveClient = new MassiveClient(
+  massiveClientInstance = new MassiveClient(
     massiveApiKey,
     rateLimiterInstance,
     cacheInstance
@@ -64,7 +65,7 @@ export function initializeProviders(): ProviderRouter {
   // Initialize router with default policy
   routerInstance = new ProviderRouter({
     finnhub: finnhubClient,
-    massive: massiveClient,
+    massive: massiveClientInstance,
     yahoo: yahooFinanceClient,
   });
 
@@ -82,6 +83,23 @@ export function getProviderRouter(): ProviderRouter {
     return initializeProviders();
   }
   return routerInstance;
+}
+
+/**
+ * Get the singleton MassiveClient (Polygon) instance
+ * Initializes providers if not already initialized
+ * Returns null if initialization fails
+ */
+export function getMassiveClient(): MassiveClient | null {
+  if (!massiveClientInstance) {
+    try {
+      initializeProviders();
+    } catch (error) {
+      console.error("[Provider Factory] Failed to initialize providers:", error);
+      return null;
+    }
+  }
+  return massiveClientInstance;
 }
 
 /**

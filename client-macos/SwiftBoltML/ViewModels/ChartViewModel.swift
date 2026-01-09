@@ -660,19 +660,22 @@ final class ChartViewModel: ObservableObject {
     
     /// Helper to build bars from correct data layer based on timeframe
     private func buildBars(from response: ChartDataV2Response, for timeframe: Timeframe) -> [OHLCBar] {
-        // Prefer correct layer, but fall back if empty
         let intraday = response.layers.intraday.data
         let historical = response.layers.historical.data
         
         let src: [OHLCBar]
         switch timeframe {
         case .m15, .h1, .h4:
-            src = !intraday.isEmpty ? intraday : historical
+            // For intraday timeframes: merge historical (Polygon 2yr backfill) + today's intraday (Tradier)
+            // Historical layer contains Polygon's m15/h1/h4 data with is_intraday=false
+            // Intraday layer contains today's Tradier data with is_intraday=true
+            src = (historical + intraday).sorted(by: { $0.ts < $1.ts })
         case .d1, .w1:
+            // For daily/weekly: prefer historical, fallback to intraday
             src = !historical.isEmpty ? historical : intraday
         }
         
-        print("[DEBUG] buildBars → hist: \(historical.count) | intraday: \(intraday.count) | selected: \(src.count) for \(timeframe.apiToken)")
+        print("[DEBUG] buildBars → hist: \(historical.count) | intraday: \(intraday.count) | merged: \(src.count) for \(timeframe.apiToken)")
         
         return src
     }

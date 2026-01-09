@@ -103,8 +103,8 @@ async function processChunk(supabase: any, chunk: BackfillChunk): Promise<void> 
   console.log(`[BackfillWorker] Processing chunk ${id}: ${symbol} ${timeframe} ${day}`);
 
   try {
-    // Fetch bars for this day
-    const bars = await fetchIntradayForDay({ symbol, timeframe, day });
+    // Fetch bars for this day (pass supabase for symbol_id lookup)
+    const bars = await fetchIntradayForDay({ symbol, timeframe, day, supabase });
 
     if (bars.length === 0) {
       console.warn(`[BackfillWorker] No bars returned for ${symbol} ${timeframe} ${day}`);
@@ -146,7 +146,7 @@ async function upsertBars(supabase: any, bars: BackfillBar[]): Promise<void> {
     const slice = bars.slice(i, i + batchSize);
 
     const { error } = await supabase.from("ohlc_bars_v2").upsert(slice, {
-      onConflict: "symbol,timeframe,ts",
+      onConflict: "symbol_id,timeframe,ts,provider,is_forecast",
     });
 
     if (error) {

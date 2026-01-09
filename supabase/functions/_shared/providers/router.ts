@@ -46,8 +46,8 @@ const DEFAULT_POLICY: RouterPolicy = {
     fallback: "massive",
   },
   historicalBars: {
-    primary: "yahoo", // Yahoo Finance has real-time intraday data (no delay!)
-    fallback: "finnhub", // Finnhub as fallback
+    primary: "massive", // Polygon for intraday historical (m15, h1, h4)
+    fallback: "yahoo",  // Yahoo as fallback for daily/weekly
   },
   news: {
     primary: "finnhub", // Massive free tier doesn't support news
@@ -58,6 +58,9 @@ const DEFAULT_POLICY: RouterPolicy = {
     fallback: undefined,
   },
 };
+
+// Intraday timeframes that should use Polygon (massive)
+const INTRADAY_TIMEFRAMES = new Set(["m1", "m5", "m15", "m30", "h1", "h4"]);
 
 export class ProviderRouter {
   private providers: Map<ProviderId, DataProviderAbstraction>;
@@ -122,7 +125,12 @@ export class ProviderRouter {
   }
 
   async getHistoricalBars(request: HistoricalBarsRequest): Promise<Bar[]> {
-    const { primary, fallback } = this.policy.historicalBars;
+    // Smart routing: Use Polygon (massive) for intraday, Yahoo for daily/weekly
+    const isIntraday = INTRADAY_TIMEFRAMES.has(request.timeframe);
+    const primary: ProviderId = isIntraday ? "massive" : "yahoo";
+    const fallback: ProviderId = isIntraday ? "yahoo" : "massive";
+
+    console.log(`[Router] getHistoricalBars: ${request.symbol} ${request.timeframe} -> primary=${primary}, fallback=${fallback}`);
 
     try {
       const provider = await this.selectProvider(primary, fallback);
