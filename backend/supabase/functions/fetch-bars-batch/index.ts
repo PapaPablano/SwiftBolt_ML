@@ -4,9 +4,6 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { corsHeaders } from "../_shared/cors.ts";
-import { AlpacaClient } from "../_shared/providers/alpaca-client.ts";
-import { getTokenBucketRateLimiter } from "../_shared/rate-limiter/token-bucket.ts";
-import { getCache } from "../_shared/cache/factory.ts";
 
 interface BatchFetchRequest {
   job_run_ids: string[]; // Array of job run IDs (one per symbol)
@@ -78,24 +75,69 @@ Deno.serve(async (req) => {
         .eq("id", jobId);
     }
 
-    // Initialize Alpaca client
-    const rateLimiter = getTokenBucketRateLimiter();
-    const cache = getCache();
-    const alpacaClient = new AlpacaClient(alpacaApiKey, alpacaApiSecret, rateLimiter, cache);
+    // Map timeframe to Alpaca format
+    const timeframeMap: Record<string, string> = {
+      m1: "1Min",
+      m5: "5Min",
+      m15: "15Min",
+      m30: "30Min",
+      h1: "1Hour",
+      h4: "4Hour",
+      d1: "1Day",
+      w1: "1Week",
+    };
 
-    // Map timeframe
     const providerTimeframe = TIMEFRAME_MAP[timeframe] || timeframe;
+    const alpacaTimeframe = timeframeMap[providerTimeframe] || "1Day";
 
-    // Fetch bars for all symbols in ONE API call
+    // Fetch bars for all symbols in ONE API call using Alpaca batch endpoint
     const fromDate = new Date(from);
     const toDate = new Date(to);
+    const symbolsParam = symbols.join(",");
 
-    const barsMap = await alpacaClient.getHistoricalBarsBatch({
-      symbols,
-      timeframe: providerTimeframe,
-      start: Math.floor(fromDate.getTime() / 1000),
-      end: Math.floor(toDate.getTime() / 1000),
+    const url = `https://data.alpaca.markets/v2/stocks/bars?` +
+      `symbols=${symbolsParam}&` +
+      `timeframe=${alpacaTimeframe}&` +
+      `start=${fromDate.toISOString()}&` +
+      `end=${toDate.toISOString()}&` +
+      `limit=10000&` +
+      `adjustment=raw&` +
+      `feed=sip&` +
+      `sort=asc`;
+
+    console.log(`[fetch-bars-batch] Calling Alpaca API: ${symbols.length} symbols`);
+
+    const response = await fetch(url, {
+      headers: {
+        "APCA-API-KEY-ID": alpacaApiKey,
+        "APCA-API-SECRET-KEY": alpacaApiSecret,
+        "Accept": "application/json",
+      },
     });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Alpaca API error (${response.status}): ${errorText}`);
+    }
+
+    const data = await response.json();
+    const barsMap = new Map<string, any[]>();
+
+    // Parse response - Alpaca returns { bars: { SYMBOL: [bars...], ... } }
+    if (data.bars) {
+      for (const symbol of symbols) {
+        const alpacaBars = data.bars[symbol] || [];
+        const bars = alpacaBars.map((bar: any) => ({
+          timestamp: Math.floor(new Date(bar.t).getTime() / 1000),
+          open: bar.o,
+          high: bar.h,
+          low: bar.l,
+          close: bar.c,
+          volume: bar.v,
+        }));
+        barsMap.set(symbol, bars);
+      }
+    }
 
     console.log(`[fetch-bars-batch] Received data for ${barsMap.size} symbols`);
 
