@@ -7,6 +7,7 @@ import { getRateLimits } from "../config/rate-limits.ts";
 import { FinnhubClient } from "./finnhub-client.ts";
 import { MassiveClient } from "./massive-client.ts";
 import { YahooFinanceClient } from "./yahoo-finance-client.ts";
+import { AlpacaClient } from "./alpaca-client.ts";
 import { ProviderRouter } from "./router.ts";
 import type { ProviderId } from "./types.ts";
 
@@ -15,6 +16,7 @@ let routerInstance: ProviderRouter | null = null;
 let rateLimiterInstance: TokenBucketRateLimiter | null = null;
 let cacheInstance: MemoryCache | null = null;
 let massiveClientInstance: MassiveClient | null = null;
+let alpacaClientInstance: AlpacaClient | null = null;
 
 /**
  * Initialize the provider system with rate limiting and caching
@@ -39,6 +41,8 @@ export function initializeProviders(): ProviderRouter {
   // Initialize provider clients
   const finnhubApiKey = Deno.env.get("FINNHUB_API_KEY");
   const massiveApiKey = Deno.env.get("MASSIVE_API_KEY");
+  const alpacaApiKey = Deno.env.get("ALPACA_API_KEY");
+  const alpacaApiSecret = Deno.env.get("ALPACA_API_SECRET");
 
   if (!finnhubApiKey || !massiveApiKey) {
     throw new Error("Missing required API keys: FINNHUB_API_KEY and MASSIVE_API_KEY");
@@ -60,14 +64,29 @@ export function initializeProviders(): ProviderRouter {
     cacheInstance
   );
 
+  // Initialize Alpaca client if credentials are available
+  if (alpacaApiKey && alpacaApiSecret) {
+    alpacaClientInstance = new AlpacaClient(alpacaApiKey, alpacaApiSecret);
+    console.log("[Provider Factory] Alpaca client initialized");
+  } else {
+    console.warn("[Provider Factory] Alpaca credentials not found - Alpaca provider will be unavailable");
+  }
+
   console.log("[Provider Factory] Provider clients initialized");
 
   // Initialize router with default policy
-  routerInstance = new ProviderRouter({
+  const providers: Record<string, any> = {
     finnhub: finnhubClient,
     massive: massiveClientInstance,
     yahoo: yahooFinanceClient,
-  });
+  };
+
+  // Add Alpaca to router if available
+  if (alpacaClientInstance) {
+    providers.alpaca = alpacaClientInstance;
+  }
+
+  routerInstance = new ProviderRouter(providers);
 
   console.log("[Provider Factory] Provider router initialized");
 
@@ -100,6 +119,23 @@ export function getMassiveClient(): MassiveClient | null {
     }
   }
   return massiveClientInstance;
+}
+
+/**
+ * Get the singleton AlpacaClient instance
+ * Initializes providers if not already initialized
+ * Returns null if Alpaca credentials are not configured
+ */
+export function getAlpacaClient(): AlpacaClient | null {
+  if (!alpacaClientInstance) {
+    try {
+      initializeProviders();
+    } catch (error) {
+      console.error("[Provider Factory] Failed to initialize providers:", error);
+      return null;
+    }
+  }
+  return alpacaClientInstance;
 }
 
 /**

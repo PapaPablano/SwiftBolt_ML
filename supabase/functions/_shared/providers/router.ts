@@ -42,16 +42,16 @@ export interface RouterPolicy {
 
 const DEFAULT_POLICY: RouterPolicy = {
   quote: {
-    primary: "finnhub",
-    fallback: "massive",
+    primary: "alpaca",
+    fallback: "finnhub",
   },
   historicalBars: {
-    primary: "massive", // Polygon for intraday historical (m15, h1, h4)
-    fallback: "yahoo",  // Yahoo as fallback for daily/weekly
+    primary: "alpaca", // Alpaca for all timeframes (institutional-grade data)
+    fallback: "massive", // Polygon as fallback for intraday
   },
   news: {
-    primary: "finnhub", // Massive free tier doesn't support news
-    fallback: undefined,
+    primary: "alpaca", // Alpaca provides news from multiple sources
+    fallback: "finnhub",
   },
   optionsChain: {
     primary: "yahoo", // Yahoo Finance provides free options data with 15-min delay
