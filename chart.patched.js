@@ -129,9 +129,9 @@
             borderColor: '#333',
             timeVisible: true,
             secondsVisible: false,
-            rightOffset: 5,
-            barSpacing: 8,
-            minBarSpacing: 2
+            rightOffset: 30,
+            barSpacing: 12,
+            minBarSpacing: 4
         },
         handleScroll: {
             mouseWheel: true,

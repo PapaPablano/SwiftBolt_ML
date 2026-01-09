@@ -701,19 +701,19 @@ struct WebChartView: NSViewRepresentable {
             let sorted = bars.sorted { $0.ts < $1.ts }
             guard let last = sorted.last else { return }
 
-            // Timeframe-aware lookback
+            // Timeframe-aware lookback - optimized for barSpacing of 12px
             let lookbackSeconds: TimeInterval
             switch parent.viewModel.timeframe {
             case .m15:
-                lookbackSeconds = 5 * 24 * 60 * 60   // last 5 days for 15m
+                lookbackSeconds = 5 * 24 * 60 * 60   // last 5 days for 15m (~320 bars)
             case .h1:
-                lookbackSeconds = 30 * 24 * 60 * 60  // last 30 days for 1h
+                lookbackSeconds = 10 * 24 * 60 * 60  // last 10 days for 1h (~160 bars)
             case .h4:
-                lookbackSeconds = 90 * 24 * 60 * 60  // last 90 days for 4h
+                lookbackSeconds = 60 * 24 * 60 * 60  // last 60 days for 4h (~360 bars)
             case .d1:
-                lookbackSeconds = 180 * 24 * 60 * 60 // last ~6 months for daily
+                lookbackSeconds = 180 * 24 * 60 * 60 // last ~6 months for daily (~126 bars)
             case .w1:
-                lookbackSeconds = 2 * 365 * 24 * 60 * 60 // last 2 years for weekly
+                lookbackSeconds = 2 * 365 * 24 * 60 * 60 // last 2 years for weekly (~104 bars)
             }
 
             let endDate = last.ts

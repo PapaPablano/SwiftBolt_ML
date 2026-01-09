@@ -1,0 +1,55 @@
+name: Backfill Intraday Worker
+
+on:
+  schedule:
+    # Run every 5 minutes to process chunks
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      parallel_workers:
+        description: 'Number of parallel workers to run'
+        required: false
+        default: '3'
+        type: string
+
+concurrency:
+  group: backfill-intraday-worker-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  process-chunks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        worker: [1, 2, 3]
+      fail-fast: false
+
+    steps:
+      - name: Process backfill chunk
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          echo "Worker ${{ matrix.worker }} processing chunk..."
+          
+          RESPONSE=$(curl -f -X POST \
+            "${SUPABASE_URL}/functions/v1/backfill-intraday-worker" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -d '{}' 2>&1)
+          
+          EXIT_CODE=$?
+          
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✅ Worker ${{ matrix.worker }} completed successfully"
+            echo "$RESPONSE" | jq '.' || echo "$RESPONSE"
+          else
+            echo "⚠️  Worker ${{ matrix.worker }} finished with status $EXIT_CODE"
+            echo "$RESPONSE"
+          fi
+
+      - name: Report status
+        if: always()
+        run: |
+          echo "Worker ${{ matrix.worker }} finished at $(date)"

@@ -129,9 +129,12 @@
             borderColor: '#333',
             timeVisible: true,
             secondsVisible: false,
-            rightOffset: 5,
-            barSpacing: 8,
-            minBarSpacing: 2
+            rightOffset: 30,  // Increased from 10 for better edge spacing
+            barSpacing: 12,  // Increased from 8 for better visibility
+            minBarSpacing: 4,  // Increased from 2 to prevent over-compression
+            fixLeftEdge: false,
+            fixRightEdge: false,
+            uniformDistribution: true  // Force equal spacing between bars (ignore time gaps)
         },
         handleScroll: {
             mouseWheel: true,
@@ -502,8 +505,57 @@ setCandles: function(data) {
     // Set the data
     state.series.candles.setData(displayData);
     
-    // Fit content to ensure data is visible
-    state.chart.timeScale().fitContent();
+    // Calculate appropriate visible range based on bar count and spacing
+    // Show enough bars to fill the viewport without compression
+    if (displayData.length > 0) {
+        const lastBar = displayData[displayData.length - 1];
+        const firstBar = displayData[0];
+        
+        // Detect timeframe based on time difference between bars
+        let avgBarInterval = 0;
+        if (displayData.length > 1) {
+            const sampleSize = Math.min(10, displayData.length - 1);
+            let totalInterval = 0;
+            for (let i = displayData.length - sampleSize; i < displayData.length; i++) {
+                totalInterval += displayData[i].time - displayData[i - 1].time;
+            }
+            avgBarInterval = totalInterval / sampleSize;
+        }
+        
+        // Determine target number of visible bars based on timeframe
+        let targetVisibleBars;
+        if (avgBarInterval < 60 * 30) {
+            // 15-minute bars: show ~100 bars (about 1 week of trading)
+            targetVisibleBars = 100;
+        } else if (avgBarInterval < 60 * 90) {
+            // 1-hour bars: show ~80 bars (about 2 weeks of trading)
+            targetVisibleBars = 80;
+        } else if (avgBarInterval < 60 * 60 * 6) {
+            // 4-hour bars: show ~60 bars (about 1 month of trading)
+            targetVisibleBars = 60;
+        } else {
+            // Daily or longer: show ~60 bars (about 3 months of trading days)
+            targetVisibleBars = 60;
+        }
+        
+        // Calculate the start index to show target number of bars
+        const startIndex = Math.max(0, displayData.length - targetVisibleBars);
+        const fromTime = displayData[startIndex].time;
+        const toTime = lastBar.time;
+        
+        state.chart.timeScale().setVisibleRange({ from: fromTime, to: toTime });
+        
+        const barIntervalStr = avgBarInterval < 3600 ? 
+            `${Math.round(avgBarInterval / 60)}m` : 
+            avgBarInterval < 86400 ? 
+            `${Math.round(avgBarInterval / 3600)}h` : 
+            `${Math.round(avgBarInterval / 86400)}d`;
+        
+        console.log('[ChartJS] Visible range set:', 
+                    `showing ${targetVisibleBars} bars (detected: ${barIntervalStr} timeframe)`,
+                    'from', new Date(fromTime * 1000).toISOString(), 
+                    'to', new Date(toTime * 1000).toISOString());
+    }
 
     console.log('[ChartJS] Candles set:', sortedData.length, 'bars, HA:', state.useHeikinAshi);
 },

@@ -316,6 +316,14 @@ final class ChartBridge: NSObject, ObservableObject {
             print("[ChartBridge] Candles: \(sortedBars.count) bars")
             print("[ChartBridge] First: \(first.ts) O:\(first.open) H:\(first.high) L:\(first.low) C:\(first.close)")
             print("[ChartBridge] Last: \(last.ts) O:\(last.open) H:\(last.high) L:\(last.low) C:\(last.close)")
+            
+            // Log sample bars throughout dataset to check for gaps/jumps
+            let sampleIndices = [0, sortedBars.count/4, sortedBars.count/2, sortedBars.count*3/4, sortedBars.count-1]
+            print("[ChartBridge] Sample bars:")
+            for idx in sampleIndices where idx < sortedBars.count {
+                let bar = sortedBars[idx]
+                print("  [\(idx)]: \(bar.ts) C:\(bar.close)")
+            }
         }
         
         // Debug: Check for duplicate timestamps
@@ -323,6 +331,20 @@ final class ChartBridge: NSObject, ObservableObject {
         let uniqueTimestamps = Set(timestamps)
         if timestamps.count != uniqueTimestamps.count {
             print("[ChartBridge] ⚠️ WARNING: Found \(timestamps.count - uniqueTimestamps.count) duplicate timestamps!")
+            
+            // Find and log the duplicates
+            var seenTimes = Set<Int>()
+            var duplicates: [(Int, Date)] = []
+            for (idx, bar) in sortedBars.enumerated() {
+                let time = Int(bar.ts.timeIntervalSince1970)
+                if seenTimes.contains(time) {
+                    duplicates.append((idx, bar.ts))
+                }
+                seenTimes.insert(time)
+            }
+            print("[ChartBridge] Duplicate timestamps: \(duplicates.map { "[\($0.0)]: \($0.1)" }.joined(separator: ", "))")
+        } else {
+            print("[ChartBridge] ✅ No duplicate timestamps detected")
         }
         
         send(.setCandles(data: candleData))

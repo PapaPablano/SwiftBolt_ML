@@ -215,7 +215,36 @@ export class IntradayServiceV2 {
     const symbolId = symbolData.id;
     const today = new Date().toISOString().split('T')[0] + 'T00:00:00Z';
 
-    // Prepare bar for v2 table
+    // Write raw 5-minute bars to intraday_bars table
+    const intradayBarsToInsert = bars.map(bar => ({
+      symbol_id: symbolId,
+      timeframe: '5m',
+      ts: new Date(bar.time).toISOString(),
+      open: bar.open,
+      high: bar.high,
+      low: bar.low,
+      close: bar.close,
+      volume: bar.volume,
+      provider: 'tradier',
+    }));
+
+    if (intradayBarsToInsert.length > 0) {
+      const { error: intradayError } = await supabase
+        .from('intraday_bars')
+        .upsert(intradayBarsToInsert, {
+          onConflict: 'symbol_id,timeframe,ts',
+          ignoreDuplicates: false,
+        });
+
+      if (intradayError) {
+        console.error('Error upserting intraday bars:', intradayError);
+        // Don't fail completely, continue with daily aggregate
+      } else {
+        console.log(`Inserted ${intradayBarsToInsert.length} intraday bars for ${symbol}`);
+      }
+    }
+
+    // Prepare bar for v2 table (daily aggregate)
     const bar: OHLCBarWrite = {
       symbol_id: symbolId,
       timeframe: 'd1',

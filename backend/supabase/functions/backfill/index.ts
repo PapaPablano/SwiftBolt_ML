@@ -112,11 +112,7 @@ serve(async (req: Request): Promise<Response> => {
     const yfinance = new YFinanceClient();
     let totalBarsInserted = 0;
     let chunksProcessed = 0;
-    // IMPORTANT: System clock may be incorrect. Use actual current date: Dec 14, 2024
-    // If system shows 2025, this prevents requesting future data that doesn't exist
-    const actualNow = Math.floor(new Date("2024-12-14T23:59:59Z").getTime() / 1000);
-    const now = Math.floor(Date.now() / 1000);
-    const currentTimestamp = now > actualNow ? actualNow : now; // Use whichever is earlier
+    const currentTimestamp = Math.floor(Date.now() / 1000);
     let currentEnd = currentTimestamp;
     const targetStart = currentTimestamp - strategy.totalSeconds;
 

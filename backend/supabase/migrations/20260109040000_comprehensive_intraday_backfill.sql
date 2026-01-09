@@ -91,6 +91,50 @@ COMMENT ON FUNCTION seed_intraday_backfill_2yr IS
 'Seeds a 2-year historical intraday backfill job with daily chunks for market days only';
 
 -- ============================================================================
+-- PART B2: Chunk Claiming Function for Worker
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION claim_backfill_chunk(p_limit INT DEFAULT 1)
+RETURNS TABLE (
+  id UUID,
+  job_id UUID,
+  symbol TEXT,
+  symbol_id UUID,
+  timeframe TEXT,
+  day DATE,
+  status TEXT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RETURN QUERY
+  UPDATE backfill_chunks
+  SET 
+    status = 'in_progress',
+    updated_at = NOW()
+  WHERE backfill_chunks.id IN (
+    SELECT backfill_chunks.id
+    FROM backfill_chunks
+    WHERE backfill_chunks.status = 'pending'
+    ORDER BY backfill_chunks.day ASC
+    LIMIT p_limit
+    FOR UPDATE SKIP LOCKED
+  )
+  RETURNING 
+    backfill_chunks.id,
+    backfill_chunks.job_id,
+    backfill_chunks.symbol,
+    backfill_chunks.symbol_id,
+    backfill_chunks.timeframe,
+    backfill_chunks.day,
+    backfill_chunks.status;
+END;
+$$;
+
+COMMENT ON FUNCTION claim_backfill_chunk IS
+'Claims pending backfill chunks for processing using SKIP LOCKED for parallel workers';
+
+-- ============================================================================
 -- PART C: Update get_chart_data_v2 to Handle All Data Statuses
 -- ============================================================================
 
