@@ -501,6 +501,9 @@ setCandles: function(data) {
 
     // Set the data
     state.series.candles.setData(displayData);
+    
+    // Fit content to ensure data is visible
+    state.chart.timeScale().fitContent();
 
     console.log('[ChartJS] Candles set:', sortedData.length, 'bars, HA:', state.useHeikinAshi);
 },

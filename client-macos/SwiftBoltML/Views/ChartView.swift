@@ -119,7 +119,7 @@ struct ChartView: View {
 
                     Text("\(progress.completedSlices) / \(progress.totalSlices) slices complete")
                         .font(.caption2)
-                        .foregroundColor(.tertiary)
+                        .foregroundColor(.secondary)
                 }
                 .padding(.vertical, 12)
                 .padding(.horizontal, 16)

@@ -14,6 +14,7 @@ final class ChartViewModel: ObservableObject {
                 stopLiveQuoteUpdates()
                 stopRealtimeSubscription()
                 stopHydrationPoller()
+                stopCoverageCheck()
                 hydrationBanner = nil
                 // Trigger chart load on symbol change
                 Task { await loadChart() }
@@ -22,7 +23,9 @@ final class ChartViewModel: ObservableObject {
     }
     @Published var timeframe: Timeframe = .d1 {
         didSet {
+            guard timeframe != oldValue else { return }
             stopHydrationPoller()
+            stopCoverageCheck()
             print("[DEBUG] 🕒 timeframe changed to \(timeframe.rawValue) (apiToken=\(timeframe.apiToken))")
             Task { await loadChart() }
         }
@@ -101,6 +104,7 @@ final class ChartViewModel: ObservableObject {
     private var liveQuoteTask: Task<Void, Never>?
     private var realtimeTask: Task<Void, Never>?
     private var hydrationPollTask: Task<Void, Never>?
+    private var coverageCheckTask: Task<Void, Never>?
     private let liveQuoteInterval: UInt64 = 60 * 1_000_000_000  // 60 seconds
     private let marketTimeZone = TimeZone(identifier: "America/New_York") ?? .current
     private let isoDateFormatter: ISO8601DateFormatter = {
@@ -450,8 +454,9 @@ final class ChartViewModel: ObservableObject {
     }
 
     func loadChart(retryOnCancel: Bool = true) async {
-        // Cancel any existing load operation
+        // Cancel any existing load operation AND its coverage check
         loadTask?.cancel()
+        coverageCheckTask?.cancel()
 
         print("[DEBUG] ========================================")
         print("[DEBUG] ChartViewModel.loadChart() CALLED")
@@ -490,7 +495,11 @@ final class ChartViewModel: ObservableObject {
         
         // SPEC-8: Trigger non-blocking coverage check for intraday timeframes
         if timeframe.isIntraday && Config.ensureCoverageEnabled {
-            Task.detached { [weak self] in
+            // Cancel any existing coverage check
+            coverageCheckTask?.cancel()
+            
+            // Use structured concurrency (not detached) so it respects cancellation
+            coverageCheckTask = Task { [weak self] in
                 await self?.ensureCoverageAsync(symbol: symbol.ticker)
             }
         }
@@ -840,6 +849,12 @@ final class ChartViewModel: ObservableObject {
     /// Non-blocking coverage check for intraday data
     /// Triggers server-side backfill if needed without blocking UI
     private func ensureCoverageAsync(symbol: String) async {
+        // Check for cancellation early
+        guard !Task.isCancelled else {
+            print("[DEBUG] 🛑 Coverage check cancelled before starting")
+            return
+        }
+        
         // Use 730 days (2 years) for intraday backfill
         let windowDays = timeframe.isIntraday ? 730 : 365
 
@@ -849,6 +864,12 @@ final class ChartViewModel: ObservableObject {
                 timeframe: timeframe.apiToken,
                 windowDays: windowDays
             )
+            
+            // Check for cancellation after network call
+            guard !Task.isCancelled else {
+                print("[DEBUG] 🛑 Coverage check cancelled after API call")
+                return
+            }
 
             await MainActor.run {
                 self.backfillJobId = response.jobDefId
@@ -909,7 +930,10 @@ final class ChartViewModel: ObservableObject {
             let maxAttempts = 40
             for attempt in 0..<maxAttempts {
                 try? await Task.sleep(nanoseconds: 15 * 1_000_000_000)
-                guard !Task.isCancelled else { break }
+                guard !Task.isCancelled else {
+                    print("[DEBUG] 🛑 Hydration poller cancelled")
+                    break
+                }
                 do {
                     // Poll ensure-coverage for progress updates
                     let windowDays = self.timeframe.isIntraday ? 730 : 365
@@ -987,6 +1011,12 @@ final class ChartViewModel: ObservableObject {
     private func stopHydrationPoller() {
         hydrationPollTask?.cancel()
         hydrationPollTask = nil
+    }
+    
+    /// Stop coverage check task
+    private func stopCoverageCheck() {
+        coverageCheckTask?.cancel()
+        coverageCheckTask = nil
     }
     
     // MARK: - Volume Profile Calculator
