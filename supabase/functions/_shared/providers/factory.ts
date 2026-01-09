@@ -7,6 +7,7 @@ import { getRateLimits } from "../config/rate-limits.ts";
 import { FinnhubClient } from "./finnhub-client.ts";
 import { MassiveClient } from "./massive-client.ts";
 import { YahooFinanceClient } from "./yahoo-finance-client.ts";
+import { TradierClient } from "./tradier-client.ts";
 import { AlpacaClient } from "./alpaca-client.ts";
 import { ProviderRouter } from "./router.ts";
 import type { ProviderId } from "./types.ts";
@@ -39,23 +40,24 @@ export function initializeProviders(): ProviderRouter {
   // Initialize provider clients
   const finnhubApiKey = Deno.env.get("FINNHUB_API_KEY");
   const massiveApiKey = Deno.env.get("MASSIVE_API_KEY");
-  // TEMPORARY: Using valid keys directly until secrets update issue is resolved
-  const alpacaApiKey = Deno.env.get("ALPACA_API_KEY") || "AK7VELM3TFKFFRKLHCEUYGTDTI";
-  const alpacaApiSecret = Deno.env.get("ALPACA_API_SECRET") || "EwkQJyu5qMMKn38WXsmJWKAF7CV6YZ7FmJ56MwUnjH96";
+  const tradierApiKey = Deno.env.get("TRADIER_API_KEY");
+  const alpacaApiKey = Deno.env.get("ALPACA_API_KEY");
+  const alpacaApiSecret = Deno.env.get("ALPACA_API_SECRET");
 
-  console.log("[Provider Factory] Alpaca credentials check:", {
-    hasApiKey: !!alpacaApiKey,
-    apiKeyLength: alpacaApiKey?.length || 0,
-    hasApiSecret: !!alpacaApiSecret,
-    apiSecretLength: alpacaApiSecret?.length || 0,
-  });
-
-  if (!finnhubApiKey || !massiveApiKey) {
-    throw new Error("Missing required API keys: FINNHUB_API_KEY and MASSIVE_API_KEY");
+  if (!finnhubApiKey) {
+    throw new Error("Missing required API key: FINNHUB_API_KEY");
   }
 
   if (!alpacaApiKey || !alpacaApiSecret) {
     console.warn("[Provider Factory] ALPACA_API_KEY or ALPACA_API_SECRET not set - Alpaca provider will not be available");
+  }
+
+  if (!massiveApiKey) {
+    console.warn("[Provider Factory] MASSIVE_API_KEY not set - Polygon/Massive provider will not be available");
+  }
+
+  if (!tradierApiKey) {
+    console.warn("[Provider Factory] TRADIER_API_KEY not set - Tradier provider will not be available");
   }
 
   const finnhubClient = new FinnhubClient(
@@ -64,29 +66,39 @@ export function initializeProviders(): ProviderRouter {
     cacheInstance
   );
 
-  const massiveClient = new MassiveClient(
+  const massiveClient = massiveApiKey ? new MassiveClient(
     massiveApiKey,
     rateLimiterInstance,
     cacheInstance
-  );
+  ) : null;
 
   const yahooFinanceClient = new YahooFinanceClient(
     cacheInstance
   );
 
-  const alpacaClient = (alpacaApiKey && alpacaApiSecret) ? new AlpacaClient(alpacaApiKey, alpacaApiSecret) : null;
-
-  console.log("[Provider Factory] Alpaca client status:", {
-    initialized: !!alpacaClient,
-    willUsePrimary: alpacaClient ? "alpaca" : "massive"
-  });
+  const tradierClient = tradierApiKey ? new TradierClient(tradierApiKey) : null;
+  const alpacaClient = (alpacaApiKey && alpacaApiSecret) ? new AlpacaClient(
+    alpacaApiKey,
+    alpacaApiSecret,
+    rateLimiterInstance,
+    cacheInstance
+  ) : null;
 
   // Warm Alpaca assets cache on startup to avoid validation delays
   if (alpacaClient) {
+    console.log("[Provider Factory] Alpaca credentials check: {");
+    console.log(`  hasApiKey: ${!!alpacaApiKey},`);
+    console.log(`  apiKeyLength: ${alpacaApiKey?.length},`);
+    console.log(`  hasApiSecret: ${!!alpacaApiSecret},`);
+    console.log(`  apiSecretLength: ${alpacaApiSecret?.length}`);
+    console.log("}");
+
+    console.log("[Provider Factory] Alpaca client status: { initialized: true, willUsePrimary: \"alpaca\" }");
+
     alpacaClient.getAssets().then(() => {
       console.log("[Provider Factory] Alpaca assets cache warmed successfully");
     }).catch((error) => {
-      console.error("[Provider Factory] FAILED to warm Alpaca assets cache:", error);
+      console.warn("[Provider Factory] Failed to warm Alpaca assets cache:", error);
     });
   }
 
@@ -95,22 +107,29 @@ export function initializeProviders(): ProviderRouter {
   // Initialize router with custom policy for intraday vs historical data
   const providers: Record<string, any> = {
     finnhub: finnhubClient,
-    massive: massiveClient,
     yahoo: yahooFinanceClient,
   };
+
+  if (massiveClient) {
+    providers.massive = massiveClient;
+  }
+
+  if (tradierClient) {
+    providers.tradier = tradierClient;
+  }
 
   if (alpacaClient) {
     providers.alpaca = alpacaClient;
   }
 
-  // Custom policy: Alpaca for real-time and historical data
+  // Custom policy: Alpaca for real-time, Yahoo for historical, Tradier for intraday
   const policy = {
     quote: {
-      primary: alpacaClient ? "alpaca" as ProviderId : "finnhub" as ProviderId,
+      primary: alpacaClient ? "alpaca" as ProviderId : "tradier" as ProviderId,
       fallback: "finnhub" as ProviderId,
     },
     historicalBars: {
-      primary: alpacaClient ? "alpaca" as ProviderId : "massive" as ProviderId, // Alpaca preferred, fallback to Polygon
+      primary: alpacaClient ? "alpaca" as ProviderId : "yahoo" as ProviderId, // Alpaca preferred, fallback to Yahoo
       fallback: "finnhub" as ProviderId,
     },
     news: {
@@ -149,13 +168,15 @@ export function injectSupabaseClient(supabase: any): void {
   if (!routerInstance) {
     initializeProviders();
   }
-  
-  // Inject into Massive/Polygon client
+
+  // Inject into Massive/Polygon client (if available)
   const router = routerInstance as any;
   const massiveProvider = router.providers?.get("massive");
   if (massiveProvider && typeof massiveProvider.setSupabaseClient === "function") {
     massiveProvider.setSupabaseClient(supabase);
     console.log("[Provider Factory] Injected Supabase client into Massive provider");
+  } else {
+    console.log("[Provider Factory] Massive provider not available, skipping Supabase client injection");
   }
 }
 

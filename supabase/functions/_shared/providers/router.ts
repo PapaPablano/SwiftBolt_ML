@@ -43,14 +43,14 @@ export interface RouterPolicy {
 const DEFAULT_POLICY: RouterPolicy = {
   quote: {
     primary: "finnhub",
-    fallback: "massive",
+    fallback: "yahoo",
   },
   historicalBars: {
     primary: "yahoo", // Yahoo Finance has real-time intraday data (no delay!)
     fallback: "finnhub", // Finnhub as fallback
   },
   news: {
-    primary: "finnhub", // Massive free tier doesn't support news
+    primary: "finnhub",
     fallback: undefined,
   },
   optionsChain: {
@@ -126,7 +126,6 @@ export class ProviderRouter {
     const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(request.timeframe);
     const alpacaProvider = this.providers.get("alpaca");
     const tradierProvider = this.providers.get("tradier");
-    const massiveProvider = this.providers.get("massive");
 
     let primary: ProviderId;
     let fallback: ProviderId | undefined;
@@ -136,28 +135,16 @@ export class ProviderRouter {
       primary = "alpaca";
       // Fallback depends on timeframe
       if (isIntraday) {
-        fallback = tradierProvider ? "tradier" : (massiveProvider ? "massive" : this.policy.historicalBars.fallback);
+        fallback = tradierProvider ? "tradier" : this.policy.historicalBars.fallback;
       } else {
         fallback = this.policy.historicalBars.fallback;
       }
       console.log(`[Router] Using Alpaca (primary) for ${request.timeframe} with fallback: ${fallback || 'none'}`);
     } else if (isIntraday && tradierProvider) {
-      // No Alpaca: use legacy intraday routing
-      const startDate = new Date(request.start * 1000);
-      const endDate = new Date(request.end * 1000);
-      const today = new Date();
-      const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-      const isHistorical = startDate < todayStart;
-
-      if (isHistorical && massiveProvider) {
-        primary = "massive";
-        fallback = "tradier";
-        console.log(`[Router] Using Polygon for HISTORICAL intraday: ${request.timeframe} (${startDate.toISOString()} -> ${endDate.toISOString()})`);
-      } else {
-        primary = "tradier";
-        fallback = "massive";
-        console.log(`[Router] Using Tradier for TODAY's intraday: ${request.timeframe} (${startDate.toISOString()} -> ${endDate.toISOString()})`);
-      }
+      // No Alpaca: use Tradier for intraday
+      primary = "tradier";
+      fallback = this.policy.historicalBars.fallback;
+      console.log(`[Router] Using Tradier for intraday: ${request.timeframe}`);
     } else {
       // Use configured policy for daily/weekly data (no Alpaca, no Tradier)
       primary = this.policy.historicalBars.primary;

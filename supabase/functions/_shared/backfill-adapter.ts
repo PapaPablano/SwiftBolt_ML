@@ -127,7 +127,7 @@ export async function fetchIntradayForDay(
     return bars.map((bar: Bar) => ({
       symbol_id: symbolId,
       timeframe: providerTimeframe, // Use canonical format (m15, h1, etc.)
-      ts: new Date(bar.timestamp).toISOString(), // timestamp is in ms from provider
+      ts: new Date(bar.timestamp * 1000).toISOString(), // timestamp is in seconds, convert to ms
       open: bar.open,
       high: bar.high,
       low: bar.low,

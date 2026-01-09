@@ -4,8 +4,11 @@
 
 import type { DataProviderAbstraction, HistoricalBarsRequest } from "./abstraction.ts";
 import type { Bar, Quote, NewsItem } from "./types.ts";
-import { 
-  ProviderError, 
+import type { TokenBucketRateLimiter } from "../rate-limiter/token-bucket.ts";
+import type { Cache } from "../cache/interface.ts";
+import { CACHE_TTL } from "../config/rate-limits.ts";
+import {
+  ProviderError,
   RateLimitExceededError,
   AuthenticationError,
   ValidationError,
@@ -84,12 +87,21 @@ export class AlpacaClient implements DataProviderAbstraction {
   private readonly apiSecret: string;
   private readonly baseUrl = "https://data.alpaca.markets/v2";
   private readonly tradingBaseUrl = "https://api.alpaca.markets/v2";
+  private readonly rateLimiter: TokenBucketRateLimiter;
+  private readonly cache: Cache;
   private assetsCache: Map<string, AlpacaAsset> | null = null;
   private assetsCacheExpiry = 0;
 
-  constructor(apiKey: string, apiSecret: string) {
+  constructor(
+    apiKey: string,
+    apiSecret: string,
+    rateLimiter: TokenBucketRateLimiter,
+    cache: Cache
+  ) {
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
+    this.rateLimiter = rateLimiter;
+    this.cache = cache;
   }
 
   /**
@@ -116,6 +128,9 @@ export class AlpacaClient implements DataProviderAbstraction {
     console.log(`[Alpaca] Fetching quotes for ${symbols.length} symbols`);
 
     try {
+      // Acquire rate limit token
+      await this.rateLimiter.acquire("alpaca");
+
       // Use snapshots endpoint for latest data
       const symbolsParam = symbols.join(",");
       const url = `${this.baseUrl}/stocks/snapshots?symbols=${symbolsParam}&feed=iex`;
@@ -188,10 +203,13 @@ export class AlpacaClient implements DataProviderAbstraction {
       const maxPages = 100; // Safety limit to prevent infinite loops
 
       do {
+        // Acquire rate limit token before each API call
+        await this.rateLimiter.acquire("alpaca");
+
         // Build URL with parameters
         const startDate = this.toUTCISOString(start);
         const endDate = this.toUTCISOString(end);
-        
+
         // Alpaca API uses /stocks/bars?symbols= not /stocks/{symbol}/bars
         let url = `${this.baseUrl}/stocks/bars?` +
           `symbols=${symbol}&` +
@@ -269,6 +287,9 @@ export class AlpacaClient implements DataProviderAbstraction {
     console.log(`[Alpaca] Fetching news for ${symbol}`);
 
     try {
+      // Acquire rate limit token
+      await this.rateLimiter.acquire("alpaca");
+
       const url = `${this.baseUrl}/news?symbols=${symbol}&limit=${limit}&sort=desc`;
 
       const response = await fetch(url, {
@@ -306,6 +327,9 @@ export class AlpacaClient implements DataProviderAbstraction {
    */
   async healthCheck(): Promise<boolean> {
     try {
+      // Acquire rate limit token
+      await this.rateLimiter.acquire("alpaca");
+
       // Quick check with AAPL snapshot
       const url = `${this.baseUrl}/stocks/snapshots?symbols=AAPL&feed=iex`;
       const response = await fetch(url, {
@@ -332,6 +356,9 @@ export class AlpacaClient implements DataProviderAbstraction {
     console.log(`[Alpaca] Fetching assets (class: ${assetClass})`);
 
     try {
+      // Acquire rate limit token
+      await this.rateLimiter.acquire("alpaca");
+
       const url = `${this.tradingBaseUrl}/assets?asset_class=${assetClass}&status=active`;
       const response = await this.fetchWithRetry(url);
 

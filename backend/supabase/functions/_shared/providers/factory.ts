@@ -77,7 +77,12 @@ export function initializeProviders(): ProviderRouter {
   );
 
   const tradierClient = tradierApiKey ? new TradierClient(tradierApiKey) : null;
-  const alpacaClient = (alpacaApiKey && alpacaApiSecret) ? new AlpacaClient(alpacaApiKey, alpacaApiSecret) : null;
+  const alpacaClient = (alpacaApiKey && alpacaApiSecret) ? new AlpacaClient(
+    alpacaApiKey,
+    alpacaApiSecret,
+    rateLimiterInstance,
+    cacheInstance
+  ) : null;
 
   // Warm Alpaca assets cache on startup to avoid validation delays
   if (alpacaClient) {
