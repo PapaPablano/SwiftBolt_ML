@@ -40,15 +40,15 @@ interface CoverageGap {
 const SLICE_CONFIGS = {
   fetch_intraday: {
     sliceHours: 2, // 2-hour slices for intraday
-    maxSlicesPerTick: 5,
+    maxSlicesPerTick: 10,
   },
   fetch_historical: {
     sliceHours: 24 * 30, // 30-day slices for historical
-    maxSlicesPerTick: 3,
+    maxSlicesPerTick: 10, // Increased from 3 to 10 for faster backfill
   },
   run_forecast: {
     sliceHours: 24 * 90, // Full 90-day window for forecast
-    maxSlicesPerTick: 1,
+    maxSlicesPerTick: 2,
   },
 };
 
