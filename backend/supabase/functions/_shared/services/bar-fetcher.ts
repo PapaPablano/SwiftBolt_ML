@@ -21,6 +21,7 @@ export interface FetchBarsResult {
   provider: string;
   wasResampled: boolean;
   originalCount?: number; // If resampled, count of m15 bars
+  actualCost?: number; // Actual API calls made
 }
 
 /**
@@ -47,20 +48,9 @@ export async function fetchBarsWithResampling(
       end: endTimestamp,
     });
 
-    // Determine provider from router's health status
-    // Alpaca is primary if available, otherwise falls back to yahoo
-    const healthStatus = router.getHealthStatus();
-    let provider = "alpaca"; // Default to alpaca since it's primary in factory.ts
-
-    // Check which providers are healthy
-    const alpacaHealth = healthStatus.get("alpaca");
-    const yahooHealth = healthStatus.get("yahoo");
-
-    if (!alpacaHealth?.healthy && yahooHealth?.healthy) {
-      provider = "yfinance"; // Use yfinance for Yahoo Finance data
-    }
-
-    console.log(`[BarFetcher] Using provider: ${provider}`);
+    // Alpaca is the single source of truth for all OHLCV data
+    const provider = "alpaca";
+    console.log(`[BarFetcher] Using Alpaca provider for ${symbol}/${timeframe}`);
 
     // Attach indicators if requested
     const finalBars = includeIndicators
@@ -117,9 +107,10 @@ export async function fetchBarsWithResampling(
   
   return {
     bars: finalBars,
-    provider: "polygon", // Resampled data comes from Polygon m15
+    provider: "alpaca", // Resampled data comes from Alpaca m15
     wasResampled: true,
     originalCount: m15Bars.length,
+    actualCost: Math.ceil(m15Bars.length / 10000), // Estimate API calls (10k bars per request)
   };
 }
 

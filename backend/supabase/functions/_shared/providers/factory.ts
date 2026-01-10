@@ -6,7 +6,6 @@ import { MemoryCache } from "../cache/memory-cache.ts";
 import { getRateLimits } from "../config/rate-limits.ts";
 import { FinnhubClient } from "./finnhub-client.ts";
 import { MassiveClient } from "./massive-client.ts";
-import { YahooFinanceClient } from "./yahoo-finance-client.ts";
 import { TradierClient } from "./tradier-client.ts";
 import { AlpacaClient } from "./alpaca-client.ts";
 import { ProviderRouter } from "./router.ts";
@@ -72,10 +71,6 @@ export function initializeProviders(): ProviderRouter {
     cacheInstance
   ) : null;
 
-  const yahooFinanceClient = new YahooFinanceClient(
-    cacheInstance
-  );
-
   const tradierClient = tradierApiKey ? new TradierClient(tradierApiKey) : null;
   const alpacaClient = (alpacaApiKey && alpacaApiSecret) ? new AlpacaClient(
     alpacaApiKey,
@@ -104,10 +99,9 @@ export function initializeProviders(): ProviderRouter {
 
   console.log("[Provider Factory] Provider clients initialized");
 
-  // Initialize router with custom policy for intraday vs historical data
+  // Initialize router with Alpaca-only policy for OHLCV data
   const providers: Record<string, any> = {
     finnhub: finnhubClient,
-    yahoo: yahooFinanceClient,
   };
 
   if (massiveClient) {
@@ -122,23 +116,24 @@ export function initializeProviders(): ProviderRouter {
     providers.alpaca = alpacaClient;
   }
 
-  // Custom policy: Alpaca for real-time, Yahoo for historical, Tradier for intraday
+  // Alpaca-only policy: Single source of truth for all OHLCV data
+  // Finnhub remains for news only (no options chain support in current implementation)
   const policy = {
     quote: {
-      primary: alpacaClient ? "alpaca" as ProviderId : "tradier" as ProviderId,
+      primary: "alpaca" as ProviderId,
       fallback: "finnhub" as ProviderId,
     },
     historicalBars: {
-      primary: alpacaClient ? "alpaca" as ProviderId : "yahoo" as ProviderId, // Alpaca preferred, fallback to Yahoo
-      fallback: "finnhub" as ProviderId,
+      primary: "alpaca" as ProviderId,
+      fallback: undefined, // No fallback - Alpaca is single source of truth
     },
     news: {
       primary: alpacaClient ? "alpaca" as ProviderId : "finnhub" as ProviderId,
       fallback: "finnhub" as ProviderId,
     },
     optionsChain: {
-      primary: alpacaClient ? "alpaca" as ProviderId : "yahoo" as ProviderId,
-      fallback: "yahoo" as ProviderId,
+      primary: "finnhub" as ProviderId,
+      fallback: undefined,
     },
   };
 
