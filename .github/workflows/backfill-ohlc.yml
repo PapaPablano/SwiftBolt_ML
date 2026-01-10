@@ -5,14 +5,24 @@ on:
   schedule:
     - cron: "0 */6 * * *"
 
-  # Manual trigger (GitHub UI → Actions → Run workflow)
-  workflow_dispatch:
-    inputs:
-      symbol:
-        description: "Symbol to backfill (optional). Example: AAPL. Leave blank for all watchlist symbols."
-        required: false
-        type: string
-      timeframe:
+  # DISABLED: Using deprecated YFinance provider - conflicts with Alpaca-only strategy
+  # Use scripts/backfill_missing_data.sh instead for Alpaca-based backfills
+  # workflow_dispatch:
+  #   inputs:
+  #     symbol:
+  #       description: "Symbol to backfill (optional). Example: AAPL. Leave blank for all watchlist symbols."
+  #       required: false
+  #       type: string
+  #     timeframe:
+  #       description: "Timeframe to backfill (optional). Example: d1. Leave blank for default (d1)."
+  #       required: false
+  #       type: string
+  #       default: "d1"
+  #     all_timeframes:
+  #       description: "Backfill all timeframes (m15, h1, d1, w1) for multi-timeframe analysis"
+  #       required: false
+  #       type: boolean
+  #       default: false
         description: "Timeframe to backfill (optional). Example: d1. Leave blank for default (d1)."
         required: false
         type: string
