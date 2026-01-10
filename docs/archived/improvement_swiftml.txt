@@ -1,0 +1,3 @@
+Options Ranker Model Enhancement
+Current model uses rule-based scoring, not true ML
+Action: Consider training a supervised model on historical option performance

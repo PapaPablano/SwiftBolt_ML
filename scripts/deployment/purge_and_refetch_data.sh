@@ -1,0 +1,129 @@
+#!/bin/bash
+# Purge corrupted adjusted price data and re-fetch with unadjusted prices
+# Run this script after deploying the adjusted=false fix
+
+set -e
+
+echo "=================================================="
+echo "🔄 PURGE & RE-FETCH STOCK DATA"
+echo "=================================================="
+echo ""
+echo "This script will:"
+echo "  1. Delete all existing OHLC data (corrupted adjusted prices)"
+echo "  2. Re-fetch data from Polygon with unadjusted prices"
+echo "  3. Verify data accuracy against Yahoo Finance"
+echo ""
+read -p "⚠️  This will delete ALL existing price data. Continue? (yes/no): " confirm
+
+if [ "$confirm" != "yes" ]; then
+    echo "Aborted."
+    exit 1
+fi
+
+# Load environment variables
+if [ -f .env ]; then
+    set -a
+    source .env
+    set +a
+fi
+
+# Support both SUPABASE_SERVICE_KEY and SUPABASE_SERVICE_ROLE_KEY
+if [ -n "$SUPABASE_SERVICE_KEY" ]; then
+    export SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_KEY"
+fi
+
+# Check for required env vars
+if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+    echo "❌ Error: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_KEY) must be set"
+    exit 1
+fi
+
+echo ""
+echo "Step 1: Deleting corrupted data from database..."
+echo "=================================================="
+
+# Use Supabase REST API to delete data (more reliable than direct psql)
+echo "⚠️  Manual step required: Delete corrupted OHLC data"
+echo ""
+echo "Run this SQL in your Supabase SQL Editor:"
+echo "-------------------------------------------"
+echo "-- Check current data"
+echo "SELECT COUNT(*) as total_bars, COUNT(DISTINCT symbol_id) as symbols FROM ohlc_bars;"
+echo ""
+echo "-- Delete adjusted/corrupted data"
+echo "DELETE FROM ohlc_bars WHERE is_adjusted = true OR is_adjusted IS NULL;"
+echo ""
+echo "-- Verify deletion"
+echo "SELECT COUNT(*) as remaining_bars FROM ohlc_bars;"
+echo "-------------------------------------------"
+echo ""
+read -p "Press ENTER after you've deleted the data in Supabase SQL Editor..."
+echo "✅ Proceeding with re-fetch"
+echo ""
+
+# Get list of symbols to re-fetch
+echo "Step 2: Fetching list of symbols..."
+echo "=================================================="
+
+# Fetch symbols via Supabase REST API
+SYMBOLS_JSON=$(curl -s "$SUPABASE_URL/rest/v1/symbols?asset_type=eq.stock&select=ticker&order=ticker" \
+    -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+    -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY")
+
+SYMBOLS=$(echo "$SYMBOLS_JSON" | grep -o '"ticker":"[^"]*"' | cut -d'"' -f4)
+
+if [ -z "$SYMBOLS" ]; then
+    echo "❌ No symbols found in database"
+    echo "Response: $SYMBOLS_JSON"
+    exit 1
+fi
+
+SYMBOL_COUNT=$(echo "$SYMBOLS" | wc -l | tr -d ' ')
+echo "Found $SYMBOL_COUNT symbols to re-fetch"
+echo ""
+
+# Re-fetch data for each symbol
+echo "Step 3: Re-fetching data with unadjusted prices..."
+echo "=================================================="
+
+CURRENT=0
+for SYMBOL in $SYMBOLS; do
+    CURRENT=$((CURRENT + 1))
+    echo "[$CURRENT/$SYMBOL_COUNT] Re-fetching $SYMBOL..."
+    
+    # Call symbol-backfill function
+    curl -X POST "$SUPABASE_URL/functions/v1/symbol-backfill" \
+        -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+        -H "Content-Type: application/json" \
+        -d "{\"symbol\": \"$SYMBOL\", \"timeframes\": [\"d1\", \"h1\", \"m15\"], \"force\": true}" \
+        --silent --show-error || echo "⚠️  Failed to fetch $SYMBOL"
+    
+    # Rate limiting: Polygon free tier = 5 req/min
+    # Wait 15 seconds between symbols (4 req/min to be safe)
+    if [ $CURRENT -lt $SYMBOL_COUNT ]; then
+        echo "   Rate limit delay (15s)..."
+        sleep 15
+    fi
+done
+
+echo ""
+echo "✅ All symbols re-fetched"
+echo ""
+
+# Verify data accuracy
+echo "Step 4: Verifying data accuracy..."
+echo "=================================================="
+
+cd "$(dirname "$0")"
+python3 verify_price_accuracy.py
+
+echo ""
+echo "=================================================="
+echo "✅ PURGE & RE-FETCH COMPLETE"
+echo "=================================================="
+echo ""
+echo "Next steps:"
+echo "  1. Check verify_price_accuracy.py output above"
+echo "  2. If discrepancies remain, investigate specific symbols"
+echo "  3. Re-export CSV files for any affected symbols"
+echo ""

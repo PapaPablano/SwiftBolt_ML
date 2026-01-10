@@ -1,75 +1,110 @@
-[build-system]
-requires = ["setuptools>=61.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "swiftbolt-ml"
-version = "0.1.0"
-description = "ML pipeline for SwiftBolt stock analysis"
-requires-python = ">=3.11"
-license = {text = "Proprietary"}
+version = "1.0.0"
+description = "Algorithmic trading platform with ML-powered predictions and Alpaca integration"
+authors = [{name = "Eric Peterson"}]
+requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "MIT"}
+
 dependencies = [
     "pandas>=2.0.0",
     "numpy>=1.24.0",
     "scikit-learn>=1.3.0",
-    "xgboost>=2.0.0",  # Gradient boosting for ensemble forecaster
+    "xgboost>=2.0.0",
+    "statsmodels>=0.14.0",
+    "alpaca-py>=0.8.0",
+    "supabase>=2.0.0",
     "requests>=2.31.0",
     "python-dotenv>=1.0.0",
-    "psycopg2-binary>=2.9.0",
-    "httpx>=0.25.0",
-    "pydantic>=2.0.0",
-    "pydantic-settings>=2.0.0",
-    "supabase>=2.0.0",  # Supabase client
-    "scipy>=1.11.0",  # Scientific computing
-    "pyyaml>=6.0.0",  # YAML configuration
-    "hmmlearn>=0.3.0",  # HMM for market regime detection
-    "imbalanced-learn>=0.11.0",  # SMOTE for class imbalance
-    "arch>=6.0.0",  # GARCH volatility modeling
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.0",
     "pytest-cov>=4.1.0",
-    "ruff>=0.1.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.7.0",
     "mypy>=1.5.0",
-    "pandas-stubs>=2.0.0",
-]
-dashboard = [
-    "streamlit>=1.28.0",
-    "plotly>=5.18.0",
-]
-ensemble = [
-    "prophet>=1.1.0",  # Facebook Prophet for seasonality
-    "tensorflow>=2.10.0",  # LSTM neural network
+    "flake8>=6.1.0",
+    "isort>=5.12.0",
+    "pre-commit>=3.3.0",
 ]
 
-[tool.ruff]
-target-version = "py311"
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
 line-length = 100
-select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # Pyflakes
-    "I",   # isort
-    "B",   # flake8-bugbear
-    "C4",  # flake8-comprehensions
-    "UP",  # pyupgrade
-]
-ignore = [
-    "E501",  # line too long (handled by formatter)
-]
+target-version = ['py310']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | venv
+  | build
+  | dist
+  | __pycache__
+  | \.eggs
+  | \.pytest_cache
+)/
+'''
 
-[tool.ruff.isort]
-known-first-party = ["swiftbolt_ml"]
+[tool.isort]
+profile = "black"
+line_length = 100
+skip_gitignore = true
 
 [tool.mypy]
-python_version = "3.11"
-strict = true
+python_version = "3.10"
 warn_return_any = true
-warn_unused_ignores = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+ignore_missing_imports = true
+exclude = [
+    "venv",
+    "build",
+    "dist",
+]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["ml/tests"]
 python_files = ["test_*.py"]
-addopts = "-v --cov=swiftbolt_ml --cov-report=term-missing"
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--cov=ml/src",
+    "--cov-report=html",
+    "--cov-report=term-missing",
+    "--cov-fail-under=70",
+    "-v",
+]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests with external services",
+    "slow: Tests that take a long time to run",
+]
+
+[tool.coverage.run]
+source = ["ml/src"]
+omit = [
+    "*/tests/*",
+    "*/venv/*",
+    "*/__pycache__/*",
+    "*/migrations/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+precision = 2

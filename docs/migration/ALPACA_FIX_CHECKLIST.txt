@@ -1,0 +1,139 @@
+ALPACA INTEGRATION FIX - EXECUTION CHECKLIST
+===========================================
+
+Start Time: ___________
+
+
+STEP 1: GET ALPACA API KEYS (5 min)
+------------------------------------
+[ ] Go to https://app.alpaca.markets
+[ ] Login or create account
+[ ] Navigate to API Keys section
+[ ] Generate Market Data API keys (NOT Trading API)
+[ ] Copy API Key ID: _________________________________
+[ ] Copy Secret Key:  _________________________________
+[ ] Store keys securely
+
+Completion Time: ___________
+
+
+STEP 2: SET CREDENTIALS IN SUPABASE (2 min)
+--------------------------------------------
+[ ] Open https://app.supabase.com/project/cygflaemtmwiwaviclks
+[ ] Go to: Project Settings → Edge Functions
+[ ] Add secret: ALPACA_API_KEY = [paste key]
+[ ] Add secret: ALPACA_API_SECRET = [paste secret]
+[ ] Wait 30 seconds for Edge Functions to restart
+[ ] Verify both secrets appear in list
+
+Completion Time: ___________
+
+
+STEP 3: GET SUPABASE SERVICE ROLE KEY (1 min)
+----------------------------------------------
+[ ] In Supabase Dashboard: Project Settings → API
+[ ] Find "service_role" key (marked "secret")
+[ ] Copy key: ____________________________________________
+[ ] Store temporarily for next steps
+
+Completion Time: ___________
+
+
+STEP 4: CONFIGURE CRON AUTHENTICATION (3 min)
+----------------------------------------------
+[ ] Open Supabase SQL Editor
+[ ] Open file: backend/supabase/fix_alpaca_step2_configure_cron.sql
+[ ] Replace YOUR_SERVICE_ROLE_KEY_HERE with actual key from Step 3
+[ ] Execute the SQL query
+[ ] Verify results:
+    [ ] Cron job "orchestrator-tick" shows active=true
+    [ ] key_length > 100 (not NULL)
+
+Completion Time: ___________
+
+
+STEP 5: TRIGGER IMMEDIATE BACKFILL (2 min)
+-------------------------------------------
+[ ] Open Terminal
+[ ] cd /Users/ericpeterson/SwiftBolt_ML/backend/supabase
+[ ] export SUPABASE_SERVICE_ROLE_KEY='your-key-here'
+[ ] ./fix_alpaca_trigger_backfill.sh
+[ ] Verify response shows: "Tick complete"
+[ ] Check results show: slices_created > 0
+
+Completion Time: ___________
+
+
+STEP 6: MONITOR BACKFILL PROGRESS (5 min)
+------------------------------------------
+[ ] Open Supabase SQL Editor
+[ ] Run queries from: fix_alpaca_verify.sql
+[ ] Check every 2-3 minutes:
+    [ ] Alpaca data appearing (provider='alpaca')
+    [ ] Job runs showing success
+    [ ] Bar count increasing
+[ ] Wait until job_runs shows several completed jobs
+
+Completion Time: ___________
+
+
+STEP 7: CLEAR SWIFT APP CACHE (2 min)
+--------------------------------------
+[ ] Run in Terminal:
+    rm -rf ~/Library/Containers/com.yourapp.SwiftBoltML/Data/Library/Caches/*.json
+[ ] Or add clearAll() method to ChartCache.swift
+[ ] Restart Swift app
+
+Completion Time: ___________
+
+
+STEP 8: VERIFY EVERYTHING WORKS (5 min)
+----------------------------------------
+[ ] Check Edge Function logs in Supabase
+    [ ] Look for: "Alpaca assets cache warmed"
+[ ] Run SQL: select count(*) from ohlc_bars_v2 where provider='alpaca';
+    [ ] Result > 100
+[ ] Launch Swift app
+[ ] Load AAPL chart, switch to h1 timeframe
+[ ] Check console logs:
+    [ ] Shows "provider: alpaca"
+    [ ] Shows hundreds/thousands of bars (not 9)
+[ ] Visual verification:
+    [ ] Chart shows smooth data
+    [ ] No huge gaps
+    [ ] Correct current price
+
+Completion Time: ___________
+
+
+FINAL VERIFICATION
+------------------
+[ ] Edge Function logs mention Alpaca
+[ ] Database contains Alpaca data (>100 bars)
+[ ] Swift app shows "provider: alpaca" in logs
+[ ] Charts display proper data (not 9 bars)
+[ ] Orchestrator cron is running every minute
+
+
+TOTAL TIME: ___________ minutes
+
+
+NOTES / ISSUES ENCOUNTERED:
+____________________________________________________________________
+____________________________________________________________________
+____________________________________________________________________
+____________________________________________________________________
+
+
+STATUS: [ ] SUCCESS  [ ] PARTIAL  [ ] FAILED
+
+
+If SUCCESS:
+- Your Alpaca integration is now fully operational!
+- Data will continue backfilling automatically via cron
+- Charts will use institutional-grade Alpaca data
+
+If PARTIAL or FAILED:
+- Review EXECUTE_ALPACA_FIX.md → Troubleshooting section
+- Gather logs/screenshots for debugging
+- Check specific error messages

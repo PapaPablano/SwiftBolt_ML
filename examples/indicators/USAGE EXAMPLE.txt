@@ -1,0 +1,91 @@
+# Example: How to use all 4 P0 modules together
+
+from pop_calculator import ProbabilityOfProfitCalculator
+from earnings_analyzer import EarningsIVAnalyzer
+from extrinsic_calculator import ExtrinsicIntrinsicCalculator
+from pcr_analyzer import PutCallRatioAnalyzer
+import pandas as pd
+
+# Load your options data
+options_df = pd.DataFrame({
+    'contractSymbol': ['AAPL250117C00250000'],
+    'strike': [250],
+    'expiration': ['2025-01-17'],
+    'side': ['call'],
+    'bid': [5.20],
+    'ask': [5.40],
+    'volume': [1250],
+    'openInterest': [8500],
+    'impliedVolatility': [0.32],
+    'delta': [0.52],
+    'underlyingPrice': [250],
+    'historicalVolatility': [0.28]
+})
+
+# Initialize calculators
+pop_calc = ProbabilityOfProfitCalculator()
+earnings_analyzer = EarningsIVAnalyzer()
+extrinsic_calc = ExtrinsicIntrinsicCalculator()
+pcr_analyzer = PutCallRatioAnalyzer()
+
+# Calculate scores for first option
+row = options_df.iloc[0]
+
+# Module 1: PoP + R/R
+pop_data = pop_calc.calculate_pop(
+    underlying_price=row['underlyingPrice'],
+    strike=row['strike'],
+    side=row['side'],
+    bid=row['bid'],
+    ask=row['ask'],
+    delta=row['delta']
+)
+rr_data = pop_calc.calculate_risk_reward_ratio(
+    strike=row['strike'],
+    underlying_price=row['underlyingPrice'],
+    bid=row['bid'],
+    ask=row['ask'],
+    side=row['side']
+)
+pop_score = pop_calc.score_pop_and_rr(pop_data, rr_data)
+print(f"PoP Score: {pop_score:.2f} (PoP: {pop_data['pop_long_adjusted']:.1%}, R/R: {rr_data['risk_reward_ratio']:.2f}:1)")
+
+# Module 2: Earnings IV
+earnings_data = earnings_analyzer.calculate_earnings_impact_on_iv(
+    current_iv=row['impliedVolatility'],
+    historical_iv=row['historicalVolatility'],
+    days_to_earnings=10,
+    days_to_expiry=21
+)
+earnings_score = earnings_analyzer.score_earnings_strategy(
+    earnings_data, side=row['side'], expiration=row['expiration'],
+    underlying_price=row['underlyingPrice'], strike=row['strike'],
+    strategy_type='auto'
+)
+print(f"Earnings Score: {earnings_score:.2f} (IV Regime: {earnings_data['iv_regime']})")
+
+# Module 3: Extrinsic/Intrinsic
+ext_data = extrinsic_calc.calculate_extrinsic_intrinsic_ratio(
+    strike=row['strike'],
+    underlying_price=row['underlyingPrice'],
+    side=row['side'],
+    bid=row['bid'],
+    ask=row['ask'],
+    days_to_expiry=21
+)
+extrinsic_score = extrinsic_calc.score_extrinsic_richness(
+    ext_data,
+    implied_vol=row['impliedVolatility'],
+    historical_vol=row['historicalVolatility'],
+    strategy_type='auto'
+)
+print(f"Extrinsic Score: {extrinsic_score:.2f} (Character: {ext_data['character']}, Ratio: {ext_data['extrinsic_ratio']:.1%})")
+
+# Module 4: PCR Sentiment
+pcr_data = pcr_analyzer.analyze_put_call_ratio(options_df)
+pcr_score = pcr_analyzer.score_pcr_opportunity(pcr_data, side=row['side'], use_contrarian=True)
+print(f"PCR Score: {pcr_score:.2f} (Sentiment: {pcr_data['sentiment']}, PCR: {pcr_data['pcr_composite']:.2f})")
+
+# Composite score
+composite = (pop_score * 0.12 + earnings_score * 0.10 + extrinsic_score * 0.10 + pcr_score * 0.08) * 100
+print(f"\nCOMPOSITE P0 SCORE: {composite:.1f}/100")

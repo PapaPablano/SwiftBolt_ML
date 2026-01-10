@@ -1,0 +1,120 @@
+name: ML Tests & Linting
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'ml/**'
+      - '.github/workflows/test-ml.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'ml/**'
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }} Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        cd ml
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    
+    - name: Run tests with coverage
+      run: |
+        cd ml
+        pytest tests/ --cov=src --cov-report=xml --cov-report=term-missing
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./ml/coverage.xml
+        flags: ml-tests
+        name: ml-coverage
+        fail_ci_if_error: false
+
+  lint:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        cd ml
+        python -m pip install --upgrade pip
+        pip install black mypy flake8 isort
+    
+    - name: Check formatting with Black
+      run: |
+        cd ml
+        black --check src tests
+    
+    - name: Check import sorting with isort
+      run: |
+        cd ml
+        isort --check-only src tests
+    
+    - name: Lint with flake8
+      run: |
+        cd ml
+        flake8 src tests --max-line-length=100 --extend-ignore=E203,W503
+    
+    - name: Type check with mypy
+      run: |
+        cd ml
+        mypy src --ignore-missing-imports
+      continue-on-error: true  # Don't fail CI on type errors initially
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        cd ml
+        python -m pip install --upgrade pip
+        pip install safety bandit
+    
+    - name: Check for security vulnerabilities
+      run: |
+        cd ml
+        safety check --json || true
+    
+    - name: Run Bandit security linter
+      run: |
+        cd ml
+        bandit -r src -f json -o bandit-report.json || true

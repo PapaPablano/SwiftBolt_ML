@@ -1,0 +1,11 @@
+--- chart.subpanels.patched.js
++++ chart.supertrend-main.patched.js
+@@ -236,7 +236,7 @@
+ 
+         // Update & show the enhanced tooltip (fallback to hiding if not loaded)
+         if (window.enhancedTooltip && typeof window.enhancedTooltip.update === 'function') {
+-            window.enhancedTooltip.update('main', { time: param.time, open, high, low, close, volume });
++            window.enhancedTooltip.update('main', { time: param.time, open, high, low, close, volume , stLine, trend: stTrend});
+             window.enhancedTooltip.show(param.point.x + 12, param.point.y + 12);
+         } else {
+             if (tooltip) tooltip.style.display = 'none';
