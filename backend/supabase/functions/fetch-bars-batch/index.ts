@@ -266,7 +266,7 @@ Deno.serve(async (req) => {
     }
 
     const duration = Date.now() - startTime;
-    const response: BatchFetchResponse = {
+    const batchResponse: BatchFetchResponse = {
       total_symbols: symbols.length,
       total_bars: totalBars,
       symbols_processed: symbolsProcessed,
@@ -274,11 +274,11 @@ Deno.serve(async (req) => {
       api_calls: 1, // Only 1 API call for all symbols!
     };
 
-    console.log(`[fetch-bars-batch] Batch complete:`, response);
+    console.log(`[fetch-bars-batch] Batch complete:`, batchResponse);
     console.log(`[fetch-bars-batch] Efficiency: 1 API call for ${symbols.length} symbols (${symbols.length}x savings!)`);
 
     return new Response(
-      JSON.stringify(response),
+      JSON.stringify(batchResponse),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {

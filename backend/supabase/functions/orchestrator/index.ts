@@ -249,44 +249,51 @@ async function createSlicesForJob(supabase: any, jobDef: JobDefinition): Promise
  * Updated: 2026-01-08 with defensive logging
  */
 async function dispatchQueuedJobs(supabase: any, maxJobs: number): Promise<number> {
+  console.log(`[Orchestrator] Attempting to dispatch up to ${maxJobs} jobs`);
+  
   let dispatched = 0;
 
   for (let i = 0; i < maxJobs; i++) {
-    // Claim a queued job
-    const { data: claimed, error: claimError } = await supabase
-      .rpc("claim_queued_job");
-
-    // Defensive logging: Log claim result
-    console.log(`[Orchestrator] claim_queued_job() result:`, {
-      claimError: claimError ? JSON.stringify(claimError) : null,
-      claimedLength: claimed?.length ?? 0,
-      claimedData: claimed ? JSON.stringify(claimed) : null,
-    });
-
-    if (claimError) {
-      console.error(`[Orchestrator] Error claiming job:`, claimError);
-      break;
-    }
-
-    if (!claimed || claimed.length === 0) {
-      console.log(`[Orchestrator] No more queued jobs to dispatch`);
-      break;
-    }
-
-    const job = claimed[0];
-    
-    // Defensive logging: Log claimed job details
-    console.log(`[Orchestrator] Claimed job details:`, {
-      job_run_id: job.job_run_id,
-      symbol: job.symbol,
-      timeframe: job.timeframe,
-      job_type: job.job_type,
-      slice_from: job.slice_from,
-      slice_to: job.slice_to,
-    });
-
-    // Dispatch to appropriate worker
     try {
+      // Claim a queued job
+      const { data, error } = await supabase.rpc("claim_queued_job");
+
+      // Enhanced debug logging
+      console.log(`[Orchestrator] RPC response:`, {
+        hasData: !!data,
+        dataType: typeof data,
+        isArray: Array.isArray(data),
+        dataLength: Array.isArray(data) ? data.length : 'N/A',
+        firstItem: data?.[0] || data,
+        error: error
+      });
+
+      if (error) {
+        console.error(`[Orchestrator] RPC error:`, error);
+        break;
+      }
+
+      // Handle different response formats
+      let job;
+      if (Array.isArray(data) && data.length > 0) {
+        job = data[0];
+      } else if (data && typeof data === 'object') {
+        job = data;
+      } else {
+        console.log("[Orchestrator] No jobs in queue");
+        break;
+      }
+
+      console.log(`[Orchestrator] Dispatching job:`, {
+        job_run_id: job.job_run_id,
+        symbol: job.symbol,
+        timeframe: job.timeframe,
+        job_type: job.job_type,
+        slice_from: job.slice_from,
+        slice_to: job.slice_to,
+      });
+
+      // Dispatch to appropriate worker
       if (job.job_type === "fetch_intraday" || job.job_type === "fetch_historical") {
         await dispatchFetchBars(supabase, job);
         dispatched++;
@@ -294,23 +301,28 @@ async function dispatchQueuedJobs(supabase: any, maxJobs: number): Promise<numbe
         await dispatchForecast(supabase, job);
         dispatched++;
       }
+
     } catch (error) {
-      console.error(`[Orchestrator] Error dispatching job ${job.job_run_id}:`, error);
+      console.error(`[Orchestrator] Dispatch error:`, error);
       
-      // Mark job as failed
-      await supabase
-        .from("job_runs")
-        .update({
-          status: "failed",
-          error_message: error.message,
-          error_code: error.code || "DISPATCH_ERROR",
-          finished_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", job.job_run_id);
+      // Try to mark job as failed if we have job info
+      if (error.job_run_id) {
+        await supabase
+          .from("job_runs")
+          .update({
+            status: "failed",
+            error_message: error.message,
+            error_code: error.code || "DISPATCH_ERROR",
+            finished_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", error.job_run_id);
+      }
+      break;
     }
   }
 
+  console.log(`[Orchestrator] Total dispatched: ${dispatched}`);
   return dispatched;
 }
 
@@ -325,15 +337,34 @@ async function dispatchFetchBars(supabase: any, job: any) {
   // Check if this is a batch job by looking up the job_definition
   const { data: jobDef } = await supabase
     .from("job_definitions")
-    .select("symbols_array, batch_version")
+    .select("symbols_array, batch_version, symbol, timeframe")
     .eq("id", job.job_def_id)
     .single();
 
+  // DEBUG LOGGING
+  console.log('[Orchestrator] ========================================');
+  console.log('[Orchestrator] Processing job:', {
+    job_run_id: job.job_run_id,
+    job_def_id: job.job_def_id,
+    job_def_symbol: jobDef?.symbol,
+    has_symbols_array: !!jobDef?.symbols_array,
+    symbols_array_type: typeof jobDef?.symbols_array,
+    is_array: Array.isArray(jobDef?.symbols_array),
+    array_length: jobDef?.symbols_array?.length,
+  });
+
   const isBatchJob = jobDef?.symbols_array && Array.isArray(jobDef.symbols_array) && jobDef.symbols_array.length > 1;
+
+  console.log('[Orchestrator] isBatchJob =', isBatchJob);
+  console.log('[Orchestrator] ========================================');
 
   if (isBatchJob) {
     // Phase 2: Batch processing with fetch-bars-batch
-    console.log(`[Orchestrator] Dispatching BATCH job: ${jobDef.symbols_array.length} symbols, ${job.timeframe}`);
+    console.log(`[Orchestrator] BATCH JOB: Calling fetch-bars-batch with ${jobDef.symbols_array.length} symbols`);
+    
+    // For batch jobs, we need to create job_run entries for each symbol
+    // The batch job shares one job_run_id but fetch-bars-batch expects an array
+    const jobRunIds = new Array(jobDef.symbols_array.length).fill(job.job_run_id);
     
     const response = await fetch(`${supabaseUrl}/functions/v1/fetch-bars-batch`, {
       method: "POST",
@@ -342,11 +373,11 @@ async function dispatchFetchBars(supabase: any, job: any) {
         "Authorization": `Bearer ${supabaseKey}`,
       },
       body: JSON.stringify({
-        job_run_id: job.job_run_id,
+        job_run_ids: jobRunIds,
         symbols: jobDef.symbols_array,
         timeframe: job.timeframe,
-        start: job.slice_from,
-        end: job.slice_to,
+        from: job.slice_from,
+        to: job.slice_to,
       }),
     });
 
