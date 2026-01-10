@@ -170,6 +170,46 @@ final class WatchlistViewModel: ObservableObject {
 
         isLoading = false
     }
+    
+    /// Reload all watchlist data using Alpaca-only strategy (replaces spec8)
+    /// Multi-timeframe rule: Always processes all 5 timeframes together
+    func reloadAllData(forceRefresh: Bool = false, timeframes: [String] = ["m15", "h1", "h4", "d1", "w1"]) async {
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            print("[WatchlistViewModel] 🔄 Reloading all watchlist data...")
+            let response = try await apiClient.reloadWatchlistData(
+                forceRefresh: forceRefresh,
+                timeframes: timeframes,
+                symbols: nil
+            )
+            
+            if response.success {
+                print("[WatchlistViewModel] ✅ Reload complete: \(response.summary.success)/\(response.summary.total) symbols")
+                
+                // Log results for each symbol
+                for result in response.results {
+                    if result.status == "success" {
+                        let bars = result.barsLoaded
+                        print("[WatchlistViewModel]   ✓ \(result.symbol): m15=\(bars?.m15 ?? 0), h1=\(bars?.h1 ?? 0), h4=\(bars?.h4 ?? 0), d1=\(bars?.d1 ?? 0), w1=\(bars?.w1 ?? 0)")
+                    } else {
+                        print("[WatchlistViewModel]   ✗ \(result.symbol): \(result.message ?? "error")")
+                    }
+                }
+                
+                // Refresh watchlist to update UI
+                await refreshWatchlist()
+            } else {
+                errorMessage = response.message
+            }
+        } catch {
+            errorMessage = "Failed to reload watchlist data: \(error.localizedDescription)"
+            print("[WatchlistViewModel] ❌ Reload error: \(error)")
+        }
+        
+        isLoading = false
+    }
 
     func getJobStatus(for symbol: Symbol) -> WatchlistJobStatus? {
         jobStatuses[symbol.ticker]

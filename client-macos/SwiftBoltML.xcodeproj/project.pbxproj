@@ -43,7 +43,6 @@
 		A1000013233456780000013 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000013233456780000013 /* APIClient.swift */; };
 		A1000014233456780000014 /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000014233456780000014 /* Config.swift */; };
 		A1000015233456780000015 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000015233456780000015 /* KeychainService.swift */; };
-		A1000030233456780000030 /* SymbolSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000030233456780000030 /* SymbolSyncService.swift */; };
 		A1000016233456780000016 /* SymbolSearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000016233456780000016 /* SymbolSearchViewModel.swift */; };
 		A1000017233456780000017 /* ChartViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000017233456780000017 /* ChartViewModel.swift */; };
 		A1000018233456780000018 /* NewsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000018233456780000018 /* NewsViewModel.swift */; };
@@ -56,6 +55,7 @@
 		A1000025233456780000025 /* DebugPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000027233456780000027 /* DebugPanel.swift */; };
 		A1000028233456780000028 /* IndicatorPanelViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000028233456780000028 /* IndicatorPanelViews.swift */; };
 		A1000029233456780000029 /* SuperTrendPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000029233456780000029 /* SuperTrendPanelView.swift */; };
+		A1000030233456780000030 /* SymbolSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000030233456780000030 /* SymbolSyncService.swift */; };
 		A66084CE5A41ABCA72B26DB6 /* OptionsRankingResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C341141BD25E1C4A72A109 /* OptionsRankingResponse.swift */; };
 		A8052D8012DDF9B50B591DA6 /* AnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 310341ABEED26BABB738BEF2 /* AnalysisView.swift */; };
 		AE84055563B44B634DC4CA59 /* SuperTrendChartData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78170FE468AE321CB9A91BD5 /* SuperTrendChartData.swift */; };
@@ -80,6 +80,7 @@
 		F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */; };
 		F6F972F42F0F72670010C828 /* ChartCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F972F32F0F72670010C828 /* ChartCache.swift */; };
 		F6FD04842F0D8B0C00AF337E /* Timeframe.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6FD04832F0D8B0C00AF337E /* Timeframe.swift */; };
+		F768A2A036F22E169CA9E8AC /* ReloadWatchlistResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B11ECAF44D603B49B6D931 /* ReloadWatchlistResponse.swift */; };
 		FF7F2A0E2FD7B4A0009F9712 /* QuoteResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */; };
 		OHC10001233456780000001 /* OptionHistoryChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = OHC20001233456780000001 /* OptionHistoryChartView.swift */; };
 		SA0000012345678900000003 /* StrikeAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SA0000012345678900000004 /* StrikeAnalysisView.swift */; };
@@ -94,6 +95,7 @@
 		07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerView.swift; sourceTree = "<group>"; };
 		0A4D3D1FC85DBCBD8C45CCA5 /* WatchlistModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchlistModels.swift; sourceTree = "<group>"; };
 		10E36986FAE84774B166FF52 /* EnsureCoverageResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnsureCoverageResponse.swift; sourceTree = "<group>"; };
+		13B11ECAF44D603B49B6D931 /* ReloadWatchlistResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReloadWatchlistResponse.swift; sourceTree = "<group>"; };
 		144206D7859B6361AEFE13D9 /* MultiTimeframeConsensusView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MultiTimeframeConsensusView.swift; sourceTree = "<group>"; };
 		248D34C92FA787119F3187CE /* PivotLevelsIndicator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PivotLevelsIndicator.swift; sourceTree = "<group>"; };
 		2FB6D0158AE11968F0D3B3C2 /* AnalysisViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AnalysisViewModel.swift; sourceTree = "<group>"; };
@@ -125,7 +127,6 @@
 		A2000013233456780000013 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		A2000014233456780000014 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
 		A2000015233456780000015 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
-		A2000030233456780000030 /* SymbolSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SymbolSyncService.swift; sourceTree = "<group>"; };
 		A2000016233456780000016 /* SymbolSearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SymbolSearchViewModel.swift; sourceTree = "<group>"; };
 		A2000017233456780000017 /* ChartViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartViewModel.swift; sourceTree = "<group>"; };
 		A2000018233456780000018 /* NewsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewsViewModel.swift; sourceTree = "<group>"; };
@@ -140,6 +141,7 @@
 		A2000027233456780000027 /* DebugPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugPanel.swift; sourceTree = "<group>"; };
 		A2000028233456780000028 /* IndicatorPanelViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndicatorPanelViews.swift; sourceTree = "<group>"; };
 		A2000029233456780000029 /* SuperTrendPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SuperTrendPanelView.swift; sourceTree = "<group>"; };
+		A2000030233456780000030 /* SymbolSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SymbolSyncService.swift; sourceTree = "<group>"; };
 		A3000001233456780000001 /* SwiftBoltML.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftBoltML.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1B744048995733E3EF70004 /* PredictionsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PredictionsView.swift; sourceTree = "<group>"; };
 		B29181F82545367180388B23 /* ChartBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ChartBridge.swift; sourceTree = "<group>"; };
@@ -297,6 +299,7 @@
 				78170FE468AE321CB9A91BD5 /* SuperTrendChartData.swift */,
 				FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */,
 				10E36986FAE84774B166FF52 /* EnsureCoverageResponse.swift */,
+				13B11ECAF44D603B49B6D931 /* ReloadWatchlistResponse.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -503,6 +506,7 @@
 				WC734A8413BAD142EF9439139C /* WebChartControlsView.swift in Sources */,
 				296D2C72648D45A18BC89C2B /* EnsureCoverageResponse.swift in Sources */,
 				56BCC553C667467C9F9DE1FA /* HydrationBanner.swift in Sources */,
+				F768A2A036F22E169CA9E8AC /* ReloadWatchlistResponse.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

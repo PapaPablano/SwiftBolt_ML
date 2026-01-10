@@ -363,6 +363,7 @@ final class APIClient {
     }
     
     /// SPEC-8: Ensure coverage for symbol/timeframe (non-blocking backfill orchestration)
+    /// DEPRECATED: Spec8 is disabled, use reloadWatchlistData instead
     func ensureCoverage(symbol: String, timeframe: String, windowDays: Int = 7) async throws -> EnsureCoverageResponse {
         let body: [String: Any] = [
             "symbol": symbol,
@@ -377,6 +378,25 @@ final class APIClient {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
         print("[DEBUG] ensureCoverage: \(symbol)/\(timeframe) windowDays=\(windowDays)")
+        return try await performRequest(request)
+    }
+    
+    /// Reload all watchlist data using Alpaca-only strategy (replaces spec8)
+    /// Multi-timeframe rule: Always processes all 5 timeframes together
+    func reloadWatchlistData(forceRefresh: Bool = false, timeframes: [String] = ["m15", "h1", "h4", "d1", "w1"], symbols: [String]? = nil) async throws -> ReloadWatchlistResponse {
+        let body: [String: Any] = [
+            "forceRefresh": forceRefresh,
+            "timeframes": timeframes,
+            "symbols": symbols as Any
+        ]
+        
+        var request = URLRequest(url: functionURL("reload-watchlist-data"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        print("[DEBUG] reloadWatchlistData: forceRefresh=\(forceRefresh), timeframes=\(timeframes), symbols=\(symbols?.joined(separator: ",") ?? "all")")
         return try await performRequest(request)
     }
 

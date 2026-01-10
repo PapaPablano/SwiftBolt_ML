@@ -17,5 +17,5 @@ enum Config {
     }
     
     // Feature flags
-    static let ensureCoverageEnabled = true  // SPEC-8 orchestrator deployed
+    static let ensureCoverageEnabled = false  // SPEC-8 orchestrator DISABLED
 }
