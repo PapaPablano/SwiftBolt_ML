@@ -3,9 +3,7 @@ name: Automated OHLC Backfill
 on:
   # DISABLED: Using deprecated YFinance provider - conflicts with Alpaca-only strategy
   # Use scripts/backfill_missing_data.sh instead for Alpaca-based backfills
-  # schedule:
-  #   - cron: "0 */6 * * *"
-  # workflow_dispatch:
+  workflow_dispatch:
   #   inputs:
   #     symbol:
   #       description: "Symbol to backfill (optional). Example: AAPL. Leave blank for all watchlist symbols."
