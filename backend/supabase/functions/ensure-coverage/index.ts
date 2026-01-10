@@ -58,37 +58,36 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Determine job type based on timeframe
-    const isIntraday = ["15m", "1h", "4h"].includes(timeframe);
-    const jobType = isIntraday ? "fetch_intraday" : "fetch_historical";
-
-    // 1. Upsert job definition
-    const { data: jobDef, error: jobDefError } = await supabase
-      .from("job_definitions")
-      .upsert(
-        {
-          symbol,
-          timeframe,
-          job_type: jobType,
-          window_days,
-          priority,
-          enabled: true,
-          batch_version: 1, // Default to v1 (single-symbol)
-        },
-        {
-          onConflict: "symbol,timeframe,job_type,batch_version",
-          ignoreDuplicates: false,
-        }
-      )
-      .select()
+    // 1. Get symbol_id first
+    const { data: symbolData, error: symbolError } = await supabase
+      .from("symbols")
+      .select("id")
+      .eq("ticker", symbol.toUpperCase())
       .single();
 
-    if (jobDefError) {
-      console.error(`[ensure-coverage] Error upserting job definition:`, jobDefError);
-      throw jobDefError;
+    if (symbolError || !symbolData) {
+      throw new Error(`Symbol ${symbol} not found`);
     }
 
-    console.log(`[ensure-coverage] Job definition upserted: ${jobDef.id}`);
+    // 2. Call database function to create/update job definition
+    const { data: seedResult, error: seedError } = await supabase
+      .rpc("seed_job_definition_for_symbol", {
+        p_symbol_id: symbolData.id,
+        p_timeframes: [timeframe],
+      });
+
+    if (seedError) {
+      console.error(`[ensure-coverage] Error seeding job definition:`, seedError);
+      throw seedError;
+    }
+
+    // Extract job_def_id from result
+    const jobDefId = seedResult?.jobs?.[0]?.job_def_id;
+    if (!jobDefId) {
+      throw new Error(`Failed to create job definition: ${JSON.stringify(seedResult)}`);
+    }
+
+    console.log(`[ensure-coverage] Job definition created: ${jobDefId}`);
 
     // 2. Check current coverage
     const { data: coverage } = await supabase
@@ -119,7 +118,7 @@ Deno.serve(async (req) => {
     const { data: jobRuns } = await supabase
       .from("job_runs")
       .select("status, rows_written")
-      .eq("job_def_id", jobDef.id);
+      .eq("job_def_id", jobDefId);
 
     let backfillProgress;
     if (jobRuns && jobRuns.length > 0) {
@@ -151,7 +150,7 @@ Deno.serve(async (req) => {
 
     // 6. Return response
     const response: EnsureCoverageResponse = {
-      job_def_id: jobDef.id,
+      job_def_id: jobDefId,
       symbol,
       timeframe,
       status: gapsFound > 0 ? "gaps_detected" : "coverage_complete",
