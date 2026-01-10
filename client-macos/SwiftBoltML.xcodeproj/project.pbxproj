@@ -43,6 +43,7 @@
 		A1000013233456780000013 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000013233456780000013 /* APIClient.swift */; };
 		A1000014233456780000014 /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000014233456780000014 /* Config.swift */; };
 		A1000015233456780000015 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000015233456780000015 /* KeychainService.swift */; };
+		A1000030233456780000030 /* SymbolSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000030233456780000030 /* SymbolSyncService.swift */; };
 		A1000016233456780000016 /* SymbolSearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000016233456780000016 /* SymbolSearchViewModel.swift */; };
 		A1000017233456780000017 /* ChartViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000017233456780000017 /* ChartViewModel.swift */; };
 		A1000018233456780000018 /* NewsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000018233456780000018 /* NewsViewModel.swift */; };
@@ -124,6 +125,7 @@
 		A2000013233456780000013 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		A2000014233456780000014 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
 		A2000015233456780000015 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
+		A2000030233456780000030 /* SymbolSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SymbolSyncService.swift; sourceTree = "<group>"; };
 		A2000016233456780000016 /* SymbolSearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SymbolSearchViewModel.swift; sourceTree = "<group>"; };
 		A2000017233456780000017 /* ChartViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartViewModel.swift; sourceTree = "<group>"; };
 		A2000018233456780000018 /* NewsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewsViewModel.swift; sourceTree = "<group>"; };
@@ -305,6 +307,7 @@
 				A2000013233456780000013 /* APIClient.swift */,
 				A2000014233456780000014 /* Config.swift */,
 				A2000015233456780000015 /* KeychainService.swift */,
+				A2000030233456780000030 /* SymbolSyncService.swift */,
 				A2000023233456780000023 /* TechnicalIndicators.swift */,
 				248D34C92FA787119F3187CE /* PivotLevelsIndicator.swift */,
 				9A702F82DACC8241B3B9A8BA /* PolynomialRegressionIndicator.swift */,
@@ -444,6 +447,7 @@
 				A1000013233456780000013 /* APIClient.swift in Sources */,
 				A1000014233456780000014 /* Config.swift in Sources */,
 				A1000015233456780000015 /* KeychainService.swift in Sources */,
+				A1000030233456780000030 /* SymbolSyncService.swift in Sources */,
 				A1000016233456780000016 /* SymbolSearchViewModel.swift in Sources */,
 				A1000017233456780000017 /* ChartViewModel.swift in Sources */,
 				F6FD04842F0D8B0C00AF337E /* Timeframe.swift in Sources */,
