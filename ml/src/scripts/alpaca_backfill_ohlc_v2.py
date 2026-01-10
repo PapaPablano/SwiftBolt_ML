@@ -26,6 +26,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 import requests
+from dotenv import load_dotenv
+
+# Load environment variables from root .env file
+root_dir = Path(__file__).parent.parent.parent.parent
+load_dotenv(root_dir / ".env")
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -127,6 +132,8 @@ def fetch_alpaca_bars(
     try:
         while page_count < max_pages:
             # Build URL
+            # Use 'iex' feed for paper trading accounts (free tier)
+            # Use 'sip' feed for live trading accounts (paid)
             url = (
                 f"{ALPACA_BASE_URL}/stocks/bars?"
                 f"symbols={symbol.upper()}&"
@@ -135,7 +142,7 @@ def fetch_alpaca_bars(
                 f"end={end_str}&"
                 f"limit=10000&"
                 f"adjustment=raw&"
-                f"feed=sip&"
+                f"feed=iex&"
                 f"sort=asc"
             )
             

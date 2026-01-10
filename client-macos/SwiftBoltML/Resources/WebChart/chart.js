@@ -522,21 +522,9 @@ setCandles: function(data) {
             avgBarInterval = totalInterval / sampleSize;
         }
         
-        // Determine target number of visible bars based on timeframe
-        let targetVisibleBars;
-        if (avgBarInterval < 60 * 30) {
-            // 15-minute bars: show ~100 bars (about 1 week of trading)
-            targetVisibleBars = 100;
-        } else if (avgBarInterval < 60 * 90) {
-            // 1-hour bars: show ~80 bars (about 2 weeks of trading)
-            targetVisibleBars = 80;
-        } else if (avgBarInterval < 60 * 60 * 6) {
-            // 4-hour bars: show ~60 bars (about 1 month of trading)
-            targetVisibleBars = 60;
-        } else {
-            // Daily or longer: show ~60 bars (about 3 months of trading days)
-            targetVisibleBars = 60;
-        }
+        // Default zoom: Always show 100 most recent bars on initial load
+        // This provides consistent behavior across all timeframes
+        const targetVisibleBars = 100;
         
         // Calculate the start index to show target number of bars
         const startIndex = Math.max(0, displayData.length - targetVisibleBars);

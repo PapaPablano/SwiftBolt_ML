@@ -1,0 +1,101 @@
+name: Daily Data Refresh
+
+on:
+  schedule:
+    # Run at 6:00 AM UTC (12:00 AM CST) every day
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      force_full_backfill:
+        description: 'Force full backfill (not just incremental)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  refresh-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          cd ml
+          pip install -r requirements.txt
+      
+      - name: Configure environment
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+        run: |
+          cd ml
+          cat > .env << EOF
+          SUPABASE_URL=${SUPABASE_URL}
+          SUPABASE_KEY=${SUPABASE_KEY}
+          DATABASE_URL=${DATABASE_URL}
+          ALPACA_API_KEY=${ALPACA_API_KEY}
+          ALPACA_API_SECRET=${ALPACA_API_SECRET}
+          EOF
+      
+      - name: Run incremental data refresh
+        if: ${{ !inputs.force_full_backfill }}
+        run: |
+          cd ml
+          echo "📊 Running incremental data refresh for all timeframes..."
+          
+          # Refresh intraday timeframes (15m, 1h, 4h)
+          python src/scripts/alpaca_backfill_ohlc_v2.py --all --timeframe m15 || echo "⚠️ m15 failed"
+          python src/scripts/alpaca_backfill_ohlc_v2.py --all --timeframe h1 || echo "⚠️ h1 failed"
+          python src/scripts/alpaca_backfill_ohlc_v2.py --all --timeframe h4 || echo "⚠️ h4 failed"
+          
+          # Refresh daily and weekly
+          python src/scripts/alpaca_backfill_ohlc_v2.py --all --timeframe d1 || echo "⚠️ d1 failed"
+          python src/scripts/alpaca_backfill_ohlc_v2.py --all --timeframe w1 || echo "⚠️ w1 failed"
+      
+      - name: Run full backfill with gap detection
+        if: ${{ inputs.force_full_backfill }}
+        run: |
+          cd ml
+          echo "🔄 Running full backfill with gap detection..."
+          chmod +x src/scripts/smart_backfill_all.sh
+          ./src/scripts/smart_backfill_all.sh
+      
+      - name: Validate data quality
+        run: |
+          cd ml
+          echo "🔍 Validating data quality..."
+          python src/scripts/backfill_with_gap_detection.py --all > /tmp/validation_report.txt || true
+          cat /tmp/validation_report.txt
+      
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-report-${{ github.run_number }}
+          path: /tmp/validation_report.txt
+          retention-days: 7
+      
+      - name: Check for critical gaps
+        run: |
+          cd ml
+          # Exit with error if validation found issues (for notifications)
+          python src/scripts/backfill_with_gap_detection.py --all
+      
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Data refresh failed or gaps detected!"
+          echo "Check the validation report artifact for details."
+          echo "Manual intervention may be required."
