@@ -1,8 +1,11 @@
 /**
  * Intraday Service V2
- * Handles real-time intraday data updates to ohlc_bars_v2 with strict layer separation
+ * ⚠️ DEPRECATED: Uses Tradier provider - conflicts with Alpaca-only strategy
  * 
- * Features:
+ * This service is DISABLED to prevent data conflicts.
+ * Use chart-data-v2 edge function instead, which uses Alpaca.
+ * 
+ * Original Features:
  * - Writes only to TODAY with provider='tradier'
  * - Aggregates 5-min bars to daily OHLC
  * - Locks writes 5 minutes after market close (4:05 PM ET)
@@ -93,11 +96,15 @@ export class IntradayServiceV2 {
 
   /**
    * Fetch intraday bars from Tradier (5-min intervals)
+   * ⚠️ DEPRECATED: Tradier provider conflicts with Alpaca-only strategy
    */
   private async fetchTradierBars(
     symbol: string,
     interval: string = '5min'
   ): Promise<IntradayBar[]> {
+    // DISABLED: Tradier provider is deprecated
+    console.warn(`[Intraday-V2] DEPRECATED: Tradier provider disabled. Use chart-data-v2 with Alpaca instead.`);
+    return [];
     const today = new Date().toISOString().split('T')[0];
     
     try {

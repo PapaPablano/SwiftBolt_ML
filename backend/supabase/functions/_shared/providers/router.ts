@@ -122,34 +122,20 @@ export class ProviderRouter {
   }
 
   async getHistoricalBars(request: HistoricalBarsRequest): Promise<Bar[]> {
-    // Smart routing: Alpaca first (if available), then timeframe-specific fallbacks
-    const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(request.timeframe);
+    // ALPACA-ONLY STRATEGY: No fallbacks to deprecated providers
     const alpacaProvider = this.providers.get("alpaca");
-    const tradierProvider = this.providers.get("tradier");
 
     let primary: ProviderId;
     let fallback: ProviderId | undefined;
 
-    // Alpaca is preferred for ALL data types (historical + intraday) when available
+    // Alpaca is the ONLY provider for ALL data types (historical + intraday)
     if (alpacaProvider) {
       primary = "alpaca";
-      // Fallback depends on timeframe
-      if (isIntraday) {
-        fallback = tradierProvider ? "tradier" : this.policy.historicalBars.fallback;
-      } else {
-        fallback = this.policy.historicalBars.fallback;
-      }
-      console.log(`[Router] Using Alpaca (primary) for ${request.timeframe} with fallback: ${fallback || 'none'}`);
-    } else if (isIntraday && tradierProvider) {
-      // No Alpaca: use Tradier for intraday
-      primary = "tradier";
-      fallback = this.policy.historicalBars.fallback;
-      console.log(`[Router] Using Tradier for intraday: ${request.timeframe}`);
+      fallback = undefined; // NO FALLBACKS - Alpaca-only strategy
+      console.log(`[Router] Using Alpaca (ONLY) for ${request.timeframe} - no fallbacks`);
     } else {
-      // Use configured policy for daily/weekly data (no Alpaca, no Tradier)
-      primary = this.policy.historicalBars.primary;
-      fallback = this.policy.historicalBars.fallback;
-      console.log(`[Router] Using ${primary} for daily/weekly timeframe: ${request.timeframe}`);
+      // No Alpaca available - FAIL FAST instead of using deprecated providers
+      throw new Error(`Alpaca provider not available. Deprecated providers (Tradier, Polygon, YFinance) are not allowed.`);
     }
 
     try {
