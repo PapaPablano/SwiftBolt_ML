@@ -35,6 +35,7 @@ struct SymbolSearchView: View {
                             print("[DEBUG] - Asset Type: \(symbol.assetType)")
                             print("[DEBUG] - Calling appViewModel.selectSymbol()...")
                             print("[DEBUG] ========================================")
+                            searchViewModel.trackSymbolSelection(symbol)
                             appViewModel.selectSymbol(symbol)
                         }
                     )

@@ -497,6 +497,9 @@ final class ChartViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         
+        // Sync symbol to backend for multi-timeframe backfill
+        SymbolSyncService.shared.syncSymbolInBackground(symbol.ticker, source: .chartView)
+        
         // SPEC-8: Trigger non-blocking coverage check for intraday timeframes
         if timeframe.isIntraday && Config.ensureCoverageEnabled {
             // Cancel any existing coverage check

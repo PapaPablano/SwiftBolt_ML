@@ -81,4 +81,9 @@ final class SymbolSearchViewModel: ObservableObject {
         searchResults = []
         errorMessage = nil
     }
+    
+    func trackSymbolSelection(_ symbol: Symbol) {
+        // Sync symbol to backend for multi-timeframe backfill
+        SymbolSyncService.shared.syncSymbolInBackground(symbol.ticker, source: .recentSearch)
+    }
 }

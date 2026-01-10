@@ -58,6 +58,9 @@ final class WatchlistViewModel: ObservableObject {
                     updateJobStatuses(jobStatus)
                 }
 
+                // Sync symbol to backend for multi-timeframe backfill
+                SymbolSyncService.shared.syncSymbolInBackground(symbol.ticker, source: .watchlist)
+
                 print("[WatchlistViewModel] ✅ Added \(symbol.ticker) to watchlist, jobs queued")
             } else {
                 errorMessage = response.message ?? "Failed to add symbol"
