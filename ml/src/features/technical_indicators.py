@@ -35,6 +35,10 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame with additional technical indicator columns
     """
+    # Handle empty dataframe edge case
+    if len(df) == 0:
+        return df.copy()
+    
     df = df.copy()
 
     # Returns
@@ -81,6 +85,7 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # MFI (volume-weighted RSI)
     df["mfi_14"] = TechnicalIndicatorsCorrect.calculate_mfi(df, period=14)
+    df["mfi"] = df["mfi_14"]  # Alias for backward compatibility
 
     # OBV
     df["obv"] = TechnicalIndicatorsCorrect.calculate_obv(df)

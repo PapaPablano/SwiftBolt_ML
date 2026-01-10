@@ -118,7 +118,9 @@ class RegimeIndicators:
                 return np.nan
             return (window < window[-1]).sum() / len(window) * 100
 
-        vol_pct = realized_vol_series.rolling(window=lookback).apply(
+        # Use smaller window for small datasets
+        effective_lookback = min(lookback, max(20, len(realized_vol_series) // 2))
+        vol_pct = realized_vol_series.rolling(window=effective_lookback).apply(
             compute_percentile, raw=True
         )
         return vol_pct

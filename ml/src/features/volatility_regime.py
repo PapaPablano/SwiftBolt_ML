@@ -24,8 +24,8 @@ class GarchVolatility:
 
     def fit(self, returns: pd.Series) -> None:
         clean = returns.dropna()
-        if len(clean) < 100:
-            raise ValueError("Not enough data for GARCH fit (need >=100)")
+        if len(clean) < 50:
+            raise ValueError("Not enough data for GARCH fit (need >=50)")
         self.model = arch_model(
             clean * 100,
             p=1,
@@ -48,8 +48,9 @@ class GarchVolatility:
     def in_sample_variance(self) -> pd.Series:
         if self.res is None:
             raise RuntimeError("GARCH model not fitted")
-        var = self.res.conditional_volatility ** 2 / (100 ** 2)
-        var.index = self.res.model._y.index
+        var_values = self.res.conditional_volatility ** 2 / (100 ** 2)
+        # Convert to Series with proper index
+        var = pd.Series(var_values, index=self.res.model._y.index)
         return var
 
 

@@ -519,7 +519,8 @@ class TechnicalIndicatorsCorrect:
         df["bb_width"] = width
 
         # Width percentile (for volatility regime)
-        df["bb_width_pct"] = df["bb_width"].rolling(window=period*5).apply(
+        # Use period*2 window to ensure calculation with smaller datasets
+        df["bb_width_pct"] = df["bb_width"].rolling(window=max(period*2, 20)).apply(
             lambda x: (x.iloc[-1] > x).sum() / len(x) * 100 if len(x) > 0 else 50,
             raw=False
         )
