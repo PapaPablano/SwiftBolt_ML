@@ -3,7 +3,7 @@
 // Documentation: https://docs.alpaca.markets/docs/getting-started-with-alpaca-market-data
 
 import type { DataProviderAbstraction, HistoricalBarsRequest, OptionsChainRequest, NewsRequest } from "./abstraction.ts";
-import type { Bar, Quote, NewsItem, CryptoBar, CryptoQuote, CryptoSnapshot, OptionsChain, OptionContract } from "./types.ts";
+import type { Bar, Quote, NewsItem, CryptoBar, CryptoQuote, CryptoSnapshot, ForexBar, ForexQuote, ForexSnapshot, OptionsChain, OptionContract } from "./types.ts";
 import type { TokenBucketRateLimiter } from "../rate-limiter/token-bucket.ts";
 import type { Cache } from "../cache/interface.ts";
 import { CACHE_TTL } from "../config/rate-limits.ts";
@@ -88,6 +88,7 @@ export class AlpacaClient implements DataProviderAbstraction {
   private readonly baseUrl = "https://data.alpaca.markets/v2";
   private readonly newsBaseUrl = "https://data.alpaca.markets/v1beta1";
   private readonly cryptoBaseUrl = "https://data.alpaca.markets/v1beta3/crypto";
+  private readonly forexBaseUrl = "https://data.alpaca.markets/v1beta1/forex";
   private readonly optionsBaseUrl = "https://data.alpaca.markets/v1beta1/options";
   private readonly tradingBaseUrl = "https://api.alpaca.markets/v2";
   private readonly rateLimiter: TokenBucketRateLimiter;
@@ -762,6 +763,225 @@ export class AlpacaClient implements DataProviderAbstraction {
    * Convert Alpaca crypto bar to our format
    */
   private convertCryptoBar(bar: any): CryptoBar {
+    return {
+      timestamp: Math.floor(new Date(bar.t).getTime() / 1000),
+      open: bar.o,
+      high: bar.h,
+      low: bar.l,
+      close: bar.c,
+      volume: bar.v,
+      vwap: bar.vw,
+      tradeCount: bar.n,
+    };
+  }
+
+  // ============================================================================
+  // FOREX DATA METHODS (v1beta1 API)
+  // ============================================================================
+
+  /**
+   * Get forex quotes for currency pairs
+   * @param pairs - Currency pairs in format "EUR/USD", "GBP/USD", etc.
+   */
+  async getForexQuotes(pairs: string[]): Promise<ForexQuote[]> {
+    if (pairs.length === 0) {
+      return [];
+    }
+
+    console.log(`[Alpaca] Fetching forex quotes for ${pairs.length} pairs`);
+
+    try {
+      await this.rateLimiter.acquire("alpaca");
+
+      const pairsParam = pairs.map(p => encodeURIComponent(p)).join(",");
+      // Alpaca forex uses /rates endpoint for latest exchange rates
+      const url = `${this.forexBaseUrl}/rates/latest?currency_pairs=${pairsParam}`;
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+
+      const data = await response.json();
+      const quotes: ForexQuote[] = [];
+
+      // Response format: { rates: { "EUR/USD": { bp: ..., ap: ..., mp: ..., t: ... } } }
+      for (const [symbol, rateData] of Object.entries(data.rates || {})) {
+        const r = rateData as any;
+        quotes.push({
+          symbol,
+          bidPrice: r.bp || r.b || 0,
+          askPrice: r.ap || r.a || 0,
+          midPrice: r.mp || r.m || ((r.bp || r.b || 0) + (r.ap || r.a || 0)) / 2,
+          timestamp: r.t ? Math.floor(new Date(r.t).getTime() / 1000) : Math.floor(Date.now() / 1000),
+        });
+      }
+
+      console.log(`[Alpaca] Retrieved ${quotes.length} forex quotes`);
+      return quotes;
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching forex quotes:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get forex snapshots (latest quote and daily bars)
+   * @param pairs - Currency pairs in format "EUR/USD", "GBP/USD", etc.
+   */
+  async getForexSnapshots(pairs: string[]): Promise<ForexSnapshot[]> {
+    if (pairs.length === 0) {
+      return [];
+    }
+
+    console.log(`[Alpaca] Fetching forex snapshots for ${pairs.length} pairs`);
+
+    try {
+      await this.rateLimiter.acquire("alpaca");
+
+      const pairsParam = pairs.map(p => encodeURIComponent(p)).join(",");
+      const url = `${this.forexBaseUrl}/snapshots?symbols=${pairsParam}`;
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+
+      const data = await response.json();
+      const snapshots: ForexSnapshot[] = [];
+
+      for (const [symbol, snap] of Object.entries(data.snapshots || {})) {
+        const s = snap as any;
+        const latestQuote = s.latestQuote || {};
+
+        snapshots.push({
+          symbol,
+          latestQuote: {
+            symbol,
+            bidPrice: latestQuote.bp || 0,
+            askPrice: latestQuote.ap || 0,
+            midPrice: latestQuote.bp && latestQuote.ap ? (latestQuote.bp + latestQuote.ap) / 2 : 0,
+            timestamp: latestQuote.t ? Math.floor(new Date(latestQuote.t).getTime() / 1000) : 0,
+          },
+          dailyBar: s.dailyBar ? this.convertForexBar(s.dailyBar) : undefined,
+          prevDailyBar: s.prevDailyBar ? this.convertForexBar(s.prevDailyBar) : undefined,
+        });
+      }
+
+      console.log(`[Alpaca] Retrieved ${snapshots.length} forex snapshots`);
+      return snapshots;
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching forex snapshots:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get historical forex bars
+   * @param pair - Currency pair in format "EUR/USD"
+   */
+  async getForexHistoricalBars(request: {
+    pair: string;
+    timeframe: string;
+    start: number;
+    end: number;
+  }): Promise<ForexBar[]> {
+    const { pair, timeframe, start, end } = request;
+    const alpacaTimeframe = this.convertTimeframe(timeframe);
+
+    console.log(`[Alpaca] Fetching forex historical bars: ${pair} ${timeframe}`);
+
+    try {
+      const allBars: ForexBar[] = [];
+      let nextPageToken: string | undefined;
+      let pageCount = 0;
+      const maxPages = 100;
+
+      do {
+        await this.rateLimiter.acquire("alpaca");
+
+        const startDate = this.toUTCISOString(start);
+        const endDate = this.toUTCISOString(end);
+        const encodedPair = encodeURIComponent(pair);
+
+        let url = `${this.forexBaseUrl}/bars?` +
+          `symbols=${encodedPair}&` +
+          `timeframe=${alpacaTimeframe}&` +
+          `start=${startDate}&` +
+          `end=${endDate}&` +
+          `limit=10000&` +
+          `sort=asc`;
+
+        if (nextPageToken) {
+          url += `&page_token=${nextPageToken}`;
+        }
+
+        const response = await this.fetchWithRetry(url);
+
+        if (!response.ok) {
+          await this.handleErrorResponse(response);
+        }
+
+        const data = await response.json();
+        const forexBars = data.bars?.[pair] || [];
+
+        if (forexBars.length === 0 && pageCount === 0) {
+          console.log(`[Alpaca] No forex data returned for ${pair}`);
+          return [];
+        }
+
+        const pageBars: ForexBar[] = forexBars.map((bar: any) => this.convertForexBar(bar));
+        allBars.push(...pageBars);
+        nextPageToken = data.next_page_token;
+        pageCount++;
+
+        if (nextPageToken) {
+          console.log(`[Alpaca] Forex fetched page ${pageCount} with ${pageBars.length} bars, continuing...`);
+        }
+
+        if (pageCount >= maxPages) {
+          console.warn(`[Alpaca] Reached maximum page limit for forex ${pair}`);
+          break;
+        }
+      } while (nextPageToken);
+
+      console.log(`[Alpaca] Retrieved ${allBars.length} forex bars for ${pair}`);
+      return allBars;
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching forex bars:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get list of available forex pairs
+   */
+  async getForexPairs(): Promise<string[]> {
+    console.log(`[Alpaca] Fetching available forex pairs`);
+
+    // Common forex pairs supported by Alpaca
+    // Alpaca doesn't have a dedicated endpoint for listing forex pairs,
+    // so we return the commonly available ones
+    const commonPairs = [
+      "EUR/USD", "GBP/USD", "USD/JPY", "USD/CHF", "AUD/USD", "USD/CAD", "NZD/USD",
+      "EUR/GBP", "EUR/JPY", "GBP/JPY", "EUR/CHF", "AUD/JPY", "GBP/CHF",
+      "EUR/AUD", "EUR/CAD", "AUD/CAD", "NZD/JPY", "GBP/AUD", "GBP/CAD",
+      "CHF/JPY", "AUD/NZD", "EUR/NZD", "USD/SGD", "USD/HKD", "USD/MXN"
+    ];
+
+    return commonPairs;
+  }
+
+  /**
+   * Convert Alpaca forex bar to our format
+   */
+  private convertForexBar(bar: any): ForexBar {
     return {
       timestamp: Math.floor(new Date(bar.t).getTime() / 1000),
       open: bar.o,

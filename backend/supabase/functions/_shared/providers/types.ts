@@ -126,6 +126,33 @@ export interface CryptoSnapshot {
   prevDailyBar?: CryptoBar;
 }
 
+// Forex types
+export interface ForexQuote {
+  symbol: string; // e.g., "EUR/USD"
+  bidPrice: number;
+  askPrice: number;
+  midPrice: number;
+  timestamp: number;
+}
+
+export interface ForexBar {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+  vwap?: number;
+  tradeCount?: number;
+}
+
+export interface ForexSnapshot {
+  symbol: string;
+  latestQuote: ForexQuote;
+  dailyBar?: ForexBar;
+  prevDailyBar?: ForexBar;
+}
+
 // Error types for unified error handling
 export class ProviderError extends Error {
   constructor(
