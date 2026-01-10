@@ -1,11 +1,12 @@
 name: Intraday Update V2 (Tradier)
 
 on:
-  schedule:
-    # Run every 15 minutes during market hours (9:30 AM - 4:15 PM ET)
-    # Cron is in UTC, so adjust for ET (UTC-5 or UTC-4 during DST)
-    - cron: '30-59/15 14-20 * * 1-5'  # 9:30 AM - 3:59 PM ET
-    - cron: '0-15/15 21 * * 1-5'      # 4:00 PM - 4:15 PM ET
+  # DISABLED: Using deprecated Tradier provider - conflicts with Alpaca-only strategy
+  # schedule:
+  #   # Run every 15 minutes during market hours (9:30 AM - 4:15 PM ET)
+  #   # Cron is in UTC, so adjust for ET (UTC-5 or UTC-4 during DST)
+  #   - cron: '30-59/15 14-20 * * 1-5'  # 9:30 AM - 3:59 PM ET
+  #   - cron: '0-15/15 21 * * 1-5'      # 4:00 PM - 4:15 PM ET
   workflow_dispatch:
     inputs:
       symbols:

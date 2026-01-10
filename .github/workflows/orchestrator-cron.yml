@@ -1,9 +1,10 @@
 name: Orchestrator Cron
 
 on:
-  schedule:
-    # Run every minute
-    - cron: '* * * * *'
+  # DISABLED: May conflict with Alpaca-only data strategy - re-enable after verifying orchestrator uses Alpaca
+  # schedule:
+  #   # Run every minute
+  #   - cron: '* * * * *'
   workflow_dispatch: # Allow manual trigger
 
 jobs:

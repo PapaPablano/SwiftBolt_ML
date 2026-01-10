@@ -4,10 +4,11 @@ name: Daily Historical Sync (Yahoo Finance)
 # This ensures the historical layer is always up-to-date after market close
 
 on:
-  schedule:
-    # Run at 8:00 PM ET (after market settlement)
-    # UTC: 01:00 (EST) or 00:00 (EDT)
-    - cron: '0 1 * * 2-6'  # Tue-Sat (covers Mon-Fri trading days)
+  # DISABLED: Using deprecated YFinance provider - conflicts with Alpaca-only strategy
+  # schedule:
+  #   # Run at 8:00 PM ET (after market settlement)
+  #   # UTC: 01:00 (EST) or 00:00 (EDT)
+  #   - cron: '0 1 * * 2-6'  # Tue-Sat (covers Mon-Fri trading days)
   workflow_dispatch:
     inputs:
       symbols:
