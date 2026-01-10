@@ -117,6 +117,88 @@ final class APIClient {
         guard (200...299).contains(httpResponse.statusCode) else {
             let message = String(data: data, encoding: .utf8)
             print("[DEBUG] API Error response: \(message ?? "nil")")
+
+            // Parse specific error types from backend
+            switch httpResponse.statusCode {
+            case 401, 403:
+                throw APIError.authenticationError(message: message ?? "Authentication failed")
+            case 404:
+                // Try to extract symbol from error message
+                if let msg = message, msg.contains("Symbol") {
+                    let symbol = msg.components(separatedBy: " ").first(where: { $0.uppercased() == $0 && $0.count <= 5 }) ?? "unknown"
+                    throw APIError.invalidSymbol(symbol: symbol)
+                }
+                throw APIError.httpError(statusCode: httpResponse.statusCode, message: message)
+            case 429:
+                // Parse Retry-After header if present
+                let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init)
+                throw APIError.rateLimitExceeded(retryAfter: retryAfter)
+            case 500...599:
+                throw APIError.serviceUnavailable(message: message ?? "Server error")
+            default:
+                throw APIError.httpError(statusCode: httpResponse.statusCode, message: message)
+            }
+        }
+
+        // Debug: print raw response
+        if let jsonString = String(data: data, encoding: .utf8) {
+            print("[DEBUG] API Response body: \(jsonString.prefix(500))")
+            #if DEBUG
+            if let urlString = request.url?.absoluteString, urlString.contains("/ml-dashboard") {
+                do {
+                    if let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        let hasValidation = obj["validationMetrics"] != nil
+                        print("[DEBUG] ml-dashboard has validationMetrics: \(hasValidation)")
+                        if let vm = obj["validationMetrics"] as? [String: Any] {
+                            let sharpe = vm["sharpe_ratio"] ?? "nil"
+                            let kendall = vm["kendall_tau"] ?? "nil"
+                            let ttest = vm["t_test_p_value"] ?? "nil"
+                            let mc = vm["monte_carlo_luck"] ?? "nil"
+                            print("[DEBUG] validationMetrics(sharpe_ratio=\(sharpe), kendall_tau=\(kendall), monte_carlo_luck=\(mc), t_test_p_value=\(ttest))")
+                        }
+                    }
+                } catch {
+                    print("[DEBUG] ml-dashboard JSON parse error: \(error)")
+                }
+            }
+            #endif
+        }
+
+        do {
+            let decoder = JSONDecoder()
+            return try decoder.decode(T.self, from: data)
+        } catch {
+            print("[DEBUG] Decoding error: \(error)")
+            throw APIError.decodingError(error)
+        }
+    }
+
+    /// Enhanced performRequest with response header logging for chart data debugging
+    func performRequestWithHeaderLogging<T: Decodable>(_ request: URLRequest, symbol: String, timeframe: String) async throws -> T {
+        print("[DEBUG] API Request: \(request.url?.absoluteString ?? "nil")")
+
+        let data: Data
+        let response: URLResponse
+
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            print("[DEBUG] Network error: \(error)")
+            throw APIError.networkError(error)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+
+        // Log response headers for cache debugging
+        logResponseHeaders(httpResponse, symbol: symbol, timeframe: timeframe)
+
+        print("[DEBUG] API Response status: \(httpResponse.statusCode)")
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let message = String(data: data, encoding: .utf8)
+            print("[DEBUG] API Error response: \(message ?? "nil")")
             
             // Parse specific error types from backend
             switch httpResponse.statusCode {
@@ -170,6 +252,29 @@ final class APIClient {
         } catch {
             print("[DEBUG] Decoding error: \(error)")
             throw APIError.decodingError(error)
+        }
+    }
+
+    /// Log response headers for cache debugging
+    private func logResponseHeaders(_ response: HTTPURLResponse, symbol: String, timeframe: String) {
+        let cacheControl = response.value(forHTTPHeaderField: "Cache-Control") ?? "not-set"
+        let etag = response.value(forHTTPHeaderField: "ETag") ?? "none"
+        let age = response.value(forHTTPHeaderField: "Age") ?? "0"
+        let via = response.value(forHTTPHeaderField: "Via") ?? "direct"
+        let cfCacheStatus = response.value(forHTTPHeaderField: "CF-Cache-Status") ?? "none"
+
+        print("[DEBUG] 📊 Response Headers for \(symbol)/\(timeframe)")
+        print("[DEBUG] - Status: \(response.statusCode)")
+        print("[DEBUG] - Cache-Control: \(cacheControl)")
+        print("[DEBUG] - Age: \(age)s")
+        print("[DEBUG] - Via: \(via)")
+        print("[DEBUG] - ETag: \(etag)")
+        print("[DEBUG] - CF-Cache-Status: \(cfCacheStatus)")
+
+        // Warn if stale intraday data (age > 5 minutes)
+        let isIntraday = timeframe == "m15" || timeframe == "h1" || timeframe == "h4"
+        if isIntraday, let ageValue = Int(age), ageValue > 300 {
+            print("[DEBUG] ⚠️ STALE DATA FROM CDN: age=\(ageValue)s (max 300s), via=\(via)")
         }
     }
 
@@ -261,6 +366,16 @@ final class APIClient {
     }
     
     func fetchChartV2(symbol: String, timeframe: String = "d1", days: Int = 60, includeForecast: Bool = true, forecastDays: Int = 10) async throws -> ChartDataV2Response {
+        let isIntraday = timeframe == "m15" || timeframe == "h1" || timeframe == "h4"
+
+        // Build URL with cache-buster for intraday to bypass upstream CDN caching
+        var urlComponents = URLComponents(url: functionURL("chart-data-v2"), resolvingAgainstBaseURL: false)!
+        if isIntraday {
+            let cacheBuster = Int(Date().timeIntervalSince1970)
+            urlComponents.queryItems = [URLQueryItem(name: "t", value: "\(cacheBuster)")]
+            print("[DEBUG] 📊 Cache-buster enabled: t=\(cacheBuster)")
+        }
+
         let body: [String: Any] = [
             "symbol": symbol,
             "timeframe": timeframe,
@@ -268,22 +383,26 @@ final class APIClient {
             "includeForecast": includeForecast,
             "forecastDays": forecastDays
         ]
-        
+
         print("[DEBUG] APIClient.fetchChartV2() - Sending timeframe: \(timeframe)")
-        
-        var request = URLRequest(url: functionURL("chart-data-v2"))
+
+        var request = URLRequest(url: urlComponents.url!)
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        
-        // For intraday timeframes, bypass network cache to ensure fresh "today" data
-        if timeframe == "m15" || timeframe == "h1" || timeframe == "h4" {
+
+        // For intraday timeframes, bypass network cache and add no-cache headers
+        if isIntraday {
             request.cachePolicy = .reloadIgnoringLocalCacheData
-            print("[DEBUG] APIClient.fetchChartV2() - Using .reloadIgnoringLocalCacheData for intraday")
+            request.setValue("no-cache, no-store, must-revalidate", forHTTPHeaderField: "Cache-Control")
+            request.setValue("no-cache", forHTTPHeaderField: "Pragma")
+            request.setValue("0", forHTTPHeaderField: "Expires")
+            request.setValue(UUID().uuidString, forHTTPHeaderField: "X-Request-ID")
+            print("[DEBUG] APIClient.fetchChartV2() - Using .reloadIgnoringLocalCacheData + no-cache headers for intraday")
         }
-        
-        return try await performRequest(request)
+
+        return try await performRequestWithHeaderLogging(request, symbol: symbol, timeframe: timeframe)
     }
     
     /// Trigger intraday backfill for a symbol (runs in background, doesn't block)

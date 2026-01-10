@@ -71,6 +71,9 @@ final class ChartViewModel: ObservableObject {
     @Published private(set) var backfillJobId: String?
     @Published var hydrationBanner: String?
 
+    // SPEC: Data recency/staleness report for debugging
+    @Published private(set) var dataRecencyReport: StalenessReport?
+
     // MARK: - Cached Indicator Storage
 
     private var _cachedSMA20: [IndicatorDataPoint]?
@@ -537,8 +540,9 @@ final class ChartViewModel: ObservableObject {
                         return
                     }
 
-                    var bars = buildBars(from: response, for: timeframe)
-                    
+                    var (bars, stalenessReport) = buildBarsWithStalenessCheck(from: response, for: timeframe)
+                    dataRecencyReport = stalenessReport
+
                     // Auto-retry if empty: trigger coverage + poll + refetch (ALL timeframes)
                     if bars.isEmpty {
                         print("[DEBUG] ⚠️ 0 bars, triggering coverage + poll")
@@ -563,11 +567,13 @@ final class ChartViewModel: ObservableObject {
                                     includeForecast: true,
                                     forecastDays: 10
                                 )
-                                let peekBars = buildBars(from: peek, for: timeframe)
+                                let (peekBars, peekStaleness) = buildBarsWithStalenessCheck(from: peek, for: timeframe)
                                 if !peekBars.isEmpty {
                                     print("[DEBUG] ✓ Data appeared after \(attempt + 1) polls")
                                     response = peek
                                     bars = peekBars
+                                    stalenessReport = peekStaleness
+                                    dataRecencyReport = peekStaleness
                                     break
                                 }
                                 delay = min(delay * 2, 3_000_000_000) // cap 3s
@@ -1067,11 +1073,12 @@ final class ChartViewModel: ObservableObject {
                         includeForecast: true,
                         forecastDays: 10
                     )
-                    let peekBars = self.buildBars(from: peek, for: self.timeframe)
+                    let (peekBars, peekStaleness) = self.buildBarsWithStalenessCheck(from: peek, for: self.timeframe)
 
                     // Always update chart data (progressive refresh)
                     await MainActor.run {
                         self.chartDataV2 = peek
+                        self.dataRecencyReport = peekStaleness
                         self.chartData = ChartResponse(
                             symbol: peek.symbol,
                             assetType: "stock",
@@ -1153,6 +1160,115 @@ final class ChartViewModel: ObservableObject {
         }.sorted { ($0["price"] as? Double ?? 0) < ($1["price"] as? Double ?? 0) }
         
         print("[ChartViewModel] Volume profile calculated: \(volumeProfile.count) levels, POC at \(volumeByPrice.first(where: { $0.value == maxVolume })?.key ?? 0)")
+    }
+
+    // MARK: - Stale Data Detection
+
+    /// Validate data recency for intraday timeframes
+    func validateDataRecency(bars: [OHLCBar], timeframe: Timeframe) -> (isStale: Bool, age: TimeInterval, recommendation: String) {
+        guard timeframe.isIntraday else {
+            return (isStale: false, age: 0, recommendation: "Daily/weekly data - staleness check skipped")
+        }
+
+        guard let lastBar = bars.last else {
+            return (isStale: true, age: .infinity, recommendation: "No bars found - TRIGGER BACKFILL")
+        }
+
+        let age = Date().timeIntervalSince(lastBar.ts)
+        let maxAge: TimeInterval = MarketHours.isMarketOpen() ? 300 : 3600 // 5 min during market, 1 hour after
+        let isStale = age > maxAge
+
+        let recommendation: String
+        if isStale {
+            if MarketHours.isMarketOpen() {
+                recommendation = "Data is \(Int(age))s old during market hours - TRIGGER BACKFILL"
+            } else {
+                recommendation = "Market closed, \(Int(age))s old exceeds threshold"
+            }
+        } else {
+            recommendation = "Data is fresh (\(Int(age))s old)"
+        }
+
+        return (isStale: isStale, age: age, recommendation: recommendation)
+    }
+
+    /// Build bars from response and check for staleness
+    func buildBarsWithStalenessCheck(from response: ChartDataV2Response, for timeframe: Timeframe) -> (bars: [OHLCBar], report: StalenessReport) {
+        let bars = buildBars(from: response, for: timeframe)
+        let recency = validateDataRecency(bars: bars, timeframe: timeframe)
+
+        let report = StalenessReport(
+            barCount: bars.count,
+            lastBarTimestamp: bars.last?.ts,
+            dataAge: recency.age,
+            isStale: recency.isStale,
+            timeframe: timeframe,
+            marketOpen: MarketHours.isMarketOpen(),
+            recommendation: recency.recommendation
+        )
+
+        print("[DEBUG] 📊 Staleness Check")
+        print("[DEBUG] - Bar count: \(bars.count)")
+        print("[DEBUG] - Last timestamp: \(bars.last?.ts.ISO8601Format() ?? "none")")
+        print("[DEBUG] - Data age: \(String(format: "%.0f", recency.age))s")
+        print("[DEBUG] - Is stale: \(recency.isStale)")
+        print("[DEBUG] - Recommendation: \(recency.recommendation)")
+
+        if recency.isStale && timeframe.isIntraday {
+            print("[DEBUG] ⚠️ STALE INTRADAY DATA: age=\(String(format: "%.0f", recency.age))s, max=\(MarketHours.isMarketOpen() ? 300 : 3600)s")
+        }
+
+        return (bars: bars, report: report)
+    }
+}
+
+// MARK: - Staleness Report
+
+struct StalenessReport {
+    let barCount: Int
+    let lastBarTimestamp: Date?
+    let dataAge: TimeInterval
+    let isStale: Bool
+    let timeframe: Timeframe
+    let marketOpen: Bool
+    let recommendation: String
+
+    var summary: String {
+        """
+        📊 Data Recency Report
+        ├─ Bars: \(barCount)
+        ├─ Last: \(lastBarTimestamp?.ISO8601Format() ?? "none")
+        ├─ Age: \(Int(dataAge))s
+        ├─ Stale: \(isStale ? "⚠️ YES" : "✅ NO")
+        ├─ Market: \(marketOpen ? "OPEN" : "CLOSED")
+        └─ Action: \(recommendation)
+        """
+    }
+}
+
+// MARK: - Market Hours Detection
+
+struct MarketHours {
+    private static let marketTimeZone = TimeZone(identifier: "America/New_York") ?? .current
+
+    static func isMarketOpen(at date: Date = Date()) -> Bool {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = marketTimeZone
+        let components = calendar.dateComponents([.hour, .minute, .weekday], from: date)
+
+        guard let hour = components.hour,
+              let minute = components.minute,
+              let weekday = components.weekday else {
+            return false
+        }
+
+        // Monday-Friday (2-6 in Calendar weekday)
+        let isWeekday = (2...6).contains(weekday)
+        let minutes = hour * 60 + minute
+        let openMinutes = 9 * 60 + 30  // 9:30 AM ET
+        let closeMinutes = 16 * 60      // 4:00 PM ET
+
+        return isWeekday && minutes >= openMinutes && minutes <= closeMinutes
     }
 }
 
