@@ -48,9 +48,14 @@ class GarchVolatility:
     def in_sample_variance(self) -> pd.Series:
         if self.res is None:
             raise RuntimeError("GARCH model not fitted")
-        var_values = self.res.conditional_volatility ** 2 / (100 ** 2)
-        # Convert to Series with proper index
-        var = pd.Series(var_values, index=self.res.model._y.index)
+        cond_vol = self.res.conditional_volatility
+        # Handle both numpy array and pandas Series returns
+        if isinstance(cond_vol, pd.Series):
+            var = cond_vol ** 2 / (100 ** 2)
+        else:
+            # numpy array case - convert to Series with proper index
+            var_values = cond_vol ** 2 / (100 ** 2)
+            var = pd.Series(var_values, index=self.res.model._y.index)
         return var
 
 
