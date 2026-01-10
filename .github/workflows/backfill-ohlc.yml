@@ -1,12 +1,10 @@
 name: Automated OHLC Backfill
 
 on:
-  # Every 6 hours (UTC). Example: 00:00, 06:00, 12:00, 18:00 UTC
-  schedule:
-    - cron: "0 */6 * * *"
-
   # DISABLED: Using deprecated YFinance provider - conflicts with Alpaca-only strategy
   # Use scripts/backfill_missing_data.sh instead for Alpaca-based backfills
+  # schedule:
+  #   - cron: "0 */6 * * *"
   # workflow_dispatch:
   #   inputs:
   #     symbol:
@@ -23,15 +21,6 @@ on:
   #       required: false
   #       type: boolean
   #       default: false
-        description: "Timeframe to backfill (optional). Example: d1. Leave blank for default (d1)."
-        required: false
-        type: string
-        default: "d1"
-      all_timeframes:
-        description: "Backfill all timeframes (m15, h1, d1, w1) for multi-timeframe analysis"
-        required: false
-        type: boolean
-        default: false
 
 jobs:
   backfill:
