@@ -23,7 +23,7 @@ cd "$BACKEND_DIR"
 # Step 1: Apply Database Migration
 echo "📋 Step 1: Applying database migration..."
 echo ""
-supabase db push --project-ref "$PROJECT_REF"
+supabase db push --linked
 
 if [ $? -eq 0 ]; then
     echo "✅ Migration applied successfully"
@@ -40,7 +40,7 @@ sleep 5
 echo ""
 echo "📋 Step 2: Deploying sync-user-symbols Edge Function..."
 echo ""
-supabase functions deploy sync-user-symbols --project-ref "$PROJECT_REF"
+supabase functions deploy sync-user-symbols --linked
 
 if [ $? -eq 0 ]; then
     echo "✅ Edge Function deployed successfully"
