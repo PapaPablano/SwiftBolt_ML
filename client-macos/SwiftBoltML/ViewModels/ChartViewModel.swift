@@ -515,9 +515,9 @@ final class ChartViewModel: ObservableObject {
         loadTask = Task {
             do {
                 if useV2API {
-                    // Use V2 API with strict data layer separation:
-                    // - Historical: Polygon (verified, dates < today)
-                    // - Intraday: Tradier (live, today only)
+                    // Use V2 API with Alpaca-only strategy:
+                    // - Historical: Alpaca (all historical data, dates < today)
+                    // - Intraday: Alpaca (today's live data only)
                     // - Forecast: ML predictions (future dates)
                     print("[DEBUG] Requesting chart-data-v2 symbol=\(symbol.ticker) timeframe=\(timeframe.apiToken)")
                     var response = try await APIClient.shared.fetchChartV2(
@@ -638,6 +638,7 @@ final class ChartViewModel: ObservableObject {
             } catch is CancellationError {
                 // Swallow - new request superseded this one
                 print("[DEBUG] Load cancelled (CancellationError)")
+                isLoading = false  // Ensure spinner doesn't stick
             } catch {
                 guard !Task.isCancelled else {
                     print("[DEBUG] Load cancelled in error handler")
@@ -673,16 +674,21 @@ final class ChartViewModel: ObservableObject {
         let src: [OHLCBar]
         switch timeframe {
         case .m15, .h1, .h4:
-            // For intraday timeframes: merge historical (Polygon 2yr backfill) + today's intraday (Tradier)
-            // Historical layer contains Polygon's m15/h1/h4 data with is_intraday=false
-            // Intraday layer contains today's Tradier data with is_intraday=true
+            // For intraday timeframes: merge historical (Alpaca backfill) + today's intraday (Alpaca)
+            // Historical layer contains Alpaca's m15/h1/h4 data with is_intraday=false
+            // Intraday layer contains today's Alpaca data with is_intraday=true
             src = (historical + intraday).sorted(by: { $0.ts < $1.ts })
         case .d1, .w1:
             // For daily/weekly: prefer historical, fallback to intraday
             src = !historical.isEmpty ? historical : intraday
         }
         
-        print("[DEBUG] buildBars → hist: \(historical.count) | intraday: \(intraday.count) | merged: \(src.count) for \(timeframe.apiToken)")
+        // Enhanced diagnostics for intraday layer
+        let histLast = historical.last?.ts.ISO8601Format() ?? "none"
+        let intradayLast = intraday.last?.ts.ISO8601Format() ?? "none"
+        let srcLast = src.last?.ts.ISO8601Format() ?? "none"
+        
+        print("[DEBUG] buildBars → hist: \(historical.count) (last: \(histLast)) | intraday: \(intraday.count) (last: \(intradayLast)) | merged: \(src.count) (last: \(srcLast)) for \(timeframe.apiToken)")
         
         return src
     }

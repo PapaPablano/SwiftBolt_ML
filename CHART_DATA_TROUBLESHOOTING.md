@@ -40,12 +40,16 @@ Updated `client-macos/SwiftBoltML/Services/ChartCache.swift` with:
 
 ---
 
-## Data Flow Pipeline
+## Data Flow Pipeline (Alpaca-Only Strategy)
 
 ```
-Database (Alpaca data)
+Alpaca API
     ↓
-get_chart_data_v2() function
+Python Backfill Scripts (alpaca_backfill_ohlc_v2.py)
+    ↓
+Database (ohlc_bars_v2 table, provider='alpaca')
+    ↓
+get_chart_data_v2() function (Alpaca primary, legacy fallback)
     ↓
 Edge Function (chart-data-v2)
     ↓
@@ -55,6 +59,11 @@ ChartCache (with age validation)
     ↓
 WebChart Display
 ```
+
+**Provider Strategy:**
+- **Primary**: Alpaca (all new data)
+- **Fallback**: Polygon/Tradier (legacy read-only, only if Alpaca data missing)
+- **Deduplication**: Alpaca > Polygon > Tradier priority
 
 ---
 

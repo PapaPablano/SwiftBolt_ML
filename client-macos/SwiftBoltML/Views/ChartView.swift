@@ -219,10 +219,8 @@ struct ChartView: View {
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
-        .task(id: (chartViewModel.selectedSymbol?.ticker ?? "") + "|" + chartViewModel.timeframe.rawValue) {
-            // Single deterministic trigger - reload when symbol|timeframe changes
-            await chartViewModel.loadChart()
-        }
+        // Note: loadChart() is triggered by ChartViewModel.selectedSymbol.didSet and .timeframe.didSet
+        // Removed duplicate .task(id:) trigger to prevent overlapping requests and stuck loading spinner
     }
 
     private var chartChangeToken: ChartChangeToken {

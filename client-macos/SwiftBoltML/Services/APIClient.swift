@@ -277,6 +277,12 @@ final class APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
+        // For intraday timeframes, bypass network cache to ensure fresh "today" data
+        if timeframe == "m15" || timeframe == "h1" || timeframe == "h4" {
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            print("[DEBUG] APIClient.fetchChartV2() - Using .reloadIgnoringLocalCacheData for intraday")
+        }
+        
         return try await performRequest(request)
     }
     

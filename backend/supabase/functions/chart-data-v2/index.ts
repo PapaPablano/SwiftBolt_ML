@@ -2,10 +2,12 @@
  * Chart Data V2 Edge Function
  * Fetches OHLC data from ohlc_bars_v2 with proper layer separation
  * 
- * Returns three distinct layers:
- * - Historical: Polygon data (dates < today)
- * - Intraday: Tradier data (today only)
+ * Returns three distinct layers (Alpaca-only strategy):
+ * - Historical: Alpaca data (dates < today)
+ * - Intraday: Alpaca data (today only)
  * - Forecast: ML predictions (dates > today)
+ * 
+ * Legacy providers (Polygon, Tradier) available as read-only fallback
  * 
  * Enhanced with ML enrichment:
  * - Intraday forecasts (15m, 1h horizons)

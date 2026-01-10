@@ -51,7 +51,7 @@ enum ChartCache {
                 let maxAge: TimeInterval
                 switch timeframe {
                 case .m15, .h1, .h4:
-                    maxAge = 24 * 3600 // 24 hours for intraday
+                    maxAge = 2 * 3600 // 2 hours for intraday (tightened from 24h)
                 case .d1:
                     maxAge = 7 * 24 * 3600 // 7 days for daily
                 case .w1:
@@ -78,7 +78,7 @@ enum ChartCache {
                 let maxBarAge: TimeInterval
                 switch timeframe {
                 case .m15, .h1, .h4:
-                    maxBarAge = 48 * 3600 // 48 hours for intraday
+                    maxBarAge = 6 * 3600 // 6 hours for intraday (tightened from 48h)
                 case .d1:
                     maxBarAge = 14 * 24 * 3600 // 14 days for daily
                 case .w1:
