@@ -1,4 +1,5 @@
 import Foundation
+import WebKit
 
 @MainActor
 final class ChartViewModel: ObservableObject {
@@ -476,7 +477,10 @@ final class ChartViewModel: ObservableObject {
 
         // Try to warm-load from cache for immediate display
         if let cached = ChartCache.loadBars(symbol: symbol.ticker, timeframe: timeframe), !cached.isEmpty {
-            print("[DEBUG] ChartViewModel.loadChart() - Using cached bars: \(cached.count)")
+            let newestBar = cached.max(by: { $0.ts < $1.ts })
+            let barAge = newestBar.map { Date().timeIntervalSince($0.ts) / 3600 } ?? 0
+            print("[DEBUG] ChartViewModel.loadChart() - Using cached bars: \(cached.count), newest bar age: \(Int(barAge))h")
+            
             // Populate legacy chartData so indicators can render quickly
             self.chartData = ChartResponse(
                 symbol: symbol.ticker,
@@ -709,6 +713,44 @@ final class ChartViewModel: ObservableObject {
         stopLiveQuoteUpdates()
     }
     
+    /// Force clear all caches and reload fresh data
+    func forceFreshReload() async {
+        guard let symbol = selectedSymbol else { return }
+        
+        print("[DEBUG] 🔄 Force fresh reload for \(symbol.ticker)")
+        
+        // Clear file-based cache
+        ChartCache.clear(symbol: symbol.ticker, timeframe: timeframe)
+        print("[DEBUG] ✓ Cleared ChartCache for \(symbol.ticker)")
+        
+        // Clear URL cache
+        URLCache.shared.removeAllCachedResponses()
+        print("[DEBUG] ✓ Cleared URLCache")
+        
+        // Clear WKWebView cache (critical for WebChart)
+        await clearWebViewCache()
+        print("[DEBUG] ✓ Cleared WKWebView cache")
+        
+        // Clear in-memory data
+        chartData = nil
+        chartDataV2 = nil
+        print("[DEBUG] ✓ Cleared in-memory chart data")
+        
+        // Reload from server
+        print("[DEBUG] 🌐 Fetching fresh data from server...")
+        await loadChart()
+    }
+    
+    /// Clear WKWebView cache and cookies
+    private func clearWebViewCache() async {
+        let dataStore = WKWebsiteDataStore.default()
+        let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+        let date = Date(timeIntervalSince1970: 0)
+        
+        await dataStore.removeData(ofTypes: dataTypes, modifiedSince: date)
+        print("[DEBUG] WKWebView cache cleared")
+    }
+    
     // MARK: - Coordinated Refresh
     
     /// Refresh data for the current symbol - fetches new bars and queues ML/options jobs
@@ -768,8 +810,9 @@ final class ChartViewModel: ObservableObject {
             
             // After successful refresh, reload chart data to show new bars
             if response.success {
-                // Clear URL cache to ensure fresh data
+                // Clear all caches to ensure fresh data
                 URLCache.shared.removeAllCachedResponses()
+                ChartCache.clear(symbol: symbol.ticker, timeframe: timeframe)
                 await loadChart()
             }
             

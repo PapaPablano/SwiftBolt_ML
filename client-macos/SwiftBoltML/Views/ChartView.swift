@@ -55,10 +55,10 @@ struct ChartView: View {
 
                 Spacer()
 
-                // Quick refresh - just reload chart
+                // Quick refresh - clear cache and reload fresh data
                 Button(action: {
                     Task {
-                        await chartViewModel.loadChart()
+                        await chartViewModel.forceFreshReload()
                     }
                 }) {
                     Image(systemName: "arrow.clockwise")
@@ -66,12 +66,15 @@ struct ChartView: View {
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
-                .help("Refresh chart data")
+                .help("Refresh chart data (clears cache)")
                 .disabled(chartViewModel.isLoading)
                 
-                // Full refresh - comprehensive data sync (backfill, bars, ML, options, S/R)
+                // Full refresh - comprehensive data sync (backfill, bars, ML, options, S/R) + clear cache
                 Button(action: {
                     Task {
+                        // Use forceFreshReload which clears all caches including WKWebView
+                        await chartViewModel.forceFreshReload()
+                        // Then do full sync for ML/options
                         await chartViewModel.userRefresh()
                     }
                 }) {
@@ -81,7 +84,7 @@ struct ChartView: View {
                                 .scaleEffect(0.6)
                                 .frame(width: 14, height: 14)
                         } else {
-                            Image(systemName: "arrow.clockwise")
+                            Image(systemName: "arrow.triangle.2.circlepath")
                                 .font(.system(size: 12))
                         }
                         Text("Sync")
@@ -90,7 +93,7 @@ struct ChartView: View {
                     .foregroundColor(chartViewModel.isRefreshing ? .secondary : .accentColor)
                 }
                 .buttonStyle(.plain)
-                .help("Sync all data: backfill, bars, ML forecasts, options, S/R levels")
+                .help("Full sync: clear cache + backfill + bars + ML + options + S/R")
                 .disabled(chartViewModel.isRefreshing)
                 .padding(.trailing, 8)
 

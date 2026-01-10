@@ -23,14 +23,15 @@ struct WatchlistView: View {
 
                 Button {
                     Task {
-                        await watchlistViewModel.refreshWatchlist()
+                        // Clear cache and reload fresh data for all watchlist symbols
+                        await watchlistViewModel.reloadAllData(forceRefresh: true)
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.caption)
                 }
                 .buttonStyle(.plain)
-                .help("Refresh watchlist")
+                .help("Refresh watchlist data (clears cache)")
 
                 Text("\(watchlistViewModel.watchedSymbols.count)")
                     .font(.caption)

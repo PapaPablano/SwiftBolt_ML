@@ -83,6 +83,10 @@ struct DebugPanel: View {
             HStack {
                 Button("Force Refresh") {
                     Task {
+                        // Clear all caches and refresh data
+                        ChartCache.clearAll()
+                        URLCache.shared.removeAllCachedResponses()
+                        await appViewModel.chartViewModel.forceFreshReload()
                         await appViewModel.refreshData()
                     }
                 }
