@@ -246,10 +246,11 @@ serve(async (req: Request): Promise<Response> => {
     const cacheLimit = 1000;
 
     const { data: cachedBars, error: cacheError } = await supabase
-      .from("ohlc_bars")
+      .from("ohlc_bars_v2")
       .select("ts, open, high, low, close, volume")
       .eq("symbol_id", symbolId)
       .eq("timeframe", timeframe)
+      .eq("is_forecast", false)
       .order("ts", { ascending: false }) // Get most recent first
       .limit(cacheLimit);
 
@@ -381,13 +382,15 @@ serve(async (req: Request): Promise<Response> => {
             low: bar.low,
             close: bar.close,
             volume: bar.volume,
-            provider: "massive",
+            provider: "alpaca",
+            is_forecast: false,
+            data_status: "confirmed",
           }));
 
           const { error: upsertError } = await supabase
-            .from("ohlc_bars")
+            .from("ohlc_bars_v2")
             .upsert(barsToInsert, {
-              onConflict: "symbol_id,timeframe,ts",
+              onConflict: "symbol_id,timeframe,ts,provider,is_forecast",
               ignoreDuplicates: false,
             });
 
@@ -399,10 +402,11 @@ serve(async (req: Request): Promise<Response> => {
 
           // Re-query DB to get complete, consistent data after upsert
           const { data: updatedBars } = await supabase
-            .from("ohlc_bars")
+            .from("ohlc_bars_v2")
             .select("ts, open, high, low, close, volume")
             .eq("symbol_id", symbolId)
             .eq("timeframe", timeframe)
+            .eq("is_forecast", false)
             .order("ts", { ascending: true }) // Ascending order for chart
             .limit(cacheLimit);
 

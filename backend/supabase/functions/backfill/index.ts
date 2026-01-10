@@ -97,10 +97,11 @@ serve(async (req: Request): Promise<Response> => {
 
     // 3. Check what data we already have
     const { data: existingBars } = await supabase
-      .from("ohlc_bars")
+      .from("ohlc_bars_v2")
       .select("ts")
       .eq("symbol_id", symbolId)
       .eq("timeframe", timeframe)
+      .eq("is_forecast", false)
       .order("ts", { ascending: true })
       .limit(1);
 
@@ -191,6 +192,8 @@ serve(async (req: Request): Promise<Response> => {
           close: bar.close,
           volume: bar.volume,
           provider: "yfinance",
+          is_forecast: false,
+          data_status: "confirmed",
         }));
 
         if (barsToInsert.length > 0) {
@@ -198,9 +201,9 @@ serve(async (req: Request): Promise<Response> => {
           console.log(`[Backfill] Sample insert: ${JSON.stringify(barsToInsert[0])}`);
 
           const { data: upsertData, error: upsertError } = await supabase
-            .from("ohlc_bars")
+            .from("ohlc_bars_v2")
             .upsert(barsToInsert, {
-              onConflict: "symbol_id,timeframe,ts",
+              onConflict: "symbol_id,timeframe,ts,provider,is_forecast",
               ignoreDuplicates: false, // Changed to false to count actual inserts
             })
             .select();
