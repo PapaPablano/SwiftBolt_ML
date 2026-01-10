@@ -80,6 +80,21 @@ verify_jwt = false  # Internal function called by orchestrator
 [functions.orchestrator]
 verify_jwt = false  # Internal function called by pg_cron
 
+[functions.symbol-init]
+verify_jwt = false  # Internal function called by reload-watchlist-data
+
+[functions.reload-watchlist-data]
+verify_jwt = false  # Called by GitHub Actions with service key
+
+[functions.chart-data-v2]
+verify_jwt = false  # Main chart endpoint for iOS app
+
+[functions.options-scrape]
+verify_jwt = false  # Internal function for options data
+
+[functions.intraday-update]
+verify_jwt = false  # Internal function for Tradier intraday (legacy)
+
 [analytics]
 enabled = false
 
