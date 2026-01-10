@@ -676,31 +676,22 @@ final class ChartViewModel: ObservableObject {
         // loadChart() will be called automatically by didSet
     }
     
-    /// Helper to build bars from correct data layer based on timeframe
+    /// Helper to build bars from response - merges all layers and sorts by timestamp
+    /// With Alpaca, all timeframes use the same API, so no special handling needed
     private func buildBars(from response: ChartDataV2Response, for timeframe: Timeframe) -> [OHLCBar] {
         let intraday = response.layers.intraday.data
         let historical = response.layers.historical.data
         
-        let src: [OHLCBar]
-        switch timeframe {
-        case .m15, .h1, .h4:
-            // For intraday timeframes: merge historical (Alpaca backfill) + today's intraday (Alpaca)
-            // Historical layer contains Alpaca's m15/h1/h4 data with is_intraday=false
-            // Intraday layer contains today's Alpaca data with is_intraday=true
-            src = (historical + intraday).sorted(by: { $0.ts < $1.ts })
-        case .d1, .w1:
-            // For daily/weekly: prefer historical, fallback to intraday
-            src = !historical.isEmpty ? historical : intraday
-        }
+        // Merge all bars and sort by timestamp (works for all timeframes)
+        let allBars = (historical + intraday).sorted(by: { $0.ts < $1.ts })
         
-        // Enhanced diagnostics for intraday layer
         let histLast = historical.last?.ts.ISO8601Format() ?? "none"
         let intradayLast = intraday.last?.ts.ISO8601Format() ?? "none"
-        let srcLast = src.last?.ts.ISO8601Format() ?? "none"
+        let mergedLast = allBars.last?.ts.ISO8601Format() ?? "none"
         
-        print("[DEBUG] buildBars → hist: \(historical.count) (last: \(histLast)) | intraday: \(intraday.count) (last: \(intradayLast)) | merged: \(src.count) (last: \(srcLast)) for \(timeframe.apiToken)")
+        print("[DEBUG] 📊 buildBars(\(timeframe.apiToken)): hist=\(historical.count) (last: \(histLast)) + intraday=\(intraday.count) (last: \(intradayLast)) → merged=\(allBars.count) (last: \(mergedLast))")
         
-        return src
+        return allBars
     }
 
     func setSymbol(_ symbol: Symbol?) async {

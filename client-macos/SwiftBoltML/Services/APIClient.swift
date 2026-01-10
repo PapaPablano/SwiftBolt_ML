@@ -366,15 +366,10 @@ final class APIClient {
     }
     
     func fetchChartV2(symbol: String, timeframe: String = "d1", days: Int = 60, includeForecast: Bool = true, forecastDays: Int = 10) async throws -> ChartDataV2Response {
-        let isIntraday = timeframe == "m15" || timeframe == "h1" || timeframe == "h4"
-
-        // Build URL with cache-buster for intraday to bypass upstream CDN caching
+        // Build URL with cache-buster to bypass CDN caching (for all timeframes)
         var urlComponents = URLComponents(url: functionURL("chart-data-v2"), resolvingAgainstBaseURL: false)!
-        if isIntraday {
-            let cacheBuster = Int(Date().timeIntervalSince1970)
-            urlComponents.queryItems = [URLQueryItem(name: "t", value: "\(cacheBuster)")]
-            print("[DEBUG] 📊 Cache-buster enabled: t=\(cacheBuster)")
-        }
+        let cacheBuster = Int(Date().timeIntervalSince1970)
+        urlComponents.queryItems = [URLQueryItem(name: "t", value: "\(cacheBuster)")]
 
         let body: [String: Any] = [
             "symbol": symbol,
@@ -384,23 +379,18 @@ final class APIClient {
             "forecastDays": forecastDays
         ]
 
-        print("[DEBUG] APIClient.fetchChartV2() - Sending timeframe: \(timeframe)")
+        print("[DEBUG] 📊 Fetching chart: symbol=\(symbol), timeframe=\(timeframe), cacheBuster=\(cacheBuster)")
 
         var request = URLRequest(url: urlComponents.url!)
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        // For intraday timeframes, bypass network cache and add no-cache headers
-        if isIntraday {
-            request.cachePolicy = .reloadIgnoringLocalCacheData
-            request.setValue("no-cache, no-store, must-revalidate", forHTTPHeaderField: "Cache-Control")
-            request.setValue("no-cache", forHTTPHeaderField: "Pragma")
-            request.setValue("0", forHTTPHeaderField: "Expires")
-            request.setValue(UUID().uuidString, forHTTPHeaderField: "X-Request-ID")
-            print("[DEBUG] APIClient.fetchChartV2() - Using .reloadIgnoringLocalCacheData + no-cache headers for intraday")
-        }
+        
+        // Bypass network cache for all requests to ensure fresh data
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("no-cache, no-store, must-revalidate", forHTTPHeaderField: "Cache-Control")
+        request.setValue(UUID().uuidString, forHTTPHeaderField: "X-Request-ID")
 
         return try await performRequestWithHeaderLogging(request, symbol: symbol, timeframe: timeframe)
     }

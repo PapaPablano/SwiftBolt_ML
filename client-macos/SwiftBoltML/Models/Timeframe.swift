@@ -49,5 +49,16 @@ public enum Timeframe: String, CaseIterable, Codable, Hashable, Identifiable {
         case .d1, .w1: return 365
         }
     }
+    
+    /// Alpaca API format (what Alpaca expects in the timeframe parameter)
+    var alpacaFormat: String {
+        switch self {
+        case .m15: return "15Min"
+        case .h1:  return "1Hour"
+        case .h4:  return "4Hour"
+        case .d1:  return "1Day"
+        case .w1:  return "1Week"
+        }
+    }
 }
 
