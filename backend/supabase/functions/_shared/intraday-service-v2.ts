@@ -222,24 +222,26 @@ export class IntradayServiceV2 {
     const symbolId = symbolData.id;
     const today = new Date().toISOString().split('T')[0] + 'T00:00:00Z';
 
-    // Write raw 5-minute bars to intraday_bars table
+    // Write raw 5-minute bars to ohlc_bars_v2 table
     const intradayBarsToInsert = bars.map(bar => ({
       symbol_id: symbolId,
-      timeframe: '5m',
-      ts: new Date(bar.time).toISOString(),
+      timeframe: 'm5',
+      ts: new Date(bar.timestamp * 1000).toISOString(),
       open: bar.open,
       high: bar.high,
       low: bar.low,
       close: bar.close,
       volume: bar.volume,
-      provider: 'tradier',
+      provider: 'polygon',
+      is_forecast: false,
+      data_status: 'confirmed',
     }));
 
     if (intradayBarsToInsert.length > 0) {
       const { error: intradayError } = await supabase
-        .from('intraday_bars')
+        .from('ohlc_bars_v2')
         .upsert(intradayBarsToInsert, {
-          onConflict: 'symbol_id,timeframe,ts',
+          onConflict: 'symbol_id,timeframe,ts,provider,is_forecast',
           ignoreDuplicates: false,
         });
 

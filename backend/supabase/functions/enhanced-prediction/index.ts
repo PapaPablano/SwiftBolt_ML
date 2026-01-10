@@ -151,10 +151,11 @@ serve(async (req: Request): Promise<Response> => {
 
     for (const tf of timeframes) {
       const { data: bars } = await supabase
-        .from("ohlc_bars")
+        .from("ohlc_bars_v2")
         .select("ts, open, high, low, close, volume")
         .eq("symbol_id", symbolId)
         .eq("timeframe", tf)
+        .eq("is_forecast", false)
         .order("ts", { ascending: false })
         .limit(50);
 

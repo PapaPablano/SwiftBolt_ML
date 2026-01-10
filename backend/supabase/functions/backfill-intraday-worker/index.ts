@@ -125,13 +125,15 @@ serve(async (req: Request): Promise<Response> => {
       close: bar.c,
       volume: bar.v,
       provider: 'polygon',
+      is_forecast: false,
+      data_status: 'confirmed',
     }));
 
-    // Insert bars into intraday_bars
+    // Insert bars into ohlc_bars_v2
     const { error: insertError } = await supabase
-      .from('intraday_bars')
+      .from('ohlc_bars_v2')
       .upsert(barsToInsert, {
-        onConflict: 'symbol_id,timeframe,ts',
+        onConflict: 'symbol_id,timeframe,ts,provider,is_forecast',
         ignoreDuplicates: false,
       });
 

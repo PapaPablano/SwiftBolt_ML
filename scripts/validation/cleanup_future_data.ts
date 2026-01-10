@@ -12,9 +12,10 @@ const cutoffDate = "2025-01-01T00:00:00.000Z";
 console.log(`Deleting all bars with ts >= ${cutoffDate}...`);
 
 const { data, error } = await supabase
-  .from("ohlc_bars")
+  .from("ohlc_bars_v2")
   .delete()
   .gte("ts", cutoffDate)
+  .eq("is_forecast", false)
   .select();
 
 if (error) {
@@ -28,8 +29,9 @@ if (error) {
 
 // Check remaining count
 const { count, error: countError } = await supabase
-  .from("ohlc_bars")
-  .select("*", { count: "exact", head: true });
+  .from("ohlc_bars_v2")
+  .select("*", { count: "exact", head: true })
+  .eq("is_forecast", false);
 
 if (countError) {
   console.error("Count error:", countError);

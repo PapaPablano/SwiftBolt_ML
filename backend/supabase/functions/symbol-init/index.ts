@@ -93,10 +93,11 @@ serve(async (req: Request): Promise<Response> => {
 
     // Step 2: Check existing OHLC bar count
     const { count: existingBars } = await supabase
-      .from("ohlc_bars")
+      .from("ohlc_bars_v2")
       .select("*", { count: "exact", head: true })
       .eq("symbol_id", symbolRecord.id)
-      .eq("timeframe", "d1");
+      .eq("timeframe", "d1")
+      .eq("is_forecast", false);
 
     result.ohlcBars = existingBars || 0;
     console.log(`[symbol-init] ${symbol} has ${result.ohlcBars} existing d1 bars`);

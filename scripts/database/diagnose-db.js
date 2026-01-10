@@ -67,22 +67,23 @@ async function diagnose() {
       }
     }
 
-    // 3. Check data in old ohlc_bars table
-    console.log('\n=== AAPL DATA IN OLD OHLC_BARS (d1) ===');
+    // 3. Check data in ohlc_bars_v2 table
+    console.log('\n=== AAPL DATA IN OHLC_BARS_V2 (d1) ===');
     const { data: oldData, error: oldError } = await supabase
-      .from('ohlc_bars')
-      .select('ts, provider')
+      .from('ohlc_bars_v2')
+      .select('ts, provider, is_forecast')
       .eq('symbol_id', symbolId)
       .eq('timeframe', 'd1')
+      .eq('is_forecast', false)
       .order('ts', { ascending: true });
 
     if (oldError) {
-      console.error('Error fetching old data:', oldError);
+      console.error('Error fetching data:', oldError);
     } else {
-      console.log(`Total bars in old ohlc_bars: ${oldData.length}`);
+      console.log(`Total bars in ohlc_bars_v2: ${oldData.length}`);
       if (oldData.length > 0) {
-        console.log(`First: ${oldData[0].ts}`);
-        console.log(`Last: ${oldData[oldData.length - 1].ts}`);
+        console.log(`First: ${oldData[0].ts} (provider: ${oldData[0].provider})`);
+        console.log(`Last: ${oldData[oldData.length - 1].ts} (provider: ${oldData[oldData.length - 1].provider})`);
       }
     }
 

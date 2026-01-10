@@ -37,9 +37,14 @@ const testBar = {
 console.log("Attempting to insert test bar:", testBar);
 
 const { data: upsertData, error: upsertError } = await supabase
-  .from("ohlc_bars")
-  .upsert([testBar], {
-    onConflict: "symbol_id,timeframe,ts",
+  .from("ohlc_bars_v2")
+  .upsert([{
+    ...testBar,
+    provider: "test",
+    is_forecast: false,
+    data_status: "confirmed",
+  }], {
+    onConflict: "symbol_id,timeframe,ts,provider,is_forecast",
     ignoreDuplicates: false,
   })
   .select();
@@ -53,9 +58,10 @@ if (upsertError) {
 
 // Check total count
 const { count, error: countError } = await supabase
-  .from("ohlc_bars")
+  .from("ohlc_bars_v2")
   .select("*", { count: "exact", head: true })
-  .eq("timeframe", "d1");
+  .eq("timeframe", "d1")
+  .eq("is_forecast", false);
 
 if (countError) {
   console.error("Count error:", countError);

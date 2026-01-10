@@ -644,10 +644,11 @@ serve(async (req: Request): Promise<Response> => {
 
     // Fetch OHLC data
     const { data: rawOhlcData, error: ohlcError } = await supabase
-      .from("ohlc_bars")
+      .from("ohlc_bars_v2")
       .select("ts, open, high, low, close, volume")
       .eq("symbol_id", symbolData.id)
       .eq("timeframe", "d1")
+      .eq("is_forecast", false)
       .order("ts", { ascending: false })
       .limit(lookback);
 

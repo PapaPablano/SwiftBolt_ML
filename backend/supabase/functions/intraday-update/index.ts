@@ -249,15 +249,15 @@ serve(async (req: Request): Promise<Response> => {
         const currentPrice = quote?.last || quote?.close || dailyAgg.close;
         const currentVolume = quote?.volume || dailyAgg.volume;
 
-        // Store raw intraday bars in intraday_bars table for 15m/1h/4h chart views
+        // Store raw intraday bars in ohlc_bars_v2 table for 15m/1h/4h chart views
         if (intradayBars.length > 0) {
           // Map interval to timeframe format
           const timeframeMap: Record<string, string> = {
-            "1min": "1m",
-            "5min": "5m",
-            "15min": "15m",
+            "1min": "m1",
+            "5min": "m5",
+            "15min": "m15",
           };
-          const tfValue = timeframeMap[interval] || "5m";
+          const tfValue = timeframeMap[interval] || "m5";
 
           // Prepare bars for upsert
           const intradayRows = intradayBars.map((bar) => ({
@@ -269,13 +269,15 @@ serve(async (req: Request): Promise<Response> => {
             low: bar.low,
             close: bar.close,
             volume: bar.volume,
-            vwap: bar.vwap || null,
+            provider: "tradier",
+            is_forecast: false,
+            data_status: "confirmed",
           }));
 
           // Batch upsert intraday bars
           const { error: intradayError } = await supabase
-            .from("intraday_bars")
-            .upsert(intradayRows, { onConflict: "symbol_id,timeframe,ts" });
+            .from("ohlc_bars_v2")
+            .upsert(intradayRows, { onConflict: "symbol_id,timeframe,ts,provider,is_forecast" });
 
           if (intradayError) {
             console.warn(`[intraday-update] Failed to store intraday bars for ${symbol}: ${intradayError.message}`);
@@ -286,7 +288,7 @@ serve(async (req: Request): Promise<Response> => {
 
         // Update or insert today's daily bar
         const { error: upsertError } = await supabase
-          .from("ohlc_bars")
+          .from("ohlc_bars_v2")
           .upsert(
             {
               symbol_id: symbolRecord.id,
@@ -298,8 +300,10 @@ serve(async (req: Request): Promise<Response> => {
               close: currentPrice,
               volume: currentVolume,
               provider: "tradier",
+              is_forecast: false,
+              data_status: "confirmed",
             },
-            { onConflict: "symbol_id,timeframe,ts" }
+            { onConflict: "symbol_id,timeframe,ts,provider,is_forecast" }
           );
 
         if (upsertError) {

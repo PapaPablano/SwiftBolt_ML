@@ -26,10 +26,11 @@ console.log(`Querying for symbol_id=${symbolId}, timeframe=${timeframe}`);
 
 // Execute the same query as the chart function
 const { data: cachedBars, error: cacheError } = await supabase
-  .from("ohlc_bars")
+  .from("ohlc_bars_v2")
   .select("ts, open, high, low, close, volume")
   .eq("symbol_id", symbolId)
   .eq("timeframe", timeframe)
+  .eq("is_forecast", false)
   .order("ts", { ascending: false }) // Get most recent first
   .limit(cacheLimit);
 

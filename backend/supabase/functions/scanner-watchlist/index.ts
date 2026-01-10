@@ -107,10 +107,11 @@ serve(async (req: Request): Promise<Response> => {
 
       // Get latest quote (simplified - would use quotes table in production)
       const { data: latestBar } = await supabase
-        .from("ohlc_bars")
+        .from("ohlc_bars_v2")
         .select("close, ts")
         .eq("symbol_id", symbolId)
         .eq("timeframe", "d1")
+        .eq("is_forecast", false)
         .order("ts", { ascending: false })
         .limit(2);
 

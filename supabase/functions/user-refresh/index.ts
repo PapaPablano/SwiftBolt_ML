@@ -124,10 +124,11 @@ serve(async (req: Request): Promise<Response> => {
 
     // Step 2: Check data coverage and queue backfill if needed
     const { count: d1BarCount } = await supabase
-      .from("ohlc_bars")
+      .from("ohlc_bars_v2")
       .select("*", { count: "exact", head: true })
       .eq("symbol_id", symbolId)
-      .eq("timeframe", "d1");
+      .eq("timeframe", "d1")
+      .eq("is_forecast", false);
 
     const barCount = d1BarCount || 0;
     summary.backfillNeeded = barCount < 100;
@@ -194,10 +195,11 @@ serve(async (req: Request): Promise<Response> => {
       for (const timeframe of timeframes) {
         // Get latest bar timestamp
         const { data: latestBar } = await supabase
-          .from("ohlc_bars")
+          .from("ohlc_bars_v2")
           .select("ts")
           .eq("symbol_id", symbolId)
           .eq("timeframe", timeframe)
+          .eq("is_forecast", false)
           .order("ts", { ascending: false })
           .limit(1)
           .single();
@@ -223,12 +225,14 @@ serve(async (req: Request): Promise<Response> => {
             low: bar.low,
             close: bar.close,
             volume: bar.volume,
-            provider: "massive",
+            provider: "alpaca",
+            is_forecast: false,
+            data_status: "confirmed",
           }));
 
           await supabase
-            .from("ohlc_bars")
-            .upsert(barsToInsert, { onConflict: "symbol_id,timeframe,ts" });
+            .from("ohlc_bars_v2")
+            .upsert(barsToInsert, { onConflict: "symbol_id,timeframe,ts,provider,is_forecast" });
 
           totalNewBars += freshBars.length;
         }
@@ -324,10 +328,11 @@ serve(async (req: Request): Promise<Response> => {
     try {
       // Get recent bars for S/R calculation
       const { data: recentBars } = await supabase
-        .from("ohlc_bars")
+        .from("ohlc_bars_v2")
         .select("ts, open, high, low, close, volume")
         .eq("symbol_id", symbolId)
         .eq("timeframe", "d1")
+        .eq("is_forecast", false)
         .order("ts", { ascending: false })
         .limit(252); // 1 year of trading days
 

@@ -110,10 +110,11 @@ async function getExistingCoverage(
   timeframe: string
 ): Promise<{ count: number; latest: Date | null }> {
   const { data, error } = await supabase
-    .from("ohlc_bars")
+    .from("ohlc_bars_v2")
     .select("ts")
     .eq("symbol_id", symbolId)
     .eq("timeframe", timeframe)
+    .eq("is_forecast", false)
     .order("ts", { ascending: false })
     .limit(1);
 
@@ -123,10 +124,11 @@ async function getExistingCoverage(
 
   // Get count
   const { count } = await supabase
-    .from("ohlc_bars")
+    .from("ohlc_bars_v2")
     .select("id", { count: "exact", head: true })
     .eq("symbol_id", symbolId)
-    .eq("timeframe", timeframe);
+    .eq("timeframe", timeframe)
+    .eq("is_forecast", false);
 
   return {
     count: count || 0,
@@ -187,13 +189,15 @@ async function backfillTimeframe(
       low: bar.low,
       close: bar.close,
       volume: bar.volume,
-      provider: "massive",
+      provider: "polygon",
+      is_forecast: false,
+      data_status: "confirmed",
     }));
 
     const { error: upsertError } = await supabase
-      .from("ohlc_bars")
+      .from("ohlc_bars_v2")
       .upsert(barsToInsert, {
-        onConflict: "symbol_id,timeframe,ts",
+        onConflict: "symbol_id,timeframe,ts,provider,is_forecast",
       });
 
     if (upsertError) {
