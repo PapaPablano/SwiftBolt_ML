@@ -1412,6 +1412,70 @@ class SupabaseDatabase:
             )
             return None
 
+    def execute_rpc(
+        self,
+        function_name: str,
+        params: dict[str, Any] | None = None,
+    ) -> list[dict] | None:
+        """
+        Execute a Supabase RPC function.
+
+        Args:
+            function_name: Name of the RPC function to call
+            params: Optional parameters to pass to the function
+
+        Returns:
+            List of result rows, or None if error
+        """
+        try:
+            response = self.client.rpc(
+                function_name,
+                params or {},
+            ).execute()
+            return response.data
+        except Exception as e:
+            logger.error(
+                "Error executing RPC function %s: %s",
+                function_name,
+                e,
+            )
+            return None
+
+    def execute_query(
+        self,
+        query: str,
+        params: dict[str, Any] | None = None,
+    ) -> list[dict] | None:
+        """
+        Execute a raw SQL query via Supabase RPC.
+
+        Note: This requires a Supabase function to execute raw SQL,
+        or you can use PostgREST filters instead.
+
+        For most use cases, prefer using the table methods.
+        This is a fallback for complex queries.
+
+        Args:
+            query: SQL query string with %(param)s placeholders
+            params: Parameters to substitute
+
+        Returns:
+            List of result rows, or None if error
+        """
+        try:
+            # Use the sql_query RPC function if available
+            response = self.client.rpc(
+                "sql_query",
+                {"query": query, "params": params or {}},
+            ).execute()
+            return response.data
+        except Exception as e:
+            logger.warning(
+                "execute_query failed (sql_query RPC may not exist): %s",
+                e,
+            )
+            return None
+
     def close(self) -> None:
         """Close the Supabase client (no-op for REST API)."""
         logger.info("Supabase client closed")

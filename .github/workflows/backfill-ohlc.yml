@@ -1,24 +1,22 @@
 name: Automated OHLC Backfill
 
 on:
-  # DISABLED: Using deprecated YFinance provider - conflicts with Alpaca-only strategy
-  # Use scripts/backfill_missing_data.sh instead for Alpaca-based backfills
   workflow_dispatch:
-  #   inputs:
-  #     symbol:
-  #       description: "Symbol to backfill (optional). Example: AAPL. Leave blank for all watchlist symbols."
-  #       required: false
-  #       type: string
-  #     timeframe:
-  #       description: "Timeframe to backfill (optional). Example: d1. Leave blank for default (d1)."
-  #       required: false
-  #       type: string
-  #       default: "d1"
-  #     all_timeframes:
-  #       description: "Backfill all timeframes (m15, h1, d1, w1) for multi-timeframe analysis"
-  #       required: false
-  #       type: boolean
-  #       default: false
+    inputs:
+      symbols:
+        description: "Comma-separated symbols (optional). Example: AAPL,NVDA. Leave blank for all watchlist symbols."
+        required: false
+        type: string
+      timeframe:
+        description: "Timeframe to backfill. Options: m15, h1, h4, d1, w1"
+        required: false
+        type: string
+        default: "d1"
+      all_timeframes:
+        description: "Backfill all timeframes (m15, h1, h4, d1, w1) for multi-timeframe analysis"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   backfill:
@@ -41,36 +39,47 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r ml/requirements.txt
 
-      # Scheduled run: backfill all watchlist symbols using Yahoo Finance
-      - name: Backfill (scheduled)
-        if: github.event_name == 'schedule'
+      - name: Configure environment
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
         run: |
           cd ml
-          # Backfill all watchlist symbols using Yahoo Finance (free, no rate limits)
-          python src/scripts/backfill_ohlc_yfinance.py --days 730
+          cat > .env << EOF
+          SUPABASE_URL=${SUPABASE_URL}
+          SUPABASE_KEY=${SUPABASE_KEY}
+          ALPACA_API_KEY=${ALPACA_API_KEY}
+          ALPACA_API_SECRET=${ALPACA_API_SECRET}
+          EOF
 
-      # Manual run: optional symbol/timeframe
-      - name: Backfill (manual)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Backfill with Alpaca
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          INPUT_SYMBOLS: ${{ github.event.inputs.symbols }}
+          INPUT_TIMEFRAME: ${{ github.event.inputs.timeframe || 'd1' }}
+          ALL_TIMEFRAMES: ${{ github.event.inputs.all_timeframes || 'false' }}
         run: |
           cd ml
 
-          SYMBOL="${{ github.event.inputs.symbol }}"
-
-          if [ -n "$SYMBOL" ]; then
-            # Single symbol provided
-            echo "Backfilling $SYMBOL with Yahoo Finance..."
-            python src/scripts/backfill_ohlc_yfinance.py --symbol "$SYMBOL" --days 730
+          if [ "$ALL_TIMEFRAMES" = "true" ]; then
+            # Backfill all timeframes
+            for tf in m15 h1 h4 d1 w1; do
+              echo "📊 Backfilling timeframe: $tf"
+              if [ -n "$INPUT_SYMBOLS" ]; then
+                python src/scripts/alpaca_backfill_ohlc_v2.py --timeframe $tf --symbols $INPUT_SYMBOLS
+              else
+                python src/scripts/alpaca_backfill_ohlc_v2.py --timeframe $tf --all
+              fi
+            done
           else
-            # No symbol provided, backfill all watchlist symbols
-            echo "Backfilling all watchlist symbols with Yahoo Finance..."
-            python src/scripts/backfill_ohlc_yfinance.py --days 730
+            # Single timeframe
+            echo "📊 Backfilling timeframe: $INPUT_TIMEFRAME"
+            if [ -n "$INPUT_SYMBOLS" ]; then
+              python src/scripts/alpaca_backfill_ohlc_v2.py --timeframe $INPUT_TIMEFRAME --symbols $INPUT_SYMBOLS
+            else
+              python src/scripts/alpaca_backfill_ohlc_v2.py --timeframe $INPUT_TIMEFRAME --all
+            fi
           fi
 
       - name: Job summary
@@ -79,16 +88,11 @@ jobs:
           echo "## OHLC Backfill Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            echo "- **Schedule**: Every 6 hours (0 */6 * * * UTC)" >> $GITHUB_STEP_SUMMARY
-            echo "- **Run times**: 00:00, 06:00, 12:00, 18:00 UTC" >> $GITHUB_STEP_SUMMARY
-            echo "- **Data Source**: Yahoo Finance (free, no rate limits)" >> $GITHUB_STEP_SUMMARY
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "- **Symbol**: ${{ github.event.inputs.symbol || 'All watchlist symbols' }}" >> $GITHUB_STEP_SUMMARY
-            echo "- **Data Source**: Yahoo Finance" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "- **Data Source**: Alpaca Markets" >> $GITHUB_STEP_SUMMARY
+          echo "- **Symbols**: ${{ github.event.inputs.symbols || 'All watchlist symbols' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timeframe**: ${{ github.event.inputs.timeframe || 'd1' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **All Timeframes**: ${{ github.event.inputs.all_timeframes || 'false' }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
           echo "- Check the Actions logs for detailed results" >> $GITHUB_STEP_SUMMARY
-          echo "- Verify data in Supabase \`ohlc_bars_v2\` table with provider='yfinance'" >> $GITHUB_STEP_SUMMARY
+          echo "- Verify data in Supabase \`ohlc_bars_v2\` table with provider='alpaca'" >> $GITHUB_STEP_SUMMARY

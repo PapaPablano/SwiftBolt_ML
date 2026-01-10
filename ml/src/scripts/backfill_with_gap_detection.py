@@ -30,42 +30,23 @@ logger = logging.getLogger(__name__)
 def detect_gaps(symbol: str, timeframe: str, max_gap_hours: int = 24) -> List[Tuple[datetime, datetime]]:
     """
     Detect gaps in OHLC data for a symbol/timeframe.
-    
+
     Returns list of (gap_start, gap_end) tuples where gaps exceed max_gap_hours.
     """
-    query = """
-    WITH bars_with_next AS (
-        SELECT 
-            ts,
-            LEAD(ts) OVER (ORDER BY ts) as next_ts,
-            EXTRACT(EPOCH FROM (LEAD(ts) OVER (ORDER BY ts) - ts)) / 3600 as gap_hours
-        FROM ohlc_bars_v2
-        WHERE symbol_id = (SELECT id FROM symbols WHERE ticker = %(symbol)s)
-        AND timeframe = %(timeframe)s
-        AND provider = 'alpaca'
-        AND is_forecast = false
-        ORDER BY ts
-    )
-    SELECT ts, next_ts, gap_hours
-    FROM bars_with_next
-    WHERE gap_hours > %(max_gap_hours)s
-    ORDER BY gap_hours DESC;
-    """
-    
-    result = db.execute_query(
-        query,
+    result = db.execute_rpc(
+        "detect_ohlc_gaps",
         {
-            "symbol": symbol,
-            "timeframe": timeframe,
-            "max_gap_hours": max_gap_hours
+            "p_symbol": symbol,
+            "p_timeframe": timeframe,
+            "p_max_gap_hours": max_gap_hours
         }
     )
-    
+
     gaps = []
     if result:
         for row in result:
-            gaps.append((row['ts'], row['next_ts']))
-    
+            gaps.append((row['gap_start'], row['gap_end']))
+
     return gaps
 
 
