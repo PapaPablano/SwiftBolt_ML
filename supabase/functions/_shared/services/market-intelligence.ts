@@ -72,9 +72,15 @@ export class MarketIntelligence {
     symbols: string[],
     types: CorporateActionType[] = ['stock_split', 'reverse_split', 'dividend']
   ): Promise<CorporateAction[]> {
+    // Map our types to Alpaca's API types
+    const alpacaTypes = types.map(t => {
+      if (t === 'stock_split' || t === 'reverse_split') return 'split';
+      return t; // dividend, merger, spin_off map directly
+    });
+    
     const actions = await this.alpaca.queryCorporateActions({
       symbols: symbols.join(','),
-      types: types.join(','),
+      types: [...new Set(alpacaTypes)].join(','), // Remove duplicates
       start: this.getOneYearAgo(),
       end: this.getToday()
     });
@@ -91,7 +97,7 @@ export class MarketIntelligence {
   
   private getOneYearAgo(): string {
     const date = new Date();
-    date.setFullYear(date.getFullYear() - 1);
+    date.setDate(date.getDate() - 90); // Alpaca API limit is 90 days
     return date.toISOString().split('T')[0];
   }
   

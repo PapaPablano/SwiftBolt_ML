@@ -30,11 +30,10 @@ serve(async (req) => {
     
     const marketIntel = new MarketIntelligence(alpaca);
     
-    // Get active watchlist symbols
+    // Get watchlist symbols
     const { data: symbols, error: symbolsError } = await supabase
       .from('symbols')
-      .select('ticker, id')
-      .eq('is_active', true);
+      .select('ticker, id');
     
     if (symbolsError) throw symbolsError;
     
