@@ -52,29 +52,19 @@ def detect_gaps(symbol: str, timeframe: str, max_gap_hours: int = 24) -> List[Tu
 
 def get_coverage_stats(symbol: str, timeframe: str) -> dict:
     """Get coverage statistics for a symbol/timeframe."""
-    query = """
-    SELECT 
-        COUNT(*) as bar_count,
-        MIN(ts) as oldest_bar,
-        MAX(ts) as newest_bar,
-        MAX(ts) - MIN(ts) as time_span
-    FROM ohlc_bars_v2
-    WHERE symbol_id = (SELECT id FROM symbols WHERE ticker = %(symbol)s)
-    AND timeframe = %(timeframe)s
-    AND provider = 'alpaca'
-    AND is_forecast = false;
-    """
-    
-    result = db.execute_query(query, {"symbol": symbol, "timeframe": timeframe})
-    
+    result = db.execute_rpc(
+        "get_ohlc_coverage_stats",
+        {"p_symbol": symbol, "p_timeframe": timeframe}
+    )
+
     if result and result[0]['bar_count'] > 0:
         return {
             'bar_count': result[0]['bar_count'],
             'oldest_bar': result[0]['oldest_bar'],
             'newest_bar': result[0]['newest_bar'],
-            'time_span_days': result[0]['time_span'].days if result[0]['time_span'] else 0
+            'time_span_days': result[0]['time_span_days'] or 0
         }
-    
+
     return {
         'bar_count': 0,
         'oldest_bar': None,
