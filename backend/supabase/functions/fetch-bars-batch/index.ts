@@ -178,24 +178,37 @@ Deno.serve(async (req) => {
 
         // Prepare bars for insertion
         if (bars.length > 0) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const todayStr = today.toISOString().split('T')[0];
+
           const barsToInsert = bars
             .filter((bar) => {
               const year = new Date(bar.timestamp * 1000).getFullYear();
               return year >= 1970 && year <= 2100;
             })
-            .map((bar) => ({
-              symbol_id,
-              timeframe: providerTimeframe,
-              ts: new Date(bar.timestamp * 1000).toISOString(),
-              open: bar.open,
-              high: bar.high,
-              low: bar.low,
-              close: bar.close,
-              volume: bar.volume,
-              provider: "alpaca",
-              is_intraday: ["m15", "h1", "h4"].includes(providerTimeframe),
-              is_forecast: false,
-            }));
+            .map((bar) => {
+              const barDate = new Date(bar.timestamp * 1000);
+              const barDateStr = barDate.toISOString().split('T')[0];
+              // is_intraday = true ONLY if bar is for TODAY AND timeframe is intraday
+              const isToday = barDateStr === todayStr;
+              const isIntradayTimeframe = ["m15", "h1", "h4"].includes(providerTimeframe);
+
+              return {
+                symbol_id,
+                timeframe: providerTimeframe,
+                ts: barDate.toISOString(),
+                open: bar.open,
+                high: bar.high,
+                low: bar.low,
+                close: bar.close,
+                volume: bar.volume,
+                provider: "alpaca",
+                // Only mark as intraday if it's today's data AND intraday timeframe
+                is_intraday: isToday && isIntradayTimeframe,
+                is_forecast: false,
+              };
+            });
 
           // Batch upsert
           const batchSize = 1000;

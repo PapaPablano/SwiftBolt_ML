@@ -39,24 +39,34 @@ export async function fetchBarsWithResampling(
   if (!shouldResampleTF) {
     // Original path: fetch directly from provider
     console.log(`[BarFetcher] Direct fetch: ${symbol}/${timeframe}`);
-    
+
     const bars = await router.getHistoricalBars({
       symbol,
       timeframe: timeframe as any,
       start: startTimestamp,
       end: endTimestamp,
     });
-    
-    // Determine provider
+
+    // Determine provider from router's health status
+    // Alpaca is primary if available, otherwise falls back to yahoo
     const healthStatus = router.getHealthStatus();
-    const isIntraday = ["m15", "h1", "h4"].includes(timeframe);
-    const provider = isIntraday ? "tradier" : "yahoo";
-    
+    let provider = "alpaca"; // Default to alpaca since it's primary in factory.ts
+
+    // Check which providers are healthy
+    const alpacaHealth = healthStatus.get("alpaca");
+    const yahooHealth = healthStatus.get("yahoo");
+
+    if (!alpacaHealth?.healthy && yahooHealth?.healthy) {
+      provider = "yfinance"; // Use yfinance for Yahoo Finance data
+    }
+
+    console.log(`[BarFetcher] Using provider: ${provider}`);
+
     // Attach indicators if requested
-    const finalBars = includeIndicators 
+    const finalBars = includeIndicators
       ? attachIndicators(bars, FEATURE_FLAGS.INCLUDE_SUPERTREND)
       : bars;
-    
+
     return {
       bars: finalBars,
       provider,

@@ -2,8 +2,8 @@
 // Provides historical and real-time market data via Alpaca's Market Data API v2
 // Documentation: https://docs.alpaca.markets/docs/getting-started-with-alpaca-market-data
 
-import type { DataProviderAbstraction, HistoricalBarsRequest } from "./abstraction.ts";
-import type { Bar, Quote, NewsItem } from "./types.ts";
+import type { DataProviderAbstraction, HistoricalBarsRequest, OptionsChainRequest, NewsRequest } from "./abstraction.ts";
+import type { Bar, Quote, NewsItem, CryptoBar, CryptoQuote, CryptoSnapshot, OptionsChain, OptionContract } from "./types.ts";
 import type { TokenBucketRateLimiter } from "../rate-limiter/token-bucket.ts";
 import type { Cache } from "../cache/interface.ts";
 import { CACHE_TTL } from "../config/rate-limits.ts";
@@ -86,11 +86,16 @@ export class AlpacaClient implements DataProviderAbstraction {
   private readonly apiKey: string;
   private readonly apiSecret: string;
   private readonly baseUrl = "https://data.alpaca.markets/v2";
+  private readonly newsBaseUrl = "https://data.alpaca.markets/v1beta1";
+  private readonly cryptoBaseUrl = "https://data.alpaca.markets/v1beta3/crypto";
+  private readonly optionsBaseUrl = "https://data.alpaca.markets/v1beta1/options";
   private readonly tradingBaseUrl = "https://api.alpaca.markets/v2";
   private readonly rateLimiter: TokenBucketRateLimiter;
   private readonly cache: Cache;
   private assetsCache: Map<string, AlpacaAsset> | null = null;
+  private cryptoAssetsCache: Map<string, AlpacaAsset> | null = null;
   private assetsCacheExpiry = 0;
+  private cryptoAssetsCacheExpiry = 0;
 
   constructor(
     apiKey: string,
@@ -406,7 +411,7 @@ export class AlpacaClient implements DataProviderAbstraction {
       // Acquire rate limit token
       await this.rateLimiter.acquire("alpaca");
 
-      const url = `${this.baseUrl}/news?symbols=${symbol}&limit=${limit}&sort=desc`;
+      const url = `${this.newsBaseUrl}/news?symbols=${symbol}&limit=${limit}&sort=desc`;
 
       const response = await fetch(url, {
         headers: this.getHeaders(),
@@ -520,6 +525,599 @@ export class AlpacaClient implements DataProviderAbstraction {
   async getAsset(symbol: string): Promise<AlpacaAsset | null> {
     await this.getAssets();
     return this.assetsCache?.get(symbol) ?? null;
+  }
+
+  // ============================================================================
+  // CRYPTO DATA METHODS (v1beta3 API)
+  // ============================================================================
+
+  /**
+   * Get crypto assets (tradable cryptocurrencies)
+   * Results are cached for 1 hour
+   */
+  async getCryptoAssets(): Promise<AlpacaAsset[]> {
+    const now = Date.now();
+
+    if (this.cryptoAssetsCache && now < this.cryptoAssetsCacheExpiry) {
+      return Array.from(this.cryptoAssetsCache.values());
+    }
+
+    console.log(`[Alpaca] Fetching crypto assets`);
+
+    try {
+      await this.rateLimiter.acquire("alpaca");
+
+      const url = `${this.tradingBaseUrl}/assets?asset_class=crypto&status=active`;
+      const response = await this.fetchWithRetry(url);
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+
+      const assets = await response.json() as AlpacaAsset[];
+
+      this.cryptoAssetsCache = new Map();
+      for (const asset of assets) {
+        this.cryptoAssetsCache.set(asset.symbol, asset);
+      }
+      this.cryptoAssetsCacheExpiry = now + (60 * 60 * 1000);
+
+      console.log(`[Alpaca] Cached ${assets.length} crypto assets`);
+      return assets;
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching crypto assets:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get real-time crypto quotes
+   * @param symbols - Crypto symbols in format "BTC/USD", "ETH/USD", etc.
+   */
+  async getCryptoQuotes(symbols: string[]): Promise<CryptoQuote[]> {
+    if (symbols.length === 0) {
+      return [];
+    }
+
+    console.log(`[Alpaca] Fetching crypto quotes for ${symbols.length} symbols`);
+
+    try {
+      await this.rateLimiter.acquire("alpaca");
+
+      // Alpaca crypto uses symbols like "BTC/USD" - need to encode the slash
+      const symbolsParam = symbols.map(s => encodeURIComponent(s)).join(",");
+      const url = `${this.cryptoBaseUrl}/us/latest/quotes?symbols=${symbolsParam}`;
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+
+      const data = await response.json();
+      const quotes: CryptoQuote[] = [];
+
+      for (const [symbol, quoteData] of Object.entries(data.quotes || {})) {
+        const q = quoteData as any;
+        quotes.push({
+          symbol,
+          price: (q.ap + q.bp) / 2, // midpoint
+          timestamp: Math.floor(new Date(q.t).getTime() / 1000),
+          bidPrice: q.bp,
+          bidSize: q.bs,
+          askPrice: q.ap,
+          askSize: q.as,
+        });
+      }
+
+      console.log(`[Alpaca] Retrieved ${quotes.length} crypto quotes`);
+      return quotes;
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching crypto quotes:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get crypto snapshots (latest trade, quote, and bars)
+   * @param symbols - Crypto symbols in format "BTC/USD", "ETH/USD", etc.
+   */
+  async getCryptoSnapshots(symbols: string[]): Promise<CryptoSnapshot[]> {
+    if (symbols.length === 0) {
+      return [];
+    }
+
+    console.log(`[Alpaca] Fetching crypto snapshots for ${symbols.length} symbols`);
+
+    try {
+      await this.rateLimiter.acquire("alpaca");
+
+      const symbolsParam = symbols.map(s => encodeURIComponent(s)).join(",");
+      const url = `${this.cryptoBaseUrl}/us/snapshots?symbols=${symbolsParam}`;
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+
+      const data = await response.json();
+      const snapshots: CryptoSnapshot[] = [];
+
+      for (const [symbol, snap] of Object.entries(data.snapshots || {})) {
+        const s = snap as any;
+        snapshots.push({
+          symbol,
+          latestTrade: {
+            price: s.latestTrade?.p || 0,
+            size: s.latestTrade?.s || 0,
+            timestamp: s.latestTrade?.t ? Math.floor(new Date(s.latestTrade.t).getTime() / 1000) : 0,
+            exchange: s.latestTrade?.x || "",
+          },
+          latestQuote: {
+            symbol,
+            price: s.latestQuote ? (s.latestQuote.ap + s.latestQuote.bp) / 2 : 0,
+            timestamp: s.latestQuote?.t ? Math.floor(new Date(s.latestQuote.t).getTime() / 1000) : 0,
+            bidPrice: s.latestQuote?.bp,
+            bidSize: s.latestQuote?.bs,
+            askPrice: s.latestQuote?.ap,
+            askSize: s.latestQuote?.as,
+          },
+          minuteBar: s.minuteBar ? this.convertCryptoBar(s.minuteBar) : undefined,
+          dailyBar: s.dailyBar ? this.convertCryptoBar(s.dailyBar) : undefined,
+          prevDailyBar: s.prevDailyBar ? this.convertCryptoBar(s.prevDailyBar) : undefined,
+        });
+      }
+
+      console.log(`[Alpaca] Retrieved ${snapshots.length} crypto snapshots`);
+      return snapshots;
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching crypto snapshots:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get historical crypto bars
+   * @param symbol - Crypto symbol in format "BTC/USD"
+   */
+  async getCryptoHistoricalBars(request: {
+    symbol: string;
+    timeframe: string;
+    start: number;
+    end: number;
+  }): Promise<CryptoBar[]> {
+    const { symbol, timeframe, start, end } = request;
+    const alpacaTimeframe = this.convertTimeframe(timeframe);
+
+    console.log(`[Alpaca] Fetching crypto historical bars: ${symbol} ${timeframe}`);
+
+    try {
+      const allBars: CryptoBar[] = [];
+      let nextPageToken: string | undefined;
+      let pageCount = 0;
+      const maxPages = 100;
+
+      do {
+        await this.rateLimiter.acquire("alpaca");
+
+        const startDate = this.toUTCISOString(start);
+        const endDate = this.toUTCISOString(end);
+        const encodedSymbol = encodeURIComponent(symbol);
+
+        let url = `${this.cryptoBaseUrl}/us/bars?` +
+          `symbols=${encodedSymbol}&` +
+          `timeframe=${alpacaTimeframe}&` +
+          `start=${startDate}&` +
+          `end=${endDate}&` +
+          `limit=10000&` +
+          `sort=asc`;
+
+        if (nextPageToken) {
+          url += `&page_token=${nextPageToken}`;
+        }
+
+        const response = await this.fetchWithRetry(url);
+
+        if (!response.ok) {
+          await this.handleErrorResponse(response);
+        }
+
+        const data = await response.json();
+        const cryptoBars = data.bars?.[symbol] || [];
+
+        if (cryptoBars.length === 0 && pageCount === 0) {
+          console.log(`[Alpaca] No crypto data returned for ${symbol}`);
+          return [];
+        }
+
+        const pageBars: CryptoBar[] = cryptoBars.map((bar: any) => this.convertCryptoBar(bar));
+        allBars.push(...pageBars);
+        nextPageToken = data.next_page_token;
+        pageCount++;
+
+        if (nextPageToken) {
+          console.log(`[Alpaca] Crypto fetched page ${pageCount} with ${pageBars.length} bars, continuing...`);
+        }
+
+        if (pageCount >= maxPages) {
+          console.warn(`[Alpaca] Reached maximum page limit for crypto ${symbol}`);
+          break;
+        }
+      } while (nextPageToken);
+
+      console.log(`[Alpaca] Retrieved ${allBars.length} crypto bars for ${symbol}`);
+      return allBars;
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching crypto bars:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Convert Alpaca crypto bar to our format
+   */
+  private convertCryptoBar(bar: any): CryptoBar {
+    return {
+      timestamp: Math.floor(new Date(bar.t).getTime() / 1000),
+      open: bar.o,
+      high: bar.h,
+      low: bar.l,
+      close: bar.c,
+      volume: bar.v,
+      vwap: bar.vw,
+      tradeCount: bar.n,
+    };
+  }
+
+  // ============================================================================
+  // OPTIONS DATA METHODS (v1beta1 API)
+  // ============================================================================
+
+  /**
+   * Get options chain for an underlying symbol
+   * Implements the DataProviderAbstraction interface
+   */
+  async getOptionsChain(request: OptionsChainRequest): Promise<OptionsChain> {
+    const { underlying, expiration } = request;
+
+    console.log(`[Alpaca] Fetching options chain for ${underlying}`);
+
+    try {
+      await this.rateLimiter.acquire("alpaca");
+
+      // First, get available option contracts for this underlying
+      let url = `${this.optionsBaseUrl}/snapshots/${underlying}?feed=indicative`;
+
+      if (expiration) {
+        const expDate = new Date(expiration * 1000).toISOString().split('T')[0];
+        url += `&expiration_date=${expDate}`;
+      }
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+
+      const data = await response.json();
+      const snapshots = data.snapshots || {};
+
+      const calls: OptionContract[] = [];
+      const puts: OptionContract[] = [];
+      const expirations = new Set<number>();
+
+      for (const [optionSymbol, snapshot] of Object.entries(snapshots)) {
+        const s = snapshot as any;
+        const contract = this.parseOptionContract(optionSymbol, s);
+
+        if (contract) {
+          expirations.add(contract.expiration);
+          if (contract.type === "call") {
+            calls.push(contract);
+          } else {
+            puts.push(contract);
+          }
+        }
+      }
+
+      // Sort by strike price
+      calls.sort((a, b) => a.strike - b.strike);
+      puts.sort((a, b) => a.strike - b.strike);
+
+      console.log(`[Alpaca] Retrieved ${calls.length} calls and ${puts.length} puts for ${underlying}`);
+
+      return {
+        underlying,
+        timestamp: Math.floor(Date.now() / 1000),
+        expirations: Array.from(expirations).sort((a, b) => a - b),
+        calls,
+        puts,
+      };
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching options chain:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get quotes for specific option contracts
+   * @param optionSymbols - Option symbols like "AAPL250117C00150000"
+   */
+  async getOptionsQuotes(optionSymbols: string[]): Promise<OptionContract[]> {
+    if (optionSymbols.length === 0) {
+      return [];
+    }
+
+    console.log(`[Alpaca] Fetching quotes for ${optionSymbols.length} option contracts`);
+
+    try {
+      await this.rateLimiter.acquire("alpaca");
+
+      const symbolsParam = optionSymbols.join(",");
+      const url = `${this.optionsBaseUrl}/quotes/latest?symbols=${symbolsParam}&feed=indicative`;
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+
+      const data = await response.json();
+      const contracts: OptionContract[] = [];
+
+      for (const [symbol, quoteData] of Object.entries(data.quotes || {})) {
+        const q = quoteData as any;
+        const contract = this.parseOptionSymbol(symbol);
+
+        if (contract) {
+          contracts.push({
+            ...contract,
+            bid: q.bp || 0,
+            ask: q.ap || 0,
+            last: q.bp && q.ap ? (q.bp + q.ap) / 2 : 0,
+            mark: q.bp && q.ap ? (q.bp + q.ap) / 2 : 0,
+            volume: 0,
+            openInterest: 0,
+          });
+        }
+      }
+
+      console.log(`[Alpaca] Retrieved ${contracts.length} option quotes`);
+      return contracts;
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching option quotes:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get historical bars for option contracts
+   */
+  async getOptionsHistoricalBars(request: {
+    optionSymbol: string;
+    timeframe: string;
+    start: number;
+    end: number;
+  }): Promise<Bar[]> {
+    const { optionSymbol, timeframe, start, end } = request;
+    const alpacaTimeframe = this.convertTimeframe(timeframe);
+
+    console.log(`[Alpaca] Fetching option bars: ${optionSymbol} ${timeframe}`);
+
+    try {
+      await this.rateLimiter.acquire("alpaca");
+
+      const startDate = this.toUTCISOString(start);
+      const endDate = this.toUTCISOString(end);
+
+      const url = `${this.optionsBaseUrl}/bars?` +
+        `symbols=${optionSymbol}&` +
+        `timeframe=${alpacaTimeframe}&` +
+        `start=${startDate}&` +
+        `end=${endDate}&` +
+        `limit=10000`;
+
+      const response = await this.fetchWithRetry(url);
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+
+      const data = await response.json();
+      const bars = data.bars?.[optionSymbol] || [];
+
+      const result: Bar[] = bars.map((bar: any) => ({
+        timestamp: Math.floor(new Date(bar.t).getTime() / 1000),
+        open: bar.o,
+        high: bar.h,
+        low: bar.l,
+        close: bar.c,
+        volume: bar.v,
+      }));
+
+      console.log(`[Alpaca] Retrieved ${result.length} option bars for ${optionSymbol}`);
+      return result;
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching option bars:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Parse option symbol to extract contract details
+   * Format: AAPL250117C00150000 (underlying + YYMMDD + C/P + strike*1000)
+   */
+  private parseOptionSymbol(optionSymbol: string): Omit<OptionContract, 'bid' | 'ask' | 'last' | 'mark' | 'volume' | 'openInterest'> | null {
+    // Match pattern: UNDERLYING + YYMMDD + C/P + STRIKE
+    const match = optionSymbol.match(/^([A-Z]+)(\d{6})([CP])(\d{8})$/);
+
+    if (!match) {
+      console.warn(`[Alpaca] Could not parse option symbol: ${optionSymbol}`);
+      return null;
+    }
+
+    const [, underlying, dateStr, typeChar, strikeStr] = match;
+
+    // Parse date: YYMMDD
+    const year = 2000 + parseInt(dateStr.substring(0, 2));
+    const month = parseInt(dateStr.substring(2, 4)) - 1;
+    const day = parseInt(dateStr.substring(4, 6));
+    const expiration = Math.floor(new Date(year, month, day).getTime() / 1000);
+
+    // Parse strike (stored as strike * 1000)
+    const strike = parseInt(strikeStr) / 1000;
+
+    return {
+      symbol: optionSymbol,
+      underlying,
+      strike,
+      expiration,
+      type: typeChar === "C" ? "call" : "put",
+    };
+  }
+
+  /**
+   * Parse option contract from snapshot data
+   */
+  private parseOptionContract(optionSymbol: string, snapshot: any): OptionContract | null {
+    const base = this.parseOptionSymbol(optionSymbol);
+    if (!base) return null;
+
+    const quote = snapshot.latestQuote || {};
+    const trade = snapshot.latestTrade || {};
+    const greeks = snapshot.greeks || {};
+
+    return {
+      ...base,
+      bid: quote.bp || 0,
+      ask: quote.ap || 0,
+      last: trade.p || 0,
+      mark: quote.bp && quote.ap ? (quote.bp + quote.ap) / 2 : trade.p || 0,
+      volume: snapshot.dailyBar?.v || 0,
+      openInterest: snapshot.openInterest || 0,
+      delta: greeks.delta,
+      gamma: greeks.gamma,
+      theta: greeks.theta,
+      vega: greeks.vega,
+      rho: greeks.rho,
+      impliedVolatility: snapshot.impliedVolatility,
+      lastTradeTime: trade.t ? Math.floor(new Date(trade.t).getTime() / 1000) : undefined,
+    };
+  }
+
+  // ============================================================================
+  // ENHANCED NEWS METHODS
+  // ============================================================================
+
+  /**
+   * Get news with advanced filtering options
+   * Enhanced version with date range and multi-symbol support
+   */
+  async getNewsAdvanced(request: NewsRequest): Promise<NewsItem[]> {
+    const { symbol, from, to, limit = 50 } = request;
+
+    console.log(`[Alpaca] Fetching news (advanced)${symbol ? ` for ${symbol}` : ''}`);
+
+    try {
+      await this.rateLimiter.acquire("alpaca");
+
+      let url = `${this.newsBaseUrl}/news?limit=${limit}&sort=desc`;
+
+      if (symbol) {
+        url += `&symbols=${symbol}`;
+      }
+
+      if (from) {
+        url += `&start=${this.toUTCISOString(from)}`;
+      }
+
+      if (to) {
+        url += `&end=${this.toUTCISOString(to)}`;
+      }
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+
+      const data = await response.json();
+      const newsItems = data.news || [];
+
+      const news: NewsItem[] = newsItems.map((item: any) => ({
+        id: item.id.toString(),
+        headline: item.headline,
+        summary: item.summary || item.headline,
+        source: item.source,
+        url: item.url,
+        publishedAt: Math.floor(new Date(item.created_at).getTime() / 1000),
+        symbols: item.symbols || (symbol ? [symbol] : []),
+        sentiment: this.mapSentiment(item.sentiment),
+      }));
+
+      console.log(`[Alpaca] Retrieved ${news.length} news items (advanced)`);
+      return news;
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching news:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get news for multiple symbols at once
+   */
+  async getMultiSymbolNews(symbols: string[], limit: number = 50): Promise<NewsItem[]> {
+    if (symbols.length === 0) {
+      return [];
+    }
+
+    console.log(`[Alpaca] Fetching news for ${symbols.length} symbols`);
+
+    try {
+      await this.rateLimiter.acquire("alpaca");
+
+      const symbolsParam = symbols.join(",");
+      const url = `${this.newsBaseUrl}/news?symbols=${symbolsParam}&limit=${limit}&sort=desc`;
+
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+      });
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+
+      const data = await response.json();
+      const newsItems = data.news || [];
+
+      const news: NewsItem[] = newsItems.map((item: any) => ({
+        id: item.id.toString(),
+        headline: item.headline,
+        summary: item.summary || item.headline,
+        source: item.source,
+        url: item.url,
+        publishedAt: Math.floor(new Date(item.created_at).getTime() / 1000),
+        symbols: item.symbols || [],
+        sentiment: this.mapSentiment(item.sentiment),
+      }));
+
+      console.log(`[Alpaca] Retrieved ${news.length} news items for ${symbols.length} symbols`);
+      return news;
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching multi-symbol news:`, error);
+      throw error;
+    }
   }
 
   /**

@@ -118,17 +118,27 @@ serve(async (req) => {
     console.log(`[chart-data-v2] Success: received ${chartData?.length || 0} bars`);
 
     // Separate data into layers for client-side rendering
+    // Use DATE comparison instead of is_intraday flag (flag may be incorrect for historical data)
     const historical: ChartBar[] = [];
     const intraday: ChartBar[] = [];
     const forecast: ChartBar[] = [];
 
+    const todayStr = new Date().toISOString().split('T')[0];
+
     for (const bar of (chartData || [])) {
+      const barDate = bar.ts.split('T')[0];
+
       if (bar.is_forecast) {
         forecast.push(bar);
-      } else if (bar.is_intraday) {
+      } else if (barDate === todayStr) {
+        // Today's data goes to intraday
         intraday.push(bar);
-      } else {
+      } else if (barDate < todayStr) {
+        // Past data goes to historical
         historical.push(bar);
+      } else {
+        // Future non-forecast data (shouldn't happen, but handle gracefully)
+        forecast.push(bar);
       }
     }
 

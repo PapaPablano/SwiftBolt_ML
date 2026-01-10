@@ -1,5 +1,7 @@
 // news: Fetch news for a symbol or general market news via ProviderRouter
 // GET /news?symbol=AAPL (company news)
+// GET /news?symbols=AAPL,MSFT,NVDA (multi-symbol news)
+// GET /news?symbol=AAPL&from=1704067200&to=1704153600 (date range filter)
 // GET /news (general market news)
 //
 // Uses the unified ProviderRouter with rate limiting, caching, and fallback logic.
@@ -8,13 +10,15 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
-import { getProviderRouter } from "../_shared/providers/factory.ts";
+import { getProviderRouter, getAlpacaClient } from "../_shared/providers/factory.ts";
 
 // Cache staleness threshold (15 minutes)
 const CACHE_TTL_MS = 15 * 60 * 1000;
 
 interface NewsResponse {
   symbol?: string;
+  symbols?: string[];
+  count?: number;
   items: {
     id: string;
     title: string;
@@ -22,6 +26,8 @@ interface NewsResponse {
     url: string;
     publishedAt: string;
     summary?: string;
+    sentiment?: "positive" | "negative" | "neutral";
+    symbols?: string[];
   }[];
 }
 
@@ -49,10 +55,52 @@ serve(async (req: Request): Promise<Response> => {
     // Parse query parameters
     const url = new URL(req.url);
     const symbol = url.searchParams.get("symbol")?.trim().toUpperCase();
+    const symbolsParam = url.searchParams.get("symbols");
+    const fromParam = url.searchParams.get("from");
+    const toParam = url.searchParams.get("to");
+    const limitParam = url.searchParams.get("limit");
+
+    const limit = limitParam ? parseInt(limitParam, 10) : 20;
+    const from = fromParam ? parseInt(fromParam, 10) : undefined;
+    const to = toParam ? parseInt(toParam, 10) : undefined;
 
     const supabase = getSupabaseClient();
     let items: NewsItem[] = [];
     let symbolId: string | null = null;
+
+    // Multi-symbol news (direct Alpaca call, no caching)
+    if (symbolsParam) {
+      const symbols = symbolsParam.split(",").map(s => s.trim().toUpperCase());
+      console.log(`Fetching news for ${symbols.length} symbols: ${symbols.join(", ")}`);
+
+      const alpaca = getAlpacaClient();
+      if (!alpaca) {
+        return errorResponse("Alpaca client not configured for multi-symbol news", 503);
+      }
+
+      try {
+        const newsItems = await alpaca.getMultiSymbolNews(symbols, limit);
+        items = newsItems.map((item) => ({
+          id: item.id,
+          title: item.headline,
+          source: item.source,
+          url: item.url,
+          publishedAt: new Date(item.publishedAt * 1000).toISOString(),
+          summary: item.summary,
+          symbols: item.symbols,
+          sentiment: item.sentiment,
+        }));
+
+        return jsonResponse({
+          symbols,
+          count: items.length,
+          items,
+        });
+      } catch (fetchError) {
+        console.error("Multi-symbol news fetch error:", fetchError);
+        return errorResponse(`Failed to fetch news: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`, 502);
+      }
+    }
 
     // If symbol provided, look it up and check cache
     if (symbol) {
@@ -92,11 +140,24 @@ serve(async (req: Request): Promise<Response> => {
         }
       }
 
-      // Fetch fresh company news via ProviderRouter
+      // Fetch fresh company news via ProviderRouter (or Alpaca for date range)
       console.log(`Cache miss for ${symbol} news, fetching via ProviderRouter`);
       try {
-        const router = getProviderRouter();
-        const routerNews = await router.getNews({ symbol, limit: 20 });
+        let routerNews;
+
+        // Use Alpaca directly for date range filtering
+        if (from || to) {
+          const alpaca = getAlpacaClient();
+          if (alpaca) {
+            routerNews = await alpaca.getNewsAdvanced({ symbol, from, to, limit });
+          } else {
+            const router = getProviderRouter();
+            routerNews = await router.getNews({ symbol, from, to, limit });
+          }
+        } else {
+          const router = getProviderRouter();
+          routerNews = await router.getNews({ symbol, limit });
+        }
 
         // Convert router NewsItem format to response format
         items = routerNews.map((item) => ({
@@ -104,8 +165,9 @@ serve(async (req: Request): Promise<Response> => {
           title: item.headline,
           source: item.source,
           url: item.url,
-          publishedAt: new Date(item.publishedAt).toISOString(),
+          publishedAt: new Date(item.publishedAt * 1000).toISOString(),
           summary: item.summary,
+          sentiment: item.sentiment,
         }));
 
         // Cache results if we have a symbol_id
@@ -182,8 +244,9 @@ serve(async (req: Request): Promise<Response> => {
         title: item.headline,
         source: item.source,
         url: item.url,
-        publishedAt: new Date(item.publishedAt).toISOString(),
+        publishedAt: new Date(item.publishedAt * 1000).toISOString(),
         summary: item.summary,
+        sentiment: item.sentiment,
       }));
 
       // Cache results

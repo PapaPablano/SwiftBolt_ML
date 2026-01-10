@@ -89,6 +89,43 @@ export interface OptionsChain {
   puts: OptionContract[];
 }
 
+// Crypto types
+export interface CryptoQuote {
+  symbol: string; // e.g., "BTC/USD"
+  price: number;
+  timestamp: number;
+  bidPrice?: number;
+  bidSize?: number;
+  askPrice?: number;
+  askSize?: number;
+  exchange?: string;
+}
+
+export interface CryptoBar {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  vwap?: number;
+  tradeCount?: number;
+}
+
+export interface CryptoSnapshot {
+  symbol: string;
+  latestTrade: {
+    price: number;
+    size: number;
+    timestamp: number;
+    exchange: string;
+  };
+  latestQuote: CryptoQuote;
+  minuteBar?: CryptoBar;
+  dailyBar?: CryptoBar;
+  prevDailyBar?: CryptoBar;
+}
+
 // Error types for unified error handling
 export class ProviderError extends Error {
   constructor(

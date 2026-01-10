@@ -25,16 +25,8 @@ struct SymbolSyncResponse: Codable {
 class SymbolSyncService {
     static let shared = SymbolSyncService()
     
-    private let supabaseURL: String
-    private let supabaseAnonKey: String
-    
     private init() {
-        guard let url = ProcessInfo.processInfo.environment["SUPABASE_URL"],
-              let key = ProcessInfo.processInfo.environment["SUPABASE_ANON_KEY"] else {
-            fatalError("Missing Supabase configuration")
-        }
-        self.supabaseURL = url
-        self.supabaseAnonKey = key
+        // Use existing Config class for Supabase configuration
     }
     
     func syncSymbols(
@@ -48,10 +40,10 @@ class SymbolSyncService {
             ])
         }
         
-        let url = URL(string: "\(supabaseURL)/functions/v1/sync-user-symbols")!
+        let url = Config.functionURL("sync-user-symbols")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.addValue("Bearer \(supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.addValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         
         let body = SymbolSyncRequest(

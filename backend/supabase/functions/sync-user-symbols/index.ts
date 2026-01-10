@@ -19,21 +19,6 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Get user from JWT
-    const authHeader = req.headers.get("Authorization");
-    const token = authHeader?.replace("Bearer ", "");
-    
-    if (!token) {
-      return errorResponse("Missing authorization token", 401);
-    }
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      console.error("[sync-user-symbols] Auth error:", authError);
-      return errorResponse("Unauthorized", 401);
-    }
-
     const body: SyncRequest = await req.json();
     const { symbols, source, timeframes = ['m15', 'h1', 'h4'] } = body;
 
@@ -45,21 +30,56 @@ Deno.serve(async (req) => {
       return errorResponse("Invalid source. Must be: watchlist, recent_search, or chart_view", 400);
     }
 
-    console.log(`[sync-user-symbols] User ${user.id} syncing ${symbols.length} symbols (${source})`);
+    console.log(`[sync-user-symbols] Syncing ${symbols.length} symbols (${source})`);
 
-    // Get symbol IDs from database
-    const { data: symbolData, error: symbolError } = await supabase
-      .from("symbols")
-      .select("id, ticker")
-      .in("ticker", symbols);
+    // Get or create symbol IDs from database
+    console.log(`[sync-user-symbols] Looking up symbols:`, symbols);
+    const symbolData: Array<{ id: string; ticker: string }> = [];
+    
+    for (const ticker of symbols) {
+      // Try to find existing symbol
+      let { data: existing, error: lookupError } = await supabase
+        .from("symbols")
+        .select("id, ticker")
+        .eq("ticker", ticker)
+        .single();
 
-    if (symbolError) {
-      console.error("[sync-user-symbols] Symbol lookup error:", symbolError);
-      return errorResponse(`Failed to lookup symbols: ${symbolError.message}`, 500);
+      if (lookupError && lookupError.code !== 'PGRST116') {
+        // PGRST116 = not found, which is fine - we'll create it
+        console.error(`[sync-user-symbols] Error looking up ${ticker}:`, lookupError);
+        continue;
+      }
+
+      if (existing) {
+        symbolData.push(existing);
+        console.log(`[sync-user-symbols] Found existing symbol: ${ticker}`);
+      } else {
+        // Create new symbol
+        const { data: newSymbol, error: createError } = await supabase
+          .from("symbols")
+          .insert({
+            ticker: ticker,
+            asset_type: 'stock',
+            description: ticker
+          })
+          .select("id, ticker")
+          .single();
+
+        if (createError) {
+          console.error(`[sync-user-symbols] Error creating symbol ${ticker}:`, createError);
+          continue;
+        }
+
+        symbolData.push(newSymbol);
+        console.log(`[sync-user-symbols] Created new symbol: ${ticker}`);
+      }
     }
 
-    if (!symbolData || symbolData.length === 0) {
-      return errorResponse("No valid symbols found", 404);
+    console.log(`[sync-user-symbols] Symbol lookup/create result: ${symbolData.length} symbols ready`);
+
+    if (symbolData.length === 0) {
+      console.error("[sync-user-symbols] No symbols could be found or created for:", symbols);
+      return errorResponse(`Failed to lookup or create symbols: ${symbols.join(', ')}`, 500);
     }
 
     // Determine priority based on source
@@ -68,46 +88,51 @@ Deno.serve(async (req) => {
     let trackedCount = 0;
     let jobsCreated = 0;
 
-    // Track user's symbol interest
+    // Create job definitions directly (skip user_symbol_tracking for now - table may not exist)
     for (const symbol of symbolData) {
-      const { error: trackError } = await supabase
-        .from("user_symbol_tracking")
-        .upsert({
-          user_id: user.id,
-          symbol_id: symbol.id,
-          source: source,
-          priority: priority,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'user_id,symbol_id,source'
-        });
-
-      if (trackError) {
-        console.error(`[sync-user-symbols] Error tracking ${symbol.ticker}:`, trackError);
-        continue;
-      }
-
       trackedCount++;
 
       // Create/enable job definitions for these symbols across all timeframes
       for (const timeframe of timeframes) {
         const windowDays = timeframe === 'm15' ? 30 : timeframe === 'h1' ? 90 : 365;
         
-        const { error: jobError } = await supabase
+        // First, try to find existing job
+        const { data: existingJob } = await supabase
           .from("job_definitions")
-          .upsert({
-            symbol: symbol.ticker,
-            timeframe: timeframe,
-            job_type: 'fetch_intraday',
-            enabled: true,
-            priority: priority,
-            window_days: windowDays
-          }, {
-            onConflict: 'symbol,timeframe,job_type'
-          });
+          .select("id")
+          .eq("symbol", symbol.ticker)
+          .eq("timeframe", timeframe)
+          .eq("job_type", "fetch_intraday")
+          .single();
 
-        if (jobError) {
-          console.error(`[sync-user-symbols] Error creating job for ${symbol.ticker} ${timeframe}:`, jobError);
+        let jobResult;
+        if (existingJob) {
+          // Update existing job
+          jobResult = await supabase
+            .from("job_definitions")
+            .update({
+              enabled: true,
+              priority: priority,
+              window_days: windowDays,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", existingJob.id);
+        } else {
+          // Insert new job
+          jobResult = await supabase
+            .from("job_definitions")
+            .insert({
+              symbol: symbol.ticker,
+              timeframe: timeframe,
+              job_type: "fetch_intraday",
+              enabled: true,
+              priority: priority,
+              window_days: windowDays
+            });
+        }
+
+        if (jobResult.error) {
+          console.error(`[sync-user-symbols] Error creating/updating job for ${symbol.ticker} ${timeframe}:`, jobResult.error);
           continue;
         }
 

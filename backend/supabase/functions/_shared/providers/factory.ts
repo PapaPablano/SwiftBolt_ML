@@ -137,8 +137,8 @@ export function initializeProviders(): ProviderRouter {
       fallback: "finnhub" as ProviderId,
     },
     optionsChain: {
-      primary: "yahoo" as ProviderId,
-      fallback: undefined,
+      primary: alpacaClient ? "alpaca" as ProviderId : "yahoo" as ProviderId,
+      fallback: "yahoo" as ProviderId,
     },
   };
 
@@ -218,4 +218,34 @@ export async function invalidateCacheTag(tag: string) {
     await cacheInstance.invalidateByTag(tag);
     console.log(`[Provider Factory] Cache invalidated for tag: ${tag}`);
   }
+}
+
+/**
+ * Get the Alpaca client directly for crypto/options operations
+ * Returns null if Alpaca is not configured
+ */
+export function getAlpacaClient(): AlpacaClient | null {
+  // Initialize if not already done
+  if (!routerInstance) {
+    initializeProviders();
+  }
+
+  const alpacaApiKey = Deno.env.get("ALPACA_API_KEY");
+  const alpacaApiSecret = Deno.env.get("ALPACA_API_SECRET");
+
+  if (!alpacaApiKey || !alpacaApiSecret) {
+    return null;
+  }
+
+  // Create a new Alpaca client instance (shares the same rate limiter and cache)
+  if (!rateLimiterInstance || !cacheInstance) {
+    return null;
+  }
+
+  return new AlpacaClient(
+    alpacaApiKey,
+    alpacaApiSecret,
+    rateLimiterInstance,
+    cacheInstance
+  );
 }

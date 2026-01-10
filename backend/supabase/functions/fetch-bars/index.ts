@@ -236,30 +236,45 @@ Deno.serve(async (req) => {
 
       const symbol_id = symbolData.id;
 
+      // Determine today's date for is_intraday flag
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayStr = today.toISOString().split('T')[0];
+
       const barsToInsert = bars
         .filter((bar) => {
           // Validate timestamp is reasonable (between 1970 and 2100)
-          const year = new Date(bar.timestamp).getFullYear();
+          // bar.timestamp is in seconds (Unix timestamp)
+          const year = new Date(bar.timestamp * 1000).getFullYear();
           if (year < 1970 || year > 2100) {
             console.warn(`[fetch-bars] Skipping bar with invalid timestamp: ${bar.timestamp} (year: ${year})`);
             return false;
           }
           return true;
         })
-        .map((bar) => ({
-          symbol_id,
-          timeframe: providerTimeframe,
-          ts: new Date(bar.timestamp).toISOString(),
-          open: bar.open,
-          high: bar.high,
-          low: bar.low,
-          close: bar.close,
-          volume: bar.volume,
-          provider,
-          is_intraday: ["m15", "h1", "h4"].includes(providerTimeframe),
-          is_forecast: false,
-          // Note: Indicators (ema_20, rsi_14, etc.) are computed on-read, not stored
-        }));
+        .map((bar) => {
+          const barDate = new Date(bar.timestamp * 1000);
+          const barDateStr = barDate.toISOString().split('T')[0];
+          // is_intraday = true ONLY if bar is for TODAY AND timeframe is intraday
+          const isToday = barDateStr === todayStr;
+          const isIntradayTimeframe = ["m15", "h1", "h4"].includes(providerTimeframe);
+
+          return {
+            symbol_id,
+            timeframe: providerTimeframe,
+            ts: barDate.toISOString(),
+            open: bar.open,
+            high: bar.high,
+            low: bar.low,
+            close: bar.close,
+            volume: bar.volume,
+            provider,
+            // Only mark as intraday if it's today's data AND intraday timeframe
+            is_intraday: isToday && isIntradayTimeframe,
+            is_forecast: false,
+            // Note: Indicators (ema_20, rsi_14, etc.) are computed on-read, not stored
+          };
+        });
 
       // Batch upsert (Supabase has a 1000 row limit per request)
       const batchSize = 1000;
