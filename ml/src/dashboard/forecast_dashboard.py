@@ -695,11 +695,13 @@ def fetch_ohlc_for_sr(db, symbol: str, lookback: int = 252) -> Optional[pd.DataF
 
         symbol_id = sym_result.data["id"]
 
-        # Fetch OHLC data (most recent bars, then reverse for chronological order)
-        ohlc_result = db.client.table("ohlc_bars").select(
+        # Fetch OHLC data from v2 (real Alpaca data only)
+        ohlc_result = db.client.table("ohlc_bars_v2").select(
             "ts, open, high, low, close, volume"
         ).eq("symbol_id", symbol_id).eq(
             "timeframe", "d1"
+        ).eq("provider", "alpaca").eq(
+            "is_forecast", False
         ).order(
             "ts", desc=True
         ).limit(lookback).execute()

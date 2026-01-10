@@ -44,13 +44,15 @@ def check_symbol_prices(symbol, timeframe="d1", days_back=30):
     
     symbol_id = symbol_data.data[0]["id"]
     
-    # Get recent bars from database
+    # Get recent bars from database (v2 - real Alpaca data)
     cutoff_date = (datetime.now() - timedelta(days=days_back)).isoformat()
-    db_bars = supabase.table("ohlc_bars").select(
-        "time,open,high,low,close,is_adjusted"
-    ).eq("symbol_id", symbol_id).eq("timeframe", timeframe).gte(
-        "time", cutoff_date
-    ).order("time", desc=False).execute()
+    db_bars = supabase.table("ohlc_bars_v2").select(
+        "ts,open,high,low,close"
+    ).eq("symbol_id", symbol_id).eq("timeframe", timeframe).eq(
+        "provider", "alpaca"
+    ).eq("is_forecast", False).gte(
+        "ts", cutoff_date
+    ).order("ts", desc=False).execute()
     
     if not db_bars.data:
         print(f"❌ No data found in database for {symbol}")

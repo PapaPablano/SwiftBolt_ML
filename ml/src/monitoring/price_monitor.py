@@ -166,11 +166,14 @@ class PriceMonitor:
             if hasattr(self.db, "get_current_price"):
                 return self.db.get_current_price(symbol)
             elif hasattr(self.db, "client"):
-                # Supabase client - get latest OHLC bar
+                # Supabase client - get latest OHLC bar from v2 (real data)
+                symbol_id = self.db.get_symbol_id(symbol)
                 result = (
-                    self.db.client.table("ohlc_bars")
+                    self.db.client.table("ohlc_bars_v2")
                     .select("*")
-                    .eq("symbol", symbol)
+                    .eq("symbol_id", symbol_id)
+                    .eq("provider", "alpaca")
+                    .eq("is_forecast", False)
                     .order("ts", desc=True)
                     .limit(1)
                     .execute()

@@ -65,11 +65,14 @@ class Database:
 
                 symbol_id = result["id"]
 
-                # Fetch OHLC bars
+                # Fetch OHLC bars from v2 table (real Alpaca data only)
                 query = """
                     SELECT ts, open, high, low, close, volume
-                    FROM ohlc_bars
-                    WHERE symbol_id = %s AND timeframe = %s
+                    FROM ohlc_bars_v2
+                    WHERE symbol_id = %s 
+                      AND timeframe = %s
+                      AND provider = 'alpaca'
+                      AND is_forecast = false
                     ORDER BY ts DESC
                 """
                 params = [symbol_id, timeframe]

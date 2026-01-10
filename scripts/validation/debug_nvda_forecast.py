@@ -38,10 +38,12 @@ def check_nvda_forecasts():
     
     print(f"\nFound {len(response.data)} recent forecasts for NVDA\n")
     
-    # Get recent OHLC data for context
-    ohlc_response = db.supabase.table("ohlc_bars").select(
+    # Get recent OHLC data for context (from v2 - real Alpaca data)
+    ohlc_response = db.supabase.table("ohlc_bars_v2").select(
         "ts, close, high, low"
-    ).eq("symbol_id", symbol_id).eq("timeframe", "d1").order(
+    ).eq("symbol_id", symbol_id).eq("timeframe", "d1").eq(
+        "provider", "alpaca"
+    ).eq("is_forecast", False).order(
         "ts", desc=True
     ).limit(100).execute()
     

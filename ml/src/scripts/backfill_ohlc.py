@@ -1,4 +1,18 @@
 """
+⚠️ DEPRECATED - DO NOT USE ⚠️
+
+This script writes to the DEPRECATED 'ohlc_bars' table.
+
+USE INSTEAD:
+- ml/src/scripts/deep_backfill_ohlc_v2.py (writes to ohlc_bars_v2)
+- ml/src/scripts/backfill_ohlc_yfinance.py (writes to ohlc_bars_v2)
+
+This script is kept for reference only and should NOT be run in production.
+It may cause data inconsistencies with the new ohlc_bars_v2 architecture.
+
+---
+
+ORIGINAL DESCRIPTION:
 Backfill OHLC data for symbols by fetching from the /chart Edge Function.
 
 This script fetches historical OHLC data via the chart API (which pulls from Polygon)
@@ -40,6 +54,14 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# DEPRECATION WARNING
+logger.warning("="*80)
+logger.warning("⚠️  DEPRECATED SCRIPT - DO NOT USE ⚠️")
+logger.warning("This script writes to the deprecated 'ohlc_bars' table.")
+logger.warning("Use deep_backfill_ohlc_v2.py or backfill_ohlc_yfinance.py instead.")
+logger.warning("="*80)
+time.sleep(3)  # Give user time to see warning
 
 # Validate required environment variables at startup
 logger.info(
