@@ -73,9 +73,10 @@ Deno.serve(async (req) => {
           window_days,
           priority,
           enabled: true,
+          batch_version: 1, // Default to v1 (single-symbol)
         },
         {
-          onConflict: "symbol,timeframe,job_type",
+          onConflict: "symbol,timeframe,job_type,batch_version",
           ignoreDuplicates: false,
         }
       )
