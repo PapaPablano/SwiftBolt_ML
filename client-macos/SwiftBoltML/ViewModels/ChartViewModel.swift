@@ -888,11 +888,15 @@ final class ChartViewModel: ObservableObject {
             }
 
             await MainActor.run {
+                // Determine if we already have bars displayed; if so, avoid showing banner
+                let hasBars = !(self.chartData?.bars.isEmpty ?? true)
+
                 self.backfillJobId = response.jobDefId
                 self.backfillProgress = response.backfillProgress
-                self.isHydrating = (response.status == "gaps_detected")
+                // Only show hydrating state if gaps detected AND we don't already have bars
+                self.isHydrating = (response.status == "gaps_detected") && !hasBars
 
-                if response.status == "coverage_complete" {
+                if response.status == "coverage_complete" || response.coverageStatus.gapsFound == 0 {
                     print("[DEBUG] ✅ Coverage complete for \(symbol) \(timeframe.apiToken)")
                     self.hydrationBanner = nil
                     self.backfillProgress = nil
@@ -902,15 +906,19 @@ final class ChartViewModel: ObservableObject {
                     print("[DEBUG] - Job def ID: \(response.jobDefId)")
                     print("[DEBUG] - Gaps found: \(response.coverageStatus.gapsFound)")
 
-                    // Update banner with progress
-                    if let progress = response.backfillProgress {
-                        self.hydrationBanner = "Backfilling 2 years... \(progress.progressPercent)% (\(progress.barsWritten) bars)"
-                        print("[DEBUG] - Backfill progress: \(progress.progressPercent)% (\(progress.completedSlices)/\(progress.totalSlices) slices)")
+                    // Update banner only if chart is empty (to avoid confusing the user)
+                    if !hasBars {
+                        if let progress = response.backfillProgress {
+                            self.hydrationBanner = "Backfilling 2 years... \(progress.progressPercent)% (\(progress.barsWritten) bars)"
+                            print("[DEBUG] - Backfill progress: \(progress.progressPercent)% (\(progress.completedSlices)/\(progress.totalSlices) slices)")
+                        } else {
+                            self.hydrationBanner = "Backfill starting..."
+                        }
                     } else {
-                        self.hydrationBanner = "Backfill starting..."
+                        self.hydrationBanner = nil
                     }
 
-                    // Subscribe to Realtime updates for progress
+                    // Subscribe/poll for progress (non-blocking)
                     self.subscribeToJobProgress(symbol: symbol, timeframe: timeframe.apiToken)
                     self.startHydrationPoller(symbol: symbol)
                 }
@@ -959,22 +967,53 @@ final class ChartViewModel: ObservableObject {
                         windowDays: windowDays
                     )
 
+                    var shouldBreak = false
                     // Update progress on main thread
                     await MainActor.run {
+                        // Clear immediately if coverage is complete (progress may be nil)
+                        if coverageResponse.status == "coverage_complete" || coverageResponse.coverageStatus.gapsFound == 0 {
+                            self.isHydrating = false
+                            self.hydrationBanner = nil
+                            self.backfillProgress = nil
+                            print("[DEBUG] ✅ Coverage complete (poll), clearing banner")
+                            shouldBreak = true
+                            return
+                        }
+
+                        // Update progress
                         self.backfillProgress = coverageResponse.backfillProgress
 
-                        if let progress = coverageResponse.backfillProgress {
-                            self.hydrationBanner = "Backfilling 2 years... \(progress.progressPercent)% (\(progress.barsWritten) bars)"
-                            print("[DEBUG] 📊 Backfill progress: \(progress.progressPercent)% (\(progress.completedSlices)/\(progress.totalSlices) slices, \(progress.barsWritten) bars)")
+                        // Only show banner if the chart is empty
+                        let hasBars = !(self.chartData?.bars.isEmpty ?? true)
 
-                            // Check if complete
+                        if let progress = coverageResponse.backfillProgress {
+                            if !hasBars {
+                                self.hydrationBanner = "Backfilling 2 years... \(progress.progressPercent)% (\(progress.barsWritten) bars)"
+                                print("[DEBUG] 📊 Backfill progress: \(progress.progressPercent)% (\(progress.completedSlices)/\(progress.totalSlices) slices, \(progress.barsWritten) bars)")
+                            } else {
+                                self.hydrationBanner = nil
+                                self.isHydrating = false
+                            }
+
+                            // Complete
                             if progress.progressPercent >= 100 {
                                 self.isHydrating = false
                                 self.hydrationBanner = nil
                                 self.backfillProgress = nil
                                 print("[DEBUG] ✅ Backfill complete!")
+                                shouldBreak = true
+                            }
+                        } else {
+                            // No progress payload, don't show banner if we already have bars
+                            if hasBars {
+                                self.hydrationBanner = nil
+                                self.isHydrating = false
                             }
                         }
+                    }
+                    if shouldBreak {
+                        print("[DEBUG] ✅ Hydration poll complete at attempt \(attempt + 1)")
+                        break
                     }
 
                     // Fetch updated chart data
@@ -999,23 +1038,10 @@ final class ChartViewModel: ObservableObject {
                             indicators: peek.indicators,
                             superTrendAI: peek.superTrendAI
                         )
-
-                        // Stop polling when backfill is complete
-                        if let progress = self.backfillProgress, progress.progressPercent >= 100 {
-                            self.isHydrating = false
-                            self.hydrationBanner = nil
-                            self.backfillProgress = nil
-                        }
                     }
 
                     // Save to cache
                     ChartCache.saveBars(symbol: symbol, timeframe: self.timeframe, bars: peekBars)
-
-                    // Stop polling if backfill complete
-                    if let progress = coverageResponse.backfillProgress, progress.progressPercent >= 100 {
-                        print("[DEBUG] ✅ Hydration poll complete at attempt \(attempt + 1)")
-                        break
-                    }
 
                 } catch {
                     print("[DEBUG] Hydration poll error: \(error)")

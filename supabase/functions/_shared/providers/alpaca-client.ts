@@ -82,6 +82,39 @@ interface AlpacaAsset {
   price_increment?: string;
 }
 
+interface AlpacaClock {
+  timestamp: string;
+  is_open: boolean;
+  next_open: string;
+  next_close: string;
+}
+
+interface AlpacaCalendarDay {
+  date: string;
+  open: string;
+  close: string;
+  session_open?: string;
+  session_close?: string;
+}
+
+interface AlpacaCorporateAction {
+  id: string;
+  corporate_action_id: string;
+  ca_type: string;
+  ca_sub_type: string;
+  initiating_symbol: string;
+  initiating_original_cusip: string;
+  target_symbol: string;
+  target_original_cusip: string;
+  declaration_date: string;
+  ex_date: string;
+  record_date: string;
+  payable_date: string;
+  cash: number;
+  old_rate: number;
+  new_rate: number;
+}
+
 export class AlpacaClient implements DataProviderAbstraction {
   private readonly apiKey: string;
   private readonly apiSecret: string;
@@ -547,6 +580,97 @@ export class AlpacaClient implements DataProviderAbstraction {
    */
   private toUTCISOString(timestamp: number): string {
     return new Date(timestamp * 1000).toISOString();
+  }
+
+  /**
+   * Get market clock status
+   * Returns current market open/close status and next open/close times
+   */
+  async queryMarketClock(): Promise<AlpacaClock> {
+    console.log(`[Alpaca] Fetching market clock`);
+
+    try {
+      await this.rateLimiter.acquire("alpaca");
+
+      const url = `${this.tradingBaseUrl}/clock`;
+      const response = await this.fetchWithRetry(url);
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+
+      const clock = await response.json() as AlpacaClock;
+      console.log(`[Alpaca] Market is ${clock.is_open ? 'OPEN' : 'CLOSED'}`);
+      return clock;
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching market clock:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get market calendar
+   * Returns trading days with open/close times for a date range
+   */
+  async queryMarketCalendar(params: { start: string; end: string }): Promise<AlpacaCalendarDay[]> {
+    const { start, end } = params;
+    console.log(`[Alpaca] Fetching market calendar: ${start} to ${end}`);
+
+    try {
+      await this.rateLimiter.acquire("alpaca");
+
+      const url = `${this.tradingBaseUrl}/calendar?start=${start}&end=${end}`;
+      const response = await this.fetchWithRetry(url);
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+
+      const calendar = await response.json() as AlpacaCalendarDay[];
+      console.log(`[Alpaca] Retrieved ${calendar.length} trading days`);
+      return calendar;
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching market calendar:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get corporate actions
+   * Returns stock splits, dividends, mergers, etc.
+   */
+  async queryCorporateActions(params: {
+    symbols: string;
+    types: string;
+    start: string;
+    end: string;
+  }): Promise<AlpacaCorporateAction[]> {
+    const { symbols, types, start, end } = params;
+    console.log(`[Alpaca] Fetching corporate actions: ${symbols} (${types})`);
+
+    try {
+      await this.rateLimiter.acquire("alpaca");
+
+      const url = `${this.tradingBaseUrl}/corporate_actions/announcements?` +
+        `ca_types=${types}&` +
+        `since=${start}&` +
+        `until=${end}&` +
+        `symbols=${symbols}`;
+
+      const response = await this.fetchWithRetry(url);
+
+      if (!response.ok) {
+        await this.handleErrorResponse(response);
+      }
+
+      const data = await response.json();
+      const actions = Array.isArray(data) ? data : (data.data || []);
+      console.log(`[Alpaca] Retrieved ${actions.length} corporate actions`);
+      return actions as AlpacaCorporateAction[];
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching corporate actions:`, error);
+      throw error;
+    }
   }
 
   /**
