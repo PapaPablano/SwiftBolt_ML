@@ -162,8 +162,9 @@ struct ChartView: View {
 
                             if !mlSummary.horizons.isEmpty {
                                 let horizons = mlSummary.horizons
+                                let defaultSelection = chartViewModel.selectedForecastHorizon ?? horizons.first?.horizon ?? ""
                                 let selection = Binding<String>(
-                                    get: { chartViewModel.selectedForecastHorizon ?? horizons.first?.horizon ?? "" },
+                                    get: { chartViewModel.selectedForecastHorizon ?? defaultSelection },
                                     set: { chartViewModel.selectedForecastHorizon = $0 }
                                 )
 

@@ -638,19 +638,24 @@ removeSeries: function(id) {
             const bandColor = options.bandColor || `${color}33`;  // 20% opacity
 
             const lowerMap = new Map(lowerData.map(p => [p.time, p.value]));
-            const bandCandles = upperData
-                .map(p => {
-                    const lower = lowerMap.get(p.time);
-                    if (lower === undefined) return null;
-                    return {
-                        time: p.time,
-                        open: lower,
-                        high: p.value,
-                        low: lower,
-                        close: p.value
-                    };
-                })
-                .filter(Boolean);
+            const missingLower = upperData.filter(p => !lowerMap.has(p.time)).length;
+            if (missingLower > 0) {
+                console.warn(`[ChartJS] Forecast band missing lower points for ${missingLower} timestamps`);
+            }
+            const bandCandles = upperData.reduce((acc, p) => {
+                const lower = lowerMap.get(p.time);
+                if (lower === undefined) { return acc; }
+                const top = Math.max(p.value, lower);
+                const bottom = Math.min(p.value, lower);
+                acc.push({
+                    time: p.time,
+                    open: top,
+                    high: top,
+                    low: bottom,
+                    close: bottom
+                });
+                return acc;
+            }, []);
 
             if (bandCandles.length > 0) {
                 if (!state.series['forecast-band']) {

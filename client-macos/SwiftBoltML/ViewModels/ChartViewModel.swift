@@ -35,10 +35,27 @@ final class ChartViewModel: ObservableObject {
         didSet {
             // Invalidate indicator cache when chart data changes
             invalidateIndicatorCache()
+            if oldValue?.mlSummary?.horizons != chartData?.mlSummary?.horizons {
+                _cachedSelectedForecastBars = nil
+                rebuildSelectedForecastBars()
+            }
         }
     }
-    @Published private(set) var chartDataV2: ChartDataV2Response?
-    @Published var selectedForecastHorizon: String?
+    @Published private(set) var chartDataV2: ChartDataV2Response? {
+        didSet {
+            if oldValue?.mlSummary?.horizons != chartDataV2?.mlSummary?.horizons {
+                _cachedSelectedForecastBars = nil
+                rebuildSelectedForecastBars()
+            }
+        }
+    }
+    @Published var selectedForecastHorizon: String? {
+        didSet {
+            if oldValue != selectedForecastHorizon {
+                rebuildSelectedForecastBars()
+            }
+        }
+    }
     @Published private(set) var isLoading: Bool = false
     @Published var errorMessage: String?
     @Published var indicatorConfig = IndicatorConfig()
@@ -90,6 +107,7 @@ final class ChartViewModel: ObservableObject {
     private var _cachedSuperTrend: TechnicalIndicators.SuperTrendResult?
     private var _cachedBollinger: TechnicalIndicators.BollingerBands?
     private var _cachedATR: [IndicatorDataPoint]?
+    private var _cachedSelectedForecastBars: [OHLCBar]?
 
     // MARK: - Support & Resistance Indicators
 
@@ -132,23 +150,11 @@ final class ChartViewModel: ObservableObject {
     }
 
     var selectedForecastBars: [OHLCBar] {
-        if let series = selectedForecastSeries {
-            return series.points.map { point in
-                let date = Date(timeIntervalSince1970: TimeInterval(point.ts))
-                return OHLCBar(
-                    ts: date,
-                    open: point.value,
-                    high: point.upper,
-                    low: point.lower,
-                    close: point.value,
-                    volume: 0,
-                    upperBand: point.upper,
-                    lowerBand: point.lower,
-                    confidenceScore: chartDataV2?.mlSummary?.confidence
-                )
-            }
-        }
-        return chartDataV2?.layers.forecast.data ?? []
+        if let cached = _cachedSelectedForecastBars { return cached }
+
+        let built = buildSelectedForecastBars()
+        _cachedSelectedForecastBars = built
+        return built
     }
 
     private func scheduleIndicatorRecalculation() {
@@ -163,15 +169,44 @@ final class ChartViewModel: ObservableObject {
     private func updateSelectedForecastHorizon(from summary: MLSummary?) {
         guard let horizons = summary?.horizons, !horizons.isEmpty else {
             selectedForecastHorizon = nil
+            _cachedSelectedForecastBars = nil
             return
         }
 
         if let current = selectedForecastHorizon,
            horizons.contains(where: { $0.horizon == current }) {
+            rebuildSelectedForecastBars()
             return
         }
 
         selectedForecastHorizon = horizons.first?.horizon
+        rebuildSelectedForecastBars()
+    }
+
+    private func buildSelectedForecastBars() -> [OHLCBar] {
+        if let series = selectedForecastSeries {
+            return series.points.map { point in
+                let date = Date(timeIntervalSince1970: TimeInterval(point.ts))
+                let top = max(point.value, point.upper)
+                let bottom = min(point.value, point.lower)
+                return OHLCBar(
+                    ts: date,
+                    open: point.value,
+                    high: top,
+                    low: bottom,
+                    close: point.value,
+                    volume: 0,
+                    upperBand: point.upper,
+                    lowerBand: point.lower,
+                    confidenceScore: chartDataV2?.mlSummary?.confidence
+                )
+            }
+        }
+        return chartDataV2?.layers.forecast.data ?? []
+    }
+
+    private func rebuildSelectedForecastBars() {
+        _cachedSelectedForecastBars = buildSelectedForecastBars()
     }
 
     deinit {
