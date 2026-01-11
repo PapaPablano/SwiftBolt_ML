@@ -77,6 +77,15 @@ function isValidChartBarArray(data: unknown): data is ChartBar[] {
   });
 }
 
+function buildChartError(message: string): PostgrestError {
+  return {
+    message,
+    details: null,
+    hint: null,
+    code: 'NO_CHART_DATA',
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -155,10 +164,6 @@ serve(async (req) => {
         .rpc('get_chart_data_v2', {
           p_symbol_id: symbolId,
           p_timeframe: timeframe,
-          // NOTE: p_start_date and p_end_date are ignored by current SQL (delegates to get_chart_data_v2_dynamic)
-          // kept for backward compatibility only
-          p_start_date: startDate.toISOString(),
-          p_end_date: endDate.toISOString(),
         });
 
       if (!legacyError && legacyData) {
@@ -189,12 +194,7 @@ serve(async (req) => {
 
     // Guard against empty/invalid results when no explicit error was returned
     if (!chartError && chartData === null) {
-      const fallbackError: PostgrestError = {
-        message: 'No chart data returned from either dynamic or legacy RPC',
-        details: null,
-        hint: null,
-        code: 'NO_CHART_DATA',
-      };
+      const fallbackError = buildChartError('No chart data returned from either dynamic or legacy RPC');
       console.error('[chart-data-v2] No data from dynamic or legacy RPC');
       return new Response(
         JSON.stringify({ 
