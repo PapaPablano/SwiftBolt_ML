@@ -42,6 +42,24 @@ struct WebChartView: NSViewRepresentable {
                 }
                 .store(in: &cancellables)
 
+            parent.viewModel.$selectedSymbol
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    guard let self else { return }
+                    self.lastVisibleRange = nil
+                    self.hasAppliedInitialZoom = false
+                }
+                .store(in: &cancellables)
+
+            parent.viewModel.$timeframe
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    guard let self else { return }
+                    self.lastVisibleRange = nil
+                    self.hasAppliedInitialZoom = false
+                }
+                .store(in: &cancellables)
+
             // Track visible range emitted from JS so we can preserve it on indicator toggles
             parent.bridge.eventPublisher
                 .receive(on: DispatchQueue.main)
@@ -411,8 +429,16 @@ struct WebChartView: NSViewRepresentable {
             applyInitialZoomIfNeeded(bars: uniqueCandles)
 
             // Restore prior visible range after overlays are applied
-            if let preservedRange {
-                bridge.send(.setVisibleRange(from: preservedRange.from, to: preservedRange.to))
+            if let preservedRange,
+               let first = uniqueCandles.first,
+               let last = uniqueCandles.last {
+                let firstTs = Int(first.ts.timeIntervalSince1970)
+                let lastTs = Int(last.ts.timeIntervalSince1970)
+                if preservedRange.to >= firstTs && preservedRange.from <= lastTs {
+                    bridge.send(.setVisibleRange(from: preservedRange.from, to: preservedRange.to))
+                } else {
+                    bridge.send(.scrollToRealTime)
+                }
             }
             
             // Set Support & Resistance Indicators
@@ -723,7 +749,16 @@ struct WebChartView: NSViewRepresentable {
 
             // Restore prior visible range after overlays are applied
             if let preservedRange {
-                bridge.send(.setVisibleRange(from: preservedRange.from, to: preservedRange.to))
+                let sorted = data.bars.sorted { $0.ts < $1.ts }
+                if let first = sorted.first, let last = sorted.last {
+                    let firstTs = Int(first.ts.timeIntervalSince1970)
+                    let lastTs = Int(last.ts.timeIntervalSince1970)
+                    if preservedRange.to >= firstTs && preservedRange.from <= lastTs {
+                        bridge.send(.setVisibleRange(from: preservedRange.from, to: preservedRange.to))
+                    } else {
+                        bridge.send(.scrollToRealTime)
+                    }
+                }
             }
         }
 
@@ -738,15 +773,15 @@ struct WebChartView: NSViewRepresentable {
             let lookbackSeconds: TimeInterval
             switch parent.viewModel.timeframe {
             case .m15:
-                lookbackSeconds = 5 * 24 * 60 * 60   // last 5 days for 15m (~320 bars)
+                lookbackSeconds = 10 * 24 * 60 * 60
             case .h1:
-                lookbackSeconds = 10 * 24 * 60 * 60  // last 10 days for 1h (~160 bars)
+                lookbackSeconds = 45 * 24 * 60 * 60
             case .h4:
-                lookbackSeconds = 60 * 24 * 60 * 60  // last 60 days for 4h (~360 bars)
+                lookbackSeconds = 240 * 24 * 60 * 60
             case .d1:
-                lookbackSeconds = 180 * 24 * 60 * 60 // last ~6 months for daily (~126 bars)
+                lookbackSeconds = 365 * 24 * 60 * 60
             case .w1:
-                lookbackSeconds = 2 * 365 * 24 * 60 * 60 // last 2 years for weekly (~104 bars)
+                lookbackSeconds = 5 * 365 * 24 * 60 * 60
             }
 
             let endDate = last.ts

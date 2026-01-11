@@ -38,7 +38,7 @@ interface ChartBar {
   provider: string;
   is_intraday: boolean;
   is_forecast: boolean;
-  data_status: string;
+  data_status: string | null;
   confidence_score?: number;
   upper_band?: number;
   lower_band?: number;
@@ -52,12 +52,14 @@ const MAX_BARS_BY_TIMEFRAME: Record<string, number> = {
   w1: 2000,
 };
 const DEFAULT_MAX_BARS = 1000;
+const POSTGREST_MAX_ROWS = 1000;
 
 function isValidChartBarArray(data: unknown): data is ChartBar[] {
   if (!Array.isArray(data)) return false;
   if (data.length === 0) return true;
 
   const isNumberOrNull = (v: unknown) => v === null || typeof v === 'number';
+  const isStringOrNull = (v: unknown) => v === null || typeof v === 'string';
 
   return (data as unknown[]).every((item) => {
     if (item === null || typeof item !== 'object') return false;
@@ -65,7 +67,7 @@ function isValidChartBarArray(data: unknown): data is ChartBar[] {
     return (
       typeof bar.ts === 'string' &&
       typeof bar.provider === 'string' &&
-      typeof bar.data_status === 'string' &&
+      isStringOrNull(bar.data_status) &&
       typeof bar.is_intraday === 'boolean' &&
       typeof bar.is_forecast === 'boolean' &&
       isNumberOrNull(bar.open) &&
@@ -138,14 +140,10 @@ serve(async (req) => {
     // Fetch data using the v2 function
     console.log(`[chart-data-v2] Fetching: symbol_id=${symbolId}, timeframe=${timeframe}, start=${startDate.toISOString()}, end=${endDate.toISOString()}`);
     
-    // Use dynamic query first to guarantee newest bars (orders DESC, no date filters)
-    const maxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ?? DEFAULT_MAX_BARS;
+    const requestedMaxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ?? DEFAULT_MAX_BARS;
+    const maxBars = Math.min(requestedMaxBars, POSTGREST_MAX_ROWS);
 
-    let chartData: ChartBar[] | null = null;
-    let chartError: PostgrestError | null = null;
-    let dataSource = 'dynamic';
-
-    const { data: dynamicData, error: dynamicError } = await supabase
+    const { data: dynamicData, error: chartError } = await supabase
       .rpc('get_chart_data_v2_dynamic', {
         p_symbol_id: symbolId,
         p_timeframe: timeframe,
@@ -153,30 +151,9 @@ serve(async (req) => {
         p_include_forecast: includeForecast,
       });
 
-    if (!dynamicError && isValidChartBarArray(dynamicData)) {
-      chartData = dynamicData as ChartBar[];
-    } else {
-      console.warn('[chart-data-v2] Dynamic RPC failed, falling back to legacy query', dynamicError);
-      dataSource = 'legacy';
-
-      // Legacy RPC always includes forecasts (p_include_forecast=true in SQL); we filter manually when includeForecast is false
-      const { data: legacyData, error: legacyError } = await supabase
-        .rpc('get_chart_data_v2', {
-          p_symbol_id: symbolId,
-          p_timeframe: timeframe,
-        });
-
-      if (!legacyError && legacyData) {
-        if (includeForecast) {
-          chartData = legacyData.slice(-maxBars); // take most recent maxBars entries
-        } else {
-          chartData = legacyData
-            .filter((bar) => !bar.is_forecast)
-            .slice(-maxBars); // take most recent maxBars entries
-        }
-      }
-      chartError = legacyError;
-    }
+    const chartData = (!chartError && isValidChartBarArray(dynamicData))
+      ? (dynamicData as ChartBar[])
+      : null;
 
     if (chartError) {
       console.error('[chart-data-v2] RPC error:', chartError);
@@ -193,7 +170,7 @@ serve(async (req) => {
     }
 
     // Guard against empty/invalid results when no explicit error was returned
-    if (!chartError && chartData === null) {
+    if (chartData === null) {
       const fallbackError = buildChartError('No chart data returned from either dynamic or legacy RPC');
       console.error('[chart-data-v2] No data from dynamic or legacy RPC');
       return new Response(
@@ -207,7 +184,7 @@ serve(async (req) => {
       );
     }
     
-    console.log(`[chart-data-v2] Success: received ${chartData?.length || 0} bars (source=${dataSource})`);
+    console.log(`[chart-data-v2] Success: received ${chartData.length} bars (maxBars=${maxBars})`);
     
     // DEBUG: Log the newest and oldest bars to diagnose staleness
     if (chartData && chartData.length > 0) {

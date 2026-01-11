@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 60;
+	objectVersion = 56;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -227,7 +227,6 @@
 			children = (
 				A5000002233456780000002 /* SwiftBoltML */,
 				A5000010233456780000010 /* Products */,
-				F6FD047F2F0D764400AF337E /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -785,7 +784,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
 
 /* Begin XCRemoteSwiftPackageReference section */
 		F6370B2E2F13761B00011F78 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
