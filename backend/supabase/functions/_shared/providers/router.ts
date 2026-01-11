@@ -106,7 +106,8 @@ async function fetchTradierOptionLiquidity(
 
       for (const quote of quoteArray) {
         const symbol = quote?.symbol?.toUpperCase();
-        if (!symbol || !/^[A-Z0-9_.-]+$/.test(symbol)) continue;
+        // Allow standard OCC-style option symbols (alphanumeric plus optional suffix separators)
+        if (!symbol || !/^[A-Z0-9._]+$/.test(symbol)) continue;
         result.set(symbol, {
           volume: toNumber(quote.volume),
           openInterest: toNumber(quote.open_interest),

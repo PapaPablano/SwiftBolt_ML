@@ -70,6 +70,11 @@ interface OptionsRankingsResponse {
   };
 }
 
+interface PriceHistoryRow {
+  contract_symbol: string;
+  mark: number | null;
+}
+
 serve(async (req: Request): Promise<Response> => {
   const HISTORY_LOOKBACK_DAYS = 30;
   const PRICE_PROVIDER = "alpaca";
@@ -199,7 +204,7 @@ serve(async (req: Request): Promise<Response> => {
       const sinceIso = new Date(Date.now() - HISTORY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
       const { data: historyRows, error: historyError } = await supabase
         .from("options_price_history")
-        .select("contract_symbol, mark")
+        .select<PriceHistoryRow>("contract_symbol, mark")
         .in("contract_symbol", contractSymbols)
         .gte("snapshot_at", sinceIso);
 
@@ -207,16 +212,20 @@ serve(async (req: Request): Promise<Response> => {
         console.warn("[Options Rankings] History fetch warning:", historyError.message);
       } else {
         for (const row of historyRows || []) {
-          const rawSymbol = (row as any).contract_symbol;
+          const rawSymbol = row.contract_symbol;
           if (typeof rawSymbol !== "string") continue;
           const symbolKey = rawSymbol.toUpperCase();
-          const entry = historyMap.get(symbolKey) || { count: 0, sum: 0 };
-          const markVal = Number((row as any).mark);
-          if (!Number.isNaN(markVal)) {
+
+          if (!historyMap.has(symbolKey)) {
+            historyMap.set(symbolKey, { count: 0, sum: 0 });
+          }
+
+          const entry = historyMap.get(symbolKey)!;
+          const markVal = row.mark;
+          if (typeof markVal === "number" && !Number.isNaN(markVal)) {
             entry.sum += markVal;
             entry.count += 1;
           }
-          historyMap.set(symbolKey, entry);
         }
       }
     }
