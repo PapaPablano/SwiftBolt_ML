@@ -17,6 +17,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import type { PostgrestError } from 'https://esm.sh/@supabase/supabase-js@2';
 
 interface ChartRequest {
   symbol: string;
@@ -41,6 +42,48 @@ interface ChartBar {
   confidence_score?: number;
   upper_band?: number;
   lower_band?: number;
+}
+
+const MAX_BARS_BY_TIMEFRAME: Record<string, number> = {
+  m15: 2000,
+  h1: 1500,
+  h4: 1000,
+  d1: 2000,
+  w1: 2000,
+};
+const DEFAULT_MAX_BARS = 1000;
+
+function isValidChartBarArray(data: unknown): data is ChartBar[] {
+  if (!Array.isArray(data)) return false;
+  if (data.length === 0) return true;
+
+  const isNumberOrNull = (v: unknown) => v === null || typeof v === 'number';
+
+  return (data as unknown[]).every((item) => {
+    if (item === null || typeof item !== 'object') return false;
+    const bar = item as Partial<ChartBar>;
+    return (
+      typeof bar.ts === 'string' &&
+      typeof bar.provider === 'string' &&
+      typeof bar.data_status === 'string' &&
+      typeof bar.is_intraday === 'boolean' &&
+      typeof bar.is_forecast === 'boolean' &&
+      isNumberOrNull(bar.open) &&
+      isNumberOrNull(bar.high) &&
+      isNumberOrNull(bar.low) &&
+      isNumberOrNull(bar.close) &&
+      isNumberOrNull(bar.volume)
+    );
+  });
+}
+
+function buildChartError(message: string): PostgrestError {
+  return {
+    message,
+    details: null,
+    hint: null,
+    code: 'NO_CHART_DATA',
+  };
 }
 
 serve(async (req) => {
@@ -95,13 +138,45 @@ serve(async (req) => {
     // Fetch data using the v2 function
     console.log(`[chart-data-v2] Fetching: symbol_id=${symbolId}, timeframe=${timeframe}, start=${startDate.toISOString()}, end=${endDate.toISOString()}`);
     
-    const { data: chartData, error: chartError } = await supabase
-      .rpc('get_chart_data_v2', {
+    // Use dynamic query first to guarantee newest bars (orders DESC, no date filters)
+    const maxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ?? DEFAULT_MAX_BARS;
+
+    let chartData: ChartBar[] | null = null;
+    let chartError: PostgrestError | null = null;
+    let dataSource = 'dynamic';
+
+    const { data: dynamicData, error: dynamicError } = await supabase
+      .rpc('get_chart_data_v2_dynamic', {
         p_symbol_id: symbolId,
         p_timeframe: timeframe,
-        p_start_date: startDate.toISOString(),
-        p_end_date: endDate.toISOString(),
+        p_max_bars: maxBars,
+        p_include_forecast: includeForecast,
       });
+
+    if (!dynamicError && isValidChartBarArray(dynamicData)) {
+      chartData = dynamicData as ChartBar[];
+    } else {
+      console.warn('[chart-data-v2] Dynamic RPC failed, falling back to legacy query', dynamicError);
+      dataSource = 'legacy';
+
+      // Legacy RPC always includes forecasts (p_include_forecast=true in SQL); we filter manually when includeForecast is false
+      const { data: legacyData, error: legacyError } = await supabase
+        .rpc('get_chart_data_v2', {
+          p_symbol_id: symbolId,
+          p_timeframe: timeframe,
+        });
+
+      if (!legacyError && legacyData) {
+        if (includeForecast) {
+          chartData = legacyData.slice(-maxBars); // take most recent maxBars entries
+        } else {
+          chartData = legacyData
+            .filter((bar) => !bar.is_forecast)
+            .slice(-maxBars); // take most recent maxBars entries
+        }
+      }
+      chartError = legacyError;
+    }
 
     if (chartError) {
       console.error('[chart-data-v2] RPC error:', chartError);
@@ -116,8 +191,23 @@ serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Guard against empty/invalid results when no explicit error was returned
+    if (!chartError && chartData === null) {
+      const fallbackError = buildChartError('No chart data returned from either dynamic or legacy RPC');
+      console.error('[chart-data-v2] No data from dynamic or legacy RPC');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to fetch chart data', 
+          details: fallbackError.message,
+          hint: fallbackError.hint,
+          code: fallbackError.code
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     
-    console.log(`[chart-data-v2] Success: received ${chartData?.length || 0} bars`);
+    console.log(`[chart-data-v2] Success: received ${chartData?.length || 0} bars (source=${dataSource})`);
     
     // DEBUG: Log the newest and oldest bars to diagnose staleness
     if (chartData && chartData.length > 0) {
