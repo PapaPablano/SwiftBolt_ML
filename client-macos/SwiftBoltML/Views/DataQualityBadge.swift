@@ -30,7 +30,7 @@ struct DataQualityBadge: View {
                     showDetails.toggle()
                 }
                 .popover(isPresented: $showDetails) {
-                    DataQualityDetailsView(quality: quality)
+                    DataQualityBadgePopover(quality: quality)
                 }
             }
         }
@@ -83,7 +83,7 @@ struct DataQualityBadge: View {
 }
 
 /// Detailed Data Quality View (shown in popover)
-struct DataQualityDetailsView: View {
+struct DataQualityBadgePopover: View {
     let quality: DataQuality
     
     var body: some View {
