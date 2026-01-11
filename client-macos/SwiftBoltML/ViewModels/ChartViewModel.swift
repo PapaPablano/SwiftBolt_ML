@@ -526,11 +526,28 @@ final class ChartViewModel: ObservableObject {
                     // - Historical: Alpaca (all historical data, dates < today)
                     // - Intraday: Alpaca (today's live data only)
                     // - Forecast: ML predictions (future dates)
+                    
+                    // Request generous date range - database now intelligently fetches
+                    // from most recent data backwards, ensuring latest bars always included
+                    let daysToRequest: Int
+                    switch timeframe {
+                    case .m15:
+                        daysToRequest = 60   // 15m: Request 2 months, DB limits to ~3 weeks
+                    case .h1:
+                        daysToRequest = 180  // 1h: Request 6 months, DB limits to ~3 months
+                    case .h4:
+                        daysToRequest = 365  // 4h: Request 1 year, DB limits to ~6 months
+                    case .d1:
+                        daysToRequest = 3650 // Daily: Request 10 years, DB limits to ~8 years
+                    case .w1:
+                        daysToRequest = 7300 // Weekly: Request 20 years, DB limits to ~38 years
+                    }
+                    
                     print("[DEBUG] Requesting chart-data-v2 symbol=\(symbol.ticker) timeframe=\(timeframe.apiToken)")
                     var response = try await APIClient.shared.fetchChartV2(
                         symbol: symbol.ticker,
                         timeframe: timeframe.apiToken,
-                        days: 730,  // Request 2 years of historical data
+                        days: daysToRequest,
                         includeForecast: true,
                         forecastDays: 10
                     )
@@ -563,7 +580,7 @@ final class ChartViewModel: ObservableObject {
                                 let peek = try await APIClient.shared.fetchChartV2(
                                     symbol: symbol.ticker,
                                     timeframe: timeframe.apiToken,
-                                    days: 730,
+                                    days: daysToRequest,
                                     includeForecast: true,
                                     forecastDays: 10
                                 )
@@ -1056,11 +1073,20 @@ final class ChartViewModel: ObservableObject {
                         break
                     }
 
-                    // Fetch updated chart data
+                    // Fetch updated chart data - use generous range, DB handles intelligent limiting
+                    let daysToRequest: Int
+                    switch self.timeframe {
+                    case .m15: daysToRequest = 60
+                    case .h1: daysToRequest = 180
+                    case .h4: daysToRequest = 365
+                    case .d1: daysToRequest = 3650
+                    case .w1: daysToRequest = 7300
+                    }
+                    
                     let peek = try await APIClient.shared.fetchChartV2(
                         symbol: symbol,
                         timeframe: self.timeframe.apiToken,
-                        days: 730,
+                        days: daysToRequest,
                         includeForecast: true,
                         forecastDays: 10
                     )
