@@ -125,6 +125,7 @@ serve(async (req) => {
       console.warn('[chart-data-v2] Dynamic RPC failed, falling back to legacy query', dynamicError);
       dataSource = 'legacy';
 
+      // Legacy RPC doesn't support includeForecast flag; we filter forecasts manually below
       const { data: legacyData, error: legacyError } = await supabase
         .rpc('get_chart_data_v2', {
           p_symbol_id: symbolId,
@@ -134,7 +135,7 @@ serve(async (req) => {
         });
 
       if (!legacyError && legacyData) {
-        chartData = includeForecast ? legacyData : legacyData.filter((bar: any) => !bar.is_forecast);
+        chartData = includeForecast ? legacyData : legacyData.filter((bar: ChartBar) => !bar.is_forecast);
       }
       chartError = legacyError;
     }
