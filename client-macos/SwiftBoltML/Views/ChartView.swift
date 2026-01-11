@@ -159,6 +159,29 @@ struct ChartView: View {
                             )
                             .padding(.horizontal)
                             .padding(.top, 8)
+
+                            if !mlSummary.horizons.isEmpty {
+                                let horizons = mlSummary.horizons
+                                let selection = Binding<String>(
+                                    get: { chartViewModel.selectedForecastHorizon ?? horizons.first?.horizon ?? "" },
+                                    set: { chartViewModel.selectedForecastHorizon = $0 }
+                                )
+
+                                VStack(alignment: .leading, spacing: 8) {
+                                    if horizons.count > 1 {
+                                        Picker("Forecast Horizon", selection: selection) {
+                                            ForEach(horizons, id: \.horizon) { series in
+                                                Text(series.horizon).tag(series.horizon)
+                                            }
+                                        }
+                                        .pickerStyle(.segmented)
+                                    }
+
+                                    ForecastQualityPanel(summary: mlSummary)
+                                }
+                                .padding(.horizontal)
+                                .padding(.top, 8)
+                            }
                         }
 
                         // Choose chart renderer based on config
@@ -554,6 +577,54 @@ struct IndicatorToggleMenu: View {
         }
         .menuStyle(.borderlessButton)
         .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+}
+
+private struct ForecastQualityPanel: View {
+    let summary: MLSummary
+
+    private var confidenceText: String {
+        "\(Int(summary.confidence * 100))%"
+    }
+
+    private var labelText: String {
+        (summary.overallLabel ?? "Neutral").capitalized
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Forecast Quality")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 12) {
+                Label(labelText, systemImage: "chart.line.uptrend.xyaxis")
+                    .font(.callout)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.accentColor.opacity(0.12))
+                    .cornerRadius(6)
+
+                Label("Confidence \(confidenceText)", systemImage: "shield.checkerboard")
+                    .font(.callout)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.secondary.opacity(0.12))
+                    .cornerRadius(6)
+
+                if let ensemble = summary.ensembleType {
+                    Label(ensemble.uppercased(), systemImage: "brain.head.profile")
+                        .font(.callout)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.secondary.opacity(0.08))
+                        .cornerRadius(6)
+                }
+            }
+        }
+        .padding()
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(10)
     }
 }
 

@@ -637,6 +637,41 @@ removeSeries: function(id) {
             const color = options.color || colors.forecastBullish;
             const bandColor = options.bandColor || `${color}33`;  // 20% opacity
 
+            const lowerMap = new Map(lowerData.map(p => [p.time, p.value]));
+            const bandCandles = upperData
+                .map(p => {
+                    const lower = lowerMap.get(p.time);
+                    if (lower === undefined) return null;
+                    return {
+                        time: p.time,
+                        open: lower,
+                        high: p.value,
+                        low: lower,
+                        close: p.value
+                    };
+                })
+                .filter(Boolean);
+
+            if (bandCandles.length > 0) {
+                if (!state.series['forecast-band']) {
+                    state.series['forecast-band'] = state.chart.addCandlestickSeries({
+                        upColor: bandColor,
+                        downColor: bandColor,
+                        borderUpColor: 'transparent',
+                        borderDownColor: 'transparent',
+                        wickUpColor: 'transparent',
+                        wickDownColor: 'transparent',
+                        priceLineVisible: false,
+                        lastValueVisible: false
+                    });
+                }
+
+                const sortedBand = bandCandles.sort((a, b) => a.time - b.time);
+                state.series['forecast-band'].setData(sortedBand);
+            } else if (state.series['forecast-band']) {
+                state.series['forecast-band'].setData([]);
+            }
+
             // Mid line (main forecast)
             this.setLine('forecast-mid', midData, {
                 color: color,
