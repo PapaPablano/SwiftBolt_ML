@@ -139,7 +139,7 @@ BEGIN
     ELSE 1000
   END;
 
-  -- Use the dynamic function which fetches from most recent backwards
+  -- Simply return the most recent bars, no date filtering
   RETURN QUERY
   SELECT 
     d.ts, d.open, d.high, d.low, d.close, d.volume, 
@@ -150,25 +150,11 @@ BEGIN
     p_timeframe,
     v_max_bars,
     true
-  ) AS d
-  WHERE 
-    d.ts::timestamptz >= GREATEST(
-      p_start_date,
-      CASE p_timeframe
-        WHEN 'm15' THEN NOW() - INTERVAL '60 days'
-        WHEN 'h1' THEN NOW() - INTERVAL '180 days'
-        WHEN 'h4' THEN NOW() - INTERVAL '365 days'
-        WHEN 'd1' THEN NOW() - INTERVAL '3650 days'
-        WHEN 'w1' THEN NOW() - INTERVAL '7300 days'
-        ELSE NOW() - INTERVAL '730 days'
-      END
-    )
-    AND d.ts::timestamptz <= p_end_date;
+  ) AS d;
 END;
 $$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION get_chart_data_v2(UUID, VARCHAR, TIMESTAMPTZ, TIMESTAMPTZ) IS
-'Returns chart data with intelligent date range handling.
-Fetches from most recent data backwards, then applies date range filter.
-This ensures latest bars are always included even with large date ranges or data gaps.
-Automatically limits lookback period per timeframe to prevent excessive data retrieval.';
+'Returns the most recent N bars for the given timeframe, working backwards from today.
+Always shows the latest available data first, then historical bars up to the limit.
+No date range filtering - just returns the most recent bars.';
