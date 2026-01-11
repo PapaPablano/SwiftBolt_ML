@@ -118,6 +118,23 @@ serve(async (req) => {
     }
     
     console.log(`[chart-data-v2] Success: received ${chartData?.length || 0} bars`);
+    
+    // DEBUG: Log the newest and oldest bars to diagnose staleness
+    if (chartData && chartData.length > 0) {
+      const oldest = chartData[0];
+      const newest = chartData[chartData.length - 1];
+      console.log(`[chart-data-v2] DEBUG: Oldest bar: ${oldest.ts} (${oldest.provider})`);
+      console.log(`[chart-data-v2] DEBUG: Newest bar: ${newest.ts} (${newest.provider})`);
+      
+      const newestDate = new Date(newest.ts);
+      const now = new Date();
+      const ageHours = (now.getTime() - newestDate.getTime()) / (1000 * 60 * 60);
+      console.log(`[chart-data-v2] DEBUG: Newest bar age: ${ageHours.toFixed(1)} hours`);
+      
+      if (ageHours > 24) {
+        console.warn(`[chart-data-v2] ⚠️ WARNING: Newest bar is ${(ageHours / 24).toFixed(1)} days old!`);
+      }
+    }
 
     // Separate data into layers for client-side rendering
     // Use DATE comparison instead of is_intraday flag (flag may be incorrect for historical data)

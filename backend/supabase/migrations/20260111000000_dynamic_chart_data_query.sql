@@ -26,7 +26,8 @@ RETURNS TABLE (
 BEGIN
   RETURN QUERY
   WITH recent_data AS (
-    -- Get historical + today's data, ordered by most recent first
+    -- CRITICAL FIX: Simplified WHERE clause to ensure most recent bars are ALWAYS included
+    -- Previous complex date filtering could exclude recent data
     SELECT
       o.ts AS bar_ts,
       o.open,
@@ -45,13 +46,9 @@ BEGIN
     WHERE o.symbol_id = p_symbol_id
       AND o.timeframe = p_timeframe
       AND o.is_forecast = false
-      AND (
-        -- Historical: any data before today from valid providers
-        (DATE(o.ts) < CURRENT_DATE AND o.provider IN ('polygon', 'alpaca', 'yfinance'))
-        OR
-        -- Today: intraday data from tradier or alpaca
-        (DATE(o.ts) = CURRENT_DATE AND o.is_intraday = true AND o.provider IN ('tradier', 'alpaca'))
-      )
+      -- Simplified: Accept data from ANY valid provider without date restrictions
+      -- This guarantees we get the most recent N bars regardless of date/provider
+      AND o.provider IN ('alpaca', 'polygon', 'tradier', 'yfinance')
     ORDER BY o.ts DESC
     LIMIT p_max_bars
   ),
@@ -81,7 +78,7 @@ BEGIN
     ORDER BY o.ts ASC
     LIMIT 20
   )
-  -- Combine and return in chronological order
+  -- Combine and return in chronological order (oldest to newest for chart display)
   SELECT
     to_char(combined.bar_ts AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
     combined.open, combined.high, combined.low, combined.close, combined.volume, combined.provider,
@@ -97,12 +94,14 @@ END;
 $$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION get_chart_data_v2_dynamic(UUID, VARCHAR, INT, BOOLEAN) IS
-'Returns chart data starting from most recent available data and working backwards.
-This ensures the latest bars are always included regardless of historical data gaps.
-- Fetches up to p_max_bars of historical + today data (most recent first)
-- Optionally includes forecast data (future dates)
-- Returns all data in chronological order (oldest to newest)
-This approach is resilient to data gaps and always prioritizes recent data.';
+'Returns the most recent N bars for charting, GUARANTEED to include latest data.
+CRITICAL FIX APPLIED: Simplified WHERE clause removes complex date filtering that could exclude recent bars.
+- Fetches most recent p_max_bars by timestamp (DESC order)
+- Accepts data from any valid provider (alpaca, polygon, tradier, yfinance)
+- No date-based filtering that might exclude recent data
+- Returns data in chronological order (ASC) for chart display
+- Optionally includes forecast data for future dates
+This ensures charts ALWAYS show the newest available bars.';
 
 -- Update the original function to use the new dynamic approach
 CREATE OR REPLACE FUNCTION get_chart_data_v2(
