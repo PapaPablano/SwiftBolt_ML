@@ -88,6 +88,7 @@ jobs:
           retention-days: 7
       
       - name: Check for critical gaps
+        continue-on-error: true  # Don't fail workflow during initial backfill phase
         run: |
           cd ml
           # Exit with error if validation found issues (for notifications)
