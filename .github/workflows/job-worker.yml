@@ -1,9 +1,9 @@
 name: ML Job Worker
 
 on:
-  # Run every 5 minutes to process pending jobs
+  # Run every 10 minutes during market hours to process pending jobs
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/10 13-22 * * 1-5'
   
   # Allow manual trigger
   workflow_dispatch:
@@ -27,10 +27,34 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      - name: Check market window (Mon–Fri 13:30–22:00 UTC)
+        id: market_window
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Manual trigger override"
+            exit 0
+          fi
+          dow=$(date -u +%u)
+          hour=$(date -u +%H)
+          minute=$(date -u +%M)
+          if [ "$dow" -gt 5 ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$hour" -lt 13 ] || [ "$hour" -gt 22 ] || { [ "$hour" -eq 13 ] && [ "$minute" -lt 30 ]; }; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+          echo "Within market window"
+
       - name: Checkout repository
+        if: steps.market_window.outputs.run == 'true'
         uses: actions/checkout@v4
 
       - name: Set up Python
+        if: steps.market_window.outputs.run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -38,12 +62,14 @@ jobs:
           cache-dependency-path: ml/requirements.txt
 
       - name: Install dependencies
+        if: steps.market_window.outputs.run == 'true'
         working-directory: ml
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run forecast job worker
+        if: steps.market_window.outputs.run == 'true'
         working-directory: ml
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -57,6 +83,7 @@ jobs:
           fi
 
       - name: Run ranking job worker
+        if: steps.market_window.outputs.run == 'true'
         working-directory: ml
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
