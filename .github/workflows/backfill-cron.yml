@@ -40,7 +40,7 @@ jobs:
           curl -f -X POST \
             "https://cygflaemtmwiwaviclks.supabase.co/functions/v1/trigger-backfill" \
             -H "Content-Type: application/json" \
-            -H "Authorization: ******" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
             -d '{}'
         continue-on-error: true
 
