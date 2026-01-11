@@ -53,24 +53,51 @@ echo -e "${BLUE}Checking timeframes: ${TIMEFRAMES}${NC}\n"
 
 # Create SQL query
 SQL_QUERY=$(cat <<'EOF'
-WITH data_quality AS (
-  SELECT 
+WITH ranked AS (
+  SELECT
     s.ticker,
     o.timeframe,
-    COUNT(*) as bar_count,
-    MIN(o.ts) as oldest_bar,
-    MAX(o.ts) as newest_bar,
-    EXTRACT(EPOCH FROM (NOW() - MAX(o.ts))) / 3600 as age_hours,
-    EXTRACT(DAY FROM (MAX(o.ts) - MIN(o.ts))) as depth_days
+    o.ts,
+    o.provider,
+    ROW_NUMBER() OVER (
+      PARTITION BY s.ticker, o.timeframe, o.ts
+      ORDER BY
+        CASE o.provider
+          WHEN 'alpaca' THEN 1
+          WHEN 'polygon' THEN 2
+          WHEN 'yfinance' THEN 3
+          WHEN 'tradier' THEN 4
+          ELSE 5
+        END
+    ) AS rn
   FROM ohlc_bars_v2 o
   JOIN symbols s ON s.id = o.symbol_id
   WHERE s.ticker IN (:symbols)
     AND o.timeframe IN (:timeframes)
     AND o.is_forecast = false
-    AND o.provider = 'alpaca'
-  GROUP BY s.ticker, o.timeframe
+    AND o.provider IN ('alpaca', 'polygon', 'yfinance', 'tradier')
+),
+dedup AS (
+  SELECT
+    ticker,
+    timeframe,
+    ts
+  FROM ranked
+  WHERE rn = 1
+),
+data_quality AS (
+  SELECT
+    ticker,
+    timeframe,
+    COUNT(*) as bar_count,
+    MIN(ts) as oldest_bar,
+    MAX(ts) as newest_bar,
+    EXTRACT(EPOCH FROM (NOW() - MAX(ts))) / 3600 as age_hours,
+    EXTRACT(DAY FROM (MAX(ts) - MIN(ts))) as depth_days
+  FROM dedup
+  GROUP BY ticker, timeframe
 )
-SELECT 
+SELECT
   ticker,
   timeframe,
   bar_count,
