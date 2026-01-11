@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import Supabase
 
 struct BackfillStatusView: View {
     @StateObject private var backfillService: BackfillService

@@ -109,6 +109,7 @@ class MarketStatusService: ObservableObject {
     }
     
     deinit {
-        stopMonitoring()
+        timer?.invalidate()
+        timer = nil
     }
 }

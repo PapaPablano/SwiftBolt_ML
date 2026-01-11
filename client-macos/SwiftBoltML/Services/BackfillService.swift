@@ -35,13 +35,13 @@ class BackfillService: ObservableObject {
         defer { isLoading = false }
 
         do {
-            let result = try await supabase.rpc(
-                "request_symbol_backfill",
-                params: [
-                    "p_ticker": ticker,
-                    "p_timeframes": timeframes
-                ]
-            ).execute()
+            struct BackfillParams: Encodable {
+                let p_ticker: String
+                let p_timeframes: [String]
+            }
+            
+            let params = BackfillParams(p_ticker: ticker, p_timeframes: timeframes)
+            let result = try await supabase.rpc("request_symbol_backfill", params: params).execute()
 
             let response = try JSONDecoder().decode(BackfillResult.self, from: result.data)
             return response

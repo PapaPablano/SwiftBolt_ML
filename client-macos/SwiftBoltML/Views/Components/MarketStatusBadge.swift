@@ -16,7 +16,7 @@ struct MarketStatusBadge: View {
             if let nextEvent = marketService.nextEvent {
                 Text("• \(timeUntil(nextEvent))")
                     .font(.caption2)
-                    .foregroundColor(.tertiary)
+                    .foregroundStyle(.tertiary)
             }
         }
         .padding(.horizontal, 8)

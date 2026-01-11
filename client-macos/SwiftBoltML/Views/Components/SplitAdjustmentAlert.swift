@@ -27,7 +27,7 @@ struct SplitAdjustmentAlert: View {
             
             Text("Historical prices have been automatically adjusted.")
                 .font(.caption)
-                .foregroundColor(.tertiary)
+                .foregroundStyle(.tertiary)
         }
         .padding()
         .background(Color.orange.opacity(0.1))
