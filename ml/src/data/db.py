@@ -6,7 +6,6 @@ from typing import Any, Generator
 
 import pandas as pd
 import psycopg2
-from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 
 from config.settings import settings
@@ -69,7 +68,7 @@ class Database:
                 query = """
                     SELECT ts, open, high, low, close, volume
                     FROM ohlc_bars_v2
-                    WHERE symbol_id = %s 
+                    WHERE symbol_id = %s
                       AND timeframe = %s
                       AND provider = 'alpaca'
                       AND is_forecast = false

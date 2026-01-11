@@ -23,11 +23,10 @@ Usage:
 
 import logging
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -136,7 +135,9 @@ class LogisticRegressionModel:
             Probability (0-1)
         """
         # Filter to only same-type pivots
-        same_type_levels = [l for l in existing_levels if l.is_support == is_support]
+        same_type_levels = [
+            level for level in existing_levels if level.is_support == is_support
+        ]
 
         if not same_type_levels:
             return 0.0
@@ -262,10 +263,16 @@ class LogisticSRIndicator:
         self._filter_levels(df)
 
         # Separate support and resistance levels
-        support_levels = [l for l in self._regression_levels if l.is_support]
-        resistance_levels = [l for l in self._regression_levels if not l.is_support]
+        support_levels = [
+            level for level in self._regression_levels if level.is_support
+        ]
+        resistance_levels = [
+            level for level in self._regression_levels if not level.is_support
+        ]
         respected_levels = [
-            l for l in self._all_levels if l.times_respected >= self.settings.target_respects
+            level
+            for level in self._all_levels
+            if level.times_respected >= self.settings.target_respects
         ]
 
         # Find nearest support and resistance
@@ -274,10 +281,14 @@ class LogisticSRIndicator:
         nearest_resistance = None
 
         active_supports = [
-            l.level for l in support_levels if l.end_index is None and l.level < current_price
+            level.level
+            for level in support_levels
+            if level.end_index is None and level.level < current_price
         ]
         active_resistances = [
-            l.level for l in resistance_levels if l.end_index is None and l.level > current_price
+            level.level
+            for level in resistance_levels
+            if level.end_index is None and level.level > current_price
         ]
 
         if active_supports:
@@ -301,8 +312,8 @@ class LogisticSRIndicator:
         )
 
         return {
-            "support_levels": [l.to_dict() for l in support_levels],
-            "resistance_levels": [l.to_dict() for l in resistance_levels],
+            "support_levels": [level.to_dict() for level in support_levels],
+            "resistance_levels": [level.to_dict() for level in resistance_levels],
             "nearest_support": nearest_support,
             "nearest_resistance": nearest_resistance,
             "support_distance_pct": (
@@ -620,7 +631,9 @@ class LogisticSRIndicator:
     def _filter_levels(self, df: pd.DataFrame) -> None:
         """Filter levels for display based on settings."""
         # Filter by regression prediction
-        self._regression_levels = [l for l in self._all_levels if l.detected_by_regression]
+        self._regression_levels = [
+            level for level in self._all_levels if level.detected_by_regression
+        ]
 
         # Filter far lines if enabled
         if self.settings.hide_far_lines and len(df) > 0:
@@ -667,7 +680,12 @@ class LogisticSRIndicator:
 
         if result["nearest_support"] and support_levels:
             nearest_support_level = next(
-                (l for l in support_levels if l["level"] == result["nearest_support"]), None
+                (
+                    level
+                    for level in support_levels
+                    if level["level"] == result["nearest_support"]
+                ),
+                None,
             )
             df["logistic_support_prob"] = (
                 nearest_support_level["probability"] if nearest_support_level else None
@@ -677,7 +695,12 @@ class LogisticSRIndicator:
 
         if result["nearest_resistance"] and resistance_levels:
             nearest_resistance_level = next(
-                (l for l in resistance_levels if l["level"] == result["nearest_resistance"]), None
+                (
+                    level
+                    for level in resistance_levels
+                    if level["level"] == result["nearest_resistance"]
+                ),
+                None,
             )
             df["logistic_resistance_prob"] = (
                 nearest_resistance_level["probability"] if nearest_resistance_level else None

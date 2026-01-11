@@ -258,7 +258,6 @@ def optimize_weights(
 
     # Adjust layer weights inversely to weak performers
     # (diversify by boosting underperformers slightly)
-    total_acc = st_acc + ens_acc + 0.01  # Avoid div by zero
 
     new_weights = ForecastWeights()
 

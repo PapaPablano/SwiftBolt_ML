@@ -14,7 +14,6 @@ Supported timeframes (matching ChartViewModel.availableTimeframes):
 import logging
 from typing import Callable, Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 
 from .technical_indicators import add_all_technical_features

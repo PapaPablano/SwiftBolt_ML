@@ -13,16 +13,15 @@ from pathlib import Path
 # Add parent directories to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-import json
-from datetime import datetime, timedelta
-from typing import Optional
+import json  # noqa: E402
+from datetime import datetime, timedelta  # noqa: E402
+from typing import Optional  # noqa: E402
 
-import numpy as np
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-import streamlit as st
-from plotly.subplots import make_subplots
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import plotly.express as px  # noqa: E402
+import plotly.graph_objects as go  # noqa: E402
+import streamlit as st  # noqa: E402
 
 # Page configuration
 st.set_page_config(
@@ -55,7 +54,6 @@ st.markdown(
 def get_db_connection():
     """Get database connection for fetching data."""
     try:
-        from config.settings import settings
         from src.data.supabase_db import SupabaseDatabase
 
         return SupabaseDatabase()
@@ -70,23 +68,6 @@ def fetch_forecasts(db) -> pd.DataFrame:
         return get_sample_forecasts()
 
     try:
-        query = """
-            SELECT
-                s.ticker as symbol,
-                f.horizon,
-                f.overall_label as label,
-                f.confidence,
-                f.model_agreement,
-                f.quality_score,
-                f.run_at,
-                f.backtest_metrics,
-                f.training_stats
-            FROM ml_forecasts f
-            JOIN symbols s ON f.symbol_id = s.id
-            WHERE f.run_at > NOW() - INTERVAL '7 days'
-            ORDER BY f.run_at DESC
-            LIMIT 500
-        """
         result = (
             db.client.table("ml_forecasts")
             .select("*, symbols(ticker)")
@@ -412,7 +393,7 @@ def render_model_performance(df: pd.DataFrame):
         if isinstance(bt, str):
             try:
                 bt = json.loads(bt)
-            except:
+            except Exception:
                 bt = {}
         if bt:
             metrics_data.append(
@@ -555,7 +536,7 @@ def render_feature_importance(df: pd.DataFrame):
         if isinstance(ts, str):
             try:
                 ts = json.loads(ts)
-            except:
+            except Exception:
                 ts = {}
 
         top_features = ts.get("top_features", [])

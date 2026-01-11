@@ -20,16 +20,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config.settings import settings
-from src.data.supabase_db import db
-from src.options_strategy_ga import (
+from config.settings import settings  # noqa: E402
+from src.data.supabase_db import db  # noqa: E402
+from src.options_strategy_ga import (  # noqa: E402
     OptionsStrategyGA,
-    StrategyGenes,
-    analyze_strategy,
     fetch_training_data,
     save_ga_parameters,
 )
@@ -209,7 +206,7 @@ def run_ga_optimization(
             logger.info("=" * 60)
             logger.info("GA OPTIMIZATION COMPLETE")
             logger.info("=" * 60)
-            logger.info(f"Best Strategy:")
+            logger.info("Best Strategy:")
             logger.info(f"  Win Rate: {fitness.win_rate:.1%}")
             logger.info(f"  Profit Factor: {fitness.profit_factor:.2f}")
             logger.info(f"  Sharpe Ratio: {fitness.sharpe_ratio:.2f}")

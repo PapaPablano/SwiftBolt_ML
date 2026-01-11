@@ -14,10 +14,9 @@ Tests included:
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
-import pandas as pd
 from scipy import stats
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 

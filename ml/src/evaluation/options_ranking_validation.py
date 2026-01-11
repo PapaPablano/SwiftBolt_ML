@@ -16,8 +16,7 @@ Key validations:
 """
 
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -473,9 +472,9 @@ class OptionsRankingValidator:
         if is_significant:
             interp = f"Scores positively correlate with returns (ρ={correlation:.3f})"
         elif correlation > 0:
-            interp = f"Weak positive correlation, not statistically significant"
+            interp = "Weak positive correlation, not statistically significant"
         else:
-            interp = f"No positive correlation between scores and returns"
+            interp = "No positive correlation between scores and returns"
 
         return RankingValidationResult(
             metric="Spearman Correlation",
