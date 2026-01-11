@@ -133,7 +133,7 @@ struct WebChartView: NSViewRepresentable {
                 .sink { [weak self] _ in
                     guard let self = self else { return }
                     let performUpdate = {
-                        if let dataV2 = self.parent.viewModel.chartDataV2 {
+                        if self.parent.viewModel.chartDataV2 != nil {
                             self.applyForecastOverlay()
                         } else if let data = self.parent.viewModel.chartData {
                             self.applyLegacyForecastOverlay(with: data)
@@ -146,8 +146,7 @@ struct WebChartView: NSViewRepresentable {
                         self.parent.bridge.$isReady
                             .filter { $0 }
                             .first()
-                            .sink { [weak self] _ in
-                                guard let self = self else { return }
+                            .sink { _ in
                                 performUpdate()
                             }
                             .store(in: &self.cancellables)
