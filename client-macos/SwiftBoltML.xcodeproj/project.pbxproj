@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -77,18 +77,18 @@
 		F6161BC02EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6161BBF2EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift */; };
 		F6161BC12EF2D49A0065ABA1 /* OptionRankDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6161BBE2EF2D49A0065ABA1 /* OptionRankDetailView.swift */; };
 		F6370B212F13723F00011F78 /* DataQualityBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6370B202F13723F00011F78 /* DataQualityBadge.swift */; };
+		F6370B242F1374A700011F78 /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = F6370B232F1374A700011F78 /* Auth */; };
+		F6370B262F1374A700011F78 /* Functions in Frameworks */ = {isa = PBXBuildFile; productRef = F6370B252F1374A700011F78 /* Functions */; };
+		F6370B282F1374A700011F78 /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = F6370B272F1374A700011F78 /* PostgREST */; };
+		F6370B2A2F1374A700011F78 /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = F6370B292F1374A700011F78 /* Realtime */; };
+		F6370B2C2F1374A700011F78 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = F6370B2B2F1374A700011F78 /* Storage */; };
+		F6370B302F13761B00011F78 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = F6370B2F2F13761B00011F78 /* Supabase */; };
 		F64681A92EF0E00900FBEF04 /* MLReportCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F64681A82EF0E00900FBEF04 /* MLReportCard.swift */; };
 		F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */; };
 		F6F972F42F0F72670010C828 /* ChartCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F972F32F0F72670010C828 /* ChartCache.swift */; };
 		F6FD04842F0D8B0C00AF337E /* Timeframe.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6FD04832F0D8B0C00AF337E /* Timeframe.swift */; };
 		F768A2A036F22E169CA9E8AC /* ReloadWatchlistResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B11ECAF44D603B49B6D931 /* ReloadWatchlistResponse.swift */; };
 		FF7F2A0E2FD7B4A0009F9712 /* QuoteResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */; };
-		OHC10001233456780000001 /* OptionHistoryChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = OHC20001233456780000001 /* OptionHistoryChartView.swift */; };
-		SA0000012345678900000003 /* StrikeAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SA0000012345678900000004 /* StrikeAnalysisView.swift */; };
-		SR0000012345678900000001 /* SupportResistanceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000002 /* SupportResistanceModels.swift */; };
-		SR0000012345678900000003 /* SupportResistanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000004 /* SupportResistanceView.swift */; };
-		TRGA0000123456789ABCDEF /* GAStrategyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */; };
-		WC734A8413BAD142EF9439139C /* WebChartControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */; };
 		MF0001012345678900000001 /* BackfillService.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000001 /* BackfillService.swift */; };
 		MF0001012345678900000002 /* BackfillStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000002 /* BackfillStatusView.swift */; };
 		MF0001012345678900000003 /* CacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000003 /* CacheManager.swift */; };
@@ -99,6 +99,12 @@
 		MF0001012345678900000008 /* MarketStatusService.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000008 /* MarketStatusService.swift */; };
 		MF0001012345678900000009 /* SecondaryDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000009 /* SecondaryDataSource.swift */; };
 		MF0001012345678900000010 /* SplitAdjustmentAlert.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000010 /* SplitAdjustmentAlert.swift */; };
+		OHC10001233456780000001 /* OptionHistoryChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = OHC20001233456780000001 /* OptionHistoryChartView.swift */; };
+		SA0000012345678900000003 /* StrikeAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SA0000012345678900000004 /* StrikeAnalysisView.swift */; };
+		SR0000012345678900000001 /* SupportResistanceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000002 /* SupportResistanceModels.swift */; };
+		SR0000012345678900000003 /* SupportResistanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000004 /* SupportResistanceView.swift */; };
+		TRGA0000123456789ABCDEF /* GAStrategyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */; };
+		WC734A8413BAD142EF9439139C /* WebChartControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -169,7 +175,7 @@
 		F050475A57EE1E86842D9FB8 /* WebChartView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WebChartView.swift; sourceTree = "<group>"; };
 		F60BB96A2EF036FA0044BE7E /* OptionContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionContract.swift; sourceTree = "<group>"; };
 		F60BB96B2EF036FA0044BE7E /* OptionsChainResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainResponse.swift; sourceTree = "<group>"; };
-		F60BB96E2EF036FA0044BE7E /* OptionsChainViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = OptionsChainViewModel.swift; path = SwiftBoltML/ViewModels/OptionsChainViewModel.swift; sourceTree = SOURCE_ROOT; };
+		F60BB96E2EF036FA0044BE7E /* OptionsChainViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainViewModel.swift; sourceTree = "<group>"; };
 		F60BB9702EF037360044BE7E /* OptionsChainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsChainView.swift; sourceTree = "<group>"; };
 		F6161BBE2EF2D49A0065ABA1 /* OptionRankDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionRankDetailView.swift; sourceTree = "<group>"; };
 		F6161BBF2EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsRankerExpiryView.swift; sourceTree = "<group>"; };
@@ -181,12 +187,6 @@
 		F857540C973ADC971FC52E92 /* SupportResistanceOverlayView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SupportResistanceOverlayView.swift; sourceTree = "<group>"; };
 		F903565D8F0B0D702A53E8B0 /* lightweight-charts.standalone.production.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = "lightweight-charts.standalone.production.js"; sourceTree = "<group>"; };
 		FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuoteResponse.swift; sourceTree = "<group>"; };
-		OHC20001233456780000001 /* OptionHistoryChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionHistoryChartView.swift; sourceTree = "<group>"; };
-		SA0000012345678900000004 /* StrikeAnalysisView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrikeAnalysisView.swift; sourceTree = "<group>"; };
-		SR0000012345678900000002 /* SupportResistanceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportResistanceModels.swift; sourceTree = "<group>"; };
-		SR0000012345678900000004 /* SupportResistanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportResistanceView.swift; sourceTree = "<group>"; };
-		TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GAStrategyModels.swift; sourceTree = "<group>"; };
-		WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebChartControlsView.swift; sourceTree = "<group>"; };
 		MF0002012345678900000001 /* BackfillService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackfillService.swift; sourceTree = "<group>"; };
 		MF0002012345678900000002 /* BackfillStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackfillStatusView.swift; sourceTree = "<group>"; };
 		MF0002012345678900000003 /* CacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheManager.swift; sourceTree = "<group>"; };
@@ -197,6 +197,12 @@
 		MF0002012345678900000008 /* MarketStatusService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketStatusService.swift; sourceTree = "<group>"; };
 		MF0002012345678900000009 /* SecondaryDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecondaryDataSource.swift; sourceTree = "<group>"; };
 		MF0002012345678900000010 /* SplitAdjustmentAlert.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplitAdjustmentAlert.swift; sourceTree = "<group>"; };
+		OHC20001233456780000001 /* OptionHistoryChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionHistoryChartView.swift; sourceTree = "<group>"; };
+		SA0000012345678900000004 /* StrikeAnalysisView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrikeAnalysisView.swift; sourceTree = "<group>"; };
+		SR0000012345678900000002 /* SupportResistanceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportResistanceModels.swift; sourceTree = "<group>"; };
+		SR0000012345678900000004 /* SupportResistanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportResistanceView.swift; sourceTree = "<group>"; };
+		TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GAStrategyModels.swift; sourceTree = "<group>"; };
+		WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebChartControlsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -204,6 +210,12 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F6370B302F13761B00011F78 /* Supabase in Frameworks */,
+				F6370B282F1374A700011F78 /* PostgREST in Frameworks */,
+				F6370B262F1374A700011F78 /* Functions in Frameworks */,
+				F6370B242F1374A700011F78 /* Auth in Frameworks */,
+				F6370B2C2F1374A700011F78 /* Storage in Frameworks */,
+				F6370B2A2F1374A700011F78 /* Realtime in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -297,6 +309,7 @@
 				9956271A37FA42982A5F0DDC /* PredictionsViewModel.swift */,
 				0128CA566A7D864E3938B3FA /* OptionsRankerViewModel.swift */,
 				2FB6D0158AE11968F0D3B3C2 /* AnalysisViewModel.swift */,
+				F60BB96E2EF036FA0044BE7E /* OptionsChainViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -372,14 +385,6 @@
 			path = WebChart;
 			sourceTree = "<group>";
 		};
-		F6FD047F2F0D764400AF337E /* Recovered References */ = {
-			isa = PBXGroup;
-			children = (
-				F60BB96E2EF036FA0044BE7E /* OptionsChainViewModel.swift */,
-			);
-			name = "Recovered References";
-			sourceTree = "<group>";
-		};
 		F89BDDD0E2F7083E6DF7258B /* Resources */ = {
 			isa = PBXGroup;
 			children = (
@@ -451,6 +456,9 @@
 				Base,
 			);
 			mainGroup = A5000001233456780000001;
+			packageReferences = (
+				F6370B2E2F13761B00011F78 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			productRefGroup = A5000010233456780000010 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -777,6 +785,51 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F6370B2E2F13761B00011F78 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F6370B232F1374A700011F78 /* Auth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F6370B2E2F13761B00011F78 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Auth;
+		};
+		F6370B252F1374A700011F78 /* Functions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F6370B2E2F13761B00011F78 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Functions;
+		};
+		F6370B272F1374A700011F78 /* PostgREST */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F6370B2E2F13761B00011F78 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = PostgREST;
+		};
+		F6370B292F1374A700011F78 /* Realtime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F6370B2E2F13761B00011F78 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Realtime;
+		};
+		F6370B2B2F1374A700011F78 /* Storage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F6370B2E2F13761B00011F78 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Storage;
+		};
+		F6370B2F2F13761B00011F78 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F6370B2E2F13761B00011F78 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A9000001233456780000001 /* Project object */;
 }
