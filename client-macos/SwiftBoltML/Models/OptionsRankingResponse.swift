@@ -115,6 +115,11 @@ struct OptionRank: Codable, Identifiable {
     let volume: Int?
     let volOiRatio: Double?
     let liquidityConfidence: Double?
+    let priceProvider: String?
+    let oiProvider: String?
+    let historySamples: Int?
+    let historyAvgMark: Double?
+    let historyWindowDays: Int?
 
     // Pricing
     let bid: Double?
@@ -269,6 +274,14 @@ struct OptionRank: Codable, Identifiable {
         let days = Int(seconds / 86400)
         return "\(days)d"
     }
+
+    var historyCoverageLabel: String? {
+        guard let samples = historySamples, samples > 0 else { return nil }
+        if let window = historyWindowDays {
+            return "\(samples) samples / \(window)d"
+        }
+        return "\(samples) samples"
+    }
 }
 
 // Extension for easy preview/testing
@@ -296,6 +309,11 @@ extension OptionRank {
         volume: 1200,
         volOiRatio: 0.24,
         liquidityConfidence: 0.85,
+        priceProvider: "alpaca",
+        oiProvider: "tradier",
+        historySamples: 30,
+        historyAvgMark: 5.1,
+        historyWindowDays: 30,
         bid: 5.20,
         ask: 5.30,
         mark: 5.25,

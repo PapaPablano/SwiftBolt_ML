@@ -466,6 +466,27 @@ struct RankedOptionRow: View {
                     quoteStack
                 }
 
+                if let metaLine = providerMetaLine {
+                    HStack(spacing: 8) {
+                        if let price = rank.priceProvider {
+                            Label("Px: \(price.uppercased())", systemImage: "bolt.fill")
+                        }
+                        if let oi = rank.oiProvider {
+                            Label("OI: \(oi.uppercased())", systemImage: "chart.bar.doc.horizontal")
+                        }
+                        if let history = rank.historyCoverageLabel {
+                            Label(history, systemImage: "clock.arrow.circlepath")
+                        }
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(metaLine)
+                    .accessibilityHint("Data providers and history coverage")
+                }
+
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         if let dte = rank.daysToExpiry {
@@ -650,6 +671,15 @@ struct RankedOptionRow: View {
         }
     }
 
+    private var providerMetaLine: String? {
+        let parts = [
+            rank.priceProvider.map { "Price: \($0.uppercased())" },
+            rank.oiProvider.map { "OI: \($0.uppercased())" },
+            rank.historyCoverageLabel.map { "History: \($0)" }
+        ].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " • ")
+    }
+
 }
 
 struct LoadingRankerView: View {
@@ -760,4 +790,3 @@ struct GeneratingRankingsView: View {
         .environmentObject(AppViewModel())
         .frame(width: 400, height: 600)
 }
-

@@ -132,7 +132,7 @@ export function initializeProviders(): ProviderRouter {
       fallback: "finnhub" as ProviderId,
     },
     optionsChain: {
-      primary: "finnhub" as ProviderId,
+      primary: "alpaca" as ProviderId,
       fallback: undefined,
     },
   };

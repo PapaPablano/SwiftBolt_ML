@@ -60,10 +60,12 @@ export interface OptionContract {
   ask: number;
   last: number;
   mark: number; // Midpoint of bid/ask
+  priceProvider?: ProviderId;
 
   // Volume & Open Interest
   volume: number;
   openInterest: number;
+  oiProvider?: ProviderId;
 
   // Greeks (optional, may not always be available)
   delta?: number;
@@ -79,6 +81,10 @@ export interface OptionContract {
   lastTradeTime?: number;
   changePercent?: number;
   change?: number;
+  // Historical metrics
+  historySamples?: number;
+  historyAvgMark?: number;
+  historyWindowDays?: number;
 }
 
 export interface OptionsChain {
@@ -87,6 +93,11 @@ export interface OptionsChain {
   expirations: number[]; // Array of expiration timestamps
   calls: OptionContract[];
   puts: OptionContract[];
+  providers?: {
+    price: ProviderId;
+    liquidity?: ProviderId;
+    history?: ProviderId | "supabase";
+  };
 }
 
 // Crypto types

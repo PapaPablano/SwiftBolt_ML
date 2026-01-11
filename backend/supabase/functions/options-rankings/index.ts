@@ -43,6 +43,13 @@ interface OptionRank {
   ask?: number;
   mark?: number;
   lastPrice?: number;
+  liquidityConfidence?: number;
+  // Providers/history
+  priceProvider?: string;
+  oiProvider?: string;
+  historySamples?: number;
+  historyAvgMark?: number;
+  historyWindowDays?: number;
   // Signals
   signalDiscount?: boolean;
   signalRunner?: boolean;
@@ -63,7 +70,15 @@ interface OptionsRankingsResponse {
   };
 }
 
+interface PriceHistoryRow {
+  contract_symbol: string;
+  mark: number | null;
+}
+
 serve(async (req: Request): Promise<Response> => {
+  const HISTORY_LOOKBACK_DAYS = 30;
+  const PRICE_PROVIDER = "alpaca";
+  const OI_PROVIDER = Deno.env.get("TRADIER_API_KEY") ? "tradier" : "alpaca";
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return handleCorsOptions();
@@ -179,51 +194,99 @@ serve(async (req: Request): Promise<Response> => {
       return errorResponse("Failed to fetch options rankings", 500);
     }
 
+    // Build history lookup map for average mark over recent window
+    const historyMap = new Map<string, { count: number; sum: number }>();
+    const contractSymbols = (ranksData || [])
+      .map((row: any) => row.contract_symbol)
+      .filter((sym: string | null | undefined) => !!sym);
+
+    if (contractSymbols.length > 0) {
+      const sinceIso = new Date(Date.now() - HISTORY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      const { data: historyRows, error: historyError } = await supabase
+        .from("options_price_history")
+        .select<PriceHistoryRow>("contract_symbol, mark")
+        .in("contract_symbol", contractSymbols)
+        .gte("snapshot_at", sinceIso);
+
+      if (historyError) {
+        console.warn("[Options Rankings] History fetch warning:", historyError.message);
+      } else {
+        for (const row of historyRows || []) {
+          const rawSymbol = row.contract_symbol;
+          if (typeof rawSymbol !== "string") continue;
+          const symbolKey = rawSymbol.toUpperCase();
+
+          if (!historyMap.has(symbolKey)) {
+            historyMap.set(symbolKey, { count: 0, sum: 0 });
+          }
+
+          const entry = historyMap.get(symbolKey)!;
+          const markVal = row.mark;
+          if (typeof markVal === "number" && !Number.isNaN(markVal)) {
+            entry.sum += markVal;
+            entry.count += 1;
+          }
+        }
+      }
+    }
+
     // Transform database rows to response format
-    const ranks: OptionRank[] = (ranksData || []).map((row: any) => ({
-      id: row.id,
-      contractSymbol: row.contract_symbol || `${symbol}${new Date(row.expiry).toISOString().slice(2, 10).replace(/-/g, '')}${row.side === 'call' ? 'C' : 'P'}${(row.strike * 1000).toString().padStart(8, '0')}`,
-      expiry: row.expiry,
-      strike: row.strike,
-      side: row.side,
-      mlScore: row.ml_score,
-      // Momentum Framework Scores
-      compositeRank: row.composite_rank,
-      momentumScore: row.momentum_score,
-      valueScore: row.value_score,
-      greeksScore: row.greeks_score,
-      relativeValueScore: row.relative_value_score,
-      entryDifficultyScore: row.entry_difficulty_score,
-      rankingStabilityScore: row.ranking_stability_score,
-      rankingMode: row.ranking_mode,
-      // IV Metrics
-      impliedVol: row.implied_vol,
-      ivRank: row.iv_rank,
-      spreadPct: row.spread_pct,
-      // Greeks
-      delta: row.delta,
-      gamma: row.gamma,
-      theta: row.theta,
-      vega: row.vega,
-      rho: row.rho,
-      // Volume/Liquidity
-      openInterest: row.open_interest,
-      volume: row.volume,
-      volOiRatio: row.vol_oi_ratio,
-      // Pricing
-      bid: row.bid,
-      ask: row.ask,
-      mark: row.mark,
-      lastPrice: row.last_price,
-      // Signals
-      signalDiscount: row.signal_discount,
-      signalRunner: row.signal_runner,
-      signalGreeks: row.signal_greeks,
-      signalBuy: row.signal_buy,
-      signals: row.signals,
-      // Meta
-      runAt: row.run_at,
-    }));
+    const ranks: OptionRank[] = (ranksData || []).map((row: any) => {
+      const computedSymbol = row.contract_symbol || `${symbol}${new Date(row.expiry).toISOString().slice(2, 10).replace(/-/g, '')}${row.side === 'call' ? 'C' : 'P'}${(row.strike * 1000).toString().padStart(8, '0')}`;
+      const historyStats = computedSymbol ? historyMap.get(computedSymbol.toUpperCase()) : undefined;
+      const historySamples = historyStats?.count ?? 0;
+
+      return {
+        id: row.id,
+        contractSymbol: computedSymbol,
+        expiry: row.expiry,
+        strike: row.strike,
+        side: row.side,
+        mlScore: row.ml_score,
+        // Momentum Framework Scores
+        compositeRank: row.composite_rank,
+        momentumScore: row.momentum_score,
+        valueScore: row.value_score,
+        greeksScore: row.greeks_score,
+        relativeValueScore: row.relative_value_score,
+        entryDifficultyScore: row.entry_difficulty_score,
+        rankingStabilityScore: row.ranking_stability_score,
+        rankingMode: row.ranking_mode,
+        // IV Metrics
+        impliedVol: row.implied_vol,
+        ivRank: row.iv_rank,
+        spreadPct: row.spread_pct,
+        // Greeks
+        delta: row.delta,
+        gamma: row.gamma,
+        theta: row.theta,
+        vega: row.vega,
+        rho: row.rho,
+        // Volume/Liquidity
+        openInterest: row.open_interest,
+        volume: row.volume,
+        volOiRatio: row.vol_oi_ratio,
+        liquidityConfidence: row.liquidity_confidence,
+        // Pricing
+        bid: row.bid,
+        ask: row.ask,
+        mark: row.mark,
+        lastPrice: row.last_price,
+        priceProvider: PRICE_PROVIDER,
+        oiProvider: OI_PROVIDER,
+        historySamples: historySamples,
+        historyAvgMark: historyStats && historyStats.count > 0 ? historyStats.sum / historyStats.count : undefined,
+        historyWindowDays: historySamples > 0 ? HISTORY_LOOKBACK_DAYS : undefined,
+        // Signals
+        signalDiscount: row.signal_discount,
+        signalRunner: row.signal_runner,
+        signalGreeks: row.signal_greeks,
+        signalBuy: row.signal_buy,
+        signals: row.signals,
+        // Meta
+        runAt: row.run_at,
+      };
+    });
 
     const response: OptionsRankingsResponse = {
       symbol,
