@@ -40,7 +40,8 @@ struct ChartView: View {
                 symbol: chartViewModel.selectedSymbol,
                 lastBar: chartViewModel.bars.last,
                 liveQuote: chartViewModel.liveQuote,
-                marketState: chartViewModel.marketState
+                marketState: chartViewModel.marketState,
+                dataQuality: chartViewModel.chartDataV2?.dataQuality
             )
 
             HStack {
@@ -244,6 +245,7 @@ struct ChartHeader: View {
     let lastBar: OHLCBar?
     let liveQuote: LiveQuote?
     let marketState: String?
+    let dataQuality: DataQuality?
 
     private var displayedPrice: Double? {
         if let liveQuote {
@@ -265,8 +267,13 @@ struct ChartHeader: View {
         return HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 if let symbol = symbol {
-                    Text(symbol.ticker)
-                        .font(.title.bold())
+                    HStack(spacing: 8) {
+                        Text(symbol.ticker)
+                            .font(.title.bold())
+                        
+                        // Data quality badge
+                        DataQualityBadge(dataQuality: dataQuality)
+                    }
 
                     if let subtitle = subtitle {
                         Text(subtitle)

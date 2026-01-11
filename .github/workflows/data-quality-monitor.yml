@@ -1,0 +1,141 @@
+name: Data Quality Monitor
+
+# Monitors data quality across all timeframes and alerts on staleness
+# Runs after each data refresh to ensure quality standards are met
+
+on:
+  schedule:
+    # Run every 6 hours to check data quality
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      symbols:
+        description: 'Symbols to check (comma-separated)'
+        required: false
+        type: string
+        default: 'AAPL,MSFT,NVDA,TSLA,META'
+      
+concurrency:
+  group: data-quality-monitor-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup environment
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          # Create .env for validation script
+          cat > .env << EOF
+          DATABASE_URL=${DATABASE_URL}
+          SUPABASE_URL=${SUPABASE_URL}
+          SUPABASE_KEY=${SUPABASE_KEY}
+          EOF
+      
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      
+      - name: Run data quality validation
+        id: validate
+        run: |
+          SYMBOLS="${{ github.event.inputs.symbols || 'AAPL,MSFT,NVDA,TSLA,META' }}"
+          
+          echo "## Data Quality Report - $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Run validation script
+          chmod +x scripts/validate_data_quality.sh
+          if ./scripts/validate_data_quality.sh "$SYMBOLS" > /tmp/report.txt 2>&1; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "✅ Data quality validation PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "❌ Data quality validation FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Add report to summary
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat /tmp/report.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+      
+      - name: Check for stale data
+        if: steps.validate.outputs.status == 'failure'
+        run: |
+          echo "::warning::Data quality issues detected. Check the report for details."
+          echo "Consider running the comprehensive backfill workflow to fix data gaps."
+      
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-quality-report-${{ github.run_number }}
+          path: /tmp/report.txt
+          retention-days: 14
+      
+      - name: Create issue on repeated failures
+        if: steps.validate.outputs.status == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Check if there's already an open issue about data quality
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'data-quality'
+            });
+            
+            if (issues.data.length === 0) {
+              // Create new issue
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: 'Data Quality Issues Detected',
+                body: `## Data Quality Validation Failed
+                
+The automated data quality check has detected issues with chart data freshness or depth.
+
+**Workflow Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+### Recommended Actions
+
+1. **Check data freshness:**
+   - Review the validation report artifact
+   - Identify which symbols/timeframes are stale
+   
+2. **Run comprehensive backfill:**
+   \`\`\`bash
+   # Manually trigger backfill workflow
+   gh workflow run daily-data-refresh.yml --field force_full_backfill=true
+   \`\`\`
+   
+3. **Verify GitHub Actions:**
+   - Check if \`alpaca-intraday-cron.yml\` is running regularly
+   - Verify Alpaca API credentials are valid
+   - Check for rate limiting issues
+   
+4. **Database investigation:**
+   - Connect to database and run diagnostic queries
+   - Check for gaps in historical data
+   
+This issue will auto-close when data quality validation passes.`,
+                labels: ['data-quality', 'automated']
+              });
+              
+              core.notice('Created new data quality issue');
+            } else {
+              core.notice('Data quality issue already exists');
+            }
+
