@@ -70,17 +70,13 @@ logger.info(
     if settings.supabase_url
     else "Supabase URL: NOT SET"
 )
-key_status = (
-    f"SET ({len(settings.supabase_key)} chars)"
-    if settings.supabase_key
-    else "NOT SET"
-)
+key_status = f"SET ({len(settings.supabase_key)} chars)" if settings.supabase_key else "NOT SET"
 logger.info(f"Supabase Key: {key_status}")
 if not settings.supabase_url or not settings.supabase_key:
     logger.error("❌ Missing required Supabase credentials!")
     logger.error("Environment variables check:")
-    url_env = os.getenv('SUPABASE_URL')
-    url_status = url_env[:30] if url_env else 'NOT SET'
+    url_env = os.getenv("SUPABASE_URL")
+    url_status = url_env[:30] if url_env else "NOT SET"
     logger.error(f"  SUPABASE_URL: {url_status}")
     logger.error(f"  SUPABASE_KEY: {'SET' if os.getenv('SUPABASE_KEY') else 'NOT SET'}")
     sys.exit(1)
