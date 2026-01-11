@@ -1,14 +1,12 @@
 """Unit tests for Performance Monitor."""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from src.models.performance_monitor import (
     AlertRecord,
-    CalibrationSnapshot,
     ModelHealthChecker,
     PerformanceMonitor,
     PerformanceRecord,

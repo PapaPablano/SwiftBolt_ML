@@ -10,16 +10,15 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta  # noqa: E402
 
-import numpy as np
-import pandas as pd
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
 
-from src.evaluation.options_ranking_validation import (
+from src.evaluation.options_ranking_validation import (  # noqa: E402
     OptionsRankingValidator,
-    validate_options_ranking,
 )
-from src.models.enhanced_options_ranker import EnhancedOptionsRanker
+from src.models.enhanced_options_ranker import EnhancedOptionsRanker  # noqa: E402
 
 
 def generate_synthetic_options_data(n_contracts: int = 100) -> pd.DataFrame:
