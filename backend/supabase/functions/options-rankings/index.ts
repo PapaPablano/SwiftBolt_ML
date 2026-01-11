@@ -207,14 +207,13 @@ serve(async (req: Request): Promise<Response> => {
         console.warn("[Options Rankings] History fetch warning:", historyError.message);
       } else {
         for (const row of historyRows || []) {
-          const symbolKey = (row as any).contract_symbol?.toUpperCase?.() || (row as any).contract_symbol;
-          if (!symbolKey) continue;
+          const rawSymbol = (row as any).contract_symbol;
+          if (typeof rawSymbol !== "string") continue;
+          const symbolKey = rawSymbol.toUpperCase();
           const entry = historyMap.get(symbolKey) || { count: 0, sum: 0 };
           const markVal = Number((row as any).mark);
           if (!Number.isNaN(markVal)) {
             entry.sum += markVal;
-            entry.count += 1;
-          } else {
             entry.count += 1;
           }
           historyMap.set(symbolKey, entry);

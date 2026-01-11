@@ -482,7 +482,9 @@ struct RankedOptionRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .accessibilityElement(children: .ignore)
                     .accessibilityLabel(metaLine)
+                    .accessibilityHint("Data providers and history coverage")
                 }
 
                 ScrollView(.horizontal, showsIndicators: false) {
