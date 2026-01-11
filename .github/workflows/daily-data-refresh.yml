@@ -51,6 +51,11 @@ jobs:
       
       - name: Run incremental data refresh
         if: ${{ !inputs.force_full_backfill }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
         run: |
           cd ml
           echo "📊 Running incremental data refresh for all timeframes..."

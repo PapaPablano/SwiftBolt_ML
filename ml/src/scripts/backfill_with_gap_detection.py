@@ -180,6 +180,11 @@ def main():
             )
             if issue['largest_gap']:
                 gap_start, gap_end = issue['largest_gap']
+                # Convert string timestamps to datetime if needed
+                if isinstance(gap_start, str):
+                    from datetime import datetime
+                    gap_start = datetime.fromisoformat(gap_start.replace('Z', '+00:00'))
+                    gap_end = datetime.fromisoformat(gap_end.replace('Z', '+00:00'))
                 gap_days = (gap_end - gap_start).days
                 logger.info(f"    Largest gap: {gap_days} days ({gap_start} to {gap_end})")
         
