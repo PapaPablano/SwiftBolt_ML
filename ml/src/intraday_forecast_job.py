@@ -7,10 +7,12 @@ to learn optimal layer weights for the main daily forecast system.
 import argparse
 import logging
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import numpy as np
+import pandas as pd
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -24,6 +26,7 @@ from src.features.technical_indicators import add_technical_features  # noqa: E4
 from src.forecast_synthesizer import ForecastSynthesizer  # noqa: E402
 from src.forecast_weights import get_default_weights  # noqa: E402
 from src.models.baseline_forecaster import BaselineForecaster  # noqa: E402
+from src.models.arima_garch_forecaster import ArimaGarchForecaster  # noqa: E402
 from src.models.ensemble_forecaster import EnsembleForecaster  # noqa: E402
 from src.strategies.supertrend_ai import SuperTrendAI  # noqa: E402
 
@@ -51,6 +54,117 @@ HORIZON_CONFIG = {
         "indicator_scale": 0.5,
     },
 }
+
+
+def timeframe_interval_seconds(timeframe: str) -> int:
+    if timeframe == "m15":
+        return 15 * 60
+    if timeframe == "h1":
+        return 60 * 60
+    if timeframe == "h4":
+        return 4 * 60 * 60
+    raise ValueError(f"Unknown timeframe: {timeframe}")
+
+
+def build_intraday_path_points(
+    df,
+    *,
+    steps: int,
+    interval_sec: int,
+    confidence: float,
+) -> list[dict]:
+    closes = df["close"].astype(float)
+    returns = closes.pct_change().dropna()
+    last_close = float(closes.iloc[-1])
+    last_ts = df["ts"].iloc[-1]
+    last_dt = pd.to_datetime(last_ts, utc=True).to_pydatetime()
+    et = ZoneInfo("America/New_York")
+    open_t = time(9, 30)
+    close_t = time(16, 0)
+
+    def next_trading_dt(dt_utc: datetime) -> datetime:
+        candidate = dt_utc
+        while True:
+            local = candidate.astimezone(et)
+
+            if local.weekday() >= 5:
+                days_ahead = 7 - local.weekday()
+                local = (local + timedelta(days=days_ahead)).replace(
+                    hour=open_t.hour,
+                    minute=open_t.minute,
+                    second=0,
+                    microsecond=0,
+                )
+                candidate = local.astimezone(timezone.utc)
+                continue
+
+            if local.time() < open_t:
+                local = local.replace(
+                    hour=open_t.hour,
+                    minute=open_t.minute,
+                    second=0,
+                    microsecond=0,
+                )
+                candidate = local.astimezone(timezone.utc)
+                continue
+
+            if local.time() > close_t:
+                local = (local + timedelta(days=1)).replace(
+                    hour=open_t.hour,
+                    minute=open_t.minute,
+                    second=0,
+                    microsecond=0,
+                )
+                candidate = local.astimezone(timezone.utc)
+                continue
+
+            return candidate
+
+    try:
+        forecaster = ArimaGarchForecaster(
+            arima_order=(1, 0, 1),
+            auto_select_order=False,
+            bullish_threshold=0.002,
+            bearish_threshold=-0.002,
+        )
+        forecaster.train(df, min_samples=100)
+
+        forecast_result = forecaster.fitted_arima.get_forecast(steps=steps)
+        step_returns = forecast_result.predicted_mean.values
+        step_returns = np.array(step_returns, dtype=float)
+        if step_returns.ndim != 1 or len(step_returns) != steps:
+            raise ValueError("Unexpected ARIMA forecast shape")
+        cum_returns = np.cumsum(step_returns)
+        base_vol = float(max(1e-6, returns.std()))
+    except Exception as exc:
+        logger.warning("Path forecast fallback: %s", exc)
+        step_returns = np.zeros(steps, dtype=float)
+        cum_returns = np.cumsum(step_returns)
+        base_vol = float(max(1e-6, returns.std()))
+
+    conf = float(np.clip(confidence, 0.0, 1.0))
+
+    points: list[dict] = []
+    cursor = next_trading_dt(last_dt)
+    for i in range(1, steps + 1):
+        progress = float(i)
+        value = last_close * (1.0 + float(cum_returns[i - 1]))
+        z = 1.96
+        sigma = base_vol * np.sqrt(progress)
+        band = z * sigma * (1.2 - 0.8 * conf)
+        lower = value * (1.0 - band)
+        upper = value * (1.0 + band)
+        cursor = next_trading_dt(cursor + timedelta(seconds=interval_sec))
+        ts = int(cursor.timestamp())
+        points.append(
+            {
+                "ts": ts,
+                "value": round(float(value), 4),
+                "lower": round(float(lower), 4),
+                "upper": round(float(upper), 4),
+            }
+        )
+    return points
 
 
 def get_expiry_time(horizon: str) -> datetime:
@@ -150,7 +264,7 @@ def convert_supertrend_to_synthesizer_format(st_info: dict) -> dict:
     }
 
 
-def process_symbol_intraday(symbol: str, horizon: str) -> bool:
+def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) -> bool:
     """
     Generate an intraday forecast for a single symbol.
 
@@ -279,7 +393,7 @@ def process_symbol_intraday(symbol: str, horizon: str) -> bool:
         # Calculate expiry time
         expires_at = get_expiry_time(horizon)
 
-        # Save intraday forecast
+        # Save intraday forecast (single-target)
         forecast_id = db.upsert_intraday_forecast(
             symbol_id=symbol_id,
             symbol=symbol,
@@ -308,6 +422,46 @@ def process_symbol_intraday(symbol: str, horizon: str) -> bool:
                 synth_result.confidence * 100,
                 expires_at.strftime("%H:%M"),
             )
+            if generate_paths and horizon == "1h":
+                try:
+                    path_days = int(getattr(settings, "intraday_path_days", 7))
+                except Exception:
+                    path_days = 7
+
+                path_horizon = f"{path_days}d"
+                for tf in ["m15", "h1", "h4"]:
+                    interval_sec = timeframe_interval_seconds(tf)
+                    steps_per_day = int(round((6.5 * 60 * 60) / interval_sec))
+                    steps = max(8, min(500, steps_per_day * path_days))
+
+                    path_df = db.fetch_ohlc_bars(symbol, timeframe=tf, limit=max(300, steps * 4))
+                    if path_df is None or len(path_df) < 120:
+                        continue
+
+                    path_points = build_intraday_path_points(
+                        path_df,
+                        steps=steps,
+                        interval_sec=interval_sec,
+                        confidence=synth_result.confidence,
+                    )
+
+                    expires_at_path = (
+                        datetime.utcnow() + timedelta(minutes=30)
+                    ).isoformat()
+                    db.insert_intraday_forecast_path(
+                        symbol_id=symbol_id,
+                        symbol=symbol,
+                        timeframe=tf,
+                        horizon=path_horizon,
+                        steps=steps,
+                        interval_sec=interval_sec,
+                        overall_label=synth_result.direction.lower(),
+                        confidence=synth_result.confidence,
+                        model_type="arima_garch",
+                        points=path_points,
+                        expires_at=expires_at_path,
+                    )
+
             return True
 
         return False
@@ -333,6 +487,11 @@ def main() -> None:
         default=None,
         help="Single symbol to process (default: all intraday symbols)",
     )
+    parser.add_argument(
+        "--generate-paths",
+        action="store_true",
+        help="Generate and store a multi-step intraday path forecast (e.g., 7d)",
+    )
     args = parser.parse_args()
 
     logger.info("=" * 60)
@@ -350,7 +509,7 @@ def main() -> None:
     fail_count = 0
 
     for symbol in symbols:
-        if process_symbol_intraday(symbol, args.horizon):
+        if process_symbol_intraday(symbol, args.horizon, generate_paths=args.generate_paths):
             success_count += 1
         else:
             fail_count += 1

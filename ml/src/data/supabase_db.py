@@ -1087,6 +1087,53 @@ class SupabaseDatabase:
             )
             return None
 
+    def insert_intraday_forecast_path(
+        self,
+        symbol_id: str,
+        symbol: str,
+        timeframe: str,
+        horizon: str,
+        steps: int,
+        interval_sec: int,
+        overall_label: str,
+        confidence: float,
+        model_type: str,
+        points: list[dict],
+        expires_at: str,
+    ) -> str | None:
+        try:
+            payload = {
+                "symbol_id": symbol_id,
+                "symbol": symbol.upper(),
+                "timeframe": timeframe,
+                "horizon": horizon,
+                "steps": int(steps),
+                "interval_sec": int(interval_sec),
+                "overall_label": overall_label,
+                "confidence": float(confidence),
+                "model_type": model_type,
+                "points": points,
+                "expires_at": expires_at,
+            }
+
+            response = (
+                self.client.table("ml_forecast_paths_intraday")
+                .insert(payload)
+                .execute()
+            )
+
+            if response.data:
+                return response.data[0]["id"]
+            return None
+        except Exception as exc:
+            logger.error(
+                "Error inserting intraday forecast path for %s %s: %s",
+                symbol,
+                timeframe,
+                exc,
+            )
+            return None
+
     def get_pending_intraday_evaluations(
         self,
         horizon: str | None = None,

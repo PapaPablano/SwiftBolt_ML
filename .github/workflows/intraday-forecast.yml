@@ -91,11 +91,11 @@ jobs:
           cd ml
 
           if [ -n "$SYMBOL" ]; then
-            python -m src.intraday_forecast_job --horizon 15m --symbol "$SYMBOL"
-            python -m src.intraday_forecast_job --horizon 1h --symbol "$SYMBOL"
+            python -m src.intraday_forecast_job --horizon 15m --symbol "$SYMBOL" --generate-paths
+            python -m src.intraday_forecast_job --horizon 1h --symbol "$SYMBOL" --generate-paths
           else
-            python -m src.intraday_forecast_job --horizon 15m
-            python -m src.intraday_forecast_job --horizon 1h
+            python -m src.intraday_forecast_job --horizon 15m --generate-paths
+            python -m src.intraday_forecast_job --horizon 1h --generate-paths
           fi
 
       - name: Job summary

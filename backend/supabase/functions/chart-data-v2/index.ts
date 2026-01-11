@@ -298,6 +298,18 @@ serve(async (req) => {
           };
           const horizon = horizonMap[timeframe] || '1h';
 
+          const pathHorizon = '7d';
+          const { data: intradayPath } = await supabase
+            .from('ml_forecast_paths_intraday')
+            .select('*')
+            .eq('symbol_id', symbolId)
+            .eq('timeframe', timeframe)
+            .eq('horizon', pathHorizon)
+            .gte('expires_at', new Date().toISOString())
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
           // Fetch latest intraday forecast
           const { data: intradayForecast } = await supabase
             .from('ml_forecasts_intraday')
@@ -309,7 +321,86 @@ serve(async (req) => {
             .limit(1)
             .single();
 
-          if (intradayForecast) {
+          if (intradayPath && Array.isArray(intradayPath.points) && intradayPath.points.length > 0) {
+            const conf = clampNumber(intradayPath.confidence, 0.5);
+            mlSummary = {
+              overallLabel: intradayPath.overall_label,
+              confidence: conf,
+              horizons: [{
+                horizon: pathHorizon,
+                points: intradayPath.points,
+              }],
+              srLevels: null,
+              srDensity: null,
+            };
+
+            indicators = {
+              supertrendFactor: null,
+              supertrendPerformance: null,
+              supertrendSignal: intradayForecast?.supertrend_direction === 'BULLISH' ? 1 :
+                                 intradayForecast?.supertrend_direction === 'BEARISH' ? -1 : 0,
+              trendLabel: intradayPath.overall_label,
+              trendConfidence: Math.round(conf * 10),
+              stopLevel: null,
+              trendDurationBars: null,
+              rsi: null,
+              adx: null,
+              macdHistogram: null,
+              kdjJ: null,
+            };
+
+            if (intradayForecast) {
+              const intervalSec = timeframeToIntervalSeconds(timeframe);
+
+              const newestNonForecast = [...historical, ...intraday]
+                .filter((b) => !b.is_forecast)
+                .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
+                .pop();
+
+              const baseTsSec = newestNonForecast
+                ? Math.floor(new Date(newestNonForecast.ts).getTime() / 1000)
+                : Math.floor(Date.now() / 1000);
+
+              const targetPrice = Number(intradayForecast.target_price);
+              if (!Number.isFinite(targetPrice)) {
+                throw new Error('[chart-data-v2] intradayForecast.target_price is not a finite number');
+              }
+
+              const currentPrice = clampNumber(intradayForecast.current_price, targetPrice);
+              const fallbackConf = clampNumber(intradayForecast.confidence, conf);
+
+              const defaultStepsByTimeframe: Record<string, number> = {
+                m15: 40,
+                h1: 40,
+                h4: 25,
+              };
+
+              const steps = typeof forecastSteps === 'number'
+                ? Math.floor(forecastSteps)
+                : (defaultStepsByTimeframe[timeframe] ?? 40);
+
+              const shortPoints = intervalSec
+                ? buildIntradayForecastPoints({
+                  baseTsSec,
+                  intervalSec,
+                  steps,
+                  currentPrice,
+                  targetPrice,
+                  confidence: fallbackConf,
+                })
+                : [{
+                  ts: Math.floor(new Date(intradayForecast.expires_at).getTime() / 1000),
+                  value: targetPrice,
+                  lower: targetPrice * 0.98,
+                  upper: targetPrice * 1.02,
+                }];
+
+              mlSummary.horizons.push({
+                horizon: horizon,
+                points: shortPoints,
+              });
+            }
+          } else if (intradayForecast) {
             const intervalSec = timeframeToIntervalSeconds(timeframe);
 
             const newestNonForecast = [...historical, ...intraday]

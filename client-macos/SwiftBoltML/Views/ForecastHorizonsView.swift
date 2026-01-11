@@ -12,23 +12,23 @@ struct ForecastHorizonsView: View {
 
     private var displaySeries: [ForecastDisplayData] {
         horizons.compactMap { series in
-            guard let firstPoint = series.points.first else { return nil }
-            let confidence = ForecastDisplayData.confidenceScore(for: firstPoint)
+            guard let lastPoint = series.points.last else { return nil }
+            let confidence = ForecastDisplayData.confidenceScore(for: lastPoint)
             let color = ForecastDisplayData.directionColor(
-                target: firstPoint.value,
+                target: lastPoint.value,
                 currentPrice: currentPrice
             )
             let timelinePosition = ForecastDisplayData.tradingDayEstimate(for: series.horizon)
             return ForecastDisplayData(
                 horizon: series.horizon,
-                target: firstPoint.value,
-                lower: firstPoint.lower,
-                upper: firstPoint.upper,
+                target: lastPoint.value,
+                lower: lastPoint.lower,
+                upper: lastPoint.upper,
                 confidence: confidence,
                 points: series.points,
                 color: color,
                 deltaPct: ForecastDisplayData.deltaPct(
-                    target: firstPoint.value,
+                    target: lastPoint.value,
                     currentPrice: currentPrice
                 ),
                 timelinePosition: timelinePosition
@@ -705,6 +705,7 @@ private struct ForecastDisplayData: Identifiable {
         if normalized.contains("30") { return 0.06 }
         if normalized.contains("1h") { return 0.1 }
         if normalized.contains("4h") { return 0.3 }
+        if normalized == "7d" || normalized.contains("7d") { return 5 }
         if normalized.contains("1d") || normalized.contains("daily") { return 1 }
         if normalized.contains("1w") || normalized.contains("weekly") { return 5 }
         if normalized.contains("1m") || normalized.contains("monthly") { return 21 }
