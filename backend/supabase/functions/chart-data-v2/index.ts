@@ -95,13 +95,47 @@ serve(async (req) => {
     // Fetch data using the v2 function
     console.log(`[chart-data-v2] Fetching: symbol_id=${symbolId}, timeframe=${timeframe}, start=${startDate.toISOString()}, end=${endDate.toISOString()}`);
     
-    const { data: chartData, error: chartError } = await supabase
-      .rpc('get_chart_data_v2', {
+    // Use dynamic query first to guarantee newest bars (orders DESC, no date filters)
+    const maxBars = (() => {
+      switch (timeframe) {
+        case 'm15': return 2000;
+        case 'h1': return 1500;
+        case 'h4': return 1200;
+        case 'd1': return 2000;
+        case 'w1': return 2000;
+        default: return 1000;
+      }
+    })();
+
+    let chartData = null;
+    let chartError = null;
+    let dataSource = 'dynamic';
+
+    const { data: dynamicData, error: dynamicError } = await supabase
+      .rpc('get_chart_data_v2_dynamic', {
         p_symbol_id: symbolId,
         p_timeframe: timeframe,
-        p_start_date: startDate.toISOString(),
-        p_end_date: endDate.toISOString(),
+        p_max_bars: maxBars,
+        p_include_forecast: includeForecast,
       });
+
+    if (!dynamicError && dynamicData) {
+      chartData = dynamicData;
+    } else {
+      console.warn('[chart-data-v2] Dynamic RPC failed, falling back to legacy query', dynamicError);
+      dataSource = 'legacy';
+
+      const { data: legacyData, error: legacyError } = await supabase
+        .rpc('get_chart_data_v2', {
+          p_symbol_id: symbolId,
+          p_timeframe: timeframe,
+          p_start_date: startDate.toISOString(),
+          p_end_date: endDate.toISOString(),
+        });
+
+      chartData = legacyData;
+      chartError = legacyError;
+    }
 
     if (chartError) {
       console.error('[chart-data-v2] RPC error:', chartError);
@@ -117,7 +151,7 @@ serve(async (req) => {
       );
     }
     
-    console.log(`[chart-data-v2] Success: received ${chartData?.length || 0} bars`);
+    console.log(`[chart-data-v2] Success: received ${chartData?.length || 0} bars (source=${dataSource})`);
     
     // DEBUG: Log the newest and oldest bars to diagnose staleness
     if (chartData && chartData.length > 0) {
