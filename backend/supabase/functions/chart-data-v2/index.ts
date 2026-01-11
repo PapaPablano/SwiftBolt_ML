@@ -43,6 +43,14 @@ interface ChartBar {
   lower_band?: number;
 }
 
+const MAX_BARS_BY_TIMEFRAME: Record<string, number> = {
+  m15: 2000,
+  h1: 1500,
+  h4: 1200,
+  d1: 2000,
+  w1: 2000,
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -96,16 +104,7 @@ serve(async (req) => {
     console.log(`[chart-data-v2] Fetching: symbol_id=${symbolId}, timeframe=${timeframe}, start=${startDate.toISOString()}, end=${endDate.toISOString()}`);
     
     // Use dynamic query first to guarantee newest bars (orders DESC, no date filters)
-    const maxBars = (() => {
-      switch (timeframe) {
-        case 'm15': return 2000;
-        case 'h1': return 1500;
-        case 'h4': return 1200;
-        case 'd1': return 2000;
-        case 'w1': return 2000;
-        default: return 1000;
-      }
-    })();
+    const maxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ?? 1000;
 
     let chartData = null;
     let chartError = null;
@@ -135,7 +134,11 @@ serve(async (req) => {
         });
 
       if (!legacyError && legacyData) {
-        chartData = includeForecast ? legacyData : legacyData.filter((bar: ChartBar) => !bar.is_forecast);
+        if (includeForecast) {
+          chartData = legacyData;
+        } else {
+          chartData = legacyData.filter((bar: ChartBar) => !bar.is_forecast);
+        }
       }
       chartError = legacyError;
     }
