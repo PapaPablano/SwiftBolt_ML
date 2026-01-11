@@ -12,9 +12,8 @@ Phase 2 of the Advanced S/R Integration Strategy.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
-import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
@@ -400,8 +399,8 @@ def create_historical_level_outcomes(
 
     logger.info(
         f"Created {len(levels_with_outcomes)} level outcomes "
-        f"({sum(1 for l in levels_with_outcomes if l['held'])} held, "
-        f"{sum(1 for l in levels_with_outcomes if not l['held'])} broken)"
+        f"({sum(1 for level in levels_with_outcomes if level['held'])} held, "
+        f"{sum(1 for level in levels_with_outcomes if not level['held'])} broken)"
     )
 
     return levels_with_outcomes

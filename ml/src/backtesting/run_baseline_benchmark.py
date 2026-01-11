@@ -21,11 +21,11 @@ import pandas as pd
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from config.settings import settings
-from src.backtesting.walk_forward_tester import BacktestMetrics, WalkForwardBacktester
-from src.data.data_validator import OHLCValidator
-from src.models.baseline_forecaster import BaselineForecaster
-from src.monitoring.confidence_calibrator import ConfidenceCalibrator
+from config.settings import settings  # noqa: E402
+from src.backtesting.walk_forward_tester import WalkForwardBacktester  # noqa: E402
+from src.data.data_validator import OHLCValidator  # noqa: E402
+from src.models.baseline_forecaster import BaselineForecaster  # noqa: E402
+from src.monitoring.confidence_calibrator import ConfidenceCalibrator  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -168,7 +168,7 @@ def run_calibration_benchmark(
             actual_labels.append(predicted_labels[i])
         else:
             other_labels = [
-                l for l in ["bullish", "neutral", "bearish"] if l != predicted_labels[i]
+                level for level in ["bullish", "neutral", "bearish"] if level != predicted_labels[i]
             ]
             actual_labels.append(np.random.choice(other_labels))
 

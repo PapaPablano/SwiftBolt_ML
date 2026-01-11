@@ -14,14 +14,12 @@ import logging
 import subprocess
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config.settings import settings
-from src.data.supabase_db import db
+from src.data.supabase_db import db  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,

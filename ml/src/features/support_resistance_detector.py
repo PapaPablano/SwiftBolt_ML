@@ -97,8 +97,8 @@ class SupportResistanceDetector:
         self.logistic_indicator = LogisticSRIndicator(logistic_settings)
 
         logger.info(
-            f"SupportResistanceDetector initialized with 3 indicators: "
-            f"PivotLevels, PolynomialSR, LogisticSR"
+            "SupportResistanceDetector initialized with 3 indicators: "
+            "PivotLevels, PolynomialSR, LogisticSR"
         )
 
     # =========================================================================
