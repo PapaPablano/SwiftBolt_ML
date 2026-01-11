@@ -133,7 +133,9 @@ serve(async (req) => {
           p_end_date: endDate.toISOString(),
         });
 
-      chartData = legacyData;
+      if (!legacyError && legacyData) {
+        chartData = includeForecast ? legacyData : legacyData.filter((bar: any) => !bar.is_forecast);
+      }
       chartError = legacyError;
     }
 
