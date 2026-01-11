@@ -17,6 +17,7 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import type { PostgrestError } from 'https://esm.sh/@supabase/supabase-js@2';
 
 interface ChartRequest {
   symbol: string;
@@ -108,7 +109,7 @@ serve(async (req) => {
     const maxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ?? DEFAULT_MAX_BARS;
 
     let chartData: ChartBar[] | null = null;
-    let chartError: any | null = null;
+    let chartError: PostgrestError | null = null;
     let dataSource = 'dynamic';
 
     const { data: dynamicData, error: dynamicError } = await supabase
@@ -119,9 +120,7 @@ serve(async (req) => {
         p_include_forecast: includeForecast,
       });
 
-    const isDynamicDataArray = Array.isArray(dynamicData);
-
-    if (!dynamicError && isDynamicDataArray) {
+    if (!dynamicError && Array.isArray(dynamicData)) {
       chartData = dynamicData;
     } else {
       console.warn('[chart-data-v2] Dynamic RPC failed, falling back to legacy query', dynamicError);
@@ -140,8 +139,9 @@ serve(async (req) => {
         if (includeForecast) {
           chartData = legacyData.slice(-maxBars);
         } else {
-          const filtered = legacyData.filter((bar: ChartBar) => !bar.is_forecast);
-          chartData = filtered.slice(-maxBars);
+          chartData = legacyData
+            .slice(-maxBars)
+            .filter((bar: ChartBar) => !bar.is_forecast);
         }
       }
       chartError = legacyError;
