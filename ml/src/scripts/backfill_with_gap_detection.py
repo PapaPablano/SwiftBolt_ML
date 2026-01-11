@@ -11,14 +11,14 @@ This script enhances the standard backfill with:
 import argparse
 import logging
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.data.supabase_db import db
+from src.data.supabase_db import db  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -164,7 +164,7 @@ def main():
 
     # Summary
     logger.info("=" * 80)
-    logger.info(f"📊 VALIDATION SUMMARY")
+    logger.info("📊 VALIDATION SUMMARY")
     logger.info(f"Total combinations: {len(all_reports)}")
     logger.info(f"Complete: {sum(1 for r in all_reports if r['status'] == 'COMPLETE')}")
     logger.info(f"Issues found: {len(issues_found)}")
