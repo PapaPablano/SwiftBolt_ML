@@ -47,15 +47,34 @@ interface ChartBar {
 const MAX_BARS_BY_TIMEFRAME: Record<string, number> = {
   m15: 2000,
   h1: 1500,
-  h4: 1200,
+  h4: 1000,
   d1: 2000,
   w1: 2000,
 };
 const DEFAULT_MAX_BARS = 1000;
 
 function isValidChartBarArray(data: unknown): data is ChartBar[] {
-  return Array.isArray(data) &&
-    (data.length === 0 || typeof (data as ChartBar[])[0]?.ts === 'string');
+  if (!Array.isArray(data)) return false;
+  if (data.length === 0) return true;
+
+  const isNumberOrNull = (v: unknown) => v === null || typeof v === 'number';
+
+  return (data as unknown[]).every((item) => {
+    if (item === null || typeof item !== 'object') return false;
+    const bar = item as Partial<ChartBar>;
+    return (
+      typeof bar.ts === 'string' &&
+      typeof bar.provider === 'string' &&
+      typeof bar.data_status === 'string' &&
+      typeof bar.is_intraday === 'boolean' &&
+      typeof bar.is_forecast === 'boolean' &&
+      isNumberOrNull(bar.open) &&
+      isNumberOrNull(bar.high) &&
+      isNumberOrNull(bar.low) &&
+      isNumberOrNull(bar.close) &&
+      isNumberOrNull(bar.volume)
+    );
+  });
 }
 
 serve(async (req) => {
@@ -131,11 +150,13 @@ serve(async (req) => {
       console.warn('[chart-data-v2] Dynamic RPC failed, falling back to legacy query', dynamicError);
       dataSource = 'legacy';
 
-      // Legacy RPC doesn't support includeForecast flag; we filter forecasts manually below
+      // Legacy RPC always includes forecasts (p_include_forecast=true in SQL); we filter manually when includeForecast is false
       const { data: legacyData, error: legacyError } = await supabase
         .rpc('get_chart_data_v2', {
           p_symbol_id: symbolId,
           p_timeframe: timeframe,
+          // NOTE: p_start_date and p_end_date are ignored by current SQL (delegates to get_chart_data_v2_dynamic)
+          // kept for backward compatibility only
           p_start_date: startDate.toISOString(),
           p_end_date: endDate.toISOString(),
         });
@@ -145,7 +166,7 @@ serve(async (req) => {
           chartData = legacyData.slice(-maxBars); // take most recent maxBars entries
         } else {
           chartData = legacyData
-            .filter((bar: ChartBar) => !bar.is_forecast)
+            .filter((bar) => !bar.is_forecast)
             .slice(-maxBars); // take most recent maxBars entries
         }
       }
@@ -161,6 +182,26 @@ serve(async (req) => {
           details: chartError.message,
           hint: chartError.hint || null,
           code: chartError.code || null
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Guard against empty/invalid results when no explicit error was returned
+    if (!chartError && chartData === null) {
+      const fallbackError: PostgrestError = {
+        message: 'No chart data returned from either dynamic or legacy RPC',
+        details: null,
+        hint: null,
+        code: 'NO_CHART_DATA',
+      };
+      console.error('[chart-data-v2] No data from dynamic or legacy RPC');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to fetch chart data', 
+          details: fallbackError.message,
+          hint: fallbackError.hint,
+          code: fallbackError.code
         }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
