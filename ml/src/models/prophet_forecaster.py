@@ -19,7 +19,7 @@ Note: Requires 'prophet' package. Install with:
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -633,8 +633,6 @@ def is_prophet_available() -> bool:
 if __name__ == "__main__":
     # Quick test
     print(f"Prophet available: {PROPHET_AVAILABLE}")
-
-    import numpy as np
 
     # Create test data
     np.random.seed(42)

@@ -14,7 +14,6 @@ Typical IV behavior around earnings:
 """
 
 import logging
-from datetime import datetime, timedelta
 from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)

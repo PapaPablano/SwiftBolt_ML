@@ -491,7 +491,6 @@ class ArimaGarchForecaster:
 
         for i in range(1, horizon_days + 1):
             forecast_ts = last_ts + timedelta(days=i)
-            progress = i / horizon_days
 
             # Cumulative return with square-root time scaling
             cumulative_return = forecast_return * i

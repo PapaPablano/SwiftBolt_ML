@@ -977,10 +977,10 @@ def fetch_training_data(symbol: str, days: int = 30, db_client=None) -> pd.DataF
         response = (
             db_client.table("options_ranks")
             .select(
-                "contract_symbol, run_at, composite_rank, momentum_score, value_score, greeks_score, "
-                "signal_buy, signal_discount, signal_runner, signal_greeks, "
-                "mark, last_price, delta, gamma, theta, vega, iv_rank, "
-                "underlying_symbol_id(ticker)"
+                "contract_symbol, run_at, composite_rank, momentum_score, "
+                "value_score, greeks_score, signal_buy, signal_discount, "
+                "signal_runner, signal_greeks, mark, last_price, delta, "
+                "gamma, theta, vega, iv_rank, underlying_symbol_id(ticker)"
             )
             .gte("run_at", start_date)
             .execute()
@@ -1228,14 +1228,14 @@ if __name__ == "__main__":
         print("=" * 60)
 
         best = results["best_strategies"][0]
-        print(f"\nBest Strategy Fitness:")
+        print("\nBest Strategy Fitness:")
         print(f"  Win Rate: {best.fitness.win_rate:.1%}")
         print(f"  Profit Factor: {best.fitness.profit_factor:.2f}")
         print(f"  Sharpe Ratio: {best.fitness.sharpe_ratio:.2f}")
         print(f"  Max Drawdown: {best.fitness.max_drawdown:.1%}")
         print(f"  Total Trades: {best.fitness.num_trades}")
 
-        print(f"\nOptimized Parameters:")
+        print("\nOptimized Parameters:")
         genes = best.genes
         print(f"  Min Composite Rank: {genes.min_composite_rank:.1f}")
         print(f"  Signal Filter: {genes.signal_filter}")

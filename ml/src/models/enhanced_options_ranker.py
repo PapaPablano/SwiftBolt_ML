@@ -15,9 +15,8 @@ Phase 7 (P0 Modules):
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-import numpy as np
 import pandas as pd
 
 from ..features.technical_indicators import add_all_technical_features

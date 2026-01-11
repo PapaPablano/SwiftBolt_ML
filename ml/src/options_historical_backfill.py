@@ -18,7 +18,6 @@ this module synthesizes historical estimates based on:
 """
 
 import logging
-import math
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -281,7 +280,6 @@ class HistoricalOptionsBackfill:
             try:
                 # Parse expiration
                 exp_date = pd.to_datetime(row["expiration"]).date()
-                current_dte = (exp_date - today).days
                 historical_dte = (exp_date - historical_date).days
 
                 # Skip if already expired at historical date
@@ -296,10 +294,6 @@ class HistoricalOptionsBackfill:
                 current_mid = (float(row["bid"]) + float(row["ask"])) / 2
                 if current_mid <= 0:
                     continue
-
-                # Time value decay factor (simplified theta model)
-                # Options lose value faster as expiration approaches
-                time_factor = math.sqrt(historical_dte / max(current_dte, 1))
 
                 # Apply theta decay (options were worth more in the past)
                 theta = float(row.get("theta", -0.05))

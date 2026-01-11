@@ -25,10 +25,10 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config.settings import settings
-from src.data.supabase_db import db
-from src.models.ranking_calibrator import IsotonicCalibrator
-from src.models.ranking_monitor import AlertSeverity, RankingMonitor
+from config.settings import settings  # noqa: E402
+from src.data.supabase_db import db  # noqa: E402
+from src.models.ranking_calibrator import IsotonicCalibrator  # noqa: E402
+from src.models.ranking_monitor import AlertSeverity, RankingMonitor  # noqa: E402
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -87,7 +87,7 @@ def fetch_forward_returns(
     try:
         query = f"""
         WITH ranked AS (
-            SELECT 
+            SELECT
                 contract_symbol,
                 run_at::date as ranking_date,
                 composite_rank,
@@ -97,7 +97,7 @@ def fetch_forward_returns(
               AND run_at >= '{cutoff}'
         ),
         future_prices AS (
-            SELECT 
+            SELECT
                 contract_symbol,
                 ts::date as price_date,
                 mark as exit_price
@@ -105,19 +105,19 @@ def fetch_forward_returns(
             WHERE symbol_id = '{symbol_id}'
               AND ts >= '{cutoff}'
         )
-        SELECT 
+        SELECT
             r.contract_symbol,
             r.ranking_date,
             r.composite_rank,
             r.entry_price,
             f.exit_price,
-            CASE 
-                WHEN r.entry_price > 0 
+            CASE
+                WHEN r.entry_price > 0
                 THEN (f.exit_price - r.entry_price) / r.entry_price
-                ELSE 0 
+                ELSE 0
             END as forward_return
         FROM ranked r
-        LEFT JOIN future_prices f 
+        LEFT JOIN future_prices f
             ON r.contract_symbol = f.contract_symbol
             AND f.price_date = r.ranking_date + INTERVAL '{horizon_days} days'
         WHERE f.exit_price IS NOT NULL

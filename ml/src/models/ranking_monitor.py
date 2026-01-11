@@ -15,9 +15,9 @@ That becomes your ranking system's equivalent of forecast_evaluations."
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
@@ -445,7 +445,6 @@ class RankingMonitor:
     def _check_ic_alerts(self, ic_stats: Dict[str, float]) -> None:
         """Generate IC-related alerts."""
         mean_ic = ic_stats.get("mean_ic", 0.0)
-        min_ic = ic_stats.get("min_ic", 0.0)
         ic_trend = ic_stats.get("recent_ic_trend", 0.0)
 
         # IC collapse

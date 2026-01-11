@@ -316,7 +316,7 @@ class DirectForecaster:
 if not LIGHTGBM_AVAILABLE:
     from sklearn.ensemble import RandomForestRegressor
 
-    class LightGBMForecaster:  # type: ignore
+    class LightGBMForecaster:  # type: ignore  # noqa: F811
         """Fallback Random Forest when LightGBM is not installed."""
 
         def __init__(self, **kwargs):

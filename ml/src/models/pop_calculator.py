@@ -11,8 +11,6 @@ P0 Module for Enhanced Options Ranker.
 import logging
 from typing import Dict
 
-import numpy as np
-
 logger = logging.getLogger(__name__)
 
 

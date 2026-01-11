@@ -16,7 +16,7 @@ Key Features:
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -599,7 +599,7 @@ if __name__ == "__main__":
     actuals = np.random.randn(n) * 0.03  # Actual values
 
     cal_result = uq.calibrate_uncertainty(predicted_lower, predicted_upper, actuals, "test_model")
-    print(f"\nCalibration results:")
+    print("\nCalibration results:")
     print(f"  Empirical coverage: {cal_result['empirical_coverage']:.3f}")
     print(f"  Target coverage: {cal_result['target_coverage']:.3f}")
     print(f"  Calibration ratio: {cal_result['calibration_ratio']:.3f}")
@@ -607,7 +607,7 @@ if __name__ == "__main__":
 
     # Apply calibration
     calibrated = uq.apply_calibration(result, "test_model")
-    print(f"\nCalibrated forecast:")
+    print("\nCalibrated forecast:")
     print(f"  Original vol: {calibrated['original_volatility']:.4f}")
     print(f"  Calibrated vol: {calibrated['volatility']:.4f}")
     print(f"  Adjustment factor: {calibrated['adjustment_factor']:.3f}")
@@ -635,7 +635,7 @@ if __name__ == "__main__":
     }
 
     dir_result = duq.aggregate_probabilities(predictions, weights)
-    print(f"\nDirectional aggregation:")
+    print("\nDirectional aggregation:")
     print(f"  Label: {dir_result['label']}")
     print(f"  Confidence: {dir_result['confidence']:.3f}")
     print(f"  Entropy: {dir_result['entropy']:.3f}")

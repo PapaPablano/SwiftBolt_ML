@@ -17,8 +17,7 @@ Key Features:
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -583,7 +582,7 @@ if __name__ == "__main__":
 
     # Convert to signal
     signal = integration.convert_forecast_to_signal(forecast)
-    print(f"\nForecast Signal:")
+    print("\nForecast Signal:")
     print(f"  Trend: {signal.trend}")
     print(f"  Signal Strength: {signal.signal_strength:.2f}")
     print(f"  SuperTrend Factor: {signal.supertrend_factor:.2f}")
@@ -593,7 +592,7 @@ if __name__ == "__main__":
 
     # Create trend analysis dict
     trend_dict = integration.create_trend_analysis_dict(signal)
-    print(f"\nTrend Analysis Dict:")
+    print("\nTrend Analysis Dict:")
     for k, v in trend_dict.items():
         print(f"  {k}: {v}")
 
@@ -610,12 +609,12 @@ if __name__ == "__main__":
 
     # Rank options
     ranked = integration.rank_options_with_forecast(options_df, forecast, underlying_price=100)
-    print(f"\nRanked Options:")
+    print("\nRanked Options:")
     print(ranked[["strike", "side", "forecast_score"]].to_string())
 
     # Position size recommendation
     sizing = integration.get_position_size_recommendation(signal)
-    print(f"\nPosition Sizing:")
+    print("\nPosition Sizing:")
     print(f"  Recommended Size: {sizing['recommended_size']:.2f}x")
     print(f"  High Conviction: {sizing['is_high_conviction']}")
 

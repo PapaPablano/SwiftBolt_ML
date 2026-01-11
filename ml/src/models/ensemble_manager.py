@@ -18,7 +18,7 @@ Provides a unified API for:
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -27,10 +27,7 @@ import numpy as np
 import pandas as pd
 
 from src.models.multi_model_ensemble import MultiModelEnsemble
-from src.models.uncertainty_quantifier import (
-    DirectionalUncertaintyQuantifier,
-    UncertaintyQuantifier,
-)
+from src.models.uncertainty_quantifier import DirectionalUncertaintyQuantifier
 from src.models.walk_forward_ensemble import WalkForwardEnsemble
 from src.models.weight_optimizer import AdaptiveWeightOptimizer, WeightOptimizer
 
@@ -201,7 +198,7 @@ class EnsembleManager:
             prediction = self.ensemble.predict(features_df.tail(1), ohlc_df)
 
             # Aggregate probabilities with uncertainty quantification
-            uq_result = self.uncertainty_quantifier.aggregate_probabilities(
+            self.uncertainty_quantifier.aggregate_probabilities(
                 prediction.get("component_predictions", {}),
                 prediction.get("weights", {}),
             )
@@ -324,8 +321,12 @@ class EnsembleManager:
             # Convert labels to numeric
             actuals = np.array(
                 [
-                    1 if str(l).lower() == "bullish" else -1 if str(l).lower() == "bearish" else 0
-                    for l in labels
+                    (
+                        1
+                        if str(lbl).lower() == "bullish"
+                        else -1 if str(lbl).lower() == "bearish" else 0
+                    )
+                    for lbl in labels
                 ]
             )
 

@@ -345,7 +345,8 @@ class BaselineForecaster:
             expected_return = directional_bias * 0.05
 
             logger.info(
-                f"Directional calc: bull={bull_prob:.3f}, bear={bear_prob:.3f}, bias={directional_bias:.3f}, return={expected_return:.4f}"
+                f"Directional: bull={bull_prob:.3f}, bear={bear_prob:.3f}, "
+                f"bias={directional_bias:.3f}, return={expected_return:.4f}"
             )
         else:
             # Fallback to label-based approach
@@ -370,7 +371,8 @@ class BaselineForecaster:
         expected_return *= min(horizon_multiplier, 2.0)
 
         logger.info(
-            f"Forecast gen: last_close={last_close:.2f}, expected_return={expected_return:.4f}, horizon={horizon_days}d"
+            f"Forecast: close={last_close:.2f}, return={expected_return:.4f}, "
+            f"horizon={horizon_days}d"
         )
 
         # Generate daily points
@@ -391,7 +393,8 @@ class BaselineForecaster:
 
             if i == 1:
                 logger.info(
-                    f"  Day {i}: value={forecast_value:.2f}, lower={lower_bound:.2f}, upper={upper_bound:.2f}"
+                    f"  Day {i}: val={forecast_value:.2f}, "
+                    f"low={lower_bound:.2f}, up={upper_bound:.2f}"
                 )
 
             points.append(

@@ -15,7 +15,6 @@ Key Benefits:
 import logging
 from typing import Dict, Optional
 
-import numpy as np
 import pandas as pd
 
 from src.models.arima_garch_forecaster import ArimaGarchForecaster

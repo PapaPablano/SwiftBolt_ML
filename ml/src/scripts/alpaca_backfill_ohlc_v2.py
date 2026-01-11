@@ -24,7 +24,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 import requests
 from dotenv import load_dotenv
@@ -36,8 +36,7 @@ load_dotenv(root_dir / ".env")
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from config.settings import settings
-from src.data.supabase_db import db
+from src.data.supabase_db import db  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -437,7 +436,7 @@ def main():
     logger.info(f"\n🚀 Starting Alpaca backfill for {len(symbols)} symbols")
     logger.info(f"Timeframe: {args.timeframe}")
     logger.info(f"Force: {args.force}")
-    logger.info(f"Target table: ohlc_bars_v2 (provider=alpaca)")
+    logger.info("Target table: ohlc_bars_v2 (provider=alpaca)")
 
     results = []
     for i, symbol in enumerate(symbols, 1):

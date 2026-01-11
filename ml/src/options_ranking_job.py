@@ -19,15 +19,13 @@ import requests
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config.settings import settings
-from src.data.supabase_db import db
-from src.models.options_momentum_ranker import (
+from config.settings import settings  # noqa: E402
+from src.data.supabase_db import db  # noqa: E402
+from src.models.options_momentum_ranker import (  # noqa: E402
     CalibratedMomentumRanker,
     IVStatistics,
-    OptionsMomentumRanker,
 )
-from src.models.ranking_monitor import RankingEvaluationJob, RankingMonitor
-from src.options_historical_backfill import ensure_options_history
+from src.options_historical_backfill import ensure_options_history  # noqa: E402
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -504,7 +502,7 @@ def main() -> None:
     parser.add_argument(
         "--symbol",
         type=str,
-        help="Single symbol to process (e.g., AAPL). If not provided, processes all symbols from settings.",
+        help="Single symbol to process (e.g., AAPL). If not provided, uses settings.",
     )
     parser.add_argument(
         "--mode",

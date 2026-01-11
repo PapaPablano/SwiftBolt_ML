@@ -15,7 +15,6 @@ Usage:
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -207,9 +206,6 @@ class ForecastValidator:
 
         # Edge calculation
         returns_following = matched["actual_return"]
-
-        # Define wins based on direction match
-        correct_direction = matched["predicted_direction"] == matched["actual_direction"]
 
         # For edge, use signed returns aligned with prediction
         aligned_returns = returns_following.copy()
