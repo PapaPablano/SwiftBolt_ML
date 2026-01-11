@@ -15,12 +15,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-import requests
-
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.data.supabase_db import db
+import requests  # noqa: E402
+
+from src.data.supabase_db import db  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
