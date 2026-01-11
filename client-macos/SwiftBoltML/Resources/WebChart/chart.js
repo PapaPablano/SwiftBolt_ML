@@ -94,6 +94,17 @@
         crosshair: '#555555'
     };
 
+    const toRgba = (hex, alpha = 1) => {
+        const value = hex.replace('#', '');
+        if (value.length !== 6) return hex;
+        const intVal = parseInt(value, 16);
+        const r = (intVal >> 16) & 255;
+        const g = (intVal >> 8) & 255;
+        const b = intVal & 255;
+        const a = Math.max(0, Math.min(1, alpha));
+        return `rgba(${r},${g},${b},${a})`;
+    };
+
     // Chart options for dark theme
     const darkThemeOptions = {
         layout: {
@@ -635,7 +646,47 @@ removeSeries: function(id) {
          */
         setForecast: function(midData, upperData, lowerData, options = {}) {
             const color = options.color || colors.forecastBullish;
-            const bandColor = options.bandColor || `${color}33`;  // 20% opacity
+            const bandColor = options.bandColor || toRgba(color, 0.2);
+
+            const lowerMap = new Map(lowerData.map(p => [p.time, p.value]));
+            const missingLower = upperData.filter(p => !lowerMap.has(p.time)).length;
+            if (missingLower > 0) {
+                console.warn(`[ChartJS] Forecast band missing lower points for ${missingLower} timestamps`);
+            }
+            const bandCandles = upperData.reduce((acc, p) => {
+                const lower = lowerMap.get(p.time);
+                if (lower === undefined) { return acc; }
+                const top = Math.max(p.value, lower);
+                const bottom = Math.min(p.value, lower);
+                acc.push({
+                    time: p.time,
+                    open: top,
+                    high: top,
+                    low: bottom,
+                    close: bottom
+                });
+                return acc;
+            }, []);
+
+            if (bandCandles.length > 0) {
+                if (!state.series['forecast-band']) {
+                    state.series['forecast-band'] = state.chart.addCandlestickSeries({
+                        upColor: bandColor,
+                        downColor: bandColor,
+                        borderUpColor: 'transparent',
+                        borderDownColor: 'transparent',
+                        wickUpColor: 'transparent',
+                        wickDownColor: 'transparent',
+                        priceLineVisible: false,
+                        lastValueVisible: false
+                    });
+                }
+
+                const sortedBand = bandCandles.sort((a, b) => a.time - b.time);
+                state.series['forecast-band'].setData(sortedBand);
+            } else {
+                this.removeSeries('forecast-band');
+            }
 
             // Mid line (main forecast)
             this.setLine('forecast-mid', midData, {

@@ -35,9 +35,27 @@ final class ChartViewModel: ObservableObject {
         didSet {
             // Invalidate indicator cache when chart data changes
             invalidateIndicatorCache()
+            if oldValue?.mlSummary?.horizons != chartData?.mlSummary?.horizons {
+                _cachedSelectedForecastBars = nil
+                rebuildSelectedForecastBars()
+            }
         }
     }
-    @Published private(set) var chartDataV2: ChartDataV2Response?
+    @Published private(set) var chartDataV2: ChartDataV2Response? {
+        didSet {
+            if oldValue?.mlSummary?.horizons != chartDataV2?.mlSummary?.horizons {
+                _cachedSelectedForecastBars = nil
+                rebuildSelectedForecastBars()
+            }
+        }
+    }
+    @Published var selectedForecastHorizon: String? {
+        didSet {
+            if oldValue != selectedForecastHorizon {
+                rebuildSelectedForecastBars()
+            }
+        }
+    }
     @Published private(set) var isLoading: Bool = false
     @Published var errorMessage: String?
     @Published var indicatorConfig = IndicatorConfig()
@@ -89,6 +107,7 @@ final class ChartViewModel: ObservableObject {
     private var _cachedSuperTrend: TechnicalIndicators.SuperTrendResult?
     private var _cachedBollinger: TechnicalIndicators.BollingerBands?
     private var _cachedATR: [IndicatorDataPoint]?
+    private var _cachedSelectedForecastBars: [OHLCBar]?
 
     // MARK: - Support & Resistance Indicators
 
@@ -121,6 +140,23 @@ final class ChartViewModel: ObservableObject {
         chartData?.bars ?? []
     }
 
+    var selectedForecastSeries: ForecastSeries? {
+        guard let horizons = chartDataV2?.mlSummary?.horizons ?? chartData?.mlSummary?.horizons else { return nil }
+        if let selected = selectedForecastHorizon,
+           let series = horizons.first(where: { $0.horizon == selected }) {
+            return series
+        }
+        return horizons.first
+    }
+
+    var selectedForecastBars: [OHLCBar] {
+        if let cached = _cachedSelectedForecastBars { return cached }
+
+        let built = buildSelectedForecastBars()
+        _cachedSelectedForecastBars = built
+        return built
+    }
+
     private func scheduleIndicatorRecalculation() {
         guard !bars.isEmpty else { return }
         Task { @MainActor [weak self] in
@@ -128,6 +164,48 @@ final class ChartViewModel: ObservableObject {
             self.recalculateSRIndicators()
             self.recalculateAIIndicators()
         }
+    }
+
+    private func updateSelectedForecastHorizon(from summary: MLSummary?) {
+        guard let horizons = summary?.horizons, !horizons.isEmpty else {
+            selectedForecastHorizon = nil
+            _cachedSelectedForecastBars = nil
+            return
+        }
+
+        if let current = selectedForecastHorizon,
+           horizons.contains(where: { $0.horizon == current }) {
+            rebuildSelectedForecastBars()
+            return
+        }
+
+        selectedForecastHorizon = horizons.first?.horizon
+        rebuildSelectedForecastBars()
+    }
+
+    private func buildSelectedForecastBars() -> [OHLCBar] {
+        guard let series = selectedForecastSeries else { return [] }
+
+        return series.points.map { point in
+            let date = Date(timeIntervalSince1970: TimeInterval(point.ts))
+            let clampedLower = min(point.lower, point.upper)
+            let clampedUpper = max(point.lower, point.upper)
+            return OHLCBar(
+                ts: date,
+                open: clampedUpper,
+                high: clampedUpper,
+                low: clampedLower,
+                close: clampedLower,
+                volume: 0,
+                upperBand: clampedUpper,
+                lowerBand: clampedLower,
+                confidenceScore: chartDataV2?.mlSummary?.confidence
+            )
+        }
+    }
+
+    private func rebuildSelectedForecastBars() {
+        _cachedSelectedForecastBars = buildSelectedForecastBars()
     }
 
     deinit {
@@ -605,6 +683,7 @@ final class ChartViewModel: ObservableObject {
                     print("[DEBUG] - ML: \(response.mlSummary != nil ? "✓" : "✗")")
                     
                     chartDataV2 = response
+                    updateSelectedForecastHorizon(from: response.mlSummary)
                     
                     // Also populate legacy chartData for indicator calculations
                     // This triggers didSet -> invalidateIndicatorCache
@@ -647,6 +726,7 @@ final class ChartViewModel: ObservableObject {
                     print("[DEBUG] - Received \(response.bars.count) bars")
                     print("[DEBUG] - Setting chartData property...")
                     chartData = response
+                    updateSelectedForecastHorizon(from: response.mlSummary)
                     print("[DEBUG] - chartData is now: \(chartData == nil ? "nil" : "non-nil with \(chartData!.bars.count) bars")")
                     
                     // Save bars to cache
@@ -721,6 +801,8 @@ final class ChartViewModel: ObservableObject {
         loadTask?.cancel()
         loadTask = nil
         chartData = nil
+        chartDataV2 = nil
+        selectedForecastHorizon = nil
         errorMessage = nil
         isLoading = false
         liveQuote = nil
@@ -1288,4 +1370,3 @@ struct MarketHours {
         return isWeekday && minutes >= openMinutes && minutes <= closeMinutes
     }
 }
-

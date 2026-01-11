@@ -127,6 +127,34 @@ struct WebChartView: NSViewRepresentable {
                 }
                 .store(in: &cancellables)
 
+            parent.viewModel.$selectedForecastHorizon
+                .removeDuplicates()
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    guard let self = self else { return }
+                    let performUpdate = {
+                        if let dataV2 = self.parent.viewModel.chartDataV2 {
+                            self.applyForecastOverlay()
+                        } else if let data = self.parent.viewModel.chartData {
+                            self.applyLegacyForecastOverlay(with: data)
+                        }
+                    }
+
+                    if self.parent.bridge.isReady {
+                        performUpdate()
+                    } else {
+                        self.parent.bridge.$isReady
+                            .filter { $0 }
+                            .first()
+                            .sink { [weak self] _ in
+                                guard let self = self else { return }
+                                performUpdate()
+                            }
+                            .store(in: &self.cancellables)
+                    }
+                }
+                .store(in: &cancellables)
+
             // Subscribe to indicator config changes (re-apply overlays/subpanels)
             parent.viewModel.$indicatorConfig
                 .removeDuplicates(by: { lhs, rhs in
@@ -181,7 +209,8 @@ struct WebChartView: NSViewRepresentable {
             print("[WebChartView] Updating chart with V2 layered data")
             print("[WebChartView] - Historical: \(data.layers.historical.count) bars")
             print("[WebChartView] - Intraday: \(data.layers.intraday.count) bars")
-            print("[WebChartView] - Forecast: \(data.layers.forecast.count) bars")
+            let forecastBars = parent.viewModel.selectedForecastBars
+            print("[WebChartView] - Forecast: \(forecastBars.count) bars (selected horizon: \(parent.viewModel.selectedForecastHorizon ?? "auto"))")
             
             // Guard: only render if we have candles
             let allBars = data.allBars
@@ -248,14 +277,8 @@ struct WebChartView: NSViewRepresentable {
             bridge.send(.clearIndicators)
 
             // Add forecast data if present
-            if data.hasForecast {
-                if parent.viewModel.timeframe.isIntraday {
-                    // For intraday, show forecast as translucent candlesticks overlay
-                    bridge.setForecastCandles(from: data.layers.forecast.data)
-                } else {
-                    // For higher timeframes, show dashed line with confidence bands
-                    bridge.setForecastLayer(from: data.layers.forecast.data)
-                }
+            if !forecastBars.isEmpty {
+                applyForecastOverlay(using: forecastBars)
             }
             
             // Set indicators based on config (using combined historical + intraday data)
@@ -511,6 +534,33 @@ struct WebChartView: NSViewRepresentable {
             }
         }
 
+        private func applyForecastOverlay(using bars: [OHLCBar]? = nil) {
+            if let series = parent.viewModel.selectedForecastSeries {
+                parent.bridge.setForecast(from: series, direction: parent.viewModel.chartDataV2?.mlSummary?.overallLabel ?? "neutral")
+            }
+
+            let forecastBars = bars ?? parent.viewModel.selectedForecastBars
+            if parent.viewModel.timeframe.isIntraday, !forecastBars.isEmpty {
+                parent.bridge.setForecastCandles(from: forecastBars)
+            }
+        }
+
+        private func applyLegacyForecastOverlay(with data: ChartResponse) {
+            guard let mlSummary = data.mlSummary,
+                  let selectedSeries = parent.viewModel.selectedForecastSeries ?? mlSummary.horizons.first else {
+                return
+            }
+
+            parent.bridge.setForecast(from: selectedSeries, direction: mlSummary.overallLabel ?? "neutral")
+
+            if let srLevels = mlSummary.srLevels {
+                parent.bridge.setSRLevels(
+                    support: srLevels.nearestSupport,
+                    resistance: srLevels.nearestResistance
+                )
+            }
+        }
+
         private func updateChart(with data: ChartResponse) {
             let bridge = parent.bridge
             // Preserve current visible range to avoid reset when toggling indicators
@@ -522,22 +572,7 @@ struct WebChartView: NSViewRepresentable {
             // Set candlestick data
             bridge.setCandles(from: data.bars)
 
-            // Set ML forecast if available
-            if let mlSummary = data.mlSummary,
-               let firstHorizon = mlSummary.horizons.first {
-                bridge.setForecast(
-                    from: firstHorizon,
-                    direction: mlSummary.overallLabel ?? "neutral"
-                )
-
-                // Add S/R levels if available
-                if let srLevels = mlSummary.srLevels {
-                    bridge.setSRLevels(
-                        support: srLevels.nearestSupport,
-                        resistance: srLevels.nearestResistance
-                    )
-                }
-            }
+            applyLegacyForecastOverlay(with: data)
 
             // Set indicators based on config
             let config = parent.viewModel.indicatorConfig
@@ -1011,4 +1046,3 @@ struct WebChartPreviewContainer: View {
 #Preview("Standalone Container") {
     WebChartPreviewContainer()
 }
-
