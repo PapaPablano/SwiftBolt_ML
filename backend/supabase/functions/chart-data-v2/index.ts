@@ -120,8 +120,12 @@ serve(async (req) => {
         p_include_forecast: includeForecast,
       });
 
-    if (!dynamicError && Array.isArray(dynamicData)) {
-      chartData = dynamicData;
+    const isChartBarArray =
+      Array.isArray(dynamicData) &&
+      (dynamicData.length === 0 || typeof (dynamicData as ChartBar[])[0]?.ts === 'string');
+
+    if (!dynamicError && isChartBarArray) {
+      chartData = dynamicData as ChartBar[];
     } else {
       console.warn('[chart-data-v2] Dynamic RPC failed, falling back to legacy query', dynamicError);
       dataSource = 'legacy';
@@ -140,8 +144,8 @@ serve(async (req) => {
           chartData = legacyData.slice(-maxBars);
         } else {
           chartData = legacyData
-            .slice(-maxBars)
-            .filter((bar: ChartBar) => !bar.is_forecast);
+            .filter((bar: ChartBar) => !bar.is_forecast)
+            .slice(-maxBars);
         }
       }
       chartError = legacyError;
