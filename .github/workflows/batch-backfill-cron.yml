@@ -2,8 +2,8 @@ name: Phase 2 Batch Backfill Cron
 
 on:
   schedule:
-    # Single nightly window after market close (02:30 UTC Tue–Sat)
-    - cron: '30 2 * * 2-6'
+    # Single nightly window after market close (02:30 UTC Mon–Sat)
+    - cron: '30 2 * * 1-6'
   workflow_dispatch: # Allow manual triggering
     inputs:
       symbols_count:
