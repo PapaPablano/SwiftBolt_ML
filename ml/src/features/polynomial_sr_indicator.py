@@ -274,7 +274,6 @@ class PolynomialSRIndicator:
             return self._empty_result()
 
         last_index = len(df) - 1
-        "ts" in df.columns
 
         # Detect pivots
         if self.settings.resistance_enabled:
