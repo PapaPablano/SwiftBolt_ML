@@ -4,9 +4,9 @@ import logging
 from typing import Any
 
 import pandas as pd
+from supabase import Client, create_client
 
 from config.settings import settings
-from supabase import Client, create_client
 
 logger = logging.getLogger(__name__)
 
