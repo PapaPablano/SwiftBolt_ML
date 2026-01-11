@@ -43,7 +43,7 @@ jobs:
             echo "run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ "$hour" -lt 13 ] || [ "$hour" -gt 22 ] || { [ "$hour" -eq 13 ] && [ "$minute" -lt 30 ]; }; then
+          if [ "$hour" -lt 13 ] || [ "$hour" -ge 23 ] || { [ "$hour" -eq 13 ] && [ "$minute" -lt 30 ]; }; then
             echo "run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
