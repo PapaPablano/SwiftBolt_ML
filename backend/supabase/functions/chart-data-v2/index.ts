@@ -53,6 +53,11 @@ const MAX_BARS_BY_TIMEFRAME: Record<string, number> = {
 };
 const DEFAULT_MAX_BARS = 1000;
 
+function isValidChartBarArray(data: unknown): data is ChartBar[] {
+  return Array.isArray(data) &&
+    (data.length === 0 || typeof (data as ChartBar[])[0]?.ts === 'string');
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -120,11 +125,7 @@ serve(async (req) => {
         p_include_forecast: includeForecast,
       });
 
-    const isChartBarArray =
-      Array.isArray(dynamicData) &&
-      (dynamicData.length === 0 || typeof (dynamicData as ChartBar[])[0]?.ts === 'string');
-
-    if (!dynamicError && isChartBarArray) {
+    if (!dynamicError && isValidChartBarArray(dynamicData)) {
       chartData = dynamicData as ChartBar[];
     } else {
       console.warn('[chart-data-v2] Dynamic RPC failed, falling back to legacy query', dynamicError);
@@ -141,11 +142,11 @@ serve(async (req) => {
 
       if (!legacyError && legacyData) {
         if (includeForecast) {
-          chartData = legacyData.slice(-maxBars);
+          chartData = legacyData.slice(-maxBars); // take most recent maxBars entries
         } else {
           chartData = legacyData
             .filter((bar: ChartBar) => !bar.is_forecast)
-            .slice(-maxBars);
+            .slice(-maxBars); // take most recent maxBars entries
         }
       }
       chartError = legacyError;
