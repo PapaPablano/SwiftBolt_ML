@@ -107,8 +107,8 @@ serve(async (req) => {
     // Use dynamic query first to guarantee newest bars (orders DESC, no date filters)
     const maxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ?? DEFAULT_MAX_BARS;
 
-    let chartData = null;
-    let chartError = null;
+    let chartData: ChartBar[] | null = null;
+    let chartError: any | null = null;
     let dataSource = 'dynamic';
 
     const { data: dynamicData, error: dynamicError } = await supabase
@@ -119,9 +119,9 @@ serve(async (req) => {
         p_include_forecast: includeForecast,
       });
 
-    const hasDynamicData = Array.isArray(dynamicData) && dynamicData.length > 0;
+    const hasDynamicResult = Array.isArray(dynamicData);
 
-    if (!dynamicError && hasDynamicData) {
+    if (!dynamicError && hasDynamicResult) {
       chartData = dynamicData;
     } else {
       console.warn('[chart-data-v2] Dynamic RPC failed, falling back to legacy query', dynamicError);
