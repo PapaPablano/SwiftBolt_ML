@@ -2,7 +2,6 @@
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from src.monitoring.confidence_calibrator import CalibrationResult, ConfidenceCalibrator
 
@@ -31,7 +30,11 @@ class TestConfidenceCalibrator:
             if np.random.random() < 0.7:
                 actual_labels.append(predicted_labels[i])
             else:
-                other = [l for l in ["bullish", "neutral", "bearish"] if l != predicted_labels[i]]
+                other = [
+                    label
+                    for label in ["bullish", "neutral", "bearish"]
+                    if label != predicted_labels[i]
+                ]
                 actual_labels.append(np.random.choice(other))
 
         forecasts = pd.DataFrame(

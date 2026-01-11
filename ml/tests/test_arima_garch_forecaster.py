@@ -336,9 +336,9 @@ class TestArimaGarchForecasterEdgeCases:
         # Force an error by corrupting the model
         forecaster.fitted_arima = None
 
-        # Should handle gracefully
-        prediction = forecaster.predict()
-        # Will raise RuntimeError since arima is None and we're not refitting
+        # Should handle gracefully - will raise RuntimeError since arima is None
+        # and we're not refitting
+        _prediction = forecaster.predict()  # noqa: F841
 
     def test_horizon_parsing(self):
         """Test horizon string parsing."""

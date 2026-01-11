@@ -13,13 +13,13 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
-import pytest
-
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.features.support_resistance_detector import (
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import pytest  # noqa: E402
+
+from src.features.support_resistance_detector import (  # noqa: E402
     SupportResistanceDetector,
     add_support_resistance_features,
 )
