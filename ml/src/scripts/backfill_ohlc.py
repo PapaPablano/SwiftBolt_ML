@@ -42,13 +42,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 
-import requests
-
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from config.settings import settings
-from src.data.supabase_db import db
+import requests  # noqa: E402
+
+from config.settings import settings  # noqa: E402
+from src.data.supabase_db import db  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -70,15 +70,18 @@ logger.info(
     if settings.supabase_url
     else "Supabase URL: NOT SET"
 )
-logger.info(
-    f"Supabase Key: {'SET (' + str(len(settings.supabase_key)) + ' chars)' if settings.supabase_key else 'NOT SET'}"
+key_status = (
+    f"SET ({len(settings.supabase_key)} chars)"
+    if settings.supabase_key
+    else "NOT SET"
 )
+logger.info(f"Supabase Key: {key_status}")
 if not settings.supabase_url or not settings.supabase_key:
     logger.error("❌ Missing required Supabase credentials!")
-    logger.error(f"Environment variables check:")
-    logger.error(
-        f"  SUPABASE_URL: {os.getenv('SUPABASE_URL', 'NOT SET')[:30] if os.getenv('SUPABASE_URL') else 'NOT SET'}"
-    )
+    logger.error("Environment variables check:")
+    url_env = os.getenv('SUPABASE_URL')
+    url_status = url_env[:30] if url_env else 'NOT SET'
+    logger.error(f"  SUPABASE_URL: {url_status}")
     logger.error(f"  SUPABASE_KEY: {'SET' if os.getenv('SUPABASE_KEY') else 'NOT SET'}")
     sys.exit(1)
 
@@ -262,7 +265,7 @@ def persist_ohlc_bars(symbol: str, timeframe: str, bars: List[dict]) -> tuple[in
             volume = int(bar["volume"])
 
             # Insert into database using upsert (dedupe via unique constraint)
-            result = (
+            (
                 db.client.table("ohlc_bars")
                 .upsert(
                     {
