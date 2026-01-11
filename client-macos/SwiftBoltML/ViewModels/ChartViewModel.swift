@@ -620,6 +620,15 @@ final class ChartViewModel: ObservableObject {
                     case .w1:
                         daysToRequest = 7300 // Weekly: Request 20 years, DB limits to ~38 years
                     }
+
+                    let forecastSteps: Int? = timeframe.isIntraday ? {
+                        switch timeframe {
+                        case .m15: return 40
+                        case .h1: return 40
+                        case .h4: return 25
+                        case .d1, .w1: return nil
+                        }
+                    }() : nil
                     
                     print("[DEBUG] Requesting chart-data-v2 symbol=\(symbol.ticker) timeframe=\(timeframe.apiToken)")
                     var response = try await APIClient.shared.fetchChartV2(
@@ -627,7 +636,8 @@ final class ChartViewModel: ObservableObject {
                         timeframe: timeframe.apiToken,
                         days: daysToRequest,
                         includeForecast: true,
-                        forecastDays: 10
+                        forecastDays: 10,
+                        forecastSteps: forecastSteps
                     )
 
                     guard !Task.isCancelled else {
@@ -660,7 +670,8 @@ final class ChartViewModel: ObservableObject {
                                     timeframe: timeframe.apiToken,
                                     days: daysToRequest,
                                     includeForecast: true,
-                                    forecastDays: 10
+                                    forecastDays: 10,
+                                    forecastSteps: forecastSteps
                                 )
                                 let (peekBars, peekStaleness) = buildBarsWithStalenessCheck(from: peek, for: timeframe)
                                 if !peekBars.isEmpty {
@@ -1170,7 +1181,8 @@ final class ChartViewModel: ObservableObject {
                         timeframe: self.timeframe.apiToken,
                         days: daysToRequest,
                         includeForecast: true,
-                        forecastDays: 10
+                        forecastDays: 10,
+                        forecastSteps: self.timeframe.isIntraday ? (self.timeframe == .h4 ? 25 : 40) : nil
                     )
                     let (peekBars, peekStaleness) = self.buildBarsWithStalenessCheck(from: peek, for: self.timeframe)
 

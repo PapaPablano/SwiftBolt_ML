@@ -365,19 +365,23 @@ final class APIClient {
         return try await performRequest(request)
     }
     
-    func fetchChartV2(symbol: String, timeframe: String = "d1", days: Int = 60, includeForecast: Bool = true, forecastDays: Int = 10) async throws -> ChartDataV2Response {
+    func fetchChartV2(symbol: String, timeframe: String = "d1", days: Int = 60, includeForecast: Bool = true, forecastDays: Int = 10, forecastSteps: Int? = nil) async throws -> ChartDataV2Response {
         // Build URL with cache-buster to bypass CDN caching (for all timeframes)
         var urlComponents = URLComponents(url: functionURL("chart-data-v2"), resolvingAgainstBaseURL: false)!
         let cacheBuster = Int(Date().timeIntervalSince1970)
         urlComponents.queryItems = [URLQueryItem(name: "t", value: "\(cacheBuster)")]
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "symbol": symbol,
             "timeframe": timeframe,
             "days": days,
             "includeForecast": includeForecast,
             "forecastDays": forecastDays
         ]
+
+        if let forecastSteps {
+            body["forecastSteps"] = forecastSteps
+        }
 
         print("[DEBUG] 📊 Fetching chart: symbol=\(symbol), timeframe=\(timeframe), cacheBuster=\(cacheBuster)")
 

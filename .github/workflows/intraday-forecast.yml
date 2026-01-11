@@ -1,0 +1,112 @@
+name: Intraday Forecast (Calibration)
+'on':
+  schedule:
+    - cron: '*/15 13-22 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: 'Single symbol to forecast (optional). Example: AAPL. Leave blank for default intraday symbols.'
+        required: false
+        type: string
+
+concurrency:
+  group: intraday-forecast-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-market:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.market.outputs.should_run }}
+      market_state: ${{ steps.market.outputs.market_state }}
+    steps:
+      - name: Check Market Hours
+        id: market
+        run: |
+          current_hour=$(TZ="America/New_York" date +%H)
+          current_min=$(TZ="America/New_York" date +%M)
+          day_of_week=$(TZ="America/New_York" date +%u)
+
+          echo "Current ET time: $current_hour:$current_min (day $day_of_week)"
+
+          if [ "$day_of_week" -gt 5 ]; then
+            echo "Weekend - skipping"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "market_state=weekend" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          current_minutes=$((current_hour * 60 + current_min))
+          pre_market=$((9 * 60))
+          post_market=$((17 * 60))
+          market_open=$((9 * 60 + 30))
+          market_close=$((16 * 60))
+
+          if [ "$current_minutes" -lt "$pre_market" ] || [ "$current_minutes" -gt "$post_market" ]; then
+            echo "Outside extended market hours - skipping"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "market_state=closed" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if [ "$current_minutes" -ge "$market_open" ] && [ "$current_minutes" -le "$market_close" ]; then
+            echo "market_state=open" >> $GITHUB_OUTPUT
+          elif [ "$current_minutes" -lt "$market_open" ]; then
+            echo "market_state=pre_market" >> $GITHUB_OUTPUT
+          else
+            echo "market_state=after_hours" >> $GITHUB_OUTPUT
+          fi
+
+          echo "should_run=true" >> $GITHUB_OUTPUT
+
+  intraday-forecast:
+    needs: check-market
+    if: needs.check-market.outputs.should_run == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'ml/requirements.txt'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ml/requirements.txt
+
+      - name: Generate intraday forecasts
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SYMBOL: ${{ github.event.inputs.symbol }}
+        run: |
+          cd ml
+
+          if [ -n "$SYMBOL" ]; then
+            python -m src.intraday_forecast_job --horizon 15m --symbol "$SYMBOL"
+            python -m src.intraday_forecast_job --horizon 1h --symbol "$SYMBOL"
+          else
+            python -m src.intraday_forecast_job --horizon 15m
+            python -m src.intraday_forecast_job --horizon 1h
+          fi
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## Intraday Forecast (Calibration)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Market state**: ${{ needs.check-market.outputs.market_state }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "- **Symbol**: ${{ github.event.inputs.symbol || 'Default intraday symbols' }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Schedule**: Every 15 minutes during extended market hours" >> $GITHUB_STEP_SUMMARY
+          fi

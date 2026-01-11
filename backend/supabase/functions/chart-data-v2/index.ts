@@ -25,6 +25,7 @@ interface ChartRequest {
   days?: number;
   includeForecast?: boolean;
   forecastDays?: number;
+  forecastSteps?: number;
   includeMLData?: boolean;
 }
 
@@ -53,6 +54,56 @@ const MAX_BARS_BY_TIMEFRAME: Record<string, number> = {
 };
 const DEFAULT_MAX_BARS = 1000;
 const POSTGREST_MAX_ROWS = 1000;
+
+function timeframeToIntervalSeconds(timeframe: string): number | null {
+  switch (timeframe) {
+    case 'm15':
+      return 15 * 60;
+    case 'h1':
+      return 60 * 60;
+    case 'h4':
+      return 4 * 60 * 60;
+    case 'd1':
+      return 24 * 60 * 60;
+    case 'w1':
+      return 7 * 24 * 60 * 60;
+    default:
+      return null;
+  }
+}
+
+function clampNumber(v: unknown, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+}
+
+function buildIntradayForecastPoints(params: {
+  baseTsSec: number;
+  intervalSec: number;
+  steps: number;
+  currentPrice: number;
+  targetPrice: number;
+  confidence: number;
+}): Array<{ ts: number; value: number; lower: number; upper: number }> {
+  const safeSteps = Math.max(1, Math.min(500, Math.floor(params.steps)));
+  const conf = Math.max(0, Math.min(1, params.confidence));
+  const bandPct = Math.max(0.005, Math.min(0.04, 0.03 - conf * 0.02));
+
+  const points: Array<{ ts: number; value: number; lower: number; upper: number }> = [];
+
+  for (let i = 1; i <= safeSteps; i += 1) {
+    const t = i / safeSteps;
+    const value = params.currentPrice + (params.targetPrice - params.currentPrice) * t;
+    const lower = value * (1 - bandPct);
+    const upper = value * (1 + bandPct);
+    points.push({
+      ts: params.baseTsSec + params.intervalSec * i,
+      value,
+      lower,
+      upper,
+    });
+  }
+  return points;
+}
 
 function isValidChartBarArray(data: unknown): data is ChartBar[] {
   if (!Array.isArray(data)) return false;
@@ -94,7 +145,7 @@ serve(async (req) => {
   }
 
   try {
-    const { symbol, timeframe = 'd1', days = 60, includeForecast = true, forecastDays = 10, includeMLData = true } = 
+    const { symbol, timeframe = 'd1', days = 60, includeForecast = true, forecastDays = 10, forecastSteps, includeMLData = true } = 
       await req.json() as ChartRequest;
 
     if (!symbol) {
@@ -259,17 +310,57 @@ serve(async (req) => {
             .single();
 
           if (intradayForecast) {
+            const intervalSec = timeframeToIntervalSeconds(timeframe);
+
+            const newestNonForecast = [...historical, ...intraday]
+              .filter((b) => !b.is_forecast)
+              .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
+              .pop();
+
+            const baseTsSec = newestNonForecast
+              ? Math.floor(new Date(newestNonForecast.ts).getTime() / 1000)
+              : Math.floor(Date.now() / 1000);
+
+            const targetPrice = Number(intradayForecast.target_price);
+            if (!Number.isFinite(targetPrice)) {
+              throw new Error('[chart-data-v2] intradayForecast.target_price is not a finite number');
+            }
+
+            const currentPrice = clampNumber(intradayForecast.current_price, targetPrice);
+            const conf = clampNumber(intradayForecast.confidence, 0.5);
+
+            const defaultStepsByTimeframe: Record<string, number> = {
+              m15: 40,
+              h1: 40,
+              h4: 25,
+            };
+
+            const steps = typeof forecastSteps === 'number'
+              ? Math.floor(forecastSteps)
+              : (defaultStepsByTimeframe[timeframe] ?? 40);
+
+            const points = intervalSec
+              ? buildIntradayForecastPoints({
+                baseTsSec,
+                intervalSec,
+                steps,
+                currentPrice,
+                targetPrice,
+                confidence: conf,
+              })
+              : [{
+                ts: Math.floor(new Date(intradayForecast.expires_at).getTime() / 1000),
+                value: targetPrice,
+                lower: targetPrice * 0.98,
+                upper: targetPrice * 1.02,
+              }];
+
             mlSummary = {
               overallLabel: intradayForecast.overall_label,
-              confidence: intradayForecast.confidence,
+              confidence: conf,
               horizons: [{
                 horizon: horizon,
-                points: [{
-                  ts: Math.floor(new Date(intradayForecast.expires_at).getTime() / 1000),
-                  value: intradayForecast.target_price,
-                  lower: intradayForecast.target_price * 0.98,
-                  upper: intradayForecast.target_price * 1.02,
-                }]
+                points,
               }],
               srLevels: null,
               srDensity: null,
@@ -281,7 +372,7 @@ serve(async (req) => {
               supertrendSignal: intradayForecast.supertrend_direction === 'BULLISH' ? 1 : 
                                  intradayForecast.supertrend_direction === 'BEARISH' ? -1 : 0,
               trendLabel: intradayForecast.overall_label,
-              trendConfidence: Math.round(intradayForecast.confidence * 10),
+              trendConfidence: Math.round(conf * 10),
               stopLevel: null,
               trendDurationBars: null,
               rsi: null,
@@ -391,6 +482,7 @@ serve(async (req) => {
         end_date: endDate.toISOString(),
         requested_days: days,
         forecast_days: forecastDays,
+        forecast_steps: typeof forecastSteps === 'number' ? Math.floor(forecastSteps) : null,
       },
       dataQuality,
       mlSummary,
