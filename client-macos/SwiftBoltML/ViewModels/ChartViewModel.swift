@@ -184,25 +184,24 @@ final class ChartViewModel: ObservableObject {
     }
 
     private func buildSelectedForecastBars() -> [OHLCBar] {
-        if let series = selectedForecastSeries {
-            return series.points.map { point in
-                let date = Date(timeIntervalSince1970: TimeInterval(point.ts))
-                let top = max(point.value, point.upper)
-                let bottom = min(point.value, point.lower)
-                return OHLCBar(
-                    ts: date,
-                    open: point.value,
-                    high: top,
-                    low: bottom,
-                    close: point.value,
-                    volume: 0,
-                    upperBand: point.upper,
-                    lowerBand: point.lower,
-                    confidenceScore: chartDataV2?.mlSummary?.confidence
-                )
-            }
+        guard let series = selectedForecastSeries else { return [] }
+
+        return series.points.map { point in
+            let date = Date(timeIntervalSince1970: TimeInterval(point.ts))
+            let clampedLower = min(point.lower, point.upper)
+            let clampedUpper = max(point.lower, point.upper)
+            return OHLCBar(
+                ts: date,
+                open: clampedUpper,
+                high: clampedUpper,
+                low: clampedLower,
+                close: clampedLower,
+                volume: 0,
+                upperBand: clampedUpper,
+                lowerBand: clampedLower,
+                confidenceScore: chartDataV2?.mlSummary?.confidence
+            )
         }
-        return chartDataV2?.layers.forecast.data ?? []
     }
 
     private func rebuildSelectedForecastBars() {

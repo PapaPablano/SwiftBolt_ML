@@ -162,9 +162,15 @@ struct ChartView: View {
 
                             if !mlSummary.horizons.isEmpty {
                                 let horizons = mlSummary.horizons
-                                let defaultSelection = chartViewModel.selectedForecastHorizon ?? horizons.first?.horizon ?? ""
+                                let fallback = horizons.first?.horizon ?? ""
                                 let selection = Binding<String>(
-                                    get: { chartViewModel.selectedForecastHorizon ?? defaultSelection },
+                                    get: {
+                                        if let selected = chartViewModel.selectedForecastHorizon,
+                                           horizons.contains(where: { $0.horizon == selected }) {
+                                            return selected
+                                        }
+                                        return fallback
+                                    },
                                     set: { chartViewModel.selectedForecastHorizon = $0 }
                                 )
 
@@ -178,7 +184,7 @@ struct ChartView: View {
                                         .pickerStyle(.segmented)
                                     }
 
-                                    ForecastQualityPanel(summary: mlSummary)
+                                    ForecastQualityPanel(summary: mlSummary, horizonLabel: chartViewModel.selectedForecastHorizon ?? horizons.first?.horizon)
                                 }
                                 .padding(.horizontal)
                                 .padding(.top, 8)
@@ -583,6 +589,7 @@ struct IndicatorToggleMenu: View {
 
 private struct ForecastQualityPanel: View {
     let summary: MLSummary
+    let horizonLabel: String?
 
     private var confidenceText: String {
         "\(Int(summary.confidence * 100))%"
@@ -621,6 +628,16 @@ private struct ForecastQualityPanel: View {
                         .background(Color.secondary.opacity(0.08))
                         .cornerRadius(6)
                 }
+            }
+
+            if let horizonLabel {
+                Text("Summary shown for selected horizon: \(horizonLabel)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Summary shown across available horizons")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding()

@@ -215,6 +215,20 @@ struct PriceLineOptions: Encodable {
     var title: String?
 }
 
+private extension String {
+    func asRGBA(alpha: Double) -> String {
+        let hex = trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard hex.count == 6, let intVal = Int(hex, radix: 16) else {
+            return self
+        }
+        let r = (intVal >> 16) & 0xff
+        let g = (intVal >> 8) & 0xff
+        let b = intVal & 0xff
+        let clampedAlpha = max(0.0, min(1.0, alpha))
+        return "rgba(\(r),\(g),\(b),\(String(format: "%.2f", clampedAlpha)))"
+    }
+}
+
 /// Chart marker (buy/sell signals)
 struct ChartMarker: Encodable {
     let time: Int
@@ -535,11 +549,11 @@ final class ChartBridge: NSObject, ObservableObject {
 
     /// Set ML forecast overlay
     func setForecast(from series: ForecastSeries, direction: String) {
-        let color: String
+        let baseColor: String
         switch direction.lowercased() {
-        case "bullish": color = "#4de680"
-        case "bearish": color = "#ff5959"
-        default: color = "#ffbf00"
+        case "bullish": baseColor = "#4de680"
+        case "bearish": baseColor = "#ff5959"
+        default: baseColor = "#ffbf00"
         }
 
         let midData = series.points.map { point in
@@ -547,14 +561,16 @@ final class ChartBridge: NSObject, ObservableObject {
         }
 
         let upperData = series.points.map { point in
-            LightweightDataPoint(time: point.ts, value: point.upper)
+            let clampedUpper = max(point.upper, point.lower, point.value)
+            return LightweightDataPoint(time: point.ts, value: clampedUpper)
         }
 
         let lowerData = series.points.map { point in
-            LightweightDataPoint(time: point.ts, value: point.lower)
+            let clampedLower = min(point.upper, point.lower, point.value)
+            return LightweightDataPoint(time: point.ts, value: clampedLower)
         }
 
-        let options = ForecastOptions(color: color)
+        let options = ForecastOptions(color: baseColor, bandColor: baseColor.asRGBA(alpha: 0.2))
         send(.setForecast(midData: midData, upperData: upperData, lowerData: lowerData, options: options))
     }
 
@@ -965,4 +981,3 @@ extension ChartBridge: WKScriptMessageHandler {
         }
     }
 }
-

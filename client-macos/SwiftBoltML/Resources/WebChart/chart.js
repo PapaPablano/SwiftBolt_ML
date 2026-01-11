@@ -94,6 +94,17 @@
         crosshair: '#555555'
     };
 
+    const toRgba = (hex, alpha = 1) => {
+        const value = hex.replace('#', '');
+        if (value.length !== 6) return hex;
+        const intVal = parseInt(value, 16);
+        const r = (intVal >> 16) & 255;
+        const g = (intVal >> 8) & 255;
+        const b = intVal & 255;
+        const a = Math.max(0, Math.min(1, alpha));
+        return `rgba(${r},${g},${b},${a})`;
+    };
+
     // Chart options for dark theme
     const darkThemeOptions = {
         layout: {
@@ -635,7 +646,7 @@ removeSeries: function(id) {
          */
         setForecast: function(midData, upperData, lowerData, options = {}) {
             const color = options.color || colors.forecastBullish;
-            const bandColor = options.bandColor || `${color}33`;  // 20% opacity
+            const bandColor = options.bandColor || toRgba(color, 0.2);
 
             const lowerMap = new Map(lowerData.map(p => [p.time, p.value]));
             const missingLower = upperData.filter(p => !lowerMap.has(p.time)).length;
@@ -673,8 +684,8 @@ removeSeries: function(id) {
 
                 const sortedBand = bandCandles.sort((a, b) => a.time - b.time);
                 state.series['forecast-band'].setData(sortedBand);
-            } else if (state.series['forecast-band']) {
-                state.series['forecast-band'].setData([]);
+            } else {
+                this.removeSeries('forecast-band');
             }
 
             // Mid line (main forecast)

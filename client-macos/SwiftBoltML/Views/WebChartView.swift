@@ -128,13 +128,29 @@ struct WebChartView: NSViewRepresentable {
                 .store(in: &cancellables)
 
             parent.viewModel.$selectedForecastHorizon
+                .removeDuplicates()
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] _ in
-                    guard let self = self, self.parent.bridge.isReady else { return }
-                    if let dataV2 = self.parent.viewModel.chartDataV2 {
-                        self.applyForecastOverlay()
-                    } else if let data = self.parent.viewModel.chartData {
-                        self.applyLegacyForecastOverlay(with: data)
+                    guard let self = self else { return }
+                    let performUpdate = {
+                        if let dataV2 = self.parent.viewModel.chartDataV2 {
+                            self.applyForecastOverlay()
+                        } else if let data = self.parent.viewModel.chartData {
+                            self.applyLegacyForecastOverlay(with: data)
+                        }
+                    }
+
+                    if self.parent.bridge.isReady {
+                        performUpdate()
+                    } else {
+                        self.parent.bridge.$isReady
+                            .filter { $0 }
+                            .first()
+                            .sink { [weak self] _ in
+                                guard let self = self else { return }
+                                performUpdate()
+                            }
+                            .store(in: &self.cancellables)
                     }
                 }
                 .store(in: &cancellables)
@@ -519,13 +535,13 @@ struct WebChartView: NSViewRepresentable {
         }
 
         private func applyForecastOverlay(using bars: [OHLCBar]? = nil) {
-            let forecastBars = bars ?? parent.viewModel.selectedForecastBars
-            guard !forecastBars.isEmpty else { return }
+            if let series = parent.viewModel.selectedForecastSeries {
+                parent.bridge.setForecast(from: series, direction: parent.viewModel.chartDataV2?.mlSummary?.overallLabel ?? "neutral")
+            }
 
-            if parent.viewModel.timeframe.isIntraday {
+            let forecastBars = bars ?? parent.viewModel.selectedForecastBars
+            if parent.viewModel.timeframe.isIntraday, !forecastBars.isEmpty {
                 parent.bridge.setForecastCandles(from: forecastBars)
-            } else {
-                parent.bridge.setForecastLayer(from: forecastBars)
             }
         }
 
@@ -535,10 +551,7 @@ struct WebChartView: NSViewRepresentable {
                 return
             }
 
-            parent.bridge.setForecast(
-                from: selectedSeries,
-                direction: mlSummary.overallLabel ?? "neutral"
-            )
+            parent.bridge.setForecast(from: selectedSeries, direction: mlSummary.overallLabel ?? "neutral")
 
             if let srLevels = mlSummary.srLevels {
                 parent.bridge.setSRLevels(
