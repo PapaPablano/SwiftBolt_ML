@@ -29,9 +29,9 @@ from src.data.supabase_db import db
 from src.options_strategy_ga import (
     OptionsStrategyGA,
     StrategyGenes,
+    analyze_strategy,
     fetch_training_data,
     save_ga_parameters,
-    analyze_strategy,
 )
 
 logging.basicConfig(

@@ -23,11 +23,11 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from src.models.weight_optimizer import WeightOptimizer
 from src.models.uncertainty_quantifier import (
-    UncertaintyQuantifier,
     DirectionalUncertaintyQuantifier,
+    UncertaintyQuantifier,
 )
+from src.models.weight_optimizer import WeightOptimizer
 
 logger = logging.getLogger(__name__)
 

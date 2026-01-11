@@ -21,9 +21,10 @@ Tolerance by horizon:
 - 4-10 days: ±2% of mid-price
 """
 
-from typing import Dict, List, Optional
 from dataclasses import dataclass
 from enum import Enum
+from typing import Dict, List, Optional
+
 import numpy as np
 
 

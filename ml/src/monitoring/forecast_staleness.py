@@ -4,10 +4,10 @@ ML Forecast Staleness Monitoring.
 Alerts if ML forecasts are older than the configured threshold.
 """
 
-from datetime import datetime, timezone
-from dataclasses import dataclass
 import logging
 import sys
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Add parent directory to path for imports

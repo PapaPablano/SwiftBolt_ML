@@ -1,9 +1,9 @@
 """Testing and backtesting utilities for ML models."""
 
 from .backtest_framework import (
+    BacktestConfig,
     BacktestFramework,
     BacktestResult,
-    BacktestConfig,
 )
 
 __all__ = [

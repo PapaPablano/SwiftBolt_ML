@@ -1,10 +1,11 @@
 """ML-based options contract ranking model."""
 
 import logging
+from datetime import datetime, timedelta
 from typing import Dict, List
+
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 

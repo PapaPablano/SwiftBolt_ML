@@ -15,8 +15,8 @@ sys.modules["config.settings"].settings = mock_settings
 
 # noqa: E402 - imports must be after mock setup
 from src.models.enhanced_forecaster import (  # noqa: E402
-    EnhancedForecaster,
     ENHANCED_FEATURES,
+    EnhancedForecaster,
 )
 
 

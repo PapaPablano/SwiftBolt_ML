@@ -16,14 +16,14 @@ Usage:
 
 import argparse
 import logging
-from datetime import datetime, date, timezone
 import math
+from datetime import date, datetime, timezone
 
 import pandas as pd
 
 from config.settings import settings
-from src.data.tradier_client import TradierClient
 from src.data.supabase_db import SupabaseDatabase
+from src.data.tradier_client import TradierClient
 
 logging.basicConfig(
     level=logging.INFO,

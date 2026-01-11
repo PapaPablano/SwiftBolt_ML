@@ -1,10 +1,10 @@
 """Tests for NaN Reporter utility."""
 
+import numpy as np
 import pandas as pd
 import pytest
-import numpy as np
 
-from src.features.nan_reporter import NaNReporter, ColumnReport, DataFrameReport
+from src.features.nan_reporter import ColumnReport, DataFrameReport, NaNReporter
 
 
 class TestNaNReporter:

@@ -4,9 +4,9 @@ import numpy as np
 import pytest
 
 from src.models.uncertainty_quantifier import (
-    UncertaintyQuantifier,
     DirectionalUncertaintyQuantifier,
     ModelForecast,
+    UncertaintyQuantifier,
 )
 
 

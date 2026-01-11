@@ -18,16 +18,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings  # noqa: E402
 from src.data.supabase_db import db  # noqa: E402
-from src.features.technical_indicators import add_technical_features  # noqa: E402
 from src.features.support_resistance_detector import (  # noqa: E402
     SupportResistanceDetector,
 )
+from src.features.technical_indicators import add_technical_features  # noqa: E402
+from src.forecast_synthesizer import ForecastSynthesizer  # noqa: E402
+from src.forecast_weights import get_default_weights  # noqa: E402
 from src.models.baseline_forecaster import BaselineForecaster  # noqa: E402
 from src.models.ensemble_forecaster import EnsembleForecaster  # noqa: E402
 from src.strategies.supertrend_ai import SuperTrendAI  # noqa: E402
-from src.forecast_synthesizer import ForecastSynthesizer  # noqa: E402
-from src.forecast_weights import get_default_weights  # noqa: E402
-
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),

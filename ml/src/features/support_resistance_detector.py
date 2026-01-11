@@ -36,9 +36,9 @@ import numpy as np
 import pandas as pd
 from scipy.signal import argrelextrema
 
+from src.features.logistic_sr_indicator import LogisticSRIndicator, LogisticSRSettings
 from src.features.pivot_levels_detector import PivotLevelsDetector, PivotLevelsSettings
 from src.features.polynomial_sr_indicator import PolynomialSRIndicator, PolynomialSRSettings
-from src.features.logistic_sr_indicator import LogisticSRIndicator, LogisticSRSettings
 from src.features.sr_feature_builder import build_sr_feature_map
 
 logger = logging.getLogger(__name__)

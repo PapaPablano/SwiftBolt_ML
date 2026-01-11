@@ -9,13 +9,13 @@ Tests all 5 methods:
 5. Fibonacci Retracement
 """
 
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
-from datetime import datetime, timedelta
-
-import sys
-from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 

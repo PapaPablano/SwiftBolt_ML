@@ -15,9 +15,9 @@ sys.modules["config.settings"].settings = mock_settings
 
 
 from src.models.lstm_forecaster import (  # noqa: E402
+    TF_AVAILABLE,
     LSTMForecaster,
     is_tensorflow_available,
-    TF_AVAILABLE,
 )
 
 

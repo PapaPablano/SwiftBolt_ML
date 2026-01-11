@@ -9,22 +9,22 @@ Usage:
     python src/scripts/process_options_backfill_jobs.py
 """
 
-import sys
 import logging
+import sys
 import time
-from pathlib import Path
 from datetime import date
+from pathlib import Path
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.data.supabase_db import db  # noqa: E402
 from src.scripts.backfill_options import (  # noqa: E402
+    RATE_LIMIT_DELAY,
+    calculate_ml_scores,
     fetch_options_chain,
     persist_options_snapshot,
     update_options_ranks,
-    calculate_ml_scores,
-    RATE_LIMIT_DELAY,
 )
 
 logging.basicConfig(

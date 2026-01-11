@@ -16,9 +16,10 @@ Generated: 2025-12-24
 """
 
 import logging
+from typing import Tuple
+
 import numpy as np
 import pandas as pd
-from typing import Tuple
 
 logger = logging.getLogger(__name__)
 

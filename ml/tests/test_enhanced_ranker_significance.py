@@ -5,20 +5,21 @@ Tests whether the new weight adjustments improve ranking quality.
 Generates synthetic options data with known outcomes to validate.
 """
 
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import numpy as np
-import pandas as pd
 from datetime import datetime, timedelta
 
-from src.models.enhanced_options_ranker import EnhancedOptionsRanker
+import numpy as np
+import pandas as pd
+
 from src.evaluation.options_ranking_validation import (
     OptionsRankingValidator,
     validate_options_ranking,
 )
+from src.models.enhanced_options_ranker import EnhancedOptionsRanker
 
 
 def generate_synthetic_options_data(n_contracts: int = 100) -> pd.DataFrame:

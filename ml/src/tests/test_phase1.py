@@ -15,13 +15,13 @@ import pandas as pd
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.models.gradient_boosting_forecaster import (  # noqa: E402
-    GradientBoostingForecaster,
-)
-from src.models.ensemble_forecaster import EnsembleForecaster  # noqa: E402
-from src.features.regime_indicators import RegimeIndicators  # noqa: E402
 from src.evaluation.purged_walk_forward_cv import (  # noqa: E402
     PurgedWalkForwardCV,
+)
+from src.features.regime_indicators import RegimeIndicators  # noqa: E402
+from src.models.ensemble_forecaster import EnsembleForecaster  # noqa: E402
+from src.models.gradient_boosting_forecaster import (  # noqa: E402
+    GradientBoostingForecaster,
 )
 
 
@@ -281,8 +281,9 @@ class TestWalkForwardBacktester(unittest.TestCase):
 
     def test_backtest_metrics_dataclass(self):
         """Test BacktestMetrics dataclass."""
-        from src.backtesting.walk_forward_tester import BacktestMetrics
         from datetime import datetime
+
+        from src.backtesting.walk_forward_tester import BacktestMetrics
 
         metrics = BacktestMetrics(
             total_trades=100,
@@ -432,8 +433,9 @@ class TestForecastQualityMonitor(unittest.TestCase):
 
     def test_compute_quality_score(self):
         """Test quality score computation."""
-        from src.monitoring.forecast_quality import ForecastQualityMonitor
         from datetime import datetime
+
+        from src.monitoring.forecast_quality import ForecastQualityMonitor
 
         forecast = {
             "confidence": 0.80,
@@ -448,8 +450,9 @@ class TestForecastQualityMonitor(unittest.TestCase):
 
     def test_check_quality_issues_low_confidence(self):
         """Test quality issue detection for low confidence."""
-        from src.monitoring.forecast_quality import ForecastQualityMonitor
         from datetime import datetime
+
+        from src.monitoring.forecast_quality import ForecastQualityMonitor
 
         forecast = {
             "confidence": 0.40,
@@ -463,8 +466,9 @@ class TestForecastQualityMonitor(unittest.TestCase):
 
     def test_check_quality_issues_model_disagreement(self):
         """Test quality issue detection for model disagreement."""
-        from src.monitoring.forecast_quality import ForecastQualityMonitor
         from datetime import datetime
+
+        from src.monitoring.forecast_quality import ForecastQualityMonitor
 
         forecast = {
             "confidence": 0.80,
@@ -478,8 +482,9 @@ class TestForecastQualityMonitor(unittest.TestCase):
 
     def test_check_batch_quality(self):
         """Test batch quality checking."""
-        from src.monitoring.forecast_quality import ForecastQualityMonitor
         from datetime import datetime
+
+        from src.monitoring.forecast_quality import ForecastQualityMonitor
 
         forecasts = [
             {"confidence": 0.80, "model_agreement": 0.90, "created_at": datetime.now()},

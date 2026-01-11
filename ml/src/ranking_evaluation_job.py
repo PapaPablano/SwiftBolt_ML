@@ -15,11 +15,11 @@ Usage:
     python ranking_evaluation_job.py --all --days 60
 """
 
+import argparse
 import logging
 import sys
-import argparse
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pandas as pd
 
@@ -27,8 +27,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings
 from src.data.supabase_db import db
-from src.models.ranking_monitor import RankingMonitor, AlertSeverity
 from src.models.ranking_calibrator import IsotonicCalibrator
+from src.models.ranking_monitor import AlertSeverity, RankingMonitor
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),

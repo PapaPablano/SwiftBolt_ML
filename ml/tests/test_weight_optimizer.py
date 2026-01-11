@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 
 from src.models.weight_optimizer import (
-    WeightOptimizer,
     AdaptiveWeightOptimizer,
+    WeightOptimizer,
 )
 
 

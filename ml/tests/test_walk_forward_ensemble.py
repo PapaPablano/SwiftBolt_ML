@@ -1,14 +1,15 @@
 """Unit tests for Walk-Forward Ensemble Backtester."""
 
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pandas as pd
 import pytest
-from unittest.mock import MagicMock, patch
 
 from src.models.walk_forward_ensemble import (
-    WalkForwardEnsemble,
-    EnsembleMetrics,
     BacktestResult,
+    EnsembleMetrics,
+    WalkForwardEnsemble,
 )
 
 

@@ -1,15 +1,15 @@
 """Tests for Enhanced Response API builder."""
 
+import numpy as np
 import pandas as pd
 import pytest
-import numpy as np
 
 from src.api.enhanced_response import (
+    _build_data_quality_section,
+    _build_explanation_section,
+    _build_multi_timeframe_section,
     build_enhanced_response,
     build_minimal_response,
-    _build_multi_timeframe_section,
-    _build_explanation_section,
-    _build_data_quality_section,
 )
 
 

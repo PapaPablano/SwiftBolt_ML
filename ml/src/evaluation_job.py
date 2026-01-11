@@ -21,8 +21,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from config.settings import settings  # noqa: E402
 from src.data.supabase_db import db  # noqa: E402
 from src.models.enhanced_ensemble_integration import (  # noqa: E402
-    record_forecast_outcome,
     export_monitoring_metrics,
+    record_forecast_outcome,
 )
 
 

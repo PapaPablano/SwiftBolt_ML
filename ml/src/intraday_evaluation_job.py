@@ -16,7 +16,6 @@ from config.settings import settings  # noqa: E402
 from src.data.supabase_db import db  # noqa: E402
 from src.forecast_validator import evaluate_single_forecast  # noqa: E402
 
-
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",

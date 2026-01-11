@@ -19,17 +19,17 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 
-from ..features.technical_indicators import add_all_technical_features
 from ..features.multi_timeframe import (
     MultiTimeframeFeatures,
     fetch_multi_timeframe_data,
 )
-from ..strategies.supertrend_ai import SuperTrendAI
+from ..features.technical_indicators import add_all_technical_features
 from ..strategies.multi_indicator_signals import MultiIndicatorSignalGenerator
+from ..strategies.supertrend_ai import SuperTrendAI
 
 # Try to import LightGBM, fall back to sklearn if not available
 try:
-    from .lightgbm_forecaster import LightGBMForecaster, LIGHTGBM_AVAILABLE
+    from .lightgbm_forecaster import LIGHTGBM_AVAILABLE, LightGBMForecaster
 except ImportError:
     LIGHTGBM_AVAILABLE = False
     LightGBMForecaster = None

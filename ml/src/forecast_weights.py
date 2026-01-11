@@ -7,10 +7,10 @@ This module defines the weight configuration for combining:
 - Layer 3: Ensemble ML (RF + GB consensus)
 """
 
-from dataclasses import dataclass, field
-from typing import Dict
 import json
 import os
+from dataclasses import dataclass, field
+from typing import Dict
 
 
 @dataclass

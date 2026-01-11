@@ -20,8 +20,8 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 from scipy import stats
-from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.stats.diagnostic import acorr_ljungbox
+from statsmodels.tsa.arima.model import ARIMA
 
 from src.features.volatility_regime import GarchVolatility
 

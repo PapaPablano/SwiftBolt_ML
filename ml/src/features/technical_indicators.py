@@ -16,9 +16,9 @@ import pandas as pd
 
 from src.features.market_regime import add_market_regime_features
 from src.features.regime_indicators import add_regime_features_to_technical
-from src.features.volatility_regime import add_garch_features
-from src.features.technical_indicators_corrected import TechnicalIndicatorsCorrect
 from src.features.support_resistance_detector import add_support_resistance_features
+from src.features.technical_indicators_corrected import TechnicalIndicatorsCorrect
+from src.features.volatility_regime import add_garch_features
 
 logger = logging.getLogger(__name__)
 

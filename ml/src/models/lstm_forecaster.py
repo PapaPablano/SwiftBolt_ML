@@ -30,9 +30,9 @@ logger = logging.getLogger(__name__)
 # Try to import TensorFlow/Keras
 try:
     import tensorflow as tf
-    from tensorflow.keras.models import Sequential
-    from tensorflow.keras.layers import LSTM, Dense, Dropout
     from tensorflow.keras.callbacks import EarlyStopping
+    from tensorflow.keras.layers import LSTM, Dense, Dropout
+    from tensorflow.keras.models import Sequential
 
     TF_AVAILABLE = True
     # Suppress TensorFlow warnings

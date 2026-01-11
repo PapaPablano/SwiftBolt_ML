@@ -5,12 +5,13 @@ Uses Kolmogorov-Smirnov test to detect distribution shifts
 between training and production data.
 """
 
+import logging
+from dataclasses import dataclass
+from typing import Optional
+
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass
 from scipy import stats
-from typing import Optional
-import logging
 
 logger = logging.getLogger(__name__)
 

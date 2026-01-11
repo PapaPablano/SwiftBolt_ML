@@ -5,8 +5,8 @@ import pandas as pd
 import pytest
 
 from src.models.forecast_options_integration import (
-    ForecastSignal,
     ForecastOptionsIntegration,
+    ForecastSignal,
     create_integration_from_manager,
 )
 

@@ -1,8 +1,8 @@
 """Tests for monitoring utilities."""
 
-import pytest
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pytest
 
 from src.monitoring.drift_detector import DriftDetector, DriftResult
 

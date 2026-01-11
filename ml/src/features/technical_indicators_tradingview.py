@@ -15,9 +15,10 @@ Validated against: AAPL & NVDA TradingView exports (300 days)
 """
 
 import logging
+from typing import Tuple
+
 import numpy as np
 import pandas as pd
-from typing import Tuple
 
 logger = logging.getLogger(__name__)
 

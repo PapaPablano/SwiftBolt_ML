@@ -25,8 +25,8 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from src.data.tradier_client import TradierClient
 from src.data.supabase_db import db
+from src.data.tradier_client import TradierClient
 
 logger = logging.getLogger(__name__)
 

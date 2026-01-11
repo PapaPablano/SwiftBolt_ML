@@ -18,8 +18,8 @@ from typing import Dict, Optional
 import numpy as np
 import pandas as pd
 
-from src.models.ensemble_forecaster import EnsembleForecaster
 from src.models.arima_garch_forecaster import ArimaGarchForecaster
+from src.models.ensemble_forecaster import EnsembleForecaster
 
 logger = logging.getLogger(__name__)
 

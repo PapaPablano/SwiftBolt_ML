@@ -18,10 +18,10 @@ Usage:
     results = ga.evolve(training_data, validation_data)
 """
 
-import logging
 import json
+import logging
 import random
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path

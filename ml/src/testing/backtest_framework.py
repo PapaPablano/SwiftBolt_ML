@@ -9,12 +9,13 @@ Key Features:
 - Risk metrics (Sharpe, Sortino, Max DD, Calmar)
 """
 
-import pandas as pd
-import numpy as np
-from typing import Callable, Optional
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-import logging
+from typing import Callable, Optional
+
+import numpy as np
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 

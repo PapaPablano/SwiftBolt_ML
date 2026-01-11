@@ -33,7 +33,7 @@ Usage:
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     from src.models.performance_monitor import PerformanceMonitor

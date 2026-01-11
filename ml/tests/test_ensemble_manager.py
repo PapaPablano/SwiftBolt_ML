@@ -10,8 +10,8 @@ import pytest
 
 from src.models.ensemble_manager import (
     EnsembleManager,
-    ForecastResult,
     ErrorRecord,
+    ForecastResult,
 )
 
 

@@ -15,9 +15,9 @@ sys.modules["config.settings"].settings = mock_settings
 
 
 from src.models.prophet_forecaster import (  # noqa: E402
+    PROPHET_AVAILABLE,
     ProphetForecaster,
     is_prophet_available,
-    PROPHET_AVAILABLE,
 )
 
 

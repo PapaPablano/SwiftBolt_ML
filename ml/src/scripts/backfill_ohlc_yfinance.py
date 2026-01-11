@@ -3,10 +3,10 @@ Backfill historical OHLC data using Yahoo Finance.
 Yahoo Finance is more reliable than Polygon for historical data.
 """
 
-import sys
-from pathlib import Path
-from datetime import datetime, timedelta
 import logging
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import yfinance as yf
 

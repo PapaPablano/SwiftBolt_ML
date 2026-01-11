@@ -11,11 +11,11 @@ Usage:
 
 import argparse
 import logging
+import subprocess
 import sys
 import time
-import subprocess
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))

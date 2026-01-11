@@ -27,13 +27,13 @@ import argparse
 import logging
 import sys
 import time
+from datetime import date, datetime
 from pathlib import Path
-from datetime import datetime, date
 from typing import Any, Dict, List, Optional
 
-import requests
-import pandas as pd
 import numpy as np
+import pandas as pd
+import requests
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -41,8 +41,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from config.settings import settings  # noqa: E402
 from src.data.supabase_db import db  # noqa: E402
 from src.models.options_momentum_ranker import (  # noqa: E402
-    OptionsMomentumRanker,
     IVStatistics,
+    OptionsMomentumRanker,
 )
 from src.options_historical_backfill import ensure_options_history  # noqa: E402
 
