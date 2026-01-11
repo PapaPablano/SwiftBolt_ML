@@ -80,14 +80,14 @@ class WalkForwardBacktester:
     # Horizon-specific window configuration
     # Longer horizons need more training data and longer test windows
     HORIZON_WINDOWS = {
-        "1D": {"train": 126, "test": 10, "step": 2},   # 6mo train, 2wk test
-        "1W": {"train": 252, "test": 25, "step": 5},   # 1yr train, 5wk test
+        "1D": {"train": 126, "test": 10, "step": 2},  # 6mo train, 2wk test
+        "1W": {"train": 252, "test": 25, "step": 5},  # 1yr train, 5wk test
         "1M": {"train": 504, "test": 60, "step": 20},  # 2yr train, 3mo test
         "2M": {"train": 504, "test": 90, "step": 30},  # 2yr train, 4.5mo test
-        "3M": {"train": 756, "test": 120, "step": 40}, # 3yr train, 6mo test
-        "4M": {"train": 756, "test": 150, "step": 50}, # 3yr train, 7.5mo test
-        "5M": {"train": 756, "test": 165, "step": 55}, # 3yr train, 8mo test
-        "6M": {"train": 756, "test": 180, "step": 60}, # 3yr train, 9mo test
+        "3M": {"train": 756, "test": 120, "step": 40},  # 3yr train, 6mo test
+        "4M": {"train": 756, "test": 150, "step": 50},  # 3yr train, 7.5mo test
+        "5M": {"train": 756, "test": 165, "step": 55},  # 3yr train, 8mo test
+        "6M": {"train": 756, "test": 180, "step": 60},  # 3yr train, 9mo test
     }
 
     def __init__(
@@ -136,10 +136,7 @@ class WalkForwardBacktester:
 
         min_data_required = self.train_window + self.test_window
         if len(df) < min_data_required:
-            raise ValueError(
-                f"Insufficient data: {len(df)} bars "
-                f"(need {min_data_required})"
-            )
+            raise ValueError(f"Insufficient data: {len(df)} bars " f"(need {min_data_required})")
 
         # Walk forward through time
         n_windows = (len(df) - self.train_window) // self.step_size
@@ -172,7 +169,7 @@ class WalkForwardBacktester:
 
             # Test on test window
             for test_idx in range(len(test_df)):
-                test_point = test_df.iloc[test_idx:test_idx + 1]
+                test_point = test_df.iloc[test_idx : test_idx + 1]
 
                 try:
                     label, confidence, proba = forecaster.predict(test_point)
@@ -180,9 +177,7 @@ class WalkForwardBacktester:
                     if test_idx + 1 < len(test_df):
                         current_price = test_point["close"].iloc[0]
                         next_price = test_df["close"].iloc[test_idx + 1]
-                        actual_return = (
-                            (next_price - current_price) / current_price
-                        )
+                        actual_return = (next_price - current_price) / current_price
 
                         actual_label = self._return_to_label(actual_return)
 
@@ -267,30 +262,16 @@ class WalkForwardBacktester:
         total_trades = len(returns)
         winning_trades = len(winning_returns)
         losing_trades = len(losing_returns)
-        win_rate = (
-            winning_trades / total_trades
-            if total_trades > 0
-            else 0
-        )
+        win_rate = winning_trades / total_trades if total_trades > 0 else 0
 
         excess_returns = returns_array
         std_excess = np.std(excess_returns)
-        sharpe_ratio = (
-            np.mean(excess_returns) / std_excess * np.sqrt(252)
-            if std_excess > 0
-            else 0
-        )
+        sharpe_ratio = np.mean(excess_returns) / std_excess * np.sqrt(252) if std_excess > 0 else 0
 
         downside_returns = excess_returns[excess_returns < 0]
-        downside_std = (
-            np.std(downside_returns)
-            if len(downside_returns) > 0
-            else 0
-        )
+        downside_std = np.std(downside_returns) if len(downside_returns) > 0 else 0
         sortino_ratio = (
-            np.mean(excess_returns) / downside_std * np.sqrt(252)
-            if downside_std > 0
-            else 0
+            np.mean(excess_returns) / downside_std * np.sqrt(252) if downside_std > 0 else 0
         )
 
         cumulative_returns = np.cumprod(1 + returns_array) - 1
@@ -301,9 +282,7 @@ class WalkForwardBacktester:
         avg_win = np.mean(winning_returns) if len(winning_returns) > 0 else 0
         avg_loss = np.mean(losing_returns) if len(losing_returns) > 0 else 1
         profit_factor = (
-            (avg_win * winning_trades) / (avg_loss * losing_trades)
-            if losing_trades > 0
-            else 1
+            (avg_win * winning_trades) / (avg_loss * losing_trades) if losing_trades > 0 else 1
         )
 
         return BacktestMetrics(

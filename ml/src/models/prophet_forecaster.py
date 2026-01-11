@@ -29,12 +29,11 @@ logger = logging.getLogger(__name__)
 # Try to import Prophet
 try:
     from prophet import Prophet
+
     PROPHET_AVAILABLE = True
 except ImportError:
     PROPHET_AVAILABLE = False
-    logger.warning(
-        "Prophet not installed. Install with: pip install prophet"
-    )
+    logger.warning("Prophet not installed. Install with: pip install prophet")
 
 
 class ProphetForecaster:
@@ -87,9 +86,7 @@ class ProphetForecaster:
             growth: Growth model ("linear" or "logistic")
         """
         if not PROPHET_AVAILABLE:
-            logger.warning(
-                "Prophet not available. Forecaster will use fallback mode."
-            )
+            logger.warning("Prophet not available. Forecaster will use fallback mode.")
 
         self.weekly_seasonality = weekly_seasonality
         self.yearly_seasonality = yearly_seasonality
@@ -163,9 +160,7 @@ class ProphetForecaster:
             raise ValueError("DataFrame must contain 'ts' column")
 
         if len(df) < min_samples:
-            raise ValueError(
-                f"Insufficient data: {len(df)} < {min_samples}"
-            )
+            raise ValueError(f"Insufficient data: {len(df)} < {min_samples}")
 
         # Prepare data for Prophet
         prophet_df = self._prepare_prophet_df(df)
@@ -176,6 +171,7 @@ class ProphetForecaster:
         try:
             # Suppress Prophet's verbose output
             import logging as py_logging
+
             py_logging.getLogger("cmdstanpy").setLevel(py_logging.WARNING)
             py_logging.getLogger("prophet").setLevel(py_logging.WARNING)
 
@@ -270,14 +266,12 @@ class ProphetForecaster:
         self.training_stats["accuracy"] = float(accuracy)
         self.training_stats["directional_accuracy"] = float(directional_accuracy)
         self.training_stats["mape"] = float(np.abs(residuals / prophet_df["y"].values).mean())
-        self.training_stats["rmse"] = float(np.sqrt((residuals ** 2).mean()))
+        self.training_stats["rmse"] = float(np.sqrt((residuals**2).mean()))
 
         # Extract changepoints info
         if hasattr(self.model, "changepoints"):
             self.diagnostics["n_changepoints"] = len(self.model.changepoints)
-            self.diagnostics["changepoint_dates"] = [
-                str(cp) for cp in self.model.changepoints[:5]
-            ]
+            self.diagnostics["changepoint_dates"] = [str(cp) for cp in self.model.changepoints[:5]]
 
         logger.info(
             "Training accuracy: %.3f, directional: %.3f",
@@ -290,10 +284,9 @@ class ProphetForecaster:
         labels = pd.Series(index=returns.index, dtype=str)
         labels[returns > self.bullish_threshold] = "bullish"
         labels[returns < self.bearish_threshold] = "bearish"
-        labels[
-            (returns >= self.bearish_threshold) &
-            (returns <= self.bullish_threshold)
-        ] = "neutral"
+        labels[(returns >= self.bearish_threshold) & (returns <= self.bullish_threshold)] = (
+            "neutral"
+        )
         return labels
 
     def predict(
@@ -447,7 +440,7 @@ class ProphetForecaster:
             prob_neutral /= total
             prob_bullish /= total
         else:
-            prob_bearish = prob_neutral = prob_bullish = 1/3
+            prob_bearish = prob_neutral = prob_bullish = 1 / 3
 
         return {
             "bearish": float(prob_bearish),
@@ -484,9 +477,7 @@ class ProphetForecaster:
         last_ts = pd.to_datetime(df["ts"].iloc[-1])
 
         if PROPHET_AVAILABLE and self.model is not None:
-            points = self._generate_prophet_points(
-                df, last_ts, last_close, horizon_days
-            )
+            points = self._generate_prophet_points(df, last_ts, last_close, horizon_days)
         else:
             points = self._generate_fallback_points(
                 last_ts,
@@ -529,21 +520,25 @@ class ProphetForecaster:
             idx = len(prophet_df) - 1 + i
             if idx < len(forecast):
                 row = forecast.iloc[idx]
-                points.append({
-                    "ts": int(row["ds"].timestamp()),
-                    "value": round(float(row["yhat"]), 2),
-                    "lower": round(float(row["yhat_lower"]), 2),
-                    "upper": round(float(row["yhat_upper"]), 2),
-                })
+                points.append(
+                    {
+                        "ts": int(row["ds"].timestamp()),
+                        "value": round(float(row["yhat"]), 2),
+                        "lower": round(float(row["yhat_lower"]), 2),
+                        "upper": round(float(row["yhat_upper"]), 2),
+                    }
+                )
             else:
                 # Extrapolate if needed
                 forecast_ts = last_ts + timedelta(days=i)
-                points.append({
-                    "ts": int(forecast_ts.timestamp()),
-                    "value": round(float(last_close), 2),
-                    "lower": round(float(last_close * 0.95), 2),
-                    "upper": round(float(last_close * 1.05), 2),
-                })
+                points.append(
+                    {
+                        "ts": int(forecast_ts.timestamp()),
+                        "value": round(float(last_close), 2),
+                        "lower": round(float(last_close * 0.95), 2),
+                        "upper": round(float(last_close * 1.05), 2),
+                    }
+                )
 
         return points
 
@@ -571,12 +566,14 @@ class ProphetForecaster:
             lower_bound = forecast_value * (1 - z_score * cumulative_volatility)
             upper_bound = forecast_value * (1 + z_score * cumulative_volatility)
 
-            points.append({
-                "ts": int(forecast_ts.timestamp()),
-                "value": round(forecast_value, 2),
-                "lower": round(lower_bound, 2),
-                "upper": round(upper_bound, 2),
-            })
+            points.append(
+                {
+                    "ts": int(forecast_ts.timestamp()),
+                    "value": round(forecast_value, 2),
+                    "lower": round(lower_bound, 2),
+                    "upper": round(upper_bound, 2),
+                }
+            )
 
         return points
 
@@ -644,14 +641,16 @@ if __name__ == "__main__":
     n = 300
     prices = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
 
-    df = pd.DataFrame({
-        "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
-        "open": prices * 0.995,
-        "high": prices * 1.01,
-        "low": prices * 0.99,
-        "close": prices,
-        "volume": np.random.randint(1e6, 1e7, n).astype(float),
-    })
+    df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
+            "open": prices * 0.995,
+            "high": prices * 1.01,
+            "low": prices * 0.99,
+            "close": prices,
+            "volume": np.random.randint(1e6, 1e7, n).astype(float),
+        }
+    )
 
     print("\nTesting Prophet Forecaster...")
 

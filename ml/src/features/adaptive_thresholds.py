@@ -35,11 +35,7 @@ class AdaptiveThresholds:
 
         current_vol = returns.iloc[-volatility_window:].std()
         baseline_vol = returns.std()
-        vol_ratio = (
-            current_vol / baseline_vol
-            if baseline_vol and baseline_vol > 0
-            else 1.0
-        )
+        vol_ratio = current_vol / baseline_vol if baseline_vol and baseline_vol > 0 else 1.0
 
         base_bearish = -0.02
         base_bullish = 0.02
@@ -79,11 +75,7 @@ class AdaptiveThresholds:
         current_price = df["close"].iloc[-1]
         current_atr = df["atr"].iloc[-1]
 
-        threshold = (
-            (current_atr / current_price) * multiplier
-            if current_price
-            else 0.02
-        )
+        threshold = (current_atr / current_price) * multiplier if current_price else 0.02
 
         bearish_threshold = -threshold
         bullish_threshold = threshold

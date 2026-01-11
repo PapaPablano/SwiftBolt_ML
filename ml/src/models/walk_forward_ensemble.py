@@ -93,9 +93,7 @@ class EnsembleMetrics:
         for cls in ["Bullish", "Neutral", "Bearish"]:
             mask = actuals == cls
             if mask.sum() > 0:
-                class_accuracies[cls.lower()] = float(
-                    np.mean(predictions[mask] == actuals[mask])
-                )
+                class_accuracies[cls.lower()] = float(np.mean(predictions[mask] == actuals[mask]))
 
         # Confidence statistics
         confidences = np.array(self.confidences)
@@ -103,8 +101,7 @@ class EnsembleMetrics:
 
         # Model contributions
         avg_weights = {
-            model: float(np.mean(weights))
-            for model, weights in self.model_contributions.items()
+            model: float(np.mean(weights)) for model, weights in self.model_contributions.items()
         }
 
         return {
@@ -158,9 +155,7 @@ class WalkForwardEnsemble:
         self.metrics = EnsembleMetrics()
         self.weight_history: List[Dict] = []
 
-        self.weight_optimizer = WeightOptimizer(
-            optimization_method=optimization_method
-        )
+        self.weight_optimizer = WeightOptimizer(optimization_method=optimization_method)
         self.uncertainty_quantifier = DirectionalUncertaintyQuantifier()
 
         logger.info(
@@ -194,8 +189,7 @@ class WalkForwardEnsemble:
 
         if n_samples < self.initial_train_size + self.test_size:
             raise ValueError(
-                f"Insufficient data: {n_samples} < "
-                f"{self.initial_train_size + self.test_size}"
+                f"Insufficient data: {n_samples} < " f"{self.initial_train_size + self.test_size}"
             )
 
         # Initialize weights
@@ -232,9 +226,7 @@ class WalkForwardEnsemble:
                     self._record_weight_history(step, weights, ohlc_df)
 
                 # Generate prediction
-                prediction = ensemble.predict(
-                    train_features.tail(1), train_ohlc
-                )
+                prediction = ensemble.predict(train_features.tail(1), train_ohlc)
 
                 # Record result
                 result = self._record_result(
@@ -294,11 +286,7 @@ class WalkForwardEnsemble:
                 if model_name in r.model_predictions:
                     pred = r.model_predictions[model_name]
                     # Convert to numeric
-                    val = (
-                        1 if pred.lower() == "bullish"
-                        else -1 if pred.lower() == "bearish"
-                        else 0
-                    )
+                    val = 1 if pred.lower() == "bullish" else -1 if pred.lower() == "bearish" else 0
                     model_preds.append(val)
             if model_preds:
                 predictions_dict[model_name] = np.array(model_preds)
@@ -307,17 +295,19 @@ class WalkForwardEnsemble:
             return current_weights
 
         # Convert actuals to numeric
-        actuals = np.array([
-            1 if r.actual_direction.lower() == "bullish"
-            else -1 if r.actual_direction.lower() == "bearish"
-            else 0
-            for r in recent_results
-        ])
+        actuals = np.array(
+            [
+                (
+                    1
+                    if r.actual_direction.lower() == "bullish"
+                    else -1 if r.actual_direction.lower() == "bearish" else 0
+                )
+                for r in recent_results
+            ]
+        )
 
         try:
-            new_weights = self.weight_optimizer.optimize_weights(
-                predictions_dict, actuals
-            )
+            new_weights = self.weight_optimizer.optimize_weights(predictions_dict, actuals)
             logger.debug("Updated weights at step %d: %s", step, new_weights)
             return new_weights
         except Exception as e:
@@ -331,12 +321,13 @@ class WalkForwardEnsemble:
         ohlc_df: pd.DataFrame,
     ) -> None:
         """Record weight history entry."""
-        self.weight_history.append({
-            "step": step,
-            "timestamp": str(ohlc_df["ts"].iloc[step])
-            if step < len(ohlc_df) else None,
-            "weights": weights.copy(),
-        })
+        self.weight_history.append(
+            {
+                "step": step,
+                "timestamp": str(ohlc_df["ts"].iloc[step]) if step < len(ohlc_df) else None,
+                "weights": weights.copy(),
+            }
+        )
 
     def _record_result(
         self,
@@ -424,9 +415,7 @@ class WalkForwardEnsemble:
             return pd.DataFrame()
 
         classes = ["Bullish", "Neutral", "Bearish"]
-        matrix = pd.DataFrame(
-            0, index=classes, columns=classes
-        )
+        matrix = pd.DataFrame(0, index=classes, columns=classes)
 
         for r in self.results:
             pred = r.forecast_label
@@ -449,15 +438,14 @@ class WalkForwardEnsemble:
 
         # Bin by confidence
         bins = np.linspace(0, 1, n_bins + 1)
-        bin_labels = [
-            f"{bins[i]:.2f}-{bins[i+1]:.2f}"
-            for i in range(n_bins)
-        ]
+        bin_labels = [f"{bins[i]:.2f}-{bins[i+1]:.2f}" for i in range(n_bins)]
 
-        df = pd.DataFrame({
-            "confidence": confidences,
-            "correct": correct,
-        })
+        df = pd.DataFrame(
+            {
+                "confidence": confidences,
+                "correct": correct,
+            }
+        )
         df["bin"] = pd.cut(
             df["confidence"],
             bins=bins,
@@ -465,9 +453,11 @@ class WalkForwardEnsemble:
             include_lowest=True,
         )
 
-        summary = df.groupby("bin").agg({
-            "correct": ["mean", "count"],
-        })
+        summary = df.groupby("bin").agg(
+            {
+                "correct": ["mean", "count"],
+            }
+        )
         summary.columns = ["accuracy", "count"]
 
         return summary
@@ -481,10 +471,7 @@ class WalkForwardEnsemble:
             "metrics": metrics,
             "n_steps": len(self.results),
             "n_weight_updates": len(self.weight_history),
-            "final_weights": (
-                self.weight_history[-1]["weights"]
-                if self.weight_history else {}
-            ),
+            "final_weights": (self.weight_history[-1]["weights"] if self.weight_history else {}),
             "confusion_matrix": confusion.to_dict() if not confusion.empty else {},
         }
 
@@ -499,14 +486,16 @@ if __name__ == "__main__":
     # Create sample data
     prices = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
 
-    ohlc_df = pd.DataFrame({
-        "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
-        "open": prices * 0.995,
-        "high": prices * 1.01,
-        "low": prices * 0.99,
-        "close": prices,
-        "volume": np.random.randint(1e6, 1e7, n).astype(float),
-    })
+    ohlc_df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
+            "open": prices * 0.995,
+            "high": prices * 1.01,
+            "low": prices * 0.99,
+            "close": prices,
+            "volume": np.random.randint(1e6, 1e7, n).astype(float),
+        }
+    )
 
     # Create features
     ohlc_df["return_1d"] = ohlc_df["close"].pct_change()
@@ -520,9 +509,7 @@ if __name__ == "__main__":
     # Create labels
     fwd_return = ohlc_df["close"].pct_change().shift(-1)
     labels = fwd_return.apply(
-        lambda x: "bullish" if x > 0.01
-        else "bearish" if x < -0.01
-        else "neutral"
+        lambda x: "bullish" if x > 0.01 else "bearish" if x < -0.01 else "neutral"
     ).iloc[:-1]
     features_df = features_df.iloc[:-1]
     ohlc_df = ohlc_df.iloc[:-1]

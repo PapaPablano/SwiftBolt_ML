@@ -45,18 +45,12 @@ def _max_prob(levels: list[dict[str, Any]]) -> float:
     return float(np.max(probs))
 
 
-def _level_density(
-    levels: list[float], current_price: float, pct_window: float
-) -> int:
+def _level_density(levels: list[float], current_price: float, pct_window: float) -> int:
     """Count number of levels within +/- pct_window of current price."""
     if not current_price or not levels:
         return 0
     window = current_price * pct_window / 100
-    return sum(
-        1
-        for level in levels
-        if level is not None and abs(level - current_price) <= window
-    )
+    return sum(1 for level in levels if level is not None and abs(level - current_price) <= window)
 
 
 def build_sr_feature_map(sr_levels: Dict[str, Any]) -> Dict[str, float]:
@@ -80,12 +74,8 @@ def build_sr_feature_map(sr_levels: Dict[str, Any]) -> Dict[str, float]:
 
     features["sr_nearest_support"] = nearest_support
     features["sr_nearest_resistance"] = nearest_resistance
-    features["sr_support_distance_pct"] = _safe_float(
-        sr_levels.get("support_distance_pct")
-    )
-    features["sr_resistance_distance_pct"] = _safe_float(
-        sr_levels.get("resistance_distance_pct")
-    )
+    features["sr_support_distance_pct"] = _safe_float(sr_levels.get("support_distance_pct"))
+    features["sr_resistance_distance_pct"] = _safe_float(sr_levels.get("resistance_distance_pct"))
 
     indicators = sr_levels.get("indicators", {})
     poly = indicators.get("polynomial", {})
@@ -93,21 +83,11 @@ def build_sr_feature_map(sr_levels: Dict[str, Any]) -> Dict[str, float]:
 
     # Polynomial trend features
     features["sr_poly_support"] = _safe_float(poly.get("current_support"))
-    features["sr_poly_resistance"] = _safe_float(
-        poly.get("current_resistance")
-    )
-    features["sr_poly_support_slope"] = _safe_float(
-        poly.get("support_slope")
-    )
-    features["sr_poly_resistance_slope"] = _safe_float(
-        poly.get("resistance_slope")
-    )
-    features["sr_poly_is_diverging"] = float(
-        bool(poly.get("is_diverging", False))
-    )
-    features["sr_poly_is_converging"] = float(
-        bool(poly.get("is_converging", False))
-    )
+    features["sr_poly_resistance"] = _safe_float(poly.get("current_resistance"))
+    features["sr_poly_support_slope"] = _safe_float(poly.get("support_slope"))
+    features["sr_poly_resistance_slope"] = _safe_float(poly.get("resistance_slope"))
+    features["sr_poly_is_diverging"] = float(bool(poly.get("is_diverging", False)))
+    features["sr_poly_is_converging"] = float(bool(poly.get("is_converging", False)))
 
     # Logistic probability features
     support_levels = logistic.get("support_levels", [])

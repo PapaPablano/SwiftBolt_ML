@@ -31,7 +31,7 @@ def sample_ohlc_df():
     volatility = np.zeros(n)
     volatility[0] = 0.01
     for i in range(1, n):
-        volatility[i] = 0.0001 + 0.1 * volatility[i-1] + 0.85 * np.random.randn()**2 * 0.01
+        volatility[i] = 0.0001 + 0.1 * volatility[i - 1] + 0.85 * np.random.randn() ** 2 * 0.01
 
     noise = np.random.randn(n) * np.sqrt(volatility)
     prices = base_price * (1 + trend + np.cumsum(noise))

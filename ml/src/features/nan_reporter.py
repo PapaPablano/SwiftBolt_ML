@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ColumnReport:
     """Report for a single column's NaN status."""
+
     column_name: str
     total_rows: int
     nan_count: int
@@ -54,6 +55,7 @@ class ColumnReport:
 @dataclass
 class DataFrameReport:
     """Complete report for a DataFrame's data quality."""
+
     timestamp: datetime
     total_rows: int
     total_columns: int
@@ -248,13 +250,15 @@ class NaNReporter:
 
         data = []
         for col_report in report.column_reports.values():
-            data.append({
-                "column": col_report.column_name,
-                "nan_count": col_report.nan_count,
-                "nan_pct": col_report.nan_percentage,
-                "severity": col_report.severity,
-                "max_consecutive": col_report.consecutive_nan_max,
-            })
+            data.append(
+                {
+                    "column": col_report.column_name,
+                    "nan_count": col_report.nan_count,
+                    "nan_pct": col_report.nan_percentage,
+                    "severity": col_report.severity,
+                    "max_consecutive": col_report.consecutive_nan_max,
+                }
+            )
 
         df = pd.DataFrame(data)
         if not df.empty:

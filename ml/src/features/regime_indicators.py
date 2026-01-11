@@ -74,9 +74,7 @@ class RegimeIndicators:
         return regime.astype("Int64")
 
     @staticmethod
-    def volatility_of_volatility(
-        realized_vol_series: pd.Series, lookback: int = 10
-    ) -> pd.Series:
+    def volatility_of_volatility(realized_vol_series: pd.Series, lookback: int = 10) -> pd.Series:
         """
         Compute vol of vol: standard deviation of realized volatility.
 
@@ -94,9 +92,7 @@ class RegimeIndicators:
         return vol_of_vol
 
     @staticmethod
-    def volatility_percentile(
-        realized_vol_series: pd.Series, lookback: int = 252
-    ) -> pd.Series:
+    def volatility_percentile(realized_vol_series: pd.Series, lookback: int = 252) -> pd.Series:
         """
         Compute percentile rank of current vol vs historical.
 
@@ -180,9 +176,7 @@ class RegimeIndicators:
         )
 
         # Vol trend
-        df["vol_trend"] = RegimeIndicators.volatility_trend(
-            df["realized_vol_20d"], lookback=20
-        )
+        df["vol_trend"] = RegimeIndicators.volatility_trend(df["realized_vol_20d"], lookback=20)
 
         logger.info(f"Added 5 regime indicators. Shape: {df.shape}")
 

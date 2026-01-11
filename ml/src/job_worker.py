@@ -154,12 +154,7 @@ def claim_and_process_job(db: SupabaseDatabase, job_type: Optional[str] = None) 
 
     # Mark job as completed or failed
     db.client.rpc(
-        "complete_job",
-        {
-            "p_job_id": str(job_id),
-            "p_success": success,
-            "p_error": error
-        }
+        "complete_job", {"p_job_id": str(job_id), "p_success": success, "p_error": error}
     ).execute()
 
     return True
@@ -205,29 +200,23 @@ def run_worker(
 def main():
     parser = argparse.ArgumentParser(description="Process jobs from the queue")
     parser.add_argument(
-        "--continuous",
-        action="store_true",
-        help="Run continuously, polling for new jobs"
+        "--continuous", action="store_true", help="Run continuously, polling for new jobs"
     )
     parser.add_argument(
         "--job-type",
         type=str,
         choices=["forecast", "backfill", "ranking"],
-        help="Only process jobs of this type"
+        help="Only process jobs of this type",
     )
     parser.add_argument(
         "--poll-interval",
         type=int,
         default=30,
-        help="Seconds between polls in continuous mode (default: 30)"
+        help="Seconds between polls in continuous mode (default: 30)",
     )
-    
+
     args = parser.parse_args()
-    run_worker(
-        continuous=args.continuous,
-        job_type=args.job_type,
-        poll_interval=args.poll_interval
-    )
+    run_worker(continuous=args.continuous, job_type=args.job_type, poll_interval=args.poll_interval)
 
 
 if __name__ == "__main__":

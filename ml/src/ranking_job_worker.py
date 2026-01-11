@@ -103,17 +103,12 @@ def process_job(job: dict) -> bool:
         )
 
         if result.returncode == 0:
-            logger.info(
-                "✅ Successfully processed job %s for %s", job_id, symbol
-            )
+            logger.info("✅ Successfully processed job %s for %s", job_id, symbol)
             logger.debug("Output: %s", result.stdout)
             complete_job(job_id)
             return True
 
-        error_msg = (
-            f"Script failed with exit code {result.returncode}: "
-            f"{result.stderr}"
-        )
+        error_msg = f"Script failed with exit code {result.returncode}: " f"{result.stderr}"
         logger.error("❌ Job %s failed: %s", job_id, error_msg)
         fail_job(job_id, error_msg)
         return False
@@ -176,9 +171,7 @@ def watch_queue(poll_interval: int = 10):
             processed = process_queue_once()
 
             if processed == 0:
-                logger.info(
-                    f"Waiting {poll_interval} seconds before next poll..."
-                )
+                logger.info(f"Waiting {poll_interval} seconds before next poll...")
                 time.sleep(poll_interval)
             # If jobs were processed, check again immediately for more
 
@@ -188,9 +181,7 @@ def watch_queue(poll_interval: int = 10):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Process ranking jobs from the queue"
-    )
+    parser = argparse.ArgumentParser(description="Process ranking jobs from the queue")
 
     parser.add_argument(
         "--watch",

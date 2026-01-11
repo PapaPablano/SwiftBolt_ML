@@ -118,9 +118,7 @@ class TestEnsembleForecaster(unittest.TestCase):
 
     def test_ensemble_initialization(self):
         """Test ensemble initialization."""
-        ensemble = EnsembleForecaster(
-            horizon="1D", rf_weight=0.5, gb_weight=0.5
-        )
+        ensemble = EnsembleForecaster(horizon="1D", rf_weight=0.5, gb_weight=0.5)
         self.assertFalse(ensemble.is_trained)
         self.assertAlmostEqual(ensemble.rf_weight, 0.5)
 
@@ -226,9 +224,7 @@ class TestPurgedWalkForwardCV(unittest.TestCase):
             columns=[f"feature_{i}" for i in range(5)],
         )
         cls.y = pd.Series(np.random.choice([-1, 0, 1], n_samples))
-        cls.dates = pd.date_range(
-            start="2024-01-01", periods=n_samples, freq="D"
-        )
+        cls.dates = pd.date_range(start="2024-01-01", periods=n_samples, freq="D")
 
     def test_cv_initialization(self):
         """Test CV initialization."""
@@ -272,14 +268,16 @@ class TestWalkForwardBacktester(unittest.TestCase):
         dates = pd.date_range(start="2023-01-01", periods=n_samples, freq="D")
 
         prices = 100 + np.random.randn(n_samples).cumsum() * 0.5
-        cls.ohlcv_df = pd.DataFrame({
-            "ts": dates,
-            "open": prices * (1 + np.random.randn(n_samples) * 0.01),
-            "high": prices * (1 + np.abs(np.random.randn(n_samples) * 0.02)),
-            "low": prices * (1 - np.abs(np.random.randn(n_samples) * 0.02)),
-            "close": prices,
-            "volume": np.random.randint(1000000, 10000000, n_samples),
-        })
+        cls.ohlcv_df = pd.DataFrame(
+            {
+                "ts": dates,
+                "open": prices * (1 + np.random.randn(n_samples) * 0.01),
+                "high": prices * (1 + np.abs(np.random.randn(n_samples) * 0.02)),
+                "low": prices * (1 - np.abs(np.random.randn(n_samples) * 0.02)),
+                "close": prices,
+                "volume": np.random.randint(1000000, 10000000, n_samples),
+            }
+        )
 
     def test_backtest_metrics_dataclass(self):
         """Test BacktestMetrics dataclass."""
@@ -331,14 +329,16 @@ class TestTemporalIndicators(unittest.TestCase):
         dates = pd.date_range(start="2024-01-01", periods=n_samples, freq="D")
 
         prices = 100 + np.random.randn(n_samples).cumsum() * 0.5
-        cls.ohlcv_df = pd.DataFrame({
-            "ts": dates,
-            "open": prices * (1 + np.random.randn(n_samples) * 0.01),
-            "high": prices * (1 + np.abs(np.random.randn(n_samples) * 0.02)),
-            "low": prices * (1 - np.abs(np.random.randn(n_samples) * 0.02)),
-            "close": prices,
-            "volume": np.random.randint(1000000, 10000000, n_samples),
-        })
+        cls.ohlcv_df = pd.DataFrame(
+            {
+                "ts": dates,
+                "open": prices * (1 + np.random.randn(n_samples) * 0.01),
+                "high": prices * (1 + np.abs(np.random.randn(n_samples) * 0.02)),
+                "low": prices * (1 - np.abs(np.random.randn(n_samples) * 0.02)),
+                "close": prices,
+                "volume": np.random.randint(1000000, 10000000, n_samples),
+            }
+        )
 
     def test_compute_sma(self):
         """Test SMA computation with no lookahead."""
@@ -399,18 +399,18 @@ class TestAdaptiveThresholds(unittest.TestCase):
         n_samples = 100
 
         prices = 100 + np.random.randn(n_samples).cumsum() * 0.5
-        cls.ohlcv_df = pd.DataFrame({
-            "close": prices,
-            "atr": np.abs(np.random.randn(n_samples) * 2) + 1,
-        })
+        cls.ohlcv_df = pd.DataFrame(
+            {
+                "close": prices,
+                "atr": np.abs(np.random.randn(n_samples) * 2) + 1,
+            }
+        )
 
     def test_compute_thresholds(self):
         """Test volatility-based threshold computation."""
         from src.features.adaptive_thresholds import AdaptiveThresholds
 
-        bearish_thresh, bullish_thresh = AdaptiveThresholds.compute_thresholds(
-            self.ohlcv_df
-        )
+        bearish_thresh, bullish_thresh = AdaptiveThresholds.compute_thresholds(self.ohlcv_df)
 
         self.assertLess(bearish_thresh, 0)
         self.assertGreater(bullish_thresh, 0)
@@ -421,9 +421,7 @@ class TestAdaptiveThresholds(unittest.TestCase):
         """Test ATR-based threshold computation."""
         from src.features.adaptive_thresholds import AdaptiveThresholds
 
-        bearish_thresh, bullish_thresh = AdaptiveThresholds.compute_thresholds_atr(
-            self.ohlcv_df
-        )
+        bearish_thresh, bullish_thresh = AdaptiveThresholds.compute_thresholds_atr(self.ohlcv_df)
 
         self.assertLess(bearish_thresh, 0)
         self.assertGreater(bullish_thresh, 0)
@@ -506,13 +504,15 @@ class TestMarketRegime(unittest.TestCase):
         n_samples = 200
 
         prices = 100 + np.random.randn(n_samples).cumsum() * 0.5
-        cls.ohlcv_df = pd.DataFrame({
-            "close": prices,
-            "high": prices * 1.01,
-            "low": prices * 0.99,
-            "open": prices * (1 + np.random.randn(n_samples) * 0.005),
-            "volume": np.random.randint(1000000, 10000000, n_samples),
-        })
+        cls.ohlcv_df = pd.DataFrame(
+            {
+                "close": prices,
+                "high": prices * 1.01,
+                "low": prices * 0.99,
+                "open": prices * (1 + np.random.randn(n_samples) * 0.005),
+                "volume": np.random.randint(1000000, 10000000, n_samples),
+            }
+        )
 
     def test_market_regime_detector_initialization(self):
         """Test MarketRegimeDetector initialization."""
@@ -544,9 +544,11 @@ class TestVolatilityRegime(unittest.TestCase):
         n_samples = 200
 
         prices = 100 + np.random.randn(n_samples).cumsum() * 0.5
-        cls.ohlcv_df = pd.DataFrame({
-            "close": prices,
-        })
+        cls.ohlcv_df = pd.DataFrame(
+            {
+                "close": prices,
+            }
+        )
 
     def test_garch_volatility_initialization(self):
         """Test GarchVolatility initialization."""

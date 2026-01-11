@@ -173,10 +173,7 @@ class SupabaseDatabase:
         try:
             response = (
                 self.client.table("symbol_model_weights")
-                .select(
-                    "rf_weight, gb_weight, synth_weights, "
-                    "diagnostics, last_updated"
-                )
+                .select("rf_weight, gb_weight, synth_weights, " "diagnostics, last_updated")
                 .eq("symbol_id", symbol_id)
                 .eq("horizon", horizon)
                 .order("last_updated", desc=True)
@@ -346,23 +343,13 @@ class SupabaseDatabase:
             if supertrend_data:
                 forecast_data.update(
                     {
-                        "supertrend_factor": supertrend_data.get(
-                            "supertrend_factor"
-                        ),
-                        "supertrend_performance": supertrend_data.get(
-                            "supertrend_performance"
-                        ),
-                        "supertrend_signal": supertrend_data.get(
-                            "supertrend_signal"
-                        ),
+                        "supertrend_factor": supertrend_data.get("supertrend_factor"),
+                        "supertrend_performance": supertrend_data.get("supertrend_performance"),
+                        "supertrend_signal": supertrend_data.get("supertrend_signal"),
                         "trend_label": supertrend_data.get("trend_label"),
-                        "trend_confidence": supertrend_data.get(
-                            "trend_confidence"
-                        ),
+                        "trend_confidence": supertrend_data.get("trend_confidence"),
                         "stop_level": supertrend_data.get("stop_level"),
-                        "trend_duration_bars": supertrend_data.get(
-                            "trend_duration_bars"
-                        ),
+                        "trend_duration_bars": supertrend_data.get("trend_duration_bars"),
                     }
                 )
 
@@ -636,8 +623,8 @@ class SupabaseDatabase:
             }
 
             # Delete existing rank for this contract if it exists
-            delete_query = self.client.table("options_ranks").delete().eq(
-                "contract_symbol", contract_symbol
+            delete_query = (
+                self.client.table("options_ranks").delete().eq("contract_symbol", contract_symbol)
             )
             if ranking_mode is not None:
                 delete_query = delete_query.eq("ranking_mode", ranking_mode)
@@ -711,9 +698,7 @@ class SupabaseDatabase:
                 "bid": _safe_float(row.get("bid", 0)),
                 "ask": _safe_float(row.get("ask", 0)),
                 "last": _safe_float(row.get("last", 0)),
-                "underlying_price": _safe_float(
-                    row.get("underlying_price", 0)
-                ),
+                "underlying_price": _safe_float(row.get("underlying_price", 0)),
                 "volume": _safe_int(row.get("volume", 0)),
                 "open_interest": _safe_int(row.get("open_interest", 0)),
                 "delta": _safe_float(row.get("delta", 0)),
@@ -851,9 +836,7 @@ class SupabaseDatabase:
         try:
             symbol_id = self.get_symbol_id(symbol)
 
-            cutoff = (
-                pd.Timestamp.now() - pd.Timedelta(days=days_back)
-            ).isoformat()
+            cutoff = (pd.Timestamp.now() - pd.Timedelta(days=days_back)).isoformat()
 
             response = (
                 self.client.table("options_snapshots")
@@ -971,14 +954,11 @@ class SupabaseDatabase:
             response = (
                 self.client.table("forecast_evaluations")
                 .select(
-                    "forecast_id, predicted_label, actual_label, "
-                    "ml_forecasts!inner(confidence)"
+                    "forecast_id, predicted_label, actual_label, " "ml_forecasts!inner(confidence)"
                 )
                 .gte(
                     "evaluation_date",
-                    (
-                        pd.Timestamp.now() - pd.Timedelta(days=lookback_days)
-                    ).isoformat(),
+                    (pd.Timestamp.now() - pd.Timedelta(days=lookback_days)).isoformat(),
                 )
                 .limit(1000)
                 .execute()
@@ -1086,11 +1066,7 @@ class SupabaseDatabase:
                 "expires_at": expires_at,
             }
 
-            response = (
-                self.client.table("ml_forecasts_intraday")
-                .insert(forecast_data)
-                .execute()
-            )
+            response = self.client.table("ml_forecasts_intraday").insert(forecast_data).execute()
 
             if response.data:
                 forecast_id = response.data[0]["id"]
@@ -1187,7 +1163,7 @@ class SupabaseDatabase:
                 "ensemble_direction_correct": ensemble_direction_correct,
                 "forecast_created_at": forecast_created_at,
             }
-            
+
             # Add Option B fields if provided
             if option_b_outcome is not None:
                 eval_data["option_b_outcome"] = option_b_outcome
@@ -1200,9 +1176,7 @@ class SupabaseDatabase:
             if option_b_bias is not None:
                 eval_data["option_b_bias"] = option_b_bias
 
-            self.client.table("ml_forecast_evaluations_intraday").insert(
-                eval_data
-            ).execute()
+            self.client.table("ml_forecast_evaluations_intraday").insert(eval_data).execute()
 
             logger.debug(
                 "Saved intraday evaluation for %s %s: correct=%s",

@@ -73,8 +73,7 @@ class ForecastOptionsIntegration:
         self.uncertainty_discount_factor = uncertainty_discount_factor
 
         logger.info(
-            "ForecastOptionsIntegration initialized: "
-            "conf_weight=%.2f, agreement_weight=%.2f",
+            "ForecastOptionsIntegration initialized: " "conf_weight=%.2f, agreement_weight=%.2f",
             confidence_weight,
             agreement_weight,
         )
@@ -104,17 +103,11 @@ class ForecastOptionsIntegration:
         trend = self._label_to_trend(label, confidence)
 
         # Calculate signal strength (0-10 scale)
-        signal_strength = self._calculate_signal_strength(
-            confidence, agreement, probabilities
-        )
+        signal_strength = self._calculate_signal_strength(confidence, agreement, probabilities)
 
         # Calculate supertrend-like metrics
-        supertrend_factor = self._estimate_supertrend_factor(
-            forecast, ohlc_df
-        )
-        supertrend_performance = self._estimate_supertrend_performance(
-            confidence, agreement
-        )
+        supertrend_factor = self._estimate_supertrend_factor(forecast, ohlc_df)
+        supertrend_performance = self._estimate_supertrend_performance(confidence, agreement)
 
         # Calculate uncertainty
         uncertainty = self._calculate_uncertainty(probabilities)
@@ -186,9 +179,7 @@ class ForecastOptionsIntegration:
         strike = option.get("strike", underlying_price)
 
         # Base directional alignment
-        directional_score = self._score_directional_alignment(
-            signal.trend, side, signal.confidence
-        )
+        directional_score = self._score_directional_alignment(signal.trend, side, signal.confidence)
 
         # Moneyness alignment
         moneyness_score = self._score_moneyness_alignment(
@@ -202,14 +193,10 @@ class ForecastOptionsIntegration:
         agreement_bonus = 0.1 * signal.agreement
 
         # Uncertainty discount
-        uncertainty_discount = 1 - (
-            self.uncertainty_discount_factor * signal.uncertainty
-        )
+        uncertainty_discount = 1 - (self.uncertainty_discount_factor * signal.uncertainty)
 
         # Combined score
-        base_score = (
-            0.6 * directional_score + 0.4 * moneyness_score
-        )
+        base_score = 0.6 * directional_score + 0.4 * moneyness_score
         adjusted_score = base_score * confidence_factor * uncertainty_discount
         final_score = min(1.0, adjusted_score + agreement_bonus)
 
@@ -247,9 +234,7 @@ class ForecastOptionsIntegration:
         scores = []
         for _, row in df.iterrows():
             option = row.to_dict()
-            score = self.score_option_with_forecast(
-                option, signal, underlying_price
-            )
+            score = self.score_option_with_forecast(option, signal, underlying_price)
             scores.append(score)
 
         df["forecast_score"] = scores
@@ -291,9 +276,7 @@ class ForecastOptionsIntegration:
         uncertainty_factor = 1 - signal.uncertainty
 
         # Combined factor
-        size_factor = (
-            confidence_factor * agreement_factor * uncertainty_factor
-        )
+        size_factor = confidence_factor * agreement_factor * uncertainty_factor
 
         # Scale to position size
         recommended_size = base_position_size * (0.5 + size_factor)
@@ -306,14 +289,10 @@ class ForecastOptionsIntegration:
             "agreement_component": float(agreement_factor),
             "uncertainty_component": float(uncertainty_factor),
             "is_high_conviction": (
-                signal.confidence > 0.7 and
-                signal.agreement > 0.7 and
-                signal.uncertainty < 0.3
+                signal.confidence > 0.7 and signal.agreement > 0.7 and signal.uncertainty < 0.3
             ),
             "is_low_conviction": (
-                signal.confidence < 0.55 or
-                signal.agreement < 0.5 or
-                signal.uncertainty > 0.5
+                signal.confidence < 0.55 or signal.agreement < 0.5 or signal.uncertainty > 0.5
             ),
         }
 
@@ -339,9 +318,7 @@ class ForecastOptionsIntegration:
             return options_df
 
         # Filter by score
-        filtered = options_df[
-            options_df["forecast_score"] >= min_forecast_score
-        ].copy()
+        filtered = options_df[options_df["forecast_score"] >= min_forecast_score].copy()
 
         # Further filter by side alignment if directional
         if signal.trend != "neutral" and signal.confidence > 0.6:
@@ -349,9 +326,7 @@ class ForecastOptionsIntegration:
 
             # Keep only preferred side for strong signals
             if signal.confidence > 0.7:
-                filtered = filtered[
-                    filtered["side"].str.lower() == preferred_side
-                ]
+                filtered = filtered[filtered["side"].str.lower() == preferred_side]
 
         return filtered
 
@@ -474,9 +449,8 @@ class ForecastOptionsIntegration:
         if trend == "neutral":
             return 0.5  # Neutral is ok for either side
 
-        is_aligned = (
-            (trend == "bullish" and side == "call") or
-            (trend == "bearish" and side == "put")
+        is_aligned = (trend == "bullish" and side == "call") or (
+            trend == "bearish" and side == "put"
         )
 
         if is_aligned:
@@ -624,18 +598,18 @@ if __name__ == "__main__":
         print(f"  {k}: {v}")
 
     # Create sample options
-    options_df = pd.DataFrame({
-        "strike": [95, 100, 105, 110, 95, 100, 105],
-        "side": ["call", "call", "call", "call", "put", "put", "put"],
-        "expiration": ["2024-01-19"] * 7,
-        "bid": [5.5, 2.5, 0.8, 0.2, 0.3, 1.0, 3.5],
-        "ask": [5.7, 2.7, 1.0, 0.3, 0.4, 1.2, 3.7],
-    })
+    options_df = pd.DataFrame(
+        {
+            "strike": [95, 100, 105, 110, 95, 100, 105],
+            "side": ["call", "call", "call", "call", "put", "put", "put"],
+            "expiration": ["2024-01-19"] * 7,
+            "bid": [5.5, 2.5, 0.8, 0.2, 0.3, 1.0, 3.5],
+            "ask": [5.7, 2.7, 1.0, 0.3, 0.4, 1.2, 3.7],
+        }
+    )
 
     # Rank options
-    ranked = integration.rank_options_with_forecast(
-        options_df, forecast, underlying_price=100
-    )
+    ranked = integration.rank_options_with_forecast(options_df, forecast, underlying_price=100)
     print(f"\nRanked Options:")
     print(ranked[["strike", "side", "forecast_score"]].to_string())
 

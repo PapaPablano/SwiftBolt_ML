@@ -140,10 +140,7 @@ class EnsembleForecaster:
                             "gb_weight": float(gb),
                         }
 
-            result = db.client.rpc(
-                "get_model_weights",
-                {"p_horizon": horizon}
-            ).execute()
+            result = db.client.rpc("get_model_weights", {"p_horizon": horizon}).execute()
 
             if result.data and len(result.data) > 0:
                 weights = result.data[0]
@@ -162,9 +159,7 @@ class EnsembleForecaster:
 
         return {"rf_weight": 0.5, "gb_weight": 0.5}
 
-    def train(
-        self, features_df: pd.DataFrame, labels_series: pd.Series
-    ) -> "EnsembleForecaster":
+    def train(self, features_df: pd.DataFrame, labels_series: pd.Series) -> "EnsembleForecaster":
         """
         Train both RF and GB models.
 
@@ -237,9 +232,7 @@ class EnsembleForecaster:
                     pd.DataFrame(X_balanced, columns=features_df.columns),
                     gb_labels,
                 )
-                gb_accuracy = self.gb_model.training_stats.get(
-                    "training_accuracy", 0
-                )
+                gb_accuracy = self.gb_model.training_stats.get("training_accuracy", 0)
                 logger.info("  GB trained (accuracy: %.3f)", gb_accuracy)
             except ValueError as exc:
                 logger.warning("  GB training failed: %s. Using RF only.", exc)
@@ -316,9 +309,7 @@ class EnsembleForecaster:
         final_confidence = ensemble_probs[final_label]
 
         # Check agreement (1.0 = agree, 0.0 = disagree)
-        rf_label_str = (
-            rf_label.lower() if isinstance(rf_label, str) else rf_label
-        )
+        rf_label_str = rf_label.lower() if isinstance(rf_label, str) else rf_label
         gb_label_str = gb_pred.get("label", "Unknown").lower()
         agreement = 1.0 if rf_label_str == gb_label_str else 0.0
 
@@ -347,9 +338,7 @@ class EnsembleForecaster:
             raise RuntimeError("Ensemble not trained.")
 
         # Get RF batch predictions
-        X_scaled = self.rf_model.scaler.transform(
-            features_df[self.rf_model.feature_columns]
-        )
+        X_scaled = self.rf_model.scaler.transform(features_df[self.rf_model.feature_columns])
         rf_predictions = self.rf_model.model.predict(X_scaled)
         rf_probabilities = self.rf_model.model.predict_proba(X_scaled)
         rf_classes = self.rf_model.model.classes_
@@ -375,18 +364,15 @@ class EnsembleForecaster:
 
         # Weighted average probabilities
         ensemble_bullish = (
-            rf_probs.get("bullish", np.zeros(len(features_df)))
-            * self.rf_weight
+            rf_probs.get("bullish", np.zeros(len(features_df))) * self.rf_weight
             + gb_bullish * self.gb_weight
         )
         ensemble_bearish = (
-            rf_probs.get("bearish", np.zeros(len(features_df)))
-            * self.rf_weight
+            rf_probs.get("bearish", np.zeros(len(features_df))) * self.rf_weight
             + gb_bearish * self.gb_weight
         )
         ensemble_neutral = (
-            rf_probs.get("neutral", np.zeros(len(features_df)))
-            * self.rf_weight
+            rf_probs.get("neutral", np.zeros(len(features_df))) * self.rf_weight
             + gb_neutral * self.gb_weight
         )
 
@@ -419,9 +405,7 @@ class EnsembleForecaster:
 
         return result_df
 
-    def compare_models(
-        self, features_df: pd.DataFrame, labels_series: pd.Series
-    ) -> Dict:
+    def compare_models(self, features_df: pd.DataFrame, labels_series: pd.Series) -> Dict:
         """
         Compare accuracy of RF, GB, and Ensemble on held-out data.
 
@@ -441,19 +425,13 @@ class EnsembleForecaster:
             labels_str = labels_series.str.lower()
 
         # RF predictions
-        X_scaled = self.rf_model.scaler.transform(
-            features_df[self.rf_model.feature_columns]
-        )
+        X_scaled = self.rf_model.scaler.transform(features_df[self.rf_model.feature_columns])
         rf_preds = self.rf_model.model.predict(X_scaled)
-        rf_accuracy = (
-            pd.Series(rf_preds).str.lower() == labels_str.values
-        ).mean()
+        rf_accuracy = (pd.Series(rf_preds).str.lower() == labels_str.values).mean()
 
         # GB predictions
         gb_preds = self.gb_model.predict_batch(features_df)
-        gb_accuracy = (
-            gb_preds["prediction"].str.lower() == labels_str.values
-        ).mean()
+        gb_accuracy = (gb_preds["prediction"].str.lower() == labels_str.values).mean()
 
         # Ensemble predictions
         ensemble_preds = self.predict_batch(features_df)
@@ -465,8 +443,7 @@ class EnsembleForecaster:
             "rf_accuracy": rf_accuracy,
             "gb_accuracy": gb_accuracy,
             "ensemble_accuracy": ensemble_accuracy,
-            "ensemble_improvement": ensemble_accuracy
-            - max(rf_accuracy, gb_accuracy),
+            "ensemble_improvement": ensemble_accuracy - max(rf_accuracy, gb_accuracy),
         }
 
     def save(self, filepath_rf: str, filepath_gb: str) -> None:

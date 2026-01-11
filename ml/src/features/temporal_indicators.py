@@ -20,9 +20,7 @@ class TemporalFeatureEngineer:
         """Compute SMA up to index idx (no lookahead)."""
         if idx < window - 1:
             return np.nan
-        return float(
-            np.mean(close_prices[idx - window + 1: idx + 1])
-        )
+        return float(np.mean(close_prices[idx - window + 1 : idx + 1]))
 
     @staticmethod
     def compute_ema(close_prices: np.ndarray, window: int, idx: int) -> float:
@@ -30,7 +28,7 @@ class TemporalFeatureEngineer:
         if idx < window - 1:
             return np.nan
 
-        prices = close_prices[idx - window + 1: idx + 1]
+        prices = close_prices[idx - window + 1 : idx + 1]
         ema = prices[0]
         multiplier = 2 / (window + 1)
 
@@ -45,7 +43,7 @@ class TemporalFeatureEngineer:
         if idx < window:
             return np.nan
 
-        changes = np.diff(close_prices[idx - window: idx + 1])
+        changes = np.diff(close_prices[idx - window : idx + 1])
         gains = np.sum(np.maximum(changes, 0))
         losses = np.sum(np.maximum(-changes, 0))
 
@@ -67,11 +65,11 @@ class TemporalFeatureEngineer:
 
         prices = close_prices[: idx + 1]
 
-        ema12 = prices[idx - 12 + 1: idx + 1].mean()
+        ema12 = prices[idx - 12 + 1 : idx + 1].mean()
         for i in range(idx - 11, idx + 1):
             ema12 = prices[i] * (2 / 13) + ema12 * (11 / 13)
 
-        ema26 = prices[idx - 26 + 1: idx + 1].mean()
+        ema26 = prices[idx - 26 + 1 : idx + 1].mean()
         for i in range(idx - 25, idx + 1):
             ema26 = prices[i] * (2 / 27) + ema26 * (25 / 27)
 
@@ -113,26 +111,14 @@ class TemporalFeatureEngineer:
             "volume": point["volume"],
             "high": point["high"],
             "low": point["low"],
-            "sma_5": TemporalFeatureEngineer.compute_sma(
-                close_prices, 5, idx
-            ),
+            "sma_5": TemporalFeatureEngineer.compute_sma(close_prices, 5, idx),
             "sma_20": sma_20,
-            "sma_50": TemporalFeatureEngineer.compute_sma(
-                close_prices, 50, idx
-            ),
-            "ema_12": TemporalFeatureEngineer.compute_ema(
-                close_prices, 12, idx
-            ),
-            "ema_26": TemporalFeatureEngineer.compute_ema(
-                close_prices, 26, idx
-            ),
-            "rsi_14": TemporalFeatureEngineer.compute_rsi(
-                close_prices, 14, idx
-            ),
+            "sma_50": TemporalFeatureEngineer.compute_sma(close_prices, 50, idx),
+            "ema_12": TemporalFeatureEngineer.compute_ema(close_prices, 12, idx),
+            "ema_26": TemporalFeatureEngineer.compute_ema(close_prices, 26, idx),
+            "rsi_14": TemporalFeatureEngineer.compute_rsi(close_prices, 14, idx),
             "price_vs_sma20": (
-                (point["close"] - sma_20) / point["close"]
-                if point["close"] > 0
-                else 0
+                (point["close"] - sma_20) / point["close"] if point["close"] > 0 else 0
             ),
         }
 
@@ -164,9 +150,7 @@ def prepare_training_data_temporal(
             label = (
                 "bullish"
                 if actual_return > 0.02
-                else "bearish"
-                if actual_return < -0.02
-                else "neutral"
+                else "bearish" if actual_return < -0.02 else "neutral"
             )
             y_list.append(label)
 

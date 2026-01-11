@@ -24,9 +24,7 @@ class ForecastQualityMonitor:
         agreement = forecast.get("model_agreement", 0.75)
         quality *= agreement
 
-        age_hours = (
-            datetime.now() - forecast["created_at"]
-        ).total_seconds() / 3600
+        age_hours = (datetime.now() - forecast["created_at"]).total_seconds() / 3600
         age_decay = 0.95 ** (age_hours / 6)  # half-life 6h
         quality *= age_decay
 
@@ -53,8 +51,7 @@ class ForecastQualityMonitor:
                     "level": "info",
                     "type": "model_disagreement",
                     "message": (
-                        "RF/GB disagree "
-                        f"(agreement: {forecast['model_agreement']:.0%})"
+                        "RF/GB disagree " f"(agreement: {forecast['model_agreement']:.0%})"
                     ),
                     "action": "use_baseline_only",
                 }
@@ -78,10 +75,7 @@ class ForecastQualityMonitor:
                 {
                     "level": "info",
                     "type": "conflicting_signals",
-                    "message": (
-                        f"{forecast['conflicting_signals']} indicators "
-                        "conflict"
-                    ),
+                    "message": (f"{forecast['conflicting_signals']} indicators " "conflict"),
                     "action": "review",
                 }
             )
@@ -94,15 +88,11 @@ class ForecastQualityMonitor:
         if not forecasts:
             return {}
 
-        quality_scores = [
-            ForecastQualityMonitor.compute_quality_score(f) for f in forecasts
-        ]
+        quality_scores = [ForecastQualityMonitor.compute_quality_score(f) for f in forecasts]
 
         all_issues: List[Dict] = []
         for forecast in forecasts:
-            all_issues.extend(
-                ForecastQualityMonitor.check_quality_issues(forecast)
-            )
+            all_issues.extend(ForecastQualityMonitor.check_quality_issues(forecast))
 
         return {
             "count": len(forecasts),
@@ -113,16 +103,13 @@ class ForecastQualityMonitor:
             "total_issues": len(all_issues),
             "issues_by_type": {
                 "low_confidence": sum(
-                    1 for issue in all_issues
-                    if issue["type"] == "low_confidence"
+                    1 for issue in all_issues if issue["type"] == "low_confidence"
                 ),
                 "model_disagreement": sum(
-                    1 for issue in all_issues
-                    if issue["type"] == "model_disagreement"
+                    1 for issue in all_issues if issue["type"] == "model_disagreement"
                 ),
                 "stale_forecast": sum(
-                    1 for issue in all_issues
-                    if issue["type"] == "stale_forecast"
+                    1 for issue in all_issues if issue["type"] == "stale_forecast"
                 ),
             },
         }

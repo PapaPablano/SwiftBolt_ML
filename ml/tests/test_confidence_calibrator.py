@@ -34,11 +34,13 @@ class TestConfidenceCalibrator:
                 other = [l for l in ["bullish", "neutral", "bearish"] if l != predicted_labels[i]]
                 actual_labels.append(np.random.choice(other))
 
-        forecasts = pd.DataFrame({
-            "confidence": confidences,
-            "predicted_label": predicted_labels,
-            "actual_label": actual_labels,
-        })
+        forecasts = pd.DataFrame(
+            {
+                "confidence": confidences,
+                "predicted_label": predicted_labels,
+                "actual_label": actual_labels,
+            }
+        )
 
         calibrator = ConfidenceCalibrator()
         results = calibrator.fit(forecasts, min_samples_per_bucket=20)
@@ -49,11 +51,13 @@ class TestConfidenceCalibrator:
 
     def test_fit_with_insufficient_samples(self):
         """Test fitting with too few samples uses default adjustment."""
-        forecasts = pd.DataFrame({
-            "confidence": [0.75, 0.76],
-            "predicted_label": ["bullish", "bearish"],
-            "actual_label": ["bullish", "bullish"],
-        })
+        forecasts = pd.DataFrame(
+            {
+                "confidence": [0.75, 0.76],
+                "predicted_label": ["bullish", "bearish"],
+                "actual_label": ["bullish", "bullish"],
+            }
+        )
 
         calibrator = ConfidenceCalibrator()
         calibrator.fit(forecasts, min_samples_per_bucket=30)
@@ -88,11 +92,13 @@ class TestConfidenceCalibrator:
             else:
                 actual_labels.append("bearish" if predicted_labels[i] == "bullish" else "bullish")
 
-        forecasts = pd.DataFrame({
-            "confidence": confidences,
-            "predicted_label": predicted_labels,
-            "actual_label": actual_labels,
-        })
+        forecasts = pd.DataFrame(
+            {
+                "confidence": confidences,
+                "predicted_label": predicted_labels,
+                "actual_label": actual_labels,
+            }
+        )
 
         calibrator = ConfidenceCalibrator()
         calibrator.fit(forecasts, min_samples_per_bucket=10)

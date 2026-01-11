@@ -68,13 +68,15 @@ def neutral_forecast():
 @pytest.fixture
 def sample_options_df():
     """Create sample options DataFrame."""
-    return pd.DataFrame({
-        "strike": [95, 100, 105, 110, 95, 100, 105, 110],
-        "side": ["call", "call", "call", "call", "put", "put", "put", "put"],
-        "expiration": ["2024-01-19"] * 8,
-        "bid": [5.5, 2.5, 0.8, 0.2, 0.2, 0.8, 2.5, 5.5],
-        "ask": [5.7, 2.7, 1.0, 0.3, 0.3, 1.0, 2.7, 5.7],
-    })
+    return pd.DataFrame(
+        {
+            "strike": [95, 100, 105, 110, 95, 100, 105, 110],
+            "side": ["call", "call", "call", "call", "put", "put", "put", "put"],
+            "expiration": ["2024-01-19"] * 8,
+            "bid": [5.5, 2.5, 0.8, 0.2, 0.2, 0.8, 2.5, 5.5],
+            "ask": [5.7, 2.7, 1.0, 0.3, 0.3, 1.0, 2.7, 5.7],
+        }
+    )
 
 
 @pytest.fixture
@@ -84,14 +86,16 @@ def sample_ohlc_df():
     n = 50
     prices = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
 
-    return pd.DataFrame({
-        "ts": pd.date_range("2024-01-01", periods=n, freq="D"),
-        "open": prices * 0.998,
-        "high": prices * 1.01,
-        "low": prices * 0.99,
-        "close": prices,
-        "volume": np.random.randint(1e6, 1e7, n).astype(float),
-    })
+    return pd.DataFrame(
+        {
+            "ts": pd.date_range("2024-01-01", periods=n, freq="D"),
+            "open": prices * 0.998,
+            "high": prices * 1.01,
+            "low": prices * 0.99,
+            "close": prices,
+            "volume": np.random.randint(1e6, 1e7, n).astype(float),
+        }
+    )
 
 
 class TestForecastSignalDataclass:
@@ -205,9 +209,7 @@ class TestConvertForecastToSignal:
     def test_with_ohlc_data(self, bullish_forecast, sample_ohlc_df):
         """Test signal conversion with OHLC data."""
         integration = ForecastOptionsIntegration()
-        signal = integration.convert_forecast_to_signal(
-            bullish_forecast, sample_ohlc_df
-        )
+        signal = integration.convert_forecast_to_signal(bullish_forecast, sample_ohlc_df)
 
         # Should use OHLC to estimate supertrend factor
         assert signal.supertrend_factor >= 2.0
@@ -250,9 +252,7 @@ class TestCreateTrendAnalysisDict:
         """Test that it includes earnings date."""
         integration = ForecastOptionsIntegration()
         signal = integration.convert_forecast_to_signal(bullish_forecast)
-        trend_dict = integration.create_trend_analysis_dict(
-            signal, earnings_date="2024-01-25"
-        )
+        trend_dict = integration.create_trend_analysis_dict(signal, earnings_date="2024-01-25")
 
         assert trend_dict["earnings_date"] == "2024-01-25"
 
@@ -271,9 +271,7 @@ class TestScoreOptionWithForecast:
         call_score = integration.score_option_with_forecast(
             call_option, signal, underlying_price=100
         )
-        put_score = integration.score_option_with_forecast(
-            put_option, signal, underlying_price=100
-        )
+        put_score = integration.score_option_with_forecast(put_option, signal, underlying_price=100)
 
         assert call_score > put_score
 
@@ -288,9 +286,7 @@ class TestScoreOptionWithForecast:
         call_score = integration.score_option_with_forecast(
             call_option, signal, underlying_price=100
         )
-        put_score = integration.score_option_with_forecast(
-            put_option, signal, underlying_price=100
-        )
+        put_score = integration.score_option_with_forecast(put_option, signal, underlying_price=100)
 
         assert put_score > call_score
 
@@ -305,9 +301,7 @@ class TestScoreOptionWithForecast:
         call_score = integration.score_option_with_forecast(
             call_option, signal, underlying_price=100
         )
-        put_score = integration.score_option_with_forecast(
-            put_option, signal, underlying_price=100
-        )
+        put_score = integration.score_option_with_forecast(put_option, signal, underlying_price=100)
 
         # Scores should be relatively close for neutral
         assert abs(call_score - put_score) < 0.3
@@ -320,9 +314,7 @@ class TestScoreOptionWithForecast:
         for strike in [90, 100, 110, 120]:
             for side in ["call", "put"]:
                 option = {"side": side, "strike": strike}
-                score = integration.score_option_with_forecast(
-                    option, signal, underlying_price=100
-                )
+                score = integration.score_option_with_forecast(option, signal, underlying_price=100)
                 assert 0 <= score <= 1
 
     def test_otm_call_bullish_scores_well(self, bullish_forecast):
@@ -335,12 +327,8 @@ class TestScoreOptionWithForecast:
         atm_call = {"side": "call", "strike": 100}
         deep_otm_call = {"side": "call", "strike": 115}
 
-        otm_score = integration.score_option_with_forecast(
-            otm_call, signal, underlying_price=100
-        )
-        atm_score = integration.score_option_with_forecast(
-            atm_call, signal, underlying_price=100
-        )
+        otm_score = integration.score_option_with_forecast(otm_call, signal, underlying_price=100)
+        atm_score = integration.score_option_with_forecast(atm_call, signal, underlying_price=100)
         deep_otm_score = integration.score_option_with_forecast(
             deep_otm_call, signal, underlying_price=100
         )
@@ -354,9 +342,7 @@ class TestScoreOptionWithForecast:
 class TestRankOptionsWithForecast:
     """Test rank_options_with_forecast method."""
 
-    def test_adds_forecast_score_column(
-        self, bullish_forecast, sample_options_df
-    ):
+    def test_adds_forecast_score_column(self, bullish_forecast, sample_options_df):
         """Test that it adds forecast_score column."""
         integration = ForecastOptionsIntegration()
         ranked = integration.rank_options_with_forecast(
@@ -365,9 +351,7 @@ class TestRankOptionsWithForecast:
 
         assert "forecast_score" in ranked.columns
 
-    def test_adds_forecast_metadata_columns(
-        self, bullish_forecast, sample_options_df
-    ):
+    def test_adds_forecast_metadata_columns(self, bullish_forecast, sample_options_df):
         """Test that it adds forecast metadata columns."""
         integration = ForecastOptionsIntegration()
         ranked = integration.rank_options_with_forecast(
@@ -378,9 +362,7 @@ class TestRankOptionsWithForecast:
         assert "forecast_confidence" in ranked.columns
         assert "forecast_agreement" in ranked.columns
 
-    def test_sorts_by_forecast_score(
-        self, bullish_forecast, sample_options_df
-    ):
+    def test_sorts_by_forecast_score(self, bullish_forecast, sample_options_df):
         """Test that results are sorted by forecast score."""
         integration = ForecastOptionsIntegration()
         ranked = integration.rank_options_with_forecast(
@@ -388,11 +370,9 @@ class TestRankOptionsWithForecast:
         )
 
         scores = ranked["forecast_score"].values
-        assert all(scores[i] >= scores[i+1] for i in range(len(scores)-1))
+        assert all(scores[i] >= scores[i + 1] for i in range(len(scores) - 1))
 
-    def test_bullish_calls_rank_higher(
-        self, bullish_forecast, sample_options_df
-    ):
+    def test_bullish_calls_rank_higher(self, bullish_forecast, sample_options_df):
         """Test that calls rank higher in bullish forecast."""
         integration = ForecastOptionsIntegration()
         ranked = integration.rank_options_with_forecast(
@@ -404,9 +384,7 @@ class TestRankOptionsWithForecast:
         call_count = (top_3["side"] == "call").sum()
         assert call_count >= 2
 
-    def test_bearish_puts_rank_higher(
-        self, bearish_forecast, sample_options_df
-    ):
+    def test_bearish_puts_rank_higher(self, bearish_forecast, sample_options_df):
         """Test that puts rank higher in bearish forecast."""
         integration = ForecastOptionsIntegration()
         ranked = integration.rank_options_with_forecast(
@@ -535,16 +513,12 @@ class TestFilterOptionsByForecast:
         )
 
         # Filter
-        filtered = integration.filter_options_by_forecast(
-            ranked, signal, min_forecast_score=0.6
-        )
+        filtered = integration.filter_options_by_forecast(ranked, signal, min_forecast_score=0.6)
 
         assert len(filtered) <= len(ranked)
         assert all(filtered["forecast_score"] >= 0.6)
 
-    def test_filters_by_side_for_strong_signal(
-        self, bullish_forecast, sample_options_df
-    ):
+    def test_filters_by_side_for_strong_signal(self, bullish_forecast, sample_options_df):
         """Test filtering by side for strong directional signals."""
         integration = ForecastOptionsIntegration()
 
@@ -558,16 +532,12 @@ class TestFilterOptionsByForecast:
             sample_options_df, strong_bullish, underlying_price=100
         )
 
-        filtered = integration.filter_options_by_forecast(
-            ranked, signal, min_forecast_score=0.4
-        )
+        filtered = integration.filter_options_by_forecast(ranked, signal, min_forecast_score=0.4)
 
         # Should only have calls for strong bullish
         assert all(filtered["side"] == "call")
 
-    def test_keeps_both_sides_for_neutral(
-        self, neutral_forecast, sample_options_df
-    ):
+    def test_keeps_both_sides_for_neutral(self, neutral_forecast, sample_options_df):
         """Test keeping both sides for neutral forecast."""
         integration = ForecastOptionsIntegration()
         signal = integration.convert_forecast_to_signal(neutral_forecast)
@@ -577,17 +547,13 @@ class TestFilterOptionsByForecast:
         )
 
         # Use a very low threshold to keep options
-        filtered = integration.filter_options_by_forecast(
-            ranked, signal, min_forecast_score=0.0
-        )
+        filtered = integration.filter_options_by_forecast(ranked, signal, min_forecast_score=0.0)
 
         # Should have both calls and puts for neutral (no side filtering)
         sides = filtered["side"].unique()
         assert len(sides) == 2
 
-    def test_returns_all_without_score_column(
-        self, bullish_forecast, sample_options_df
-    ):
+    def test_returns_all_without_score_column(self, bullish_forecast, sample_options_df):
         """Test returning all options when no score column."""
         integration = ForecastOptionsIntegration()
         signal = integration.convert_forecast_to_signal(bullish_forecast)
@@ -682,11 +648,13 @@ class TestCalculateUncertainty:
         """Test that concentrated probabilities give low uncertainty."""
         integration = ForecastOptionsIntegration()
 
-        uncertainty = integration._calculate_uncertainty({
-            "bullish": 0.9,
-            "neutral": 0.05,
-            "bearish": 0.05,
-        })
+        uncertainty = integration._calculate_uncertainty(
+            {
+                "bullish": 0.9,
+                "neutral": 0.05,
+                "bearish": 0.05,
+            }
+        )
 
         assert uncertainty < 0.5
 
@@ -694,11 +662,13 @@ class TestCalculateUncertainty:
         """Test that uniform probabilities give high uncertainty."""
         integration = ForecastOptionsIntegration()
 
-        uncertainty = integration._calculate_uncertainty({
-            "bullish": 0.333,
-            "neutral": 0.334,
-            "bearish": 0.333,
-        })
+        uncertainty = integration._calculate_uncertainty(
+            {
+                "bullish": 0.333,
+                "neutral": 0.334,
+                "bearish": 0.333,
+            }
+        )
 
         assert uncertainty > 0.9
 
@@ -724,11 +694,13 @@ class TestCalculateATR:
         """Test ATR with short data."""
         integration = ForecastOptionsIntegration()
 
-        short_df = pd.DataFrame({
-            "high": [101, 102, 103, 104, 105],
-            "low": [99, 100, 101, 102, 103],
-            "close": [100, 101, 102, 103, 104],
-        })
+        short_df = pd.DataFrame(
+            {
+                "high": [101, 102, 103, 104, 105],
+                "low": [99, 100, 101, 102, 103],
+                "close": [100, 101, 102, 103, 104],
+            }
+        )
 
         atr = integration._calculate_atr(short_df, period=3)
         assert atr >= 0
@@ -854,16 +826,12 @@ class TestCreateIntegrationFromManager:
 class TestIntegration:
     """Integration tests."""
 
-    def test_full_workflow(
-        self, bullish_forecast, sample_options_df, sample_ohlc_df
-    ):
+    def test_full_workflow(self, bullish_forecast, sample_options_df, sample_ohlc_df):
         """Test complete workflow."""
         integration = ForecastOptionsIntegration()
 
         # 1. Convert forecast to signal
-        signal = integration.convert_forecast_to_signal(
-            bullish_forecast, sample_ohlc_df
-        )
+        signal = integration.convert_forecast_to_signal(bullish_forecast, sample_ohlc_df)
         assert signal.trend == "bullish"
 
         # 2. Create trend analysis dict
@@ -877,18 +845,14 @@ class TestIntegration:
         assert "forecast_score" in ranked.columns
 
         # 4. Filter options
-        filtered = integration.filter_options_by_forecast(
-            ranked, signal, min_forecast_score=0.5
-        )
+        filtered = integration.filter_options_by_forecast(ranked, signal, min_forecast_score=0.5)
         assert len(filtered) <= len(ranked)
 
         # 5. Get position sizing
         sizing = integration.get_position_size_recommendation(signal)
         assert sizing["recommended_size"] > 0
 
-    def test_bearish_workflow(
-        self, bearish_forecast, sample_options_df
-    ):
+    def test_bearish_workflow(self, bearish_forecast, sample_options_df):
         """Test workflow with bearish forecast."""
         integration = ForecastOptionsIntegration()
 
@@ -903,9 +867,7 @@ class TestIntegration:
         top_side = ranked.iloc[0]["side"]
         assert top_side == "put"
 
-    def test_neutral_workflow(
-        self, neutral_forecast, sample_options_df
-    ):
+    def test_neutral_workflow(self, neutral_forecast, sample_options_df):
         """Test workflow with neutral forecast."""
         integration = ForecastOptionsIntegration()
 

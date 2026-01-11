@@ -31,7 +31,7 @@ BEARISH_THRESHOLD = -0.002  # -0.2% = bearish
 # Intraday horizons map to Option B tolerance (all <3 days = 1%)
 INTRADAY_HORIZON_DAYS = {
     "15m": 1,  # Treat as 1-day horizon for tolerance calc
-    "1h": 1,   # Treat as 1-day horizon for tolerance calc
+    "1h": 1,  # Treat as 1-day horizon for tolerance calc
 }
 
 
@@ -100,8 +100,10 @@ def evaluate_forecast(forecast: dict) -> dict | None:
 
         # Component accuracy
         supertrend_direction = forecast.get("supertrend_direction", "NEUTRAL")
-        supertrend_label = "bullish" if supertrend_direction == "BULLISH" else (
-            "bearish" if supertrend_direction == "BEARISH" else "neutral"
+        supertrend_label = (
+            "bullish"
+            if supertrend_direction == "BULLISH"
+            else ("bearish" if supertrend_direction == "BEARISH" else "neutral")
         )
         supertrend_direction_correct = supertrend_label == realized_label
 
@@ -228,8 +230,10 @@ def evaluate_pending_forecasts(horizon: str | None = None) -> tuple[int, int]:
             success_count += 1
             # Show Option B outcome in log
             outcome = eval_result.get("option_b_outcome", "N/A")
-            status = "✓" if outcome == "FULL_HIT" else (
-                "◐" if outcome in ("DIRECTIONAL_HIT", "DIRECTIONAL_ONLY") else "✗"
+            status = (
+                "✓"
+                if outcome == "FULL_HIT"
+                else ("◐" if outcome in ("DIRECTIONAL_HIT", "DIRECTIONAL_ONLY") else "✗")
             )
             logger.info(
                 "%s %s %s: %s pred=%s actual=%s MAPE=%.2f%%",

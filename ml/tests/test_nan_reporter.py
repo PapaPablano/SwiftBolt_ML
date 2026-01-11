@@ -13,20 +13,24 @@ class TestNaNReporter:
     @pytest.fixture
     def sample_df(self):
         """Create sample DataFrame with some NaN values."""
-        return pd.DataFrame({
-            "a": [1.0, 2.0, np.nan, 4.0, 5.0],
-            "b": [1.0, np.nan, np.nan, np.nan, 5.0],
-            "c": [1.0, 2.0, 3.0, 4.0, 5.0],  # No NaNs
-            "d": [np.nan, np.nan, np.nan, np.nan, np.nan],  # All NaNs
-        })
+        return pd.DataFrame(
+            {
+                "a": [1.0, 2.0, np.nan, 4.0, 5.0],
+                "b": [1.0, np.nan, np.nan, np.nan, 5.0],
+                "c": [1.0, 2.0, 3.0, 4.0, 5.0],  # No NaNs
+                "d": [np.nan, np.nan, np.nan, np.nan, np.nan],  # All NaNs
+            }
+        )
 
     @pytest.fixture
     def clean_df(self):
         """Create clean DataFrame with no NaN values."""
-        return pd.DataFrame({
-            "x": [1.0, 2.0, 3.0],
-            "y": [4.0, 5.0, 6.0],
-        })
+        return pd.DataFrame(
+            {
+                "x": [1.0, 2.0, 3.0],
+                "y": [4.0, 5.0, 6.0],
+            }
+        )
 
     def test_scan_dataframe(self, sample_df):
         """Test basic DataFrame scanning."""
@@ -197,6 +201,7 @@ class TestDataFrameReport:
     def test_overall_nan_percentage(self):
         """Test overall NaN percentage calculation."""
         from datetime import datetime
+
         report = DataFrameReport(
             timestamp=datetime.now(),
             total_rows=100,
@@ -209,6 +214,7 @@ class TestDataFrameReport:
     def test_is_clean(self):
         """Test is_clean property."""
         from datetime import datetime
+
         clean = DataFrameReport(
             timestamp=datetime.now(),
             total_rows=100,

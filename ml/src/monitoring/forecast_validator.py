@@ -52,7 +52,11 @@ class ValidationMetrics:
         return {
             "direction_accuracy": round(self.direction_accuracy * 100, 1),
             "avg_target_error_pct": round(self.avg_target_error_pct, 2),
-            "target_within_1atr": round(self.target_within_1atr * 100, 1) if not np.isnan(self.target_within_1atr) else None,
+            "target_within_1atr": (
+                round(self.target_within_1atr * 100, 1)
+                if not np.isnan(self.target_within_1atr)
+                else None
+            ),
             "band_capture_rate": round(self.band_capture_rate * 100, 1),
             "band_too_wide_rate": round(self.band_too_wide_rate * 100, 1),
             "band_too_narrow_rate": round(self.band_too_narrow_rate * 100, 1),
@@ -178,9 +182,8 @@ class ForecastValidator:
             target_within_1atr = np.nan
 
         # Band efficiency
-        within_bands = (
-            (matched["actual_close"] >= matched["lower_band"]) &
-            (matched["actual_close"] <= matched["upper_band"])
+        within_bands = (matched["actual_close"] >= matched["lower_band"]) & (
+            matched["actual_close"] <= matched["upper_band"]
         )
         band_capture_rate = within_bands.mean()
 
@@ -195,7 +198,9 @@ class ForecastValidator:
         # Avoid division by zero
         valid_range_mask = actual_range > 0
         band_ratio = pd.Series(index=matched.index, dtype=float)
-        band_ratio[valid_range_mask] = predicted_range[valid_range_mask] / actual_range[valid_range_mask]
+        band_ratio[valid_range_mask] = (
+            predicted_range[valid_range_mask] / actual_range[valid_range_mask]
+        )
 
         band_too_wide = (band_ratio > 2.0) & valid_range_mask
         band_too_narrow = ~within_bands
@@ -276,7 +281,9 @@ class ForecastValidator:
         # Normalize actuals date column
         actuals = actuals.copy()
         if "ts" in actuals.columns and "date" not in actuals.columns:
-            actuals["date"] = pd.to_datetime(actuals["ts"], unit="s" if actuals["ts"].dtype == np.int64 else None)
+            actuals["date"] = pd.to_datetime(
+                actuals["ts"], unit="s" if actuals["ts"].dtype == np.int64 else None
+            )
 
         for _, forecast in forecasts.iterrows():
             symbol = forecast.get("symbol") or forecast.get("ticker")
@@ -294,7 +301,9 @@ class ForecastValidator:
             outcome_date = forecast_date + pd.Timedelta(days=horizon_days)
 
             # Find actual price at outcome date
-            symbol_actuals = actuals[actuals["symbol"] == symbol] if "symbol" in actuals.columns else actuals
+            symbol_actuals = (
+                actuals[actuals["symbol"] == symbol] if "symbol" in actuals.columns else actuals
+            )
 
             if "date" in symbol_actuals.columns:
                 outcome = symbol_actuals[
@@ -338,7 +347,11 @@ class ForecastValidator:
 
             # Determine directions
             predicted_label = str(forecast.get("label", "neutral")).lower()
-            actual_direction = "bullish" if actual_return > 0.005 else ("bearish" if actual_return < -0.005 else "neutral")
+            actual_direction = (
+                "bullish"
+                if actual_return > 0.005
+                else ("bearish" if actual_return < -0.005 else "neutral")
+            )
 
             row = {
                 "symbol": symbol,
@@ -443,7 +456,11 @@ class ForecastValidator:
             "TARGET PRECISION",
             "-" * 30,
             f"  Avg Error: {metrics.avg_target_error_pct:.2f}%",
-            f"  Within 1 ATR: {metrics.target_within_1atr:.1%}" if metrics.target_within_1atr > 0 else "  Within 1 ATR: N/A",
+            (
+                f"  Within 1 ATR: {metrics.target_within_1atr:.1%}"
+                if metrics.target_within_1atr > 0
+                else "  Within 1 ATR: N/A"
+            ),
             "",
             "BAND EFFICIENCY",
             "-" * 30,
@@ -455,7 +472,8 @@ class ForecastValidator:
             "-" * 30,
             f"  Expected Edge: {metrics.expected_edge:.3f}",
             f"  Realized Edge: {metrics.realized_edge:.3f}",
-            f"  Edge Gap: {metrics.edge_gap:.3f}" + (" (WELL CALIBRATED)" if metrics.is_well_calibrated() else " (NEEDS CALIBRATION)"),
+            f"  Edge Gap: {metrics.edge_gap:.3f}"
+            + (" (WELL CALIBRATED)" if metrics.is_well_calibrated() else " (NEEDS CALIBRATION)"),
             "=" * 50,
         ]
         return "\n".join(lines)
@@ -466,25 +484,29 @@ if __name__ == "__main__":
     print("ForecastValidator imported successfully")
 
     # Create sample data for testing
-    sample_forecasts = pd.DataFrame({
-        "symbol": ["AAPL", "AAPL", "MSFT"],
-        "horizon": ["1D", "1D", "1D"],
-        "label": ["bullish", "bearish", "neutral"],
-        "confidence": [0.75, 0.65, 0.55],
-        "target": [150.0, 148.0, 300.0],
-        "upper_band": [152.0, 150.0, 305.0],
-        "lower_band": [148.0, 146.0, 295.0],
-        "forecast_date": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-01"]),
-        "current_price": [149.0, 149.5, 298.0],
-    })
+    sample_forecasts = pd.DataFrame(
+        {
+            "symbol": ["AAPL", "AAPL", "MSFT"],
+            "horizon": ["1D", "1D", "1D"],
+            "label": ["bullish", "bearish", "neutral"],
+            "confidence": [0.75, 0.65, 0.55],
+            "target": [150.0, 148.0, 300.0],
+            "upper_band": [152.0, 150.0, 305.0],
+            "lower_band": [148.0, 146.0, 295.0],
+            "forecast_date": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-01"]),
+            "current_price": [149.0, 149.5, 298.0],
+        }
+    )
 
-    sample_actuals = pd.DataFrame({
-        "symbol": ["AAPL", "AAPL", "MSFT"],
-        "date": pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-02"]),
-        "close": [151.0, 147.0, 299.0],
-        "high": [152.0, 150.0, 302.0],
-        "low": [149.0, 146.0, 297.0],
-    })
+    sample_actuals = pd.DataFrame(
+        {
+            "symbol": ["AAPL", "AAPL", "MSFT"],
+            "date": pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-02"]),
+            "close": [151.0, 147.0, 299.0],
+            "high": [152.0, 150.0, 302.0],
+            "low": [149.0, 146.0, 297.0],
+        }
+    )
 
     validator = ForecastValidator()
     metrics = validator.validate(sample_forecasts, sample_actuals)

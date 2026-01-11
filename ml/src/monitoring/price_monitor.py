@@ -111,11 +111,7 @@ class PriceMonitor:
 
         # Calculate move
         move_pct = abs(current_price - forecast_price) / forecast_price * 100
-        move_atr = (
-            abs(current_price - forecast_price) / forecast_atr
-            if forecast_atr > 0
-            else 0
-        )
+        move_atr = abs(current_price - forecast_price) / forecast_atr if forecast_atr > 0 else 0
 
         # Check ATR threshold
         if move_atr >= self.MOVE_THRESHOLD_ATR:
@@ -238,9 +234,7 @@ class PriceMonitor:
             created_at = forecast.get("created_at")
             if created_at:
                 if isinstance(created_at, str):
-                    created_at = datetime.fromisoformat(
-                        created_at.replace("Z", "+00:00")
-                    )
+                    created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
                 age_hours = (now - created_at).total_seconds() / 3600
                 if age_hours > max_age_hours:
                     stale.append(symbol)

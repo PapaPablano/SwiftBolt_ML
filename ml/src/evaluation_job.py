@@ -33,6 +33,7 @@ def _bool_env(name: str, default: bool = False) -> bool:
         return default
     return val.strip().lower() in {"1", "true", "yes", "y", "on"}
 
+
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -63,13 +64,10 @@ class ForecastEvaluator:
             List of forecast dicts pending evaluation
         """
         # Use the database function we created
-        result = (
-            db.client.rpc(
-                "get_pending_evaluations",
-                {"p_horizon": horizon},
-            )
-            .execute()
-        )
+        result = db.client.rpc(
+            "get_pending_evaluations",
+            {"p_horizon": horizon},
+        ).execute()
 
         forecasts = result.data or []
         logger.info(
@@ -134,9 +132,7 @@ class ForecastEvaluator:
             df_before = df[df["ts"] <= target_date]
 
             if df_before.empty:
-                logger.warning(
-                    "No price data for %s before %s", symbol, target_date
-                )
+                logger.warning("No price data for %s before %s", symbol, target_date)
                 return None
 
             # Get the most recent bar before/on target date
@@ -208,10 +204,7 @@ class ForecastEvaluator:
             )
             if realized is None:
                 logger.warning(
-                    (
-                        "Could not get realized trading-day close for %s (%s) "
-                        "after %s"
-                    ),
+                    ("Could not get realized trading-day close for %s (%s) " "after %s"),
                     symbol,
                     horizon,
                     forecast_date,
@@ -267,12 +260,8 @@ class ForecastEvaluator:
 
                     syn = meta.data.get("synthesis_data") or {}
                     if isinstance(syn, dict):
-                        synth_supertrend_component = syn.get(
-                            "supertrend_component"
-                        )
-                        synth_polynomial_component = syn.get(
-                            "polynomial_component"
-                        )
+                        synth_supertrend_component = syn.get("supertrend_component")
+                        synth_polynomial_component = syn.get("polynomial_component")
                         synth_ml_component = syn.get("ml_component")
 
                     if model_agreement is None:
@@ -336,11 +325,7 @@ class ForecastEvaluator:
             True if saved successfully
         """
         try:
-            (
-                db.client.table("forecast_evaluations")
-                .insert(evaluation)
-                .execute()
-            )
+            (db.client.table("forecast_evaluations").insert(evaluation).execute())
             self.evaluations_added += 1
             return True
         except Exception as e:
@@ -359,11 +344,13 @@ class ForecastEvaluator:
             today = datetime.now().date().isoformat()
 
             # Get today's evaluations
-            result = db.client.table("forecast_evaluations").select("*").eq(
-                "horizon", horizon
-            ).gte(
-                "evaluation_date", today
-            ).execute()
+            result = (
+                db.client.table("forecast_evaluations")
+                .select("*")
+                .eq("horizon", horizon)
+                .gte("evaluation_date", today)
+                .execute()
+            )
 
             evals = result.data or []
             if not evals:
@@ -387,15 +374,9 @@ class ForecastEvaluator:
             max_error = max(e["price_error_pct"] for e in evals)
 
             # By direction
-            bullish_evals = [
-                e for e in evals if e["predicted_label"] == "bullish"
-            ]
-            bearish_evals = [
-                e for e in evals if e["predicted_label"] == "bearish"
-            ]
-            neutral_evals = [
-                e for e in evals if e["predicted_label"] == "neutral"
-            ]
+            bullish_evals = [e for e in evals if e["predicted_label"] == "bullish"]
+            bearish_evals = [e for e in evals if e["predicted_label"] == "bearish"]
+            neutral_evals = [e for e in evals if e["predicted_label"] == "neutral"]
 
             def _dir_acc(ev_list: list) -> float | None:
                 if not ev_list:
@@ -408,10 +389,7 @@ class ForecastEvaluator:
             neutral_acc = _dir_acc(neutral_evals)
 
             # Get current weights
-            weights_result = db.client.rpc(
-                "get_model_weights",
-                {"p_horizon": horizon}
-            ).execute()
+            weights_result = db.client.rpc("get_model_weights", {"p_horizon": horizon}).execute()
             default_weights = {"rf_weight": 0.5, "gb_weight": 0.5}
             if weights_result.data:
                 weights = weights_result.data[0]
@@ -438,8 +416,7 @@ class ForecastEvaluator:
             }
 
             db.client.table("model_performance_history").upsert(
-                history_record,
-                on_conflict="evaluation_date,horizon"
+                history_record, on_conflict="evaluation_date,horizon"
             ).execute()
 
             logger.info(
@@ -448,9 +425,7 @@ class ForecastEvaluator:
             )
 
         except Exception as e:
-            logger.error(
-                "Error updating performance history: %s", e, exc_info=True
-            )
+            logger.error("Error updating performance history: %s", e, exc_info=True)
 
     def trigger_weight_update(self) -> dict:
         """
@@ -524,9 +499,7 @@ def run_evaluation_job(horizons: list[str] | None = None) -> dict[str, Any]:
                                 agreement=evaluation.get("model_agreement") or 0.5,
                                 probabilities=ts.get("probabilities", {}),
                                 weights=ts.get("model_weights", {}),
-                                model_predictions=ts.get(
-                                    "component_predictions", {}
-                                ),
+                                model_predictions=ts.get("component_predictions", {}),
                             )
                         except Exception as e:
                             logger.debug("Performance monitor error: %s", e)
@@ -554,7 +527,8 @@ def run_evaluation_job(horizons: list[str] | None = None) -> dict[str, Any]:
     results["errors"] = evaluator.errors
     results["overall_accuracy"] = (
         results["total_correct"] / results["total_evaluated"]
-        if results["total_evaluated"] > 0 else 0
+        if results["total_evaluated"] > 0
+        else 0
     )
 
     logger.info("=" * 80)

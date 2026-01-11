@@ -55,9 +55,7 @@ def fetch_options_from_api(symbol: str) -> dict:
     }
 
     try:
-        response = requests.get(
-            url, params=params, headers=headers, timeout=30
-        )
+        response = requests.get(url, params=params, headers=headers, timeout=30)
         response.raise_for_status()
         data = response.json()
 
@@ -84,17 +82,11 @@ def parse_options_chain(api_response: dict) -> pd.DataFrame:
                 "side": "call",
                 "bid": call.get("bid", 0),
                 "ask": call.get("ask", 0),
-                "mark": call.get(
-                    "mark", (call.get("bid", 0) + call.get("ask", 0)) / 2
-                ),
+                "mark": call.get("mark", (call.get("bid", 0) + call.get("ask", 0)) / 2),
                 "last_price": call.get("last", 0),
                 "volume": call.get("volume", 0),
-                "openInterest": call.get(
-                    "openInterest", 0
-                ),  # camelCase for ranker
-                "impliedVolatility": call.get(
-                    "impliedVolatility", 0
-                ),  # camelCase for ranker
+                "openInterest": call.get("openInterest", 0),  # camelCase for ranker
+                "impliedVolatility": call.get("impliedVolatility", 0),  # camelCase for ranker
                 "delta": call.get("delta", 0),
                 "gamma": call.get("gamma", 0),
                 "theta": call.get("theta", 0),
@@ -112,17 +104,11 @@ def parse_options_chain(api_response: dict) -> pd.DataFrame:
                 "side": "put",
                 "bid": put.get("bid", 0),
                 "ask": put.get("ask", 0),
-                "mark": put.get(
-                    "mark", (put.get("bid", 0) + put.get("ask", 0)) / 2
-                ),
+                "mark": put.get("mark", (put.get("bid", 0) + put.get("ask", 0)) / 2),
                 "last_price": put.get("last", 0),
                 "volume": put.get("volume", 0),
-                "openInterest": put.get(
-                    "openInterest", 0
-                ),  # camelCase for ranker
-                "impliedVolatility": put.get(
-                    "impliedVolatility", 0
-                ),  # camelCase for ranker
+                "openInterest": put.get("openInterest", 0),  # camelCase for ranker
+                "impliedVolatility": put.get("impliedVolatility", 0),  # camelCase for ranker
                 "delta": put.get("delta", 0),
                 "gamma": put.get("gamma", 0),
                 "theta": put.get("theta", 0),
@@ -185,9 +171,7 @@ def select_balanced_expiry_contracts(
     selected_contracts = []
 
     if not very_short.empty:
-        selected_contracts.append(
-            very_short.nlargest(very_short_count, "composite_rank")
-        )
+        selected_contracts.append(very_short.nlargest(very_short_count, "composite_rank"))
 
     if not near_term.empty:
         selected_contracts.append(near_term.nlargest(near_count, "composite_rank"))
@@ -237,9 +221,7 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
     for _, row in ranked_df.iterrows():
         try:
             # Convert expiration timestamp to date string
-            expiry_date = datetime.fromtimestamp(row["expiration"]).strftime(
-                "%Y-%m-%d"
-            )
+            expiry_date = datetime.fromtimestamp(row["expiration"]).strftime("%Y-%m-%d")
 
             # Get composite_rank (primary score from Momentum Framework)
             composite_rank = float(row.get("composite_rank", 0))
@@ -290,9 +272,7 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
             db.upsert_option_rank_extended(**record)
             saved_count += 1
         except Exception as e:
-            logger.error(
-                f"Error saving rank for {row.get('contract_symbol')}: {e}"
-            )
+            logger.error(f"Error saving rank for {row.get('contract_symbol')}: {e}")
 
     return saved_count
 
@@ -410,9 +390,7 @@ def process_symbol_options(
         df_ohlc = db.fetch_ohlc_bars(symbol, timeframe="d1", limit=100)
 
         if df_ohlc.empty:
-            logger.warning(
-                f"No price data for {symbol}, skipping options ranking"
-            )
+            logger.warning(f"No price data for {symbol}, skipping options ranking")
             return
 
         # Calculate underlying price and trend
@@ -447,8 +425,7 @@ def process_symbol_options(
 
         if options_history.empty:
             logger.warning(
-                f"No historical data available for {symbol}, "
-                "momentum scores will be estimated"
+                f"No historical data available for {symbol}, " "momentum scores will be estimated"
             )
 
         # Use CalibratedMomentumRanker with regime conditioning
@@ -475,9 +452,7 @@ def process_symbol_options(
             options_history=options_history if not options_history.empty else None,
             underlying_df=df_ohlc if use_regime_conditioning else None,
             underlying_trend=underlying_trend,
-            previous_rankings=(
-                previous_rankings if not previous_rankings.empty else None
-            ),
+            previous_rankings=(previous_rankings if not previous_rankings.empty else None),
             ranking_mode=ranking_mode,
         )
 
@@ -519,16 +494,12 @@ def process_symbol_options(
         logger.info(f"Saved {saved_count} ranked contracts for {symbol}")
 
     except Exception as e:
-        logger.error(
-            f"Error processing options for {symbol}: {e}", exc_info=True
-        )
+        logger.error(f"Error processing options for {symbol}: {e}", exc_info=True)
 
 
 def main() -> None:
     """Main options ranking job entry point."""
-    parser = argparse.ArgumentParser(
-        description="Rank options contracts using Momentum Framework"
-    )
+    parser = argparse.ArgumentParser(description="Rank options contracts using Momentum Framework")
     parser.add_argument(
         "--symbol",
         type=str,
@@ -551,9 +522,7 @@ def main() -> None:
 
     logger.info("=" * 80)
     logger.info("Starting Options Ranking Job")
-    logger.info(
-        f"Processing {len(symbols_to_process)} symbol(s): {', '.join(symbols_to_process)}"
-    )
+    logger.info(f"Processing {len(symbols_to_process)} symbol(s): {', '.join(symbols_to_process)}")
     logger.info("=" * 80)
 
     symbols_processed = 0

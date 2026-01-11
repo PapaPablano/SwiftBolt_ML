@@ -33,14 +33,13 @@ try:
     from tensorflow.keras.models import Sequential
     from tensorflow.keras.layers import LSTM, Dense, Dropout
     from tensorflow.keras.callbacks import EarlyStopping
+
     TF_AVAILABLE = True
     # Suppress TensorFlow warnings
-    tf.get_logger().setLevel('ERROR')
+    tf.get_logger().setLevel("ERROR")
 except ImportError:
     TF_AVAILABLE = False
-    logger.warning(
-        "TensorFlow not installed. Install with: pip install tensorflow>=2.10.0"
-    )
+    logger.warning("TensorFlow not installed. Install with: pip install tensorflow>=2.10.0")
 
 
 class LSTMForecaster:
@@ -88,9 +87,7 @@ class LSTMForecaster:
             horizon: Forecast horizon ("1D", "1W", etc.)
         """
         if not TF_AVAILABLE:
-            logger.warning(
-                "TensorFlow not available. Forecaster will use fallback mode."
-            )
+            logger.warning("TensorFlow not available. Forecaster will use fallback mode.")
 
         self.lookback = lookback
         self.units = units
@@ -114,9 +111,7 @@ class LSTMForecaster:
 
     def _parse_horizon(self, horizon: str) -> int:
         """Parse horizon string to number of trading days."""
-        return {
-            "1D": 1, "1W": 5, "2W": 10, "1M": 21, "2M": 42, "3M": 63
-        }.get(horizon, 1)
+        return {"1D": 1, "1W": 5, "2W": 10, "1M": 21, "2M": 42, "3M": 63}.get(horizon, 1)
 
     def _build_model(self, input_shape: Tuple[int, int]) -> None:
         """Build LSTM model architecture."""
@@ -137,17 +132,15 @@ class LSTMForecaster:
 
         # Additional LSTM layers
         for i in range(1, self.n_layers):
-            return_sequences = (i < self.n_layers - 1)
-            self.model.add(
-                LSTM(self.units // (2 ** i), return_sequences=return_sequences)
-            )
+            return_sequences = i < self.n_layers - 1
+            self.model.add(LSTM(self.units // (2**i), return_sequences=return_sequences))
             self.model.add(Dropout(self.dropout))
 
         # Dense output layers
-        self.model.add(Dense(16, activation='relu'))
+        self.model.add(Dense(16, activation="relu"))
         self.model.add(Dense(1))
 
-        self.model.compile(optimizer='adam', loss='mse', metrics=['mae'])
+        self.model.compile(optimizer="adam", loss="mse", metrics=["mae"])
 
         logger.info(
             "Built LSTM model: %d layers, %d units, %.1f%% dropout",
@@ -173,7 +166,7 @@ class LSTMForecaster:
         X, y = [], []
 
         for i in range(self.lookback, len(data)):
-            X.append(data[i - self.lookback:i])
+            X.append(data[i - self.lookback : i])
             y.append(data[i])
 
         X = np.array(X)
@@ -209,14 +202,10 @@ class LSTMForecaster:
             raise ValueError("DataFrame must contain 'close' column")
 
         if len(df) < min_samples:
-            raise ValueError(
-                f"Insufficient data: {len(df)} < {min_samples}"
-            )
+            raise ValueError(f"Insufficient data: {len(df)} < {min_samples}")
 
         if len(df) < self.lookback + 10:
-            raise ValueError(
-                f"Insufficient data for lookback: {len(df)} < {self.lookback + 10}"
-            )
+            raise ValueError(f"Insufficient data for lookback: {len(df)} < {self.lookback + 10}")
 
         logger.info("Training LSTM model...")
 
@@ -238,14 +227,15 @@ class LSTMForecaster:
 
             # Early stopping
             early_stop = EarlyStopping(
-                monitor='val_loss',
+                monitor="val_loss",
                 patience=10,
                 restore_best_weights=True,
             )
 
             # Train
             history = self.model.fit(
-                X_train, y_train,
+                X_train,
+                y_train,
                 validation_data=(X_val, y_val),
                 epochs=self.epochs,
                 batch_size=self.batch_size,
@@ -324,12 +314,8 @@ class LSTMForecaster:
         predictions = self.model.predict(X_val, verbose=0).flatten()
 
         # Inverse transform
-        predictions_price = self.scaler.inverse_transform(
-            predictions.reshape(-1, 1)
-        ).flatten()
-        actual_price = self.scaler.inverse_transform(
-            y_val.reshape(-1, 1)
-        ).flatten()
+        predictions_price = self.scaler.inverse_transform(predictions.reshape(-1, 1)).flatten()
+        actual_price = self.scaler.inverse_transform(y_val.reshape(-1, 1)).flatten()
 
         # Calculate returns
         # We need the previous prices to calculate returns
@@ -342,12 +328,14 @@ class LSTMForecaster:
 
             # Classification
             pred_labels = np.where(
-                pred_returns > self.bullish_threshold, "bullish",
-                np.where(pred_returns < self.bearish_threshold, "bearish", "neutral")
+                pred_returns > self.bullish_threshold,
+                "bullish",
+                np.where(pred_returns < self.bearish_threshold, "bearish", "neutral"),
             )
             actual_labels = np.where(
-                actual_returns > self.bullish_threshold, "bullish",
-                np.where(actual_returns < self.bearish_threshold, "bearish", "neutral")
+                actual_returns > self.bullish_threshold,
+                "bullish",
+                np.where(actual_returns < self.bearish_threshold, "bearish", "neutral"),
             )
 
             accuracy = (pred_labels == actual_labels).mean()
@@ -388,7 +376,7 @@ class LSTMForecaster:
 
         try:
             # Prepare input sequence
-            prices = df["close"].values[-self.lookback:].reshape(-1, 1)
+            prices = df["close"].values[-self.lookback :].reshape(-1, 1)
             scaled = self.scaler.transform(prices).flatten()
             X = scaled.reshape(1, self.lookback, 1)
 
@@ -405,9 +393,7 @@ class LSTMForecaster:
             mean_pred = np.mean(predictions)
             std_pred = np.std(predictions)
 
-            forecast_price = self.scaler.inverse_transform(
-                [[mean_pred]]
-            )[0, 0]
+            forecast_price = self.scaler.inverse_transform([[mean_pred]])[0, 0]
             last_close = df["close"].iloc[-1]
 
             # Calculate return and volatility
@@ -457,9 +443,7 @@ class LSTMForecaster:
     ) -> Dict[str, float]:
         """Calculate class probabilities from MC samples."""
         # Inverse transform all MC predictions
-        prices = self.scaler.inverse_transform(
-            mc_predictions.reshape(-1, 1)
-        ).flatten()
+        prices = self.scaler.inverse_transform(mc_predictions.reshape(-1, 1)).flatten()
 
         # Calculate returns for each MC sample
         returns = (prices - last_close) / last_close
@@ -603,12 +587,14 @@ class LSTMForecaster:
             lower_bound = forecast_value * (1 - z_score * cumulative_volatility)
             upper_bound = forecast_value * (1 + z_score * cumulative_volatility)
 
-            points.append({
-                "ts": int(forecast_ts.timestamp()),
-                "value": round(forecast_value, 2),
-                "lower": round(lower_bound, 2),
-                "upper": round(upper_bound, 2),
-            })
+            points.append(
+                {
+                    "ts": int(forecast_ts.timestamp()),
+                    "value": round(forecast_value, 2),
+                    "lower": round(lower_bound, 2),
+                    "upper": round(upper_bound, 2),
+                }
+            )
 
         return points
 
@@ -668,14 +654,16 @@ if __name__ == "__main__":
     n = 300
     prices = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
 
-    df = pd.DataFrame({
-        "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
-        "open": prices * 0.995,
-        "high": prices * 1.01,
-        "low": prices * 0.99,
-        "close": prices,
-        "volume": np.random.randint(1e6, 1e7, n).astype(float),
-    })
+    df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
+            "open": prices * 0.995,
+            "high": prices * 1.01,
+            "low": prices * 0.99,
+            "close": prices,
+            "volume": np.random.randint(1e6, 1e7, n).astype(float),
+        }
+    )
 
     print("\nTesting LSTM Forecaster...")
 

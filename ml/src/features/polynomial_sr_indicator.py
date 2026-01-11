@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 class RegressionType(Enum):
     """Type of polynomial regression."""
+
     LINEAR = "linear"
     QUADRATIC = "quadratic"
     CUBIC = "cubic"
@@ -52,6 +53,7 @@ class RegressionType(Enum):
 
 class SignalType(Enum):
     """Type of signal detected."""
+
     RESISTANCE_BREAK = "resistance_break"
     RESISTANCE_TEST = "resistance_test"
     SUPPORT_BREAK = "support_break"
@@ -61,6 +63,7 @@ class SignalType(Enum):
 @dataclass
 class RegressionCoefficients:
     """Polynomial coefficients with normalization parameters."""
+
     values: List[float]  # Coefficients, lowest degree first [a0, a1, a2, ...]
     x_min: float = 0.0
     x_max: float = 1.0
@@ -77,13 +80,14 @@ class RegressionCoefficients:
         x_norm = self.normalize_x(x)
         result = 0.0
         for i, coeff in enumerate(self.values):
-            result += coeff * (x_norm ** i)
+            result += coeff * (x_norm**i)
         return result
 
 
 @dataclass
 class DetectedPivot:
     """A detected pivot point."""
+
     index: int
     price: float
     timestamp: Optional[pd.Timestamp] = None
@@ -93,6 +97,7 @@ class DetectedPivot:
 @dataclass
 class RegressionSignal:
     """A detected signal from regression analysis."""
+
     type: SignalType
     price: float
     index: int
@@ -102,6 +107,7 @@ class RegressionSignal:
 @dataclass
 class PolynomialSRSettings:
     """Settings for PolynomialSRIndicator."""
+
     # Resistance settings
     resistance_enabled: bool = True
     resistance_type: RegressionType = RegressionType.LINEAR
@@ -211,7 +217,7 @@ class PolynomialRegression:
         # Evaluate derivative at point
         slope = 0.0
         for i, coeff in enumerate(deriv_coeffs):
-            slope += coeff * (at_x ** i)
+            slope += coeff * (at_x**i)
 
         return float(slope)
 
@@ -290,12 +296,8 @@ class PolynomialSRIndicator:
         # Filter by lookback window
         if self.settings.lookback_bars:
             min_index = max(0, last_index - self.settings.lookback_bars)
-            self._resistance_pivots = [
-                p for p in self._resistance_pivots if p.index >= min_index
-            ]
-            self._support_pivots = [
-                p for p in self._support_pivots if p.index >= min_index
-            ]
+            self._resistance_pivots = [p for p in self._resistance_pivots if p.index >= min_index]
+            self._support_pivots = [p for p in self._support_pivots if p.index >= min_index]
 
         # Calculate regressions
         current_resistance = None
@@ -324,9 +326,7 @@ class PolynomialSRIndicator:
             )
             if self._support_coeffs:
                 current_support = self._support_coeffs.predict(0)
-                support_slope = PolynomialRegression.compute_slope(
-                    self._support_coeffs, at_x=1.0
-                )
+                support_slope = PolynomialRegression.compute_slope(self._support_coeffs, at_x=1.0)
 
         # Generate forecasts
         forecast_resistance = self._generate_forecasts(
@@ -362,17 +362,18 @@ class PolynomialSRIndicator:
             "current_resistance": current_resistance,
             "support_slope": support_slope,
             "resistance_slope": resistance_slope,
-            "support_distance_pct": round(support_distance_pct, 2) if support_distance_pct else None,
-            "resistance_distance_pct": round(resistance_distance_pct, 2) if resistance_distance_pct else None,
+            "support_distance_pct": (
+                round(support_distance_pct, 2) if support_distance_pct else None
+            ),
+            "resistance_distance_pct": (
+                round(resistance_distance_pct, 2) if resistance_distance_pct else None
+            ),
             "forecast_support": forecast_support,
             "forecast_resistance": forecast_resistance,
             "signals": [
-                {"type": s.type.value, "price": s.price, "index": s.index}
-                for s in self._signals
+                {"type": s.type.value, "price": s.price, "index": s.index} for s in self._signals
             ],
-            "support_pivots": [
-                {"index": p.index, "price": p.price} for p in self._support_pivots
-            ],
+            "support_pivots": [{"index": p.index, "price": p.price} for p in self._support_pivots],
             "resistance_pivots": [
                 {"index": p.index, "price": p.price} for p in self._resistance_pivots
             ],
@@ -446,12 +447,14 @@ class PolynomialSRIndicator:
 
             if is_pivot:
                 ts = df["ts"].iloc[i] if has_ts else None
-                pivots.append(DetectedPivot(
-                    index=i,
-                    price=float(bar_val),
-                    timestamp=ts,
-                    is_high=is_high,
-                ))
+                pivots.append(
+                    DetectedPivot(
+                        index=i,
+                        price=float(bar_val),
+                        timestamp=ts,
+                        is_high=is_high,
+                    )
+                )
 
         return pivots
 
@@ -513,22 +516,26 @@ class PolynomialSRIndicator:
             # Test: high touched resistance from below
             if last_bar["high"] >= current_res and prev_bar["high"] < prev_res:
                 if self.settings.show_tests:
-                    self._signals.append(RegressionSignal(
-                        type=SignalType.RESISTANCE_TEST,
-                        price=float(last_bar["high"]),
-                        index=last_index,
-                        timestamp=last_bar["ts"] if has_ts else None,
-                    ))
+                    self._signals.append(
+                        RegressionSignal(
+                            type=SignalType.RESISTANCE_TEST,
+                            price=float(last_bar["high"]),
+                            index=last_index,
+                            timestamp=last_bar["ts"] if has_ts else None,
+                        )
+                    )
 
             # Break: close crossed above resistance
             if last_bar["close"] > current_res and prev_bar["close"] <= prev_res:
                 if self.settings.show_breaks:
-                    self._signals.append(RegressionSignal(
-                        type=SignalType.RESISTANCE_BREAK,
-                        price=float(last_bar["close"]),
-                        index=last_index,
-                        timestamp=last_bar["ts"] if has_ts else None,
-                    ))
+                    self._signals.append(
+                        RegressionSignal(
+                            type=SignalType.RESISTANCE_BREAK,
+                            price=float(last_bar["close"]),
+                            index=last_index,
+                            timestamp=last_bar["ts"] if has_ts else None,
+                        )
+                    )
 
         # Check support signals
         if self._support_coeffs and self.settings.support_enabled:
@@ -538,22 +545,26 @@ class PolynomialSRIndicator:
             # Test: low touched support from above
             if last_bar["low"] <= current_sup and prev_bar["low"] > prev_sup:
                 if self.settings.show_tests:
-                    self._signals.append(RegressionSignal(
-                        type=SignalType.SUPPORT_TEST,
-                        price=float(last_bar["low"]),
-                        index=last_index,
-                        timestamp=last_bar["ts"] if has_ts else None,
-                    ))
+                    self._signals.append(
+                        RegressionSignal(
+                            type=SignalType.SUPPORT_TEST,
+                            price=float(last_bar["low"]),
+                            index=last_index,
+                            timestamp=last_bar["ts"] if has_ts else None,
+                        )
+                    )
 
             # Break: close crossed below support
             if last_bar["close"] < current_sup and prev_bar["close"] >= prev_sup:
                 if self.settings.show_breaks:
-                    self._signals.append(RegressionSignal(
-                        type=SignalType.SUPPORT_BREAK,
-                        price=float(last_bar["close"]),
-                        index=last_index,
-                        timestamp=last_bar["ts"] if has_ts else None,
-                    ))
+                    self._signals.append(
+                        RegressionSignal(
+                            type=SignalType.SUPPORT_BREAK,
+                            price=float(last_bar["close"]),
+                            index=last_index,
+                            timestamp=last_bar["ts"] if has_ts else None,
+                        )
+                    )
 
     def forecast_resistance(self, bars_ahead: int) -> Optional[float]:
         """Get forecasted resistance at N bars into the future."""

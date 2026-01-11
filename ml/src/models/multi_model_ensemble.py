@@ -131,6 +131,7 @@ class MultiModelEnsemble:
         if self.enable_rf or self.enable_gb:
             try:
                 from src.models.ensemble_forecaster import EnsembleForecaster
+
                 self.base_ensemble = EnsembleForecaster(
                     horizon=self.horizon,
                     symbol_id=self.symbol_id,
@@ -155,6 +156,7 @@ class MultiModelEnsemble:
                 from src.models.arima_garch_forecaster import (
                     ArimaGarchForecaster,
                 )
+
                 self.models[self.MODEL_AG] = ArimaGarchForecaster(
                     arima_order=arima_order,
                     auto_select_order=auto_select_arima_order,
@@ -169,6 +171,7 @@ class MultiModelEnsemble:
         if self.enable_prophet:
             try:
                 from src.models.prophet_forecaster import ProphetForecaster
+
                 self.models[self.MODEL_PROPHET] = ProphetForecaster(
                     weekly_seasonality=True,
                     yearly_seasonality=False,
@@ -183,6 +186,7 @@ class MultiModelEnsemble:
         if self.enable_lstm:
             try:
                 from src.models.lstm_forecaster import LSTMForecaster
+
                 self.models[self.MODEL_LSTM] = LSTMForecaster(
                     lookback=self.lstm_lookback,
                     units=self.lstm_units,
@@ -267,9 +271,7 @@ class MultiModelEnsemble:
                 if self.enable_rf:
                     self.model_trained[self.MODEL_RF] = True
                 if self.enable_gb:
-                    self.model_trained[self.MODEL_GB] = (
-                        self.base_ensemble.gb_model.is_trained
-                    )
+                    self.model_trained[self.MODEL_GB] = self.base_ensemble.gb_model.is_trained
                 logger.info("RF/GB trained successfully")
             except Exception as e:
                 logger.warning("RF/GB training failed: %s", e)
@@ -334,38 +336,32 @@ class MultiModelEnsemble:
         }
 
         if self.model_trained.get(self.MODEL_RF):
-            self.training_stats["rf_accuracy"] = (
-                self.base_ensemble.training_stats.get("rf_accuracy", 0)
+            self.training_stats["rf_accuracy"] = self.base_ensemble.training_stats.get(
+                "rf_accuracy", 0
             )
 
         if self.model_trained.get(self.MODEL_GB):
-            self.training_stats["gb_accuracy"] = (
-                self.base_ensemble.training_stats.get("gb_accuracy", 0)
+            self.training_stats["gb_accuracy"] = self.base_ensemble.training_stats.get(
+                "gb_accuracy", 0
             )
 
         if self.model_trained.get(self.MODEL_AG):
             ag_model = self.models[self.MODEL_AG]
-            self.training_stats["ag_accuracy"] = (
-                ag_model.training_stats.get("accuracy", 0)
-            )
-            self.training_stats["ag_directional"] = (
-                ag_model.training_stats.get("directional_accuracy", 0)
+            self.training_stats["ag_accuracy"] = ag_model.training_stats.get("accuracy", 0)
+            self.training_stats["ag_directional"] = ag_model.training_stats.get(
+                "directional_accuracy", 0
             )
 
         if self.model_trained.get(self.MODEL_PROPHET):
             prophet_model = self.models[self.MODEL_PROPHET]
-            self.training_stats["prophet_accuracy"] = (
-                prophet_model.training_stats.get("accuracy", 0)
+            self.training_stats["prophet_accuracy"] = prophet_model.training_stats.get(
+                "accuracy", 0
             )
 
         if self.model_trained.get(self.MODEL_LSTM):
             lstm_model = self.models[self.MODEL_LSTM]
-            self.training_stats["lstm_accuracy"] = (
-                lstm_model.training_stats.get("accuracy", 0)
-            )
-            self.training_stats["lstm_loss"] = (
-                lstm_model.training_stats.get("final_loss", 0)
-            )
+            self.training_stats["lstm_accuracy"] = lstm_model.training_stats.get("accuracy", 0)
+            self.training_stats["lstm_loss"] = lstm_model.training_stats.get("final_loss", 0)
 
     def predict(
         self,
@@ -389,9 +385,7 @@ class MultiModelEnsemble:
         probabilities: Dict[str, Dict[str, float]] = {}
 
         # Get RF/GB predictions
-        if self.model_trained.get(self.MODEL_RF) or self.model_trained.get(
-            self.MODEL_GB
-        ):
+        if self.model_trained.get(self.MODEL_RF) or self.model_trained.get(self.MODEL_GB):
             try:
                 base_pred = self.base_ensemble.predict(features_df)
 
@@ -404,22 +398,13 @@ class MultiModelEnsemble:
                     probabilities[self.MODEL_RF] = {
                         "bearish": base_pred["probabilities"].get("bearish", 0)
                         * self.base_ensemble.rf_weight
-                        / (
-                            self.base_ensemble.rf_weight
-                            + self.base_ensemble.gb_weight
-                        ),
+                        / (self.base_ensemble.rf_weight + self.base_ensemble.gb_weight),
                         "neutral": base_pred["probabilities"].get("neutral", 0)
                         * self.base_ensemble.rf_weight
-                        / (
-                            self.base_ensemble.rf_weight
-                            + self.base_ensemble.gb_weight
-                        ),
+                        / (self.base_ensemble.rf_weight + self.base_ensemble.gb_weight),
                         "bullish": base_pred["probabilities"].get("bullish", 0)
                         * self.base_ensemble.rf_weight
-                        / (
-                            self.base_ensemble.rf_weight
-                            + self.base_ensemble.gb_weight
-                        ),
+                        / (self.base_ensemble.rf_weight + self.base_ensemble.gb_weight),
                     }
 
                 if self.model_trained.get(self.MODEL_GB):
@@ -430,22 +415,13 @@ class MultiModelEnsemble:
                     probabilities[self.MODEL_GB] = {
                         "bearish": base_pred["probabilities"].get("bearish", 0)
                         * self.base_ensemble.gb_weight
-                        / (
-                            self.base_ensemble.rf_weight
-                            + self.base_ensemble.gb_weight
-                        ),
+                        / (self.base_ensemble.rf_weight + self.base_ensemble.gb_weight),
                         "neutral": base_pred["probabilities"].get("neutral", 0)
                         * self.base_ensemble.gb_weight
-                        / (
-                            self.base_ensemble.rf_weight
-                            + self.base_ensemble.gb_weight
-                        ),
+                        / (self.base_ensemble.rf_weight + self.base_ensemble.gb_weight),
                         "bullish": base_pred["probabilities"].get("bullish", 0)
                         * self.base_ensemble.gb_weight
-                        / (
-                            self.base_ensemble.rf_weight
-                            + self.base_ensemble.gb_weight
-                        ),
+                        / (self.base_ensemble.rf_weight + self.base_ensemble.gb_weight),
                     }
             except Exception as e:
                 logger.warning("RF/GB prediction failed: %s", e)
@@ -467,9 +443,7 @@ class MultiModelEnsemble:
         # Get Prophet prediction
         if self.model_trained.get(self.MODEL_PROPHET):
             try:
-                prophet_pred = self.models[self.MODEL_PROPHET].predict(
-                    df=ohlc_df
-                )
+                prophet_pred = self.models[self.MODEL_PROPHET].predict(df=ohlc_df)
                 predictions[self.MODEL_PROPHET] = {
                     "label": prophet_pred["label"],
                     "confidence": prophet_pred["confidence"],
@@ -537,9 +511,7 @@ class MultiModelEnsemble:
 
         # Normalize
         if total_weight > 0:
-            ensemble_probs = {
-                k: v / total_weight for k, v in ensemble_probs.items()
-            }
+            ensemble_probs = {k: v / total_weight for k, v in ensemble_probs.items()}
 
         # Ensure probabilities sum to 1
         total = sum(ensemble_probs.values())
@@ -612,26 +584,20 @@ class MultiModelEnsemble:
 
         if points is None and self.model_trained.get(self.MODEL_AG):
             try:
-                ag_forecast = self.models[self.MODEL_AG].generate_forecast(
-                    ohlc_df, horizon
-                )
+                ag_forecast = self.models[self.MODEL_AG].generate_forecast(ohlc_df, horizon)
                 points = ag_forecast["points"]
             except Exception:
                 pass
 
         if points is None and self.model_trained.get(self.MODEL_LSTM):
             try:
-                lstm_forecast = self.models[self.MODEL_LSTM].generate_forecast(
-                    ohlc_df, horizon
-                )
+                lstm_forecast = self.models[self.MODEL_LSTM].generate_forecast(ohlc_df, horizon)
                 points = lstm_forecast["points"]
             except Exception:
                 pass
 
         if points is None:
-            points = self._generate_simple_points(
-                last_ts, last_close, prediction, horizon_days
-            )
+            points = self._generate_simple_points(last_ts, last_close, prediction, horizon_days)
 
         return {
             "label": prediction["label"],
@@ -650,9 +616,7 @@ class MultiModelEnsemble:
 
     def _parse_horizon(self, horizon: str) -> int:
         """Parse horizon string to number of trading days."""
-        return {"1D": 1, "1W": 5, "2W": 10, "1M": 21, "2M": 42, "3M": 63}.get(
-            horizon, 1
-        )
+        return {"1D": 1, "1W": 5, "2W": 10, "1M": 21, "2M": 42, "3M": 63}.get(horizon, 1)
 
     def _generate_simple_points(
         self,
@@ -664,9 +628,7 @@ class MultiModelEnsemble:
         """Generate simple forecast points."""
         points = []
         direction = (
-            1 if prediction["label"] == "Bullish"
-            else -1 if prediction["label"] == "Bearish"
-            else 0
+            1 if prediction["label"] == "Bullish" else -1 if prediction["label"] == "Bearish" else 0
         )
         confidence = prediction["confidence"]
 
@@ -676,12 +638,14 @@ class MultiModelEnsemble:
             value = last_close * (1 + move)
             volatility = prediction.get("forecast_volatility", 0.02) or 0.02
 
-            points.append({
-                "ts": int(forecast_ts.timestamp()),
-                "value": round(value, 2),
-                "lower": round(value * (1 - 1.96 * volatility * np.sqrt(i)), 2),
-                "upper": round(value * (1 + 1.96 * volatility * np.sqrt(i)), 2),
-            })
+            points.append(
+                {
+                    "ts": int(forecast_ts.timestamp()),
+                    "value": round(value, 2),
+                    "lower": round(value * (1 - 1.96 * volatility * np.sqrt(i)), 2),
+                    "upper": round(value * (1 + 1.96 * volatility * np.sqrt(i)), 2),
+                }
+            )
 
         return points
 
@@ -703,19 +667,13 @@ class MultiModelEnsemble:
             diagnostics["models"]["gb"] = {"status": "trained"}
 
         if self.model_trained.get(self.MODEL_AG):
-            diagnostics["models"]["arima_garch"] = (
-                self.models[self.MODEL_AG].get_model_info()
-            )
+            diagnostics["models"]["arima_garch"] = self.models[self.MODEL_AG].get_model_info()
 
         if self.model_trained.get(self.MODEL_PROPHET):
-            diagnostics["models"]["prophet"] = (
-                self.models[self.MODEL_PROPHET].get_model_info()
-            )
+            diagnostics["models"]["prophet"] = self.models[self.MODEL_PROPHET].get_model_info()
 
         if self.model_trained.get(self.MODEL_LSTM):
-            diagnostics["models"]["lstm"] = (
-                self.models[self.MODEL_LSTM].get_model_info()
-            )
+            diagnostics["models"]["lstm"] = self.models[self.MODEL_LSTM].get_model_info()
 
         diagnostics["training_stats"] = self.training_stats
 
@@ -731,14 +689,16 @@ if __name__ == "__main__":
     n = 300
     prices = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
 
-    df = pd.DataFrame({
-        "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
-        "open": prices * 0.995,
-        "high": prices * 1.01,
-        "low": prices * 0.99,
-        "close": prices,
-        "volume": np.random.randint(1e6, 1e7, n).astype(float),
-    })
+    df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
+            "open": prices * 0.995,
+            "high": prices * 1.01,
+            "low": prices * 0.99,
+            "close": prices,
+            "volume": np.random.randint(1e6, 1e7, n).astype(float),
+        }
+    )
 
     # Create features
     df["return_1d"] = df["close"].pct_change()

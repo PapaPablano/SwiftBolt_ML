@@ -42,7 +42,7 @@ class GarchVolatility:
             raise RuntimeError("GARCH model not fitted")
         forecast = self.res.forecast(horizon=steps)
         # Return next-step variance (convert back from percentage space)
-        variance = forecast.variance.values[-1, -1] / (100 ** 2)
+        variance = forecast.variance.values[-1, -1] / (100**2)
         return variance
 
     def in_sample_variance(self) -> pd.Series:
@@ -51,10 +51,10 @@ class GarchVolatility:
         cond_vol = self.res.conditional_volatility
         # Handle both numpy array and pandas Series returns
         if isinstance(cond_vol, pd.Series):
-            var = cond_vol ** 2 / (100 ** 2)
+            var = cond_vol**2 / (100**2)
         else:
             # numpy array case - convert to Series with proper index
-            var_values = cond_vol ** 2 / (100 ** 2)
+            var_values = cond_vol**2 / (100**2)
             var = pd.Series(var_values, index=self.res.model._y.index)
         return var
 
@@ -77,9 +77,7 @@ def add_garch_features(df: pd.DataFrame) -> pd.DataFrame:
         p67 = out["garch_variance"].quantile(0.67)
         regime = pd.Series(index=out.index, dtype="Int64")
         regime[out["garch_variance"] < p33] = 0
-        regime[
-            (out["garch_variance"] >= p33) & (out["garch_variance"] <= p67)
-        ] = 1
+        regime[(out["garch_variance"] >= p33) & (out["garch_variance"] <= p67)] = 1
         regime[out["garch_variance"] > p67] = 2
         out["garch_vol_regime"] = regime
     except Exception as exc:  # noqa: BLE001

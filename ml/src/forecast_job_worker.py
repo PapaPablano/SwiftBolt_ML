@@ -60,10 +60,13 @@ def complete_job(job_id: str):
 def fail_job(job_id: str, error_message: str):
     """Mark a job as failed."""
     try:
-        db.client.rpc("fail_forecast_job", {
-            "p_job_id": job_id,
-            "p_error_message": error_message[:500]  # Limit error message length
-        }).execute()
+        db.client.rpc(
+            "fail_forecast_job",
+            {
+                "p_job_id": job_id,
+                "p_error_message": error_message[:500],  # Limit error message length
+            },
+        ).execute()
         logger.error(f"❌ Marked forecast job {job_id} as failed: {error_message}")
     except Exception as e:
         logger.error(f"Error marking forecast job as failed {job_id}: {e}")
@@ -79,8 +82,8 @@ def process_job(job: dict) -> bool:
     Returns:
         True if successful, False otherwise
     """
-    job_id = job['job_id']
-    symbol = job['symbol']
+    job_id = job["job_id"]
+    symbol = job["symbol"]
 
     logger.info(f"🔄 Processing forecast job {job_id} for {symbol}...")
 
@@ -94,7 +97,7 @@ def process_job(job: dict) -> bool:
             [python_path, str(script_path), "--symbol", symbol],
             capture_output=True,
             text=True,
-            timeout=180  # 3 minute timeout (forecasts can take longer)
+            timeout=180,  # 3 minute timeout (forecasts can take longer)
         )
 
         if result.returncode == 0:
@@ -128,9 +131,9 @@ def process_queue_once() -> int:
     Returns:
         Number of jobs processed
     """
-    logger.info("="*60)
+    logger.info("=" * 60)
     logger.info("Checking for pending forecast jobs...")
-    logger.info("="*60)
+    logger.info("=" * 60)
 
     processed = 0
 
@@ -155,11 +158,11 @@ def watch_queue(poll_interval: int = 10):
     Args:
         poll_interval: Seconds to wait between polls (default: 10)
     """
-    logger.info("="*60)
+    logger.info("=" * 60)
     logger.info("Forecast Job Worker - Watch Mode")
     logger.info(f"Polling every {poll_interval} seconds")
     logger.info("Press Ctrl+C to stop")
-    logger.info("="*60)
+    logger.info("=" * 60)
 
     try:
         while True:
@@ -176,21 +179,19 @@ def watch_queue(poll_interval: int = 10):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Process ML forecast jobs from the queue"
-    )
+    parser = argparse.ArgumentParser(description="Process ML forecast jobs from the queue")
 
     parser.add_argument(
         "--watch",
         action="store_true",
-        help="Continuously watch the queue and process jobs as they arrive"
+        help="Continuously watch the queue and process jobs as they arrive",
     )
 
     parser.add_argument(
         "--interval",
         type=int,
         default=10,
-        help="Poll interval in seconds when in watch mode (default: 10)"
+        help="Poll interval in seconds when in watch mode (default: 10)",
     )
 
     args = parser.parse_args()

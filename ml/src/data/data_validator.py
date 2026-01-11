@@ -72,15 +72,11 @@ class OHLCValidator:
             invalid_low = df["low"] > df[["open", "close"]].min(axis=1)
 
             if invalid_high.any():
-                issues.append(
-                    f"High < max(Open,Close) in {invalid_high.sum()} rows"
-                )
+                issues.append(f"High < max(Open,Close) in {invalid_high.sum()} rows")
                 flagged_rows.update(df[invalid_high].index.tolist())
 
             if invalid_low.any():
-                issues.append(
-                    f"Low > min(Open,Close) in {invalid_low.sum()} rows"
-                )
+                issues.append(f"Low > min(Open,Close) in {invalid_low.sum()} rows")
                 flagged_rows.update(df[invalid_low].index.tolist())
 
         # 2. Check volume
@@ -110,8 +106,8 @@ class OHLCValidator:
             valid_atr = atr_aligned > 0
             if valid_atr.any():
                 large_gaps_mask = pd.Series(False, index=df.index[1:])
-                large_gaps_mask[valid_atr] = (
-                    gaps[valid_atr] > (atr_aligned[valid_atr] * self.MAX_GAP_ATRS)
+                large_gaps_mask[valid_atr] = gaps[valid_atr] > (
+                    atr_aligned[valid_atr] * self.MAX_GAP_ATRS
                 )
                 large_gaps = pd.Series(False, index=df.index)
                 large_gaps.iloc[1:] = large_gaps_mask.values

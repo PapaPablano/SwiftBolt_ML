@@ -98,14 +98,12 @@ class GradientBoostingForecaster:
         # Validation
         if features_df.shape[0] != labels_series.shape[0]:
             raise ValueError(
-                "Feature/label mismatch: "
-                f"{features_df.shape[0]} vs {labels_series.shape[0]}"
+                "Feature/label mismatch: " f"{features_df.shape[0]} vs {labels_series.shape[0]}"
             )
 
         if features_df.shape[0] < 100:
             raise ValueError(
-                "Insufficient training data: "
-                f"{features_df.shape[0]} rows (need >= 100)"
+                "Insufficient training data: " f"{features_df.shape[0]} rows (need >= 100)"
             )
 
         # Remove rows with NaN in features
@@ -184,9 +182,7 @@ class GradientBoostingForecaster:
             "n_samples": len(features_clean),
             "n_features": features_clean.shape[1],
             "class_distribution": labels_internal.value_counts().to_dict(),
-            "training_accuracy": self.model.score(
-                features_clean, labels_internal
-            ),
+            "training_accuracy": self.model.score(features_clean, labels_internal),
             "top_features": top_features,
         }
 
@@ -198,10 +194,7 @@ class GradientBoostingForecaster:
         if top_features:
             logger.info(
                 "GB top features: %s",
-                ", ".join(
-                    f"{name}={score:.3f}"
-                    for name, score in top_features
-                ),
+                ", ".join(f"{name}={score:.3f}" for name, score in top_features),
             )
 
         return self
@@ -238,9 +231,7 @@ class GradientBoostingForecaster:
         probabilities = self.model.predict_proba(features)[0]
 
         # Map internal to external label
-        prediction_external = self.INTERNAL_TO_EXTERNAL[
-            int(prediction_internal)
-        ]
+        prediction_external = self.INTERNAL_TO_EXTERNAL[int(prediction_internal)]
         label = self.LABEL_MAP[prediction_external]
         confidence = float(np.max(probabilities))
 
@@ -275,15 +266,12 @@ class GradientBoostingForecaster:
 
         # Convert internal predictions to external labels
         predictions_external = [
-            self.INTERNAL_TO_EXTERNAL[int(pred)]
-            for pred in predictions_internal
+            self.INTERNAL_TO_EXTERNAL[int(pred)] for pred in predictions_internal
         ]
 
         result_df = pd.DataFrame(
             {
-                "prediction": [
-                    self.LABEL_MAP[p] for p in predictions_external
-                ],
+                "prediction": [self.LABEL_MAP[p] for p in predictions_external],
                 "confidence": np.max(probabilities, axis=1),
                 "prob_bearish": probabilities[:, 0],
                 "prob_neutral": probabilities[:, 1],

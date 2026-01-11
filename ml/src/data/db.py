@@ -86,9 +86,7 @@ class Database:
 
                 if not rows:
                     logger.warning(f"No OHLC data found for {symbol} ({timeframe})")
-                    return pd.DataFrame(
-                        columns=["ts", "open", "high", "low", "close", "volume"]
-                    )
+                    return pd.DataFrame(columns=["ts", "open", "high", "low", "close", "volume"])
 
                 # Convert to DataFrame
                 df = pd.DataFrame(rows)

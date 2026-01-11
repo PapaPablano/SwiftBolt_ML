@@ -20,14 +20,16 @@ def sample_ohlc_df():
 
     prices = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
 
-    df = pd.DataFrame({
-        "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
-        "open": prices * 0.995,
-        "high": prices * 1.01,
-        "low": prices * 0.99,
-        "close": prices,
-        "volume": np.random.randint(1e6, 1e7, n).astype(float),
-    })
+    df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
+            "open": prices * 0.995,
+            "high": prices * 1.01,
+            "low": prices * 0.99,
+            "close": prices,
+            "volume": np.random.randint(1e6, 1e7, n).astype(float),
+        }
+    )
 
     return df
 
@@ -49,9 +51,7 @@ def sample_features_labels(sample_ohlc_df):
     # Labels
     fwd = df["close"].pct_change().shift(-1)
     labels = fwd.apply(
-        lambda x: "bullish" if x > 0.01
-        else "bearish" if x < -0.01
-        else "neutral"
+        lambda x: "bullish" if x > 0.01 else "bearish" if x < -0.01 else "neutral"
     ).iloc[:-1]
 
     features = features.iloc[:-1]
@@ -66,17 +66,19 @@ def mock_ensemble():
     ensemble = MagicMock()
     ensemble.model_trained = {"rf": True, "gb": True, "arima_garch": True}
     ensemble.train = MagicMock(return_value=ensemble)
-    ensemble.predict = MagicMock(return_value={
-        "label": "Bullish",
-        "confidence": 0.7,
-        "probabilities": {"bullish": 0.7, "neutral": 0.2, "bearish": 0.1},
-        "agreement": 0.8,
-        "component_predictions": {
-            "rf": {"label": "Bullish"},
-            "gb": {"label": "Bullish"},
-            "arima_garch": {"label": "Neutral"},
-        },
-    })
+    ensemble.predict = MagicMock(
+        return_value={
+            "label": "Bullish",
+            "confidence": 0.7,
+            "probabilities": {"bullish": 0.7, "neutral": 0.2, "bearish": 0.1},
+            "agreement": 0.8,
+            "component_predictions": {
+                "rf": {"label": "Bullish"},
+                "gb": {"label": "Bullish"},
+                "arima_garch": {"label": "Neutral"},
+            },
+        }
+    )
     return ensemble
 
 
@@ -177,10 +179,12 @@ class TestBacktestExecution:
         """Test error on insufficient data."""
         wfe = WalkForwardEnsemble(initial_train_size=100)
 
-        small_df = pd.DataFrame({
-            "ts": pd.date_range("2023-01-01", periods=50, freq="D"),
-            "close": np.random.randn(50) + 100,
-        })
+        small_df = pd.DataFrame(
+            {
+                "ts": pd.date_range("2023-01-01", periods=50, freq="D"),
+                "close": np.random.randn(50) + 100,
+            }
+        )
 
         with pytest.raises(ValueError, match="Insufficient"):
             wfe.run_backtest(
@@ -257,9 +261,7 @@ class TestResultsAccess:
 
         assert df.empty
 
-    def test_get_metrics_after_backtest(
-        self, sample_features_labels, mock_ensemble
-    ):
+    def test_get_metrics_after_backtest(self, sample_features_labels, mock_ensemble):
         """Test get_metrics after backtest."""
         ohlc_df, features_df, labels = sample_features_labels
 
@@ -277,9 +279,7 @@ class TestResultsAccess:
         assert "accuracy" in metrics
         assert "n_predictions" in metrics
 
-    def test_get_weight_evolution(
-        self, sample_features_labels, mock_ensemble
-    ):
+    def test_get_weight_evolution(self, sample_features_labels, mock_ensemble):
         """Test weight evolution tracking."""
         ohlc_df, features_df, labels = sample_features_labels
 
@@ -300,9 +300,7 @@ class TestResultsAccess:
         # Should have recorded weight updates
         assert len(weight_df) > 0 or len(wfe.weight_history) > 0
 
-    def test_get_confusion_matrix(
-        self, sample_features_labels, mock_ensemble
-    ):
+    def test_get_confusion_matrix(self, sample_features_labels, mock_ensemble):
         """Test confusion matrix generation."""
         ohlc_df, features_df, labels = sample_features_labels
 
@@ -321,9 +319,7 @@ class TestResultsAccess:
         assert "Bearish" in cm.index
         assert "Neutral" in cm.index
 
-    def test_get_accuracy_by_confidence(
-        self, sample_features_labels, mock_ensemble
-    ):
+    def test_get_accuracy_by_confidence(self, sample_features_labels, mock_ensemble):
         """Test accuracy by confidence stratification."""
         ohlc_df, features_df, labels = sample_features_labels
 
@@ -369,15 +365,13 @@ class TestWeightOptimization:
         weights = wfe._get_initial_weights(mock_ensemble)
 
         assert len(weights) == 3
-        assert all(abs(w - 1/3) < 0.01 for w in weights.values())
+        assert all(abs(w - 1 / 3) < 0.01 for w in weights.values())
 
 
 class TestEdgeCases:
     """Test edge cases."""
 
-    def test_handles_prediction_errors(
-        self, sample_features_labels
-    ):
+    def test_handles_prediction_errors(self, sample_features_labels):
         """Test handling of prediction errors."""
         ohlc_df, features_df, labels = sample_features_labels
 

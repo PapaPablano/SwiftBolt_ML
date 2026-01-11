@@ -91,10 +91,7 @@ class TechnicalIndicatorsCorrect:
 
     @staticmethod
     def calculate_macd(
-        series: pd.Series,
-        fast: int = 12,
-        slow: int = 26,
-        signal: int = 9
+        series: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9
     ) -> Tuple[pd.Series, pd.Series, pd.Series]:
         """
         MACD - Moving Average Convergence Divergence
@@ -134,10 +131,7 @@ class TechnicalIndicatorsCorrect:
     # =========================================================================
 
     @staticmethod
-    def calculate_adx_correct(
-        df: pd.DataFrame,
-        period: int = 14
-    ) -> pd.DataFrame:
+    def calculate_adx_correct(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
         """
         Average Directional Index - CORRECTED IMPLEMENTATION
 
@@ -204,9 +198,7 @@ class TechnicalIndicatorsCorrect:
         di_sum = df["plus_di"] + df["minus_di"]
         di_sum_safe = di_sum.replace(0, np.nan)
 
-        dx = 100 * (
-            (df["plus_di"] - df["minus_di"]).abs() / di_sum_safe
-        )
+        dx = 100 * ((df["plus_di"] - df["minus_di"]).abs() / di_sum_safe)
 
         # Step 6: Smooth DX to get ADX (Wilder's smoothing again)
         df["adx"] = wilders_smoothing(dx, period)
@@ -227,15 +219,10 @@ class TechnicalIndicatorsCorrect:
 
         # Trend strength category (0=ranging, 1=weak, 2=moderate, 3=strong)
         df["adx_strength"] = pd.cut(
-            df["adx"],
-            bins=[0, 20, 25, 30, 100],
-            labels=[0, 1, 2, 3],
-            include_lowest=True
+            df["adx"], bins=[0, 20, 25, 30, 100], labels=[0, 1, 2, 3], include_lowest=True
         ).astype(float)
 
-        logger.info(
-            f"Calculated ADX with Wilder's smoothing (period={period}) + ML features"
-        )
+        logger.info(f"Calculated ADX with Wilder's smoothing (period={period}) + ML features")
 
         return df
 
@@ -245,10 +232,7 @@ class TechnicalIndicatorsCorrect:
 
     @staticmethod
     def calculate_kdj_correct(
-        df: pd.DataFrame,
-        period: int = 9,
-        k_smooth: int = 5,
-        d_smooth: int = 5
+        df: pd.DataFrame, period: int = 9, k_smooth: int = 5, d_smooth: int = 5
     ) -> pd.DataFrame:
         """
         KDJ Stochastic Indicator - TRADINGVIEW-VALIDATED IMPLEMENTATION
@@ -364,9 +348,7 @@ class TechnicalIndicatorsCorrect:
 
     @staticmethod
     def calculate_supertrend(
-        df: pd.DataFrame,
-        period: int = 7,
-        multiplier: float = 2.0
+        df: pd.DataFrame, period: int = 7, multiplier: float = 2.0
     ) -> pd.DataFrame:
         """
         SuperTrend Indicator - TRADINGVIEW-VALIDATED IMPLEMENTATION
@@ -417,16 +399,16 @@ class TechnicalIndicatorsCorrect:
 
         for i in range(1, len(df)):
             # Upper band only goes down (tightens in downtrend)
-            if df["close"].iloc[i-1] > final_upper.iloc[i-1]:
+            if df["close"].iloc[i - 1] > final_upper.iloc[i - 1]:
                 final_upper.iloc[i] = basic_upper.iloc[i]
             else:
-                final_upper.iloc[i] = min(basic_upper.iloc[i], final_upper.iloc[i-1])
+                final_upper.iloc[i] = min(basic_upper.iloc[i], final_upper.iloc[i - 1])
 
             # Lower band only goes up (tightens in uptrend)
-            if df["close"].iloc[i-1] < final_lower.iloc[i-1]:
+            if df["close"].iloc[i - 1] < final_lower.iloc[i - 1]:
                 final_lower.iloc[i] = basic_lower.iloc[i]
             else:
-                final_lower.iloc[i] = max(basic_lower.iloc[i], final_lower.iloc[i-1])
+                final_lower.iloc[i] = max(basic_lower.iloc[i], final_lower.iloc[i - 1])
 
         # Step 4: Determine trend
         supertrend = pd.Series(index=df.index, dtype=float)
@@ -436,7 +418,7 @@ class TechnicalIndicatorsCorrect:
         direction.iloc[0] = 1
 
         for i in range(1, len(df)):
-            if direction.iloc[i-1] == 1:
+            if direction.iloc[i - 1] == 1:
                 # Uptrend: use lower band
                 if df["close"].iloc[i] <= final_lower.iloc[i]:
                     # Trend reversal to downtrend
@@ -476,9 +458,7 @@ class TechnicalIndicatorsCorrect:
 
     @staticmethod
     def calculate_bollinger_bands(
-        df: pd.DataFrame,
-        period: int = 20,
-        std_dev: float = 2.0
+        df: pd.DataFrame, period: int = 20, std_dev: float = 2.0
     ) -> pd.DataFrame:
         """
         Bollinger Bands with proper interpretation
@@ -520,9 +500,10 @@ class TechnicalIndicatorsCorrect:
 
         # Width percentile (for volatility regime)
         # Use period*2 window to ensure calculation with smaller datasets
-        df["bb_width_pct"] = df["bb_width"].rolling(window=max(period*2, 20)).apply(
-            lambda x: (x.iloc[-1] > x).sum() / len(x) * 100 if len(x) > 0 else 50,
-            raw=False
+        df["bb_width_pct"] = (
+            df["bb_width"]
+            .rolling(window=max(period * 2, 20))
+            .apply(lambda x: (x.iloc[-1] > x).sum() / len(x) * 100 if len(x) > 0 else 50, raw=False)
         )
 
         return df
@@ -565,9 +546,9 @@ class TechnicalIndicatorsCorrect:
         negative_mf = pd.Series(0.0, index=df.index)
 
         for i in range(1, len(df)):
-            if typical_price.iloc[i] > typical_price.iloc[i-1]:
+            if typical_price.iloc[i] > typical_price.iloc[i - 1]:
                 positive_mf.iloc[i] = money_flow.iloc[i]
-            elif typical_price.iloc[i] < typical_price.iloc[i-1]:
+            elif typical_price.iloc[i] < typical_price.iloc[i - 1]:
                 negative_mf.iloc[i] = money_flow.iloc[i]
 
         # Sum over period
@@ -587,12 +568,12 @@ class TechnicalIndicatorsCorrect:
         """On Balance Volume."""
         obv = pd.Series(0.0, index=df.index)
         for i in range(1, len(df)):
-            if df["close"].iloc[i] > df["close"].iloc[i-1]:
-                obv.iloc[i] = obv.iloc[i-1] + df["volume"].iloc[i]
-            elif df["close"].iloc[i] < df["close"].iloc[i-1]:
-                obv.iloc[i] = obv.iloc[i-1] - df["volume"].iloc[i]
+            if df["close"].iloc[i] > df["close"].iloc[i - 1]:
+                obv.iloc[i] = obv.iloc[i - 1] + df["volume"].iloc[i]
+            elif df["close"].iloc[i] < df["close"].iloc[i - 1]:
+                obv.iloc[i] = obv.iloc[i - 1] - df["volume"].iloc[i]
             else:
-                obv.iloc[i] = obv.iloc[i-1]
+                obv.iloc[i] = obv.iloc[i - 1]
         return obv
 
     # =========================================================================
@@ -615,8 +596,9 @@ class TechnicalIndicatorsCorrect:
 
         # Momentum indicators
         df["rsi_14"] = TechnicalIndicatorsCorrect.calculate_rsi(df["close"], period=14)
-        df["macd"], df["macd_signal"], df["macd_hist"] = \
-            TechnicalIndicatorsCorrect.calculate_macd(df["close"], fast=12, slow=26, signal=9)
+        df["macd"], df["macd_signal"], df["macd_hist"] = TechnicalIndicatorsCorrect.calculate_macd(
+            df["close"], fast=12, slow=26, signal=9
+        )
 
         # Stochastic
         df = TechnicalIndicatorsCorrect.calculate_kdj_correct(df, period=9, k_smooth=3, d_smooth=3)
@@ -629,7 +611,9 @@ class TechnicalIndicatorsCorrect:
         df["atr_normalized"] = df["atr_14"] / df["close"] * 100
 
         # Volatility (20-day standard deviation of returns)
-        df["volatility_20d"] = df["close"].pct_change().rolling(window=20).std() * np.sqrt(252) * 100
+        df["volatility_20d"] = (
+            df["close"].pct_change().rolling(window=20).std() * np.sqrt(252) * 100
+        )
 
         # Volume
         df["mfi_14"] = TechnicalIndicatorsCorrect.calculate_mfi(df, period=14)

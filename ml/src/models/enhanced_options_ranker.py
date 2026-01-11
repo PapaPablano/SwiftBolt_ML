@@ -111,46 +111,32 @@ class EnhancedOptionsRanker(OptionsRanker):
         df = options_df.copy()
 
         # Extract trend info
-        trend = trend_analysis.get('trend', 'neutral')
-        signal_strength = trend_analysis.get('signal_strength', 5.0)
-        supertrend_factor = trend_analysis.get('supertrend_factor', 3.0)
-        supertrend_perf = trend_analysis.get('supertrend_performance', 0.0)
+        trend = trend_analysis.get("trend", "neutral")
+        signal_strength = trend_analysis.get("signal_strength", 5.0)
+        supertrend_factor = trend_analysis.get("supertrend_factor", 3.0)
+        supertrend_perf = trend_analysis.get("supertrend_performance", 0.0)
 
         # Calculate base scores
         df["moneyness_score"] = self._score_moneyness(
             df["strike"], df["side"], underlying_price, trend
         )
-        df["iv_rank_score"] = self._score_iv_rank(
-            df["impliedVolatility"], historical_vol
-        )
-        df["liquidity_score"] = self._score_liquidity(
-            df["volume"], df["openInterest"]
-        )
-        df["delta_score"] = self._score_delta(
-            df["delta"], df["side"], trend
-        )
-        df["theta_decay_score"] = self._score_theta(
-            df["theta"], df["side"], df["expiration"]
-        )
+        df["iv_rank_score"] = self._score_iv_rank(df["impliedVolatility"], historical_vol)
+        df["liquidity_score"] = self._score_liquidity(df["volume"], df["openInterest"])
+        df["delta_score"] = self._score_delta(df["delta"], df["side"], trend)
+        df["theta_decay_score"] = self._score_theta(df["theta"], df["side"], df["expiration"])
         df["momentum_score"] = self._score_momentum(trend, df["side"])
 
         # Enhanced scores
-        df["trend_strength_score"] = self._score_trend_strength(
-            signal_strength, df["side"], trend
-        )
+        df["trend_strength_score"] = self._score_trend_strength(signal_strength, df["side"], trend)
         df["supertrend_score"] = self._score_supertrend(
             supertrend_factor, supertrend_perf, df["side"], trend
         )
 
         # P0 Module scores (Phase 7)
-        earnings_date = trend_analysis.get('earnings_date')
+        earnings_date = trend_analysis.get("earnings_date")
         df["pop_rr_score"] = self._score_pop_and_rr(df, underlying_price)
-        df["earnings_iv_score"] = self._score_earnings_iv(
-            df, historical_vol, earnings_date
-        )
-        df["extrinsic_score"] = self._score_extrinsic_richness(
-            df, underlying_price, historical_vol
-        )
+        df["earnings_iv_score"] = self._score_earnings_iv(df, historical_vol, earnings_date)
+        df["extrinsic_score"] = self._score_extrinsic_richness(df, underlying_price, historical_vol)
         df["pcr_score"] = self._score_pcr_sentiment(df)
 
         # Weighted composite score
@@ -177,10 +163,7 @@ class EnhancedOptionsRanker(OptionsRanker):
 
         logger.info(f"Enhanced ranking: {len(df)} contracts")
         logger.info(f"Trend: {trend}, Strength: {signal_strength:.1f}/10")
-        logger.info(
-            f"Score range: {df['ml_score'].min():.3f} - "
-            f"{df['ml_score'].max():.3f}"
-        )
+        logger.info(f"Score range: {df['ml_score'].min():.3f} - " f"{df['ml_score'].max():.3f}")
 
         return df
 
@@ -258,7 +241,7 @@ class EnhancedOptionsRanker(OptionsRanker):
 
             # Apply performance and factor quality
             final_score = base_score * (0.5 + 0.25 * perf_bonus)
-            final_score *= (0.5 + 0.5 * factor_quality)
+            final_score *= 0.5 + 0.5 * factor_quality
 
             scores.loc[idx] = min(1.0, final_score)
 
@@ -283,18 +266,18 @@ class EnhancedOptionsRanker(OptionsRanker):
             try:
                 pop_data = self.pop_calc.calculate_pop(
                     underlying_price=underlying_price,
-                    strike=row['strike'],
-                    side=row['side'],
-                    bid=row.get('bid', 0),
-                    ask=row.get('ask', 0),
-                    delta=row.get('delta', 0.5)
+                    strike=row["strike"],
+                    side=row["side"],
+                    bid=row.get("bid", 0),
+                    ask=row.get("ask", 0),
+                    delta=row.get("delta", 0.5),
                 )
                 rr_data = self.pop_calc.calculate_risk_reward_ratio(
-                    strike=row['strike'],
+                    strike=row["strike"],
                     underlying_price=underlying_price,
-                    bid=row.get('bid', 0),
-                    ask=row.get('ask', 0),
-                    side=row['side']
+                    bid=row.get("bid", 0),
+                    ask=row.get("ask", 0),
+                    side=row["side"],
                 )
                 score = self.pop_calc.score_pop_and_rr(pop_data, rr_data)
                 scores.append(score)
@@ -320,35 +303,36 @@ class EnhancedOptionsRanker(OptionsRanker):
         # Default earnings date if not provided (45 days out)
         if earnings_date is None:
             from datetime import timedelta
-            earnings_date = (datetime.today() + timedelta(days=45)).strftime('%Y-%m-%d')
+
+            earnings_date = (datetime.today() + timedelta(days=45)).strftime("%Y-%m-%d")
 
         for idx, row in options_df.iterrows():
             try:
                 # Calculate days to earnings and expiry
-                earnings_dt = datetime.strptime(earnings_date, '%Y-%m-%d')
+                earnings_dt = datetime.strptime(earnings_date, "%Y-%m-%d")
                 days_to_earnings = (earnings_dt - datetime.today()).days
 
                 # Handle expiration - could be string or timestamp
-                exp = row.get('expiration')
+                exp = row.get("expiration")
                 if isinstance(exp, str):
-                    exp_dt = datetime.strptime(exp, '%Y-%m-%d')
+                    exp_dt = datetime.strptime(exp, "%Y-%m-%d")
                 else:
                     exp_dt = datetime.fromtimestamp(exp)
                 days_to_expiry = (exp_dt - datetime.today()).days
 
                 earnings_data = self.earnings_analyzer.calculate_earnings_impact_on_iv(
-                    current_iv=row.get('impliedVolatility', 0.30),
+                    current_iv=row.get("impliedVolatility", 0.30),
                     historical_iv=historical_vol,
                     days_to_earnings=days_to_earnings,
-                    days_to_expiry=max(1, days_to_expiry)
+                    days_to_expiry=max(1, days_to_expiry),
                 )
                 score = self.earnings_analyzer.score_earnings_strategy(
                     earnings_data,
-                    side=row['side'],
+                    side=row["side"],
                     expiration=str(exp),
-                    underlying_price=row.get('underlyingPrice', 0),
-                    strike=row['strike'],
-                    strategy_type='auto'
+                    underlying_price=row.get("underlyingPrice", 0),
+                    strike=row["strike"],
+                    strategy_type="auto",
                 )
                 scores.append(score)
             except Exception as e:
@@ -373,26 +357,26 @@ class EnhancedOptionsRanker(OptionsRanker):
         for idx, row in options_df.iterrows():
             try:
                 # Calculate days to expiry
-                exp = row.get('expiration')
+                exp = row.get("expiration")
                 if isinstance(exp, str):
-                    exp_dt = datetime.strptime(exp, '%Y-%m-%d')
+                    exp_dt = datetime.strptime(exp, "%Y-%m-%d")
                 else:
                     exp_dt = datetime.fromtimestamp(exp)
                 days_to_expiry = max(1, (exp_dt - datetime.today()).days)
 
                 ext_data = self.extrinsic_calc.calculate_extrinsic_intrinsic_ratio(
-                    strike=row['strike'],
+                    strike=row["strike"],
                     underlying_price=underlying_price,
-                    side=row['side'],
-                    bid=row.get('bid', 0),
-                    ask=row.get('ask', 0),
-                    days_to_expiry=days_to_expiry
+                    side=row["side"],
+                    bid=row.get("bid", 0),
+                    ask=row.get("ask", 0),
+                    days_to_expiry=days_to_expiry,
                 )
                 score = self.extrinsic_calc.score_extrinsic_richness(
                     ext_data,
-                    implied_vol=row.get('impliedVolatility', 0.30),
+                    implied_vol=row.get("impliedVolatility", 0.30),
                     historical_vol=historical_vol,
-                    strategy_type='auto'
+                    strategy_type="auto",
                 )
                 scores.append(score)
             except Exception as e:
@@ -420,9 +404,7 @@ class EnhancedOptionsRanker(OptionsRanker):
         for idx, row in options_df.iterrows():
             try:
                 score = self.pcr_analyzer.score_pcr_opportunity(
-                    pcr_data,
-                    side=row['side'],
-                    use_contrarian=True
+                    pcr_data, side=row["side"], use_contrarian=True
                 )
                 scores.append(score)
             except Exception as e:
@@ -459,8 +441,8 @@ class EnhancedOptionsRanker(OptionsRanker):
         trend_analysis: dict,
     ) -> str:
         """Generate human-readable ranking summary."""
-        trend = trend_analysis.get('trend', 'neutral')
-        strength = trend_analysis.get('signal_strength', 5.0)
+        trend = trend_analysis.get("trend", "neutral")
+        strength = trend_analysis.get("signal_strength", 5.0)
 
         recs = self.get_top_recommendations(ranked_df)
 
@@ -475,24 +457,28 @@ class EnhancedOptionsRanker(OptionsRanker):
 
         if recs["top_call"] is not None:
             tc = recs["top_call"]
-            lines.extend([
-                "📈 TOP CALL:",
-                f"   Strike: ${tc['strike']:.2f}",
-                f"   Expiry: {tc['expiration']}",
-                f"   Score: {tc['ml_score']:.3f}",
-                f"   Delta: {tc['delta']:.3f}",
-                "",
-            ])
+            lines.extend(
+                [
+                    "📈 TOP CALL:",
+                    f"   Strike: ${tc['strike']:.2f}",
+                    f"   Expiry: {tc['expiration']}",
+                    f"   Score: {tc['ml_score']:.3f}",
+                    f"   Delta: {tc['delta']:.3f}",
+                    "",
+                ]
+            )
 
         if recs["top_put"] is not None:
             tp = recs["top_put"]
-            lines.extend([
-                "📉 TOP PUT:",
-                f"   Strike: ${tp['strike']:.2f}",
-                f"   Expiry: {tp['expiration']}",
-                f"   Score: {tp['ml_score']:.3f}",
-                f"   Delta: {tp['delta']:.3f}",
-            ])
+            lines.extend(
+                [
+                    "📉 TOP PUT:",
+                    f"   Strike: ${tp['strike']:.2f}",
+                    f"   Expiry: {tp['expiration']}",
+                    f"   Score: {tp['ml_score']:.3f}",
+                    f"   Delta: {tp['delta']:.3f}",
+                ]
+            )
 
         return "\n".join(lines)
 
@@ -533,9 +519,7 @@ class EnhancedOptionsRanker(OptionsRanker):
                 f"Insufficient OHLC data ({len(underlying_df)} bars), "
                 "falling back to basic ranking"
             )
-            return self.rank_options(
-                options_df, underlying_price, "neutral", historical_vol
-            )
+            return self.rank_options(options_df, underlying_price, "neutral", historical_vol)
 
         # Step 1: Add all technical indicators to OHLC data
         logger.info("Computing technical indicators...")

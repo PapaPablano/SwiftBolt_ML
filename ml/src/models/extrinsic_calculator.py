@@ -23,13 +23,13 @@ logger = logging.getLogger(__name__)
 class ExtrinsicIntrinsicCalculator:
     """
     Analyzes the decomposition of option price into intrinsic and extrinsic.
-    
+
     Use cases:
     - Identify overpriced time value (sell premium)
     - Find underpriced volatility (buy options)
     - Assess theta decay exposure
     """
-    
+
     @staticmethod
     def calculate_extrinsic_intrinsic_ratio(
         strike: float,
@@ -37,11 +37,11 @@ class ExtrinsicIntrinsicCalculator:
         side: str,
         bid: float,
         ask: float,
-        days_to_expiry: int
+        days_to_expiry: int,
     ) -> Dict:
         """
         Decompose option price into intrinsic and extrinsic value.
-        
+
         Args:
             strike: Option strike price
             underlying_price: Current stock price
@@ -49,27 +49,27 @@ class ExtrinsicIntrinsicCalculator:
             bid: Bid price
             ask: Ask price
             days_to_expiry: Days until expiration
-            
+
         Returns:
             Dict with value decomposition
         """
         mid_price = (bid + ask) / 2.0
-        
+
         # Calculate intrinsic value
-        if side == 'call':
+        if side == "call":
             intrinsic = max(0, underlying_price - strike)
-        elif side == 'put':
+        elif side == "put":
             intrinsic = max(0, strike - underlying_price)
         else:
             raise ValueError(f"Invalid side: {side}")
-        
+
         # Extrinsic = total price - intrinsic
         extrinsic = max(0, mid_price - intrinsic)
-        
+
         total_value = mid_price
         extrinsic_ratio = extrinsic / (total_value + 1e-6)
         intrinsic_ratio = intrinsic / (total_value + 1e-6)
-        
+
         # Daily decay rates
         if days_to_expiry > 0:
             daily_extrinsic_decay = extrinsic / days_to_expiry
@@ -77,79 +77,76 @@ class ExtrinsicIntrinsicCalculator:
         else:
             daily_extrinsic_decay = extrinsic
             daily_intrinsic_decay = intrinsic
-        
+
         # Characterize the option
         if extrinsic_ratio > 0.75:
-            character = 'time_value_rich'
-            description = 'Primarily time/vol premium; benefits from decay'
+            character = "time_value_rich"
+            description = "Primarily time/vol premium; benefits from decay"
         elif extrinsic_ratio < 0.25:
-            character = 'intrinsic_rich'
-            description = 'Deep ITM; behaves like stock; limited leverage'
+            character = "intrinsic_rich"
+            description = "Deep ITM; behaves like stock; limited leverage"
         else:
-            character = 'balanced'
-            description = 'Mixed; suitable for directional + decay strategies'
-        
+            character = "balanced"
+            description = "Mixed; suitable for directional + decay strategies"
+
         # Determine moneyness
         moneyness = (strike - underlying_price) / underlying_price
-        if side == 'call':
+        if side == "call":
             if moneyness < -0.05:
-                moneyness_type = 'ITM'
+                moneyness_type = "ITM"
             elif -0.05 <= moneyness <= 0.05:
-                moneyness_type = 'ATM'
+                moneyness_type = "ATM"
             else:
-                moneyness_type = 'OTM'
+                moneyness_type = "OTM"
         else:  # put
             if moneyness > 0.05:
-                moneyness_type = 'ITM'
+                moneyness_type = "ITM"
             elif -0.05 <= moneyness <= 0.05:
-                moneyness_type = 'ATM'
+                moneyness_type = "ATM"
             else:
-                moneyness_type = 'OTM'
-        
+                moneyness_type = "OTM"
+
         return {
-            'intrinsic_value': intrinsic,
-            'extrinsic_value': extrinsic,
-            'total_option_price': mid_price,
-            'extrinsic_ratio': extrinsic_ratio,
-            'intrinsic_ratio': intrinsic_ratio,
-            'character': character,
-            'character_description': description,
-            'moneyness_type': moneyness_type,
-            'daily_extrinsic_decay': daily_extrinsic_decay,
-            'daily_intrinsic_decay': daily_intrinsic_decay,
-            'days_to_expiry': days_to_expiry,
-            'bid_ask_spread': ask - bid
+            "intrinsic_value": intrinsic,
+            "extrinsic_value": extrinsic,
+            "total_option_price": mid_price,
+            "extrinsic_ratio": extrinsic_ratio,
+            "intrinsic_ratio": intrinsic_ratio,
+            "character": character,
+            "character_description": description,
+            "moneyness_type": moneyness_type,
+            "daily_extrinsic_decay": daily_extrinsic_decay,
+            "daily_intrinsic_decay": daily_intrinsic_decay,
+            "days_to_expiry": days_to_expiry,
+            "bid_ask_spread": ask - bid,
         }
-    
+
     @staticmethod
     def score_extrinsic_richness(
-        extrinsic_data: Dict,
-        implied_vol: float,
-        historical_vol: float,
-        strategy_type: str = 'auto'
+        extrinsic_data: Dict, implied_vol: float, historical_vol: float, strategy_type: str = "auto"
     ) -> float:
         """
         Score option based on extrinsic value saturation and strategy fit.
-        
+
         Args:
             extrinsic_data: Dict from calculate_extrinsic_intrinsic_ratio()
             implied_vol: Current implied volatility
             historical_vol: Historical volatility
             strategy_type: 'sell_premium', 'buy_long', 'buy_straddle', 'auto'
-            
+
         Returns:
             Score from 0-1
         """
-        ratio = extrinsic_data['extrinsic_ratio']
+        ratio = extrinsic_data["extrinsic_ratio"]
         iv_rank = implied_vol / (historical_vol + 1e-6)
-        
-        if strategy_type == 'sell_premium':
+
+        if strategy_type == "sell_premium":
             # Favor high extrinsic + high IV for selling
             extrinsic_score = min(ratio / 0.75, 1.0)
             iv_score = min(iv_rank / 1.3, 1.0)
             return (extrinsic_score * 0.6) + (iv_score * 0.4)
-        
-        elif strategy_type == 'buy_long':
+
+        elif strategy_type == "buy_long":
             # Favor lower extrinsic ratio (less time decay exposure)
             if ratio < 0.4:
                 return 0.85
@@ -157,15 +154,15 @@ class ExtrinsicIntrinsicCalculator:
                 return 0.75
             else:
                 return 0.5
-        
-        elif strategy_type == 'buy_straddle':
+
+        elif strategy_type == "buy_straddle":
             # Favor balanced extrinsic for straddles
             if 0.4 <= ratio <= 0.7:
                 return 0.90
             else:
                 return 0.6
-        
-        elif strategy_type == 'auto':
+
+        elif strategy_type == "auto":
             # Auto-select based on conditions
             if iv_rank > 1.3 and ratio > 0.7:
                 # High IV + high extrinsic = good for selling
@@ -175,6 +172,6 @@ class ExtrinsicIntrinsicCalculator:
                 return 0.65
             else:
                 return 0.75
-        
+
         else:
             return 0.7

@@ -81,8 +81,7 @@ def queue_specific_symbols(symbols: list[str]) -> int:
     for symbol in symbols:
         try:
             result = db.client.rpc(
-                "queue_ranking_job",
-                {"p_symbol": symbol.upper(), "p_priority": 2}
+                "queue_ranking_job", {"p_symbol": symbol.upper(), "p_priority": 2}
             ).execute()
             if result.data:
                 count += 1
@@ -164,7 +163,9 @@ def print_summary(health_before: dict, health_after: dict, queued: int):
     print(f"  Total Symbols: {health_after['total_symbols']}")
     print(f"  Fresh: {health_after['fresh_count']} (was {health_before['fresh_count']})")
     print(f"  Stale: {health_after['stale_count']} (was {health_before['stale_count']})")
-    print(f"  Never Ranked: {health_after['never_ranked_count']} (was {health_before['never_ranked_count']})")
+    print(
+        f"  Never Ranked: {health_after['never_ranked_count']} (was {health_before['never_ranked_count']})"
+    )
     print(f"  Partial: {health_after['partial_count']} (was {health_before['partial_count']})")
     print("=" * 60 + "\n")
 
@@ -175,27 +176,23 @@ def main():
     )
 
     parser.add_argument(
-        "--stale",
-        action="store_true",
-        help="Only queue symbols with stale or missing rankings"
+        "--stale", action="store_true", help="Only queue symbols with stale or missing rankings"
     )
 
     parser.add_argument(
         "--no-process",
         action="store_true",
-        help="Queue jobs only, don't run the worker to process them"
+        help="Queue jobs only, don't run the worker to process them",
     )
 
     parser.add_argument(
-        "--symbols",
-        nargs="+",
-        help="Specific symbols to queue (overrides --stale)"
+        "--symbols", nargs="+", help="Specific symbols to queue (overrides --stale)"
     )
 
     parser.add_argument(
         "--health",
         action="store_true",
-        help="Only show ranking health status, don't queue anything"
+        help="Only show ranking health status, don't queue anything",
     )
 
     args = parser.parse_args()

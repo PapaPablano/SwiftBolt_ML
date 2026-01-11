@@ -17,11 +17,7 @@ def get_watchlist_symbols() -> list[str]:
         List of unique ticker symbols
     """
     try:
-        response = (
-            db.client.table("watchlist_items")
-            .select("symbol_id(ticker)")
-            .execute()
-        )
+        response = db.client.table("watchlist_items").select("symbol_id(ticker)").execute()
 
         if not response.data:
             return []

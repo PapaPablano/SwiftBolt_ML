@@ -10,6 +10,7 @@ from .forecast_validator import ForecastValidator, ValidationMetrics
 def check_forecast_staleness(*args, **kwargs):
     """Check if ML forecasts are stale. Lazy import wrapper."""
     from .forecast_staleness import check_forecast_staleness as _check
+
     return _check(*args, **kwargs)
 
 

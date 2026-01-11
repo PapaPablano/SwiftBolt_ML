@@ -101,29 +101,20 @@ class WeightOptimizer:
 
         # Limit to lookback window
         if len(actuals) > self.lookback_window:
-            actuals = actuals[-self.lookback_window:]
+            actuals = actuals[-self.lookback_window :]
             predictions_dict = {
-                name: preds[-self.lookback_window:]
-                for name, preds in predictions_dict.items()
+                name: preds[-self.lookback_window :] for name, preds in predictions_dict.items()
             }
 
         try:
             if method == "ridge":
-                weights = self._ridge_regression_weights(
-                    predictions_dict, actuals, model_names
-                )
+                weights = self._ridge_regression_weights(predictions_dict, actuals, model_names)
             elif method == "sharpe":
-                weights = self._sharpe_ratio_weights(
-                    predictions_dict, actuals, model_names
-                )
+                weights = self._sharpe_ratio_weights(predictions_dict, actuals, model_names)
             elif method == "directional":
-                weights = self._directional_accuracy_weights(
-                    predictions_dict, actuals, model_names
-                )
+                weights = self._directional_accuracy_weights(predictions_dict, actuals, model_names)
             elif method == "scipy":
-                weights = self._scipy_optimize_weights(
-                    predictions_dict, actuals, model_names
-                )
+                weights = self._scipy_optimize_weights(predictions_dict, actuals, model_names)
             else:
                 # Equal weights as fallback
                 weights = {name: 1.0 / n_models for name in model_names}
@@ -132,12 +123,14 @@ class WeightOptimizer:
             self.is_fitted = True
 
             # Record optimization
-            self.optimization_history.append({
-                "timestamp": datetime.now().isoformat(),
-                "method": method,
-                "n_samples": len(actuals),
-                "weights": weights.copy(),
-            })
+            self.optimization_history.append(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "method": method,
+                    "n_samples": len(actuals),
+                    "weights": weights.copy(),
+                }
+            )
 
             logger.info(
                 "Weights optimized (%s): %s",
@@ -159,9 +152,7 @@ class WeightOptimizer:
     ) -> Dict[str, float]:
         """Learn weights via ridge regression."""
         # Stack predictions as feature matrix
-        X = np.column_stack([
-            predictions_dict[name] for name in model_names
-        ])
+        X = np.column_stack([predictions_dict[name] for name in model_names])
 
         # Fit ridge regression (no intercept to get pure weights)
         ridge = Ridge(alpha=self.alpha, fit_intercept=False)
@@ -184,10 +175,7 @@ class WeightOptimizer:
         )
         normalized_weights /= normalized_weights.sum()
 
-        return {
-            name: float(weight)
-            for name, weight in zip(model_names, normalized_weights)
-        }
+        return {name: float(weight) for name, weight in zip(model_names, normalized_weights)}
 
     def _sharpe_ratio_weights(
         self,
@@ -221,10 +209,7 @@ class WeightOptimizer:
             n_models = len(model_names)
             return {name: 1.0 / n_models for name in model_names}
 
-        weights = {
-            name: float(sharpe_ratios[name] / total_sharpe)
-            for name in model_names
-        }
+        weights = {name: float(sharpe_ratios[name] / total_sharpe) for name in model_names}
 
         # Clip to bounds
         weights = self._clip_weights(weights)
@@ -268,10 +253,7 @@ class WeightOptimizer:
             n_models = len(model_names)
             return {name: 1.0 / n_models for name in model_names}
 
-        weights = {
-            name: float(accuracies[name] / total_accuracy)
-            for name in model_names
-        }
+        weights = {name: float(accuracies[name] / total_accuracy) for name in model_names}
 
         # Clip to bounds
         weights = self._clip_weights(weights)
@@ -286,16 +268,14 @@ class WeightOptimizer:
     ) -> Dict[str, float]:
         """Optimize weights using scipy minimize."""
         n_models = len(model_names)
-        X = np.column_stack([
-            predictions_dict[name] for name in model_names
-        ])
+        X = np.column_stack([predictions_dict[name] for name in model_names])
 
         def objective(weights):
             """MSE objective."""
             weighted_pred = X @ weights
             mse = np.mean((actuals - weighted_pred) ** 2)
             # Add L2 regularization
-            reg = self.alpha * np.sum(weights ** 2)
+            reg = self.alpha * np.sum(weights**2)
             return mse + reg
 
         # Constraints: weights sum to 1
@@ -322,16 +302,12 @@ class WeightOptimizer:
         else:
             weights = np.ones(n_models) / n_models
 
-        return {
-            name: float(weight)
-            for name, weight in zip(model_names, weights)
-        }
+        return {name: float(weight) for name, weight in zip(model_names, weights)}
 
     def _clip_weights(self, weights: Dict[str, float]) -> Dict[str, float]:
         """Clip weights to bounds and renormalize."""
         clipped = {
-            name: np.clip(w, self.min_weight, self.max_weight)
-            for name, w in weights.items()
+            name: np.clip(w, self.min_weight, self.max_weight) for name, w in weights.items()
         }
 
         total = sum(clipped.values())
@@ -508,9 +484,7 @@ class AdaptiveWeightOptimizer(WeightOptimizer):
             method,
         )
 
-        return self.optimize_weights(
-            predictions_dict, actuals, optimize_for=method
-        )
+        return self.optimize_weights(predictions_dict, actuals, optimize_for=method)
 
 
 if __name__ == "__main__":
@@ -537,9 +511,7 @@ if __name__ == "__main__":
         optimizer = WeightOptimizer(optimization_method=method)
         weights = optimizer.optimize_weights(predictions, actuals)
         print(f"\n{method.upper()} weights:")
-        for name, weight in sorted(
-            weights.items(), key=lambda x: -x[1]
-        ):
+        for name, weight in sorted(weights.items(), key=lambda x: -x[1]):
             print(f"  {name}: {weight:.3f}")
 
     # Test adaptive optimizer
@@ -548,25 +520,19 @@ if __name__ == "__main__":
 
     # Normal regime
     normal_returns = np.random.randn(50) * 0.005
-    weights = adaptive.optimize_weights_adaptive(
-        predictions, actuals, returns=normal_returns
-    )
+    weights = adaptive.optimize_weights_adaptive(predictions, actuals, returns=normal_returns)
     print(f"\nNormal regime (detected: {adaptive.current_regime}):")
     print(f"  Weights: {weights}")
 
     # High volatility regime
     high_vol_returns = np.random.randn(50) * 0.05
-    weights = adaptive.optimize_weights_adaptive(
-        predictions, actuals, returns=high_vol_returns
-    )
+    weights = adaptive.optimize_weights_adaptive(predictions, actuals, returns=high_vol_returns)
     print(f"\nHigh vol regime (detected: {adaptive.current_regime}):")
     print(f"  Weights: {weights}")
 
     # Trending regime
     trending_returns = np.ones(50) * 0.02 + np.random.randn(50) * 0.002
-    weights = adaptive.optimize_weights_adaptive(
-        predictions, actuals, returns=trending_returns
-    )
+    weights = adaptive.optimize_weights_adaptive(predictions, actuals, returns=trending_returns)
     print(f"\nTrending regime (detected: {adaptive.current_regime}):")
     print(f"  Weights: {weights}")
 

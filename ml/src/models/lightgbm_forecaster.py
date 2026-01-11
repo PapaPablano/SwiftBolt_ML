@@ -69,9 +69,7 @@ class LightGBMForecaster:
             config_path: Path to YAML config file for parameters
         """
         if not LIGHTGBM_AVAILABLE:
-            raise ImportError(
-                "LightGBM is required. Install with: pip install lightgbm"
-            )
+            raise ImportError("LightGBM is required. Install with: pip install lightgbm")
 
         self.params = self.DEFAULT_PARAMS.copy()
         if params:
@@ -84,8 +82,7 @@ class LightGBMForecaster:
         self.feature_names: List[str] = []
 
         logger.info(
-            f"LightGBM Forecaster initialized: "
-            f"linear_tree={self.params.get('linear_tree')}"
+            f"LightGBM Forecaster initialized: " f"linear_tree={self.params.get('linear_tree')}"
         )
 
     def _load_config(self, config_path: str) -> None:
@@ -147,9 +144,7 @@ class LightGBMForecaster:
             callbacks=callbacks if callbacks else None,
         )
 
-        logger.info(
-            f"Model trained on {len(X)} samples with {len(self.feature_names)} features"
-        )
+        logger.info(f"Model trained on {len(X)} samples with {len(self.feature_names)} features")
 
         return {
             "n_samples": len(X),

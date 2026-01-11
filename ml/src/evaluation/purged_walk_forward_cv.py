@@ -69,9 +69,7 @@ class PurgedWalkForwardCV:
         for fold_idx in range(self.n_splits):
             # Test fold boundaries
             test_start = fold_idx * fold_size
-            test_end = (
-                (fold_idx + 1) * fold_size if fold_idx < self.n_splits - 1 else n_samples
-            )
+            test_end = (fold_idx + 1) * fold_size if fold_idx < self.n_splits - 1 else n_samples
 
             # Embargo: remove days after test fold
             embargo_start = test_end
@@ -123,9 +121,7 @@ class PurgedWalkForwardCV:
         for fold_idx in range(self.n_splits):
             # Test fold
             test_start = fold_idx * fold_size
-            test_end = (
-                (fold_idx + 1) * fold_size if fold_idx < self.n_splits - 1 else n_samples
-            )
+            test_end = (fold_idx + 1) * fold_size if fold_idx < self.n_splits - 1 else n_samples
 
             test_dates = dates.iloc[test_start:test_end]
             embargo_cutoff = test_dates.iloc[-1] + pd.Timedelta(days=self.embargo_days)

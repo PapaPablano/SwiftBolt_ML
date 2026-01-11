@@ -18,68 +18,84 @@ class ForecastWeights:
     """Calibrated weights for 3-layer forecast synthesis."""
 
     # Layer 1: SuperTrend weights
-    supertrend_weights: Dict[str, float] = field(default_factory=lambda: {
-        "trend_direction": 0.35,      # Trend bias importance
-        "signal_strength": 0.25,      # Weight for strength score (0-10)
-        "atr_volatility": 0.15,       # Volatility context
-        "performance_index": 0.25     # Historical quality (0-1)
-    })
+    supertrend_weights: Dict[str, float] = field(
+        default_factory=lambda: {
+            "trend_direction": 0.35,  # Trend bias importance
+            "signal_strength": 0.25,  # Weight for strength score (0-10)
+            "atr_volatility": 0.15,  # Volatility context
+            "performance_index": 0.25,  # Historical quality (0-1)
+        }
+    )
 
     # Layer 2: S/R Indicator weights
-    sr_weights: Dict[str, float] = field(default_factory=lambda: {
-        "pivot_levels": 0.30,         # Multi-timeframe structure
-        "polynomial": 0.35,           # Trend direction of S/R
-        "logistic": 0.35              # ML probability
-    })
+    sr_weights: Dict[str, float] = field(
+        default_factory=lambda: {
+            "pivot_levels": 0.30,  # Multi-timeframe structure
+            "polynomial": 0.35,  # Trend direction of S/R
+            "logistic": 0.35,  # ML probability
+        }
+    )
 
     # Layer 3: Ensemble ML weights
-    ensemble_weights: Dict[str, float] = field(default_factory=lambda: {
-        "base_confidence": 0.60,      # Raw ensemble probability
-        "agreement_bonus": 0.40       # RF/GB agreement + trend alignment
-    })
+    ensemble_weights: Dict[str, float] = field(
+        default_factory=lambda: {
+            "base_confidence": 0.60,  # Raw ensemble probability
+            "agreement_bonus": 0.40,  # RF/GB agreement + trend alignment
+        }
+    )
 
     # Final synthesis layer weights
-    layer_weights: Dict[str, float] = field(default_factory=lambda: {
-        "supertrend_component": 0.35,  # How much trend drives forecast
-        "sr_component": 0.35,          # How much structure constrains
-        "ensemble_component": 0.30     # How much ML consensus influences
-    })
+    layer_weights: Dict[str, float] = field(
+        default_factory=lambda: {
+            "supertrend_component": 0.35,  # How much trend drives forecast
+            "sr_component": 0.35,  # How much structure constrains
+            "ensemble_component": 0.30,  # How much ML consensus influences
+        }
+    )
 
     # Confidence boost conditions
-    confidence_boosts: Dict[str, float] = field(default_factory=lambda: {
-        "all_layers_agree": 0.20,      # All 3 layers bullish/bearish
-        "strong_agreement": 0.10,      # 2/3 layers agree
-        "high_ensemble_conf": 0.15,    # Ensemble > 0.70
-        "alignment_multiframe": 0.15,  # 1W: 3+ timeframes agree
-        "strong_trend": 0.10,          # Signal strength >= 7/10
-        "expanding_sr": 0.08           # Polynomial diverging = room to move
-    })
+    confidence_boosts: Dict[str, float] = field(
+        default_factory=lambda: {
+            "all_layers_agree": 0.20,  # All 3 layers bullish/bearish
+            "strong_agreement": 0.10,  # 2/3 layers agree
+            "high_ensemble_conf": 0.15,  # Ensemble > 0.70
+            "alignment_multiframe": 0.15,  # 1W: 3+ timeframes agree
+            "strong_trend": 0.10,  # Signal strength >= 7/10
+            "expanding_sr": 0.08,  # Polynomial diverging = room to move
+        }
+    )
 
     # Confidence penalty conditions
-    confidence_penalties: Dict[str, float] = field(default_factory=lambda: {
-        "weak_trend_strength": -0.15,  # Signal strength < 3/10
-        "weak_ensemble_conf": -0.15,   # Ensemble < 0.55
-        "conflicting_signals": -0.20,  # SuperTrend vs ML disagreement
-        "strong_resistance": -0.10,    # High logistic resistance prob (>0.80)
-        "strong_support": -0.10,       # High logistic support prob (bearish)
-        "converging_sr": -0.05         # Squeeze = limited move potential
-    })
+    confidence_penalties: Dict[str, float] = field(
+        default_factory=lambda: {
+            "weak_trend_strength": -0.15,  # Signal strength < 3/10
+            "weak_ensemble_conf": -0.15,  # Ensemble < 0.55
+            "conflicting_signals": -0.20,  # SuperTrend vs ML disagreement
+            "strong_resistance": -0.10,  # High logistic resistance prob (>0.80)
+            "strong_support": -0.10,  # High logistic support prob (bearish)
+            "converging_sr": -0.05,  # Squeeze = limited move potential
+        }
+    )
 
     # Target calculation weights
-    target_weights: Dict[str, float] = field(default_factory=lambda: {
-        "supertrend_move": 0.40,       # ATR × strength based target
-        "polynomial_forecast": 0.35,   # Polynomial extrapolation
-        "sr_constraint": 0.25          # Structure limit
-    })
+    target_weights: Dict[str, float] = field(
+        default_factory=lambda: {
+            "supertrend_move": 0.40,  # ATR × strength based target
+            "polynomial_forecast": 0.35,  # Polynomial extrapolation
+            "sr_constraint": 0.25,  # Structure limit
+        }
+    )
 
     # Band calculation parameters
-    band_params: Dict[str, float] = field(default_factory=lambda: {
-        "sr_weight": 0.70,             # S/R level importance in bands
-        "atr_weight": 0.30,            # ATR-based band component
-        "volatility_expansion": 0.10,  # Band widening in high vol
-        "min_band_pct": 0.5,           # Minimum band width (%)
-        "max_band_pct": 5.0            # Maximum band width (%)
-    })
+    band_params: Dict[str, float] = field(
+        default_factory=lambda: {
+            "sr_weight": 0.70,  # S/R level importance in bands
+            "atr_weight": 0.30,  # ATR-based band component
+            "volatility_expansion": 0.10,  # Band widening in high vol
+            "min_band_pct": 0.5,  # Minimum band width (%)
+            "max_band_pct": 5.0,  # Maximum band width (%)
+        }
+    )
 
     def validate(self) -> bool:
         """Ensure all weight groups sum to 1.0 (or close)."""
@@ -140,7 +156,7 @@ class ForecastWeights:
             "confidence_boosts": self.confidence_boosts,
             "confidence_penalties": self.confidence_penalties,
             "target_weights": self.target_weights,
-            "band_params": self.band_params
+            "band_params": self.band_params,
         }
 
     @classmethod
@@ -167,7 +183,7 @@ class ForecastWeights:
 
     def save(self, filepath: str) -> None:
         """Save weights to JSON file."""
-        with open(filepath, 'w') as f:
+        with open(filepath, "w") as f:
             json.dump(self.to_dict(), f, indent=2)
         print(f"[ForecastWeights] Saved to {filepath}")
 
@@ -175,7 +191,7 @@ class ForecastWeights:
     def load(cls, filepath: str) -> "ForecastWeights":
         """Load weights from JSON file."""
         if os.path.exists(filepath):
-            with open(filepath, 'r') as f:
+            with open(filepath, "r") as f:
                 data = json.load(f)
             return cls.from_dict(data)
         else:
@@ -189,8 +205,7 @@ def get_default_weights() -> ForecastWeights:
 
 
 def optimize_weights(
-    historical_forecasts: list,
-    current_weights: ForecastWeights
+    historical_forecasts: list, current_weights: ForecastWeights
 ) -> ForecastWeights:
     """
     Optimize weights based on historical forecast performance.
@@ -214,23 +229,24 @@ def optimize_weights(
 
     for forecast in historical_forecasts:
         actual_direction = (
-            "BULLISH" if forecast.get('actual_close', 0) > forecast.get('actual_open', 0)
+            "BULLISH"
+            if forecast.get("actual_close", 0) > forecast.get("actual_open", 0)
             else "BEARISH"
         )
 
         # SuperTrend accuracy
-        if forecast.get('supertrend_bias') == actual_direction:
+        if forecast.get("supertrend_bias") == actual_direction:
             supertrend_correct += 1
 
         # Ensemble accuracy
-        if forecast.get('ensemble_direction') == actual_direction:
+        if forecast.get("ensemble_direction") == actual_direction:
             ensemble_correct += 1
 
         # S/R containment
-        actual_high = forecast.get('actual_high', 0)
-        actual_low = forecast.get('actual_low', 0)
-        upper = forecast.get('upper_band', float('inf'))
-        lower = forecast.get('lower_band', 0)
+        actual_high = forecast.get("actual_high", 0)
+        actual_low = forecast.get("actual_low", 0)
+        upper = forecast.get("upper_band", float("inf"))
+        lower = forecast.get("lower_band", 0)
 
         if actual_high <= upper and actual_low >= lower:
             sr_contained += 1
@@ -247,9 +263,17 @@ def optimize_weights(
     new_weights = ForecastWeights()
 
     # Rebalance layer weights
-    new_weights.layer_weights["supertrend_component"] = min(0.45, max(0.25, 0.35 + (0.5 - st_acc) * 0.2))
-    new_weights.layer_weights["ensemble_component"] = min(0.40, max(0.20, 0.30 + (0.5 - ens_acc) * 0.2))
-    new_weights.layer_weights["sr_component"] = 1.0 - new_weights.layer_weights["supertrend_component"] - new_weights.layer_weights["ensemble_component"]
+    new_weights.layer_weights["supertrend_component"] = min(
+        0.45, max(0.25, 0.35 + (0.5 - st_acc) * 0.2)
+    )
+    new_weights.layer_weights["ensemble_component"] = min(
+        0.40, max(0.20, 0.30 + (0.5 - ens_acc) * 0.2)
+    )
+    new_weights.layer_weights["sr_component"] = (
+        1.0
+        - new_weights.layer_weights["supertrend_component"]
+        - new_weights.layer_weights["ensemble_component"]
+    )
 
     # Adjust band params based on containment
     if sr_acc < 0.75:
@@ -263,7 +287,9 @@ def optimize_weights(
         new_weights.band_params["atr_weight"] = 0.25
         new_weights.band_params["volatility_expansion"] = 0.08
 
-    print(f"[optimize_weights] ST acc: {st_acc:.1%}, Ens acc: {ens_acc:.1%}, S/R contain: {sr_acc:.1%}")
+    print(
+        f"[optimize_weights] ST acc: {st_acc:.1%}, Ens acc: {ens_acc:.1%}, S/R contain: {sr_acc:.1%}"
+    )
     print(f"[optimize_weights] New layer weights: {new_weights.layer_weights}")
 
     return new_weights

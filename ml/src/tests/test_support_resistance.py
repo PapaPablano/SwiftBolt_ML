@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.features.support_resistance_detector import (
@@ -44,14 +45,16 @@ def generate_sample_ohlc(
     open_price[0] = start_price
     volume = np.random.randint(1000000, 10000000, n_bars)
 
-    return pd.DataFrame({
-        "ts": dates,
-        "open": open_price,
-        "high": high,
-        "low": low,
-        "close": close,
-        "volume": volume,
-    })
+    return pd.DataFrame(
+        {
+            "ts": dates,
+            "open": open_price,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+        }
+    )
 
 
 def generate_trending_data(
@@ -78,14 +81,16 @@ def generate_trending_data(
     open_price[0] = start_price
     volume = np.random.randint(1000000, 10000000, n_bars)
 
-    return pd.DataFrame({
-        "ts": dates,
-        "open": open_price,
-        "high": high,
-        "low": low,
-        "close": close,
-        "volume": volume,
-    })
+    return pd.DataFrame(
+        {
+            "ts": dates,
+            "open": open_price,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume,
+        }
+    )
 
 
 class TestSupportResistanceDetector:
@@ -126,23 +131,25 @@ class TestSupportResistanceDetector:
 
         if len(swings) >= 2:
             for i in range(1, len(swings)):
-                assert swings[i]["type"] != swings[i - 1]["type"], \
-                    "Swings should alternate between high and low"
+                assert (
+                    swings[i]["type"] != swings[i - 1]["type"]
+                ), "Swings should alternate between high and low"
 
     def test_zigzag_threshold_sensitivity(self, detector, sample_df):
         """Test that higher threshold produces fewer swings."""
         _, swings_low = detector.zigzag(sample_df, threshold_pct=2)
         _, swings_high = detector.zigzag(sample_df, threshold_pct=10)
 
-        assert len(swings_low) >= len(swings_high), \
-            "Higher threshold should produce fewer swings"
+        assert len(swings_low) >= len(swings_high), "Higher threshold should produce fewer swings"
 
     def test_zigzag_empty_df(self, detector):
         """Test ZigZag with minimal data."""
-        df = pd.DataFrame({
-            "ts": [datetime.now()],
-            "close": [100.0],
-        })
+        df = pd.DataFrame(
+            {
+                "ts": [datetime.now()],
+                "close": [100.0],
+            }
+        )
         result_df, swings = detector.zigzag(df)
         assert len(swings) == 0
 
@@ -231,11 +238,13 @@ class TestSupportResistanceDetector:
 
     def test_pivot_points_formula(self, detector):
         """Test pivot point formula with known values."""
-        df = pd.DataFrame({
-            "high": [110.0],
-            "low": [90.0],
-            "close": [100.0],
-        })
+        df = pd.DataFrame(
+            {
+                "high": [110.0],
+                "low": [90.0],
+                "close": [100.0],
+            }
+        )
         pivots = detector.pivot_points_classical(df)
 
         expected_pp = (110 + 90 + 100) / 3
@@ -285,8 +294,7 @@ class TestSupportResistanceDetector:
 
         if result["trend"] == "uptrend":
             levels = result["levels"]
-            assert levels["0.0"] > levels["100.0"], \
-                "In uptrend, 0% should be at high"
+            assert levels["0.0"] > levels["100.0"], "In uptrend, 0% should be at high"
 
     def test_fibonacci_level_ordering_downtrend(self, detector):
         """Test Fibonacci level ordering in downtrend."""
@@ -295,8 +303,7 @@ class TestSupportResistanceDetector:
 
         if result["trend"] == "downtrend":
             levels = result["levels"]
-            assert levels["100.0"] > levels["0.0"], \
-                "In downtrend, 100% should be at high"
+            assert levels["100.0"] > levels["0.0"], "In downtrend, 100% should be at high"
 
     # =========================================================================
     # COMBINED ANALYSIS TESTS
@@ -384,13 +391,15 @@ class TestSupportResistanceDetector:
 
     def test_level_strength_more_touches(self, detector):
         """Test that more touches increase strength."""
-        df = pd.DataFrame({
-            "ts": [datetime.now() - timedelta(days=i) for i in range(20)],
-            "high": [102] * 20,
-            "low": [98] * 20,
-            "close": [100] * 20,
-            "volume": [1000000] * 20,
-        })
+        df = pd.DataFrame(
+            {
+                "ts": [datetime.now() - timedelta(days=i) for i in range(20)],
+                "high": [102] * 20,
+                "low": [98] * 20,
+                "close": [100] * 20,
+                "volume": [1000000] * 20,
+            }
+        )
 
         result = detector.get_level_strength(df, 100.0, tolerance_pct=3)
         assert result["n_touches"] == 20
@@ -417,28 +426,32 @@ class TestEdgeCases:
 
     def test_small_dataset(self, detector):
         """Test with very small dataset."""
-        df = pd.DataFrame({
-            "ts": [datetime.now()],
-            "open": [100.0],
-            "high": [101.0],
-            "low": [99.0],
-            "close": [100.5],
-            "volume": [1000000],
-        })
+        df = pd.DataFrame(
+            {
+                "ts": [datetime.now()],
+                "open": [100.0],
+                "high": [101.0],
+                "low": [99.0],
+                "close": [100.5],
+                "volume": [1000000],
+            }
+        )
 
         pivots = detector.pivot_points_classical(df)
         assert "PP" in pivots
 
     def test_constant_prices(self, detector):
         """Test with constant prices (no volatility)."""
-        df = pd.DataFrame({
-            "ts": [datetime.now() - timedelta(days=i) for i in range(50)],
-            "open": [100.0] * 50,
-            "high": [100.0] * 50,
-            "low": [100.0] * 50,
-            "close": [100.0] * 50,
-            "volume": [1000000] * 50,
-        })
+        df = pd.DataFrame(
+            {
+                "ts": [datetime.now() - timedelta(days=i) for i in range(50)],
+                "open": [100.0] * 50,
+                "high": [100.0] * 50,
+                "low": [100.0] * 50,
+                "close": [100.0] * 50,
+                "volume": [1000000] * 50,
+            }
+        )
 
         result = detector.find_all_levels(df)
         assert result["current_price"] == 100.0
@@ -449,14 +462,16 @@ class TestEdgeCases:
         n = 100
         close = 100 * np.cumprod(1 + np.random.uniform(-0.1, 0.1, n))
 
-        df = pd.DataFrame({
-            "ts": [datetime.now() - timedelta(days=i) for i in range(n)],
-            "open": close * 0.99,
-            "high": close * 1.05,
-            "low": close * 0.95,
-            "close": close,
-            "volume": [1000000] * n,
-        })
+        df = pd.DataFrame(
+            {
+                "ts": [datetime.now() - timedelta(days=i) for i in range(n)],
+                "open": close * 0.99,
+                "high": close * 1.05,
+                "low": close * 0.95,
+                "close": close,
+                "volume": [1000000] * n,
+            }
+        )
 
         result = detector.find_all_levels(df)
         assert "nearest_support" in result

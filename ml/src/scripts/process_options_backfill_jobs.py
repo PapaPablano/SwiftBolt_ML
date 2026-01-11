@@ -51,9 +51,7 @@ def get_next_job():
 def complete_job(job_id: str):
     """Mark a job as completed."""
     try:
-        db.client.rpc(
-            "complete_options_backfill_job", {"p_job_id": job_id}
-        ).execute()
+        db.client.rpc("complete_options_backfill_job", {"p_job_id": job_id}).execute()
         logger.info(f"✅ Completed job {job_id}")
     except Exception as e:
         logger.error(f"Error completing job: {e}")
@@ -104,9 +102,7 @@ def process_job(job: dict) -> bool:
         # Update ranks
         ranks_updated = update_options_ranks(ticker, calls, puts)
 
-        logger.info(
-            f"✅ {ticker}: {inserted} snapshots, {ranks_updated} ranks"
-        )
+        logger.info(f"✅ {ticker}: {inserted} snapshots, {ranks_updated} ranks")
 
         complete_job(job_id)
         return True

@@ -229,12 +229,14 @@ class TestSignalMetadata:
         dates = pd.date_range("2024-01-01", periods=n, freq="D")
 
         # Uptrend then downtrend pattern
-        close = np.concatenate([
-            100 + np.arange(50) * 0.5,  # Uptrend
-            125 - np.arange(50) * 0.5,  # Downtrend
-            100 + np.arange(50) * 0.3,  # Uptrend
-            115 - np.arange(50) * 0.3,  # Downtrend
-        ])
+        close = np.concatenate(
+            [
+                100 + np.arange(50) * 0.5,  # Uptrend
+                125 - np.arange(50) * 0.5,  # Downtrend
+                100 + np.arange(50) * 0.3,  # Uptrend
+                115 - np.arange(50) * 0.3,  # Downtrend
+            ]
+        )
 
         high = close + np.abs(np.random.randn(n)) * 0.5
         low = close - np.abs(np.random.randn(n)) * 0.5

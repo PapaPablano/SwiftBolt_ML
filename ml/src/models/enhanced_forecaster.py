@@ -40,16 +40,26 @@ logger = logging.getLogger(__name__)
 # Enhanced feature list including all new indicators
 ENHANCED_FEATURES = [
     # Basic returns
-    "returns_1d", "returns_5d", "returns_20d",
+    "returns_1d",
+    "returns_5d",
+    "returns_20d",
     # Moving averages
-    "sma_5", "sma_20", "sma_50",
-    "ema_12", "ema_26",
+    "sma_5",
+    "sma_20",
+    "sma_50",
+    "ema_12",
+    "ema_26",
     # MACD
-    "macd", "macd_signal", "macd_hist",
+    "macd",
+    "macd_signal",
+    "macd_hist",
     # RSI
     "rsi_14",
     # Bollinger Bands
-    "bb_upper", "bb_middle", "bb_lower", "bb_width",
+    "bb_upper",
+    "bb_middle",
+    "bb_lower",
+    "bb_width",
     # ATR
     "atr_14",
     # Volume
@@ -57,19 +67,30 @@ ENHANCED_FEATURES = [
     # Volatility
     "volatility_20d",
     # Price position
-    "price_vs_sma20", "price_vs_sma50",
+    "price_vs_sma20",
+    "price_vs_sma50",
     # NEW: Momentum indicators
-    "stoch_k", "stoch_d",
-    "kdj_k", "kdj_d", "kdj_j", "kdj_j_minus_d",
-    "adx", "plus_di", "minus_di",
+    "stoch_k",
+    "stoch_d",
+    "kdj_k",
+    "kdj_d",
+    "kdj_j",
+    "kdj_j_minus_d",
+    "adx",
+    "plus_di",
+    "minus_di",
     # NEW: Volume indicators
-    "obv", "obv_sma",
+    "obv",
+    "obv_sma",
     "mfi",
     "vroc",
     # NEW: Volatility indicators
-    "keltner_upper", "keltner_middle", "keltner_lower",
+    "keltner_upper",
+    "keltner_middle",
+    "keltner_lower",
     # NEW: SuperTrend
-    "supertrend", "supertrend_trend",
+    "supertrend",
+    "supertrend_trend",
     # Phase 1: Volume-based S/R Strength (6 features)
     "support_volume_strength",
     "resistance_volume_strength",
@@ -145,9 +166,7 @@ class EnhancedForecaster:
         self.supertrend_info: Dict[str, Any] = {}
         self.mtf_features: MultiTimeframeFeatures = None
         if self.use_multi_timeframe:
-            self.mtf_features = MultiTimeframeFeatures(
-                timeframes=self.timeframes
-            )
+            self.mtf_features = MultiTimeframeFeatures(timeframes=self.timeframes)
 
         # State
         self.feature_columns: List[str] = []
@@ -180,11 +199,9 @@ class EnhancedForecaster:
             try:
                 supertrend = SuperTrendAI(df)
                 df, self.supertrend_info = supertrend.calculate()
-                factor = self.supertrend_info.get('target_factor', 0)
-                perf = self.supertrend_info.get('performance_index', 0)
-                logger.info(
-                    f"SuperTrend: factor={factor:.2f}, perf={perf:.3f}"
-                )
+                factor = self.supertrend_info.get("target_factor", 0)
+                perf = self.supertrend_info.get("performance_index", 0)
+                logger.info(f"SuperTrend: factor={factor:.2f}, perf={perf:.3f}")
             except Exception as e:
                 logger.warning(f"SuperTrend AI failed: {e}")
                 # Add placeholder columns
@@ -233,18 +250,21 @@ class EnhancedForecaster:
 
         # Select feature columns
         exclude_cols = [
-            "ts", "open", "high", "low", "close", "volume",
-            "forward_return", "label",
+            "ts",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "forward_return",
+            "label",
         ]
         feature_cols = [
-            col for col in df_clean.columns
-            if col not in exclude_cols and not col.startswith("_")
+            col for col in df_clean.columns if col not in exclude_cols and not col.startswith("_")
         ]
 
         # Filter to available features
-        available_features = [
-            col for col in feature_cols if col in df_clean.columns
-        ]
+        available_features = [col for col in feature_cols if col in df_clean.columns]
         self.feature_columns = available_features
 
         X = df_clean[available_features].copy()
@@ -303,6 +323,7 @@ class EnhancedForecaster:
                 self.regressor.train(X_df, y)
             else:
                 from sklearn.ensemble import RandomForestRegressor
+
                 self.regressor = RandomForestRegressor(
                     n_estimators=100, max_depth=10, random_state=42
                 )
@@ -355,7 +376,7 @@ class EnhancedForecaster:
             return label, confidence, probabilities
 
         else:  # regression
-            if self.use_lightgbm and hasattr(self.regressor, 'predict'):
+            if self.use_lightgbm and hasattr(self.regressor, "predict"):
                 predictions = self.regressor.predict(
                     pd.DataFrame(X_scaled, columns=self.feature_columns)
                 )
@@ -417,15 +438,9 @@ class EnhancedForecaster:
             "points": points,
             "trend_analysis": trend_analysis,
             "supertrend_info": {
-                "target_factor": self.supertrend_info.get(
-                    "target_factor", 3.0
-                ),
-                "performance_index": self.supertrend_info.get(
-                    "performance_index", 0.0
-                ),
-                "signal_strength": self.supertrend_info.get(
-                    "signal_strength", 5
-                ),
+                "target_factor": self.supertrend_info.get("target_factor", 3.0),
+                "performance_index": self.supertrend_info.get("performance_index", 0.0),
+                "signal_strength": self.supertrend_info.get("signal_strength", 5),
             },
             "train_metrics": train_metrics,
             "feature_count": len(self.feature_columns),
@@ -486,17 +501,19 @@ class EnhancedForecaster:
             lower_bound = forecast_value * (1 - uncertainty)
             upper_bound = forecast_value * (1 + uncertainty)
 
-            if hasattr(forecast_ts, 'timestamp'):
+            if hasattr(forecast_ts, "timestamp"):
                 ts_val = int(forecast_ts.timestamp())
             else:
                 ts_val = forecast_ts
 
-            points.append({
-                "ts": ts_val,
-                "value": round(forecast_value, 2),
-                "lower": round(lower_bound, 2),
-                "upper": round(upper_bound, 2),
-            })
+            points.append(
+                {
+                    "ts": ts_val,
+                    "value": round(forecast_value, 2),
+                    "lower": round(lower_bound, 2),
+                    "upper": round(upper_bound, 2),
+                }
+            )
 
         return points
 
@@ -513,9 +530,9 @@ class EnhancedForecaster:
         if self.classifier is not None:
             importance = self.classifier.feature_importances_
         elif self.regressor is not None:
-            if hasattr(self.regressor, 'get_feature_importance'):
+            if hasattr(self.regressor, "get_feature_importance"):
                 return self.regressor.get_feature_importance()
-            elif hasattr(self.regressor, 'feature_importances_'):
+            elif hasattr(self.regressor, "feature_importances_"):
                 importance = self.regressor.feature_importances_
             else:
                 return {}
@@ -532,9 +549,7 @@ class EnhancedForecaster:
             List of (feature_name, importance) tuples, sorted by importance
         """
         importance = self.get_feature_importance()
-        sorted_features = sorted(
-            importance.items(), key=lambda x: x[1], reverse=True
-        )
+        sorted_features = sorted(importance.items(), key=lambda x: x[1], reverse=True)
         return sorted_features[:n]
 
     def generate_forecast_multi_timeframe(
@@ -557,33 +572,24 @@ class EnhancedForecaster:
         """
         if not self.use_multi_timeframe or self.mtf_features is None:
             raise ValueError(
-                "Multi-timeframe not enabled. "
-                "Initialize with use_multi_timeframe=True"
+                "Multi-timeframe not enabled. " "Initialize with use_multi_timeframe=True"
             )
 
         # Fetch data for all timeframes
-        data_dict = fetch_multi_timeframe_data(
-            symbol, timeframes=self.timeframes
-        )
+        data_dict = fetch_multi_timeframe_data(symbol, timeframes=self.timeframes)
 
         if not data_dict:
             raise ValueError(f"No data available for {symbol}")
 
         # Compute multi-timeframe features
-        features_df = self.mtf_features.compute_all_timeframes(
-            data_dict, align_to="d1"
-        )
+        features_df = self.mtf_features.compute_all_timeframes(data_dict, align_to="d1")
 
         if features_df.empty:
             raise ValueError(f"Could not compute features for {symbol}")
 
         # Add alignment and trend scores
-        features_df["tf_alignment"] = self.mtf_features.compute_alignment_score(
-            features_df
-        )
-        features_df["tf_trend_strength"] = self.mtf_features.compute_trend_strength(
-            features_df
-        )
+        features_df["tf_alignment"] = self.mtf_features.compute_alignment_score(features_df)
+        features_df["tf_trend_strength"] = self.mtf_features.compute_trend_strength(features_df)
 
         # Parse horizon
         horizon_days = self._parse_horizon(horizon)
@@ -643,9 +649,7 @@ class EnhancedForecaster:
         df = features_df.copy()
 
         # Calculate forward returns
-        df["forward_return"] = df["close"].pct_change(
-            periods=horizon_days
-        ).shift(-horizon_days)
+        df["forward_return"] = df["close"].pct_change(periods=horizon_days).shift(-horizon_days)
 
         # Create labels
         low_thresh, high_thresh = self.classification_thresholds
@@ -675,8 +679,7 @@ class EnhancedForecaster:
         X = X.ffill().fillna(0)
 
         logger.info(
-            f"Prepared MTF training data: "
-            f"{len(X)} samples, {len(feature_cols)} features"
+            f"Prepared MTF training data: " f"{len(X)} samples, {len(feature_cols)} features"
         )
 
         return X, y

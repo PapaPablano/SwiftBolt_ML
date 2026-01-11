@@ -117,13 +117,9 @@ class EnsembleManager:
 
         # Initialize weight optimizer
         if adaptive_weights:
-            self.weight_optimizer = AdaptiveWeightOptimizer(
-                default_method=optimization_method
-            )
+            self.weight_optimizer = AdaptiveWeightOptimizer(default_method=optimization_method)
         else:
-            self.weight_optimizer = WeightOptimizer(
-                optimization_method=optimization_method
-            )
+            self.weight_optimizer = WeightOptimizer(optimization_method=optimization_method)
 
         # Initialize uncertainty quantifier
         self.uncertainty_quantifier = DirectionalUncertaintyQuantifier(
@@ -166,10 +162,7 @@ class EnsembleManager:
             self.is_trained = True
             self.training_timestamp = datetime.now().isoformat()
 
-            status = {
-                name: trained
-                for name, trained in self.ensemble.model_trained.items()
-            }
+            status = {name: trained for name, trained in self.ensemble.model_trained.items()}
 
             logger.info(
                 "Training complete: %d/%d models trained",
@@ -286,12 +279,8 @@ class EnsembleManager:
 
             # Add uncertainty metrics
             forecast["uncertainty_metrics"] = {
-                "entropy": self._calculate_entropy(
-                    forecast.get("probabilities", {})
-                ),
-                "calibrated": bool(
-                    self.uncertainty_quantifier.calibration_ratios
-                ),
+                "entropy": self._calculate_entropy(forecast.get("probabilities", {})),
+                "calibrated": bool(self.uncertainty_quantifier.calibration_ratios),
             }
 
             return forecast
@@ -333,21 +322,17 @@ class EnsembleManager:
                 return self.ensemble.weights
 
             # Convert labels to numeric
-            actuals = np.array([
-                1 if str(l).lower() == "bullish"
-                else -1 if str(l).lower() == "bearish"
-                else 0
-                for l in labels
-            ])
+            actuals = np.array(
+                [
+                    1 if str(l).lower() == "bullish" else -1 if str(l).lower() == "bearish" else 0
+                    for l in labels
+                ]
+            )
 
             # Truncate to match predictions length
-            min_len = min(len(actuals), min(
-                len(p) for p in predictions_dict.values()
-            ))
+            min_len = min(len(actuals), min(len(p) for p in predictions_dict.values()))
             actuals = actuals[-min_len:]
-            predictions_dict = {
-                k: v[-min_len:] for k, v in predictions_dict.items()
-            }
+            predictions_dict = {k: v[-min_len:] for k, v in predictions_dict.items()}
 
             # Optimize
             new_weights = self.weight_optimizer.optimize_weights(
@@ -389,20 +374,14 @@ class EnsembleManager:
                     ohlc_df.iloc[:idx],
                 )
 
-                for model, pred in prediction.get(
-                    "component_predictions", {}
-                ).items():
+                for model, pred in prediction.get("component_predictions", {}).items():
                     if model not in predictions_dict:
                         predictions_dict[model] = []
 
                     # Convert to numeric
-                    label = pred.get("label", "neutral") if isinstance(
-                        pred, dict
-                    ) else str(pred)
+                    label = pred.get("label", "neutral") if isinstance(pred, dict) else str(pred)
                     val = (
-                        1 if label.lower() == "bullish"
-                        else -1 if label.lower() == "bearish"
-                        else 0
+                        1 if label.lower() == "bullish" else -1 if label.lower() == "bearish" else 0
                     )
                     predictions_dict[model].append(val)
 
@@ -411,10 +390,7 @@ class EnsembleManager:
                 continue
 
         # Convert to numpy arrays
-        return {
-            k: np.array(v) for k, v in predictions_dict.items()
-            if len(v) > 10
-        }
+        return {k: np.array(v) for k, v in predictions_dict.items() if len(v) > 10}
 
     def run_backtest(
         self,
@@ -512,8 +488,7 @@ class EnsembleManager:
             "n_models_total": len(self.ensemble.model_trained),
             "n_models_trained": sum(self.ensemble.model_trained.values()),
             "models_trained": {
-                name: trained
-                for name, trained in self.ensemble.model_trained.items()
+                name: trained for name, trained in self.ensemble.model_trained.items()
             },
             "current_weights": self.ensemble.weights,
             "n_forecasts_generated": len(self.forecast_history),
@@ -553,15 +528,17 @@ class EnsembleManager:
         if not self.error_log:
             return pd.DataFrame()
 
-        return pd.DataFrame([
-            {
-                "timestamp": e.timestamp,
-                "operation": e.operation,
-                "model": e.model,
-                "error": e.error,
-            }
-            for e in self.error_log
-        ])
+        return pd.DataFrame(
+            [
+                {
+                    "timestamp": e.timestamp,
+                    "operation": e.operation,
+                    "model": e.model,
+                    "error": e.error,
+                }
+                for e in self.error_log
+            ]
+        )
 
     def export_config(self, filepath: str) -> None:
         """
@@ -574,10 +551,7 @@ class EnsembleManager:
             "horizon": self.horizon,
             "confidence_level": self.confidence_level,
             "optimization_method": self.optimization_method,
-            "models": {
-                name: trained
-                for name, trained in self.ensemble.model_trained.items()
-            },
+            "models": {name: trained for name, trained in self.ensemble.model_trained.items()},
             "weights": self.ensemble.weights,
             "training_timestamp": self.training_timestamp,
             "calibration_ratios": self.uncertainty_quantifier.calibration_ratios,
@@ -649,14 +623,16 @@ if __name__ == "__main__":
     # Create sample data
     prices = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
 
-    ohlc_df = pd.DataFrame({
-        "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
-        "open": prices * 0.995,
-        "high": prices * 1.01,
-        "low": prices * 0.99,
-        "close": prices,
-        "volume": np.random.randint(1e6, 1e7, n).astype(float),
-    })
+    ohlc_df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
+            "open": prices * 0.995,
+            "high": prices * 1.01,
+            "low": prices * 0.99,
+            "close": prices,
+            "volume": np.random.randint(1e6, 1e7, n).astype(float),
+        }
+    )
 
     # Create features
     ohlc_df["return_1d"] = ohlc_df["close"].pct_change()
@@ -670,9 +646,7 @@ if __name__ == "__main__":
     # Create labels
     fwd = ohlc_df["close"].pct_change().shift(-1)
     labels = fwd.apply(
-        lambda x: "bullish" if x > 0.01
-        else "bearish" if x < -0.01
-        else "neutral"
+        lambda x: "bullish" if x > 0.01 else "bearish" if x < -0.01 else "neutral"
     ).iloc[:-1]
     features_df = features_df.iloc[:-1]
     ohlc_df = ohlc_df.iloc[:-1]

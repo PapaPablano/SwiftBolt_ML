@@ -229,10 +229,7 @@ class TestRecordCalibration:
             n_samples=100,
         )
 
-        alerts = [
-            a for a in monitor.alerts
-            if a.alert_type == "calibration_drift"
-        ]
+        alerts = [a for a in monitor.alerts if a.alert_type == "calibration_drift"]
         assert len(alerts) >= 1
 
 
@@ -447,10 +444,7 @@ class TestAlertGeneration:
                 model_predictions={"rf": "Bullish"},
             )
 
-        low_acc_alerts = [
-            a for a in monitor.alerts
-            if a.alert_type == "low_accuracy"
-        ]
+        low_acc_alerts = [a for a in monitor.alerts if a.alert_type == "low_accuracy"]
         assert len(low_acc_alerts) >= 1
 
     def test_sudden_drop_alert(self, monitor):
@@ -479,10 +473,7 @@ class TestAlertGeneration:
                 model_predictions={"rf": "Bullish"},
             )
 
-        drop_alerts = [
-            a for a in monitor.alerts
-            if a.alert_type == "accuracy_drop"
-        ]
+        drop_alerts = [a for a in monitor.alerts if a.alert_type == "accuracy_drop"]
         assert len(drop_alerts) >= 1
 
 

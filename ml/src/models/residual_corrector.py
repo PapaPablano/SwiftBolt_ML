@@ -31,10 +31,7 @@ class ResidualCorrector:
         if evals.empty:
             return np.array([])
 
-        if (
-            "predicted_value" not in evals.columns
-            or "realized_price" not in evals.columns
-        ):
+        if "predicted_value" not in evals.columns or "realized_price" not in evals.columns:
             return np.array([])
 
         pred = pd.to_numeric(evals["predicted_value"], errors="coerce")

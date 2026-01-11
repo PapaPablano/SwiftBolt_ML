@@ -23,14 +23,16 @@ def sample_data():
 
     prices = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
 
-    ohlc_df = pd.DataFrame({
-        "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
-        "open": prices * 0.995,
-        "high": prices * 1.01,
-        "low": prices * 0.99,
-        "close": prices,
-        "volume": np.random.randint(1e6, 1e7, n).astype(float),
-    })
+    ohlc_df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
+            "open": prices * 0.995,
+            "high": prices * 1.01,
+            "low": prices * 0.99,
+            "close": prices,
+            "volume": np.random.randint(1e6, 1e7, n).astype(float),
+        }
+    )
 
     # Features
     ohlc_df["return_1d"] = ohlc_df["close"].pct_change()
@@ -44,9 +46,7 @@ def sample_data():
     # Labels
     fwd = ohlc_df["close"].pct_change().shift(-1)
     labels = fwd.apply(
-        lambda x: "bullish" if x > 0.01
-        else "bearish" if x < -0.01
-        else "neutral"
+        lambda x: "bullish" if x > 0.01 else "bearish" if x < -0.01 else "neutral"
     ).iloc[:-1]
     features_df = features_df.iloc[:-1]
     ohlc_df = ohlc_df.iloc[:-1]
@@ -103,6 +103,7 @@ class TestEnsembleManagerInit:
         manager = EnsembleManager(adaptive_weights=True)
 
         from src.models.weight_optimizer import AdaptiveWeightOptimizer
+
         assert isinstance(manager.weight_optimizer, AdaptiveWeightOptimizer)
 
 
@@ -203,9 +204,7 @@ class TestPrediction:
         """Test generate_forecast with horizon override."""
         manager, ohlc_df, features_df, _ = trained_manager
 
-        forecast = manager.generate_forecast(
-            ohlc_df, features_df, horizon="1W"
-        )
+        forecast = manager.generate_forecast(ohlc_df, features_df, horizon="1W")
 
         assert forecast["horizon"] == "1W"
         assert len(forecast["points"]) == 5  # 1 week = 5 trading days
@@ -248,7 +247,9 @@ class TestBacktesting:
         )
 
         results = manager.run_backtest(
-            ohlc_df, features_df, labels,
+            ohlc_df,
+            features_df,
+            labels,
             initial_train_size=50,
             refit_frequency=30,
         )

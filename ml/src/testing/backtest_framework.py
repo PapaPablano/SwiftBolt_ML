@@ -139,9 +139,7 @@ class BacktestFramework:
     def walk_forward_backtest(
         self,
         data: pd.DataFrame,
-        model_trainer: Callable[
-            [pd.DataFrame], Callable[[pd.DataFrame], pd.Series]
-        ],
+        model_trainer: Callable[[pd.DataFrame], Callable[[pd.DataFrame], pd.Series]],
         n_splits: int = 5,
         train_pct: float = 0.7,
     ) -> list[BacktestResult]:
@@ -303,9 +301,7 @@ class BacktestFramework:
                 entry_cost = position * entry_price * (1 + commission)
                 trades[-1]["pnl"] = proceeds - entry_cost
                 trades[-1]["return"] = (final_price / entry_price) - 1
-                duration = (
-                    (data.index[-1] - entry_date).days if entry_date else 0
-                )
+                duration = (data.index[-1] - entry_date).days if entry_date else 0
                 trades[-1]["duration_days"] = duration
 
             equity_curve[-1]["equity"] = capital
@@ -358,8 +354,7 @@ class BacktestFramework:
         else:
             downside_std = 0
         sortino = (
-            (daily_returns.mean() / downside_std)
-            * np.sqrt(self.config.trading_days_per_year)
+            (daily_returns.mean() / downside_std) * np.sqrt(self.config.trading_days_per_year)
             if downside_std > 0
             else 0
         )
@@ -370,9 +365,7 @@ class BacktestFramework:
         max_drawdown = drawdown.min()
 
         # Calmar ratio
-        calmar = (
-            annualized_return / abs(max_drawdown) if max_drawdown != 0 else 0
-        )
+        calmar = annualized_return / abs(max_drawdown) if max_drawdown != 0 else 0
 
         # Trade statistics
         if len(trades_df) > 0 and "pnl" in trades_df.columns:

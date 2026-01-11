@@ -35,15 +35,15 @@ class CompositeSignalCalculator:
 
     # NEW (CORRECTED):
     WEIGHTS = {
-        "supertrend": 0.20,      # Trend following (NOW PROPERLY IMPLEMENTED)
-        "rsi_14": 0.12,          # Momentum (reduced due to overlap)
-        "adx": 0.14,             # Trend strength (FIXED: Wilder's smoothing)
-        "macd": 0.13,            # MACD histogram direction
-        "bb_width": 0.10,        # Volatility regime adaptation
-        "kdj_j": 0.12,           # Extreme sensitivity (FIXED: proper smoothing)
-        "mfi_14": 0.07,          # Volume-weighted momentum (reduced)
+        "supertrend": 0.20,  # Trend following (NOW PROPERLY IMPLEMENTED)
+        "rsi_14": 0.12,  # Momentum (reduced due to overlap)
+        "adx": 0.14,  # Trend strength (FIXED: Wilder's smoothing)
+        "macd": 0.13,  # MACD histogram direction
+        "bb_width": 0.10,  # Volatility regime adaptation
+        "kdj_j": 0.12,  # Extreme sensitivity (FIXED: proper smoothing)
+        "mfi_14": 0.07,  # Volume-weighted momentum (reduced)
         # "atr": REMOVED - use for NORMALIZATION ONLY
-        "volume_ratio": 0.02,    # Signal dampening (minimal weight)
+        "volume_ratio": 0.02,  # Signal dampening (minimal weight)
         # Padding to ensure sum = 1.0
         "regime_adjustment": 0.10,  # Dynamic regime-based adjustment
     }
@@ -274,36 +274,23 @@ class CompositeSignalCalculator:
             scores["supertrend"] = CompositeSignalCalculator.score_supertrend(
                 row.get("supertrend_score", 0)
             )
-            scores["rsi_14"] = CompositeSignalCalculator.score_rsi(
-                row.get("rsi_14", 50)
-            )
+            scores["rsi_14"] = CompositeSignalCalculator.score_rsi(row.get("rsi_14", 50))
             scores["adx"] = CompositeSignalCalculator.score_adx(
-                row.get("plus_di", 0),
-                row.get("minus_di", 0),
-                row.get("adx", 0)
+                row.get("plus_di", 0), row.get("minus_di", 0), row.get("adx", 0)
             )
             scores["macd"] = CompositeSignalCalculator.score_macd(
-                row.get("macd", 0),
-                row.get("macd_signal", 0),
-                row.get("macd_hist", 0)
+                row.get("macd", 0), row.get("macd_signal", 0), row.get("macd_hist", 0)
             )
             scores["bb_width"] = CompositeSignalCalculator.score_bb_width(
-                row.get("bb_width", 0),
-                row.get("bb_width_pct", 50)
+                row.get("bb_width", 0), row.get("bb_width_pct", 50)
             )
-            scores["kdj_j"] = CompositeSignalCalculator.score_kdj_j(
-                row.get("kdj_j", 50)
-            )
-            scores["mfi_14"] = CompositeSignalCalculator.score_mfi(
-                row.get("mfi_14", 50)
-            )
+            scores["kdj_j"] = CompositeSignalCalculator.score_kdj_j(row.get("kdj_j", 50))
+            scores["mfi_14"] = CompositeSignalCalculator.score_mfi(row.get("mfi_14", 50))
             scores["volume_ratio"] = CompositeSignalCalculator.score_volume_ratio(
                 row.get("volume_ratio", 1.0)
             )
             scores["regime_adjustment"] = CompositeSignalCalculator.score_regime(
-                row.get("adx", 0),
-                row.get("bb_width_pct", 50),
-                row.get("rsi_14", 50)
+                row.get("adx", 0), row.get("bb_width_pct", 50), row.get("rsi_14", 50)
             )
 
         except (KeyError, ValueError, TypeError) as e:
@@ -373,7 +360,9 @@ class CompositeSignalCalculator:
 
         return {
             "composite_score": score,
-            "signal_label": "bullish" if score > 0.3 else ("bearish" if score < -0.3 else "neutral"),
+            "signal_label": (
+                "bullish" if score > 0.3 else ("bearish" if score < -0.3 else "neutral")
+            ),
             "component_scores": components,
             "weighted_contributions": sorted_contributions,
             "top_contributors": list(sorted_contributions.keys())[:3],

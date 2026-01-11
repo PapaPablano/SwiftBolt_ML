@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 class PivotType(Enum):
     """Type of pivot point."""
+
     HIGH = "high"
     LOW = "low"
 
@@ -45,6 +46,7 @@ class PivotStatus(Enum):
     - active: Price within ATR threshold (blue)
     - inactive: Not calculated (gray)
     """
+
     SUPPORT = "support"
     RESISTANCE = "resistance"
     ACTIVE = "active"
@@ -54,6 +56,7 @@ class PivotStatus(Enum):
 @dataclass
 class DetectedPivot:
     """A detected pivot point."""
+
     index: int
     price: float
     timestamp: Optional[pd.Timestamp] = None
@@ -63,6 +66,7 @@ class DetectedPivot:
 @dataclass
 class PivotLevel:
     """A pivot level for a specific period."""
+
     period: int
     level_high: float = 0.0
     level_low: float = 0.0
@@ -138,12 +142,14 @@ class PivotDetector:
 
             if is_high:
                 ts = bars["ts"].iloc[i] if has_ts else None
-                pivot_highs.append(DetectedPivot(
-                    index=i,
-                    price=float(bar_high),
-                    timestamp=ts,
-                    type=PivotType.HIGH,
-                ))
+                pivot_highs.append(
+                    DetectedPivot(
+                        index=i,
+                        price=float(bar_high),
+                        timestamp=ts,
+                        type=PivotType.HIGH,
+                    )
+                )
 
             # Check pivot low: current low must be <= all surrounding lows
             is_low = True
@@ -159,12 +165,14 @@ class PivotDetector:
 
             if is_low:
                 ts = bars["ts"].iloc[i] if has_ts else None
-                pivot_lows.append(DetectedPivot(
-                    index=i,
-                    price=float(bar_low),
-                    timestamp=ts,
-                    type=PivotType.LOW,
-                ))
+                pivot_lows.append(
+                    DetectedPivot(
+                        index=i,
+                        price=float(bar_low),
+                        timestamp=ts,
+                        type=PivotType.LOW,
+                    )
+                )
 
         return (pivot_highs, pivot_lows)
 
@@ -201,15 +209,16 @@ class PivotDetector:
 @dataclass
 class PivotLevelsSettings:
     """Settings for PivotLevelsDetector."""
+
     # Multi-timeframe periods
     period1_enabled: bool = True
-    period1_length: int = 5    # Micro structure
+    period1_length: int = 5  # Micro structure
 
     period2_enabled: bool = True
-    period2_length: int = 25   # Short-term
+    period2_length: int = 25  # Short-term
 
     period3_enabled: bool = True
-    period3_length: int = 50   # Medium-term
+    period3_length: int = 50  # Medium-term
 
     period4_enabled: bool = True
     period4_length: int = 100  # Long-term macro
@@ -338,11 +347,7 @@ class PivotLevelsDetector:
 
         for i in range(1, len(df)):
             prev_close = closes[i - 1]
-            tr = max(
-                highs[i] - lows[i],
-                abs(highs[i] - prev_close),
-                abs(lows[i] - prev_close)
-            )
+            tr = max(highs[i] - lows[i], abs(highs[i] - prev_close), abs(lows[i] - prev_close))
             true_ranges[i] = tr
 
         # Calculate ATR using Wilder's smoothing (EMA)

@@ -33,13 +33,13 @@ class ForecastServiceV2:
     ) -> List[Dict]:
         """
         Generate forecast data for future dates.
-        
+
         Args:
             symbol: Stock ticker
             base_price: Latest close price to forecast from
             horizon_days: Number of days to forecast (max 10)
             model_output: Optional model predictions with confidence bands
-        
+
         Returns:
             List of forecast dicts with ts, close, upper_band, lower_band, confidence
         """
@@ -48,9 +48,7 @@ class ForecastServiceV2:
             horizon_days = 10
 
         forecasts = []
-        today = datetime.utcnow().replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
+        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
         for day in range(1, horizon_days + 1):
             target_date = today + timedelta(days=day)
@@ -68,7 +66,7 @@ class ForecastServiceV2:
             else:
                 # Placeholder: simple random walk with expanding bands
                 drift = 0.001 * day
-                volatility = 0.02 * (day ** 0.5)
+                volatility = 0.02 * (day**0.5)
 
                 forecast = {
                     "ts": target_date.isoformat() + "Z",
@@ -89,11 +87,11 @@ class ForecastServiceV2:
     ) -> Dict:
         """
         Persist forecasts to ohlc_bars_v2.
-        
+
         Args:
             symbol: Stock ticker
             forecasts: List of forecast dicts from generate_forecasts()
-        
+
         Returns:
             Dict with success status and stats
         """
@@ -105,24 +103,26 @@ class ForecastServiceV2:
         # Prepare rows for v2 table
         rows = []
         for forecast in forecasts:
-            rows.append({
-                "symbol_id": symbol_id,
-                "timeframe": "d1",
-                "ts": forecast["ts"],
-                "open": None,
-                "high": forecast["upper_band"],
-                "low": forecast["lower_band"],
-                "close": forecast["close"],
-                "volume": None,
-                "provider": "ml_forecast",
-                "is_intraday": False,
-                "is_forecast": True,
-                "data_status": "provisional",
-                "fetched_at": datetime.utcnow().isoformat() + "Z",
-                "confidence_score": forecast["confidence"],
-                "upper_band": forecast["upper_band"],
-                "lower_band": forecast["lower_band"],
-            })
+            rows.append(
+                {
+                    "symbol_id": symbol_id,
+                    "timeframe": "d1",
+                    "ts": forecast["ts"],
+                    "open": None,
+                    "high": forecast["upper_band"],
+                    "low": forecast["lower_band"],
+                    "close": forecast["close"],
+                    "volume": None,
+                    "provider": "ml_forecast",
+                    "is_intraday": False,
+                    "is_forecast": True,
+                    "data_status": "provisional",
+                    "fetched_at": datetime.utcnow().isoformat() + "Z",
+                    "confidence_score": forecast["confidence"],
+                    "upper_band": forecast["upper_band"],
+                    "lower_band": forecast["lower_band"],
+                }
+            )
 
         try:
             # Upsert (will overwrite previous forecasts)
@@ -131,9 +131,7 @@ class ForecastServiceV2:
                 on_conflict="symbol_id,timeframe,ts,provider,is_forecast",
             ).execute()
 
-            logger.info(
-                f"✅ Persisted {len(rows)} forecasts for {symbol}"
-            )
+            logger.info(f"✅ Persisted {len(rows)} forecasts for {symbol}")
 
             return {
                 "success": True,
@@ -152,53 +150,46 @@ class ForecastServiceV2:
     def get_latest_close(self, symbol: str) -> Optional[float]:
         """
         Get the latest close price (from intraday if today, else historical).
-        
+
         Args:
             symbol: Stock ticker
-        
+
         Returns:
             Latest close price or None
         """
         try:
             symbol_id = self.db.get_symbol_id(symbol)
-            today = datetime.utcnow().replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
             # Try intraday first (today's data)
-            response = self.db.client.table("ohlc_bars_v2").select(
-                "close"
-            ).eq(
-                "symbol_id", symbol_id
-            ).eq(
-                "timeframe", "d1"
-            ).eq(
-                "provider", "tradier"
-            ).eq(
-                "is_intraday", True
-            ).gte(
-                "ts", today.isoformat() + "Z"
-            ).order(
-                "ts", desc=True
-            ).limit(1).execute()
+            response = (
+                self.db.client.table("ohlc_bars_v2")
+                .select("close")
+                .eq("symbol_id", symbol_id)
+                .eq("timeframe", "d1")
+                .eq("provider", "tradier")
+                .eq("is_intraday", True)
+                .gte("ts", today.isoformat() + "Z")
+                .order("ts", desc=True)
+                .limit(1)
+                .execute()
+            )
 
             if response.data:
                 return float(response.data[0]["close"])
 
             # Fall back to historical
-            response = self.db.client.table("ohlc_bars_v2").select(
-                "close"
-            ).eq(
-                "symbol_id", symbol_id
-            ).eq(
-                "timeframe", "d1"
-            ).eq(
-                "provider", "polygon"
-            ).eq(
-                "is_forecast", False
-            ).order(
-                "ts", desc=True
-            ).limit(1).execute()
+            response = (
+                self.db.client.table("ohlc_bars_v2")
+                .select("close")
+                .eq("symbol_id", symbol_id)
+                .eq("timeframe", "d1")
+                .eq("provider", "polygon")
+                .eq("is_forecast", False)
+                .order("ts", desc=True)
+                .limit(1)
+                .execute()
+            )
 
             if response.data:
                 return float(response.data[0]["close"])
@@ -217,12 +208,12 @@ class ForecastServiceV2:
     ) -> Dict:
         """
         Generate and persist forecasts for a symbol.
-        
+
         Args:
             symbol: Stock ticker
             model_output: Optional model predictions
             horizon_days: Number of days to forecast
-        
+
         Returns:
             Dict with success status and stats
         """
@@ -254,11 +245,11 @@ class ForecastServiceV2:
     ) -> Dict:
         """
         Update forecasts for multiple symbols.
-        
+
         Args:
             symbols: List of stock tickers
             horizon_days: Number of days to forecast
-        
+
         Returns:
             Dict with successful and failed symbols
         """
@@ -276,14 +267,15 @@ class ForecastServiceV2:
             if result["success"]:
                 successful.append(symbol)
             else:
-                failed.append({
-                    "symbol": symbol,
-                    "error": result.get("error", "Unknown error"),
-                })
+                failed.append(
+                    {
+                        "symbol": symbol,
+                        "error": result.get("error", "Unknown error"),
+                    }
+                )
 
         logger.info(
-            f"Forecast update complete: "
-            f"{len(successful)} successful, {len(failed)} failed"
+            f"Forecast update complete: " f"{len(successful)} successful, {len(failed)} failed"
         )
 
         return {
@@ -297,29 +289,12 @@ def main():
     """CLI entry point for forecast updates."""
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Update ML forecasts in ohlc_bars_v2"
-    )
+    parser = argparse.ArgumentParser(description="Update ML forecasts in ohlc_bars_v2")
+    parser.add_argument("--symbol", type=str, help="Single symbol to update")
+    parser.add_argument("--symbols", nargs="+", help="Multiple symbols to update")
+    parser.add_argument("--all", action="store_true", help="Update all watchlist symbols")
     parser.add_argument(
-        "--symbol",
-        type=str,
-        help="Single symbol to update"
-    )
-    parser.add_argument(
-        "--symbols",
-        nargs="+",
-        help="Multiple symbols to update"
-    )
-    parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Update all watchlist symbols"
-    )
-    parser.add_argument(
-        "--horizon",
-        type=int,
-        default=10,
-        help="Forecast horizon in days (default: 10)"
+        "--horizon", type=int, default=10, help="Forecast horizon in days (default: 10)"
     )
 
     args = parser.parse_args()
@@ -334,10 +309,7 @@ def main():
         symbols = args.symbols
     elif args.all:
         try:
-            response = db.client.rpc(
-                "get_all_watchlist_symbols",
-                {"p_limit": 200}
-            ).execute()
+            response = db.client.rpc("get_all_watchlist_symbols", {"p_limit": 200}).execute()
             symbols = [row["ticker"] for row in response.data]
         except Exception as e:
             logger.error(f"Error fetching watchlist: {e}")
@@ -366,4 +338,5 @@ def main():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(main())

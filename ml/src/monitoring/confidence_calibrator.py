@@ -68,9 +68,7 @@ class ConfidenceCalibrator:
         results = []
 
         for low, high in self.BUCKETS:
-            bucket_mask = (forecasts["confidence"] >= low) & (
-                forecasts["confidence"] < high
-            )
+            bucket_mask = (forecasts["confidence"] >= low) & (forecasts["confidence"] < high)
             bucket_data = forecasts[bucket_mask]
 
             if len(bucket_data) < min_samples_per_bucket:
@@ -83,9 +81,7 @@ class ConfidenceCalibrator:
                 continue
 
             # Calculate actual accuracy
-            correct = (
-                bucket_data["predicted_label"] == bucket_data["actual_label"]
-            ).sum()
+            correct = (bucket_data["predicted_label"] == bucket_data["actual_label"]).sum()
             actual_accuracy = correct / len(bucket_data)
             predicted_confidence = bucket_data["confidence"].mean()
 

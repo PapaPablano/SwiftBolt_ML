@@ -32,7 +32,8 @@ st.set_page_config(
 )
 
 # Custom CSS for styling
-st.markdown("""
+st.markdown(
+    """
 <style>
     .metric-card {
         background-color: #1e1e1e;
@@ -45,7 +46,9 @@ st.markdown("""
     .neutral { color: #ffc107; }
     .stMetric > div { background-color: #262730; border-radius: 5px; padding: 10px; }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 def get_db_connection():
@@ -53,6 +56,7 @@ def get_db_connection():
     try:
         from config.settings import settings
         from src.data.supabase_db import SupabaseDatabase
+
         return SupabaseDatabase()
     except Exception as e:
         st.warning(f"Could not connect to database: {e}")
@@ -82,9 +86,13 @@ def fetch_forecasts(db) -> pd.DataFrame:
             ORDER BY f.run_at DESC
             LIMIT 500
         """
-        result = db.client.table("ml_forecasts").select(
-            "*, symbols(ticker)"
-        ).order("run_at", desc=True).limit(500).execute()
+        result = (
+            db.client.table("ml_forecasts")
+            .select("*, symbols(ticker)")
+            .order("run_at", desc=True)
+            .limit(500)
+            .execute()
+        )
 
         if result.data:
             df = pd.DataFrame(result.data)
@@ -117,35 +125,37 @@ def get_sample_forecasts() -> pd.DataFrame:
     for symbol in symbols:
         for horizon in horizons:
             label = np.random.choice(labels, p=[0.4, 0.35, 0.25])
-            data.append({
-                "symbol": symbol,
-                "horizon": horizon,
-                "label": label,
-                "confidence": np.random.uniform(0.55, 0.92),
-                "model_agreement": np.random.uniform(0.65, 0.98),
-                "quality_score": np.random.uniform(0.60, 0.95),
-                "run_at": datetime.now() - timedelta(hours=np.random.randint(1, 48)),
-                "backtest_metrics": {
-                    "accuracy": np.random.uniform(0.52, 0.68),
-                    "sharpe_ratio": np.random.uniform(0.3, 1.5),
-                    "win_rate": np.random.uniform(0.48, 0.62),
-                    "max_drawdown": np.random.uniform(-0.25, -0.08),
-                    "profit_factor": np.random.uniform(1.0, 2.0),
-                },
-                "training_stats": {
-                    "accuracy": np.random.uniform(0.65, 0.85),
-                    "precision": np.random.uniform(0.60, 0.80),
-                    "recall": np.random.uniform(0.55, 0.75),
-                    "f1_score": np.random.uniform(0.58, 0.78),
-                    "top_features": [
-                        ("rsi_14", np.random.uniform(0.10, 0.20)),
-                        ("macd", np.random.uniform(0.08, 0.15)),
-                        ("sma_20", np.random.uniform(0.06, 0.12)),
-                        ("volume_ratio", np.random.uniform(0.05, 0.10)),
-                        ("bb_width", np.random.uniform(0.04, 0.08)),
-                    ],
-                },
-            })
+            data.append(
+                {
+                    "symbol": symbol,
+                    "horizon": horizon,
+                    "label": label,
+                    "confidence": np.random.uniform(0.55, 0.92),
+                    "model_agreement": np.random.uniform(0.65, 0.98),
+                    "quality_score": np.random.uniform(0.60, 0.95),
+                    "run_at": datetime.now() - timedelta(hours=np.random.randint(1, 48)),
+                    "backtest_metrics": {
+                        "accuracy": np.random.uniform(0.52, 0.68),
+                        "sharpe_ratio": np.random.uniform(0.3, 1.5),
+                        "win_rate": np.random.uniform(0.48, 0.62),
+                        "max_drawdown": np.random.uniform(-0.25, -0.08),
+                        "profit_factor": np.random.uniform(1.0, 2.0),
+                    },
+                    "training_stats": {
+                        "accuracy": np.random.uniform(0.65, 0.85),
+                        "precision": np.random.uniform(0.60, 0.80),
+                        "recall": np.random.uniform(0.55, 0.75),
+                        "f1_score": np.random.uniform(0.58, 0.78),
+                        "top_features": [
+                            ("rsi_14", np.random.uniform(0.10, 0.20)),
+                            ("macd", np.random.uniform(0.08, 0.15)),
+                            ("sma_20", np.random.uniform(0.06, 0.12)),
+                            ("volume_ratio", np.random.uniform(0.05, 0.10)),
+                            ("bb_width", np.random.uniform(0.04, 0.08)),
+                        ],
+                    },
+                }
+            )
 
     return pd.DataFrame(data)
 
@@ -158,7 +168,13 @@ def render_sidebar():
     # View selection
     view = st.sidebar.radio(
         "Select View",
-        ["Overview", "Forecast Details", "Model Performance", "Feature Importance", "Support & Resistance"],
+        [
+            "Overview",
+            "Forecast Details",
+            "Model Performance",
+            "Feature Importance",
+            "Support & Resistance",
+        ],
         index=0,
     )
 
@@ -277,10 +293,20 @@ def render_overview(df: pd.DataFrame):
     # Forecast table
     st.subheader("Recent Forecasts")
 
-    display_df = df[["symbol", "horizon", "label", "confidence", "model_agreement", "quality_score", "run_at"]].copy()
+    display_df = df[
+        ["symbol", "horizon", "label", "confidence", "model_agreement", "quality_score", "run_at"]
+    ].copy()
     display_df["confidence"] = (display_df["confidence"] * 100).round(1).astype(str) + "%"
-    display_df["model_agreement"] = (display_df["model_agreement"] * 100).round(1).astype(str) + "%" if "model_agreement" in display_df else "N/A"
-    display_df["quality_score"] = (display_df["quality_score"] * 100).round(1).astype(str) + "%" if "quality_score" in display_df else "N/A"
+    display_df["model_agreement"] = (
+        (display_df["model_agreement"] * 100).round(1).astype(str) + "%"
+        if "model_agreement" in display_df
+        else "N/A"
+    )
+    display_df["quality_score"] = (
+        (display_df["quality_score"] * 100).round(1).astype(str) + "%"
+        if "quality_score" in display_df
+        else "N/A"
+    )
 
     # Color the label column
     def highlight_label(val):
@@ -327,9 +353,15 @@ def render_forecast_details(df: pd.DataFrame):
 
             with col1:
                 label = latest["label"]
-                color = "#00c853" if label == "bullish" else "#ff5252" if label == "bearish" else "#ffc107"
+                color = (
+                    "#00c853"
+                    if label == "bullish"
+                    else "#ff5252" if label == "bearish" else "#ffc107"
+                )
                 st.markdown(f"### {horizon}")
-                st.markdown(f"<h2 style='color: {color}'>{label.upper()}</h2>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<h2 style='color: {color}'>{label.upper()}</h2>", unsafe_allow_html=True
+                )
 
             with col2:
                 st.metric("Confidence", f"{latest['confidence']*100:.1f}%")
@@ -382,15 +414,17 @@ def render_model_performance(df: pd.DataFrame):
             except:
                 bt = {}
         if bt:
-            metrics_data.append({
-                "symbol": row["symbol"],
-                "horizon": row["horizon"],
-                "accuracy": bt.get("accuracy", 0),
-                "sharpe_ratio": bt.get("sharpe_ratio", 0),
-                "win_rate": bt.get("win_rate", 0),
-                "max_drawdown": bt.get("max_drawdown", 0),
-                "profit_factor": bt.get("profit_factor", 1),
-            })
+            metrics_data.append(
+                {
+                    "symbol": row["symbol"],
+                    "horizon": row["horizon"],
+                    "accuracy": bt.get("accuracy", 0),
+                    "sharpe_ratio": bt.get("sharpe_ratio", 0),
+                    "win_rate": bt.get("win_rate", 0),
+                    "max_drawdown": bt.get("max_drawdown", 0),
+                    "profit_factor": bt.get("profit_factor", 1),
+                }
+            )
 
     if not metrics_data:
         st.warning("No backtest metrics available. Showing sample data.")
@@ -415,8 +449,11 @@ def render_model_performance(df: pd.DataFrame):
 
     with col1:
         avg_accuracy = metrics_df["accuracy"].mean() * 100
-        st.metric("Avg Accuracy", f"{avg_accuracy:.1f}%",
-                  delta=f"+{(avg_accuracy-50):.1f}% vs random" if avg_accuracy > 50 else None)
+        st.metric(
+            "Avg Accuracy",
+            f"{avg_accuracy:.1f}%",
+            delta=f"+{(avg_accuracy-50):.1f}% vs random" if avg_accuracy > 50 else None,
+        )
 
     with col2:
         avg_sharpe = metrics_df["sharpe_ratio"].mean()
@@ -438,7 +475,9 @@ def render_model_performance(df: pd.DataFrame):
     with col1:
         st.subheader("Accuracy by Symbol")
 
-        symbol_accuracy = metrics_df.groupby("symbol")["accuracy"].mean().sort_values(ascending=True)
+        symbol_accuracy = (
+            metrics_df.groupby("symbol")["accuracy"].mean().sort_values(ascending=True)
+        )
 
         fig = px.bar(
             x=symbol_accuracy.values * 100,
@@ -462,7 +501,9 @@ def render_model_performance(df: pd.DataFrame):
     with col2:
         st.subheader("Sharpe Ratio by Symbol")
 
-        symbol_sharpe = metrics_df.groupby("symbol")["sharpe_ratio"].mean().sort_values(ascending=True)
+        symbol_sharpe = (
+            metrics_df.groupby("symbol")["sharpe_ratio"].mean().sort_values(ascending=True)
+        )
 
         fig = px.bar(
             x=symbol_sharpe.values,
@@ -492,7 +533,9 @@ def render_model_performance(df: pd.DataFrame):
     display_metrics["accuracy"] = (display_metrics["accuracy"] * 100).round(1).astype(str) + "%"
     display_metrics["sharpe_ratio"] = display_metrics["sharpe_ratio"].round(2)
     display_metrics["win_rate"] = (display_metrics["win_rate"] * 100).round(1).astype(str) + "%"
-    display_metrics["max_drawdown"] = (display_metrics["max_drawdown"] * 100).round(1).astype(str) + "%"
+    display_metrics["max_drawdown"] = (display_metrics["max_drawdown"] * 100).round(1).astype(
+        str
+    ) + "%"
     display_metrics["profit_factor"] = display_metrics["profit_factor"].round(2)
 
     st.dataframe(display_metrics, use_container_width=True)
@@ -622,7 +665,15 @@ def render_feature_importance(df: pd.DataFrame):
 
     categories = {
         "Momentum": ["rsi_14", "macd", "macd_signal", "macd_hist", "stoch_k", "stoch_d"],
-        "Trend": ["sma_5", "sma_20", "sma_50", "ema_12", "ema_26", "price_vs_sma20", "price_vs_sma50"],
+        "Trend": [
+            "sma_5",
+            "sma_20",
+            "sma_50",
+            "ema_12",
+            "ema_26",
+            "price_vs_sma20",
+            "price_vs_sma50",
+        ],
         "Volatility": ["bb_width", "atr_14", "volatility_20d", "keltner_upper", "keltner_lower"],
         "Volume": ["volume_ratio", "volume_sma_20", "obv", "mfi", "vroc"],
         "Returns": ["returns_1d", "returns_5d", "returns_20d"],
@@ -655,7 +706,9 @@ def render_feature_importance(df: pd.DataFrame):
 
     with col2:
         st.markdown("### Category Breakdown")
-        for cat, importance in sorted(category_importance.items(), key=lambda x: x[1], reverse=True):
+        for cat, importance in sorted(
+            category_importance.items(), key=lambda x: x[1], reverse=True
+        ):
             st.progress(importance, text=f"{cat}: {importance*100:.1f}%")
 
 
@@ -665,11 +718,14 @@ def fetch_sr_levels_from_db(db, symbol: str) -> dict:
         return None
 
     try:
-        result = db.client.table("sr_levels").select(
-            "*, symbols(ticker)"
-        ).eq("symbols.ticker", symbol).order(
-            "computed_at", desc=True
-        ).limit(1).execute()
+        result = (
+            db.client.table("sr_levels")
+            .select("*, symbols(ticker)")
+            .eq("symbols.ticker", symbol)
+            .order("computed_at", desc=True)
+            .limit(1)
+            .execute()
+        )
 
         if result.data and len(result.data) > 0:
             return result.data[0]
@@ -686,9 +742,7 @@ def fetch_ohlc_for_sr(db, symbol: str, lookback: int = 252) -> Optional[pd.DataF
 
     try:
         # Get symbol ID first
-        sym_result = db.client.table("symbols").select("id").eq(
-            "ticker", symbol
-        ).single().execute()
+        sym_result = db.client.table("symbols").select("id").eq("ticker", symbol).single().execute()
 
         if not sym_result.data:
             return None
@@ -696,15 +750,17 @@ def fetch_ohlc_for_sr(db, symbol: str, lookback: int = 252) -> Optional[pd.DataF
         symbol_id = sym_result.data["id"]
 
         # Fetch OHLC data from v2 (real Alpaca data only)
-        ohlc_result = db.client.table("ohlc_bars_v2").select(
-            "ts, open, high, low, close, volume"
-        ).eq("symbol_id", symbol_id).eq(
-            "timeframe", "d1"
-        ).eq("provider", "alpaca").eq(
-            "is_forecast", False
-        ).order(
-            "ts", desc=True
-        ).limit(lookback).execute()
+        ohlc_result = (
+            db.client.table("ohlc_bars_v2")
+            .select("ts, open, high, low, close, volume")
+            .eq("symbol_id", symbol_id)
+            .eq("timeframe", "d1")
+            .eq("provider", "alpaca")
+            .eq("is_forecast", False)
+            .order("ts", desc=True)
+            .limit(lookback)
+            .execute()
+        )
 
         if ohlc_result.data:
             # Reverse to get chronological order (oldest to newest)
@@ -737,9 +793,8 @@ def render_support_resistance(df: pd.DataFrame):
 
         # Use the SupportResistanceDetector for real calculations
         try:
-            from src.features.support_resistance_detector import (
-                SupportResistanceDetector
-            )
+            from src.features.support_resistance_detector import SupportResistanceDetector
+
             sr_detector = SupportResistanceDetector()
 
             # Ensure proper column names
@@ -757,9 +812,7 @@ def render_support_resistance(df: pd.DataFrame):
             trend = fib_data["trend"]
 
             # Build fib_levels dict for display
-            fib_levels = {
-                f"{k}%": v for k, v in fib_data["levels"].items()
-            }
+            fib_levels = {f"{k}%": v for k, v in fib_data["levels"].items()}
 
             # Get price series for chart
             close_prices = ohlc_df["close"].values
@@ -845,22 +898,29 @@ def render_support_resistance(df: pd.DataFrame):
     with col2:
         if nearest_support:
             dist = (current_price - nearest_support) / current_price * 100
-            st.metric("Nearest Support", f"${nearest_support:.2f}",
-                      delta=f"-{dist:.1f}%", delta_color="normal")
+            st.metric(
+                "Nearest Support",
+                f"${nearest_support:.2f}",
+                delta=f"-{dist:.1f}%",
+                delta_color="normal",
+            )
         else:
             st.metric("Nearest Support", "N/A")
 
     with col3:
         if nearest_resistance:
             dist = (nearest_resistance - current_price) / current_price * 100
-            st.metric("Nearest Resistance", f"${nearest_resistance:.2f}",
-                      delta=f"+{dist:.1f}%", delta_color="normal")
+            st.metric(
+                "Nearest Resistance",
+                f"${nearest_resistance:.2f}",
+                delta=f"+{dist:.1f}%",
+                delta_color="normal",
+            )
         else:
             st.metric("Nearest Resistance", "N/A")
 
     with col4:
-        st.metric("Trend", trend.upper(),
-                  delta="↑" if trend == "uptrend" else "↓")
+        st.metric("Trend", trend.upper(), delta="↑" if trend == "uptrend" else "↓")
 
     st.markdown("---")
 
@@ -871,27 +931,32 @@ def render_support_resistance(df: pd.DataFrame):
         st.subheader("Price Chart with S/R Levels")
 
         # Create price chart
-        dates = pd.date_range(end=datetime.now(), periods=n_bars, freq='D')
-        price_df = pd.DataFrame({
-            'Date': dates,
-            'Price': close_prices
-        })
+        dates = pd.date_range(end=datetime.now(), periods=n_bars, freq="D")
+        price_df = pd.DataFrame({"Date": dates, "Price": close_prices})
 
-        fig = px.line(price_df, x='Date', y='Price',
-                      title=f"{selected_symbol} Price with Support/Resistance")
+        fig = px.line(
+            price_df, x="Date", y="Price", title=f"{selected_symbol} Price with Support/Resistance"
+        )
 
         # Add horizontal lines for key levels
         colors = {
-            "R3": "#ff1744", "R2": "#ff5252", "R1": "#ff8a80",
+            "R3": "#ff1744",
+            "R2": "#ff5252",
+            "R1": "#ff8a80",
             "PP": "#ffc107",
-            "S1": "#69f0ae", "S2": "#00e676", "S3": "#00c853"
+            "S1": "#69f0ae",
+            "S2": "#00e676",
+            "S3": "#00c853",
         }
 
         for level_name, level_price in pivot_points.items():
-            fig.add_hline(y=level_price, line_dash="dash",
-                          line_color=colors.get(level_name, "gray"),
-                          annotation_text=f"{level_name}: ${level_price:.2f}",
-                          annotation_position="right")
+            fig.add_hline(
+                y=level_price,
+                line_dash="dash",
+                line_color=colors.get(level_name, "gray"),
+                annotation_text=f"{level_name}: ${level_price:.2f}",
+                annotation_position="right",
+            )
 
         fig.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
@@ -906,22 +971,21 @@ def render_support_resistance(df: pd.DataFrame):
         st.subheader("Pivot Points")
 
         # Display pivot points as a table
-        pivot_df = pd.DataFrame([
-            {"Level": "R3", "Price": f"${pivot_points['R3']:.2f}", "Type": "🔴 Resistance"},
-            {"Level": "R2", "Price": f"${pivot_points['R2']:.2f}", "Type": "🔴 Resistance"},
-            {"Level": "R1", "Price": f"${pivot_points['R1']:.2f}", "Type": "🔴 Resistance"},
-            {"Level": "PP", "Price": f"${pivot_points['PP']:.2f}", "Type": "🟡 Pivot"},
-            {"Level": "S1", "Price": f"${pivot_points['S1']:.2f}", "Type": "🟢 Support"},
-            {"Level": "S2", "Price": f"${pivot_points['S2']:.2f}", "Type": "🟢 Support"},
-            {"Level": "S3", "Price": f"${pivot_points['S3']:.2f}", "Type": "🟢 Support"},
-        ])
+        pivot_df = pd.DataFrame(
+            [
+                {"Level": "R3", "Price": f"${pivot_points['R3']:.2f}", "Type": "🔴 Resistance"},
+                {"Level": "R2", "Price": f"${pivot_points['R2']:.2f}", "Type": "🔴 Resistance"},
+                {"Level": "R1", "Price": f"${pivot_points['R1']:.2f}", "Type": "🔴 Resistance"},
+                {"Level": "PP", "Price": f"${pivot_points['PP']:.2f}", "Type": "🟡 Pivot"},
+                {"Level": "S1", "Price": f"${pivot_points['S1']:.2f}", "Type": "🟢 Support"},
+                {"Level": "S2", "Price": f"${pivot_points['S2']:.2f}", "Type": "🟢 Support"},
+                {"Level": "S3", "Price": f"${pivot_points['S3']:.2f}", "Type": "🟢 Support"},
+            ]
+        )
         st.dataframe(pivot_df, use_container_width=True, hide_index=True)
 
         st.subheader("Fibonacci Levels")
-        fib_df = pd.DataFrame([
-            {"Level": k, "Price": f"${v:.2f}"}
-            for k, v in fib_levels.items()
-        ])
+        fib_df = pd.DataFrame([{"Level": k, "Price": f"${v:.2f}"} for k, v in fib_levels.items()])
         st.dataframe(fib_df, use_container_width=True, hide_index=True)
 
     st.markdown("---")
@@ -936,8 +1000,9 @@ def render_support_resistance(df: pd.DataFrame):
         if nearest_support:
             support_dist_pct = (current_price - nearest_support) / current_price * 100
             st.markdown("### Distance to Support")
-            st.progress(min(support_dist_pct / 10, 1.0),
-                        text=f"{support_dist_pct:.2f}% above support")
+            st.progress(
+                min(support_dist_pct / 10, 1.0), text=f"{support_dist_pct:.2f}% above support"
+            )
             if support_dist_pct < 2:
                 st.warning("⚠️ Price near support level")
             elif support_dist_pct < 5:
@@ -950,8 +1015,10 @@ def render_support_resistance(df: pd.DataFrame):
         if nearest_resistance:
             resistance_dist_pct = (nearest_resistance - current_price) / current_price * 100
             st.markdown("### Distance to Resistance")
-            st.progress(min(resistance_dist_pct / 10, 1.0),
-                        text=f"{resistance_dist_pct:.2f}% below resistance")
+            st.progress(
+                min(resistance_dist_pct / 10, 1.0),
+                text=f"{resistance_dist_pct:.2f}% below resistance",
+            )
             if resistance_dist_pct < 2:
                 st.warning("⚠️ Price near resistance level")
             elif resistance_dist_pct < 5:
@@ -991,7 +1058,7 @@ def render_support_resistance(df: pd.DataFrame):
             "Daily levels, day trading",
             "Retracement targets",
             "Peak/trough detection",
-            "Statistical zones"
+            "Statistical zones",
         ],
         "Complexity": ["Medium", "Low", "Low", "Low", "High"],
     }
@@ -1002,31 +1069,20 @@ def render_support_resistance(df: pd.DataFrame):
     # Radar chart for method comparison
     fig = go.Figure()
 
-    categories = ['Accuracy', 'Speed', 'Simplicity', 'Real-time', 'Reliability']
+    categories = ["Accuracy", "Speed", "Simplicity", "Real-time", "Reliability"]
 
-    fig.add_trace(go.Scatterpolar(
-        r=[9, 8, 7, 9, 8],
-        theta=categories,
-        fill='toself',
-        name='ZigZag'
-    ))
-    fig.add_trace(go.Scatterpolar(
-        r=[8, 10, 10, 10, 8],
-        theta=categories,
-        fill='toself',
-        name='Pivot Points'
-    ))
-    fig.add_trace(go.Scatterpolar(
-        r=[7, 10, 9, 8, 7],
-        theta=categories,
-        fill='toself',
-        name='Fibonacci'
-    ))
+    fig.add_trace(
+        go.Scatterpolar(r=[9, 8, 7, 9, 8], theta=categories, fill="toself", name="ZigZag")
+    )
+    fig.add_trace(
+        go.Scatterpolar(r=[8, 10, 10, 10, 8], theta=categories, fill="toself", name="Pivot Points")
+    )
+    fig.add_trace(
+        go.Scatterpolar(r=[7, 10, 9, 8, 7], theta=categories, fill="toself", name="Fibonacci")
+    )
 
     fig.update_layout(
-        polar=dict(
-            radialaxis=dict(visible=True, range=[0, 10])
-        ),
+        polar=dict(radialaxis=dict(visible=True, range=[0, 10])),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font_color="white",

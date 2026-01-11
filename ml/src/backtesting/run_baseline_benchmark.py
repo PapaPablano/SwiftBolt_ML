@@ -78,14 +78,16 @@ def generate_synthetic_data(n_bars: int = 600, seed: int = 42) -> pd.DataFrame:
     start_date = datetime(2023, 1, 1)
     timestamps = pd.date_range(start=start_date, periods=n_bars, freq="B")
 
-    df = pd.DataFrame({
-        "ts": timestamps,
-        "open": opens,
-        "high": highs,
-        "low": lows,
-        "close": closes,
-        "volume": volumes.astype(int),
-    })
+    df = pd.DataFrame(
+        {
+            "ts": timestamps,
+            "open": opens,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": volumes.astype(int),
+        }
+    )
 
     return df
 
@@ -135,7 +137,9 @@ def run_forecaster_benchmark(
                 "test_periods": metrics.test_periods,
             }
 
-            logger.info(f"  {horizon}: accuracy={metrics.accuracy:.2%}, sharpe={metrics.sharpe_ratio:.2f}")
+            logger.info(
+                f"  {horizon}: accuracy={metrics.accuracy:.2%}, sharpe={metrics.sharpe_ratio:.2f}"
+            )
 
         except Exception as e:
             logger.error(f"  {horizon}: FAILED - {e}")
@@ -163,14 +167,18 @@ def run_calibration_benchmark(
         if np.random.random() < true_accuracy:
             actual_labels.append(predicted_labels[i])
         else:
-            other_labels = [l for l in ["bullish", "neutral", "bearish"] if l != predicted_labels[i]]
+            other_labels = [
+                l for l in ["bullish", "neutral", "bearish"] if l != predicted_labels[i]
+            ]
             actual_labels.append(np.random.choice(other_labels))
 
-    forecasts = pd.DataFrame({
-        "confidence": confidences,
-        "predicted_label": predicted_labels,
-        "actual_label": actual_labels,
-    })
+    forecasts = pd.DataFrame(
+        {
+            "confidence": confidences,
+            "predicted_label": predicted_labels,
+            "actual_label": actual_labels,
+        }
+    )
 
     calibrator = ConfidenceCalibrator()
     calibration_results = calibrator.fit(forecasts, min_samples_per_bucket=20)
@@ -228,7 +236,9 @@ def main() -> None:
     logger.info("BASELINE BENCHMARK - ML Improvement Plan")
     logger.info("=" * 60)
     logger.info(f"Timestamp: {datetime.now().isoformat()}")
-    logger.info(f"Settings: min_bars={settings.min_bars_for_training}, high_conf_bars={settings.min_bars_for_high_confidence}")
+    logger.info(
+        f"Settings: min_bars={settings.min_bars_for_training}, high_conf_bars={settings.min_bars_for_high_confidence}"
+    )
 
     # Generate synthetic data for benchmarking
     logger.info("\n1. Generating synthetic data...")

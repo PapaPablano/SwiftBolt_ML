@@ -41,7 +41,7 @@ def sample_forecasts():
 @pytest.fixture
 def equal_weights():
     """Equal weights for 3 models."""
-    return {"rf": 1/3, "gb": 1/3, "arima": 1/3}
+    return {"rf": 1 / 3, "gb": 1 / 3, "arima": 1 / 3}
 
 
 @pytest.fixture
@@ -155,9 +155,7 @@ class TestForecastAggregation:
         rf_forecast = sample_forecasts[0].forecast_value
         arima_forecast = sample_forecasts[2].forecast_value
 
-        assert abs(result1["forecast"] - rf_forecast) < abs(
-            result1["forecast"] - arima_forecast
-        )
+        assert abs(result1["forecast"] - rf_forecast) < abs(result1["forecast"] - arima_forecast)
 
     def test_handles_nan_forecasts(self, equal_weights):
         """Test handling of NaN forecasts."""
@@ -317,11 +315,14 @@ class TestPredictionHistory:
         # Record enough predictions
         for i in range(20):
             actual = np.random.randn() * 0.02
-            uq.record_prediction({
-                "forecast": actual + 0.001,
-                "ci_lower": actual - 0.05,
-                "ci_upper": actual + 0.05,
-            }, actual=actual)
+            uq.record_prediction(
+                {
+                    "forecast": actual + 0.001,
+                    "ci_lower": actual - 0.05,
+                    "ci_upper": actual + 0.05,
+                },
+                actual=actual,
+            )
 
         result = uq.update_calibration_from_history()
 

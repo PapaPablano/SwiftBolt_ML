@@ -101,9 +101,7 @@ class UncertaintyQuantifier:
         model_names = [f.model_name for f in forecasts]
 
         # Get weights for each model
-        weight_array = np.array([
-            weights.get(name, 1.0 / len(forecasts)) for name in model_names
-        ])
+        weight_array = np.array([weights.get(name, 1.0 / len(forecasts)) for name in model_names])
 
         # Filter out NaN forecasts
         valid_idx = ~np.isnan(forecast_values)
@@ -142,9 +140,7 @@ class UncertaintyQuantifier:
 
         # Model disagreement metrics
         forecast_dispersion = np.std(forecast_values)
-        model_agreement = self._calculate_model_agreement(
-            forecast_values, ensemble_volatility
-        )
+        model_agreement = self._calculate_model_agreement(forecast_values, ensemble_volatility)
 
         return {
             "forecast": float(ensemble_forecast),
@@ -155,9 +151,7 @@ class UncertaintyQuantifier:
             "model_agreement": float(model_agreement),
             "n_valid_models": int(np.sum(valid_idx)),
             "models_used": valid_names,
-            "weights_used": {
-                n: float(w) for n, w in zip(valid_names, weight_array)
-            },
+            "weights_used": {n: float(w) for n, w in zip(valid_names, weight_array)},
             "confidence_level": self.confidence_level,
         }
 
@@ -188,9 +182,7 @@ class UncertaintyQuantifier:
                 # Convert to directional forecast
                 if isinstance(label, str):
                     direction = (
-                        1 if label.lower() == "bullish"
-                        else -1 if label.lower() == "bearish"
-                        else 0
+                        1 if label.lower() == "bullish" else -1 if label.lower() == "bearish" else 0
                     )
                 else:
                     direction = 0
@@ -211,15 +203,17 @@ class UncertaintyQuantifier:
                 forecast_val + self.z_score * volatility,
             )
 
-            forecasts.append(ModelForecast(
-                model_name=model_name,
-                forecast_value=forecast_val,
-                forecast_volatility=volatility,
-                confidence_interval_lower=ci_lower,
-                confidence_interval_upper=ci_upper,
-                label=pred.get("label"),
-                probabilities=pred.get("probabilities"),
-            ))
+            forecasts.append(
+                ModelForecast(
+                    model_name=model_name,
+                    forecast_value=forecast_val,
+                    forecast_volatility=volatility,
+                    confidence_interval_lower=ci_lower,
+                    confidence_interval_upper=ci_upper,
+                    label=pred.get("label"),
+                    probabilities=pred.get("probabilities"),
+                )
+            )
 
         return self.aggregate_forecasts(forecasts, weights)
 
@@ -238,7 +232,7 @@ class UncertaintyQuantifier:
         disagreement between models.
         """
         # Weighted variance of individual volatilities
-        weighted_var = np.average(volatilities ** 2, weights=weights)
+        weighted_var = np.average(volatilities**2, weights=weights)
 
         # Variance of forecasts (model disagreement)
         forecast_var = np.var(forecast_values) if len(forecast_values) > 1 else 0
@@ -294,7 +288,7 @@ class UncertaintyQuantifier:
         if len(actuals) < self.min_samples_for_calibration:
             return {
                 "error": f"Insufficient samples: {len(actuals)} < "
-                         f"{self.min_samples_for_calibration}",
+                f"{self.min_samples_for_calibration}",
                 "calibration_ratio": 1.0,
             }
 
@@ -314,14 +308,16 @@ class UncertaintyQuantifier:
 
         # Store calibration
         self.calibration_ratios[model_name] = calibration_ratio
-        self.calibration_history.append({
-            "timestamp": datetime.now().isoformat(),
-            "model_name": model_name,
-            "empirical_coverage": coverage,
-            "target_coverage": self.confidence_level,
-            "calibration_ratio": calibration_ratio,
-            "n_samples": len(actuals),
-        })
+        self.calibration_history.append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "model_name": model_name,
+                "empirical_coverage": coverage,
+                "target_coverage": self.confidence_level,
+                "calibration_ratio": calibration_ratio,
+                "n_samples": len(actuals),
+            }
+        )
 
         logger.info(
             "Calibration for %s: coverage=%.3f (target=%.3f), ratio=%.3f",
@@ -432,10 +428,7 @@ class UncertaintyQuantifier:
             Calibration metrics or None if insufficient data
         """
         # Filter predictions with actuals
-        completed = [
-            p for p in self.prediction_history
-            if p.get("actual") is not None
-        ]
+        completed = [p for p in self.prediction_history if p.get("actual") is not None]
 
         if len(completed) < self.min_samples_for_calibration:
             return None
@@ -444,9 +437,7 @@ class UncertaintyQuantifier:
         ci_upper = np.array([p["ci_upper"] for p in completed])
         actuals = np.array([p["actual"] for p in completed])
 
-        return self.calibrate_uncertainty(
-            ci_lower, ci_upper, actuals, model_name
-        )
+        return self.calibrate_uncertainty(ci_lower, ci_upper, actuals, model_name)
 
     def _null_ensemble_forecast(self, error_msg: str) -> Dict:
         """Return null forecast when aggregation fails."""
@@ -518,7 +509,7 @@ class DirectionalUncertaintyQuantifier(UncertaintyQuantifier):
         if total_weight > 0:
             probs = {k: v / total_weight for k, v in prob_sums.items()}
         else:
-            probs = {k: 1/3 for k in prob_sums}
+            probs = {k: 1 / 3 for k in prob_sums}
 
         # Ensure sum = 1
         total = sum(probs.values())
@@ -607,9 +598,7 @@ if __name__ == "__main__":
     predicted_upper = predicted_lower + 0.08
     actuals = np.random.randn(n) * 0.03  # Actual values
 
-    cal_result = uq.calibrate_uncertainty(
-        predicted_lower, predicted_upper, actuals, "test_model"
-    )
+    cal_result = uq.calibrate_uncertainty(predicted_lower, predicted_upper, actuals, "test_model")
     print(f"\nCalibration results:")
     print(f"  Empirical coverage: {cal_result['empirical_coverage']:.3f}")
     print(f"  Target coverage: {cal_result['target_coverage']:.3f}")
@@ -628,12 +617,21 @@ if __name__ == "__main__":
     duq = DirectionalUncertaintyQuantifier()
 
     predictions = {
-        "rf": {"label": "Bullish", "confidence": 0.7,
-               "probabilities": {"bullish": 0.7, "neutral": 0.2, "bearish": 0.1}},
-        "gb": {"label": "Bullish", "confidence": 0.6,
-               "probabilities": {"bullish": 0.6, "neutral": 0.25, "bearish": 0.15}},
-        "arima": {"label": "Neutral", "confidence": 0.5,
-                  "probabilities": {"bullish": 0.35, "neutral": 0.5, "bearish": 0.15}},
+        "rf": {
+            "label": "Bullish",
+            "confidence": 0.7,
+            "probabilities": {"bullish": 0.7, "neutral": 0.2, "bearish": 0.1},
+        },
+        "gb": {
+            "label": "Bullish",
+            "confidence": 0.6,
+            "probabilities": {"bullish": 0.6, "neutral": 0.25, "bearish": 0.15},
+        },
+        "arima": {
+            "label": "Neutral",
+            "confidence": 0.5,
+            "probabilities": {"bullish": 0.35, "neutral": 0.5, "bearish": 0.15},
+        },
     }
 
     dir_result = duq.aggregate_probabilities(predictions, weights)

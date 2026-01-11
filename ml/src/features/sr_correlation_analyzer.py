@@ -53,9 +53,7 @@ class SRCorrelationAnalyzer:
         # Ensure all series have same length
         min_len = min(len(pivot_levels), len(polynomial_levels), len(logistic_levels))
         if min_len < 10:
-            logger.warning(
-                f"Insufficient data for correlation analysis ({min_len} < 10)"
-            )
+            logger.warning(f"Insufficient data for correlation analysis ({min_len} < 10)")
             return self._default_result()
 
         pivot = pivot_levels.iloc[:min_len].values
@@ -85,15 +83,9 @@ class SRCorrelationAnalyzer:
                 penalties[pair] = 1.0  # No reduction
 
         # Apply average penalty to each indicator based on its correlations
-        pivot_penalty = (
-            penalties["pivot_poly"] + penalties["pivot_logistic"]
-        ) / 2
-        poly_penalty = (
-            penalties["pivot_poly"] + penalties["poly_logistic"]
-        ) / 2
-        logistic_penalty = (
-            penalties["pivot_logistic"] + penalties["poly_logistic"]
-        ) / 2
+        pivot_penalty = (penalties["pivot_poly"] + penalties["pivot_logistic"]) / 2
+        poly_penalty = (penalties["pivot_poly"] + penalties["poly_logistic"]) / 2
+        logistic_penalty = (penalties["pivot_logistic"] + penalties["poly_logistic"]) / 2
 
         adjusted = {
             "pivot": self.DEFAULT_WEIGHTS["pivot"] * pivot_penalty,

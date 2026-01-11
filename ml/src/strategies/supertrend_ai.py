@@ -73,9 +73,7 @@ class SuperTrendAI:
         self.max_data = max_data
 
         if min_mult > max_mult:
-            raise ValueError(
-                "Minimum multiplier cannot be greater than maximum"
-            )
+            raise ValueError("Minimum multiplier cannot be greater than maximum")
 
         self.factors = np.arange(min_mult, max_mult + step, step)
         logger.info(
@@ -94,9 +92,7 @@ class SuperTrendAI:
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
         return tr.ewm(span=self.atr_length, adjust=False).mean()
 
-    def calculate_supertrend(
-        self, atr: pd.Series, factor: float
-    ) -> Tuple[pd.Series, pd.Series]:
+    def calculate_supertrend(self, atr: pd.Series, factor: float) -> Tuple[pd.Series, pd.Series]:
         """
         Calculate SuperTrend for a given ATR multiplier.
 
@@ -152,17 +148,11 @@ class SuperTrendAI:
                 trend.iloc[i] = trend.iloc[i - 1]
 
             # SuperTrend output
-            supertrend.iloc[i] = (
-                final_lower.iloc[i]
-                if trend.iloc[i] == 1
-                else final_upper.iloc[i]
-            )
+            supertrend.iloc[i] = final_lower.iloc[i] if trend.iloc[i] == 1 else final_upper.iloc[i]
 
         return supertrend, trend
 
-    def calculate_performance(
-        self, supertrend: pd.Series, trend: pd.Series
-    ) -> float:
+    def calculate_performance(self, supertrend: pd.Series, trend: pd.Series) -> float:
         """
         Calculate performance metric for a SuperTrend configuration.
 
@@ -247,9 +237,7 @@ class SuperTrendAI:
             perf_clusters[label].append(perf_array[i][0])
 
         # Sort clusters by average performance
-        cluster_means = {
-            k: np.mean(v) if v else 0 for k, v in perf_clusters.items()
-        }
+        cluster_means = {k: np.mean(v) if v else 0 for k, v in perf_clusters.items()}
         sorted_clusters = sorted(cluster_means.items(), key=lambda x: x[1])
 
         cluster_mapping = {
@@ -259,14 +247,10 @@ class SuperTrendAI:
         }
 
         # Get target cluster factors
-        target_label = [
-            k for k, v in cluster_mapping.items() if v == self.from_cluster
-        ][0]
+        target_label = [k for k, v in cluster_mapping.items() if v == self.from_cluster][0]
         target_factors = clusters[target_label]
 
-        optimal_factor = (
-            np.mean(target_factors) if target_factors else self.min_mult
-        )
+        optimal_factor = np.mean(target_factors) if target_factors else self.min_mult
 
         logger.info(
             f"K-means clustering: Best cluster mean={sorted_clusters[2][1]:.4f}, "
@@ -306,9 +290,9 @@ class SuperTrendAI:
         # Performance index (0-1 normalized)
         close = self.df["close"]
         den = close.diff().abs().ewm(span=self.perf_alpha, adjust=False).mean()
-        perf_idx = max(
-            self.calculate_performance(final_st, final_trend), 0
-        ) / (den.iloc[-1] + 1e-10)
+        perf_idx = max(self.calculate_performance(final_st, final_trend), 0) / (
+            den.iloc[-1] + 1e-10
+        )
         perf_idx = min(max(perf_idx, 0), 1)
 
         # Performance-adaptive MA
@@ -336,9 +320,7 @@ class SuperTrendAI:
                 self.df.loc[self.df.index[i], "supertrend_signal"] = -1
 
         # Calculate per-bar confidence scores
-        self.df["signal_confidence"] = self.calculate_signal_confidence(
-            perf_idx
-        )
+        self.df["signal_confidence"] = self.calculate_signal_confidence(perf_idx)
 
         # Extract signal metadata
         signals = self.extract_signal_metadata(perf_idx)
@@ -465,6 +447,7 @@ class SuperTrendAI:
                     else:
                         # If ts is a timestamp integer, convert it
                         import datetime
+
                         date_str = datetime.datetime.fromtimestamp(ts_val).isoformat()
                 else:
                     # Fallback to index
@@ -476,6 +459,7 @@ class SuperTrendAI:
                     else:
                         # Use current time as fallback
                         import datetime
+
                         date_str = datetime.datetime.now().isoformat()
 
                 signals.append(
@@ -520,15 +504,11 @@ class SuperTrendAI:
             "trend_duration_bars": trend_duration,
             "current_price": float(self.df["close"].iloc[-1]),
             "distance_to_stop_pct": float(
-                abs(self.df["close"].iloc[-1] - current_stop)
-                / self.df["close"].iloc[-1]
-                * 100
+                abs(self.df["close"].iloc[-1] - current_stop) / self.df["close"].iloc[-1] * 100
             ),
         }
 
-    def predict(
-        self, new_df: pd.DataFrame, target_factor: float
-    ) -> pd.DataFrame:
+    def predict(self, new_df: pd.DataFrame, target_factor: float) -> pd.DataFrame:
         """
         Generate SuperTrend signals using a pre-fitted optimal factor.
 

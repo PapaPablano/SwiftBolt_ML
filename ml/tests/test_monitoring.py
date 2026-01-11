@@ -13,11 +13,13 @@ def reference_data():
     np.random.seed(42)
     n = 100
 
-    return pd.DataFrame({
-        'rsi': np.random.normal(50, 15, n),
-        'macd': np.random.normal(0, 1, n),
-        'volume': np.random.lognormal(15, 1, n),
-    })
+    return pd.DataFrame(
+        {
+            "rsi": np.random.normal(50, 15, n),
+            "macd": np.random.normal(0, 1, n),
+            "volume": np.random.lognormal(15, 1, n),
+        }
+    )
 
 
 @pytest.fixture
@@ -26,11 +28,13 @@ def similar_data():
     np.random.seed(123)
     n = 100
 
-    return pd.DataFrame({
-        'rsi': np.random.normal(50, 15, n),
-        'macd': np.random.normal(0, 1, n),
-        'volume': np.random.lognormal(15, 1, n),
-    })
+    return pd.DataFrame(
+        {
+            "rsi": np.random.normal(50, 15, n),
+            "macd": np.random.normal(0, 1, n),
+            "volume": np.random.lognormal(15, 1, n),
+        }
+    )
 
 
 @pytest.fixture
@@ -39,11 +43,13 @@ def drifted_data():
     np.random.seed(456)
     n = 100
 
-    return pd.DataFrame({
-        'rsi': np.random.normal(70, 10, n),  # Shifted mean
-        'macd': np.random.normal(2, 0.5, n),  # Shifted mean, different std
-        'volume': np.random.lognormal(17, 0.5, n),  # Different distribution
-    })
+    return pd.DataFrame(
+        {
+            "rsi": np.random.normal(70, 10, n),  # Shifted mean
+            "macd": np.random.normal(2, 0.5, n),  # Shifted mean, different std
+            "volume": np.random.lognormal(17, 0.5, n),  # Different distribution
+        }
+    )
 
 
 class TestDriftDetector:
@@ -56,7 +62,7 @@ class TestDriftDetector:
         results = detector.detect_drift(
             reference_data,
             similar_data,
-            features=['rsi', 'macd', 'volume'],
+            features=["rsi", "macd", "volume"],
         )
 
         assert len(results) == 3
@@ -72,7 +78,7 @@ class TestDriftDetector:
         results = detector.detect_drift(
             reference_data,
             drifted_data,
-            features=['rsi', 'macd', 'volume'],
+            features=["rsi", "macd", "volume"],
         )
 
         assert len(results) == 3
@@ -88,26 +94,26 @@ class TestDriftDetector:
         results = detector.detect_drift(
             reference_data,
             drifted_data,
-            features=['rsi'],
+            features=["rsi"],
         )
 
         result = results[0]
 
         assert isinstance(result, DriftResult)
-        assert result.feature == 'rsi'
+        assert result.feature == "rsi"
         assert 0 <= result.statistic <= 1
         assert 0 <= result.p_value <= 1
         assert isinstance(result.is_drifted, bool)
-        assert result.drift_severity in ['none', 'low', 'medium', 'high']
+        assert result.drift_severity in ["none", "low", "medium", "high"]
 
     def test_insufficient_samples(self):
         """Test handling of insufficient samples."""
         detector = DriftDetector(min_samples=50)
 
-        small_ref = pd.DataFrame({'x': [1, 2, 3]})
-        small_cur = pd.DataFrame({'x': [4, 5, 6]})
+        small_ref = pd.DataFrame({"x": [1, 2, 3]})
+        small_cur = pd.DataFrame({"x": [4, 5, 6]})
 
-        results = detector.detect_drift(small_ref, small_cur, features=['x'])
+        results = detector.detect_drift(small_ref, small_cur, features=["x"])
 
         # Should not detect drift due to insufficient samples
         assert not results[0].is_drifted
@@ -120,15 +126,15 @@ class TestDriftDetector:
         results = detector.detect_drift(
             reference_data,
             drifted_data,
-            features=['rsi', 'macd'],
+            features=["rsi", "macd"],
         )
 
         report = detector.generate_report(results)
 
-        assert 'DATA DRIFT REPORT' in report
-        assert 'Features analyzed' in report
-        assert 'rsi' in report
-        assert 'macd' in report
+        assert "DATA DRIFT REPORT" in report
+        assert "Features analyzed" in report
+        assert "rsi" in report
+        assert "macd" in report
 
     def test_auto_detect_features(self, reference_data, similar_data):
         """Test automatic feature detection."""
@@ -146,37 +152,37 @@ class TestDriftSeverity:
     def test_severity_none(self):
         """Test 'none' severity for low KS statistic."""
         result = DriftResult(
-            feature='test',
+            feature="test",
             statistic=0.05,
             p_value=0.5,
             is_drifted=False,
-            drift_severity='none',
+            drift_severity="none",
         )
-        assert result.drift_severity == 'none'
+        assert result.drift_severity == "none"
 
     def test_severity_high(self):
         """Test 'high' severity for high KS statistic."""
         result = DriftResult(
-            feature='test',
+            feature="test",
             statistic=0.4,
             p_value=0.001,
             is_drifted=True,
-            drift_severity='high',
+            drift_severity="high",
         )
-        assert result.drift_severity == 'high'
+        assert result.drift_severity == "high"
 
     def test_str_representation(self):
         """Test string representation of DriftResult."""
         result = DriftResult(
-            feature='rsi',
+            feature="rsi",
             statistic=0.25,
             p_value=0.01,
             is_drifted=True,
-            drift_severity='medium',
+            drift_severity="medium",
         )
 
         str_repr = str(result)
 
-        assert 'rsi' in str_repr
-        assert 'DRIFT' in str_repr
-        assert '0.25' in str_repr
+        assert "rsi" in str_repr
+        assert "DRIFT" in str_repr
+        assert "0.25" in str_repr

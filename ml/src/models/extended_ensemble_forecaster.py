@@ -146,9 +146,7 @@ class ExtendedEnsembleForecaster:
                 self.arima_garch_trained = True
                 logger.info("ARIMA-GARCH trained successfully")
             except Exception as e:
-                logger.warning(
-                    "ARIMA-GARCH training failed: %s. Using RF+GB only.", e
-                )
+                logger.warning("ARIMA-GARCH training failed: %s. Using RF+GB only.", e)
                 self.arima_garch_trained = False
                 # Redistribute weight to RF and GB
                 self._redistribute_weights()
@@ -161,11 +159,13 @@ class ExtendedEnsembleForecaster:
             "gb_accuracy": self.base_ensemble.training_stats.get("gb_accuracy", 0),
             "ag_accuracy": (
                 self.arima_garch.training_stats.get("accuracy", 0)
-                if self.arima_garch_trained else None
+                if self.arima_garch_trained
+                else None
             ),
             "ag_directional_accuracy": (
                 self.arima_garch.training_stats.get("directional_accuracy", 0)
-                if self.arima_garch_trained else None
+                if self.arima_garch_trained
+                else None
             ),
             "weights": {
                 "rf": self.rf_weight,
@@ -211,26 +211,26 @@ class ExtendedEnsembleForecaster:
         # Get base ensemble prediction
         base_pred = self.base_ensemble.predict(features_df)
         rf_probs = {
-            "bearish": base_pred["probabilities"].get("bearish", 0) / (
-                self.base_ensemble.rf_weight + self.base_ensemble.gb_weight
-            ) * self.base_ensemble.rf_weight,
-            "neutral": base_pred["probabilities"].get("neutral", 0) / (
-                self.base_ensemble.rf_weight + self.base_ensemble.gb_weight
-            ) * self.base_ensemble.rf_weight,
-            "bullish": base_pred["probabilities"].get("bullish", 0) / (
-                self.base_ensemble.rf_weight + self.base_ensemble.gb_weight
-            ) * self.base_ensemble.rf_weight,
+            "bearish": base_pred["probabilities"].get("bearish", 0)
+            / (self.base_ensemble.rf_weight + self.base_ensemble.gb_weight)
+            * self.base_ensemble.rf_weight,
+            "neutral": base_pred["probabilities"].get("neutral", 0)
+            / (self.base_ensemble.rf_weight + self.base_ensemble.gb_weight)
+            * self.base_ensemble.rf_weight,
+            "bullish": base_pred["probabilities"].get("bullish", 0)
+            / (self.base_ensemble.rf_weight + self.base_ensemble.gb_weight)
+            * self.base_ensemble.rf_weight,
         }
         gb_probs = {
-            "bearish": base_pred["probabilities"].get("bearish", 0) / (
-                self.base_ensemble.rf_weight + self.base_ensemble.gb_weight
-            ) * self.base_ensemble.gb_weight,
-            "neutral": base_pred["probabilities"].get("neutral", 0) / (
-                self.base_ensemble.rf_weight + self.base_ensemble.gb_weight
-            ) * self.base_ensemble.gb_weight,
-            "bullish": base_pred["probabilities"].get("bullish", 0) / (
-                self.base_ensemble.rf_weight + self.base_ensemble.gb_weight
-            ) * self.base_ensemble.gb_weight,
+            "bearish": base_pred["probabilities"].get("bearish", 0)
+            / (self.base_ensemble.rf_weight + self.base_ensemble.gb_weight)
+            * self.base_ensemble.gb_weight,
+            "neutral": base_pred["probabilities"].get("neutral", 0)
+            / (self.base_ensemble.rf_weight + self.base_ensemble.gb_weight)
+            * self.base_ensemble.gb_weight,
+            "bullish": base_pred["probabilities"].get("bullish", 0)
+            / (self.base_ensemble.rf_weight + self.base_ensemble.gb_weight)
+            * self.base_ensemble.gb_weight,
         }
 
         # Get ARIMA-GARCH prediction if available
@@ -251,19 +251,19 @@ class ExtendedEnsembleForecaster:
         # Weighted ensemble probabilities
         ensemble_probs = {
             "bearish": (
-                rf_probs["bearish"] * self.rf_weight +
-                gb_probs["bearish"] * self.gb_weight +
-                ag_probs["bearish"] * self.ag_weight
+                rf_probs["bearish"] * self.rf_weight
+                + gb_probs["bearish"] * self.gb_weight
+                + ag_probs["bearish"] * self.ag_weight
             ),
             "neutral": (
-                rf_probs["neutral"] * self.rf_weight +
-                gb_probs["neutral"] * self.gb_weight +
-                ag_probs["neutral"] * self.ag_weight
+                rf_probs["neutral"] * self.rf_weight
+                + gb_probs["neutral"] * self.gb_weight
+                + ag_probs["neutral"] * self.ag_weight
             ),
             "bullish": (
-                rf_probs["bullish"] * self.rf_weight +
-                gb_probs["bullish"] * self.gb_weight +
-                ag_probs["bullish"] * self.ag_weight
+                rf_probs["bullish"] * self.rf_weight
+                + gb_probs["bullish"] * self.gb_weight
+                + ag_probs["bullish"] * self.ag_weight
             ),
         }
 
@@ -278,18 +278,20 @@ class ExtendedEnsembleForecaster:
 
         # Check model agreement
         labels = [
-            base_pred["rf_prediction"].lower() if isinstance(
-                base_pred["rf_prediction"], str
-            ) else base_pred["rf_prediction"],
-            base_pred["gb_prediction"].lower() if isinstance(
-                base_pred["gb_prediction"], str
-            ) else base_pred["gb_prediction"],
+            (
+                base_pred["rf_prediction"].lower()
+                if isinstance(base_pred["rf_prediction"], str)
+                else base_pred["rf_prediction"]
+            ),
+            (
+                base_pred["gb_prediction"].lower()
+                if isinstance(base_pred["gb_prediction"], str)
+                else base_pred["gb_prediction"]
+            ),
         ]
         if self.arima_garch_trained and ag_forecast is not None:
             ag_label = (
-                "bullish" if ag_forecast > 0.02
-                else "bearish" if ag_forecast < -0.02
-                else "neutral"
+                "bullish" if ag_forecast > 0.02 else "bearish" if ag_forecast < -0.02 else "neutral"
             )
             labels.append(ag_label)
 
@@ -357,18 +359,22 @@ class ExtendedEnsembleForecaster:
             for i in range(1, horizon_days + 1):
                 forecast_ts = last_ts + timedelta(days=i)
                 # Simple directional projection
-                direction = 1 if prediction["label"] == "Bullish" else (
-                    -1 if prediction["label"] == "Bearish" else 0
+                direction = (
+                    1
+                    if prediction["label"] == "Bullish"
+                    else (-1 if prediction["label"] == "Bearish" else 0)
                 )
                 move = direction * 0.01 * prediction["confidence"] * i
                 value = last_close * (1 + move)
 
-                points.append({
-                    "ts": int(forecast_ts.timestamp()),
-                    "value": round(value, 2),
-                    "lower": round(value * 0.97, 2),
-                    "upper": round(value * 1.03, 2),
-                })
+                points.append(
+                    {
+                        "ts": int(forecast_ts.timestamp()),
+                        "value": round(value, 2),
+                        "lower": round(value * 0.97, 2),
+                        "upper": round(value * 1.03, 2),
+                    }
+                )
 
             forecast_volatility = None
 

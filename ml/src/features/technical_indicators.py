@@ -38,7 +38,7 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     # Handle empty dataframe edge case
     if len(df) == 0:
         return df.copy()
-    
+
     df = df.copy()
 
     # Returns
@@ -54,8 +54,9 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     df = TechnicalIndicatorsCorrect.add_moving_averages(df)
 
     # MACD (standard implementation)
-    df["macd"], df["macd_signal"], df["macd_hist"] = \
-        TechnicalIndicatorsCorrect.calculate_macd(df["close"], fast=12, slow=26, signal=9)
+    df["macd"], df["macd_signal"], df["macd_hist"] = TechnicalIndicatorsCorrect.calculate_macd(
+        df["close"], fast=12, slow=26, signal=9
+    )
 
     # RSI (using proper EMA smoothing)
     df["rsi_14"] = TechnicalIndicatorsCorrect.calculate_rsi(df["close"], period=14)
@@ -127,12 +128,14 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
 
         # Add volume-based S/R strength features (Phase 1: 6 additional features)
         from src.features.support_resistance_detector import SupportResistanceDetector
+
         sr_detector = SupportResistanceDetector()
         sr_levels = sr_detector.find_all_levels(df)
         df = sr_detector.add_volume_strength_features(df, sr_levels)
 
         # Add polynomial S/R features (Phase 3: 4 additional features)
         from src.features.sr_polynomial import SRPolynomialRegressor
+
         poly_regressor = SRPolynomialRegressor(degree=2, min_points=4)
         df = poly_regressor.add_polynomial_features(df, sr_levels)
 
@@ -199,9 +202,7 @@ def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
 # ============================================================================
 
 
-def calculate_stochastic(
-    df: pd.DataFrame, k_period: int = 14, d_period: int = 3
-) -> pd.DataFrame:
+def calculate_stochastic(df: pd.DataFrame, k_period: int = 14, d_period: int = 3) -> pd.DataFrame:
     """
     Calculate Stochastic Oscillator (%K and %D).
 
@@ -450,10 +451,14 @@ def calculate_keltner_channel(
     df = df.copy()
 
     # Center line (EMA)
-    df["keltner_middle"] = df["close"].ewm(
-        span=ema_period,
-        adjust=False,
-    ).mean()
+    df["keltner_middle"] = (
+        df["close"]
+        .ewm(
+            span=ema_period,
+            adjust=False,
+        )
+        .mean()
+    )
 
     # ATR for channel width
     atr = calculate_atr(df, period=atr_period)

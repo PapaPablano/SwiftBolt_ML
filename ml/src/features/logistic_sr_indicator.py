@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 class LogisticSignalType(Enum):
     """Type of signal from logistic regression indicator."""
+
     SUPPORT_RETEST = "support_retest"
     SUPPORT_BREAK = "support_break"
     RESISTANCE_RETEST = "resistance_retest"
@@ -44,6 +45,7 @@ class LogisticSignalType(Enum):
 @dataclass
 class LogisticSRLevel:
     """A detected S/R level with ML probability."""
+
     # Core properties
     is_support: bool
     level: float
@@ -84,6 +86,7 @@ class LogisticSRLevel:
 @dataclass
 class LogisticSRSettings:
     """Settings for LogisticSRIndicator."""
+
     pivot_length: int = 14
     target_respects: int = 3
     probability_threshold: float = 0.7
@@ -262,8 +265,7 @@ class LogisticSRIndicator:
         support_levels = [l for l in self._regression_levels if l.is_support]
         resistance_levels = [l for l in self._regression_levels if not l.is_support]
         respected_levels = [
-            l for l in self._all_levels
-            if l.times_respected >= self.settings.target_respects
+            l for l in self._all_levels if l.times_respected >= self.settings.target_respects
         ]
 
         # Find nearest support and resistance
@@ -271,8 +273,12 @@ class LogisticSRIndicator:
         nearest_support = None
         nearest_resistance = None
 
-        active_supports = [l.level for l in support_levels if l.end_index is None and l.level < current_price]
-        active_resistances = [l.level for l in resistance_levels if l.end_index is None and l.level > current_price]
+        active_supports = [
+            l.level for l in support_levels if l.end_index is None and l.level < current_price
+        ]
+        active_resistances = [
+            l.level for l in resistance_levels if l.end_index is None and l.level > current_price
+        ]
 
         if active_supports:
             nearest_support = max(active_supports)
@@ -299,8 +305,12 @@ class LogisticSRIndicator:
             "resistance_levels": [l.to_dict() for l in resistance_levels],
             "nearest_support": nearest_support,
             "nearest_resistance": nearest_resistance,
-            "support_distance_pct": round(support_distance_pct, 2) if support_distance_pct else None,
-            "resistance_distance_pct": round(resistance_distance_pct, 2) if resistance_distance_pct else None,
+            "support_distance_pct": (
+                round(support_distance_pct, 2) if support_distance_pct else None
+            ),
+            "resistance_distance_pct": (
+                round(resistance_distance_pct, 2) if resistance_distance_pct else None
+            ),
             "signals": [s.value for s in self._signals],
             "all_levels_count": len(self._all_levels),
             "respected_levels_count": len(respected_levels),
@@ -343,8 +353,8 @@ class LogisticSRIndicator:
 
         # Initial averages
         period = self.settings.pivot_length
-        avg_gain = sum(gains[:period + 1]) / period
-        avg_loss = sum(losses[:period + 1]) / period
+        avg_gain = sum(gains[: period + 1]) / period
+        avg_loss = sum(losses[: period + 1]) / period
 
         for i in range(period, n):
             avg_gain = (avg_gain * (period - 1) + gains[i]) / period
@@ -360,8 +370,7 @@ class LogisticSRIndicator:
     def _calculate_body_size(self, df: pd.DataFrame) -> None:
         """Calculate candle body size for all bars."""
         self._body_size_values = [
-            abs(float(row["close"]) - float(row["open"]))
-            for _, row in df.iterrows()
+            abs(float(row["close"]) - float(row["open"])) for _, row in df.iterrows()
         ]
 
     def _calculate_atr(self, df: pd.DataFrame) -> None:
@@ -383,11 +392,7 @@ class LogisticSRIndicator:
                 true_ranges.append(highs[i] - lows[i])
             else:
                 prev_close = closes[i - 1]
-                tr = max(
-                    highs[i] - lows[i],
-                    abs(highs[i] - prev_close),
-                    abs(lows[i] - prev_close)
-                )
+                tr = max(highs[i] - lows[i], abs(highs[i] - prev_close), abs(lows[i] - prev_close))
                 true_ranges.append(tr)
 
         # Calculate ATR using Wilder's smoothing
@@ -446,7 +451,10 @@ class LogisticSRIndicator:
                         level.times_respected += 1
 
                         # Only update latest_retest_index if cooldown passed
-                        if current_index > level.latest_retest_index + self.settings.retest_cooldown:
+                        if (
+                            current_index
+                            > level.latest_retest_index + self.settings.retest_cooldown
+                        ):
                             level.latest_retest_index = current_index
                     else:
                         # Closed below support - BREAK
@@ -459,7 +467,10 @@ class LogisticSRIndicator:
                         # Bounced back below - this is a retest
                         level.times_respected += 1
 
-                        if current_index > level.latest_retest_index + self.settings.retest_cooldown:
+                        if (
+                            current_index
+                            > level.latest_retest_index + self.settings.retest_cooldown
+                        ):
                             level.latest_retest_index = current_index
                     else:
                         # Closed above resistance - BREAK
@@ -584,7 +595,10 @@ class LogisticSRIndicator:
                 if current_bar["low"] < level.level:
                     if current_bar["close"] > level.level:
                         # Retest signal (only with cooldown)
-                        if current_index > level.latest_retest_index + self.settings.retest_cooldown:
+                        if (
+                            current_index
+                            > level.latest_retest_index + self.settings.retest_cooldown
+                        ):
                             self._signals.append(LogisticSignalType.SUPPORT_RETEST)
                     else:
                         # Break signal
@@ -594,7 +608,10 @@ class LogisticSRIndicator:
                 if current_bar["high"] > level.level:
                     if current_bar["close"] < level.level:
                         # Retest signal (only with cooldown)
-                        if current_index > level.latest_retest_index + self.settings.retest_cooldown:
+                        if (
+                            current_index
+                            > level.latest_retest_index + self.settings.retest_cooldown
+                        ):
                             self._signals.append(LogisticSignalType.RESISTANCE_RETEST)
                     else:
                         # Break signal
@@ -603,9 +620,7 @@ class LogisticSRIndicator:
     def _filter_levels(self, df: pd.DataFrame) -> None:
         """Filter levels for display based on settings."""
         # Filter by regression prediction
-        self._regression_levels = [
-            l for l in self._all_levels if l.detected_by_regression
-        ]
+        self._regression_levels = [l for l in self._all_levels if l.detected_by_regression]
 
         # Filter far lines if enabled
         if self.settings.hide_far_lines and len(df) > 0:
@@ -614,7 +629,8 @@ class LogisticSRIndicator:
 
             if atr > 0:
                 self._regression_levels = [
-                    level for level in self._regression_levels
+                    level
+                    for level in self._regression_levels
                     if level.end_index is not None or abs(last_close - level.level) <= atr * 7
                 ]
 
@@ -651,8 +667,7 @@ class LogisticSRIndicator:
 
         if result["nearest_support"] and support_levels:
             nearest_support_level = next(
-                (l for l in support_levels if l["level"] == result["nearest_support"]),
-                None
+                (l for l in support_levels if l["level"] == result["nearest_support"]), None
             )
             df["logistic_support_prob"] = (
                 nearest_support_level["probability"] if nearest_support_level else None
@@ -662,8 +677,7 @@ class LogisticSRIndicator:
 
         if result["nearest_resistance"] and resistance_levels:
             nearest_resistance_level = next(
-                (l for l in resistance_levels if l["level"] == result["nearest_resistance"]),
-                None
+                (l for l in resistance_levels if l["level"] == result["nearest_resistance"]), None
             )
             df["logistic_resistance_prob"] = (
                 nearest_resistance_level["probability"] if nearest_resistance_level else None

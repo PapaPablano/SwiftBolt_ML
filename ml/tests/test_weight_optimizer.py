@@ -199,7 +199,7 @@ class TestEqualWeights:
 
         assert len(weights) == 3
         for w in weights.values():
-            assert abs(w - 1/3) < 0.01
+            assert abs(w - 1 / 3) < 0.01
 
 
 class TestEdgeCases:
@@ -364,9 +364,7 @@ class TestAdaptiveOptimizer:
 
         # With normal returns
         normal_returns = np.random.randn(50) * 0.005
-        weights = optimizer.optimize_weights_adaptive(
-            predictions, actuals, returns=normal_returns
-        )
+        weights = optimizer.optimize_weights_adaptive(predictions, actuals, returns=normal_returns)
 
         assert len(weights) == 3
         assert abs(sum(weights.values()) - 1.0) < 0.01
@@ -378,16 +376,12 @@ class TestAdaptiveOptimizer:
 
         # High vol -> directional
         high_vol_returns = np.random.randn(50) * 0.05
-        optimizer.optimize_weights_adaptive(
-            predictions, actuals, returns=high_vol_returns
-        )
+        optimizer.optimize_weights_adaptive(predictions, actuals, returns=high_vol_returns)
         assert optimizer.current_regime == "high_vol"
 
         # Trending -> sharpe
         trending_returns = np.ones(50) * 0.02
-        optimizer.optimize_weights_adaptive(
-            predictions, actuals, returns=trending_returns
-        )
+        optimizer.optimize_weights_adaptive(predictions, actuals, returns=trending_returns)
         assert optimizer.current_regime == "trending"
 
 
@@ -438,9 +432,7 @@ class TestIntegration:
         all_weights = []
 
         for method in methods:
-            weights = optimizer.optimize_weights(
-                predictions, actuals, optimize_for=method
-            )
+            weights = optimizer.optimize_weights(predictions, actuals, optimize_for=method)
             all_weights.append(weights)
 
         # All should be valid

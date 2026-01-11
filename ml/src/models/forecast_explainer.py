@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class FeatureContribution:
     """Contribution of a single feature to the prediction."""
+
     feature_name: str
     value: float
     importance: float
@@ -36,6 +37,7 @@ class FeatureContribution:
 @dataclass
 class SignalBreakdown:
     """Breakdown of signals by category."""
+
     category: str  # 'trend', 'momentum', 'volatility', 'volume'
     signal: str  # 'bullish', 'bearish', 'neutral'
     strength: float  # 0-1
@@ -46,6 +48,7 @@ class SignalBreakdown:
 @dataclass
 class ForecastExplanation:
     """Complete explanation for a forecast."""
+
     symbol: str
     prediction: str  # 'bullish', 'bearish', 'neutral'
     confidence: float
@@ -70,18 +73,10 @@ class ForecastExplainer:
     """
 
     # Feature category mappings
-    TREND_FEATURES = [
-        "sma", "ema", "price_vs_sma", "supertrend", "adx", "plus_di", "minus_di"
-    ]
-    MOMENTUM_FEATURES = [
-        "rsi", "macd", "macd_signal", "macd_hist", "stochastic", "kdj"
-    ]
-    VOLATILITY_FEATURES = [
-        "atr", "bb_width", "volatility", "bb_upper", "bb_lower"
-    ]
-    VOLUME_FEATURES = [
-        "volume", "volume_ratio", "obv", "mfi", "vwap"
-    ]
+    TREND_FEATURES = ["sma", "ema", "price_vs_sma", "supertrend", "adx", "plus_di", "minus_di"]
+    MOMENTUM_FEATURES = ["rsi", "macd", "macd_signal", "macd_hist", "stochastic", "kdj"]
+    VOLATILITY_FEATURES = ["atr", "bb_width", "volatility", "bb_upper", "bb_lower"]
+    VOLUME_FEATURES = ["volume", "volume_ratio", "obv", "mfi", "vwap"]
 
     def __init__(
         self,
@@ -128,9 +123,7 @@ class ForecastExplainer:
         risk_factors = self._identify_risk_factors(features, prediction)
 
         # Gather supporting and contradicting evidence
-        supporting, contradicting = self._gather_evidence(
-            features, prediction, signal_breakdown
-        )
+        supporting, contradicting = self._gather_evidence(features, prediction, signal_breakdown)
 
         # Generate summary
         summary = self._generate_summary(
@@ -138,9 +131,7 @@ class ForecastExplainer:
         )
 
         # Generate recommendation
-        recommendation = self._generate_recommendation(
-            prediction, confidence, risk_factors
-        )
+        recommendation = self._generate_recommendation(prediction, confidence, risk_factors)
 
         from datetime import datetime
 
@@ -174,13 +165,15 @@ class ForecastExplainer:
             importance = self.feature_importance.get(name, 0.5)
             direction, description = self._interpret_feature(name, value)
 
-            contributions.append(FeatureContribution(
-                feature_name=name,
-                value=value,
-                importance=importance,
-                direction=direction,
-                description=description,
-            ))
+            contributions.append(
+                FeatureContribution(
+                    feature_name=name,
+                    value=value,
+                    importance=importance,
+                    direction=direction,
+                    description=description,
+                )
+            )
 
         # Sort by importance and return top 5
         contributions.sort(key=lambda x: x.importance, reverse=True)
@@ -294,13 +287,15 @@ class ForecastExplainer:
                 category, signal, strength, matching_features
             )
 
-            breakdowns.append(SignalBreakdown(
-                category=category,
-                signal=signal,
-                strength=strength,
-                indicators=matching_features,
-                description=description,
-            ))
+            breakdowns.append(
+                SignalBreakdown(
+                    category=category,
+                    signal=signal,
+                    strength=strength,
+                    indicators=matching_features,
+                    description=description,
+                )
+            )
 
         return breakdowns
 
@@ -312,7 +307,9 @@ class ForecastExplainer:
         indicators: List[str],
     ) -> str:
         """Generate description for a signal category."""
-        strength_word = "strongly" if strength > 0.7 else "moderately" if strength > 0.4 else "weakly"
+        strength_word = (
+            "strongly" if strength > 0.7 else "moderately" if strength > 0.4 else "weakly"
+        )
 
         if category == "trend":
             if signal == "bullish":
@@ -400,13 +397,9 @@ class ForecastExplainer:
 
         for breakdown in signal_breakdown:
             if breakdown.signal == prediction:
-                supporting.append(
-                    f"{breakdown.category.title()}: {breakdown.description}"
-                )
+                supporting.append(f"{breakdown.category.title()}: {breakdown.description}")
             elif breakdown.signal != "neutral" and breakdown.signal != prediction:
-                contradicting.append(
-                    f"{breakdown.category.title()}: {breakdown.description}"
-                )
+                contradicting.append(f"{breakdown.category.title()}: {breakdown.description}")
 
         if not supporting:
             supporting.append("Limited supporting evidence from indicators")
@@ -453,8 +446,7 @@ class ForecastExplainer:
     ) -> str:
         """Generate actionable recommendation."""
         has_risks = len(risk_factors) > 1 or (
-            len(risk_factors) == 1 and
-            "No significant" not in risk_factors[0]
+            len(risk_factors) == 1 and "No significant" not in risk_factors[0]
         )
 
         if confidence > 0.7 and not has_risks:

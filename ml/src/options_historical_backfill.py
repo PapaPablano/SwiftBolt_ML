@@ -311,8 +311,14 @@ class HistoricalOptionsBackfill:
                 historical_mid = min(historical_mid, current_mid * 3.0)  # Cap at 300% of current
 
                 # Estimate spread (spreads widen further from expiration)
-                spread_pct = (float(row["ask"]) - float(row["bid"])) / current_mid if current_mid > 0 else 0.05
-                historical_spread_pct = spread_pct * (1 + 0.02 * days_offset)  # 2% wider per day back
+                spread_pct = (
+                    (float(row["ask"]) - float(row["bid"])) / current_mid
+                    if current_mid > 0
+                    else 0.05
+                )
+                historical_spread_pct = spread_pct * (
+                    1 + 0.02 * days_offset
+                )  # 2% wider per day back
                 historical_spread_pct = min(historical_spread_pct, 0.20)  # Cap at 20%
 
                 historical_bid = historical_mid * (1 - historical_spread_pct / 2)
@@ -338,7 +344,9 @@ class HistoricalOptionsBackfill:
                 hist_row["bid"] = round(historical_bid, 4)
                 hist_row["ask"] = round(historical_ask, 4)
                 hist_row["last"] = round(historical_mid, 4)
-                hist_row["underlying_price"] = underlying_price if underlying_price > 0 else row["underlying_price"]
+                hist_row["underlying_price"] = (
+                    underlying_price if underlying_price > 0 else row["underlying_price"]
+                )
                 hist_row["volume"] = historical_vol
                 hist_row["open_interest"] = historical_oi
                 hist_row["iv"] = round(historical_iv, 6)
@@ -458,9 +466,7 @@ def ensure_options_history(
             return pd.DataFrame()
 
         # Return the history for ranking
-        return backfiller.get_options_history_for_ranking(
-            symbol, days_back=required_days + 5
-        )
+        return backfiller.get_options_history_for_ranking(symbol, days_back=required_days + 5)
     except Exception as e:
         logger.warning(f"{symbol}: Options history unavailable - {e}")
         return pd.DataFrame()

@@ -29,15 +29,17 @@ import numpy as np
 
 class ForecastOutcome(Enum):
     """Four-tier outcome classification for Option B framework."""
-    FULL_HIT = "FULL_HIT"           # Direction ✓ + Price within band ± tolerance
+
+    FULL_HIT = "FULL_HIT"  # Direction ✓ + Price within band ± tolerance
     DIRECTIONAL_HIT = "DIRECTIONAL_HIT"  # Direction ✓ + Price within 2x tolerance
     DIRECTIONAL_ONLY = "DIRECTIONAL_ONLY"  # Direction ✓ + Price beyond 2x tolerance
-    MISS = "MISS"                   # Direction ✗
+    MISS = "MISS"  # Direction ✗
 
 
 @dataclass
 class ForecastEvaluation:
     """Result of evaluating a single forecast against actual outcome."""
+
     outcome: ForecastOutcome
     direction_correct: bool
     within_band: bool
@@ -48,7 +50,7 @@ class ForecastEvaluation:
     coverage: int  # 1 if within band, 0 otherwise
     horizon_days: int
     tolerance_pct: float
-    
+
     def to_dict(self) -> Dict:
         return {
             "outcome": self.outcome.value,
@@ -60,25 +62,26 @@ class ForecastEvaluation:
             "bias": round(self.bias, 4),
             "coverage": self.coverage,
             "horizon_days": self.horizon_days,
-            "tolerance_pct": self.tolerance_pct
+            "tolerance_pct": self.tolerance_pct,
         }
 
 
 @dataclass
 class ForecastAccuracySummary:
     """Aggregated accuracy metrics following Option B framework."""
+
     total_forecasts: int
     directional_accuracy: float  # % direction correct
-    full_hit_rate: float         # % FULL_HIT
+    full_hit_rate: float  # % FULL_HIT
     directional_hit_rate: float  # % DIRECTIONAL_HIT
-    directional_only_rate: float # % DIRECTIONAL_ONLY
-    miss_rate: float             # % MISS
-    mape: float                  # Mean MAPE across all forecasts
-    bias: float                  # Mean bias (systematic over/under)
-    empirical_coverage: float    # % within predicted bands
+    directional_only_rate: float  # % DIRECTIONAL_ONLY
+    miss_rate: float  # % MISS
+    mape: float  # Mean MAPE across all forecasts
+    bias: float  # Mean bias (systematic over/under)
+    empirical_coverage: float  # % within predicted bands
     outcome_counts: Dict[str, int]
     by_horizon: Dict[int, Dict]  # Breakdown by horizon
-    
+
     def to_dict(self) -> Dict:
         return {
             "total_forecasts": self.total_forecasts,
@@ -98,9 +101,9 @@ class ForecastAccuracySummary:
                 "empirical_coverage": f"{self.empirical_coverage:.1%}",
             },
             "outcome_counts": self.outcome_counts,
-            "by_horizon": self.by_horizon
+            "by_horizon": self.by_horizon,
         }
-    
+
     def get_status(self) -> str:
         """Return health status based on metrics."""
         if self.directional_accuracy >= 0.54 and self.full_hit_rate >= 0.42:
@@ -116,10 +119,10 @@ class ForecastAccuracySummary:
 def get_tolerance_for_horizon(horizon_days: int) -> float:
     """
     Get tolerance percentage based on forecast horizon.
-    
+
     Args:
         horizon_days: Number of days in forecast horizon
-        
+
     Returns:
         Tolerance as decimal (0.01 = 1%, 0.02 = 2%)
     """
@@ -135,11 +138,11 @@ def evaluate_single_forecast(
     forecast_high: float,
     horizon_days: int,
     actual_close: float,
-    prior_close: float
+    prior_close: float,
 ) -> ForecastEvaluation:
     """
     Evaluate a single forecast against actual outcome using Option B framework.
-    
+
     Args:
         forecast_low: Lower band estimate
         forecast_mid: Mid-point/target estimate
@@ -147,7 +150,7 @@ def evaluate_single_forecast(
         horizon_days: Forecast horizon (1-10 days)
         actual_close: Realized close price at horizon
         prior_close: Previous day's close (for direction calculation)
-    
+
     Returns:
         ForecastEvaluation with outcome classification and metrics
     """
@@ -155,23 +158,23 @@ def evaluate_single_forecast(
     direction_forecast_up = forecast_mid > prior_close
     direction_actual_up = actual_close > prior_close
     direction_correct = direction_forecast_up == direction_actual_up
-    
+
     # Step 2: Tolerance calculation
     tolerance = get_tolerance_for_horizon(horizon_days)
-    
+
     # Band with tolerance
     band_low_with_tol = forecast_mid * (1 - tolerance)
     band_high_with_tol = forecast_mid * (1 + tolerance)
-    
+
     # 2x tolerance for directional hit
     band_low_2x = forecast_mid * (1 - 2 * tolerance)
     band_high_2x = forecast_mid * (1 + 2 * tolerance)
-    
+
     # Step 3: Band evaluation
     within_original_band = forecast_low <= actual_close <= forecast_high
     within_tolerance = band_low_with_tol <= actual_close <= band_high_with_tol
     within_2x_tolerance = band_low_2x <= actual_close <= band_high_2x
-    
+
     # Step 4: Outcome classification
     if direction_correct and within_tolerance:
         outcome = ForecastOutcome.FULL_HIT
@@ -181,12 +184,12 @@ def evaluate_single_forecast(
         outcome = ForecastOutcome.DIRECTIONAL_ONLY
     else:
         outcome = ForecastOutcome.MISS
-    
+
     # Step 5: Calculate auxiliary metrics
     mape = abs(actual_close - forecast_mid) / actual_close * 100 if actual_close != 0 else 0
     bias = forecast_mid - actual_close
     coverage = 1 if within_original_band else 0
-    
+
     return ForecastEvaluation(
         outcome=outcome,
         direction_correct=direction_correct,
@@ -197,27 +200,26 @@ def evaluate_single_forecast(
         bias=bias,
         coverage=coverage,
         horizon_days=horizon_days,
-        tolerance_pct=tolerance * 100
+        tolerance_pct=tolerance * 100,
     )
 
 
 def summarize_forecast_accuracy(
-    evaluations: List[ForecastEvaluation],
-    filter_horizon: Optional[int] = None
+    evaluations: List[ForecastEvaluation], filter_horizon: Optional[int] = None
 ) -> ForecastAccuracySummary:
     """
     Aggregate individual forecast evaluations into portfolio metrics.
-    
+
     Args:
         evaluations: List of ForecastEvaluation objects
         filter_horizon: Optional horizon to filter by (None = all)
-    
+
     Returns:
         ForecastAccuracySummary with aggregated metrics
     """
     if filter_horizon is not None:
         evaluations = [e for e in evaluations if e.horizon_days == filter_horizon]
-    
+
     if not evaluations:
         return ForecastAccuracySummary(
             total_forecasts=0,
@@ -230,33 +232,33 @@ def summarize_forecast_accuracy(
             bias=0.0,
             empirical_coverage=0.0,
             outcome_counts={},
-            by_horizon={}
+            by_horizon={},
         )
-    
+
     n = len(evaluations)
-    
+
     # Count outcomes
     outcome_counts = {
         ForecastOutcome.FULL_HIT.value: 0,
         ForecastOutcome.DIRECTIONAL_HIT.value: 0,
         ForecastOutcome.DIRECTIONAL_ONLY.value: 0,
-        ForecastOutcome.MISS.value: 0
+        ForecastOutcome.MISS.value: 0,
     }
     for e in evaluations:
         outcome_counts[e.outcome.value] += 1
-    
+
     # Primary metrics
     directional_accuracy = sum(1 for e in evaluations if e.direction_correct) / n
     full_hit_rate = outcome_counts[ForecastOutcome.FULL_HIT.value] / n
     directional_hit_rate = outcome_counts[ForecastOutcome.DIRECTIONAL_HIT.value] / n
     directional_only_rate = outcome_counts[ForecastOutcome.DIRECTIONAL_ONLY.value] / n
     miss_rate = outcome_counts[ForecastOutcome.MISS.value] / n
-    
+
     # Diagnostic metrics
     mape = np.mean([e.mape for e in evaluations])
     bias = np.mean([e.bias for e in evaluations])
     empirical_coverage = np.mean([e.coverage for e in evaluations])
-    
+
     # Breakdown by horizon
     horizons = set(e.horizon_days for e in evaluations)
     by_horizon = {}
@@ -267,11 +269,12 @@ def summarize_forecast_accuracy(
             by_horizon[h] = {
                 "count": h_n,
                 "directional_accuracy": sum(1 for e in h_evals if e.direction_correct) / h_n,
-                "full_hit_rate": sum(1 for e in h_evals if e.outcome == ForecastOutcome.FULL_HIT) / h_n,
+                "full_hit_rate": sum(1 for e in h_evals if e.outcome == ForecastOutcome.FULL_HIT)
+                / h_n,
                 "mape": np.mean([e.mape for e in h_evals]),
-                "tolerance": get_tolerance_for_horizon(h) * 100
+                "tolerance": get_tolerance_for_horizon(h) * 100,
             }
-    
+
     return ForecastAccuracySummary(
         total_forecasts=n,
         directional_accuracy=directional_accuracy,
@@ -283,14 +286,14 @@ def summarize_forecast_accuracy(
         bias=bias,
         empirical_coverage=empirical_coverage,
         outcome_counts=outcome_counts,
-        by_horizon=by_horizon
+        by_horizon=by_horizon,
     )
 
 
 def evaluate_forecast_batch(forecasts: List[Dict]) -> ForecastAccuracySummary:
     """
     Convenience function to evaluate a batch of forecasts.
-    
+
     Args:
         forecasts: List of dicts with:
             - forecast_low: float
@@ -299,39 +302,40 @@ def evaluate_forecast_batch(forecasts: List[Dict]) -> ForecastAccuracySummary:
             - horizon_days: int (default 1)
             - actual_close: float
             - prior_close: float (or actual_open as fallback)
-    
+
     Returns:
         ForecastAccuracySummary with aggregated metrics
     """
     evaluations = []
-    
+
     for f in forecasts:
-        forecast_low = f.get('forecast_low', f.get('lower_band', 0))
-        forecast_mid = f.get('forecast_mid', f.get('forecast_target', 0))
-        forecast_high = f.get('forecast_high', f.get('upper_band', 0))
-        horizon_days = f.get('horizon_days', 1)
-        actual_close = f.get('actual_close', 0)
-        prior_close = f.get('prior_close', f.get('actual_open', 0))
-        
+        forecast_low = f.get("forecast_low", f.get("lower_band", 0))
+        forecast_mid = f.get("forecast_mid", f.get("forecast_target", 0))
+        forecast_high = f.get("forecast_high", f.get("upper_band", 0))
+        horizon_days = f.get("horizon_days", 1)
+        actual_close = f.get("actual_close", 0)
+        prior_close = f.get("prior_close", f.get("actual_open", 0))
+
         if forecast_mid == 0 or actual_close == 0 or prior_close == 0:
             continue
-        
+
         eval_result = evaluate_single_forecast(
             forecast_low=forecast_low,
             forecast_mid=forecast_mid,
             forecast_high=forecast_high,
             horizon_days=horizon_days,
             actual_close=actual_close,
-            prior_close=prior_close
+            prior_close=prior_close,
         )
         evaluations.append(eval_result)
-    
+
     return summarize_forecast_accuracy(evaluations)
 
 
 @dataclass
 class DirectionalAccuracyResult:
     """Result of directional accuracy calculation."""
+
     overall_accuracy: float
     total_forecasts: int
     correct_directions: int
@@ -345,13 +349,14 @@ class DirectionalAccuracyResult:
             "correct_directions": self.correct_directions,
             "accuracy_by_confidence": self.accuracy_by_confidence,
             "expected_edge": self.expected_edge,
-            "weight_in_edge": "35%"
+            "weight_in_edge": "35%",
         }
 
 
 @dataclass
 class TargetPrecisionResult:
     """Result of target precision calculation."""
+
     mean_error_pct: float
     median_error_pct: float
     std_error_pct: float
@@ -365,13 +370,14 @@ class TargetPrecisionResult:
             "std_error_pct": self.std_error_pct,
             "within_2pct": self.within_2pct,
             "quality_rating": self.quality_rating,
-            "weight_in_edge": "35%"
+            "weight_in_edge": "35%",
         }
 
 
 @dataclass
 class BandEfficiencyResult:
     """Result of band efficiency calculation."""
+
     containment_rate: float
     avg_band_width_pct: float
     avg_actual_range_pct: float
@@ -385,13 +391,14 @@ class BandEfficiencyResult:
             "avg_actual_range_pct": self.avg_actual_range_pct,
             "efficiency": self.efficiency,
             "rating": self.rating,
-            "weight_in_edge": "20%"
+            "weight_in_edge": "20%",
         }
 
 
 @dataclass
 class ConfidenceCalibrationResult:
     """Result of confidence calibration calculation."""
+
     calibration_scores: Dict[str, Dict]
     mean_error: float
     quality: str
@@ -401,13 +408,14 @@ class ConfidenceCalibrationResult:
             "calibration_scores": self.calibration_scores,
             "mean_error": self.mean_error,
             "quality": self.quality,
-            "weight_in_edge": "10%"
+            "weight_in_edge": "10%",
         }
 
 
 @dataclass
 class ValidationReport:
     """Complete validation report."""
+
     summary: Dict
     directional_accuracy: DirectionalAccuracyResult
     target_precision: TargetPrecisionResult
@@ -422,7 +430,7 @@ class ValidationReport:
             "target_precision": self.target_precision.to_dict(),
             "band_efficiency": self.band_efficiency.to_dict(),
             "confidence_calibration": self.confidence_calibration.to_dict(),
-            "recommendations": self.recommendations
+            "recommendations": self.recommendations,
         }
 
 
@@ -446,7 +454,7 @@ class DirectionalAccuracy:
                 total_forecasts=0,
                 correct_directions=0,
                 accuracy_by_confidence={},
-                expected_edge="+0.0%"
+                expected_edge="+0.0%",
             )
 
         correct = 0
@@ -454,10 +462,10 @@ class DirectionalAccuracy:
         confidence_buckets: Dict[float, Dict] = {}
 
         for forecast in forecasts:
-            actual_close = forecast.get('actual_close', 0)
-            actual_open = forecast.get('actual_open', 0)
-            forecast_direction = forecast.get('forecast_direction', '').upper()
-            forecast_confidence = forecast.get('forecast_confidence', 0.5)
+            actual_close = forecast.get("actual_close", 0)
+            actual_open = forecast.get("actual_open", 0)
+            forecast_direction = forecast.get("forecast_direction", "").upper()
+            forecast_confidence = forecast.get("forecast_confidence", 0.5)
 
             if actual_close == 0 or actual_open == 0:
                 continue
@@ -471,18 +479,18 @@ class DirectionalAccuracy:
             # Track by confidence bucket (round to 0.1)
             conf_bucket = round(forecast_confidence, 1)
             if conf_bucket not in confidence_buckets:
-                confidence_buckets[conf_bucket] = {'correct': 0, 'total': 0}
+                confidence_buckets[conf_bucket] = {"correct": 0, "total": 0}
 
-            confidence_buckets[conf_bucket]['correct'] += int(is_correct)
-            confidence_buckets[conf_bucket]['total'] += 1
+            confidence_buckets[conf_bucket]["correct"] += int(is_correct)
+            confidence_buckets[conf_bucket]["total"] += 1
 
         overall_accuracy = correct / total if total > 0 else 0
 
         # Accuracy by confidence level
         accuracy_by_confidence = {
-            f"{conf:.0%}": bucket['correct'] / bucket['total']
+            f"{conf:.0%}": bucket["correct"] / bucket["total"]
             for conf, bucket in sorted(confidence_buckets.items())
-            if bucket['total'] >= 3  # Minimum sample size
+            if bucket["total"] >= 3  # Minimum sample size
         }
 
         edge_pct = (overall_accuracy - 0.5) * 100
@@ -492,7 +500,7 @@ class DirectionalAccuracy:
             total_forecasts=total,
             correct_directions=correct,
             accuracy_by_confidence=accuracy_by_confidence,
-            expected_edge=f"+{edge_pct:.1f}%" if edge_pct >= 0 else f"{edge_pct:.1f}%"
+            expected_edge=f"+{edge_pct:.1f}%" if edge_pct >= 0 else f"{edge_pct:.1f}%",
         )
 
 
@@ -514,14 +522,14 @@ class TargetPrecision:
                 median_error_pct=0.0,
                 std_error_pct=0.0,
                 within_2pct=0.0,
-                quality_rating="N/A"
+                quality_rating="N/A",
             )
 
         error_pct = []
 
         for forecast in forecasts:
-            target = forecast.get('forecast_target', 0)
-            actual = forecast.get('actual_close', 0)
+            target = forecast.get("forecast_target", 0)
+            actual = forecast.get("actual_close", 0)
 
             if target == 0 or actual == 0:
                 continue
@@ -536,7 +544,7 @@ class TargetPrecision:
                 median_error_pct=0.0,
                 std_error_pct=0.0,
                 within_2pct=0.0,
-                quality_rating="N/A"
+                quality_rating="N/A",
             )
 
         mean_error = np.mean(error_pct)
@@ -559,7 +567,7 @@ class TargetPrecision:
             median_error_pct=round(median_error, 2),
             std_error_pct=round(std_error, 2),
             within_2pct=round(within_2pct, 3),
-            quality_rating=quality
+            quality_rating=quality,
         )
 
 
@@ -584,7 +592,7 @@ class BandEfficiency:
                 avg_band_width_pct=0.0,
                 avg_actual_range_pct=0.0,
                 efficiency=0.0,
-                rating="N/A"
+                rating="N/A",
             )
 
         contained = 0
@@ -594,11 +602,11 @@ class BandEfficiency:
         prices = []
 
         for forecast in forecasts:
-            upper = forecast.get('upper_band', 0)
-            lower = forecast.get('lower_band', 0)
-            high = forecast.get('actual_high', 0)
-            low = forecast.get('actual_low', 0)
-            close = forecast.get('actual_close', 0)
+            upper = forecast.get("upper_band", 0)
+            lower = forecast.get("lower_band", 0)
+            high = forecast.get("actual_high", 0)
+            low = forecast.get("actual_low", 0)
+            close = forecast.get("actual_close", 0)
 
             if upper == 0 or lower == 0 or high == 0 or low == 0:
                 continue
@@ -618,7 +626,7 @@ class BandEfficiency:
                 avg_band_width_pct=0.0,
                 avg_actual_range_pct=0.0,
                 efficiency=0.0,
-                rating="N/A"
+                rating="N/A",
             )
 
         containment_rate = contained / total
@@ -645,7 +653,7 @@ class BandEfficiency:
             avg_band_width_pct=round(avg_band_width_pct, 2),
             avg_actual_range_pct=round(avg_actual_range_pct, 2),
             efficiency=round(efficiency, 3),
-            rating=rating
+            rating=rating,
         )
 
 
@@ -666,19 +674,15 @@ class ConfidenceCalibration:
                 - actual_close: float
         """
         if not forecasts:
-            return ConfidenceCalibrationResult(
-                calibration_scores={},
-                mean_error=0.0,
-                quality="N/A"
-            )
+            return ConfidenceCalibrationResult(calibration_scores={}, mean_error=0.0, quality="N/A")
 
         buckets: Dict[float, Dict] = {}
 
         for forecast in forecasts:
-            conf = forecast.get('forecast_confidence', 0.5)
-            actual_close = forecast.get('actual_close', 0)
-            actual_open = forecast.get('actual_open', 0)
-            forecast_direction = forecast.get('forecast_direction', '').upper()
+            conf = forecast.get("forecast_confidence", 0.5)
+            actual_close = forecast.get("actual_close", 0)
+            actual_open = forecast.get("actual_open", 0)
+            forecast_direction = forecast.get("forecast_direction", "").upper()
 
             if actual_close == 0 or actual_open == 0:
                 continue
@@ -689,17 +693,17 @@ class ConfidenceCalibration:
             # Round to nearest 0.05
             bucket_key = round(conf * 20) / 20
             if bucket_key not in buckets:
-                buckets[bucket_key] = {'correct': 0, 'total': 0}
+                buckets[bucket_key] = {"correct": 0, "total": 0}
 
-            buckets[bucket_key]['correct'] += int(is_correct)
-            buckets[bucket_key]['total'] += 1
+            buckets[bucket_key]["correct"] += int(is_correct)
+            buckets[bucket_key]["total"] += 1
 
         calibration_scores = {}
         calibration_errors = []
 
         for conf_level, data in sorted(buckets.items()):
-            if data['total'] >= 3:  # Minimum samples
-                actual_accuracy = data['correct'] / data['total']
+            if data["total"] >= 3:  # Minimum samples
+                actual_accuracy = data["correct"] / data["total"]
                 expected_accuracy = conf_level
                 error = abs(actual_accuracy - expected_accuracy)
 
@@ -708,7 +712,7 @@ class ConfidenceCalibration:
                     "expected": round(expected_accuracy, 2),
                     "actual": round(actual_accuracy, 2),
                     "error": round(error, 2),
-                    "samples": data['total']
+                    "samples": data["total"],
                 }
 
         mean_error = np.mean(calibration_errors) if calibration_errors else 0
@@ -723,9 +727,7 @@ class ConfidenceCalibration:
             quality = "Needs Improvement"
 
         return ConfidenceCalibrationResult(
-            calibration_scores=calibration_scores,
-            mean_error=round(mean_error, 3),
-            quality=quality
+            calibration_scores=calibration_scores, mean_error=round(mean_error, 3), quality=quality
         )
 
 
@@ -777,12 +779,7 @@ class ForecastValidator:
         # Calibration: invert error
         cal_score = 1 - conf_cal.mean_error
 
-        edge_score = (
-            dir_score * 0.35 +
-            target_score * 0.35 +
-            band_score * 0.20 +
-            cal_score * 0.10
-        )
+        edge_score = dir_score * 0.35 + target_score * 0.35 + band_score * 0.20 + cal_score * 0.10
 
         # Normalize to 0.5 baseline
         edge_score = 0.5 + edge_score
@@ -797,7 +794,7 @@ class ForecastValidator:
             rating = "Needs Improvement"
 
         # Date range
-        dates = [f.get('forecast_date', '') for f in forecasts if f.get('forecast_date')]
+        dates = [f.get("forecast_date", "") for f in forecasts if f.get("forecast_date")]
         date_range = f"{min(dates)} to {max(dates)}" if dates else "N/A"
 
         summary = {
@@ -805,7 +802,7 @@ class ForecastValidator:
             "date_range": date_range,
             "edge_score": f"{edge_score*100:.1f}%",
             "target": ">55%",
-            "rating": rating
+            "rating": rating,
         }
 
         recommendations = self._generate_recommendations(dir_acc, target_prec, band_eff, conf_cal)
@@ -816,7 +813,7 @@ class ForecastValidator:
             target_precision=target_prec,
             band_efficiency=band_eff,
             confidence_calibration=conf_cal,
-            recommendations=recommendations
+            recommendations=recommendations,
         )
 
     def _generate_recommendations(
@@ -824,73 +821,91 @@ class ForecastValidator:
         dir_acc: DirectionalAccuracyResult,
         target_prec: TargetPrecisionResult,
         band_eff: BandEfficiencyResult,
-        conf_cal: ConfidenceCalibrationResult
+        conf_cal: ConfidenceCalibrationResult,
     ) -> List[Dict]:
         """Generate improvement recommendations based on weak areas."""
         recommendations = []
 
         # Direction accuracy
         if dir_acc.overall_accuracy < 0.53:
-            recommendations.append({
-                "issue": f"Directional accuracy {dir_acc.overall_accuracy:.1%} below 53%",
-                "action": "Increase SuperTrend weight or retrain ensemble with more features",
-                "priority": "HIGH"
-            })
+            recommendations.append(
+                {
+                    "issue": f"Directional accuracy {dir_acc.overall_accuracy:.1%} below 53%",
+                    "action": "Increase SuperTrend weight or retrain ensemble with more features",
+                    "priority": "HIGH",
+                }
+            )
         elif dir_acc.overall_accuracy < 0.55:
-            recommendations.append({
-                "issue": f"Directional accuracy {dir_acc.overall_accuracy:.1%} slightly below target",
-                "action": "Review conflicting signal handling; consider adding momentum features",
-                "priority": "MEDIUM"
-            })
+            recommendations.append(
+                {
+                    "issue": f"Directional accuracy {dir_acc.overall_accuracy:.1%} slightly below target",
+                    "action": "Review conflicting signal handling; consider adding momentum features",
+                    "priority": "MEDIUM",
+                }
+            )
 
         # Target precision
         if target_prec.mean_error_pct > 3.5:
-            recommendations.append({
-                "issue": f"Target precision {target_prec.mean_error_pct:.1f}% off (goal: <2.5%)",
-                "action": "Increase polynomial forecast weight; refine ATR-based move calculation",
-                "priority": "HIGH"
-            })
+            recommendations.append(
+                {
+                    "issue": f"Target precision {target_prec.mean_error_pct:.1f}% off (goal: <2.5%)",
+                    "action": "Increase polynomial forecast weight; refine ATR-based move calculation",
+                    "priority": "HIGH",
+                }
+            )
         elif target_prec.mean_error_pct > 2.5:
-            recommendations.append({
-                "issue": f"Target precision {target_prec.mean_error_pct:.1f}% moderately off",
-                "action": "Consider time-of-day adjustments; refine S/R constraint weights",
-                "priority": "MEDIUM"
-            })
+            recommendations.append(
+                {
+                    "issue": f"Target precision {target_prec.mean_error_pct:.1f}% moderately off",
+                    "action": "Consider time-of-day adjustments; refine S/R constraint weights",
+                    "priority": "MEDIUM",
+                }
+            )
 
         # Band containment
         if band_eff.containment_rate < 0.70:
-            recommendations.append({
-                "issue": f"Bands contain only {band_eff.containment_rate:.0%} of moves (goal: >85%)",
-                "action": "Widen bands via volatility_expansion parameter; improve S/R detection",
-                "priority": "HIGH"
-            })
+            recommendations.append(
+                {
+                    "issue": f"Bands contain only {band_eff.containment_rate:.0%} of moves (goal: >85%)",
+                    "action": "Widen bands via volatility_expansion parameter; improve S/R detection",
+                    "priority": "HIGH",
+                }
+            )
         elif band_eff.containment_rate < 0.80:
-            recommendations.append({
-                "issue": f"Bands contain {band_eff.containment_rate:.0%} of moves (goal: >85%)",
-                "action": "Slightly widen bands; review ATR multiplier",
-                "priority": "MEDIUM"
-            })
+            recommendations.append(
+                {
+                    "issue": f"Bands contain {band_eff.containment_rate:.0%} of moves (goal: >85%)",
+                    "action": "Slightly widen bands; review ATR multiplier",
+                    "priority": "MEDIUM",
+                }
+            )
 
         # Confidence calibration
         if conf_cal.mean_error > 0.15:
-            recommendations.append({
-                "issue": f"Confidence calibration error {conf_cal.mean_error:.0%}",
-                "action": "Adjust confidence boost/penalty multipliers; recalibrate monthly",
-                "priority": "HIGH"
-            })
+            recommendations.append(
+                {
+                    "issue": f"Confidence calibration error {conf_cal.mean_error:.0%}",
+                    "action": "Adjust confidence boost/penalty multipliers; recalibrate monthly",
+                    "priority": "HIGH",
+                }
+            )
         elif conf_cal.mean_error > 0.10:
-            recommendations.append({
-                "issue": f"Confidence calibration slightly off ({conf_cal.mean_error:.0%})",
-                "action": "Fine-tune confidence calculation weights",
-                "priority": "MEDIUM"
-            })
+            recommendations.append(
+                {
+                    "issue": f"Confidence calibration slightly off ({conf_cal.mean_error:.0%})",
+                    "action": "Fine-tune confidence calculation weights",
+                    "priority": "MEDIUM",
+                }
+            )
 
         if not recommendations:
-            recommendations.append({
-                "issue": "No major issues detected",
-                "action": "Continue monitoring; recalibrate monthly",
-                "priority": "ROUTINE"
-            })
+            recommendations.append(
+                {
+                    "issue": "No major issues detected",
+                    "action": "Continue monitoring; recalibrate monthly",
+                    "priority": "ROUTINE",
+                }
+            )
 
         return recommendations
 
@@ -902,8 +917,8 @@ class ForecastValidator:
             Edge score as float (0.5 = no edge, >0.55 = good edge)
         """
         report = self.generate_report(forecasts)
-        edge_str = report.summary['edge_score']
-        return float(edge_str.rstrip('%')) / 100
+        edge_str = report.summary["edge_score"]
+        return float(edge_str.rstrip("%")) / 100
 
 
 def validate_forecasts(forecasts: List[Dict]) -> ValidationReport:

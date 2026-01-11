@@ -207,9 +207,7 @@ class TestVolatilityIndicators:
 
         # Get valid values
         mask = (
-            df["keltner_upper"].notna()
-            & df["keltner_middle"].notna()
-            & df["keltner_lower"].notna()
+            df["keltner_upper"].notna() & df["keltner_middle"].notna() & df["keltner_lower"].notna()
         )
         valid_df = df[mask]
 
@@ -249,9 +247,7 @@ class TestComprehensiveFeatures:
 
         # Exclude original OHLCV columns
         indicator_cols = [
-            col
-            for col in df.columns
-            if col not in ["ts", "open", "high", "low", "close", "volume"]
+            col for col in df.columns if col not in ["ts", "open", "high", "low", "close", "volume"]
         ]
 
         for col in indicator_cols:

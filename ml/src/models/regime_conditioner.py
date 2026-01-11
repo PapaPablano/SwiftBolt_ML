@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 class TrendRegime(Enum):
     """Market trend regime classification."""
+
     STRONG_TREND = "strong_trend"
     WEAK_TREND = "weak_trend"
     NEUTRAL = "neutral"
@@ -35,6 +36,7 @@ class TrendRegime(Enum):
 
 class VolatilityRegime(Enum):
     """Market volatility regime classification."""
+
     HIGH_VOL = "high_vol"
     NORMAL_VOL = "normal_vol"
     LOW_VOL = "low_vol"
@@ -43,6 +45,7 @@ class VolatilityRegime(Enum):
 @dataclass
 class RegimeState:
     """Current market regime state."""
+
     trend_regime: TrendRegime
     vol_regime: VolatilityRegime
     adx: float
@@ -62,6 +65,7 @@ class RegimeState:
 @dataclass
 class RegimeWeights:
     """Ranking weights for a specific regime."""
+
     momentum: float
     value: float
     greeks: float
@@ -105,90 +109,49 @@ class RegimeConditioner:
     """
 
     # Default weights (baseline)
-    DEFAULT_WEIGHTS = RegimeWeights(
-        momentum=0.40,
-        value=0.35,
-        greeks=0.25,
-        regime_name="default"
-    )
+    DEFAULT_WEIGHTS = RegimeWeights(momentum=0.40, value=0.35, greeks=0.25, regime_name="default")
 
     # Regime-specific weight configurations
     REGIME_WEIGHTS = {
         # Strong trending market: emphasize momentum/runners
         (TrendRegime.STRONG_TREND, VolatilityRegime.NORMAL_VOL): RegimeWeights(
-            momentum=0.50,
-            value=0.25,
-            greeks=0.25,
-            regime_name="strong_trend_normal_vol"
+            momentum=0.50, value=0.25, greeks=0.25, regime_name="strong_trend_normal_vol"
         ),
         (TrendRegime.STRONG_TREND, VolatilityRegime.HIGH_VOL): RegimeWeights(
-            momentum=0.45,
-            value=0.20,
-            greeks=0.35,
-            regime_name="strong_trend_high_vol"
+            momentum=0.45, value=0.20, greeks=0.35, regime_name="strong_trend_high_vol"
         ),
         (TrendRegime.STRONG_TREND, VolatilityRegime.LOW_VOL): RegimeWeights(
-            momentum=0.55,
-            value=0.25,
-            greeks=0.20,
-            regime_name="strong_trend_low_vol"
+            momentum=0.55, value=0.25, greeks=0.20, regime_name="strong_trend_low_vol"
         ),
         # Weak trend: balanced approach
         (TrendRegime.WEAK_TREND, VolatilityRegime.NORMAL_VOL): RegimeWeights(
-            momentum=0.40,
-            value=0.35,
-            greeks=0.25,
-            regime_name="weak_trend_normal_vol"
+            momentum=0.40, value=0.35, greeks=0.25, regime_name="weak_trend_normal_vol"
         ),
         (TrendRegime.WEAK_TREND, VolatilityRegime.HIGH_VOL): RegimeWeights(
-            momentum=0.35,
-            value=0.30,
-            greeks=0.35,
-            regime_name="weak_trend_high_vol"
+            momentum=0.35, value=0.30, greeks=0.35, regime_name="weak_trend_high_vol"
         ),
         (TrendRegime.WEAK_TREND, VolatilityRegime.LOW_VOL): RegimeWeights(
-            momentum=0.40,
-            value=0.40,
-            greeks=0.20,
-            regime_name="weak_trend_low_vol"
+            momentum=0.40, value=0.40, greeks=0.20, regime_name="weak_trend_low_vol"
         ),
         # Neutral: balanced
         (TrendRegime.NEUTRAL, VolatilityRegime.NORMAL_VOL): RegimeWeights(
-            momentum=0.35,
-            value=0.40,
-            greeks=0.25,
-            regime_name="neutral_normal_vol"
+            momentum=0.35, value=0.40, greeks=0.25, regime_name="neutral_normal_vol"
         ),
         (TrendRegime.NEUTRAL, VolatilityRegime.HIGH_VOL): RegimeWeights(
-            momentum=0.30,
-            value=0.35,
-            greeks=0.35,
-            regime_name="neutral_high_vol"
+            momentum=0.30, value=0.35, greeks=0.35, regime_name="neutral_high_vol"
         ),
         (TrendRegime.NEUTRAL, VolatilityRegime.LOW_VOL): RegimeWeights(
-            momentum=0.35,
-            value=0.45,
-            greeks=0.20,
-            regime_name="neutral_low_vol"
+            momentum=0.35, value=0.45, greeks=0.20, regime_name="neutral_low_vol"
         ),
         # Mean reverting: emphasize value/IV rank/spread
         (TrendRegime.MEAN_REVERTING, VolatilityRegime.NORMAL_VOL): RegimeWeights(
-            momentum=0.25,
-            value=0.45,
-            greeks=0.30,
-            regime_name="mean_reverting_normal_vol"
+            momentum=0.25, value=0.45, greeks=0.30, regime_name="mean_reverting_normal_vol"
         ),
         (TrendRegime.MEAN_REVERTING, VolatilityRegime.HIGH_VOL): RegimeWeights(
-            momentum=0.20,
-            value=0.40,
-            greeks=0.40,
-            regime_name="mean_reverting_high_vol"
+            momentum=0.20, value=0.40, greeks=0.40, regime_name="mean_reverting_high_vol"
         ),
         (TrendRegime.MEAN_REVERTING, VolatilityRegime.LOW_VOL): RegimeWeights(
-            momentum=0.25,
-            value=0.50,
-            greeks=0.25,
-            regime_name="mean_reverting_low_vol"
+            momentum=0.25, value=0.50, greeks=0.25, regime_name="mean_reverting_low_vol"
         ),
     }
 
@@ -257,13 +220,12 @@ class RegimeConditioner:
         # Update volatility history
         self._vol_history.append(atr_pct)
         if len(self._vol_history) > self.lookback_days:
-            self._vol_history = self._vol_history[-self.lookback_days:]
+            self._vol_history = self._vol_history[-self.lookback_days :]
 
         # Calculate volatility percentile
         if len(self._vol_history) >= 10:
             vol_percentile = (
-                np.sum(np.array(self._vol_history) <= atr_pct) /
-                len(self._vol_history) * 100
+                np.sum(np.array(self._vol_history) <= atr_pct) / len(self._vol_history) * 100
             )
         else:
             vol_percentile = 50.0
@@ -302,10 +264,7 @@ class RegimeConditioner:
         # True Range
         tr = np.maximum(
             high[1:] - low[1:],
-            np.maximum(
-                np.abs(high[1:] - close[:-1]),
-                np.abs(low[1:] - close[:-1])
-            )
+            np.maximum(np.abs(high[1:] - close[:-1]), np.abs(low[1:] - close[:-1])),
         )
 
         # Directional Movement
@@ -341,10 +300,7 @@ class RegimeConditioner:
 
         tr = np.maximum(
             high[1:] - low[1:],
-            np.maximum(
-                np.abs(high[1:] - close[:-1]),
-                np.abs(low[1:] - close[:-1])
-            )
+            np.maximum(np.abs(high[1:] - close[:-1]), np.abs(low[1:] - close[:-1])),
         )
 
         atr = np.mean(tr[-period:]) if len(tr) >= period else np.mean(tr)
@@ -461,9 +417,9 @@ class RegimeConditioner:
 
         # Calculate regime-conditioned composite rank
         df["regime_conditioned_rank"] = (
-            df[momentum_col] * weights.momentum +
-            df[value_col] * weights.value +
-            df[greeks_col] * weights.greeks
+            df[momentum_col] * weights.momentum
+            + df[value_col] * weights.value
+            + df[greeks_col] * weights.greeks
         )
 
         # Add regime metadata

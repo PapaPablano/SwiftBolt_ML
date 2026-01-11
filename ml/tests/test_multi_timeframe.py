@@ -20,14 +20,16 @@ def sample_ohlc_df():
     returns = np.random.randn(n) * 0.02
     prices = base_price * np.cumprod(1 + returns)
 
-    df = pd.DataFrame({
-        "ts": pd.date_range("2024-01-01", periods=n, freq="D"),
-        "open": prices * (1 + np.random.randn(n) * 0.005),
-        "high": prices * (1 + np.abs(np.random.randn(n) * 0.01)),
-        "low": prices * (1 - np.abs(np.random.randn(n) * 0.01)),
-        "close": prices,
-        "volume": np.random.randint(1000000, 10000000, n).astype(float),
-    })
+    df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2024-01-01", periods=n, freq="D"),
+            "open": prices * (1 + np.random.randn(n) * 0.005),
+            "high": prices * (1 + np.abs(np.random.randn(n) * 0.01)),
+            "low": prices * (1 - np.abs(np.random.randn(n) * 0.01)),
+            "close": prices,
+            "volume": np.random.randint(1000000, 10000000, n).astype(float),
+        }
+    )
 
     df["high"] = df[["open", "high", "close"]].max(axis=1)
     df["low"] = df[["open", "low", "close"]].min(axis=1)
@@ -45,14 +47,16 @@ def sample_hourly_df():
     returns = np.random.randn(n) * 0.005
     prices = base_price * np.cumprod(1 + returns)
 
-    df = pd.DataFrame({
-        "ts": pd.date_range("2024-01-01", periods=n, freq="h"),
-        "open": prices * (1 + np.random.randn(n) * 0.002),
-        "high": prices * (1 + np.abs(np.random.randn(n) * 0.003)),
-        "low": prices * (1 - np.abs(np.random.randn(n) * 0.003)),
-        "close": prices,
-        "volume": np.random.randint(100000, 1000000, n).astype(float),
-    })
+    df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2024-01-01", periods=n, freq="h"),
+            "open": prices * (1 + np.random.randn(n) * 0.002),
+            "high": prices * (1 + np.abs(np.random.randn(n) * 0.003)),
+            "low": prices * (1 - np.abs(np.random.randn(n) * 0.003)),
+            "close": prices,
+            "volume": np.random.randint(100000, 1000000, n).astype(float),
+        }
+    )
 
     df["high"] = df[["open", "high", "close"]].max(axis=1)
     df["low"] = df[["open", "low", "close"]].min(axis=1)
@@ -70,14 +74,16 @@ def sample_15min_df():
     returns = np.random.randn(n) * 0.001
     prices = base_price * np.cumprod(1 + returns)
 
-    df = pd.DataFrame({
-        "ts": pd.date_range("2024-01-01", periods=n, freq="15min"),
-        "open": prices * (1 + np.random.randn(n) * 0.001),
-        "high": prices * (1 + np.abs(np.random.randn(n) * 0.002)),
-        "low": prices * (1 - np.abs(np.random.randn(n) * 0.002)),
-        "close": prices,
-        "volume": np.random.randint(10000, 100000, n).astype(float),
-    })
+    df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2024-01-01", periods=n, freq="15min"),
+            "open": prices * (1 + np.random.randn(n) * 0.001),
+            "high": prices * (1 + np.abs(np.random.randn(n) * 0.002)),
+            "low": prices * (1 - np.abs(np.random.randn(n) * 0.002)),
+            "close": prices,
+            "volume": np.random.randint(10000, 100000, n).astype(float),
+        }
+    )
 
     df["high"] = df[["open", "high", "close"]].max(axis=1)
     df["low"] = df[["open", "low", "close"]].min(axis=1)
@@ -95,14 +101,16 @@ def sample_weekly_df():
     returns = np.random.randn(n) * 0.03
     prices = base_price * np.cumprod(1 + returns)
 
-    df = pd.DataFrame({
-        "ts": pd.date_range("2024-01-01", periods=n, freq="W"),
-        "open": prices * (1 + np.random.randn(n) * 0.01),
-        "high": prices * (1 + np.abs(np.random.randn(n) * 0.02)),
-        "low": prices * (1 - np.abs(np.random.randn(n) * 0.02)),
-        "close": prices,
-        "volume": np.random.randint(5000000, 50000000, n).astype(float),
-    })
+    df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2024-01-01", periods=n, freq="W"),
+            "open": prices * (1 + np.random.randn(n) * 0.01),
+            "high": prices * (1 + np.abs(np.random.randn(n) * 0.02)),
+            "low": prices * (1 - np.abs(np.random.randn(n) * 0.02)),
+            "close": prices,
+            "volume": np.random.randint(5000000, 50000000, n).astype(float),
+        }
+    )
 
     df["high"] = df[["open", "high", "close"]].max(axis=1)
     df["low"] = df[["open", "low", "close"]].min(axis=1)
@@ -151,9 +159,7 @@ class TestMultiTimeframeFeatures:
 
         assert result.empty
 
-    def test_compute_all_timeframes(
-        self, sample_ohlc_df, sample_hourly_df, sample_weekly_df
-    ):
+    def test_compute_all_timeframes(self, sample_ohlc_df, sample_hourly_df, sample_weekly_df):
         """Test computing features across multiple timeframes."""
         mtf = MultiTimeframeFeatures(timeframes=["h1", "d1", "w1"])
 
@@ -248,9 +254,7 @@ class TestMultiTimeframeFeatures:
 class TestTimeframeAlignment:
     """Test timeframe alignment functionality."""
 
-    def test_higher_to_lower_frequency(
-        self, sample_ohlc_df, sample_hourly_df
-    ):
+    def test_higher_to_lower_frequency(self, sample_ohlc_df, sample_hourly_df):
         """Test aligning hourly data to daily."""
         mtf = MultiTimeframeFeatures(timeframes=["h1", "d1"])
 
@@ -264,9 +268,7 @@ class TestTimeframeAlignment:
         # Result should have same length as daily data
         assert len(result) == len(sample_ohlc_df)
 
-    def test_lower_to_higher_frequency(
-        self, sample_ohlc_df, sample_weekly_df
-    ):
+    def test_lower_to_higher_frequency(self, sample_ohlc_df, sample_weekly_df):
         """Test aligning weekly data to daily (forward-fill)."""
         mtf = MultiTimeframeFeatures(timeframes=["d1", "w1"])
 
@@ -314,10 +316,12 @@ class TestEdgeCases:
         mtf = MultiTimeframeFeatures(timeframes=["d1"])
 
         # Create DataFrame without trend indicators
-        df = pd.DataFrame({
-            "ts": pd.date_range("2024-01-01", periods=10, freq="D"),
-            "random_col": range(10),
-        })
+        df = pd.DataFrame(
+            {
+                "ts": pd.date_range("2024-01-01", periods=10, freq="D"),
+                "random_col": range(10),
+            }
+        )
 
         alignment = mtf.compute_alignment_score(df)
 
@@ -342,42 +346,48 @@ class TestIntegration:
         # Daily data
         returns_d = np.random.randn(n_daily) * 0.02
         prices_d = base_price * np.cumprod(1 + returns_d)
-        daily_df = pd.DataFrame({
-            "ts": pd.date_range("2023-01-01", periods=n_daily, freq="D"),
-            "open": prices_d * (1 + np.random.randn(n_daily) * 0.005),
-            "high": prices_d * (1 + np.abs(np.random.randn(n_daily) * 0.01)),
-            "low": prices_d * (1 - np.abs(np.random.randn(n_daily) * 0.01)),
-            "close": prices_d,
-            "volume": np.random.randint(1000000, 10000000, n_daily).astype(float),
-        })
+        daily_df = pd.DataFrame(
+            {
+                "ts": pd.date_range("2023-01-01", periods=n_daily, freq="D"),
+                "open": prices_d * (1 + np.random.randn(n_daily) * 0.005),
+                "high": prices_d * (1 + np.abs(np.random.randn(n_daily) * 0.01)),
+                "low": prices_d * (1 - np.abs(np.random.randn(n_daily) * 0.01)),
+                "close": prices_d,
+                "volume": np.random.randint(1000000, 10000000, n_daily).astype(float),
+            }
+        )
         daily_df["high"] = daily_df[["open", "high", "close"]].max(axis=1)
         daily_df["low"] = daily_df[["open", "low", "close"]].min(axis=1)
 
         # Hourly data
         returns_h = np.random.randn(n_hourly) * 0.005
         prices_h = base_price * np.cumprod(1 + returns_h)
-        hourly_df = pd.DataFrame({
-            "ts": pd.date_range("2023-01-01", periods=n_hourly, freq="h"),
-            "open": prices_h * (1 + np.random.randn(n_hourly) * 0.002),
-            "high": prices_h * (1 + np.abs(np.random.randn(n_hourly) * 0.003)),
-            "low": prices_h * (1 - np.abs(np.random.randn(n_hourly) * 0.003)),
-            "close": prices_h,
-            "volume": np.random.randint(100000, 1000000, n_hourly).astype(float),
-        })
+        hourly_df = pd.DataFrame(
+            {
+                "ts": pd.date_range("2023-01-01", periods=n_hourly, freq="h"),
+                "open": prices_h * (1 + np.random.randn(n_hourly) * 0.002),
+                "high": prices_h * (1 + np.abs(np.random.randn(n_hourly) * 0.003)),
+                "low": prices_h * (1 - np.abs(np.random.randn(n_hourly) * 0.003)),
+                "close": prices_h,
+                "volume": np.random.randint(100000, 1000000, n_hourly).astype(float),
+            }
+        )
         hourly_df["high"] = hourly_df[["open", "high", "close"]].max(axis=1)
         hourly_df["low"] = hourly_df[["open", "low", "close"]].min(axis=1)
 
         # Weekly data
         returns_w = np.random.randn(n_weekly) * 0.03
         prices_w = base_price * np.cumprod(1 + returns_w)
-        weekly_df = pd.DataFrame({
-            "ts": pd.date_range("2022-01-01", periods=n_weekly, freq="W"),
-            "open": prices_w * (1 + np.random.randn(n_weekly) * 0.01),
-            "high": prices_w * (1 + np.abs(np.random.randn(n_weekly) * 0.02)),
-            "low": prices_w * (1 - np.abs(np.random.randn(n_weekly) * 0.02)),
-            "close": prices_w,
-            "volume": np.random.randint(5000000, 50000000, n_weekly).astype(float),
-        })
+        weekly_df = pd.DataFrame(
+            {
+                "ts": pd.date_range("2022-01-01", periods=n_weekly, freq="W"),
+                "open": prices_w * (1 + np.random.randn(n_weekly) * 0.01),
+                "high": prices_w * (1 + np.abs(np.random.randn(n_weekly) * 0.02)),
+                "low": prices_w * (1 - np.abs(np.random.randn(n_weekly) * 0.02)),
+                "close": prices_w,
+                "volume": np.random.randint(5000000, 50000000, n_weekly).astype(float),
+            }
+        )
         weekly_df["high"] = weekly_df[["open", "high", "close"]].max(axis=1)
         weekly_df["low"] = weekly_df[["open", "low", "close"]].min(axis=1)
 

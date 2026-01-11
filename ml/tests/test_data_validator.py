@@ -22,24 +22,28 @@ class TestOHLCValidator:
         lows = np.minimum(opens, closes) - np.abs(np.random.normal(0.5, 0.3, n))
         volumes = np.random.randint(100000, 10000000, n)
 
-        return pd.DataFrame({
-            "open": opens,
-            "high": highs,
-            "low": lows,
-            "close": closes,
-            "volume": volumes,
-        })
+        return pd.DataFrame(
+            {
+                "open": opens,
+                "high": highs,
+                "low": lows,
+                "close": closes,
+                "volume": volumes,
+            }
+        )
 
     @pytest.fixture
     def invalid_ohlc_data(self) -> pd.DataFrame:
         """Create OHLC data with known issues."""
-        return pd.DataFrame({
-            "open": [100, 101, 102, -5, 104],  # Negative price
-            "high": [99, 102, 103, 105, 105],  # First high < open (invalid)
-            "low": [99, 100, 101, 103, 103],
-            "close": [101, 101, 102, 104, 104],
-            "volume": [1000000, -500, 1000000, 1000000, 1000000],  # Negative volume
-        })
+        return pd.DataFrame(
+            {
+                "open": [100, 101, 102, -5, 104],  # Negative price
+                "high": [99, 102, 103, 105, 105],  # First high < open (invalid)
+                "low": [99, 100, 101, 103, 103],
+                "close": [101, 101, 102, 104, 104],
+                "volume": [1000000, -500, 1000000, 1000000, 1000000],  # Negative volume
+            }
+        )
 
     def test_init(self):
         """Test validator initialization."""
@@ -57,13 +61,15 @@ class TestOHLCValidator:
 
     def test_validate_invalid_high(self):
         """Test detection of high < max(open, close)."""
-        df = pd.DataFrame({
-            "open": [100, 101],
-            "high": [99, 102],  # First row: high < open
-            "low": [98, 100],
-            "close": [100, 101],
-            "volume": [1000, 1000],
-        })
+        df = pd.DataFrame(
+            {
+                "open": [100, 101],
+                "high": [99, 102],  # First row: high < open
+                "low": [98, 100],
+                "close": [100, 101],
+                "volume": [1000, 1000],
+            }
+        )
 
         validator = OHLCValidator()
         _, result = validator.validate(df, fix_issues=False)
@@ -74,13 +80,15 @@ class TestOHLCValidator:
 
     def test_validate_invalid_low(self):
         """Test detection of low > min(open, close)."""
-        df = pd.DataFrame({
-            "open": [100, 101],
-            "high": [102, 103],
-            "low": [101, 99],  # First row: low > open
-            "close": [100, 102],
-            "volume": [1000, 1000],
-        })
+        df = pd.DataFrame(
+            {
+                "open": [100, 101],
+                "high": [102, 103],
+                "low": [101, 99],  # First row: low > open
+                "close": [100, 102],
+                "volume": [1000, 1000],
+            }
+        )
 
         validator = OHLCValidator()
         _, result = validator.validate(df, fix_issues=False)
@@ -90,13 +98,15 @@ class TestOHLCValidator:
 
     def test_validate_negative_volume(self):
         """Test detection of negative volume."""
-        df = pd.DataFrame({
-            "open": [100, 101],
-            "high": [102, 103],
-            "low": [98, 99],
-            "close": [101, 102],
-            "volume": [-1000, 1000],  # Negative volume
-        })
+        df = pd.DataFrame(
+            {
+                "open": [100, 101],
+                "high": [102, 103],
+                "low": [98, 99],
+                "close": [101, 102],
+                "volume": [-1000, 1000],  # Negative volume
+            }
+        )
 
         validator = OHLCValidator()
         _, result = validator.validate(df, fix_issues=False)
@@ -106,13 +116,15 @@ class TestOHLCValidator:
 
     def test_validate_non_positive_price(self):
         """Test detection of zero/negative prices."""
-        df = pd.DataFrame({
-            "open": [0, 101],  # Zero price
-            "high": [102, 103],
-            "low": [98, 99],
-            "close": [101, 102],
-            "volume": [1000, 1000],
-        })
+        df = pd.DataFrame(
+            {
+                "open": [0, 101],  # Zero price
+                "high": [102, 103],
+                "low": [98, 99],
+                "close": [101, 102],
+                "volume": [1000, 1000],
+            }
+        )
 
         validator = OHLCValidator()
         _, result = validator.validate(df, fix_issues=False)
@@ -145,13 +157,15 @@ class TestOHLCValidator:
         closes = 100 + np.cumsum(np.random.normal(0, 0.5, n))  # Normal price movement
         closes[25] = closes[24] * 2.0  # 100% jump - extreme outlier
 
-        df = pd.DataFrame({
-            "open": closes,
-            "high": closes + 1,
-            "low": closes - 1,
-            "close": closes,
-            "volume": [1000000] * n,
-        })
+        df = pd.DataFrame(
+            {
+                "open": closes,
+                "high": closes + 1,
+                "low": closes - 1,
+                "close": closes,
+                "volume": [1000000] * n,
+            }
+        )
 
         validator = OHLCValidator()
         _, result = validator.validate(df, fix_issues=False)
@@ -163,13 +177,15 @@ class TestOHLCValidator:
     def test_gap_detection(self):
         """Test large gap detection (informational only)."""
         # Create data with a large gap
-        df = pd.DataFrame({
-            "open": [100, 101, 150, 151],  # 150 is 50% gap from 101
-            "high": [102, 103, 155, 153],
-            "low": [98, 99, 148, 149],
-            "close": [101, 102, 152, 150],
-            "volume": [1000000] * 4,
-        })
+        df = pd.DataFrame(
+            {
+                "open": [100, 101, 150, 151],  # 150 is 50% gap from 101
+                "high": [102, 103, 155, 153],
+                "low": [98, 99, 148, 149],
+                "close": [101, 102, 152, 150],
+                "volume": [1000000] * 4,
+            }
+        )
 
         validator = OHLCValidator()
         cleaned_df, result = validator.validate(df, fix_issues=True)
@@ -205,13 +221,15 @@ class TestOHLCValidator:
 
     def test_validate_normalizes_column_names(self):
         """Test that column names are normalized to lowercase."""
-        df = pd.DataFrame({
-            "Open": [100, 101],
-            "HIGH": [102, 103],
-            "Low": [98, 99],
-            "CLOSE": [101, 102],
-            "Volume": [1000, 1000],
-        })
+        df = pd.DataFrame(
+            {
+                "Open": [100, 101],
+                "HIGH": [102, 103],
+                "Low": [98, 99],
+                "CLOSE": [101, 102],
+                "Volume": [1000, 1000],
+            }
+        )
 
         validator = OHLCValidator()
         cleaned_df, result = validator.validate(df, fix_issues=False)

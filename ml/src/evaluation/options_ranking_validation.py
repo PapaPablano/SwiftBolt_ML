@@ -31,9 +31,11 @@ logger = logging.getLogger(__name__)
 # LEAKAGE DETECTION
 # =============================================================================
 
+
 @dataclass
 class LeakageCheckResult:
     """Result of a leakage check."""
+
     check_name: str
     passed: bool
     n_violations: int
@@ -86,23 +88,17 @@ class LeakageDetector:
 
         # Check 1: Feature timestamp <= ranking timestamp
         if feature_time_col in df.columns and ranking_time_col in df.columns:
-            result = self._check_feature_timing(
-                df, feature_time_col, ranking_time_col
-            )
+            result = self._check_feature_timing(df, feature_time_col, ranking_time_col)
             results.append(result)
 
         # Check 2: Return start >= ranking timestamp
         if return_start_col in df.columns and ranking_time_col in df.columns:
-            result = self._check_return_start_timing(
-                df, return_start_col, ranking_time_col
-            )
+            result = self._check_return_start_timing(df, return_start_col, ranking_time_col)
             results.append(result)
 
         # Check 3: Feature window end < label window start
         if feature_time_col in df.columns and return_start_col in df.columns:
-            result = self._check_window_overlap(
-                df, feature_time_col, return_start_col
-            )
+            result = self._check_window_overlap(df, feature_time_col, return_start_col)
             results.append(result)
 
         # Check 4: No future data in features
@@ -132,8 +128,11 @@ class LeakageDetector:
             passed=passed,
             n_violations=int(n_violations),
             violation_rate=float(violation_rate),
-            details=f"{n_violations} rows have features from after ranking time"
-            if not passed else "All features use data before ranking time",
+            details=(
+                f"{n_violations} rows have features from after ranking time"
+                if not passed
+                else "All features use data before ranking time"
+            ),
         )
 
     def _check_return_start_timing(
@@ -157,8 +156,11 @@ class LeakageDetector:
             passed=passed,
             n_violations=int(n_violations),
             violation_rate=float(violation_rate),
-            details=f"{n_violations} rows compute returns from before ranking"
-            if not passed else "All returns start after ranking time",
+            details=(
+                f"{n_violations} rows compute returns from before ranking"
+                if not passed
+                else "All returns start after ranking time"
+            ),
         )
 
     def _check_window_overlap(
@@ -183,8 +185,11 @@ class LeakageDetector:
             passed=passed,
             n_violations=int(n_violations),
             violation_rate=float(violation_rate),
-            details=f"{n_violations} rows have overlapping feature/label windows"
-            if not passed else "No window overlap detected",
+            details=(
+                f"{n_violations} rows have overlapping feature/label windows"
+                if not passed
+                else "No window overlap detected"
+            ),
         )
 
     def _check_lookahead_bias(self, df: pd.DataFrame) -> LeakageCheckResult:
@@ -192,16 +197,14 @@ class LeakageDetector:
         suspicious_cols = []
 
         # Check for columns that might contain future data
-        future_indicators = [
-            'future_', 'next_', 'forward_', 'actual_return', 'realized_'
-        ]
+        future_indicators = ["future_", "next_", "forward_", "actual_return", "realized_"]
 
         for col in df.columns:
             col_lower = col.lower()
             for indicator in future_indicators:
                 if indicator in col_lower:
                     # Check if this column is used as a feature (not target)
-                    if col not in ['actual_return', 'forward_return']:
+                    if col not in ["actual_return", "forward_return"]:
                         suspicious_cols.append(col)
 
         passed = len(suspicious_cols) == 0
@@ -211,14 +214,18 @@ class LeakageDetector:
             passed=passed,
             n_violations=len(suspicious_cols),
             violation_rate=len(suspicious_cols) / max(1, len(df.columns)),
-            details=f"Suspicious columns: {suspicious_cols}"
-            if not passed else "No obvious lookahead bias detected",
+            details=(
+                f"Suspicious columns: {suspicious_cols}"
+                if not passed
+                else "No obvious lookahead bias detected"
+            ),
         )
 
 
 # =============================================================================
 # EXECUTION REALISM
 # =============================================================================
+
 
 class ExecutionRealism:
     """
@@ -297,7 +304,7 @@ class ExecutionRealism:
                 entry_ask=row.get(entry_ask_col, 0),
                 exit_bid=row.get(exit_bid_col, 0),
                 exit_ask=row.get(exit_ask_col, 0),
-                side=row.get('side', 'call'),
+                side=row.get("side", "call"),
                 position=position,
             )
             realistic_returns.append(ret)
@@ -316,6 +323,7 @@ class ExecutionRealism:
 @dataclass
 class RankingValidationResult:
     """Result of options ranking validation."""
+
     metric: str
     value: float
     p_value: float
@@ -323,7 +331,7 @@ class RankingValidationResult:
     confidence_interval: Tuple[float, float]
     interpretation: str
     n_samples: int = 0  # Sample size for the test
-    
+
     def __str__(self) -> str:
         sig = "✅" if self.is_significant else "❌"
         return (
@@ -337,22 +345,22 @@ class RankingValidationResult:
 class OptionsRankingValidator:
     """
     Validates options ranking model performance with statistical rigor.
-    
+
     Example:
         ```python
         validator = OptionsRankingValidator()
-        
+
         # Validate ranking predictions vs actual returns
         results = validator.validate_ranking_accuracy(
             ranked_options_df,
             actual_returns_df
         )
-        
+
         # Print full report
         validator.generate_report(results)
         ```
     """
-    
+
     def __init__(
         self,
         confidence_level: float = 0.95,
@@ -381,7 +389,7 @@ class OptionsRankingValidator:
         self.low_std_warning_threshold = low_std_warning_threshold
         self.min_days_threshold = min_days_threshold
         np.random.seed(random_state)
-    
+
     def validate_ranking_accuracy(
         self,
         rankings_df: pd.DataFrame,
@@ -392,52 +400,52 @@ class OptionsRankingValidator:
     ) -> List[RankingValidationResult]:
         """
         Validate if high-ranked options actually outperform low-ranked ones.
-        
+
         Tests:
         1. Spearman rank correlation between scores and returns
         2. Top quantile vs bottom quantile returns (t-test)
         3. Information coefficient (IC)
-        
+
         Args:
             rankings_df: DataFrame with ml_score column
             returns_df: DataFrame with actual returns
             score_col: Column name for ML scores
             return_col: Column name for actual returns
             n_quantiles: Number of quantiles for analysis
-        
+
         Returns:
             List of RankingValidationResult
         """
         results = []
-        
+
         # Merge rankings with returns
         df = rankings_df.merge(returns_df, how="inner")
-        
+
         if len(df) < self.min_samples:
             logger.warning(f"Insufficient samples: {len(df)} < {self.min_samples}")
             return results
-        
+
         scores = df[score_col].values
         returns = df[return_col].values
-        
+
         # 1. Spearman Rank Correlation
         spearman_result = self._test_spearman_correlation(scores, returns)
         results.append(spearman_result)
-        
+
         # 2. Top vs Bottom Quantile Returns
         quantile_result = self._test_quantile_returns(df, score_col, return_col, n_quantiles)
         results.append(quantile_result)
-        
+
         # 3. Information Coefficient
         ic_result = self._test_information_coefficient(scores, returns)
         results.append(ic_result)
-        
+
         # 4. Hit Rate (% of positive returns in top quantile)
         hit_rate_result = self._test_hit_rate(df, score_col, return_col, n_quantiles)
         results.append(hit_rate_result)
-        
+
         return results
-    
+
     def _test_spearman_correlation(
         self,
         scores: np.ndarray,
@@ -445,30 +453,30 @@ class OptionsRankingValidator:
     ) -> RankingValidationResult:
         """Test Spearman rank correlation between scores and returns."""
         correlation, p_value = stats.spearmanr(scores, returns)
-        
+
         # Bootstrap confidence interval
         n_bootstrap = 1000
         boot_corrs = []
         n = len(scores)
-        
+
         for _ in range(n_bootstrap):
             idx = np.random.choice(n, size=n, replace=True)
             corr, _ = stats.spearmanr(scores[idx], returns[idx])
             if np.isfinite(corr):
                 boot_corrs.append(corr)
-        
+
         ci_lower = np.percentile(boot_corrs, 2.5)
         ci_upper = np.percentile(boot_corrs, 97.5)
-        
+
         is_significant = p_value < self.alpha and correlation > 0
-        
+
         if is_significant:
             interp = f"Scores positively correlate with returns (ρ={correlation:.3f})"
         elif correlation > 0:
             interp = f"Weak positive correlation, not statistically significant"
         else:
             interp = f"No positive correlation between scores and returns"
-        
+
         return RankingValidationResult(
             metric="Spearman Correlation",
             value=float(correlation),
@@ -477,7 +485,7 @@ class OptionsRankingValidator:
             confidence_interval=(ci_lower, ci_upper),
             interpretation=interp,
         )
-    
+
     def _test_quantile_returns(
         self,
         df: pd.DataFrame,
@@ -488,10 +496,10 @@ class OptionsRankingValidator:
         """Test if top quantile outperforms bottom quantile."""
         df = df.copy()
         df["quantile"] = pd.qcut(df[score_col], q=n_quantiles, labels=False, duplicates="drop")
-        
+
         top_quantile = df[df["quantile"] == df["quantile"].max()][return_col]
         bottom_quantile = df[df["quantile"] == df["quantile"].min()][return_col]
-        
+
         if len(top_quantile) < 5 or len(bottom_quantile) < 5:
             return RankingValidationResult(
                 metric="Top vs Bottom Quantile",
@@ -501,31 +509,31 @@ class OptionsRankingValidator:
                 confidence_interval=(0.0, 0.0),
                 interpretation="Insufficient samples in quantiles",
             )
-        
+
         # One-sided t-test: top > bottom
         statistic, p_value = stats.ttest_ind(top_quantile, bottom_quantile, alternative="greater")
-        
+
         spread = top_quantile.mean() - bottom_quantile.mean()
-        
+
         # Bootstrap CI for spread
         n_bootstrap = 1000
         boot_spreads = []
-        
+
         for _ in range(n_bootstrap):
             top_sample = np.random.choice(top_quantile, size=len(top_quantile), replace=True)
             bot_sample = np.random.choice(bottom_quantile, size=len(bottom_quantile), replace=True)
             boot_spreads.append(top_sample.mean() - bot_sample.mean())
-        
+
         ci_lower = np.percentile(boot_spreads, 2.5)
         ci_upper = np.percentile(boot_spreads, 97.5)
-        
+
         is_significant = p_value < self.alpha and spread > 0
-        
+
         if is_significant:
             interp = f"Top quintile outperforms bottom by {spread:.2%} (significant)"
         else:
             interp = f"Top quintile spread: {spread:.2%} (not significant)"
-        
+
         return RankingValidationResult(
             metric="Top vs Bottom Quantile Spread",
             value=float(spread),
@@ -534,7 +542,7 @@ class OptionsRankingValidator:
             confidence_interval=(ci_lower, ci_upper),
             interpretation=interp,
         )
-    
+
     def _test_information_coefficient(
         self,
         scores: np.ndarray,
@@ -542,30 +550,30 @@ class OptionsRankingValidator:
     ) -> RankingValidationResult:
         """
         Calculate Information Coefficient (IC).
-        
+
         IC is the correlation between predicted scores and forward returns.
         Industry standard: IC > 0.05 is considered good for options.
         """
         # Pearson correlation as IC
         correlation, p_value = stats.pearsonr(scores, returns)
-        
+
         # Bootstrap CI
         n_bootstrap = 1000
         boot_ics = []
         n = len(scores)
-        
+
         for _ in range(n_bootstrap):
             idx = np.random.choice(n, size=n, replace=True)
             corr, _ = stats.pearsonr(scores[idx], returns[idx])
             if np.isfinite(corr):
                 boot_ics.append(corr)
-        
+
         ci_lower = np.percentile(boot_ics, 2.5)
         ci_upper = np.percentile(boot_ics, 97.5)
-        
+
         # IC > 0.05 is considered good
         is_significant = p_value < self.alpha and correlation > 0.03
-        
+
         if correlation > 0.10:
             quality = "Excellent"
         elif correlation > 0.05:
@@ -574,9 +582,9 @@ class OptionsRankingValidator:
             quality = "Acceptable"
         else:
             quality = "Weak"
-        
+
         interp = f"IC = {correlation:.4f} ({quality})"
-        
+
         return RankingValidationResult(
             metric="Information Coefficient (IC)",
             value=float(correlation),
@@ -585,7 +593,7 @@ class OptionsRankingValidator:
             confidence_interval=(ci_lower, ci_upper),
             interpretation=interp,
         )
-    
+
     def _test_hit_rate(
         self,
         df: pd.DataFrame,
@@ -595,17 +603,17 @@ class OptionsRankingValidator:
     ) -> RankingValidationResult:
         """
         Test hit rate: % of positive returns in top quantile.
-        
+
         Uses binomial test to check if hit rate > 50%.
         """
         df = df.copy()
         df["quantile"] = pd.qcut(df[score_col], q=n_quantiles, labels=False, duplicates="drop")
-        
+
         top_quantile = df[df["quantile"] == df["quantile"].max()]
-        
+
         n_positive = (top_quantile[return_col] > 0).sum()
         n_total = len(top_quantile)
-        
+
         if n_total < 10:
             return RankingValidationResult(
                 metric="Hit Rate (Top Quantile)",
@@ -615,25 +623,27 @@ class OptionsRankingValidator:
                 confidence_interval=(0.0, 0.0),
                 interpretation="Insufficient samples",
             )
-        
+
         hit_rate = n_positive / n_total
-        
+
         # Binomial test: is hit rate > 50%?
         result = stats.binomtest(n_positive, n_total, p=0.5, alternative="greater")
         p_value = result.pvalue
-        
+
         # Wilson score interval for proportion
         z = stats.norm.ppf(1 - self.alpha / 2)
         denominator = 1 + z**2 / n_total
         center = (hit_rate + z**2 / (2 * n_total)) / denominator
-        margin = z * np.sqrt((hit_rate * (1 - hit_rate) + z**2 / (4 * n_total)) / n_total) / denominator
+        margin = (
+            z * np.sqrt((hit_rate * (1 - hit_rate) + z**2 / (4 * n_total)) / n_total) / denominator
+        )
         ci_lower = max(0, center - margin)
         ci_upper = min(1, center + margin)
-        
+
         is_significant = p_value < self.alpha and hit_rate > 0.5
-        
+
         interp = f"Hit rate: {hit_rate:.1%} ({n_positive}/{n_total} positive)"
-        
+
         return RankingValidationResult(
             metric="Hit Rate (Top Quantile)",
             value=float(hit_rate),
@@ -643,7 +653,7 @@ class OptionsRankingValidator:
             interpretation=interp,
             n_samples=n_total,
         )
-    
+
     def validate_ranking_stability(
         self,
         rankings_over_time: List[pd.DataFrame],
@@ -652,15 +662,15 @@ class OptionsRankingValidator:
     ) -> RankingValidationResult:
         """
         Test ranking stability over time.
-        
+
         Measures how consistent rankings are across different time periods.
         Uses Kendall's W (coefficient of concordance).
-        
+
         Args:
             rankings_over_time: List of ranking DataFrames from different periods
             score_col: Column with ML scores
             contract_id_col: Column identifying contracts
-        
+
         Returns:
             RankingValidationResult for stability
         """
@@ -673,12 +683,12 @@ class OptionsRankingValidator:
                 confidence_interval=(0.0, 0.0),
                 interpretation="Need at least 3 time periods",
             )
-        
+
         # Find common contracts across all periods
         common_contracts = set(rankings_over_time[0][contract_id_col])
         for df in rankings_over_time[1:]:
             common_contracts &= set(df[contract_id_col])
-        
+
         if len(common_contracts) < 10:
             return RankingValidationResult(
                 metric="Ranking Stability (Kendall's W)",
@@ -688,40 +698,40 @@ class OptionsRankingValidator:
                 confidence_interval=(0.0, 0.0),
                 interpretation="Insufficient common contracts across periods",
             )
-        
+
         # Build rank matrix
         common_list = list(common_contracts)
         n_items = len(common_list)
         n_judges = len(rankings_over_time)
-        
+
         rank_matrix = np.zeros((n_judges, n_items))
-        
+
         for j, df in enumerate(rankings_over_time):
             df_filtered = df[df[contract_id_col].isin(common_contracts)].copy()
             df_filtered["rank"] = df_filtered[score_col].rank(ascending=False)
-            
+
             for i, contract in enumerate(common_list):
-                rank_matrix[j, i] = df_filtered[
-                    df_filtered[contract_id_col] == contract
-                ]["rank"].values[0]
-        
+                rank_matrix[j, i] = df_filtered[df_filtered[contract_id_col] == contract][
+                    "rank"
+                ].values[0]
+
         # Calculate Kendall's W
         n = n_items
         k = n_judges
-        
+
         rank_sums = rank_matrix.sum(axis=0)
         mean_rank_sum = rank_sums.mean()
         ss = np.sum((rank_sums - mean_rank_sum) ** 2)
-        
+
         w = (12 * ss) / (k**2 * (n**3 - n))
-        
+
         # Chi-square test for significance
         chi2 = k * (n - 1) * w
         df_chi = n - 1
         p_value = 1 - stats.chi2.cdf(chi2, df_chi)
-        
+
         is_significant = p_value < self.alpha and w > 0.5
-        
+
         if w > 0.7:
             quality = "High stability"
         elif w > 0.5:
@@ -730,9 +740,9 @@ class OptionsRankingValidator:
             quality = "Low stability"
         else:
             quality = "Unstable rankings"
-        
+
         interp = f"Kendall's W = {w:.3f} ({quality})"
-        
+
         return RankingValidationResult(
             metric="Ranking Stability (Kendall's W)",
             value=float(w),
@@ -741,45 +751,45 @@ class OptionsRankingValidator:
             confidence_interval=(max(0, w - 0.1), min(1, w + 0.1)),  # Approximate
             interpretation=interp,
         )
-    
+
     def validate_score_distribution(
         self,
         scores: np.ndarray,
     ) -> Dict[str, Any]:
         """
         Analyze the distribution of ML scores.
-        
+
         Checks for:
         - Normality
         - Skewness
         - Score spread (entropy)
-        
+
         Args:
             scores: Array of ML scores
-        
+
         Returns:
             Dictionary with distribution metrics
         """
         scores = np.asarray(scores).flatten()
         scores = scores[np.isfinite(scores)]
-        
+
         # Basic stats
         mean = np.mean(scores)
         std = np.std(scores)
         skewness = stats.skew(scores)
         kurtosis = stats.kurtosis(scores)
-        
+
         # Normality test
         if len(scores) >= 20:
-            _, normality_p = stats.shapiro(scores[:min(5000, len(scores))])
+            _, normality_p = stats.shapiro(scores[: min(5000, len(scores))])
         else:
             normality_p = 1.0
-        
+
         # Score spread (using entropy of binned distribution)
         hist, _ = np.histogram(scores, bins=10, density=True)
         hist = hist[hist > 0]  # Remove zeros
         entropy = -np.sum(hist * np.log(hist + 1e-10))
-        
+
         return {
             "mean": float(mean),
             "std": float(std),
@@ -791,7 +801,7 @@ class OptionsRankingValidator:
             "score_range": (float(scores.min()), float(scores.max())),
             "interpretation": self._interpret_distribution(skewness, std, entropy),
         }
-    
+
     def _interpret_distribution(
         self,
         skewness: float,
@@ -800,19 +810,19 @@ class OptionsRankingValidator:
     ) -> str:
         """Interpret score distribution characteristics."""
         issues = []
-        
+
         if abs(skewness) > 1:
             issues.append(f"highly skewed ({skewness:.2f})")
-        
+
         if std < 0.1:
             issues.append("low variance (scores too similar)")
-        
+
         if entropy < 1.5:
             issues.append("low entropy (poor differentiation)")
-        
+
         if not issues:
             return "Good score distribution"
-        
+
         return "Issues: " + ", ".join(issues)
 
     # =========================================================================
@@ -1058,8 +1068,7 @@ class OptionsRankingValidator:
 
             # Recompute mean daily Rank IC on permuted data (not pooled)
             perm_result = self.calculate_proper_ic(
-                df_perm, date_col, score_col, return_col,
-                min_group_size=min_group_size
+                df_perm, date_col, score_col, return_col, min_group_size=min_group_size
             )
             perm_ic = perm_result["mean_rank_ic"]
             permuted_ics.append(perm_ic)
@@ -1093,10 +1102,7 @@ class OptionsRankingValidator:
         small_sample_extreme_p = p_value < 0.001 and n_periods < 10
 
         # Combined leakage flag
-        leakage_suspected = (
-            permuted_not_near_zero or
-            (extreme_z_score and small_sample_extreme_p)
-        )
+        leakage_suspected = permuted_not_near_zero or (extreme_z_score and small_sample_extreme_p)
 
         return {
             "actual_rank_ic": float(actual_ic),
@@ -1117,8 +1123,7 @@ class OptionsRankingValidator:
             },
             "is_significant": p_value < self.alpha,
             "interpretation": self._interpret_permutation_test(
-                actual_ic, mean_permuted, z_score, p_value,
-                leakage_suspected, n_periods
+                actual_ic, mean_permuted, z_score, p_value, leakage_suspected, n_periods
             ),
         }
 
@@ -1185,13 +1190,13 @@ class OptionsRankingValidator:
                     )
 
         # Extract IC stats for Data Sufficiency block
-        n_days = ic_stats.get('n_periods', 0) if ic_stats else 0
-        n_days_total = ic_stats.get('n_days_total', 0) if ic_stats else 0
-        pct_skip = ic_stats.get('pct_days_skipped', 0) if ic_stats else 0
-        avg_c = ic_stats.get('avg_contracts_per_day', 0) if ic_stats else 0
-        min_c = ic_stats.get('min_contracts_per_day', 0) if ic_stats else 0
-        max_c = ic_stats.get('max_contracts_per_day', 0) if ic_stats else 0
-        std_rank_ic = ic_stats.get('std_rank_ic', 0) if ic_stats else 0
+        n_days = ic_stats.get("n_periods", 0) if ic_stats else 0
+        n_days_total = ic_stats.get("n_days_total", 0) if ic_stats else 0
+        pct_skip = ic_stats.get("pct_days_skipped", 0) if ic_stats else 0
+        avg_c = ic_stats.get("avg_contracts_per_day", 0) if ic_stats else 0
+        min_c = ic_stats.get("min_contracts_per_day", 0) if ic_stats else 0
+        max_c = ic_stats.get("max_contracts_per_day", 0) if ic_stats else 0
+        std_rank_ic = ic_stats.get("std_rank_ic", 0) if ic_stats else 0
         total_samples = int(n_days * avg_c) if ic_stats else total_samples_all
 
         # Check for low n_days - this is a hard warning that affects significance
@@ -1240,39 +1245,45 @@ class OptionsRankingValidator:
             lines.append(f"  Horizon: {ic_stats.get('horizon', 'N/A')}")
             lines.append(f"  Min Group Size: {ic_stats.get('min_group_size', 25)}")
             lines.append("")
-            rank_ic = ic_stats.get('mean_rank_ic', 0)
-            ic = ic_stats.get('mean_ic', 0)
-            std_ic = ic_stats.get('std_ic', 0)
-            lines.append(f"  Rank IC (Spearman): {rank_ic:.4f} "
-                         f"± {std_rank_ic:.4f} (std)")
-            lines.append(f"    CI: [{ic_stats.get('rank_ic_ci_lower', 0):.4f}, "
-                         f"{ic_stats.get('rank_ic_ci_upper', 0):.4f}]")
+            rank_ic = ic_stats.get("mean_rank_ic", 0)
+            ic = ic_stats.get("mean_ic", 0)
+            std_ic = ic_stats.get("std_ic", 0)
+            lines.append(f"  Rank IC (Spearman): {rank_ic:.4f} " f"± {std_rank_ic:.4f} (std)")
+            lines.append(
+                f"    CI: [{ic_stats.get('rank_ic_ci_lower', 0):.4f}, "
+                f"{ic_stats.get('rank_ic_ci_upper', 0):.4f}]"
+            )
             lines.append(f"  IC (Pearson): {ic:.4f} ± {std_ic:.4f} (std)")
-            lines.append(f"    CI: [{ic_stats.get('ic_ci_lower', 0):.4f}, "
-                         f"{ic_stats.get('ic_ci_upper', 0):.4f}]")
-            lines.append(f"  t-stat: {ic_stats.get('t_stat', 0):.2f} "
-                         f"(df={n_days - 1}), "
-                         f"p-value: {ic_stats.get('p_value', 1):.4f}")
+            lines.append(
+                f"    CI: [{ic_stats.get('ic_ci_lower', 0):.4f}, "
+                f"{ic_stats.get('ic_ci_upper', 0):.4f}]"
+            )
+            lines.append(
+                f"  t-stat: {ic_stats.get('t_stat', 0):.2f} "
+                f"(df={n_days - 1}), "
+                f"p-value: {ic_stats.get('p_value', 1):.4f}"
+            )
             # Suppress significance if insufficient days
             if insufficient_days:
                 lines.append("  ⚠️ Significant: NOT ASSESSED (insufficient days)")
             else:
-                sig = "✅" if ic_stats.get('is_significant', False) else "❌"
+                sig = "✅" if ic_stats.get("is_significant", False) else "❌"
                 lines.append(f"  {sig} Significant: {ic_stats.get('is_significant')}")
 
         # Permutation test results
         if permutation_stats:
             lines.append("\n--- Permutation Test ---")
             lines.append(f"  n_permutations: {permutation_stats.get('n_permutations')}")
-            lines.append(f"  Actual Rank IC: "
-                         f"{permutation_stats.get('actual_rank_ic', 0):.4f}")
-            lines.append(f"  Mean Permuted IC: "
-                         f"{permutation_stats.get('mean_permuted_ic', 0):.4f}")
-            lines.append(f"  Std Permuted IC: "
-                         f"{permutation_stats.get('std_permuted_ic', 0):.4f}")
+            lines.append(f"  Actual Rank IC: " f"{permutation_stats.get('actual_rank_ic', 0):.4f}")
+            lines.append(
+                f"  Mean Permuted IC: " f"{permutation_stats.get('mean_permuted_ic', 0):.4f}"
+            )
+            lines.append(
+                f"  Std Permuted IC: " f"{permutation_stats.get('std_permuted_ic', 0):.4f}"
+            )
             lines.append(f"  Z-score: {permutation_stats.get('z_score', 0):.2f}")
             lines.append(f"  P-value: {permutation_stats.get('p_value', 1):.4f}")
-            leak = permutation_stats.get('leakage_suspected', False)
+            leak = permutation_stats.get("leakage_suspected", False)
             leak_icon = "⚠️" if leak else "✅"
             lines.append(f"  {leak_icon} Leakage Suspected: {leak}")
             lines.append(f"  {permutation_stats.get('interpretation', '')}")
@@ -1309,27 +1320,25 @@ def validate_options_ranking(
 ) -> Dict[str, Any]:
     """
     Quick validation of options ranking model.
-    
+
     Args:
         rankings_df: DataFrame with ML scores
         returns_df: DataFrame with actual returns
         score_col: Column name for scores
         return_col: Column name for returns
-    
+
     Returns:
         Validation report dictionary
     """
     validator = OptionsRankingValidator()
-    
-    results = validator.validate_ranking_accuracy(
-        rankings_df, returns_df, score_col, return_col
-    )
-    
+
+    results = validator.validate_ranking_accuracy(rankings_df, returns_df, score_col, return_col)
+
     dist_stats = validator.validate_score_distribution(rankings_df[score_col].values)
-    
+
     report = validator.generate_report(results, dist_stats)
     print(report)
-    
+
     return {
         "validation_results": results,
         "distribution_stats": dist_stats,

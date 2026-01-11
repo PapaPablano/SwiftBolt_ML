@@ -81,9 +81,7 @@ def _walk_forward_layer_weights(
                 continue
             w_candidates.append(w)
 
-    errors: dict[tuple[float, float, float], list[float]] = {
-        w: [] for w in w_candidates
-    }
+    errors: dict[tuple[float, float, float], list[float]] = {w: [] for w in w_candidates}
 
     embargo = pd.Timedelta(days=int(max(0, embargo_days)))
 
@@ -101,9 +99,7 @@ def _walk_forward_layer_weights(
         x = np.array([st, sr, ml], dtype=float)
 
         for w in w_candidates:
-            y_pred = np.array(
-                [x[0] * w[0] + x[1] * w[1] + x[2] * w[2]]
-            )
+            y_pred = np.array([x[0] * w[0] + x[1] * w[1] + x[2] * w[2]])
             errors[w].append(_mae(y_true, y_pred))
 
     scored = [(w, float(np.mean(v))) for w, v in errors.items() if v]
@@ -153,15 +149,9 @@ def _fit_component_weights(evals: pd.DataFrame) -> dict[str, float] | None:
     if df.empty:
         return None
 
-    e_st = np.mean(
-        np.abs(df["synth_supertrend_component"] - df["realized_price"])
-    )
-    e_sr = np.mean(
-        np.abs(df["synth_polynomial_component"] - df["realized_price"])
-    )
-    e_ml = np.mean(
-        np.abs(df["synth_ml_component"] - df["realized_price"])
-    )
+    e_st = np.mean(np.abs(df["synth_supertrend_component"] - df["realized_price"]))
+    e_sr = np.mean(np.abs(df["synth_polynomial_component"] - df["realized_price"]))
+    e_ml = np.mean(np.abs(df["synth_ml_component"] - df["realized_price"]))
 
     eps = 1e-9
     raw = {
@@ -320,11 +310,7 @@ def main() -> None:
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
-    rows = (
-        db.client.table("watchlist_items")
-        .select("symbol_id(ticker)")
-        .execute()
-    )
+    rows = db.client.table("watchlist_items").select("symbol_id(ticker)").execute()
     symbols = sorted(
         {
             row.get("symbol_id", {}).get("ticker")

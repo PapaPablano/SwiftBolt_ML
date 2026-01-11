@@ -103,16 +103,16 @@ def fetch_polygon_bars(
         # Transform to our format
         bars = []
         for r in results:
-            bars.append({
-                "ts": datetime.fromtimestamp(
-                    r["t"] / 1000, tz=timezone.utc
-                ).isoformat(),
-                "open": r["o"],
-                "high": r["h"],
-                "low": r["l"],
-                "close": r["c"],
-                "volume": r["v"],
-            })
+            bars.append(
+                {
+                    "ts": datetime.fromtimestamp(r["t"] / 1000, tz=timezone.utc).isoformat(),
+                    "open": r["o"],
+                    "high": r["h"],
+                    "low": r["l"],
+                    "close": r["c"],
+                    "volume": r["v"],
+                }
+            )
 
         logger.info(f"Fetched {len(bars)} bars for {symbol} {timeframe}")
         return bars
@@ -135,17 +135,19 @@ def persist_bars(symbol_id: str, timeframe: str, bars: list[dict]) -> int:
 
     batch = []
     for bar in bars:
-        batch.append({
-            "symbol_id": symbol_id,
-            "timeframe": timeframe,
-            "ts": bar["ts"],
-            "open": bar["open"],
-            "high": bar["high"],
-            "low": bar["low"],
-            "close": bar["close"],
-            "volume": bar["volume"],
-            "provider": "massive",
-        })
+        batch.append(
+            {
+                "symbol_id": symbol_id,
+                "timeframe": timeframe,
+                "ts": bar["ts"],
+                "open": bar["open"],
+                "high": bar["high"],
+                "low": bar["low"],
+                "close": bar["close"],
+                "volume": bar["volume"],
+                "provider": "massive",
+            }
+        )
 
     try:
         db.client.table("ohlc_bars").upsert(
@@ -167,7 +169,7 @@ def process_backfill_job(
 ) -> tuple[bool, int, Optional[str]]:
     """
     Process a single backfill job.
-    
+
     Returns: (success, bars_inserted, error_message)
     """
     total_bars = 0

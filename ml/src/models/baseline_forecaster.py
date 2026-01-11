@@ -49,18 +49,14 @@ class BaselineForecaster:
         """
         df = df.copy()
 
-        bearish_thresh, bullish_thresh = AdaptiveThresholds.compute_thresholds(
-            df
-        )
+        bearish_thresh, bullish_thresh = AdaptiveThresholds.compute_thresholds(df)
         logger.info(
             "Adaptive thresholds: bearish=%.4f, bullish=%.4f",
             bearish_thresh,
             bullish_thresh,
         )
 
-        forward_returns = df["close"].pct_change(periods=horizon_days).shift(
-            -horizon_days
-        )
+        forward_returns = df["close"].pct_change(periods=horizon_days).shift(-horizon_days)
 
         engineer = TemporalFeatureEngineer()
         X_list: list[dict[str, Any]] = []
@@ -94,8 +90,7 @@ class BaselineForecaster:
         """
         if len(X) < settings.min_bars_for_training:
             raise ValueError(
-                f"Insufficient training data: {len(X)} "
-                f"< {settings.min_bars_for_training}"
+                f"Insufficient training data: {len(X)} " f"< {settings.min_bars_for_training}"
             )
 
         # Exclude non-numeric columns (e.g., timestamps)
@@ -133,10 +128,7 @@ class BaselineForecaster:
         cm = confusion_matrix(y, predictions)
         # Feature importances (RF supports this attribute)
         importances = getattr(self.model, "feature_importances_", None)
-        if (
-            importances is not None
-            and len(importances) == len(self.feature_columns)
-        ):
+        if importances is not None and len(importances) == len(self.feature_columns):
             importance_pairs = sorted(
                 zip(self.feature_columns, importances),
                 key=lambda kv: kv[1],
@@ -170,9 +162,7 @@ class BaselineForecaster:
         if top_features:
             logger.info(
                 "Top features: %s",
-                ", ".join(
-                    f"{name}={score:.3f}" for name, score in top_features
-                ),
+                ", ".join(f"{name}={score:.3f}" for name, score in top_features),
             )
 
         self.is_trained = True
@@ -238,9 +228,7 @@ class BaselineForecaster:
             df, validation_result = validator.validate(df, fix_issues=True)
 
             if validation_result and not validation_result.is_valid:
-                logger.warning(
-                    f"Data quality issues detected: {validation_result.issues}"
-                )
+                logger.warning(f"Data quality issues detected: {validation_result.issues}")
                 # Apply slight confidence penalty for data with issues
                 data_quality_multiplier = max(
                     0.9, 1.0 - (validation_result.rows_flagged / len(df) * 0.2)
@@ -254,9 +242,7 @@ class BaselineForecaster:
 
         # Calculate data quality multiplier based on sample size
         # Less data = lower confidence (per improvement plan 1.1)
-        sample_size_multiplier = min(
-            1.0, len(X) / settings.min_bars_for_high_confidence
-        )
+        sample_size_multiplier = min(1.0, len(X) / settings.min_bars_for_high_confidence)
 
         # Train model
         self.train(X, y)
@@ -275,9 +261,7 @@ class BaselineForecaster:
         # 1. Apply calibration if calibrator is provided
         if calibrator and calibrator.is_fitted:
             adjusted_confidence = calibrator.calibrate(adjusted_confidence)
-            logger.info(
-                f"Calibration: {raw_confidence:.3f} -> {adjusted_confidence:.3f}"
-            )
+            logger.info(f"Calibration: {raw_confidence:.3f} -> {adjusted_confidence:.3f}")
 
         # 2. Apply data quality multiplier
         adjusted_confidence *= data_quality_multiplier
@@ -300,8 +284,7 @@ class BaselineForecaster:
 
         # Generate forecast points with probability-based directional estimates
         points = self._generate_forecast_points(
-            last_ts, last_close, label, adjusted_confidence, horizon_days,
-            proba_dict
+            last_ts, last_close, label, adjusted_confidence, horizon_days, proba_dict
         )
 
         return {
@@ -312,9 +295,7 @@ class BaselineForecaster:
             "points": points,
             "probabilities": probabilities,
             "data_quality": {
-                "validation_issues": (
-                    validation_result.issues if validation_result else []
-                ),
+                "validation_issues": (validation_result.issues if validation_result else []),
                 "quality_multiplier": data_quality_multiplier,
                 "sample_size_multiplier": sample_size_multiplier,
                 "n_training_samples": len(X),
@@ -363,7 +344,9 @@ class BaselineForecaster:
             # Maximum move is 5% for 100% directional confidence
             expected_return = directional_bias * 0.05
 
-            logger.info(f"Directional calc: bull={bull_prob:.3f}, bear={bear_prob:.3f}, bias={directional_bias:.3f}, return={expected_return:.4f}")
+            logger.info(
+                f"Directional calc: bull={bull_prob:.3f}, bear={bear_prob:.3f}, bias={directional_bias:.3f}, return={expected_return:.4f}"
+            )
         else:
             # Fallback to label-based approach
             if label == "bullish":
@@ -378,8 +361,7 @@ class BaselineForecaster:
         min_move = 0.005 * (horizon_days / 5)  # 0.5% per week minimum
         if abs(expected_return) < min_move and probabilities:
             # Use sign of directional bias or default to slight bullish
-            sign = 1 if (probabilities.get("bullish", 0) >=
-                        probabilities.get("bearish", 0)) else -1
+            sign = 1 if (probabilities.get("bullish", 0) >= probabilities.get("bearish", 0)) else -1
             expected_return = sign * min_move
 
         # Scale expected return by horizon (longer = more movement)
@@ -387,7 +369,9 @@ class BaselineForecaster:
         horizon_multiplier = 1.0 + (horizon_days - 1) * 0.1
         expected_return *= min(horizon_multiplier, 2.0)
 
-        logger.info(f"Forecast gen: last_close={last_close:.2f}, expected_return={expected_return:.4f}, horizon={horizon_days}d")
+        logger.info(
+            f"Forecast gen: last_close={last_close:.2f}, expected_return={expected_return:.4f}, horizon={horizon_days}d"
+        )
 
         # Generate daily points
         for i in range(1, horizon_days + 1):
@@ -406,7 +390,9 @@ class BaselineForecaster:
             upper_bound = forecast_value * (1 + total_uncertainty)
 
             if i == 1:
-                logger.info(f"  Day {i}: value={forecast_value:.2f}, lower={lower_bound:.2f}, upper={upper_bound:.2f}")
+                logger.info(
+                    f"  Day {i}: value={forecast_value:.2f}, lower={lower_bound:.2f}, upper={upper_bound:.2f}"
+                )
 
             points.append(
                 {

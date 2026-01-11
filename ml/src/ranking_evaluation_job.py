@@ -169,12 +169,10 @@ def _fetch_returns_fallback(
             target_date = rank_date + timedelta(days=horizon_days)
 
             entry = hist_df[
-                (hist_df["contract_symbol"] == contract) &
-                (hist_df["price_date"] == rank_date)
+                (hist_df["contract_symbol"] == contract) & (hist_df["price_date"] == rank_date)
             ]
             exit_row = hist_df[
-                (hist_df["contract_symbol"] == contract) &
-                (hist_df["price_date"] == target_date)
+                (hist_df["contract_symbol"] == contract) & (hist_df["price_date"] == target_date)
             ]
 
             if not entry.empty and not exit_row.empty:
@@ -183,12 +181,14 @@ def _fetch_returns_fallback(
 
                 if entry_price > 0:
                     forward_return = (exit_price - entry_price) / entry_price
-                    returns_data.append({
-                        "contract_symbol": contract,
-                        "ranking_date": rank_date,
-                        "composite_rank": rank_row["composite_rank"],
-                        "forward_return": forward_return,
-                    })
+                    returns_data.append(
+                        {
+                            "contract_symbol": contract,
+                            "ranking_date": rank_date,
+                            "composite_rank": rank_row["composite_rank"],
+                            "forward_return": forward_return,
+                        }
+                    )
 
         return pd.DataFrame(returns_data)
 
@@ -205,9 +205,7 @@ def store_evaluation(
 ) -> None:
     """Store evaluation results to database."""
     try:
-        has_critical = any(
-            a.severity == AlertSeverity.CRITICAL for a in report.alerts
-        )
+        has_critical = any(a.severity == AlertSeverity.CRITICAL for a in report.alerts)
 
         record = {
             "symbol_id": symbol_id,
@@ -260,13 +258,11 @@ def fit_and_save_calibrator(
     merged = rankings.merge(
         returns[["contract_symbol", "ranking_date", "forward_return"]],
         on=["contract_symbol", "ranking_date"],
-        how="inner"
+        how="inner",
     )
 
     if len(merged) < 100:
-        logger.warning(
-            f"Only {len(merged)} samples for calibration, need at least 100"
-        )
+        logger.warning(f"Only {len(merged)} samples for calibration, need at least 100")
         return
 
     calibrator = IsotonicCalibrator()
@@ -311,12 +307,10 @@ def evaluate_symbol(
     merged = rankings.merge(
         returns[["contract_symbol", "ranking_date", "forward_return"]],
         on=["contract_symbol", "ranking_date"],
-        how="inner"
+        how="inner",
     )
 
-    logger.info(
-        f"Merged {len(merged)} samples from {len(rankings)} rankings"
-    )
+    logger.info(f"Merged {len(merged)} samples from {len(rankings)} rankings")
 
     monitor = RankingMonitor(lookback_days=days)
     report = monitor.evaluate(
@@ -344,9 +338,7 @@ def evaluate_symbol(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Evaluate options ranking system health"
-    )
+    parser = argparse.ArgumentParser(description="Evaluate options ranking system health")
     parser.add_argument(
         "--symbol",
         type=str,

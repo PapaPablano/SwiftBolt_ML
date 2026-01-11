@@ -117,6 +117,7 @@ class ArimaGarchForecaster:
 
         # Test stationarity - if non-stationary, use d=1
         from statsmodels.tsa.stattools import adfuller
+
         try:
             adf_result = adfuller(returns.dropna())
             d = 0 if adf_result[1] < 0.05 else 1
@@ -165,9 +166,7 @@ class ArimaGarchForecaster:
         returns = df["close"].pct_change().dropna()
 
         if len(returns) < min_samples:
-            raise ValueError(
-                f"Insufficient data: {len(returns)} < {min_samples}"
-            )
+            raise ValueError(f"Insufficient data: {len(returns)} < {min_samples}")
 
         self._train_returns = returns.copy()
 
@@ -198,7 +197,7 @@ class ArimaGarchForecaster:
         try:
             residuals = pd.Series(
                 self.fitted_arima.resid,
-                index=returns.index[-len(self.fitted_arima.resid):],
+                index=returns.index[-len(self.fitted_arima.resid) :],
             )
             self.garch_model.fit(residuals)
         except Exception as e:
@@ -266,9 +265,7 @@ class ArimaGarchForecaster:
 
         # Classify predictions and actuals
         pred_labels = self._classify_returns(fitted_values)
-        actual_labels = self._classify_returns(
-            returns.iloc[-len(fitted_values):]
-        )
+        actual_labels = self._classify_returns(returns.iloc[-len(fitted_values) :])
 
         # Calculate accuracy
         correct = (pred_labels == actual_labels).sum()
@@ -276,7 +273,7 @@ class ArimaGarchForecaster:
 
         # Calculate directional accuracy
         pred_direction = np.sign(fitted_values)
-        actual_direction = np.sign(returns.iloc[-len(fitted_values):])
+        actual_direction = np.sign(returns.iloc[-len(fitted_values) :])
         directional_accuracy = (pred_direction == actual_direction).mean()
 
         self.training_stats["accuracy"] = float(accuracy)
@@ -293,10 +290,9 @@ class ArimaGarchForecaster:
         labels = pd.Series(index=returns.index, dtype=str)
         labels[returns > self.bullish_threshold] = "bullish"
         labels[returns < self.bearish_threshold] = "bearish"
-        labels[
-            (returns >= self.bearish_threshold) &
-            (returns <= self.bullish_threshold)
-        ] = "neutral"
+        labels[(returns >= self.bearish_threshold) & (returns <= self.bullish_threshold)] = (
+            "neutral"
+        )
         return labels
 
     def predict(
@@ -343,7 +339,9 @@ class ArimaGarchForecaster:
             garch_volatility = np.sqrt(garch_variance)
         except Exception:
             # Fallback to simple volatility
-            garch_volatility = float(self._train_returns.std()) if self._train_returns is not None else 0.02
+            garch_volatility = (
+                float(self._train_returns.std()) if self._train_returns is not None else 0.02
+            )
 
         # Classify the forecast
         if forecast_mean > self.bullish_threshold:
@@ -411,7 +409,7 @@ class ArimaGarchForecaster:
             prob_neutral /= total
             prob_bullish /= total
         else:
-            prob_bearish = prob_neutral = prob_bullish = 1/3
+            prob_bearish = prob_neutral = prob_bullish = 1 / 3
 
         return {
             "bearish": float(prob_bearish),
@@ -506,12 +504,14 @@ class ArimaGarchForecaster:
             lower_bound = forecast_value * (1 - z_score * cumulative_volatility)
             upper_bound = forecast_value * (1 + z_score * cumulative_volatility)
 
-            points.append({
-                "ts": int(forecast_ts.timestamp()),
-                "value": round(forecast_value, 2),
-                "lower": round(lower_bound, 2),
-                "upper": round(upper_bound, 2),
-            })
+            points.append(
+                {
+                    "ts": int(forecast_ts.timestamp()),
+                    "value": round(forecast_value, 2),
+                    "lower": round(lower_bound, 2),
+                    "upper": round(upper_bound, 2),
+                }
+            )
 
         return points
 

@@ -71,9 +71,7 @@ def get_calibrator() -> ConfidenceCalibrator:
                     len(historical),
                 )
             else:
-                logger.info(
-                    "Insufficient historical data for calibration, using raw confidence"
-                )
+                logger.info("Insufficient historical data for calibration, using raw confidence")
         except Exception as e:
             logger.warning("Could not load calibration data: %s", e)
     return _calibrator
@@ -241,9 +239,7 @@ def _apply_residual_correction_1d(
         for key in ("target", "lower_band", "upper_band"):
             if key in synthesis and synthesis[key] is not None:
                 try:
-                    synthesis[key] = (
-                        float(synthesis[key]) * result.correction_factor
-                    )
+                    synthesis[key] = float(synthesis[key]) * result.correction_factor
                 except Exception:
                     pass
 
@@ -509,12 +505,14 @@ def forecast_result_to_points(
         if i == horizon_days:
             value = result.target
 
-        points.append({
-            "ts": (start_ts + timedelta(days=i)).isoformat(),
-            "value": round(value, 2),
-            "lower": round(result.lower_band, 2),
-            "upper": round(result.upper_band, 2),
-        })
+        points.append(
+            {
+                "ts": (start_ts + timedelta(days=i)).isoformat(),
+                "value": round(value, 2),
+                "lower": round(result.lower_band, 2),
+                "upper": round(result.upper_band, 2),
+            }
+        )
 
     return points
 
@@ -563,34 +561,22 @@ def apply_sr_constraints(
 
     if support_levels:
         high_prob_supports = [
-            lvl["probability"]
-            for lvl in support_levels
-            if lvl.get("probability", 0) >= 0.7
+            lvl["probability"] for lvl in support_levels if lvl.get("probability", 0) >= 0.7
         ]
         if high_prob_supports:
-            logistic_support_prob = (
-                sum(high_prob_supports) / len(high_prob_supports)
-            )
+            logistic_support_prob = sum(high_prob_supports) / len(high_prob_supports)
 
     if resistance_levels:
         high_prob_resistances = [
-            lvl["probability"]
-            for lvl in resistance_levels
-            if lvl.get("probability", 0) >= 0.7
+            lvl["probability"] for lvl in resistance_levels if lvl.get("probability", 0) >= 0.7
         ]
         if high_prob_resistances:
-            logistic_resistance_prob = (
-                sum(high_prob_resistances) / len(high_prob_resistances)
-            )
+            logistic_resistance_prob = sum(high_prob_resistances) / len(high_prob_resistances)
 
     # Use provided probabilities if available, otherwise use logistic-derived
     probs = sr_probabilities or {}
-    support_hold_prob = probs.get(
-        "support_hold_probability", logistic_support_prob
-    )
-    resistance_hold_prob = probs.get(
-        "resistance_hold_probability", logistic_resistance_prob
-    )
+    support_hold_prob = probs.get("support_hold_probability", logistic_support_prob)
+    resistance_hold_prob = probs.get("resistance_hold_probability", logistic_resistance_prob)
 
     nearest_support = sr_levels.get("nearest_support")
     nearest_resistance = sr_levels.get("nearest_resistance")
@@ -614,12 +600,14 @@ def apply_sr_constraints(
         if lower > upper:
             lower, upper = upper, lower
 
-        constrained_points.append({
-            **point,
-            "value": round(value, 2),
-            "lower": round(lower, 2),
-            "upper": round(upper, 2),
-        })
+        constrained_points.append(
+            {
+                **point,
+                "value": round(value, 2),
+                "lower": round(lower, 2),
+                "upper": round(upper, 2),
+            }
+        )
 
     forecast["points"] = constrained_points
 
@@ -694,8 +682,7 @@ def apply_sr_constraints(
     # Calculate S/R density (number of levels within 5% of current price)
     all_levels = sr_levels.get("all_supports", [])[:10] + sr_levels.get("all_resistances", [])[:10]
     levels_within_5pct = [
-        level for level in all_levels
-        if abs(level - current_price) / current_price <= 0.05
+        level for level in all_levels if abs(level - current_price) / current_price <= 0.05
     ]
     forecast["sr_density"] = len(levels_within_5pct)
 
@@ -734,9 +721,7 @@ def process_symbol(symbol: str) -> None:
         data_quality_score = validator.get_data_quality_score(df)
 
         if not validation_result.is_valid:
-            logger.warning(
-                f"Data quality issues for {symbol}: {validation_result.issues}"
-            )
+            logger.warning(f"Data quality issues for {symbol}: {validation_result.issues}")
 
         # Calculate data quality multiplier for confidence adjustment
         data_quality_multiplier = max(
@@ -744,9 +729,7 @@ def process_symbol(symbol: str) -> None:
         )
 
         # Calculate sample size multiplier (per ML Improvement Plan 1.1)
-        sample_size_multiplier = min(
-            1.0, len(df) / settings.min_bars_for_high_confidence
-        )
+        sample_size_multiplier = min(1.0, len(df) / settings.min_bars_for_high_confidence)
 
         logger.info(
             f"Data quality for {symbol}: score={data_quality_score:.2f}, "
@@ -777,8 +760,8 @@ def process_symbol(symbol: str) -> None:
 
         # Log indicator details
         if poly_result:
-            s_slope = poly_result.get('support_slope', 0)
-            r_slope = poly_result.get('resistance_slope', 0)
+            s_slope = poly_result.get("support_slope", 0)
+            r_slope = poly_result.get("resistance_slope", 0)
             logger.info(
                 f"  Polynomial S/R: support={poly_result.get('current_support')}, "
                 f"resistance={poly_result.get('current_resistance')}, "
@@ -974,9 +957,7 @@ def process_symbol(symbol: str) -> None:
                     "gb_prediction": ensemble_pred.get("gb_prediction"),
                     "agreement": ensemble_pred.get("agreement"),
                     "ensemble_type": ensemble_type,
-                    "backtest": (
-                        backtest_metrics.__dict__ if backtest_metrics else None
-                    ),
+                    "backtest": (backtest_metrics.__dict__ if backtest_metrics else None),
                     "training_stats": forecaster.training_stats,
                     # 3-layer synthesis metadata
                     "synthesis": {
@@ -1089,9 +1070,7 @@ def process_symbol(symbol: str) -> None:
                     "confidence": synth_result.confidence,
                     "horizon": horizon,
                     "points": synth_points,
-                    "training_stats": getattr(
-                        baseline_forecaster, "training_stats", None
-                    ),
+                    "training_stats": getattr(baseline_forecaster, "training_stats", None),
                     "synthesis": synth_result.to_dict(),
                 }
 
@@ -1131,11 +1110,9 @@ def process_symbol(symbol: str) -> None:
                     "confidence": forecast.get("confidence", 0.5),
                     "model_agreement": forecast.get("agreement", 0.75),
                     "created_at": datetime.now(),
-                    "conflicting_signals": supertrend_data.get(
-                        "conflicting_signals", 0
-                    )
-                    if supertrend_data
-                    else 0,
+                    "conflicting_signals": (
+                        supertrend_data.get("conflicting_signals", 0) if supertrend_data else 0
+                    ),
                 }
             )
             issues = ForecastQualityMonitor.check_quality_issues(
@@ -1144,9 +1121,7 @@ def process_symbol(symbol: str) -> None:
                     "model_agreement": forecast.get("agreement", 0.75),
                     "created_at": datetime.now(),
                     "conflicting_signals": (
-                        supertrend_data.get("conflicting_signals", 0)
-                        if supertrend_data
-                        else 0
+                        supertrend_data.get("conflicting_signals", 0) if supertrend_data else 0
                     ),
                 }
             )
@@ -1238,9 +1213,7 @@ def main() -> None:
             metrics = export_monitoring_metrics()
             n_preds = metrics.get("n_predictions", 0)
             accuracy = metrics.get("rolling_accuracy", 0)
-            logger.info(
-                f"Monitoring: {n_preds} predictions, {accuracy:.1%} accuracy"
-            )
+            logger.info(f"Monitoring: {n_preds} predictions, {accuracy:.1%} accuracy")
         except Exception as e:
             logger.warning(f"Failed to export monitoring metrics: {e}")
 

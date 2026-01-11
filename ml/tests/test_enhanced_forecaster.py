@@ -10,8 +10,8 @@ import pytest
 # Mock the settings before importing (required for CI without env vars)
 mock_settings = MagicMock()
 mock_settings.min_bars_for_training = 50
-sys.modules['config.settings'] = MagicMock()
-sys.modules['config.settings'].settings = mock_settings
+sys.modules["config.settings"] = MagicMock()
+sys.modules["config.settings"].settings = mock_settings
 
 # noqa: E402 - imports must be after mock setup
 from src.models.enhanced_forecaster import (  # noqa: E402
@@ -123,9 +123,7 @@ class TestEnhancedForecasterFeatures:
         forecaster = EnhancedForecaster()
         df = forecaster.prepare_features(sample_ohlc_df)
 
-        X, y = forecaster.prepare_training_data(
-            df, horizon_days=5, mode="classification"
-        )
+        X, y = forecaster.prepare_training_data(df, horizon_days=5, mode="classification")
 
         # Check label values
         unique_labels = y.unique()
@@ -231,9 +229,7 @@ class TestEnhancedForecasterForecast:
         horizons = {"1D": 1, "1W": 5, "2W": 10, "1M": 20}
 
         for horizon, expected_days in horizons.items():
-            result = forecaster.generate_forecast(
-                sample_ohlc_df, horizon=horizon
-            )
+            result = forecaster.generate_forecast(sample_ohlc_df, horizon=horizon)
             assert len(result["points"]) == expected_days
 
     def test_invalid_horizon(self, sample_ohlc_df):

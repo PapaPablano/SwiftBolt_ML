@@ -120,9 +120,7 @@ class WalkForwardCV:
             if len(test_idx) > 0:
                 splits.append((train_idx, test_idx))
 
-        logger.debug(
-            f"Created {len(splits)} splits: initial_train={initial_train_size}"
-        )
+        logger.debug(f"Created {len(splits)} splits: initial_train={initial_train_size}")
         return splits
 
     def validate(
@@ -250,9 +248,7 @@ class WalkForwardCV:
             results["accuracy"].append(acc)
 
             if verbose:
-                logger.info(
-                    f"Fold {fold_idx + 1}/{len(splits)}: Accuracy={acc:.2%}"
-                )
+                logger.info(f"Fold {fold_idx + 1}/{len(splits)}: Accuracy={acc:.2%}")
 
         summary = {
             "accuracy_mean": np.mean(results["accuracy"]),

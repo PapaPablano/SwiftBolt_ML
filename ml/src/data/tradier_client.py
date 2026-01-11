@@ -56,9 +56,7 @@ class TradierClient:
         self.base_url = base_url or settings.tradier_base_url
 
         if not self.api_key:
-            raise ValueError(
-                "Tradier API key required. Set TRADIER_API_KEY environment variable."
-            )
+            raise ValueError("Tradier API key required. Set TRADIER_API_KEY environment variable.")
 
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -747,14 +745,32 @@ class TradierClient:
 
         # Ensure required columns exist
         required_cols = [
-            "contract_symbol", "option_type", "strike", "expiration",
-            "bid", "ask", "last", "underlying_price", "volume", "open_interest",
-            "delta", "gamma", "theta", "vega", "rho", "iv", "snapshot_time"
+            "contract_symbol",
+            "option_type",
+            "strike",
+            "expiration",
+            "bid",
+            "ask",
+            "last",
+            "underlying_price",
+            "volume",
+            "open_interest",
+            "delta",
+            "gamma",
+            "theta",
+            "vega",
+            "rho",
+            "iv",
+            "snapshot_time",
         ]
 
         for col in required_cols:
             if col not in chains.columns:
-                chains[col] = 0 if col not in ["contract_symbol", "option_type", "expiration", "snapshot_time"] else ""
+                chains[col] = (
+                    0
+                    if col not in ["contract_symbol", "option_type", "expiration", "snapshot_time"]
+                    else ""
+                )
 
         logger.info(f"Created snapshot of {len(chains)} options for {symbol}")
         return chains[required_cols]

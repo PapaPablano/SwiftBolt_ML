@@ -124,8 +124,7 @@ class SRProbabilityPredictor:
         touches_df = df.iloc[level_idx:current_idx]
         if len(touches_df) > 0:
             touches = touches_df[
-                (touches_df["low"] <= level + tolerance) &
-                (touches_df["high"] >= level - tolerance)
+                (touches_df["low"] <= level + tolerance) & (touches_df["high"] >= level - tolerance)
             ]
             touch_count = len(touches)
         else:
@@ -182,9 +181,7 @@ class SRProbabilityPredictor:
             # Extract features at different points after formation
             # This creates multiple training samples per level
             for check_idx in range(level_idx + 5, min(level_idx + 50, len(df))):
-                features = self.extract_level_features(
-                    df, level_price, level_idx, check_idx
-                )
+                features = self.extract_level_features(df, level_price, level_idx, check_idx)
                 X_list.append(features)
                 y_list.append(1 if did_hold else 0)
 
@@ -392,12 +389,14 @@ def create_historical_level_outcomes(
             max_high = future_bars["high"].max()
             held = max_high <= level_price + tolerance
 
-        levels_with_outcomes.append({
-            "price": level_price,
-            "index": level_idx,
-            "type": level_type,
-            "held": held,
-        })
+        levels_with_outcomes.append(
+            {
+                "price": level_price,
+                "index": level_idx,
+                "type": level_type,
+                "held": held,
+            }
+        )
 
     logger.info(
         f"Created {len(levels_with_outcomes)} level outcomes "

@@ -64,16 +64,10 @@ class OptionsRanker:
         df["moneyness_score"] = self._score_moneyness(
             df["strike"], df["side"], underlying_price, underlying_trend
         )
-        df["iv_rank_score"] = self._score_iv_rank(
-            df["impliedVolatility"], historical_vol
-        )
-        df["liquidity_score"] = self._score_liquidity(
-            df["volume"], df["openInterest"]
-        )
+        df["iv_rank_score"] = self._score_iv_rank(df["impliedVolatility"], historical_vol)
+        df["liquidity_score"] = self._score_liquidity(df["volume"], df["openInterest"])
         df["delta_score"] = self._score_delta(df["delta"], df["side"], underlying_trend)
-        df["theta_decay_score"] = self._score_theta(
-            df["theta"], df["side"], df["expiration"]
-        )
+        df["theta_decay_score"] = self._score_theta(df["theta"], df["side"], df["expiration"])
         df["momentum_score"] = self._score_momentum(underlying_trend, df["side"])
 
         # Weighted composite score

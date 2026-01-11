@@ -117,17 +117,18 @@ class EnhancedEnsembleForecaster:
         self.gb_weight: Optional[float] = None
 
         # Track model count
-        self.n_models = sum([
-            True,  # RF always enabled
-            True,  # GB always enabled
-            enable_arima_garch,
-            enable_prophet,
-            enable_lstm,
-        ])
+        self.n_models = sum(
+            [
+                True,  # RF always enabled
+                True,  # GB always enabled
+                enable_arima_garch,
+                enable_prophet,
+                enable_lstm,
+            ]
+        )
 
         logger.info(
-            "EnhancedEnsembleForecaster initialized: "
-            "horizon=%s, n_models=%d, monitoring=%s",
+            "EnhancedEnsembleForecaster initialized: " "horizon=%s, n_models=%d, monitoring=%s",
             horizon,
             self.n_models,
             "enabled" if enable_monitoring else "disabled",
@@ -280,13 +281,15 @@ class EnhancedEnsembleForecaster:
         for i in range(len(features_df)):
             row = features_df.iloc[[i]]
             pred = self.predict(row)
-            results.append({
-                "ensemble_label": pred["label"],
-                "ensemble_confidence": pred["confidence"],
-                "rf_label": pred.get("rf_prediction", pred["label"]),
-                "gb_label": pred.get("gb_prediction", pred["label"]),
-                "agreement": pred["agreement"],
-            })
+            results.append(
+                {
+                    "ensemble_label": pred["label"],
+                    "ensemble_confidence": pred["confidence"],
+                    "rf_label": pred.get("rf_prediction", pred["label"]),
+                    "gb_label": pred.get("gb_prediction", pred["label"]),
+                    "agreement": pred["agreement"],
+                }
+            )
 
         return pd.DataFrame(results)
 
@@ -397,14 +400,16 @@ class EnhancedEnsembleForecaster:
         else:
             ts = pd.date_range(end=datetime.now(), periods=n, freq="D")
 
-        return pd.DataFrame({
-            "ts": ts,
-            "open": close * 0.999,
-            "high": close * 1.01,
-            "low": close * 0.99,
-            "close": close,
-            "volume": np.ones(n) * 1e6,
-        })
+        return pd.DataFrame(
+            {
+                "ts": ts,
+                "open": close * 0.999,
+                "high": close * 1.01,
+                "low": close * 0.99,
+                "close": close,
+                "volume": np.ones(n) * 1e6,
+            }
+        )
 
 
 def get_production_ensemble(
@@ -454,9 +459,7 @@ def get_production_ensemble(
         enable_arima_garch=_bool_env("ENABLE_ARIMA_GARCH", default=True),
         enable_prophet=_bool_env("ENABLE_PROPHET", default=True),
         enable_lstm=_bool_env("ENABLE_LSTM", default=False),
-        optimization_method=os.getenv(
-            "ENSEMBLE_OPTIMIZATION_METHOD", "ridge"
-        ),
+        optimization_method=os.getenv("ENSEMBLE_OPTIMIZATION_METHOD", "ridge"),
         enable_monitoring=_bool_env("ENABLE_MONITORING", default=True),
     )
 
@@ -471,6 +474,7 @@ def get_global_monitor() -> "PerformanceMonitor":
 
     if _global_monitor is None:
         from src.models.performance_monitor import PerformanceMonitor
+
         _global_monitor = PerformanceMonitor()
 
     return _global_monitor
@@ -520,31 +524,33 @@ if __name__ == "__main__":
 
     prices = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
 
-    ohlc_df = pd.DataFrame({
-        "ts": pd.date_range("2024-01-01", periods=n, freq="D"),
-        "open": prices * 0.998,
-        "high": prices * 1.01,
-        "low": prices * 0.99,
-        "close": prices,
-        "volume": np.random.randint(1e6, 1e7, n).astype(float),
-    })
+    ohlc_df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2024-01-01", periods=n, freq="D"),
+            "open": prices * 0.998,
+            "high": prices * 1.01,
+            "low": prices * 0.99,
+            "close": prices,
+            "volume": np.random.randint(1e6, 1e7, n).astype(float),
+        }
+    )
 
     # Create features (simplified)
-    features_df = pd.DataFrame({
-        "ts": ohlc_df["ts"],
-        "close": ohlc_df["close"],
-        "return_1d": ohlc_df["close"].pct_change(),
-        "return_5d": ohlc_df["close"].pct_change(5),
-        "sma_20": ohlc_df["close"].rolling(20).mean(),
-        "vol_20": ohlc_df["close"].pct_change().rolling(20).std(),
-    }).dropna()
+    features_df = pd.DataFrame(
+        {
+            "ts": ohlc_df["ts"],
+            "close": ohlc_df["close"],
+            "return_1d": ohlc_df["close"].pct_change(),
+            "return_5d": ohlc_df["close"].pct_change(5),
+            "sma_20": ohlc_df["close"].rolling(20).mean(),
+            "vol_20": ohlc_df["close"].pct_change().rolling(20).std(),
+        }
+    ).dropna()
 
     # Create labels
     fwd_return = ohlc_df["close"].pct_change().shift(-1)
     labels = fwd_return.apply(
-        lambda x: "bullish" if x > 0.01
-        else "bearish" if x < -0.01
-        else "neutral"
+        lambda x: "bullish" if x > 0.01 else "bearish" if x < -0.01 else "neutral"
     ).iloc[:-1]
 
     # Align data

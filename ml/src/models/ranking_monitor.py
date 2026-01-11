@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 class AlertSeverity(Enum):
     """Alert severity levels."""
+
     INFO = "info"
     WARNING = "warning"
     CRITICAL = "critical"
@@ -34,6 +35,7 @@ class AlertSeverity(Enum):
 
 class AlertType(Enum):
     """Types of ranking alerts."""
+
     IC_COLLAPSE = "ic_collapse"
     IC_DEGRADATION = "ic_degradation"
     LEAKAGE_DETECTED = "leakage_detected"
@@ -46,6 +48,7 @@ class AlertType(Enum):
 @dataclass
 class RankingAlert:
     """Alert from ranking validation."""
+
     alert_type: AlertType
     severity: AlertSeverity
     message: str
@@ -70,6 +73,7 @@ class RankingAlert:
 @dataclass
 class RankingHealthReport:
     """Health report for ranking system."""
+
     timestamp: datetime
     is_healthy: bool
     alerts: List[RankingAlert]
@@ -183,16 +187,12 @@ class RankingMonitor:
 
         # Merge rankings with returns
         if rankings_df is None or returns_df is None:
-            return self._create_insufficient_data_report(
-                "Missing rankings or returns data"
-            )
+            return self._create_insufficient_data_report("Missing rankings or returns data")
 
         df = rankings_df.merge(returns_df, how="inner")
 
         if len(df) < self.MIN_CONTRACTS_PER_DAY * self.MIN_DAYS_FOR_EVALUATION:
-            return self._create_insufficient_data_report(
-                f"Insufficient data: {len(df)} samples"
-            )
+            return self._create_insufficient_data_report(f"Insufficient data: {len(df)} samples")
 
         # Get unique dates
         dates = df[date_col].unique() if date_col in df.columns else [None]
@@ -223,9 +223,7 @@ class RankingMonitor:
         self._check_leakage_alerts(leakage_stats)
 
         # Determine health status
-        critical_alerts = [
-            a for a in self._alerts if a.severity == AlertSeverity.CRITICAL
-        ]
+        critical_alerts = [a for a in self._alerts if a.severity == AlertSeverity.CRITICAL]
         is_healthy = len(critical_alerts) == 0
 
         return RankingHealthReport(
@@ -279,7 +277,7 @@ class RankingMonitor:
         # Update history
         self._ic_history.extend(daily_ics)
         if len(self._ic_history) > self.lookback_days:
-            self._ic_history = self._ic_history[-self.lookback_days:]
+            self._ic_history = self._ic_history[-self.lookback_days :]
 
         return {
             "mean_ic": float(np.mean(daily_ics)),
@@ -295,10 +293,8 @@ class RankingMonitor:
         if len(self._ic_history) < self.IC_ROLLING_WINDOW * 2:
             return 0.0
 
-        recent = np.mean(self._ic_history[-self.IC_ROLLING_WINDOW:])
-        previous = np.mean(
-            self._ic_history[-self.IC_ROLLING_WINDOW * 2:-self.IC_ROLLING_WINDOW]
-        )
+        recent = np.mean(self._ic_history[-self.IC_ROLLING_WINDOW :])
+        previous = np.mean(self._ic_history[-self.IC_ROLLING_WINDOW * 2 : -self.IC_ROLLING_WINDOW])
 
         return recent - previous
 
@@ -333,22 +329,19 @@ class RankingMonitor:
             if len(common) < 10:
                 continue
 
-            prev_scores = prev_df[prev_df[contract_col].isin(common)].set_index(
-                contract_col
-            )[score_col]
-            curr_scores = curr_df[curr_df[contract_col].isin(common)].set_index(
-                contract_col
-            )[score_col]
+            prev_scores = prev_df[prev_df[contract_col].isin(common)].set_index(contract_col)[
+                score_col
+            ]
+            curr_scores = curr_df[curr_df[contract_col].isin(common)].set_index(contract_col)[
+                score_col
+            ]
 
             # Align indices
             common_idx = prev_scores.index.intersection(curr_scores.index)
             if len(common_idx) < 10:
                 continue
 
-            corr, _ = stats.spearmanr(
-                prev_scores.loc[common_idx],
-                curr_scores.loc[common_idx]
-            )
+            corr, _ = stats.spearmanr(prev_scores.loc[common_idx], curr_scores.loc[common_idx])
             if np.isfinite(corr):
                 correlations.append(corr)
 
@@ -369,9 +362,7 @@ class RankingMonitor:
     ) -> Dict[str, float]:
         """Calculate hit rate in top quantile."""
         df = df.copy()
-        df["quantile"] = pd.qcut(
-            df[score_col], q=n_quantiles, labels=False, duplicates="drop"
-        )
+        df["quantile"] = pd.qcut(df[score_col], q=n_quantiles, labels=False, duplicates="drop")
 
         top_quantile = df[df["quantile"] == df["quantile"].max()]
         n_total = len(top_quantile)
@@ -389,12 +380,13 @@ class RankingMonitor:
 
         # Wilson score interval
         from scipy import stats
+
         z = stats.norm.ppf(0.975)
         denominator = 1 + z**2 / n_total
         center = (hit_rate + z**2 / (2 * n_total)) / denominator
-        margin = z * np.sqrt(
-            (hit_rate * (1 - hit_rate) + z**2 / (4 * n_total)) / n_total
-        ) / denominator
+        margin = (
+            z * np.sqrt((hit_rate * (1 - hit_rate) + z**2 / (4 * n_total)) / n_total) / denominator
+        )
 
         self._hit_rate_history.append((hit_rate, n_total))
 
@@ -458,46 +450,54 @@ class RankingMonitor:
 
         # IC collapse
         if mean_ic <= self.ic_collapse_threshold:
-            self._alerts.append(RankingAlert(
-                alert_type=AlertType.IC_COLLAPSE,
-                severity=AlertSeverity.CRITICAL,
-                message=f"Mean IC collapsed to {mean_ic:.4f}",
-                metric_value=mean_ic,
-                threshold=self.ic_collapse_threshold,
-                details=ic_stats,
-            ))
+            self._alerts.append(
+                RankingAlert(
+                    alert_type=AlertType.IC_COLLAPSE,
+                    severity=AlertSeverity.CRITICAL,
+                    message=f"Mean IC collapsed to {mean_ic:.4f}",
+                    metric_value=mean_ic,
+                    threshold=self.ic_collapse_threshold,
+                    details=ic_stats,
+                )
+            )
         # IC degradation
         elif mean_ic < self.ic_degradation_threshold:
-            self._alerts.append(RankingAlert(
-                alert_type=AlertType.IC_DEGRADATION,
-                severity=AlertSeverity.WARNING,
-                message=f"Mean IC degraded to {mean_ic:.4f}",
-                metric_value=mean_ic,
-                threshold=self.ic_degradation_threshold,
-                details=ic_stats,
-            ))
+            self._alerts.append(
+                RankingAlert(
+                    alert_type=AlertType.IC_DEGRADATION,
+                    severity=AlertSeverity.WARNING,
+                    message=f"Mean IC degraded to {mean_ic:.4f}",
+                    metric_value=mean_ic,
+                    threshold=self.ic_degradation_threshold,
+                    details=ic_stats,
+                )
+            )
 
         # IC trend degradation
         if ic_trend < -0.02 and len(self._ic_history) >= self.IC_ROLLING_WINDOW * 2:
-            self._alerts.append(RankingAlert(
-                alert_type=AlertType.IC_DEGRADATION,
-                severity=AlertSeverity.WARNING,
-                message=f"IC trending down: {ic_trend:.4f}",
-                metric_value=ic_trend,
-                threshold=-0.02,
-                details={"ic_history": self._ic_history[-10:]},
-            ))
+            self._alerts.append(
+                RankingAlert(
+                    alert_type=AlertType.IC_DEGRADATION,
+                    severity=AlertSeverity.WARNING,
+                    message=f"IC trending down: {ic_trend:.4f}",
+                    metric_value=ic_trend,
+                    threshold=-0.02,
+                    details={"ic_history": self._ic_history[-10:]},
+                )
+            )
 
     def _check_stability_alerts(self, stability: float) -> None:
         """Generate stability-related alerts."""
         if stability < self.stability_threshold:
-            self._alerts.append(RankingAlert(
-                alert_type=AlertType.STABILITY_DEGRADED,
-                severity=AlertSeverity.WARNING,
-                message=f"Ranking stability degraded to {stability:.4f}",
-                metric_value=stability,
-                threshold=self.stability_threshold,
-            ))
+            self._alerts.append(
+                RankingAlert(
+                    alert_type=AlertType.STABILITY_DEGRADED,
+                    severity=AlertSeverity.WARNING,
+                    message=f"Ranking stability degraded to {stability:.4f}",
+                    metric_value=stability,
+                    threshold=self.stability_threshold,
+                )
+            )
 
     def _check_hit_rate_alerts(self, hit_rate_stats: Dict[str, float]) -> None:
         """Generate hit rate-related alerts."""
@@ -506,37 +506,43 @@ class RankingMonitor:
 
         # Suspicious hit rate (too good to be true with small sample)
         if hit_rate >= self.HIT_RATE_SUSPICIOUS_THRESHOLD and n < self.HIT_RATE_MIN_N:
-            self._alerts.append(RankingAlert(
-                alert_type=AlertType.HIT_RATE_SUSPICIOUS,
-                severity=AlertSeverity.WARNING,
-                message=f"Hit rate {hit_rate:.1%} with only n={n} samples",
-                metric_value=hit_rate,
-                threshold=self.HIT_RATE_SUSPICIOUS_THRESHOLD,
-                details=hit_rate_stats,
-            ))
+            self._alerts.append(
+                RankingAlert(
+                    alert_type=AlertType.HIT_RATE_SUSPICIOUS,
+                    severity=AlertSeverity.WARNING,
+                    message=f"Hit rate {hit_rate:.1%} with only n={n} samples",
+                    metric_value=hit_rate,
+                    threshold=self.HIT_RATE_SUSPICIOUS_THRESHOLD,
+                    details=hit_rate_stats,
+                )
+            )
 
         # Perfect hit rate is always suspicious
         if hit_rate == 1.0 and n > 0:
-            self._alerts.append(RankingAlert(
-                alert_type=AlertType.HIT_RATE_SUSPICIOUS,
-                severity=AlertSeverity.CRITICAL if n < 20 else AlertSeverity.WARNING,
-                message=f"Perfect 100% hit rate with n={n} - likely artifact",
-                metric_value=hit_rate,
-                threshold=1.0,
-                details=hit_rate_stats,
-            ))
+            self._alerts.append(
+                RankingAlert(
+                    alert_type=AlertType.HIT_RATE_SUSPICIOUS,
+                    severity=AlertSeverity.CRITICAL if n < 20 else AlertSeverity.WARNING,
+                    message=f"Perfect 100% hit rate with n={n} - likely artifact",
+                    metric_value=hit_rate,
+                    threshold=1.0,
+                    details=hit_rate_stats,
+                )
+            )
 
     def _check_leakage_alerts(self, leakage_stats: Dict[str, Any]) -> None:
         """Generate leakage-related alerts."""
         if leakage_stats.get("leakage_suspected", False):
-            self._alerts.append(RankingAlert(
-                alert_type=AlertType.LEAKAGE_DETECTED,
-                severity=AlertSeverity.CRITICAL,
-                message="Data leakage suspected - permuted IC not near 0",
-                metric_value=leakage_stats.get("permuted_ic_mean", 0.0),
-                threshold=0.02,
-                details=leakage_stats,
-            ))
+            self._alerts.append(
+                RankingAlert(
+                    alert_type=AlertType.LEAKAGE_DETECTED,
+                    severity=AlertSeverity.CRITICAL,
+                    message="Data leakage suspected - permuted IC not near 0",
+                    metric_value=leakage_stats.get("permuted_ic_mean", 0.0),
+                    threshold=0.02,
+                    details=leakage_stats,
+                )
+            )
 
     def _create_insufficient_data_report(self, reason: str) -> RankingHealthReport:
         """Create report for insufficient data."""

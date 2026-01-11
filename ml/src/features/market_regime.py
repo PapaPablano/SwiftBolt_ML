@@ -38,11 +38,7 @@ class MarketRegimeDetector:
     def _build_features(self, df: pd.DataFrame) -> np.ndarray:
         # Daily returns and rolling volatility as proxies
         returns = df["close"].pct_change().fillna(0.0)
-        vol = (
-            returns.rolling(window=20, min_periods=5)
-            .std()
-            .bfill()
-        )
+        vol = returns.rolling(window=20, min_periods=5).std().bfill()
         feats = np.column_stack([returns.values, vol.values])
         return feats
 

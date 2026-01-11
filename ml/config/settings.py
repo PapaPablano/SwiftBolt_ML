@@ -27,9 +27,9 @@ class Settings(BaseSettings):
     def model_post_init(self, __context) -> None:
         """Set service_role_key alias after init."""
         if self.supabase_key is None and self.supabase_service_role_key is not None:
-            object.__setattr__(self, 'supabase_key', self.supabase_service_role_key)
+            object.__setattr__(self, "supabase_key", self.supabase_service_role_key)
         if self.supabase_service_role_key is None and self.supabase_key is not None:
-            object.__setattr__(self, 'supabase_service_role_key', self.supabase_key)
+            object.__setattr__(self, "supabase_service_role_key", self.supabase_key)
 
     # ML Configuration
     forecast_horizons: list[str] = [

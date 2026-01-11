@@ -37,8 +37,10 @@ logger = logging.getLogger(__name__)
 # DATA STRUCTURES
 # ============================================================================
 
+
 class SignalType(Enum):
     """Signal types from OptionsMomentumRanker."""
+
     BUY = "buy"
     DISCOUNT = "discount"
     RUNNER = "runner"
@@ -55,40 +57,40 @@ class StrategyGenes:
     """
 
     # === RANKING THRESHOLDS (when to enter) ===
-    min_composite_rank: float      # 50-95: Only buy options ranked above this
-    min_momentum_score: float      # 0.3-0.8: Minimum momentum component
-    min_value_score: float         # 0.2-0.7: Minimum value component
-    signal_filter: str             # Which signal type to require
+    min_composite_rank: float  # 50-95: Only buy options ranked above this
+    min_momentum_score: float  # 0.3-0.8: Minimum momentum component
+    min_value_score: float  # 0.2-0.7: Minimum value component
+    signal_filter: str  # Which signal type to require
 
     # === ENTRY TIMING ===
-    entry_hour_min: int            # 9-14: Earliest hour to enter (EST)
-    entry_hour_max: int            # 10-15: Latest hour to enter
-    min_bar_age_minutes: int       # 5-60: Don't buy on super fresh data
+    entry_hour_min: int  # 9-14: Earliest hour to enter (EST)
+    entry_hour_max: int  # 10-15: Latest hour to enter
+    min_bar_age_minutes: int  # 5-60: Don't buy on super fresh data
 
     # === GREEKS THRESHOLDS ===
-    delta_exit: float              # 0.1-0.8: Exit if abs(delta) < this
-    gamma_exit: float              # 0.01-0.1: Exit if gamma > this
-    vega_exit: float               # 0.01-0.3: Exit if vega < this
-    theta_min: float               # -0.5 to 0: Don't buy if theta < this
-    iv_rank_min: float             # 10-40: Minimum IV rank to enter
-    iv_rank_max: float             # 60-99: Maximum IV rank to enter
+    delta_exit: float  # 0.1-0.8: Exit if abs(delta) < this
+    gamma_exit: float  # 0.01-0.1: Exit if gamma > this
+    vega_exit: float  # 0.01-0.3: Exit if vega < this
+    theta_min: float  # -0.5 to 0: Don't buy if theta < this
+    iv_rank_min: float  # 10-40: Minimum IV rank to enter
+    iv_rank_max: float  # 60-99: Maximum IV rank to enter
 
     # === HOLD TIMING ===
-    min_hold_minutes: int          # 5-30: Don't exit too quickly
-    max_hold_minutes: int          # 60-480: Force exit after this
-    profit_target_pct: float       # 5-50: Take profit at this %
-    stop_loss_pct: float           # -2 to -20: Cut loss at this %
+    min_hold_minutes: int  # 5-30: Don't exit too quickly
+    max_hold_minutes: int  # 60-480: Force exit after this
+    profit_target_pct: float  # 5-50: Take profit at this %
+    stop_loss_pct: float  # -2 to -20: Cut loss at this %
 
     # === POSITION SIZING ===
-    position_size_pct: float       # 1-10: % of capital per trade
-    max_concurrent_trades: int     # 1-5: Max simultaneous positions
+    position_size_pct: float  # 1-10: % of capital per trade
+    max_concurrent_trades: int  # 1-5: Max simultaneous positions
 
     # === TRADE FREQUENCY ===
-    min_trades_per_day: int        # 1-5: Daily trade limit
-    max_trades_per_symbol: int     # 1-10: Per-symbol limit
+    min_trades_per_day: int  # 1-5: Daily trade limit
+    max_trades_per_symbol: int  # 1-10: Per-symbol limit
 
     @classmethod
-    def random(cls) -> 'StrategyGenes':
+    def random(cls) -> "StrategyGenes":
         """Generate random strategy within valid ranges."""
         return cls(
             min_composite_rank=np.random.uniform(55, 85),
@@ -111,11 +113,11 @@ class StrategyGenes:
             position_size_pct=np.random.uniform(2, 6),
             max_concurrent_trades=np.random.randint(2, 4),
             min_trades_per_day=np.random.randint(1, 3),
-            max_trades_per_symbol=np.random.randint(2, 6)
+            max_trades_per_symbol=np.random.randint(2, 6),
         )
 
     @classmethod
-    def default(cls) -> 'StrategyGenes':
+    def default(cls) -> "StrategyGenes":
         """Create conservative default strategy."""
         return cls(
             min_composite_rank=70.0,
@@ -138,17 +140,22 @@ class StrategyGenes:
             position_size_pct=3.0,
             max_concurrent_trades=3,
             min_trades_per_day=2,
-            max_trades_per_symbol=4
+            max_trades_per_symbol=4,
         )
 
-    def mutate(self, mutation_rate: float = 0.15) -> 'StrategyGenes':
+    def mutate(self, mutation_rate: float = 0.15) -> "StrategyGenes":
         """Create mutated copy of genes."""
         return StrategyGenes(
             min_composite_rank=self._mutate_float(self.min_composite_rank, 55, 85, mutation_rate),
-            min_momentum_score=self._mutate_float(self.min_momentum_score, 0.35, 0.70, mutation_rate),
+            min_momentum_score=self._mutate_float(
+                self.min_momentum_score, 0.35, 0.70, mutation_rate
+            ),
             min_value_score=self._mutate_float(self.min_value_score, 0.25, 0.60, mutation_rate),
-            signal_filter=self.signal_filter if random.random() > mutation_rate
-                         else random.choice(["buy", "discount", "runner", "greeks", "any"]),
+            signal_filter=(
+                self.signal_filter
+                if random.random() > mutation_rate
+                else random.choice(["buy", "discount", "runner", "greeks", "any"])
+            ),
             entry_hour_min=self._mutate_int(self.entry_hour_min, 9, 12, mutation_rate),
             entry_hour_max=self._mutate_int(self.entry_hour_max, 12, 15, mutation_rate),
             min_bar_age_minutes=self._mutate_int(self.min_bar_age_minutes, 5, 45, mutation_rate),
@@ -165,7 +172,7 @@ class StrategyGenes:
             position_size_pct=self._mutate_float(self.position_size_pct, 2, 6, mutation_rate),
             max_concurrent_trades=self._mutate_int(self.max_concurrent_trades, 2, 4, mutation_rate),
             min_trades_per_day=self._mutate_int(self.min_trades_per_day, 1, 3, mutation_rate),
-            max_trades_per_symbol=self._mutate_int(self.max_trades_per_symbol, 2, 6, mutation_rate)
+            max_trades_per_symbol=self._mutate_int(self.max_trades_per_symbol, 2, 6, mutation_rate),
         )
 
     @staticmethod
@@ -187,7 +194,7 @@ class StrategyGenes:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict) -> 'StrategyGenes':
+    def from_dict(cls, data: Dict) -> "StrategyGenes":
         """Create from dictionary."""
         return cls(**data)
 
@@ -195,6 +202,7 @@ class StrategyGenes:
 @dataclass
 class OptionTrade:
     """Represents a simulated options trade during backtesting."""
+
     symbol: str
     contract_symbol: str
     entry_date: str
@@ -251,6 +259,7 @@ class OptionTrade:
 @dataclass
 class StrategyFitness:
     """Multi-dimensional fitness metrics for strategy evaluation."""
+
     total_pnl: float
     pnl_pct: float
     win_rate: float
@@ -265,21 +274,27 @@ class StrategyFitness:
         """Calculate composite fitness score (0-1)."""
         if weights is None:
             weights = {
-                'win_rate': 0.25,
-                'profit_factor': 0.25,
-                'sharpe': 0.20,
-                'max_dd': 0.15,
-                'trade_count': 0.15
+                "win_rate": 0.25,
+                "profit_factor": 0.25,
+                "sharpe": 0.20,
+                "max_dd": 0.15,
+                "trade_count": 0.15,
             }
 
         # Normalize components
-        win_component = self.win_rate * weights.get('win_rate', 0.25)
-        pf_component = min(self.profit_factor / 2.5, 1.0) * weights.get('profit_factor', 0.25)
-        sharpe_component = min(max(self.sharpe_ratio + 1, 0), 3) / 3 * weights.get('sharpe', 0.20)
-        dd_component = max(0, 1.0 - self.max_drawdown) * weights.get('max_dd', 0.15)
-        trade_component = min(self.num_trades / 30, 1.0) * weights.get('trade_count', 0.15)
+        win_component = self.win_rate * weights.get("win_rate", 0.25)
+        pf_component = min(self.profit_factor / 2.5, 1.0) * weights.get("profit_factor", 0.25)
+        sharpe_component = min(max(self.sharpe_ratio + 1, 0), 3) / 3 * weights.get("sharpe", 0.20)
+        dd_component = max(0, 1.0 - self.max_drawdown) * weights.get("max_dd", 0.15)
+        trade_component = min(self.num_trades / 30, 1.0) * weights.get("trade_count", 0.15)
 
-        return max(0, min(win_component + pf_component + sharpe_component + dd_component + trade_component, 1.0))
+        return max(
+            0,
+            min(
+                win_component + pf_component + sharpe_component + dd_component + trade_component,
+                1.0,
+            ),
+        )
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -288,6 +303,7 @@ class StrategyFitness:
 # ============================================================================
 # OPTIONS STRATEGY BACKTESTER
 # ============================================================================
+
 
 class OptionsStrategy:
     """Backtestable options strategy using evolved genes."""
@@ -301,7 +317,7 @@ class OptionsStrategy:
         self,
         options_data: pd.DataFrame,
         price_data: Optional[pd.DataFrame] = None,
-        initial_capital: float = 100000
+        initial_capital: float = 100000,
     ) -> StrategyFitness:
         """
         Backtest strategy on historical options ranking data.
@@ -330,7 +346,7 @@ class OptionsStrategy:
 
         # Sort data by time
         df = options_data.copy()
-        time_col = 'datetime' if 'datetime' in df.columns else 'run_at'
+        time_col = "datetime" if "datetime" in df.columns else "run_at"
 
         if time_col in df.columns:
             df[time_col] = pd.to_datetime(df[time_col])
@@ -339,10 +355,10 @@ class OptionsStrategy:
         for idx, row in df.iterrows():
             current_time = row.get(time_col, datetime.now())
             if isinstance(current_time, str):
-                current_time = datetime.fromisoformat(current_time.replace('Z', '+00:00'))
+                current_time = datetime.fromisoformat(current_time.replace("Z", "+00:00"))
 
-            symbol = row.get('symbol', row.get('underlying_symbol', 'UNKNOWN'))
-            hour = current_time.hour if hasattr(current_time, 'hour') else 12
+            symbol = row.get("symbol", row.get("underlying_symbol", "UNKNOWN"))
+            hour = current_time.hour if hasattr(current_time, "hour") else 12
 
             # === CHECK EXITS ===
             positions_to_close = []
@@ -355,13 +371,17 @@ class OptionsStrategy:
             # Close positions
             for contract, exit_reason in positions_to_close:
                 trade = open_positions[contract]
-                trade.exit_date = current_time.isoformat() if hasattr(current_time, 'isoformat') else str(current_time)
+                trade.exit_date = (
+                    current_time.isoformat()
+                    if hasattr(current_time, "isoformat")
+                    else str(current_time)
+                )
                 trade.exit_price = self._get_price(row)
                 trade.exit_reason = exit_reason
-                trade.delta_exit = row.get('delta', 0)
-                trade.gamma_exit = row.get('gamma', 0)
-                trade.vega_exit = row.get('vega', 0)
-                trade.theta_exit = row.get('theta', 0)
+                trade.delta_exit = row.get("delta", 0)
+                trade.gamma_exit = row.get("gamma", 0)
+                trade.vega_exit = row.get("vega", 0)
+                trade.theta_exit = row.get("theta", 0)
 
                 # Update capital
                 pnl = trade.pnl_pct * capital / 100
@@ -373,29 +393,33 @@ class OptionsStrategy:
             # === CHECK ENTRIES ===
             if len(open_positions) < self.genes.max_concurrent_trades:
                 if self._should_enter(row, hour, daily_trades, symbol_trades, symbol, current_time):
-                    contract = row.get('contract_symbol', f"{symbol}_{idx}")
+                    contract = row.get("contract_symbol", f"{symbol}_{idx}")
 
                     if contract not in open_positions:
                         trade = OptionTrade(
                             symbol=symbol,
                             contract_symbol=contract,
-                            entry_date=current_time.isoformat() if hasattr(current_time, 'isoformat') else str(current_time),
+                            entry_date=(
+                                current_time.isoformat()
+                                if hasattr(current_time, "isoformat")
+                                else str(current_time)
+                            ),
                             entry_price=self._get_price(row),
-                            entry_rank=row.get('composite_rank', 50),
+                            entry_rank=row.get("composite_rank", 50),
                             entry_hour=hour,
                             entry_signal=self._get_entry_signal(row),
-                            delta_entry=row.get('delta', 0),
-                            gamma_entry=row.get('gamma', 0),
-                            vega_entry=row.get('vega', 0),
-                            theta_entry=row.get('theta', 0),
-                            iv_rank_entry=row.get('iv_rank', 50),
-                            size_pct=self.genes.position_size_pct / 100
+                            delta_entry=row.get("delta", 0),
+                            gamma_entry=row.get("gamma", 0),
+                            vega_entry=row.get("vega", 0),
+                            theta_entry=row.get("theta", 0),
+                            iv_rank_entry=row.get("iv_rank", 50),
+                            size_pct=self.genes.position_size_pct / 100,
                         )
 
                         open_positions[contract] = trade
 
                         # Track daily trades
-                        if hasattr(current_time, 'date'):
+                        if hasattr(current_time, "date"):
                             daily_key = current_time.date()
                             daily_trades[daily_key] = daily_trades.get(daily_key, 0) + 1
 
@@ -405,7 +429,7 @@ class OptionsStrategy:
         # Close remaining positions at end of backtest
         for contract, trade in open_positions.items():
             trade.exit_date = df.iloc[-1].get(time_col, datetime.now())
-            if hasattr(trade.exit_date, 'isoformat'):
+            if hasattr(trade.exit_date, "isoformat"):
                 trade.exit_date = trade.exit_date.isoformat()
             trade.exit_price = self._get_price(df.iloc[-1])
             trade.exit_reason = "END_OF_BACKTEST"
@@ -417,7 +441,7 @@ class OptionsStrategy:
 
     def _get_price(self, row: pd.Series) -> float:
         """Extract price from row."""
-        for col in ['mark', 'last_price', 'price', 'mid']:
+        for col in ["mark", "last_price", "price", "mid"]:
             if col in row and pd.notna(row[col]) and row[col] > 0:
                 return float(row[col])
         return 1.0
@@ -429,7 +453,7 @@ class OptionsStrategy:
         daily_trades: Dict,
         symbol_trades: Dict[str, int],
         symbol: str,
-        current_time
+        current_time,
     ) -> bool:
         """Check if entry conditions are met."""
 
@@ -438,13 +462,13 @@ class OptionsStrategy:
             return False
 
         # Rank check
-        composite_rank = row.get('composite_rank', 0)
+        composite_rank = row.get("composite_rank", 0)
         if composite_rank < self.genes.min_composite_rank:
             return False
 
         # Component score checks
-        momentum = row.get('momentum_score', 0)
-        value = row.get('value_score', 0)
+        momentum = row.get("momentum_score", 0)
+        value = row.get("value_score", 0)
 
         if momentum < self.genes.min_momentum_score * 100:
             return False
@@ -458,16 +482,16 @@ class OptionsStrategy:
                 return False
 
         # Greeks checks
-        theta = row.get('theta', 0)
+        theta = row.get("theta", 0)
         if theta < self.genes.theta_min:
             return False
 
-        iv_rank = row.get('iv_rank', 50)
+        iv_rank = row.get("iv_rank", 50)
         if iv_rank < self.genes.iv_rank_min or iv_rank > self.genes.iv_rank_max:
             return False
 
         # Daily trade limit
-        if hasattr(current_time, 'date'):
+        if hasattr(current_time, "date"):
             today = current_time.date()
             if daily_trades.get(today, 0) >= self.genes.min_trades_per_day:
                 return False
@@ -484,18 +508,15 @@ class OptionsStrategy:
         return True
 
     def _check_exit_conditions(
-        self,
-        trade: OptionTrade,
-        row: pd.Series,
-        current_time
+        self, trade: OptionTrade, row: pd.Series, current_time
     ) -> Tuple[bool, str]:
         """Check if position should be exited."""
 
         # Calculate hold time
         try:
-            entry_time = datetime.fromisoformat(trade.entry_date.replace('Z', '+00:00'))
+            entry_time = datetime.fromisoformat(trade.entry_date.replace("Z", "+00:00"))
             if isinstance(current_time, str):
-                current_time = datetime.fromisoformat(current_time.replace('Z', '+00:00'))
+                current_time = datetime.fromisoformat(current_time.replace("Z", "+00:00"))
             hold_minutes = (current_time - entry_time).total_seconds() / 60
         except Exception:
             hold_minutes = 60
@@ -520,15 +541,15 @@ class OptionsStrategy:
                 return True, "STOP_LOSS"
 
         # Greeks-based exits
-        delta = abs(row.get('delta', 0.5))
+        delta = abs(row.get("delta", 0.5))
         if delta < self.genes.delta_exit:
             return True, "DELTA_EXIT"
 
-        gamma = row.get('gamma', 0)
+        gamma = row.get("gamma", 0)
         if gamma > self.genes.gamma_exit:
             return True, "GAMMA_EXIT"
 
-        vega = row.get('vega', 0.1)
+        vega = row.get("vega", 0.1)
         if vega < self.genes.vega_exit:
             return True, "VEGA_EXIT"
 
@@ -536,36 +557,44 @@ class OptionsStrategy:
 
     def _get_entry_signal(self, row: pd.Series) -> str:
         """Determine which signal triggered entry."""
-        if row.get('signal_buy', False):
+        if row.get("signal_buy", False):
             return "BUY"
-        elif row.get('signal_discount', False):
+        elif row.get("signal_discount", False):
             return "DISCOUNT"
-        elif row.get('signal_runner', False):
+        elif row.get("signal_runner", False):
             return "RUNNER"
-        elif row.get('signal_greeks', False):
+        elif row.get("signal_greeks", False):
             return "GREEKS"
         return "RANK"
 
-    def _calculate_fitness(
-        self,
-        initial_capital: float,
-        final_capital: float
-    ) -> StrategyFitness:
+    def _calculate_fitness(self, initial_capital: float, final_capital: float) -> StrategyFitness:
         """Calculate fitness metrics from trades."""
 
         if not self.trades:
             return StrategyFitness(
-                total_pnl=0, pnl_pct=0, win_rate=0, profit_factor=0,
-                sharpe_ratio=0, max_drawdown=0, num_trades=0,
-                avg_trade_duration=0, trades_closed=0
+                total_pnl=0,
+                pnl_pct=0,
+                win_rate=0,
+                profit_factor=0,
+                sharpe_ratio=0,
+                max_drawdown=0,
+                num_trades=0,
+                avg_trade_duration=0,
+                trades_closed=0,
             )
 
         closed_trades = [t for t in self.trades if t.is_closed]
         if not closed_trades:
             return StrategyFitness(
-                total_pnl=0, pnl_pct=0, win_rate=0, profit_factor=0,
-                sharpe_ratio=0, max_drawdown=0, num_trades=len(self.trades),
-                avg_trade_duration=0, trades_closed=0
+                total_pnl=0,
+                pnl_pct=0,
+                win_rate=0,
+                profit_factor=0,
+                sharpe_ratio=0,
+                max_drawdown=0,
+                num_trades=len(self.trades),
+                avg_trade_duration=0,
+                trades_closed=0,
             )
 
         # Calculate returns
@@ -587,7 +616,9 @@ class OptionsStrategy:
         # Profit factor
         gross_profit = sum(r for r in returns if r > 0)
         gross_loss = abs(sum(r for r in returns if r < 0))
-        profit_factor = gross_profit / gross_loss if gross_loss > 0 else (2.0 if gross_profit > 0 else 0)
+        profit_factor = (
+            gross_profit / gross_loss if gross_loss > 0 else (2.0 if gross_profit > 0 else 0)
+        )
 
         # Average duration
         durations = [t.duration_minutes for t in closed_trades if t.duration_minutes > 0]
@@ -605,13 +636,14 @@ class OptionsStrategy:
             max_drawdown=max_drawdown,
             num_trades=len(self.trades),
             avg_trade_duration=avg_duration,
-            trades_closed=len(closed_trades)
+            trades_closed=len(closed_trades),
         )
 
 
 # ============================================================================
 # GENETIC ALGORITHM
 # ============================================================================
+
 
 class OptionsStrategyGA:
     """Genetic Algorithm for evolving optimal options trading strategies."""
@@ -623,7 +655,7 @@ class OptionsStrategyGA:
         elite_fraction: float = 0.10,
         mutation_rate: float = 0.15,
         crossover_rate: float = 0.70,
-        tournament_size: int = 3
+        tournament_size: int = 3,
     ):
         self.population_size = population_size
         self.generations = generations
@@ -638,11 +670,11 @@ class OptionsStrategyGA:
 
         # Fitness weights
         self.fitness_weights = {
-            'win_rate': 0.25,
-            'profit_factor': 0.25,
-            'sharpe': 0.20,
-            'max_dd': 0.15,
-            'trade_count': 0.15
+            "win_rate": 0.25,
+            "profit_factor": 0.25,
+            "sharpe": 0.20,
+            "max_dd": 0.15,
+            "trade_count": 0.15,
         }
 
     def initialize_population(self) -> None:
@@ -662,7 +694,7 @@ class OptionsStrategyGA:
         self,
         training_data: pd.DataFrame,
         validation_data: Optional[pd.DataFrame] = None,
-        verbose: bool = True
+        verbose: bool = True,
     ) -> Dict:
         """
         Run genetic algorithm optimization.
@@ -734,7 +766,7 @@ class OptionsStrategyGA:
                 if len(new_population) < self.population_size:
                     new_population.append(OptionsStrategy(child2_genes))
 
-            self.population = new_population[:self.population_size]
+            self.population = new_population[: self.population_size]
 
             # Log progress
             if verbose and (generation + 1) % 5 == 0:
@@ -760,13 +792,13 @@ class OptionsStrategyGA:
             validation_results = self._validate_strategies(validation_data)
 
         return {
-            'best_strategies': self.best_strategies,
-            'best_genes': [s.genes.to_dict() for s in self.best_strategies],
-            'best_fitness': [s.fitness.to_dict() for s in self.best_strategies],
-            'training_fitness': [final_fitnesses[i] for i in best_indices],
-            'fitness_history': self.fitness_history,
-            'validation_results': validation_results,
-            'generations_run': len(self.fitness_history)
+            "best_strategies": self.best_strategies,
+            "best_genes": [s.genes.to_dict() for s in self.best_strategies],
+            "best_fitness": [s.fitness.to_dict() for s in self.best_strategies],
+            "training_fitness": [final_fitnesses[i] for i in best_indices],
+            "fitness_history": self.fitness_history,
+            "validation_results": validation_results,
+            "generations_run": len(self.fitness_history),
         }
 
     def _tournament_select(self, fitnesses: List[float]) -> OptionsStrategy:
@@ -776,60 +808,90 @@ class OptionsStrategyGA:
         return self.population[best_idx]
 
     def _crossover(
-        self,
-        genes1: StrategyGenes,
-        genes2: StrategyGenes
+        self, genes1: StrategyGenes, genes2: StrategyGenes
     ) -> Tuple[StrategyGenes, StrategyGenes]:
         """Blend crossover between two parents."""
         alpha = random.uniform(0.3, 0.7)
 
         child1 = StrategyGenes(
-            min_composite_rank=alpha * genes1.min_composite_rank + (1-alpha) * genes2.min_composite_rank,
-            min_momentum_score=alpha * genes1.min_momentum_score + (1-alpha) * genes2.min_momentum_score,
-            min_value_score=alpha * genes1.min_value_score + (1-alpha) * genes2.min_value_score,
+            min_composite_rank=alpha * genes1.min_composite_rank
+            + (1 - alpha) * genes2.min_composite_rank,
+            min_momentum_score=alpha * genes1.min_momentum_score
+            + (1 - alpha) * genes2.min_momentum_score,
+            min_value_score=alpha * genes1.min_value_score + (1 - alpha) * genes2.min_value_score,
             signal_filter=genes1.signal_filter if random.random() < 0.5 else genes2.signal_filter,
-            entry_hour_min=int(alpha * genes1.entry_hour_min + (1-alpha) * genes2.entry_hour_min),
-            entry_hour_max=int(alpha * genes1.entry_hour_max + (1-alpha) * genes2.entry_hour_max),
-            min_bar_age_minutes=int(alpha * genes1.min_bar_age_minutes + (1-alpha) * genes2.min_bar_age_minutes),
-            delta_exit=alpha * genes1.delta_exit + (1-alpha) * genes2.delta_exit,
-            gamma_exit=alpha * genes1.gamma_exit + (1-alpha) * genes2.gamma_exit,
-            vega_exit=alpha * genes1.vega_exit + (1-alpha) * genes2.vega_exit,
-            theta_min=alpha * genes1.theta_min + (1-alpha) * genes2.theta_min,
-            iv_rank_min=alpha * genes1.iv_rank_min + (1-alpha) * genes2.iv_rank_min,
-            iv_rank_max=alpha * genes1.iv_rank_max + (1-alpha) * genes2.iv_rank_max,
-            min_hold_minutes=int(alpha * genes1.min_hold_minutes + (1-alpha) * genes2.min_hold_minutes),
-            max_hold_minutes=int(alpha * genes1.max_hold_minutes + (1-alpha) * genes2.max_hold_minutes),
-            profit_target_pct=alpha * genes1.profit_target_pct + (1-alpha) * genes2.profit_target_pct,
-            stop_loss_pct=alpha * genes1.stop_loss_pct + (1-alpha) * genes2.stop_loss_pct,
-            position_size_pct=alpha * genes1.position_size_pct + (1-alpha) * genes2.position_size_pct,
-            max_concurrent_trades=int(alpha * genes1.max_concurrent_trades + (1-alpha) * genes2.max_concurrent_trades),
-            min_trades_per_day=int(alpha * genes1.min_trades_per_day + (1-alpha) * genes2.min_trades_per_day),
-            max_trades_per_symbol=int(alpha * genes1.max_trades_per_symbol + (1-alpha) * genes2.max_trades_per_symbol)
+            entry_hour_min=int(alpha * genes1.entry_hour_min + (1 - alpha) * genes2.entry_hour_min),
+            entry_hour_max=int(alpha * genes1.entry_hour_max + (1 - alpha) * genes2.entry_hour_max),
+            min_bar_age_minutes=int(
+                alpha * genes1.min_bar_age_minutes + (1 - alpha) * genes2.min_bar_age_minutes
+            ),
+            delta_exit=alpha * genes1.delta_exit + (1 - alpha) * genes2.delta_exit,
+            gamma_exit=alpha * genes1.gamma_exit + (1 - alpha) * genes2.gamma_exit,
+            vega_exit=alpha * genes1.vega_exit + (1 - alpha) * genes2.vega_exit,
+            theta_min=alpha * genes1.theta_min + (1 - alpha) * genes2.theta_min,
+            iv_rank_min=alpha * genes1.iv_rank_min + (1 - alpha) * genes2.iv_rank_min,
+            iv_rank_max=alpha * genes1.iv_rank_max + (1 - alpha) * genes2.iv_rank_max,
+            min_hold_minutes=int(
+                alpha * genes1.min_hold_minutes + (1 - alpha) * genes2.min_hold_minutes
+            ),
+            max_hold_minutes=int(
+                alpha * genes1.max_hold_minutes + (1 - alpha) * genes2.max_hold_minutes
+            ),
+            profit_target_pct=alpha * genes1.profit_target_pct
+            + (1 - alpha) * genes2.profit_target_pct,
+            stop_loss_pct=alpha * genes1.stop_loss_pct + (1 - alpha) * genes2.stop_loss_pct,
+            position_size_pct=alpha * genes1.position_size_pct
+            + (1 - alpha) * genes2.position_size_pct,
+            max_concurrent_trades=int(
+                alpha * genes1.max_concurrent_trades + (1 - alpha) * genes2.max_concurrent_trades
+            ),
+            min_trades_per_day=int(
+                alpha * genes1.min_trades_per_day + (1 - alpha) * genes2.min_trades_per_day
+            ),
+            max_trades_per_symbol=int(
+                alpha * genes1.max_trades_per_symbol + (1 - alpha) * genes2.max_trades_per_symbol
+            ),
         )
 
         # Create second child with inverted blend
         child2 = StrategyGenes(
-            min_composite_rank=(1-alpha) * genes1.min_composite_rank + alpha * genes2.min_composite_rank,
-            min_momentum_score=(1-alpha) * genes1.min_momentum_score + alpha * genes2.min_momentum_score,
-            min_value_score=(1-alpha) * genes1.min_value_score + alpha * genes2.min_value_score,
+            min_composite_rank=(1 - alpha) * genes1.min_composite_rank
+            + alpha * genes2.min_composite_rank,
+            min_momentum_score=(1 - alpha) * genes1.min_momentum_score
+            + alpha * genes2.min_momentum_score,
+            min_value_score=(1 - alpha) * genes1.min_value_score + alpha * genes2.min_value_score,
             signal_filter=genes2.signal_filter if random.random() < 0.5 else genes1.signal_filter,
-            entry_hour_min=int((1-alpha) * genes1.entry_hour_min + alpha * genes2.entry_hour_min),
-            entry_hour_max=int((1-alpha) * genes1.entry_hour_max + alpha * genes2.entry_hour_max),
-            min_bar_age_minutes=int((1-alpha) * genes1.min_bar_age_minutes + alpha * genes2.min_bar_age_minutes),
-            delta_exit=(1-alpha) * genes1.delta_exit + alpha * genes2.delta_exit,
-            gamma_exit=(1-alpha) * genes1.gamma_exit + alpha * genes2.gamma_exit,
-            vega_exit=(1-alpha) * genes1.vega_exit + alpha * genes2.vega_exit,
-            theta_min=(1-alpha) * genes1.theta_min + alpha * genes2.theta_min,
-            iv_rank_min=(1-alpha) * genes1.iv_rank_min + alpha * genes2.iv_rank_min,
-            iv_rank_max=(1-alpha) * genes1.iv_rank_max + alpha * genes2.iv_rank_max,
-            min_hold_minutes=int((1-alpha) * genes1.min_hold_minutes + alpha * genes2.min_hold_minutes),
-            max_hold_minutes=int((1-alpha) * genes1.max_hold_minutes + alpha * genes2.max_hold_minutes),
-            profit_target_pct=(1-alpha) * genes1.profit_target_pct + alpha * genes2.profit_target_pct,
-            stop_loss_pct=(1-alpha) * genes1.stop_loss_pct + alpha * genes2.stop_loss_pct,
-            position_size_pct=(1-alpha) * genes1.position_size_pct + alpha * genes2.position_size_pct,
-            max_concurrent_trades=int((1-alpha) * genes1.max_concurrent_trades + alpha * genes2.max_concurrent_trades),
-            min_trades_per_day=int((1-alpha) * genes1.min_trades_per_day + alpha * genes2.min_trades_per_day),
-            max_trades_per_symbol=int((1-alpha) * genes1.max_trades_per_symbol + alpha * genes2.max_trades_per_symbol)
+            entry_hour_min=int((1 - alpha) * genes1.entry_hour_min + alpha * genes2.entry_hour_min),
+            entry_hour_max=int((1 - alpha) * genes1.entry_hour_max + alpha * genes2.entry_hour_max),
+            min_bar_age_minutes=int(
+                (1 - alpha) * genes1.min_bar_age_minutes + alpha * genes2.min_bar_age_minutes
+            ),
+            delta_exit=(1 - alpha) * genes1.delta_exit + alpha * genes2.delta_exit,
+            gamma_exit=(1 - alpha) * genes1.gamma_exit + alpha * genes2.gamma_exit,
+            vega_exit=(1 - alpha) * genes1.vega_exit + alpha * genes2.vega_exit,
+            theta_min=(1 - alpha) * genes1.theta_min + alpha * genes2.theta_min,
+            iv_rank_min=(1 - alpha) * genes1.iv_rank_min + alpha * genes2.iv_rank_min,
+            iv_rank_max=(1 - alpha) * genes1.iv_rank_max + alpha * genes2.iv_rank_max,
+            min_hold_minutes=int(
+                (1 - alpha) * genes1.min_hold_minutes + alpha * genes2.min_hold_minutes
+            ),
+            max_hold_minutes=int(
+                (1 - alpha) * genes1.max_hold_minutes + alpha * genes2.max_hold_minutes
+            ),
+            profit_target_pct=(1 - alpha) * genes1.profit_target_pct
+            + alpha * genes2.profit_target_pct,
+            stop_loss_pct=(1 - alpha) * genes1.stop_loss_pct + alpha * genes2.stop_loss_pct,
+            position_size_pct=(1 - alpha) * genes1.position_size_pct
+            + alpha * genes2.position_size_pct,
+            max_concurrent_trades=int(
+                (1 - alpha) * genes1.max_concurrent_trades + alpha * genes2.max_concurrent_trades
+            ),
+            min_trades_per_day=int(
+                (1 - alpha) * genes1.min_trades_per_day + alpha * genes2.min_trades_per_day
+            ),
+            max_trades_per_symbol=int(
+                (1 - alpha) * genes1.max_trades_per_symbol + alpha * genes2.max_trades_per_symbol
+            ),
         )
 
         return child1, child2
@@ -840,16 +902,18 @@ class OptionsStrategyGA:
 
         for i, strategy in enumerate(self.best_strategies):
             strategy.backtest(validation_data)
-            results.append({
-                'rank': i + 1,
-                'genes': strategy.genes.to_dict(),
-                'fitness': strategy.fitness.to_dict(),
-                'trades': len(strategy.trades)
-            })
+            results.append(
+                {
+                    "rank": i + 1,
+                    "genes": strategy.genes.to_dict(),
+                    "fitness": strategy.fitness.to_dict(),
+                    "trades": len(strategy.trades),
+                }
+            )
 
         return results
 
-    def save_results(self, output_dir: str = 'ga_results') -> str:
+    def save_results(self, output_dir: str = "ga_results") -> str:
         """Save best strategies to JSON files."""
         output_path = Path(output_dir)
         output_path.mkdir(exist_ok=True)
@@ -858,26 +922,26 @@ class OptionsStrategyGA:
 
         for i, strategy in enumerate(self.best_strategies):
             result = {
-                'rank': i + 1,
-                'timestamp': timestamp,
-                'genes': strategy.genes.to_dict(),
-                'fitness': strategy.fitness.to_dict() if strategy.fitness else {},
-                'sample_trades': [
+                "rank": i + 1,
+                "timestamp": timestamp,
+                "genes": strategy.genes.to_dict(),
+                "fitness": strategy.fitness.to_dict() if strategy.fitness else {},
+                "sample_trades": [
                     {
-                        'symbol': t.symbol,
-                        'contract': t.contract_symbol,
-                        'entry_price': t.entry_price,
-                        'exit_price': t.exit_price,
-                        'pnl_pct': t.pnl_pct,
-                        'duration_min': t.duration_minutes,
-                        'exit_reason': t.exit_reason
+                        "symbol": t.symbol,
+                        "contract": t.contract_symbol,
+                        "entry_price": t.entry_price,
+                        "exit_price": t.exit_price,
+                        "pnl_pct": t.pnl_pct,
+                        "duration_min": t.duration_minutes,
+                        "exit_reason": t.exit_reason,
                     }
                     for t in strategy.trades[:15]
-                ]
+                ],
             }
 
-            filepath = output_path / f'strategy_{i+1}_{timestamp}.json'
-            with open(filepath, 'w') as f:
+            filepath = output_path / f"strategy_{i+1}_{timestamp}.json"
+            with open(filepath, "w") as f:
                 json.dump(result, f, indent=2, default=str)
 
         logger.info(f"Saved {len(self.best_strategies)} strategies to {output_dir}")
@@ -888,11 +952,8 @@ class OptionsStrategyGA:
 # DATABASE INTEGRATION
 # ============================================================================
 
-def fetch_training_data(
-    symbol: str,
-    days: int = 30,
-    db_client = None
-) -> pd.DataFrame:
+
+def fetch_training_data(symbol: str, days: int = 30, db_client=None) -> pd.DataFrame:
     """
     Fetch historical options ranking data for GA training.
 
@@ -906,30 +967,36 @@ def fetch_training_data(
     """
     if db_client is None:
         from src.data.supabase_db import db
+
         db_client = db.client
 
     start_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
 
     try:
         # Fetch from options_ranks table
-        response = db_client.table('options_ranks').select(
-            'contract_symbol, run_at, composite_rank, momentum_score, value_score, greeks_score, '
-            'signal_buy, signal_discount, signal_runner, signal_greeks, '
-            'mark, last_price, delta, gamma, theta, vega, iv_rank, '
-            'underlying_symbol_id(ticker)'
-        ).gte('run_at', start_date).execute()
+        response = (
+            db_client.table("options_ranks")
+            .select(
+                "contract_symbol, run_at, composite_rank, momentum_score, value_score, greeks_score, "
+                "signal_buy, signal_discount, signal_runner, signal_greeks, "
+                "mark, last_price, delta, gamma, theta, vega, iv_rank, "
+                "underlying_symbol_id(ticker)"
+            )
+            .gte("run_at", start_date)
+            .execute()
+        )
 
         if response.data:
             df = pd.DataFrame(response.data)
             # Flatten nested symbol
-            if 'underlying_symbol_id' in df.columns:
-                df['symbol'] = df['underlying_symbol_id'].apply(
-                    lambda x: x.get('ticker', symbol) if isinstance(x, dict) else symbol
+            if "underlying_symbol_id" in df.columns:
+                df["symbol"] = df["underlying_symbol_id"].apply(
+                    lambda x: x.get("ticker", symbol) if isinstance(x, dict) else symbol
                 )
             else:
-                df['symbol'] = symbol
+                df["symbol"] = symbol
 
-            df['datetime'] = pd.to_datetime(df['run_at'])
+            df["datetime"] = pd.to_datetime(df["run_at"])
             return df
     except Exception as e:
         logger.error(f"Error fetching training data: {e}")
@@ -938,10 +1005,7 @@ def fetch_training_data(
 
 
 def save_ga_parameters(
-    symbol: str,
-    genes: StrategyGenes,
-    fitness: StrategyFitness,
-    db_client = None
+    symbol: str, genes: StrategyGenes, fitness: StrategyFitness, db_client=None
 ) -> bool:
     """
     Save GA-optimized parameters to database.
@@ -957,24 +1021,25 @@ def save_ga_parameters(
     """
     if db_client is None:
         from src.data.supabase_db import db
+
         db_client = db.client
 
     try:
         record = {
-            'symbol': symbol,
-            'genes': genes.to_dict(),
-            'fitness': fitness.to_dict(),
-            'created_at': datetime.utcnow().isoformat(),
-            'is_active': True
+            "symbol": symbol,
+            "genes": genes.to_dict(),
+            "fitness": fitness.to_dict(),
+            "created_at": datetime.utcnow().isoformat(),
+            "is_active": True,
         }
 
         # Deactivate old parameters
-        db_client.table('ga_strategy_params').update(
-            {'is_active': False}
-        ).eq('symbol', symbol).execute()
+        db_client.table("ga_strategy_params").update({"is_active": False}).eq(
+            "symbol", symbol
+        ).execute()
 
         # Insert new
-        db_client.table('ga_strategy_params').insert(record).execute()
+        db_client.table("ga_strategy_params").insert(record).execute()
 
         logger.info(f"Saved GA parameters for {symbol}")
         return True
@@ -983,7 +1048,7 @@ def save_ga_parameters(
         return False
 
 
-def load_ga_parameters(symbol: str, db_client = None) -> Optional[StrategyGenes]:
+def load_ga_parameters(symbol: str, db_client=None) -> Optional[StrategyGenes]:
     """
     Load active GA parameters for a symbol.
 
@@ -996,15 +1061,21 @@ def load_ga_parameters(symbol: str, db_client = None) -> Optional[StrategyGenes]
     """
     if db_client is None:
         from src.data.supabase_db import db
+
         db_client = db.client
 
     try:
-        response = db_client.table('ga_strategy_params').select(
-            'genes'
-        ).eq('symbol', symbol).eq('is_active', True).limit(1).execute()
+        response = (
+            db_client.table("ga_strategy_params")
+            .select("genes")
+            .eq("symbol", symbol)
+            .eq("is_active", True)
+            .limit(1)
+            .execute()
+        )
 
         if response.data and len(response.data) > 0:
-            genes_dict = response.data[0].get('genes', {})
+            genes_dict = response.data[0].get("genes", {})
             return StrategyGenes.from_dict(genes_dict)
     except Exception as e:
         logger.error(f"Error loading GA parameters: {e}")
@@ -1016,13 +1087,14 @@ def load_ga_parameters(symbol: str, db_client = None) -> Optional[StrategyGenes]
 # CONVENIENCE FUNCTIONS
 # ============================================================================
 
+
 def run_ga_optimization(
     symbol: str,
     generations: int = 50,
     population_size: int = 100,
     training_days: int = 30,
     validation_split: float = 0.2,
-    save_to_db: bool = True
+    save_to_db: bool = True,
 ) -> Dict:
     """
     Run full GA optimization for a symbol.
@@ -1045,7 +1117,7 @@ def run_ga_optimization(
 
     if data.empty:
         logger.error(f"No training data found for {symbol}")
-        return {'error': 'No training data'}
+        return {"error": "No training data"}
 
     logger.info(f"Loaded {len(data)} ranking records for training")
 
@@ -1055,20 +1127,17 @@ def run_ga_optimization(
     validation_data = data.iloc[split_idx:] if validation_split > 0 else None
 
     # Run GA
-    ga = OptionsStrategyGA(
-        population_size=population_size,
-        generations=generations
-    )
+    ga = OptionsStrategyGA(population_size=population_size, generations=generations)
 
     results = ga.evolve(training_data, validation_data)
 
     # Save to database
-    if save_to_db and results.get('best_strategies'):
-        best = results['best_strategies'][0]
+    if save_to_db and results.get("best_strategies"):
+        best = results["best_strategies"][0]
         save_ga_parameters(symbol, best.genes, best.fitness)
 
     # Save to files
-    ga.save_results(f'ga_results/{symbol}')
+    ga.save_results(f"ga_results/{symbol}")
 
     return results
 
@@ -1079,37 +1148,37 @@ def analyze_strategy(strategy: OptionsStrategy) -> Dict:
     closed_trades = [t for t in trades if t.is_closed]
 
     if not closed_trades:
-        return {'error': 'No closed trades'}
+        return {"error": "No closed trades"}
 
     analysis = {
-        'total_trades': len(trades),
-        'closed_trades': len(closed_trades),
-        'win_rate': strategy.fitness.win_rate if strategy.fitness else 0,
-        'profit_factor': strategy.fitness.profit_factor if strategy.fitness else 0,
-        'avg_pnl_pct': np.mean([t.pnl_pct for t in closed_trades]),
-        'signal_breakdown': {},
-        'exit_reason_breakdown': {},
-        'best_hour': None
+        "total_trades": len(trades),
+        "closed_trades": len(closed_trades),
+        "win_rate": strategy.fitness.win_rate if strategy.fitness else 0,
+        "profit_factor": strategy.fitness.profit_factor if strategy.fitness else 0,
+        "avg_pnl_pct": np.mean([t.pnl_pct for t in closed_trades]),
+        "signal_breakdown": {},
+        "exit_reason_breakdown": {},
+        "best_hour": None,
     }
 
     # Signal analysis
     for signal in set(t.entry_signal for t in closed_trades):
         signal_trades = [t for t in closed_trades if t.entry_signal == signal]
         wins = sum(1 for t in signal_trades if t.pnl_pct > 0)
-        analysis['signal_breakdown'][signal] = {
-            'count': len(signal_trades),
-            'win_rate': wins / len(signal_trades) if signal_trades else 0,
-            'avg_pnl': np.mean([t.pnl_pct for t in signal_trades])
+        analysis["signal_breakdown"][signal] = {
+            "count": len(signal_trades),
+            "win_rate": wins / len(signal_trades) if signal_trades else 0,
+            "avg_pnl": np.mean([t.pnl_pct for t in signal_trades]),
         }
 
     # Exit reason analysis
     for reason in set(t.exit_reason for t in closed_trades if t.exit_reason):
         reason_trades = [t for t in closed_trades if t.exit_reason == reason]
         wins = sum(1 for t in reason_trades if t.pnl_pct > 0)
-        analysis['exit_reason_breakdown'][reason] = {
-            'count': len(reason_trades),
-            'win_rate': wins / len(reason_trades) if reason_trades else 0,
-            'avg_pnl': np.mean([t.pnl_pct for t in reason_trades])
+        analysis["exit_reason_breakdown"][reason] = {
+            "count": len(reason_trades),
+            "win_rate": wins / len(reason_trades) if reason_trades else 0,
+            "avg_pnl": np.mean([t.pnl_pct for t in reason_trades]),
         }
 
     # Hour analysis
@@ -1120,7 +1189,7 @@ def analyze_strategy(strategy: OptionsStrategy) -> Dict:
         hour_pnl[t.entry_hour].append(t.pnl_pct)
 
     if hour_pnl:
-        analysis['best_hour'] = max(hour_pnl.items(), key=lambda x: np.mean(x[1]))[0]
+        analysis["best_hour"] = max(hour_pnl.items(), key=lambda x: np.mean(x[1]))[0]
 
     return analysis
 
@@ -1133,8 +1202,7 @@ if __name__ == "__main__":
     import argparse
 
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
     parser = argparse.ArgumentParser(description="Options Strategy GA Optimization")
@@ -1151,15 +1219,15 @@ if __name__ == "__main__":
         generations=args.generations,
         population_size=args.population,
         training_days=args.days,
-        save_to_db=not args.no_save
+        save_to_db=not args.no_save,
     )
 
-    if 'error' not in results:
-        print("\n" + "="*60)
+    if "error" not in results:
+        print("\n" + "=" * 60)
         print("GA OPTIMIZATION COMPLETE")
-        print("="*60)
+        print("=" * 60)
 
-        best = results['best_strategies'][0]
+        best = results["best_strategies"][0]
         print(f"\nBest Strategy Fitness:")
         print(f"  Win Rate: {best.fitness.win_rate:.1%}")
         print(f"  Profit Factor: {best.fitness.profit_factor:.2f}")

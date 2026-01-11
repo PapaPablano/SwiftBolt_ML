@@ -60,11 +60,7 @@ logger.info(
 )
 logger.info(
     "Supabase Key: %s",
-    (
-        f"SET ({len(settings.supabase_key)} chars)"
-        if settings.supabase_key
-        else "NOT SET"
-    ),
+    (f"SET ({len(settings.supabase_key)} chars)" if settings.supabase_key else "NOT SET"),
 )
 if not settings.supabase_url or not settings.supabase_key:
     logger.error("Missing required Supabase credentials!")
@@ -170,6 +166,7 @@ def fetch_previous_rankings(symbol_id: str, ranking_mode: str) -> pd.DataFrame:
         logger.warning(f"Could not fetch previous rankings: {e}")
         return pd.DataFrame()
 
+
 # Rate limiting configuration
 RATE_LIMIT_DELAY = 2.0  # Seconds between API calls
 MAX_RETRIES = 3
@@ -187,18 +184,14 @@ def get_watchlist_symbols_from_db(limit: int = 200) -> List[str]:
     Falls back to DEFAULT_SYMBOLS if no watchlist symbols found.
     """
     try:
-        response = db.client.rpc(
-            "get_all_watchlist_symbols", {"p_limit": limit}
-        ).execute()
+        response = db.client.rpc("get_all_watchlist_symbols", {"p_limit": limit}).execute()
 
         if response.data:
             symbols = [row["ticker"] for row in response.data]
             logger.info(f"Fetched {len(symbols)} symbols from user watchlists")
             return symbols
         else:
-            logger.warning(
-                "No symbols found in user watchlists, using defaults"
-            )
+            logger.warning("No symbols found in user watchlists, using defaults")
             return DEFAULT_SYMBOLS
 
     except Exception as e:
@@ -207,9 +200,7 @@ def get_watchlist_symbols_from_db(limit: int = 200) -> List[str]:
         return DEFAULT_SYMBOLS
 
 
-def fetch_options_chain(
-    underlying: str, expiration: Optional[int] = None
-) -> Dict[str, Any]:
+def fetch_options_chain(underlying: str, expiration: Optional[int] = None) -> Dict[str, Any]:
     """
     Fetch options chain data from the /options-chain Edge Function.
     Includes retry logic with exponential backoff for transient errors.
@@ -229,9 +220,7 @@ def fetch_options_chain(
     last_exception = None
     for attempt in range(MAX_RETRIES):
         try:
-            response = requests.get(
-                url, params=params, headers=headers, timeout=60
-            )
+            response = requests.get(url, params=params, headers=headers, timeout=60)
             response.raise_for_status()
             data = response.json()
 
@@ -246,18 +235,12 @@ def fetch_options_chain(
             return data
         except requests.exceptions.HTTPError as e:
             last_exception = e
-            status_code = (
-                e.response.status_code if e.response is not None else 0
-            )
+            status_code = e.response.status_code if e.response is not None else 0
 
-            if (
-                status_code in RETRYABLE_STATUS_CODES
-                and attempt < MAX_RETRIES - 1
-            ):
+            if status_code in RETRYABLE_STATUS_CODES and attempt < MAX_RETRIES - 1:
                 delay = RETRY_BASE_DELAY * (2**attempt)
                 logger.warning(
-                    "Transient error (%s) for %s, retrying in %.1fs "
-                    "(attempt %s/%s)...",
+                    "Transient error (%s) for %s, retrying in %.1fs " "(attempt %s/%s)...",
                     status_code,
                     underlying,
                     delay,
@@ -267,17 +250,14 @@ def fetch_options_chain(
                 time.sleep(delay)
                 continue
             else:
-                logger.error(
-                    f"Failed to fetch options chain for {underlying}: {e}"
-                )
+                logger.error(f"Failed to fetch options chain for {underlying}: {e}")
                 raise
         except requests.exceptions.RequestException as e:
             last_exception = e
             if attempt < MAX_RETRIES - 1:
                 delay = RETRY_BASE_DELAY * (2**attempt)
                 logger.warning(
-                    "Request error for %s, retrying in %.1fs "
-                    "(attempt %s/%s)...",
+                    "Request error for %s, retrying in %.1fs " "(attempt %s/%s)...",
                     underlying,
                     delay,
                     attempt + 1,
@@ -286,14 +266,10 @@ def fetch_options_chain(
                 time.sleep(delay)
                 continue
             else:
-                logger.error(
-                    f"Failed to fetch options chain for {underlying}: {e}"
-                )
+                logger.error(f"Failed to fetch options chain for {underlying}: {e}")
                 raise
 
-    raise last_exception or Exception(
-        f"Failed to fetch options chain for {underlying}"
-    )
+    raise last_exception or Exception(f"Failed to fetch options chain for {underlying}")
 
 
 def persist_options_snapshot(
@@ -362,31 +338,11 @@ def persist_options_snapshot(
                     if contract.get("impliedVolatility")
                     else None
                 ),
-                "delta": (
-                    float(contract.get("delta", 0))
-                    if contract.get("delta")
-                    else None
-                ),
-                "gamma": (
-                    float(contract.get("gamma", 0))
-                    if contract.get("gamma")
-                    else None
-                ),
-                "theta": (
-                    float(contract.get("theta", 0))
-                    if contract.get("theta")
-                    else None
-                ),
-                "vega": (
-                    float(contract.get("vega", 0))
-                    if contract.get("vega")
-                    else None
-                ),
-                "rho": (
-                    float(contract.get("rho", 0))
-                    if contract.get("rho")
-                    else None
-                ),
+                "delta": (float(contract.get("delta", 0)) if contract.get("delta") else None),
+                "gamma": (float(contract.get("gamma", 0)) if contract.get("gamma") else None),
+                "theta": (float(contract.get("theta", 0)) if contract.get("theta") else None),
+                "vega": (float(contract.get("vega", 0)) if contract.get("vega") else None),
+                "rho": (float(contract.get("rho", 0)) if contract.get("rho") else None),
                 "snapshot_date": snapshot_date.isoformat(),
                 "ml_score": ml_score,
             }
@@ -398,15 +354,12 @@ def persist_options_snapshot(
     # Insert in batches - no slow fallback, just retry once and move on
     total_batches = (len(batch) + BATCH_SIZE - 1) // BATCH_SIZE
     for batch_num, i in enumerate(range(0, len(batch), BATCH_SIZE), 1):
-        chunk = batch[i:i + BATCH_SIZE]
+        chunk = batch[i : i + BATCH_SIZE]
         for attempt in range(2):  # Max 2 attempts per batch
             try:
                 db.client.table("options_chain_snapshots").upsert(
                     chunk,
-                    on_conflict=(
-                        "underlying_symbol_id,expiry,strike,side,"
-                        "snapshot_date"
-                    ),
+                    on_conflict=("underlying_symbol_id,expiry,strike,side," "snapshot_date"),
                 ).execute()
                 inserted += len(chunk)
                 break  # Success, move to next batch
@@ -421,8 +374,7 @@ def persist_options_snapshot(
                     time.sleep(1)  # Brief pause before retry
                 else:
                     logger.warning(
-                        "Batch %s/%s failed after retry, skipping %s "
-                        "records: %s",
+                        "Batch %s/%s failed after retry, skipping %s " "records: %s",
                         batch_num,
                         total_batches,
                         len(chunk),
@@ -439,9 +391,7 @@ def persist_options_snapshot(
     return inserted, skipped
 
 
-def calculate_ml_scores(
-    underlying: str, calls: List[Dict], puts: List[Dict]
-) -> Dict[str, float]:
+def calculate_ml_scores(underlying: str, calls: List[Dict], puts: List[Dict]) -> Dict[str, float]:
     """
     Calculate ML scores for all contracts.
 
@@ -463,9 +413,7 @@ def calculate_ml_scores(
             # Simple ML score heuristic (placeholder for actual ML model)
             volume = int(contract.get("volume", 0))
             oi = int(contract.get("openInterest", 0))
-            delta = abs(
-                float(contract.get("delta", 0)) if contract.get("delta") else 0
-            )
+            delta = abs(float(contract.get("delta", 0)) if contract.get("delta") else 0)
             iv = (
                 float(contract.get("impliedVolatility", 0))
                 if contract.get("impliedVolatility")
@@ -478,12 +426,7 @@ def calculate_ml_scores(
             delta_score = 1.0 - abs(delta - 0.5) * 2
             iv_score = min(iv / 1.0, 1.0)
 
-            ml_score = (
-                volume_score * 0.25
-                + oi_score * 0.25
-                + delta_score * 0.3
-                + iv_score * 0.2
-            )
+            ml_score = volume_score * 0.25 + oi_score * 0.25 + delta_score * 0.3 + iv_score * 0.2
 
             # Build key
             contract_key = f"{expiry_date.isoformat()}_{strike}_{side}"
@@ -494,9 +437,7 @@ def calculate_ml_scores(
     return ml_scores
 
 
-def update_options_ranks(
-    underlying: str, calls: List[Dict], puts: List[Dict]
-) -> int:
+def update_options_ranks(underlying: str, calls: List[Dict], puts: List[Dict]) -> int:
     """
     Update the options_ranks table with Momentum Framework scores.
     Uses batch inserts for performance.
@@ -681,14 +622,10 @@ def update_options_ranks(
                 "iv_rank": _float_or_none(row.get("iv_rank")),
                 "spread_pct": _float_or_none(row.get("spread_pct")),
                 "vol_oi_ratio": _float_or_none(row.get("vol_oi_ratio")),
-                "liquidity_confidence": _float_or_none(
-                    row.get("liquidity_confidence", 1.0)
-                ),
+                "liquidity_confidence": _float_or_none(row.get("liquidity_confidence", 1.0)),
                 "relative_value_score": _float_or_none(row.get("relative_value_score")),
                 "entry_difficulty_score": _float_or_none(row.get("entry_difficulty_score")),
-                "ranking_stability_score": _float_or_none(
-                    row.get("ranking_stability_score")
-                ),
+                "ranking_stability_score": _float_or_none(row.get("ranking_stability_score")),
                 "signal_discount": bool(row.get("signal_discount", False)),
                 "signal_runner": bool(row.get("signal_runner", False)),
                 "signal_greeks": bool(row.get("signal_greeks", False)),
@@ -700,7 +637,7 @@ def update_options_ranks(
     # Insert in batches - no slow fallback, just retry once and move on
     total_batches = (len(batch) + BATCH_SIZE - 1) // BATCH_SIZE
     for batch_num, i in enumerate(range(0, len(batch), BATCH_SIZE), 1):
-        chunk = batch[i:i + BATCH_SIZE]
+        chunk = batch[i : i + BATCH_SIZE]
         for attempt in range(2):  # Max 2 attempts per batch
             try:
                 db.client.table("options_ranks").upsert(
@@ -720,8 +657,7 @@ def update_options_ranks(
                     time.sleep(1)  # Brief pause before retry
                 else:
                     logger.warning(
-                        "Ranks batch %s/%s failed after retry, skipping %s "
-                        "records: %s",
+                        "Ranks batch %s/%s failed after retry, skipping %s " "records: %s",
                         batch_num,
                         total_batches,
                         len(chunk),
@@ -784,15 +720,11 @@ def process_symbol(underlying: str, snapshot_date: date) -> Dict[str, Any]:
 
 def main():
     parser = argparse.ArgumentParser(
-        description=(
-            "Nightly options chain backfill with snapshot storage and ranking"
-        )
+        description=("Nightly options chain backfill with snapshot storage and ranking")
     )
 
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument(
-        "--symbol", type=str, help="Single symbol to process (e.g., AAPL)"
-    )
+    group.add_argument("--symbol", type=str, help="Single symbol to process (e.g., AAPL)")
     group.add_argument(
         "--symbols",
         type=str,
@@ -847,12 +779,8 @@ def main():
     # Summary
     total_calls = sum(r.get("calls", 0) for r in results if r.get("success"))
     total_puts = sum(r.get("puts", 0) for r in results if r.get("success"))
-    total_snapshots = sum(
-        r.get("snapshots_inserted", 0) for r in results if r.get("success")
-    )
-    total_ranks = sum(
-        r.get("ranks_updated", 0) for r in results if r.get("success")
-    )
+    total_snapshots = sum(r.get("snapshots_inserted", 0) for r in results if r.get("success"))
+    total_ranks = sum(r.get("ranks_updated", 0) for r in results if r.get("success"))
 
     logger.info("")
     logger.info("=" * 60)

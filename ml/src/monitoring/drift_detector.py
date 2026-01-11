@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DriftResult:
     """Result of drift detection for a single feature."""
+
     feature: str
     statistic: float
     p_value: float
@@ -26,10 +27,7 @@ class DriftResult:
 
     def __str__(self) -> str:
         status = "⚠️ DRIFT" if self.is_drifted else "✅ OK"
-        return (
-            f"{self.feature}: {status} "
-            f"(KS={self.statistic:.4f}, p={self.p_value:.4f})"
-        )
+        return f"{self.feature}: {status} " f"(KS={self.statistic:.4f}, p={self.p_value:.4f})"
 
 
 class DriftDetector:
@@ -92,9 +90,7 @@ class DriftDetector:
             # Use all numeric columns present in both DataFrames
             ref_numeric = reference_df.select_dtypes(include=[np.number])
             cur_numeric = current_df.select_dtypes(include=[np.number])
-            features = list(
-                set(ref_numeric.columns) & set(cur_numeric.columns)
-            )
+            features = list(set(ref_numeric.columns) & set(cur_numeric.columns))
 
         results = []
         for feature in features:
@@ -125,7 +121,7 @@ class DriftDetector:
                 statistic=0.0,
                 p_value=1.0,
                 is_drifted=False,
-                drift_severity='none',
+                drift_severity="none",
             )
 
         if len(current) < self.min_samples:
@@ -138,7 +134,7 @@ class DriftDetector:
                 statistic=0.0,
                 p_value=1.0,
                 is_drifted=False,
-                drift_severity='none',
+                drift_severity="none",
             )
 
         # Run KS test
@@ -153,13 +149,13 @@ class DriftDetector:
 
         # Classify severity based on KS statistic
         if statistic < 0.1:
-            severity = 'none'
+            severity = "none"
         elif statistic < 0.2:
-            severity = 'low'
+            severity = "low"
         elif statistic < 0.3:
-            severity = 'medium'
+            severity = "medium"
         else:
-            severity = 'high'
+            severity = "high"
 
         return DriftResult(
             feature=feature_name,
@@ -203,9 +199,7 @@ class DriftDetector:
             window_start = dates[i - window_size]
             window_end = dates[min(i, len(dates) - 1)]
 
-            current = data[
-                (data.index > window_start) & (data.index <= window_end)
-            ]
+            current = data[(data.index > window_start) & (data.index <= window_end)]
 
             if len(current) < self.min_samples:
                 continue
@@ -213,14 +207,14 @@ class DriftDetector:
             drift_results = self.detect_drift(reference, current, features)
 
             row = {
-                'date': window_end,
-                'n_drifted': sum(1 for r in drift_results if r.is_drifted),
-                'n_features': len(features),
+                "date": window_end,
+                "n_drifted": sum(1 for r in drift_results if r.is_drifted),
+                "n_features": len(features),
             }
 
             for result in drift_results:
-                row[f'{result.feature}_ks'] = result.statistic
-                row[f'{result.feature}_pval'] = result.p_value
+                row[f"{result.feature}_ks"] = result.statistic
+                row[f"{result.feature}_pval"] = result.p_value
 
             results.append(row)
 
@@ -258,9 +252,6 @@ class DriftDetector:
         report.append("ALL FEATURES:")
         for r in sorted(results, key=lambda x: x.statistic, reverse=True):
             status = "⚠️" if r.is_drifted else "✅"
-            report.append(
-                f"  {status} {r.feature}: "
-                f"KS={r.statistic:.4f}, p={r.p_value:.4f}"
-            )
+            report.append(f"  {status} {r.feature}: " f"KS={r.statistic:.4f}, p={r.p_value:.4f}")
 
         return "\n".join(report)

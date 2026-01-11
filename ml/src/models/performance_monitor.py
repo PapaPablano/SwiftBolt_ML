@@ -113,8 +113,7 @@ class PerformanceMonitor:
         self.model_contributions: Dict[str, List[float]] = {}
 
         logger.info(
-            "PerformanceMonitor initialized: "
-            "accuracy_window=%d, calibration_window=%d",
+            "PerformanceMonitor initialized: " "accuracy_window=%d, calibration_window=%d",
             accuracy_window,
             calibration_window,
         )
@@ -169,15 +168,15 @@ class PerformanceMonitor:
         for model, pred in model_predictions.items():
             if model not in self.model_accuracies:
                 self.model_accuracies[model] = []
-            self.model_accuracies[model].append(
-                1.0 if pred.lower() == actual.lower() else 0.0
-            )
+            self.model_accuracies[model].append(1.0 if pred.lower() == actual.lower() else 0.0)
 
         # Track weight history
-        self.weight_history.append({
-            "timestamp": ts,
-            "weights": weights.copy(),
-        })
+        self.weight_history.append(
+            {
+                "timestamp": ts,
+                "weights": weights.copy(),
+            }
+        )
 
         # Check for alerts
         self._check_alerts()
@@ -192,10 +191,7 @@ class PerformanceMonitor:
         """Record calibration status."""
         ts = timestamp or datetime.now()
 
-        calibration_ratio = (
-            empirical_coverage / target_coverage
-            if target_coverage > 0 else 1.0
-        )
+        calibration_ratio = empirical_coverage / target_coverage if target_coverage > 0 else 1.0
         needs_recalibration = abs(calibration_ratio - 1.0) > 0.1
 
         snapshot = CalibrationSnapshot(
@@ -279,7 +275,7 @@ class PerformanceMonitor:
             if not accuracies:
                 continue
 
-            recent = accuracies[-self.accuracy_window:]
+            recent = accuracies[-self.accuracy_window :]
 
             performance[model] = {
                 "accuracy": np.mean(recent),
@@ -319,10 +315,12 @@ class PerformanceMonitor:
         confidences = [r.confidence for r in self.records]
         correct = [r.is_correct for r in self.records]
 
-        df = pd.DataFrame({
-            "confidence": confidences,
-            "correct": correct,
-        })
+        df = pd.DataFrame(
+            {
+                "confidence": confidences,
+                "correct": correct,
+            }
+        )
         df["bin"] = pd.cut(
             df["confidence"],
             bins=bins,
@@ -330,10 +328,12 @@ class PerformanceMonitor:
             include_lowest=True,
         )
 
-        calibration = df.groupby("bin", observed=True).agg({
-            "correct": ["mean", "count"],
-            "confidence": "mean",
-        })
+        calibration = df.groupby("bin", observed=True).agg(
+            {
+                "correct": ["mean", "count"],
+                "confidence": "mean",
+            }
+        )
         calibration.columns = ["accuracy", "count", "mean_confidence"]
 
         # Expected Calibration Error (ECE)
@@ -341,9 +341,7 @@ class PerformanceMonitor:
         total = len(df)
         for _, row in calibration.iterrows():
             if row["count"] > 0:
-                ece += (row["count"] / total) * abs(
-                    row["accuracy"] - row["mean_confidence"]
-                )
+                ece += (row["count"] / total) * abs(row["accuracy"] - row["mean_confidence"])
 
         return {
             "calibration_table": calibration.to_dict(),
@@ -363,10 +361,12 @@ class PerformanceMonitor:
         bins = [0, 0.5, 0.7, 0.85, 1.0]
         bin_labels = ["low", "medium", "high", "very_high"]
 
-        df = pd.DataFrame({
-            "agreement": agreements,
-            "correct": correct,
-        })
+        df = pd.DataFrame(
+            {
+                "agreement": agreements,
+                "correct": correct,
+            }
+        )
         df["bin"] = pd.cut(
             df["agreement"],
             bins=bins,
@@ -374,15 +374,18 @@ class PerformanceMonitor:
             include_lowest=True,
         )
 
-        analysis = df.groupby("bin", observed=True).agg({
-            "correct": ["mean", "count"],
-        })
+        analysis = df.groupby("bin", observed=True).agg(
+            {
+                "correct": ["mean", "count"],
+            }
+        )
         analysis.columns = ["accuracy", "count"]
 
         return {
             "agreement_accuracy": analysis.to_dict(),
-            "correlation": float(np.corrcoef(agreements, correct)[0, 1])
-            if len(set(correct)) > 1 else 0.0,
+            "correlation": (
+                float(np.corrcoef(agreements, correct)[0, 1]) if len(set(correct)) > 1 else 0.0
+            ),
         }
 
     def get_recent_alerts(
@@ -430,15 +433,11 @@ class PerformanceMonitor:
             trend = 0.0
 
         # Current weights
-        current_weights = (
-            self.weight_history[-1]["weights"]
-            if self.weight_history else {}
-        )
+        current_weights = self.weight_history[-1]["weights"] if self.weight_history else {}
 
         # Active alerts count
         recent_alerts = [
-            a for a in self.alerts
-            if a.timestamp > datetime.now() - timedelta(hours=24)
+            a for a in self.alerts if a.timestamp > datetime.now() - timedelta(hours=24)
         ]
 
         return {
@@ -450,24 +449,15 @@ class PerformanceMonitor:
             "model_performance": model_performance,
             "current_weights": current_weights,
             "confidence_ece": confidence_cal.get("ece", np.nan),
-            "is_well_calibrated": confidence_cal.get(
-                "is_well_calibrated", False
-            ),
+            "is_well_calibrated": confidence_cal.get("is_well_calibrated", False),
             "n_active_alerts": len(recent_alerts),
             "alert_summary": {
-                "critical": len([
-                    a for a in recent_alerts if a.severity == "critical"
-                ]),
-                "warning": len([
-                    a for a in recent_alerts if a.severity == "warning"
-                ]),
-                "info": len([
-                    a for a in recent_alerts if a.severity == "info"
-                ]),
+                "critical": len([a for a in recent_alerts if a.severity == "critical"]),
+                "warning": len([a for a in recent_alerts if a.severity == "warning"]),
+                "info": len([a for a in recent_alerts if a.severity == "info"]),
             },
             "calibration_status": (
-                self.calibration_history[-1].__dict__
-                if self.calibration_history else None
+                self.calibration_history[-1].__dict__ if self.calibration_history else None
             ),
         }
 
@@ -485,9 +475,7 @@ class PerformanceMonitor:
             Comprehensive performance report
         """
         cutoff = datetime.now() - timedelta(days=period_days)
-        recent_records = [
-            r for r in self.records if r.timestamp > cutoff
-        ]
+        recent_records = [r for r in self.records if r.timestamp > cutoff]
 
         if not recent_records:
             return {"error": "No records in specified period"}
@@ -501,28 +489,24 @@ class PerformanceMonitor:
         confidences = [r.confidence for r in recent_records]
         high_conf = [r for r in recent_records if r.confidence > 0.7]
         high_conf_accuracy = (
-            sum(1 for r in high_conf if r.is_correct) / len(high_conf)
-            if high_conf else np.nan
+            sum(1 for r in high_conf if r.is_correct) / len(high_conf) if high_conf else np.nan
         )
 
         # Agreement analysis
         agreements = [r.agreement for r in recent_records]
         high_agree = [r for r in recent_records if r.agreement > 0.7]
         high_agree_accuracy = (
-            sum(1 for r in high_agree if r.is_correct) / len(high_agree)
-            if high_agree else np.nan
+            sum(1 for r in high_agree if r.is_correct) / len(high_agree) if high_agree else np.nan
         )
 
         # Model contributions
         model_stats = {}
         for model in self.model_accuracies.keys():
-            model_records = [
-                r for r in recent_records
-                if model in r.model_predictions
-            ]
+            model_records = [r for r in recent_records if model in r.model_predictions]
             if model_records:
                 model_correct = sum(
-                    1 for r in model_records
+                    1
+                    for r in model_records
                     if r.model_predictions[model].lower() == r.actual.lower()
                 )
                 model_stats[model] = {
@@ -539,9 +523,7 @@ class PerformanceMonitor:
             "high_confidence_accuracy": float(high_conf_accuracy),
             "high_agreement_accuracy": float(high_agree_accuracy),
             "model_stats": model_stats,
-            "n_alerts_generated": len([
-                a for a in self.alerts if a.timestamp > cutoff
-            ]),
+            "n_alerts_generated": len([a for a in self.alerts if a.timestamp > cutoff]),
         }
 
     def export_records(self) -> pd.DataFrame:
@@ -590,10 +572,7 @@ class PerformanceMonitor:
             self._add_alert(
                 alert_type="low_accuracy",
                 severity="warning",
-                message=(
-                    f"Rolling accuracy dropped to "
-                    f"{accuracy['accuracy']:.1%}"
-                ),
+                message=(f"Rolling accuracy dropped to " f"{accuracy['accuracy']:.1%}"),
                 metric_name="rolling_accuracy",
                 metric_value=accuracy["accuracy"],
                 threshold=self.alert_threshold_accuracy,
@@ -602,7 +581,7 @@ class PerformanceMonitor:
         # Check individual model degradation
         for model, accs in self.model_accuracies.items():
             if len(accs) >= self.accuracy_window:
-                recent = np.mean(accs[-self.accuracy_window:])
+                recent = np.mean(accs[-self.accuracy_window :])
                 if recent < 0.40:  # Model performing worse than random
                     self._add_alert(
                         alert_type="model_degradation",
@@ -616,20 +595,13 @@ class PerformanceMonitor:
 
         # Check for sudden accuracy drop
         if len(self.records) >= 20:
-            recent_10 = np.mean([
-                r.is_correct for r in self.records[-10:]
-            ])
-            prev_10 = np.mean([
-                r.is_correct for r in self.records[-20:-10]
-            ])
+            recent_10 = np.mean([r.is_correct for r in self.records[-10:]])
+            prev_10 = np.mean([r.is_correct for r in self.records[-20:-10]])
             if prev_10 - recent_10 > 0.15:  # 15% drop
                 self._add_alert(
                     alert_type="accuracy_drop",
                     severity="critical",
-                    message=(
-                        f"Sudden accuracy drop: "
-                        f"{prev_10:.1%} -> {recent_10:.1%}"
-                    ),
+                    message=(f"Sudden accuracy drop: " f"{prev_10:.1%} -> {recent_10:.1%}"),
                     metric_name="accuracy_change",
                     metric_value=recent_10 - prev_10,
                     threshold=-0.15,
@@ -649,9 +621,7 @@ class PerformanceMonitor:
         # Check for recent duplicate
         recent_cutoff = datetime.now() - timedelta(hours=1)
         recent_same = [
-            a for a in self.alerts
-            if (a.alert_type == alert_type and
-                a.timestamp > recent_cutoff)
+            a for a in self.alerts if (a.alert_type == alert_type and a.timestamp > recent_cutoff)
         ]
 
         if recent_same:
@@ -681,7 +651,7 @@ class PerformanceMonitor:
             return "insufficient_data"
 
         recent = np.mean(values[-window:])
-        previous = np.mean(values[-window*2:-window])
+        previous = np.mean(values[-window * 2 : -window])
 
         diff = recent - previous
 
@@ -729,7 +699,7 @@ class ModelHealthChecker:
                 "required": self.health_window,
             }
 
-        recent = accuracies[-self.health_window:]
+        recent = accuracies[-self.health_window :]
         accuracy = np.mean(recent)
         std = np.std(recent)
 
@@ -753,16 +723,13 @@ class ModelHealthChecker:
             "accuracy_std": float(std),
             "is_unstable": is_unstable,
             "weight_trend": weight_trend,
-            "recommendation": self._get_recommendation(
-                status, accuracy, is_unstable
-            ),
+            "recommendation": self._get_recommendation(status, accuracy, is_unstable),
         }
 
     def check_all_models(self) -> Dict[str, Dict]:
         """Check health of all models."""
         return {
-            model: self.check_model_health(model)
-            for model in self.monitor.model_accuracies.keys()
+            model: self.check_model_health(model) for model in self.monitor.model_accuracies.keys()
         }
 
     def _get_weight_trend(self, model_name: str) -> str:
@@ -771,8 +738,7 @@ class ModelHealthChecker:
             return "insufficient_data"
 
         weights = [
-            entry["weights"].get(model_name, 0)
-            for entry in self.monitor.weight_history[-20:]
+            entry["weights"].get(model_name, 0) for entry in self.monitor.weight_history[-20:]
         ]
 
         if len(weights) < 10:
