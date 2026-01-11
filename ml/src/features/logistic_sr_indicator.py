@@ -135,9 +135,7 @@ class LogisticRegressionModel:
             Probability (0-1)
         """
         # Filter to only same-type pivots
-        same_type_levels = [
-            level for level in existing_levels if level.is_support == is_support
-        ]
+        same_type_levels = [level for level in existing_levels if level.is_support == is_support]
 
         if not same_type_levels:
             return 0.0
@@ -263,12 +261,8 @@ class LogisticSRIndicator:
         self._filter_levels(df)
 
         # Separate support and resistance levels
-        support_levels = [
-            level for level in self._regression_levels if level.is_support
-        ]
-        resistance_levels = [
-            level for level in self._regression_levels if not level.is_support
-        ]
+        support_levels = [level for level in self._regression_levels if level.is_support]
+        resistance_levels = [level for level in self._regression_levels if not level.is_support]
         respected_levels = [
             level
             for level in self._all_levels
@@ -680,11 +674,7 @@ class LogisticSRIndicator:
 
         if result["nearest_support"] and support_levels:
             nearest_support_level = next(
-                (
-                    level
-                    for level in support_levels
-                    if level["level"] == result["nearest_support"]
-                ),
+                (level for level in support_levels if level["level"] == result["nearest_support"]),
                 None,
             )
             df["logistic_support_prob"] = (
