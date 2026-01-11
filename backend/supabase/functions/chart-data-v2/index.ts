@@ -275,6 +275,23 @@ serve(async (req) => {
       ? intraday[intraday.length - 1].provider
       : 'none';
 
+    // Calculate data quality metrics
+    const newestBar = chartData && chartData.length > 0 ? chartData[chartData.length - 1] : null;
+    const oldestBar = chartData && chartData.length > 0 ? chartData[0] : null;
+    
+    const dataQuality = {
+      dataAgeHours: newestBar ? 
+        Math.round((new Date().getTime() - new Date(newestBar.ts).getTime()) / (1000 * 60 * 60)) : null,
+      isStale: newestBar ? 
+        (new Date().getTime() - new Date(newestBar.ts).getTime()) > (24 * 60 * 60 * 1000) : true,
+      hasRecentData: newestBar ? 
+        (new Date().getTime() - new Date(newestBar.ts).getTime()) < (4 * 60 * 60 * 1000) : false,
+      historicalDepthDays: (oldestBar && newestBar) ?
+        Math.round((new Date(newestBar.ts).getTime() - new Date(oldestBar.ts).getTime()) / (1000 * 60 * 60 * 24)) : 0,
+      sufficientForML: (chartData?.length || 0) >= 250, // ~1 year of trading days
+      barCount: chartData?.length || 0,
+    };
+
     const response = {
       symbol: symbol.toUpperCase(),
       timeframe,
@@ -283,16 +300,22 @@ serve(async (req) => {
           count: historical.length,
           provider: historicalProvider,
           data: historical,
+          oldestBar: historical.length > 0 ? historical[0].ts : null,
+          newestBar: historical.length > 0 ? historical[historical.length - 1].ts : null,
         },
         intraday: {
           count: intraday.length,
           provider: intradayProvider,
           data: intraday,
+          oldestBar: intraday.length > 0 ? intraday[0].ts : null,
+          newestBar: intraday.length > 0 ? intraday[intraday.length - 1].ts : null,
         },
         forecast: {
           count: forecast.length,
           provider: 'ml_forecast',
           data: forecast,
+          oldestBar: forecast.length > 0 ? forecast[0].ts : null,
+          newestBar: forecast.length > 0 ? forecast[forecast.length - 1].ts : null,
         },
       },
       metadata: {
@@ -302,6 +325,7 @@ serve(async (req) => {
         requested_days: days,
         forecast_days: forecastDays,
       },
+      dataQuality,
       mlSummary,
       indicators,
       superTrendAI: superTrendAI,
