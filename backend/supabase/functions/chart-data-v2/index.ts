@@ -50,6 +50,7 @@ const MAX_BARS_BY_TIMEFRAME: Record<string, number> = {
   d1: 2000,
   w1: 2000,
 };
+const DEFAULT_MAX_BARS = 1000;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -104,7 +105,7 @@ serve(async (req) => {
     console.log(`[chart-data-v2] Fetching: symbol_id=${symbolId}, timeframe=${timeframe}, start=${startDate.toISOString()}, end=${endDate.toISOString()}`);
     
     // Use dynamic query first to guarantee newest bars (orders DESC, no date filters)
-    const maxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ?? 1000;
+    const maxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ?? DEFAULT_MAX_BARS;
 
     let chartData = null;
     let chartError = null;
@@ -118,7 +119,9 @@ serve(async (req) => {
         p_include_forecast: includeForecast,
       });
 
-    if (!dynamicError && dynamicData) {
+    const hasDynamicData = Array.isArray(dynamicData) && dynamicData.length > 0;
+
+    if (!dynamicError && hasDynamicData) {
       chartData = dynamicData;
     } else {
       console.warn('[chart-data-v2] Dynamic RPC failed, falling back to legacy query', dynamicError);
@@ -137,6 +140,7 @@ serve(async (req) => {
         if (includeForecast) {
           chartData = legacyData;
         } else {
+          // Legacy fallback is already capped at maxBars; local filter is inexpensive
           chartData = legacyData.filter((bar: ChartBar) => !bar.is_forecast);
         }
       }
