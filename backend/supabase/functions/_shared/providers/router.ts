@@ -7,7 +7,7 @@ import type {
   NewsRequest,
   OptionsChainRequest,
 } from "./abstraction.ts";
-import type { Bar, NewsItem, OptionsChain, Quote, ProviderId } from "./types.ts";
+import type { Bar, NewsItem, OptionContract, OptionsChain, Quote, ProviderId } from "./types.ts";
 import {
   ProviderUnavailableError,
   RateLimitExceededError,
@@ -58,6 +58,67 @@ const DEFAULT_POLICY: RouterPolicy = {
     fallback: undefined,
   },
 };
+
+const TRADIER_BASE_URL = "https://api.tradier.com/v1";
+const TRADIER_CHUNK_SIZE = 120;
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function toNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : undefined;
+}
+
+async function fetchTradierOptionLiquidity(
+  symbols: string[],
+  apiKey?: string
+): Promise<Map<string, { volume?: number; openInterest?: number }>> {
+  const result = new Map<string, { volume?: number; openInterest?: number }>();
+  if (!apiKey || symbols.length === 0) {
+    return result;
+  }
+
+  for (const batch of chunkArray(symbols, TRADIER_CHUNK_SIZE)) {
+    const url = `${TRADIER_BASE_URL}/markets/quotes?symbols=${batch.join(",")}`;
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        console.warn(`[Router] Tradier liquidity fetch failed: HTTP ${response.status}`);
+        continue;
+      }
+
+      const data = await response.json();
+      const quotes = data?.quotes?.quote;
+      const quoteArray = Array.isArray(quotes) ? quotes : quotes ? [quotes] : [];
+
+      for (const quote of quoteArray) {
+        const symbol = quote?.symbol?.toUpperCase();
+        if (!symbol) continue;
+        result.set(symbol, {
+          volume: toNumber(quote.volume),
+          openInterest: toNumber(quote.open_interest),
+        });
+      }
+    } catch (error) {
+      console.warn("[Router] Tradier liquidity fetch error:", error);
+    }
+  }
+
+  return result;
+}
 
 export class ProviderRouter {
   private providers: Map<ProviderId, DataProviderAbstraction>;
@@ -119,6 +180,65 @@ export class ProviderRouter {
 
       throw error;
     }
+  }
+
+  /**
+   * Hybrid enrichment: keep Alpaca pricing/greeks, overlay Tradier OI/volume
+   */
+  private async enrichOptionsChainWithTradier(chain: OptionsChain): Promise<OptionsChain> {
+    // Default metadata: Alpaca for pricing
+    const basePriceProvider: ProviderId = "alpaca";
+    const tradierApiKey = Deno.env.get("TRADIER_API_KEY");
+
+    const applyPriceProvider = (contract: OptionContract, oiProvider?: ProviderId) => ({
+      ...contract,
+      priceProvider: contract.priceProvider ?? basePriceProvider,
+      oiProvider: oiProvider ?? contract.oiProvider,
+    });
+
+    if (!tradierApiKey) {
+      return {
+        ...chain,
+        providers: { price: basePriceProvider, liquidity: chain.providers?.liquidity },
+        calls: chain.calls.map((c) => applyPriceProvider(c, c.oiProvider)),
+        puts: chain.puts.map((p) => applyPriceProvider(p, p.oiProvider)),
+      };
+    }
+
+    const symbols = [...chain.calls, ...chain.puts]
+      .map((c) => c.symbol?.toUpperCase())
+      .filter((s): s is string => !!s);
+
+    if (symbols.length === 0) {
+      return {
+        ...chain,
+        providers: { price: basePriceProvider, liquidity: chain.providers?.liquidity },
+      };
+    }
+
+    const liquidityMap = await fetchTradierOptionLiquidity(symbols, tradierApiKey);
+
+    const mergeLiquidity = (contract: OptionContract): OptionContract => {
+      const match = liquidityMap.get(contract.symbol.toUpperCase());
+      const merged: OptionContract = {
+        ...contract,
+        volume: match?.volume ?? contract.volume,
+        openInterest: match?.openInterest ?? contract.openInterest,
+        priceProvider: contract.priceProvider ?? basePriceProvider,
+        oiProvider: match ? "tradier" : contract.oiProvider ?? basePriceProvider,
+      };
+      return merged;
+    };
+
+    return {
+      ...chain,
+      providers: {
+        price: basePriceProvider,
+        liquidity: liquidityMap.size > 0 ? "tradier" : basePriceProvider,
+      },
+      calls: chain.calls.map(mergeLiquidity),
+      puts: chain.puts.map(mergeLiquidity),
+    };
   }
 
   async getHistoricalBars(request: HistoricalBarsRequest): Promise<Bar[]> {
@@ -211,8 +331,9 @@ export class ProviderRouter {
       }
 
       const result = await provider.getOptionsChain(request);
+      const enriched = await this.enrichOptionsChainWithTradier(result);
       this.recordSuccess(primary);
-      return result;
+      return enriched;
     } catch (error) {
       console.error(`[Router] getOptionsChain failed:`, error);
       this.recordFailure(primary);
