@@ -119,9 +119,9 @@ serve(async (req) => {
         p_include_forecast: includeForecast,
       });
 
-    const hasDynamicResult = Array.isArray(dynamicData);
+    const isDynamicDataArray = Array.isArray(dynamicData);
 
-    if (!dynamicError && hasDynamicResult) {
+    if (!dynamicError && isDynamicDataArray) {
       chartData = dynamicData;
     } else {
       console.warn('[chart-data-v2] Dynamic RPC failed, falling back to legacy query', dynamicError);
@@ -138,10 +138,10 @@ serve(async (req) => {
 
       if (!legacyError && legacyData) {
         if (includeForecast) {
-          chartData = legacyData;
+          chartData = legacyData.slice(-maxBars);
         } else {
-          // Legacy fallback is already capped at maxBars; local filter is inexpensive
-          chartData = legacyData.filter((bar: ChartBar) => !bar.is_forecast);
+          const filtered = legacyData.filter((bar: ChartBar) => !bar.is_forecast);
+          chartData = filtered.slice(-maxBars);
         }
       }
       chartError = legacyError;
