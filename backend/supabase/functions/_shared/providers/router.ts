@@ -106,7 +106,7 @@ async function fetchTradierOptionLiquidity(
 
       for (const quote of quoteArray) {
         const symbol = quote?.symbol?.toUpperCase();
-        if (!symbol || !/^[A-Z0-9]+$/.test(symbol)) continue;
+        if (!symbol || !/^[A-Z0-9_.-]+$/.test(symbol)) continue;
         result.set(symbol, {
           volume: toNumber(quote.volume),
           openInterest: toNumber(quote.open_interest),
@@ -219,7 +219,7 @@ export class ProviderRouter {
     const liquidityMap = await fetchTradierOptionLiquidity(symbols, tradierApiKey);
 
     const mergeLiquidity = (contract: OptionContract): OptionContract => {
-      const symbolKey = contract.symbol?.toUpperCase?.();
+      const symbolKey = typeof contract.symbol === "string" ? contract.symbol.toUpperCase() : undefined;
       const baseContract: OptionContract = {
         ...contract,
         priceProvider: contract.priceProvider ?? basePriceProvider,
