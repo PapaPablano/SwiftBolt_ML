@@ -265,6 +265,9 @@ jobs:
             if output=$($cmd 2>&1); then
               # Extract bar count from output (look for "Total bars inserted: X")
               bars=$(echo "$output" | grep -oP 'Total bars inserted:\s*\K\d+' | tail -1 || echo "0")
+              echo "$output" | tail -n 60
+              # Extract bar count from output (look for "Inserted X bars")
+              bars=$(echo "$output" | grep -oP 'Inserted \K\d+' | tail -1 || echo "0")
               bars=${bars:-0}
               total_bars=$((total_bars + bars))
               echo "| $tf | ✅ Success | $bars |" >> $GITHUB_STEP_SUMMARY
