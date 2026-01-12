@@ -42,6 +42,10 @@ interface UserRefreshResponse {
     optionsJobQueued: boolean;
     srCalculated: boolean;
   };
+  // Enhanced fields for UI consumption
+  queuedJobs: string[];
+  warnings: string[];
+  nextExpectedUpdate: string | null;
   message: string;
   durationMs: number;
 }
@@ -403,11 +407,38 @@ serve(async (req: Request): Promise<Response> => {
     if (summary.optionsJobQueued) messageParts.push("options job queued");
     if (summary.srCalculated) messageParts.push("S/R calculated");
 
+    // Build queued jobs list for UI
+    const queuedJobs: string[] = [];
+    if (summary.backfillQueued) queuedJobs.push("backfill");
+    if (summary.mlJobQueued) queuedJobs.push("ml_forecast");
+    if (summary.optionsJobQueued) queuedJobs.push("options_ranking");
+
+    // Build warnings list for UI
+    const warnings: string[] = [];
+    failedSteps.forEach((s) => {
+      if (s.message) warnings.push(`${s.step}: ${s.message}`);
+    });
+
+    // Calculate next expected update time (market hours only)
+    const now = new Date();
+    const hour = now.getUTCHours();
+    const dayOfWeek = now.getUTCDay();
+    let nextExpectedUpdate: string | null = null;
+    
+    // During market hours (roughly 14:00-21:00 UTC = 9:00-4:00 ET), expect update in 15-30 min
+    if (dayOfWeek >= 1 && dayOfWeek <= 5 && hour >= 14 && hour < 21) {
+      const nextUpdate = new Date(now.getTime() + 15 * 60 * 1000);
+      nextExpectedUpdate = nextUpdate.toISOString();
+    }
+
     const response: UserRefreshResponse = {
       symbol,
       success,
       steps,
       summary,
+      queuedJobs,
+      warnings,
+      nextExpectedUpdate,
       message: messageParts.length > 0 ? messageParts.join(", ") : "Data is current",
       durationMs: Date.now() - startTime,
     };

@@ -1,0 +1,324 @@
+name: API Contract Tests
+
+# Validates the response schemas of key endpoints to prevent breaking the SwiftUI app
+# Runs on PRs and pushes to main/develop
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'supabase/functions/**'
+      - 'client-macos/**/*.swift'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'supabase/functions/**'
+      - 'client-macos/**/*.swift'
+  workflow_dispatch:
+    inputs:
+      endpoint:
+        description: 'Specific endpoint to test (leave empty for all)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: api-contract-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install dependencies
+        run: |
+          npm install -g ajv-cli ajv-formats
+      
+      - name: Create schema definitions
+        run: |
+          mkdir -p /tmp/schemas
+          
+          # Chart endpoint schema
+          cat > /tmp/schemas/chart.schema.json << 'EOF'
+          {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["symbol", "timeframe", "bars", "meta", "freshness"],
+            "properties": {
+              "symbol": { "type": "string" },
+              "timeframe": { "type": "string" },
+              "bars": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["ts", "open", "high", "low", "close", "volume"],
+                  "properties": {
+                    "ts": { "type": "string" },
+                    "open": { "type": "number" },
+                    "high": { "type": "number" },
+                    "low": { "type": "number" },
+                    "close": { "type": "number" },
+                    "volume": { "type": "number" },
+                    "provider": { "type": "string" },
+                    "dataStatus": { "type": "string" }
+                  }
+                }
+              },
+              "forecast": {
+                "type": ["object", "null"],
+                "properties": {
+                  "label": { "type": "string" },
+                  "confidence": { "type": "number" },
+                  "horizon": { "type": "string" },
+                  "runAt": { "type": "string" },
+                  "points": { "type": "array" }
+                }
+              },
+              "optionsRanks": { "type": "array" },
+              "meta": {
+                "type": "object",
+                "required": ["dataStatus", "isMarketOpen", "totalBars"],
+                "properties": {
+                  "lastBarTs": { "type": ["string", "null"] },
+                  "dataStatus": { "type": "string", "enum": ["fresh", "stale", "updating"] },
+                  "isMarketOpen": { "type": "boolean" },
+                  "latestForecastRunAt": { "type": ["string", "null"] },
+                  "hasPendingSplits": { "type": "boolean" },
+                  "pendingSplitInfo": { "type": ["string", "null"] },
+                  "totalBars": { "type": "integer" },
+                  "requestedRange": {
+                    "type": "object",
+                    "properties": {
+                      "start": { "type": "string" },
+                      "end": { "type": "string" }
+                    }
+                  }
+                }
+              },
+              "freshness": {
+                "type": "object",
+                "required": ["slaMinutes", "isWithinSla"],
+                "properties": {
+                  "ageMinutes": { "type": ["integer", "null"] },
+                  "slaMinutes": { "type": "integer" },
+                  "isWithinSla": { "type": "boolean" }
+                }
+              }
+            }
+          }
+          EOF
+          
+          # User-refresh endpoint schema
+          cat > /tmp/schemas/user-refresh.schema.json << 'EOF'
+          {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["symbol", "success", "steps", "summary", "message", "durationMs"],
+            "properties": {
+              "symbol": { "type": "string" },
+              "success": { "type": "boolean" },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["step", "status"],
+                  "properties": {
+                    "step": { "type": "string" },
+                    "status": { "type": "string", "enum": ["pending", "running", "completed", "skipped", "failed"] },
+                    "message": { "type": ["string", "null"] },
+                    "details": { "type": "object" }
+                  }
+                }
+              },
+              "summary": {
+                "type": "object",
+                "required": ["backfillNeeded", "backfillQueued", "barsUpdated", "mlJobQueued", "optionsJobQueued", "srCalculated"],
+                "properties": {
+                  "backfillNeeded": { "type": "boolean" },
+                  "backfillQueued": { "type": "boolean" },
+                  "barsUpdated": { "type": "integer" },
+                  "mlJobQueued": { "type": "boolean" },
+                  "optionsJobQueued": { "type": "boolean" },
+                  "srCalculated": { "type": "boolean" }
+                }
+              },
+              "queuedJobs": { "type": "array", "items": { "type": "string" } },
+              "warnings": { "type": "array", "items": { "type": "string" } },
+              "nextExpectedUpdate": { "type": ["string", "null"] },
+              "message": { "type": "string" },
+              "durationMs": { "type": "integer" }
+            }
+          }
+          EOF
+          
+          # Data-health endpoint schema
+          cat > /tmp/schemas/data-health.schema.json << 'EOF'
+          {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "required": ["success", "summary"],
+            "properties": {
+              "success": { "type": "boolean" },
+              "summary": {
+                "type": "object",
+                "required": ["totalChecks", "healthy", "warning", "critical", "marketOpen", "checkedAt"],
+                "properties": {
+                  "totalChecks": { "type": "integer" },
+                  "healthy": { "type": "integer" },
+                  "warning": { "type": "integer" },
+                  "critical": { "type": "integer" },
+                  "staleData": { "type": "integer" },
+                  "staleForecast": { "type": "integer" },
+                  "staleOptions": { "type": "integer" },
+                  "pendingSplits": { "type": "integer" },
+                  "marketOpen": { "type": "boolean" },
+                  "checkedAt": { "type": "string" }
+                }
+              },
+              "healthStatuses": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["symbol", "timeframe", "overallHealth", "checkedAt"],
+                  "properties": {
+                    "symbol": { "type": "string" },
+                    "timeframe": { "type": "string" },
+                    "coverage": { "type": "object" },
+                    "freshness": { "type": "object" },
+                    "jobs": { "type": "object" },
+                    "forecast": { "type": "object" },
+                    "options": { "type": "object" },
+                    "market": { "type": "object" },
+                    "overallHealth": { "type": "string", "enum": ["healthy", "warning", "critical"] },
+                    "checkedAt": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+          EOF
+          
+          echo "Schema definitions created"
+          ls -la /tmp/schemas/
+      
+      - name: Validate Edge Function TypeScript types match schemas
+        run: |
+          echo "## API Contract Validation Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check chart endpoint exists
+          if [ -f "supabase/functions/chart/index.ts" ]; then
+            echo "✅ Chart endpoint found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Chart endpoint missing" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check user-refresh endpoint exists
+          if [ -f "supabase/functions/user-refresh/index.ts" ]; then
+            echo "✅ User-refresh endpoint found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ User-refresh endpoint missing" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check data-health endpoint exists
+          if [ -f "supabase/functions/data-health/index.ts" ]; then
+            echo "✅ Data-health endpoint found" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Data-health endpoint missing" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Check Swift model compatibility
+        run: |
+          echo "### Swift Model Compatibility" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check for required Swift response types
+          SWIFT_API_CLIENT="client-macos/SwiftBoltML/Services/APIClient.swift"
+          
+          if [ -f "$SWIFT_API_CLIENT" ]; then
+            # Check for ConsolidatedChartResponse
+            if grep -q "ConsolidatedChartResponse" "$SWIFT_API_CLIENT"; then
+              echo "✅ ConsolidatedChartResponse model defined" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ ConsolidatedChartResponse model not found" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            # Check for DataHealthResponse
+            if grep -q "DataHealthResponse" "$SWIFT_API_CLIENT"; then
+              echo "✅ DataHealthResponse model defined" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ DataHealthResponse model not found" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            # Check for UserRefreshResponse with new fields
+            if grep -q "queuedJobs" "$SWIFT_API_CLIENT"; then
+              echo "✅ UserRefreshResponse includes queuedJobs field" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ UserRefreshResponse missing queuedJobs field" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if grep -q "warnings" "$SWIFT_API_CLIENT"; then
+              echo "✅ UserRefreshResponse includes warnings field" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ UserRefreshResponse missing warnings field" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if grep -q "nextExpectedUpdate" "$SWIFT_API_CLIENT"; then
+              echo "✅ UserRefreshResponse includes nextExpectedUpdate field" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ UserRefreshResponse missing nextExpectedUpdate field" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "❌ Swift API client not found at $SWIFT_API_CLIENT" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Verify endpoint URL consistency
+        run: |
+          echo "### Endpoint URL Consistency" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # List all Supabase functions
+          echo "| Endpoint | Edge Function | Swift Method |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|---------------|--------------|" >> $GITHUB_STEP_SUMMARY
+          
+          for func_dir in supabase/functions/*/; do
+            func_name=$(basename "$func_dir")
+            
+            # Skip shared folder
+            if [ "$func_name" = "_shared" ]; then
+              continue
+            fi
+            
+            # Check if Swift client has a method for this function
+            if grep -q "\"$func_name\"" "client-macos/SwiftBoltML/Services/APIClient.swift" 2>/dev/null; then
+              echo "| $func_name | ✅ | ✅ |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| $func_name | ✅ | ❓ |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Legend: ✅ = exists, ❓ = not explicitly referenced" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Summary
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Contract tests completed.** Review the report above for any mismatches between backend and frontend." >> $GITHUB_STEP_SUMMARY

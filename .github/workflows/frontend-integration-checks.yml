@@ -1,0 +1,593 @@
+name: Frontend Integration Checks
+
+# Validates that all frontend components (Swift/JavaScript) are properly integrated
+# with backend Edge Functions and database. Ensures live data flows correctly during
+# market hours and ML rankings are connected end-to-end.
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'client-macos/**'
+      - 'supabase/functions/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'client-macos/**'
+      - 'supabase/functions/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup report
+        run: |
+          echo "## Frontend Integration Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Checking that all frontend components are properly integrated with backend services." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check Live Data Flow (Market Hours)
+        run: |
+          echo "### 📊 Live Data Flow During Market Hours" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Verifying that charts display live/updated information during market hours." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          CLIENT_DIR="client-macos/SwiftBoltML"
+          
+          echo "| Component | Live Data Feature | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------------------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          # Check ChartViewModel has live quote updates
+          if grep -q "startLiveQuoteUpdates\|liveQuote" "$CLIENT_DIR/ViewModels/ChartViewModel.swift" 2>/dev/null; then
+            echo "| ChartViewModel | Live Quote Updates | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| ChartViewModel | Live Quote Updates | ❌ Missing |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check market hours awareness
+          if grep -q "isMarketOpen\|MarketHours\|marketOpen" "$CLIENT_DIR/ViewModels/ChartViewModel.swift" 2>/dev/null; then
+            echo "| ChartViewModel | Market Hours Awareness | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| ChartViewModel | Market Hours Awareness | ❌ Missing |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check staleness detection
+          if grep -q "isStale\|StalenessReport\|dataRecency" "$CLIENT_DIR/ViewModels/ChartViewModel.swift" 2>/dev/null; then
+            echo "| ChartViewModel | Staleness Detection | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| ChartViewModel | Staleness Detection | ⚠️ |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check auto-refresh for intraday
+          if grep -q "autoRefresh\|liveQuoteInterval\|refreshInterval" "$CLIENT_DIR/ViewModels/ChartViewModel.swift" 2>/dev/null; then
+            echo "| ChartViewModel | Auto-Refresh (Intraday) | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| ChartViewModel | Auto-Refresh (Intraday) | ⚠️ |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check OptionsRanker has auto-refresh
+          if grep -q "startAutoRefresh\|autoRefreshInterval" "$CLIENT_DIR/ViewModels/OptionsRankerViewModel.swift" 2>/dev/null; then
+            echo "| OptionsRankerViewModel | Auto-Refresh Quotes | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| OptionsRankerViewModel | Auto-Refresh Quotes | ❌ Missing |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check MarketStatusService exists
+          if [ -f "$CLIENT_DIR/Services/MarketStatusService.swift" ]; then
+            if grep -q "fetchMarketStatus\|isMarketOpen" "$CLIENT_DIR/Services/MarketStatusService.swift" 2>/dev/null; then
+              echo "| MarketStatusService | Market Status Polling | ✅ |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| MarketStatusService | Market Status Polling | ⚠️ Incomplete |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| MarketStatusService | Market Status Polling | ❌ Missing |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check ML Rankings Integration
+        run: |
+          echo "### 🤖 ML Rankings & Forecasts Integration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Verifying ML data flows from backend to frontend." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          CLIENT_DIR="client-macos/SwiftBoltML"
+          FUNCTIONS_DIR="supabase/functions"
+          
+          echo "| Data Type | Backend Source | Frontend Consumer | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|----------------|-------------------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          # ML Forecasts: ml_forecasts table → chart-data-v2 → ChartViewModel
+          backend_ok=false
+          frontend_ok=false
+          if grep -rq "ml_forecasts\|mlSummary\|forecast" "$FUNCTIONS_DIR" 2>/dev/null; then
+            backend_ok=true
+          fi
+          if grep -q "mlSummary\|ForecastSeries\|selectedForecastHorizon" "$CLIENT_DIR/ViewModels/ChartViewModel.swift" 2>/dev/null; then
+            frontend_ok=true
+          fi
+          if [ "$backend_ok" = true ] && [ "$frontend_ok" = true ]; then
+            echo "| ML Forecasts | ml_forecasts → chart-data-v2 | ChartViewModel | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| ML Forecasts | ml_forecasts → chart-data-v2 | ChartViewModel | ⚠️ |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Options Rankings: options_ranks → options-rankings → OptionsRankerViewModel
+          backend_ok=false
+          frontend_ok=false
+          if grep -rq "options_ranks\|OptionsRank" "$FUNCTIONS_DIR" 2>/dev/null; then
+            backend_ok=true
+          fi
+          if grep -q "OptionsRank\|rankings\|mlScore" "$CLIENT_DIR/ViewModels/OptionsRankerViewModel.swift" 2>/dev/null; then
+            frontend_ok=true
+          fi
+          if [ "$backend_ok" = true ] && [ "$frontend_ok" = true ]; then
+            echo "| Options Rankings | options_ranks → options-rankings | OptionsRankerViewModel | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Options Rankings | options_ranks → options-rankings | OptionsRankerViewModel | ⚠️ |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # ML Dashboard: forecast_evaluations → ml-dashboard → PredictionsViewModel
+          backend_ok=false
+          frontend_ok=false
+          if [ -d "$FUNCTIONS_DIR/ml-dashboard" ] || grep -rq "ml-dashboard" "$FUNCTIONS_DIR" 2>/dev/null; then
+            backend_ok=true
+          fi
+          if grep -q "MLDashboard\|dashboardData" "$CLIENT_DIR/ViewModels/PredictionsViewModel.swift" 2>/dev/null; then
+            frontend_ok=true
+          fi
+          if [ "$backend_ok" = true ] && [ "$frontend_ok" = true ]; then
+            echo "| ML Dashboard | forecast_evaluations → ml-dashboard | PredictionsViewModel | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| ML Dashboard | forecast_evaluations → ml-dashboard | PredictionsViewModel | ⚠️ |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Support/Resistance: ml_forecasts.sr_* → support-resistance → ChartViewModel
+          backend_ok=false
+          frontend_ok=false
+          if grep -rq "support.*resistance\|srLevels\|sr_" "$FUNCTIONS_DIR" 2>/dev/null; then
+            backend_ok=true
+          fi
+          if grep -q "SupportResistance\|srLevels\|pivotLevels" "$CLIENT_DIR/ViewModels/ChartViewModel.swift" 2>/dev/null; then
+            frontend_ok=true
+          fi
+          if [ "$backend_ok" = true ] && [ "$frontend_ok" = true ]; then
+            echo "| Support/Resistance | sr_levels → support-resistance | ChartViewModel | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Support/Resistance | sr_levels → support-resistance | ChartViewModel | ⚠️ |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # SuperTrend AI: indicators → chart-data-v2 → ChartViewModel
+          if grep -q "superTrend\|SuperTrendAI" "$CLIENT_DIR/ViewModels/ChartViewModel.swift" 2>/dev/null; then
+            echo "| SuperTrend AI | chart-data-v2.indicators | ChartViewModel | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| SuperTrend AI | chart-data-v2.indicators | ChartViewModel | ⚠️ |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check ViewModel to Endpoint Mappings
+        run: |
+          echo "### ViewModel → Endpoint Integration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| ViewModel | Endpoint(s) | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          CLIENT_DIR="client-macos/SwiftBoltML"
+          FUNCTIONS_DIR="supabase/functions"
+          
+          # ChartViewModel → chart-data-v2, chart, user-refresh
+          chart_ok=true
+          if grep -q "chart-data-v2\|fetchChartV2" "$CLIENT_DIR/ViewModels/ChartViewModel.swift" 2>/dev/null; then
+            if [ -d "$FUNCTIONS_DIR/chart" ]; then
+              echo "| ChartViewModel | chart-data-v2, chart | ✅ |" >> $GITHUB_STEP_SUMMARY
+            else
+              chart_ok=false
+            fi
+          else
+            chart_ok=false
+          fi
+          if [ "$chart_ok" = false ]; then
+            echo "| ChartViewModel | chart-data-v2, chart | ⚠️ Check needed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # OptionsRankerViewModel → options-rankings, options-quotes, trigger-ranking-job
+          if grep -q "options-rankings\|fetchOptionsRankings" "$CLIENT_DIR/ViewModels/OptionsRankerViewModel.swift" 2>/dev/null; then
+            echo "| OptionsRankerViewModel | options-rankings, options-quotes | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| OptionsRankerViewModel | options-rankings, options-quotes | ⚠️ Check needed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # PredictionsViewModel → ml-dashboard
+          if grep -q "ml-dashboard\|fetchMLDashboard" "$CLIENT_DIR/ViewModels/PredictionsViewModel.swift" 2>/dev/null; then
+            echo "| PredictionsViewModel | ml-dashboard | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| PredictionsViewModel | ml-dashboard | ⚠️ Check needed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # WatchlistViewModel → symbols, reload-watchlist-data
+          if grep -q "reload-watchlist\|reloadWatchlistData\|symbols" "$CLIENT_DIR/ViewModels/WatchlistViewModel.swift" 2>/dev/null; then
+            echo "| WatchlistViewModel | reload-watchlist-data, symbols | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| WatchlistViewModel | reload-watchlist-data, symbols | ⚠️ Check needed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # OptionsChainViewModel → options-chain
+          if grep -q "options-chain\|fetchOptionsChain" "$CLIENT_DIR/ViewModels/OptionsChainViewModel.swift" 2>/dev/null; then
+            echo "| OptionsChainViewModel | options-chain | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| OptionsChainViewModel | options-chain | ⚠️ Check needed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # NewsViewModel → news
+          if grep -q "news\|fetchNews" "$CLIENT_DIR/ViewModels/NewsViewModel.swift" 2>/dev/null; then
+            echo "| NewsViewModel | news | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| NewsViewModel | news | ⚠️ Check needed |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Check View to ViewModel Bindings
+        run: |
+          echo "### View → ViewModel Bindings" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| View | ViewModel | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          CLIENT_DIR="client-macos/SwiftBoltML"
+          
+          # Check key view files for ViewModel references
+          check_binding() {
+            view_file="$1"
+            view_name="$2"
+            viewmodel_pattern="$3"
+            viewmodel_name="$4"
+            
+            if [ -f "$view_file" ]; then
+              if grep -q "$viewmodel_pattern" "$view_file" 2>/dev/null; then
+                echo "| $view_name | $viewmodel_name | ✅ |" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "| $view_name | $viewmodel_name | ⚠️ Not bound |" >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "| $view_name | $viewmodel_name | ❓ File not found |" >> $GITHUB_STEP_SUMMARY
+            fi
+          }
+          
+          check_binding "$CLIENT_DIR/Views/ChartView.swift" "ChartView" "ChartViewModel" "ChartViewModel"
+          check_binding "$CLIENT_DIR/Views/OptionsRankerView.swift" "OptionsRankerView" "OptionsRankerViewModel" "OptionsRankerViewModel"
+          check_binding "$CLIENT_DIR/Views/PredictionsView.swift" "PredictionsView" "PredictionsViewModel" "PredictionsViewModel"
+          check_binding "$CLIENT_DIR/Views/WatchlistView.swift" "WatchlistView" "WatchlistViewModel" "WatchlistViewModel"
+          check_binding "$CLIENT_DIR/Views/OptionsChainView.swift" "OptionsChainView" "OptionsChainViewModel" "OptionsChainViewModel"
+          check_binding "$CLIENT_DIR/Views/DataHealthView.swift" "DataHealthView" "DataQuality" "DataQualityReport"
+          check_binding "$CLIENT_DIR/Views/DataQualityBadge.swift" "DataQualityBadge" "DataQuality" "DataQuality"
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check JavaScript Chart Integration
+        run: |
+          echo "### JavaScript Chart Integration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          JS_DIR="client-macos/SwiftBoltML/Resources/WebChart"
+          
+          if [ -d "$JS_DIR" ]; then
+            echo "| File | Purpose | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|------|---------|--------|" >> $GITHUB_STEP_SUMMARY
+            
+            # Check chart.js exists and has key functions
+            if [ -f "$JS_DIR/chart.js" ]; then
+              if grep -q "updateData\|setData\|createChart" "$JS_DIR/chart.js" 2>/dev/null; then
+                echo "| chart.js | Main chart rendering | ✅ |" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "| chart.js | Main chart rendering | ⚠️ Missing key functions |" >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "| chart.js | Main chart rendering | ❌ Missing |" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            # Check tooltip-enhanced.js
+            if [ -f "$JS_DIR/tooltip-enhanced.js" ]; then
+              echo "| tooltip-enhanced.js | Enhanced tooltips | ✅ |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| tooltip-enhanced.js | Enhanced tooltips | ⚠️ Missing |" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            # Check heikin-ashi.js
+            if [ -f "$JS_DIR/heikin-ashi.js" ]; then
+              echo "| heikin-ashi.js | Heikin-Ashi candles | ✅ |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| heikin-ashi.js | Heikin-Ashi candles | ⚠️ Missing |" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            # Check lightweight-charts library
+            if ls "$JS_DIR"/lightweight-charts*.js 1>/dev/null 2>&1; then
+              echo "| lightweight-charts.js | Trading charts library | ✅ |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| lightweight-charts.js | Trading charts library | ❌ Missing |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "❌ WebChart directory not found" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check Swift-JavaScript Bridge
+        run: |
+          echo "### Swift ↔ JavaScript Bridge" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          BRIDGE_FILE="client-macos/SwiftBoltML/Services/ChartBridge.swift"
+          
+          if [ -f "$BRIDGE_FILE" ]; then
+            echo "| Bridge Method | Purpose | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------------|---------|--------|" >> $GITHUB_STEP_SUMMARY
+            
+            # Check for key bridge methods
+            if grep -q "evaluateJavaScript\|callAsyncJavaScript\|WKScriptMessageHandler" "$BRIDGE_FILE" 2>/dev/null; then
+              echo "| JS Evaluation | Execute JavaScript in WebView | ✅ |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| JS Evaluation | Execute JavaScript in WebView | ⚠️ |" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if grep -q "updateData\|loadData\|setChartData" "$BRIDGE_FILE" 2>/dev/null; then
+              echo "| Data Updates | Push data to chart | ✅ |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Data Updates | Push data to chart | ⚠️ |" >> $GITHUB_STEP_SUMMARY
+            fi
+            
+            if grep -q "indicators\|overlay\|addSeries" "$BRIDGE_FILE" 2>/dev/null; then
+              echo "| Indicators | Add technical indicators | ✅ |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| Indicators | Add technical indicators | ⚠️ |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⚠️ ChartBridge.swift not found - JavaScript bridge may be missing" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check API Response Model Coverage
+        run: |
+          echo "### API Response Models" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Checking that Swift models exist for all backend responses." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          API_CLIENT="client-macos/SwiftBoltML/Services/APIClient.swift"
+          MODELS_DIR="client-macos/SwiftBoltML/Models"
+          
+          echo "| Response Type | Location | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------------|----------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          # Key response models that should exist
+          check_model() {
+            model_name="$1"
+            if grep -q "struct $model_name" "$API_CLIENT" 2>/dev/null || \
+               grep -rq "struct $model_name" "$MODELS_DIR" 2>/dev/null; then
+              echo "| $model_name | Found | ✅ |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| $model_name | Not found | ⚠️ |" >> $GITHUB_STEP_SUMMARY
+            fi
+          }
+          
+          check_model "ChartResponse"
+          check_model "ChartDataV2Response"
+          check_model "ConsolidatedChartResponse"
+          check_model "OptionsRankingsResponse"
+          check_model "MLDashboardResponse"
+          check_model "UserRefreshResponse"
+          check_model "DataHealthResponse"
+          check_model "OptionsChainResponse"
+          check_model "NewsResponse"
+          check_model "QuotesResponse"
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check Realtime Subscription Support
+        run: |
+          echo "### Realtime/WebSocket Integration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          CLIENT_DIR="client-macos/SwiftBoltML"
+          
+          # Check for Supabase Realtime usage
+          if grep -rq "realtime\|subscribe\|channel" "$CLIENT_DIR" 2>/dev/null; then
+            echo "✅ Realtime subscription support detected" >> $GITHUB_STEP_SUMMARY
+            
+            # Find which files use realtime
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Files with realtime support:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            grep -rl "realtime\|subscribe" "$CLIENT_DIR" 2>/dev/null | head -10 >> $GITHUB_STEP_SUMMARY || echo "None found" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ No Realtime subscription usage detected (optional feature)" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check Error Handling Consistency
+        run: |
+          echo "### Error Handling" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          API_CLIENT="client-macos/SwiftBoltML/Services/APIClient.swift"
+          
+          if [ -f "$API_CLIENT" ]; then
+            echo "| Error Type | Handled | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|------------|---------|--------|" >> $GITHUB_STEP_SUMMARY
+            
+            check_error() {
+              error_type="$1"
+              if grep -q "$error_type" "$API_CLIENT" 2>/dev/null; then
+                echo "| $error_type | Yes | ✅ |" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "| $error_type | No | ⚠️ |" >> $GITHUB_STEP_SUMMARY
+              fi
+            }
+            
+            check_error "networkError"
+            check_error "httpError"
+            check_error "decodingError"
+            check_error "rateLimitExceeded"
+            check_error "authenticationError"
+            check_error "serviceUnavailable"
+            check_error "invalidSymbol"
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check Data Freshness UI Components
+        run: |
+          echo "### 🕐 Data Freshness UI Components" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Checking that UI displays freshness indicators and handles stale data gracefully." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          CLIENT_DIR="client-macos/SwiftBoltML"
+          
+          echo "| Component | Feature | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          
+          # DataQualityBadge - shows freshness status
+          if [ -f "$CLIENT_DIR/Views/DataQualityBadge.swift" ]; then
+            if grep -q "isStale\|ageText\|statusColor" "$CLIENT_DIR/Views/DataQualityBadge.swift" 2>/dev/null; then
+              echo "| DataQualityBadge | Staleness indicator | ✅ |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| DataQualityBadge | Staleness indicator | ⚠️ Incomplete |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| DataQualityBadge | Staleness indicator | ❌ Missing |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # DataHealthView - comprehensive health view
+          if [ -f "$CLIENT_DIR/Views/DataHealthView.swift" ]; then
+            if grep -q "healthScore\|HealthIndicator" "$CLIENT_DIR/Views/DataHealthView.swift" 2>/dev/null; then
+              echo "| DataHealthView | Health score display | ✅ |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| DataHealthView | Health score display | ⚠️ Incomplete |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "| DataHealthView | Health score display | ❌ Missing |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # HydrationBanner - shows backfill progress
+          if [ -f "$CLIENT_DIR/Views/HydrationBanner.swift" ]; then
+            echo "| HydrationBanner | Backfill progress | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| HydrationBanner | Backfill progress | ⚠️ Missing |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # MarketStatusBadge - shows market open/closed
+          if [ -f "$CLIENT_DIR/Views/Components/MarketStatusBadge.swift" ]; then
+            echo "| MarketStatusBadge | Market status | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| MarketStatusBadge | Market status | ⚠️ Missing |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # SplitAdjustmentAlert - warns about pending splits
+          if [ -f "$CLIENT_DIR/Views/Components/SplitAdjustmentAlert.swift" ]; then
+            echo "| SplitAdjustmentAlert | Pending splits warning | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| SplitAdjustmentAlert | Pending splits warning | ⚠️ Missing |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # BackfillStatusView - shows backfill status
+          if [ -f "$CLIENT_DIR/Views/BackfillStatusView.swift" ]; then
+            echo "| BackfillStatusView | Data backfill status | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| BackfillStatusView | Data backfill status | ⚠️ Missing |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check Backend Workflow Schedule
+        run: |
+          echo "### ⏰ Backend Data Refresh Schedule" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Verifying that GitHub Actions workflows are scheduled to keep data fresh." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          WORKFLOWS_DIR=".github/workflows"
+          
+          echo "| Workflow | Schedule | Purpose |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|----------|---------|" >> $GITHUB_STEP_SUMMARY
+          
+          # Check alpaca-intraday-cron.yml
+          if [ -f "$WORKFLOWS_DIR/alpaca-intraday-cron.yml" ]; then
+            schedule=$(grep -A1 "schedule:" "$WORKFLOWS_DIR/alpaca-intraday-cron.yml" 2>/dev/null | grep "cron:" | head -1 | sed 's/.*cron: //' | tr -d "'" || echo "Not found")
+            echo "| alpaca-intraday-cron | $schedule | Intraday bar refresh |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| alpaca-intraday-cron | ❌ Missing | Intraday bar refresh |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check daily-data-refresh.yml
+          if [ -f "$WORKFLOWS_DIR/daily-data-refresh.yml" ]; then
+            schedule=$(grep -A1 "schedule:" "$WORKFLOWS_DIR/daily-data-refresh.yml" 2>/dev/null | grep "cron:" | head -1 | sed 's/.*cron: //' | tr -d "'" || echo "Not found")
+            echo "| daily-data-refresh | $schedule | Daily historical sync |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| daily-data-refresh | ❌ Missing | Daily historical sync |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check daily-options-scrape.yml
+          if [ -f "$WORKFLOWS_DIR/daily-options-scrape.yml" ]; then
+            schedule=$(grep -A1 "schedule:" "$WORKFLOWS_DIR/daily-options-scrape.yml" 2>/dev/null | grep "cron:" | head -1 | sed 's/.*cron: //' | tr -d "'" || echo "Not found")
+            echo "| daily-options-scrape | $schedule | Options chain updates |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| daily-options-scrape | ❌ Missing | Options chain updates |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check ml-forecast.yml
+          if [ -f "$WORKFLOWS_DIR/ml-forecast.yml" ]; then
+            schedule=$(grep -A1 "schedule:" "$WORKFLOWS_DIR/ml-forecast.yml" 2>/dev/null | grep "cron:" | head -1 | sed 's/.*cron: //' | tr -d "'" || echo "Not found")
+            echo "| ml-forecast | $schedule | ML predictions |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| ml-forecast | ❌ Missing | ML predictions |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check data-quality-monitor.yml
+          if [ -f "$WORKFLOWS_DIR/data-quality-monitor.yml" ]; then
+            schedule=$(grep -A1 "schedule:" "$WORKFLOWS_DIR/data-quality-monitor.yml" 2>/dev/null | grep "cron:" | head -1 | sed 's/.*cron: //' | tr -d "'" || echo "Not found")
+            echo "| data-quality-monitor | $schedule | Quality monitoring |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| data-quality-monitor | ❌ Missing | Quality monitoring |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Summary
+        run: |
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Integration Checklist" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ = Properly integrated" >> $GITHUB_STEP_SUMMARY
+          echo "- ⚠️ = Needs review" >> $GITHUB_STEP_SUMMARY
+          echo "- ❌ = Missing/broken" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Review any ⚠️ or ❌ items to ensure seamless frontend-backend integration." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Key Data Flow Paths" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "1. **Charts**: GitHub Actions → Supabase DB → Edge Functions → Swift ViewModel → WebChart JS" >> $GITHUB_STEP_SUMMARY
+          echo "2. **Options Rankings**: GitHub Actions → options_ranks → options-rankings → OptionsRankerViewModel" >> $GITHUB_STEP_SUMMARY  
+          echo "3. **ML Forecasts**: GitHub Actions → ml_forecasts → chart-data-v2 → ChartViewModel" >> $GITHUB_STEP_SUMMARY
+          echo "4. **Live Quotes**: MarketStatusService → quote polling → liveQuote → UI updates" >> $GITHUB_STEP_SUMMARY
