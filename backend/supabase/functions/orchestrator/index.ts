@@ -1,8 +1,30 @@
 // SPEC-8: Unified Market Data Orchestrator
 // Central scheduler and dispatcher for all data jobs
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { corsHeaders } from "../_shared/cors.ts";
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "Unknown error";
+  }
+}
+
+function getErrorCode(error: unknown): string | null {
+  if (error && typeof error === "object" && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    return typeof code === "string" ? code : null;
+  }
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
 
 interface JobDefinition {
   id: string;
@@ -87,7 +109,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("[Orchestrator] Error:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: getErrorMessage(error) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -96,7 +118,7 @@ Deno.serve(async (req) => {
 /**
  * Main orchestration tick: scan job definitions, create slices, dispatch work
  */
-async function handleTick(supabase: any) {
+async function handleTick(supabase: SupabaseClient) {
   const startTime = Date.now();
   const results = {
     scanned: 0,
@@ -132,7 +154,7 @@ async function handleTick(supabase: any) {
         results.slices_created += slicesCreated;
       } catch (error) {
         console.error(`[Orchestrator] Error creating slices for ${jobDef.symbol}/${jobDef.timeframe}:`, error);
-        results.errors.push(`${jobDef.symbol}/${jobDef.timeframe}: ${error.message}`);
+        results.errors.push(`${jobDef.symbol}/${jobDef.timeframe}: ${getErrorMessage(error)}`);
       }
     }
 
@@ -150,7 +172,7 @@ async function handleTick(supabase: any) {
   } catch (error) {
     console.error("[Orchestrator] Tick error:", error);
     return new Response(
-      JSON.stringify({ error: error.message, results }),
+      JSON.stringify({ error: getErrorMessage(error), results }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
@@ -159,7 +181,18 @@ async function handleTick(supabase: any) {
 /**
  * Create job slices for a job definition based on coverage gaps
  */
-async function createSlicesForJob(supabase: any, jobDef: JobDefinition): Promise<number> {
+type JobRunInsert = {
+  job_def_id: string;
+  symbol: string;
+  timeframe: string;
+  job_type: JobDefinition["job_type"];
+  slice_from: string;
+  slice_to: string;
+  status: "queued";
+  triggered_by: string;
+};
+
+async function createSlicesForJob(supabase: SupabaseClient, jobDef: JobDefinition): Promise<number> {
   const config = SLICE_CONFIGS[jobDef.job_type];
   if (!config) {
     console.warn(`[Orchestrator] No config for job type: ${jobDef.job_type}`);
@@ -234,7 +267,7 @@ async function createSlicesForJob(supabase: any, jobDef: JobDefinition): Promise
       if (fromIso && toIso) existingKeys.add(`${fromIso}|${toIso}`);
     }
 
-    const toInsert: any[] = [];
+    const toInsert: JobRunInsert[] = [];
     for (const c of candidates) {
       const key = `${c.from.toISOString()}|${c.to.toISOString()}`;
       if (!existingKeys.has(key)) {
@@ -254,7 +287,7 @@ async function createSlicesForJob(supabase: any, jobDef: JobDefinition): Promise
     if (toInsert.length > 0) {
       const { error: insertError } = await supabase
         .from("job_runs")
-        .insert(toInsert, { returning: "minimal" });
+        .insert(toInsert);
 
       if (insertError) {
         console.error(`[Orchestrator] Error inserting job runs:`, insertError);
@@ -274,12 +307,33 @@ async function createSlicesForJob(supabase: any, jobDef: JobDefinition): Promise
  * Dispatch queued jobs to workers
  * Updated: 2026-01-08 with defensive logging
  */
-async function dispatchQueuedJobs(supabase: any, maxJobs: number): Promise<number> {
+type ClaimedJob = {
+  job_run_id: string;
+  job_def_id?: string;
+  symbol: string;
+  timeframe: string;
+  job_type: JobDefinition["job_type"];
+  slice_from: string | null;
+  slice_to: string | null;
+};
+
+function isClaimedJob(value: unknown): value is ClaimedJob {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.job_run_id === "string" &&
+    typeof value.symbol === "string" &&
+    typeof value.timeframe === "string" &&
+    typeof value.job_type === "string"
+  );
+}
+
+async function dispatchQueuedJobs(supabase: SupabaseClient, maxJobs: number): Promise<number> {
   console.log(`[Orchestrator] Attempting to dispatch up to ${maxJobs} jobs`);
   
   let dispatched = 0;
 
   for (let i = 0; i < maxJobs; i++) {
+    let claimedJobRunId: string | null = null;
     try {
       // Claim a queued job
       const { data, error } = await supabase.rpc("claim_queued_job");
@@ -300,15 +354,23 @@ async function dispatchQueuedJobs(supabase: any, maxJobs: number): Promise<numbe
       }
 
       // Handle different response formats
-      let job;
+      let jobUnknown: unknown;
       if (Array.isArray(data) && data.length > 0) {
-        job = data[0];
-      } else if (data && typeof data === 'object') {
-        job = data;
+        jobUnknown = data[0];
+      } else if (data && typeof data === "object") {
+        jobUnknown = data;
       } else {
         console.log("[Orchestrator] No jobs in queue");
         break;
       }
+
+      if (!isClaimedJob(jobUnknown)) {
+        console.error("[Orchestrator] Unexpected claim_queued_job payload:", jobUnknown);
+        break;
+      }
+
+      const job: ClaimedJob = jobUnknown;
+      claimedJobRunId = job.job_run_id;
 
       console.log(`[Orchestrator] Dispatching job:`, {
         job_run_id: job.job_run_id,
@@ -332,17 +394,17 @@ async function dispatchQueuedJobs(supabase: any, maxJobs: number): Promise<numbe
       console.error(`[Orchestrator] Dispatch error:`, error);
       
       // Try to mark job as failed if we have job info
-      if (error.job_run_id) {
+      if (claimedJobRunId) {
         await supabase
           .from("job_runs")
           .update({
             status: "failed",
-            error_message: error.message,
-            error_code: error.code || "DISPATCH_ERROR",
+            error_message: getErrorMessage(error),
+            error_code: getErrorCode(error) || "DISPATCH_ERROR",
             finished_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
-          .eq("id", error.job_run_id);
+          .eq("id", claimedJobRunId);
       }
       break;
     }
@@ -356,41 +418,79 @@ async function dispatchQueuedJobs(supabase: any, maxJobs: number): Promise<numbe
  * Dispatch fetch-bars job (internal function call)
  * Phase 2: Detects batch jobs and routes to fetch-bars-batch for 50x speedup
  */
-async function dispatchFetchBars(supabase: any, job: any) {
+type JobDefinitionLookup = {
+  symbols_array: string[] | null;
+  batch_version: string | number | null;
+  symbol: string | null;
+  timeframe: string | null;
+};
+
+async function dispatchFetchBars(supabase: SupabaseClient, job: ClaimedJob) {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+  const jobDefId =
+    typeof job.job_def_id === "string" && job.job_def_id.length > 0
+      ? job.job_def_id
+      : null;
+
+  // If job_def_id was not provided by claim_queued_job(), look it up via job_runs
+  const resolvedJobDefId = jobDefId ?? await (async () => {
+    const { data: jobRun, error: jobRunError } = await supabase
+      .from("job_runs")
+      .select("job_def_id")
+      .eq("id", job.job_run_id)
+      .single();
+
+    if (jobRunError) {
+      console.error("[Orchestrator] Failed to resolve job_def_id from job_runs:", jobRunError);
+      throw jobRunError;
+    }
+
+    const id = (jobRun as { job_def_id?: unknown } | null)?.job_def_id;
+    return typeof id === "string" && id.length > 0 ? id : null;
+  })();
+
+  if (!resolvedJobDefId) {
+    throw new Error(`Missing job_def_id for job_run_id=${job.job_run_id}`);
+  }
 
   // Check if this is a batch job by looking up the job_definition
   const { data: jobDef } = await supabase
     .from("job_definitions")
     .select("symbols_array, batch_version, symbol, timeframe")
-    .eq("id", job.job_def_id)
+    .eq("id", resolvedJobDefId)
     .single();
+
+  const jobDefTyped = jobDef as JobDefinitionLookup | null;
 
   // DEBUG LOGGING
   console.log('[Orchestrator] ========================================');
   console.log('[Orchestrator] Processing job:', {
     job_run_id: job.job_run_id,
-    job_def_id: job.job_def_id,
-    job_def_symbol: jobDef?.symbol,
-    has_symbols_array: !!jobDef?.symbols_array,
-    symbols_array_type: typeof jobDef?.symbols_array,
-    is_array: Array.isArray(jobDef?.symbols_array),
-    array_length: jobDef?.symbols_array?.length,
+    job_def_id: resolvedJobDefId,
+    job_def_symbol: jobDefTyped?.symbol,
+    has_symbols_array: !!jobDefTyped?.symbols_array,
+    symbols_array_type: typeof jobDefTyped?.symbols_array,
+    is_array: Array.isArray(jobDefTyped?.symbols_array),
+    array_length: jobDefTyped?.symbols_array?.length,
   });
 
-  const isBatchJob = jobDef?.symbols_array && Array.isArray(jobDef.symbols_array) && jobDef.symbols_array.length > 1;
+  const isBatchJob =
+    !!jobDefTyped?.symbols_array &&
+    Array.isArray(jobDefTyped.symbols_array) &&
+    jobDefTyped.symbols_array.length > 1;
 
   console.log('[Orchestrator] isBatchJob =', isBatchJob);
   console.log('[Orchestrator] ========================================');
 
   if (isBatchJob) {
     // Phase 2: Batch processing with fetch-bars-batch
-    console.log(`[Orchestrator] BATCH JOB: Calling fetch-bars-batch with ${jobDef.symbols_array.length} symbols`);
+    console.log(`[Orchestrator] BATCH JOB: Calling fetch-bars-batch with ${jobDefTyped!.symbols_array!.length} symbols`);
     
     // For batch jobs, we need to create job_run entries for each symbol
     // The batch job shares one job_run_id but fetch-bars-batch expects an array
-    const jobRunIds = new Array(jobDef.symbols_array.length).fill(job.job_run_id);
+    const jobRunIds = new Array(jobDefTyped!.symbols_array!.length).fill(job.job_run_id);
     
     const response = await fetch(`${supabaseUrl}/functions/v1/fetch-bars-batch`, {
       method: "POST",
@@ -400,7 +500,7 @@ async function dispatchFetchBars(supabase: any, job: any) {
       },
       body: JSON.stringify({
         job_run_ids: jobRunIds,
-        symbols: jobDef.symbols_array,
+        symbols: jobDefTyped!.symbols_array,
         timeframe: job.timeframe,
         from: job.slice_from,
         to: job.slice_to,
@@ -411,7 +511,7 @@ async function dispatchFetchBars(supabase: any, job: any) {
       status: response.status,
       ok: response.ok,
       job_run_id: job.job_run_id,
-      batch_size: jobDef.symbols_array.length,
+      batch_size: jobDefTyped!.symbols_array!.length,
     });
 
     if (!response.ok) {
@@ -424,7 +524,7 @@ async function dispatchFetchBars(supabase: any, job: any) {
     console.log(`[Orchestrator] fetch-bars-batch success:`, {
       job_run_id: job.job_run_id,
       symbols_processed: result.symbols_processed,
-      bars_written: result.bars_written,
+      total_bars: result.total_bars,
     });
   } else {
     // Phase 1: Single-symbol processing with fetch-bars
@@ -469,7 +569,7 @@ async function dispatchFetchBars(supabase: any, job: any) {
 /**
  * Dispatch forecast job (placeholder for phase 2)
  */
-async function dispatchForecast(supabase: any, job: any) {
+async function dispatchForecast(supabase: SupabaseClient, job: ClaimedJob) {
   console.log(`[Orchestrator] Dispatching forecast for ${job.symbol}/${job.timeframe}`);
   
   // TODO: Implement forecast worker dispatch in phase 2
@@ -487,7 +587,7 @@ async function dispatchForecast(supabase: any, job: any) {
 /**
  * Get orchestrator status
  */
-async function handleStatus(supabase: any) {
+async function handleStatus(supabase: SupabaseClient) {
   const { data: queuedJobs } = await supabase
     .from("job_runs")
     .select("*")
@@ -523,7 +623,7 @@ async function handleStatus(supabase: any) {
 /**
  * Retry failed jobs
  */
-async function handleRetryFailed(supabase: any) {
+async function handleRetryFailed(supabase: SupabaseClient) {
   const { data: failedJobs, error } = await supabase
     .from("job_runs")
     .select("*")

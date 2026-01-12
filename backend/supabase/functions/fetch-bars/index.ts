@@ -10,6 +10,16 @@ import { fetchBarsWithResampling } from "../_shared/services/bar-fetcher.ts";
 import { FEATURE_FLAGS, logFeatureFlags } from "../_shared/config/feature-flags.ts";
 import { estimatePolygonCost } from "../_shared/rate-limiter/distributed-token-bucket.ts";
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "Unknown error";
+  }
+}
+
 interface FetchBarsRequest {
   job_run_id: string;
   symbol: string;
@@ -26,6 +36,21 @@ interface FetchBarsResponse {
   to: string;
   duration_ms: number;
 }
+
+type JobRunsUpdater = {
+  from: (
+    table: "job_runs",
+  ) => {
+    update: (
+      values: Record<string, unknown>,
+    ) => {
+      eq: (
+        column: "id",
+        value: string,
+      ) => PromiseLike<{ error: unknown | null }>;
+    };
+  };
+};
 
 // Timeframe mapping
 const TIMEFRAME_MAP: Record<string, string> = {
@@ -54,6 +79,13 @@ Deno.serve(async (req) => {
     const request: FetchBarsRequest = body;
     const { job_run_id, symbol, timeframe, from, to } = request;
 
+    const fromValue = typeof body.from === "string"
+      ? body.from
+      : (typeof body.start === "string" ? body.start : from);
+    const toValue = typeof body.to === "string"
+      ? body.to
+      : (typeof body.end === "string" ? body.end : to);
+
     // PHASE 2: Detect batch jobs and delegate to fetch-bars-batch
     let symbols: string[] = [];
     
@@ -69,8 +101,23 @@ Deno.serve(async (req) => {
 
     const isBatch = symbols.length > 1;
 
-    if (isBatch) {
-      console.log(`[fetch-bars] Batch mode detected: ${symbols.length} symbols - delegating to fetch-bars-batch`);
+    const forceBatch = (Deno.env.get("FETCH_BARS_FORCE_BATCH") ?? "true") === "true";
+    const shouldUseBatch = forceBatch || isBatch;
+
+    if (shouldUseBatch) {
+      console.log(`[fetch-bars] Batch delegation enabled: ${symbols.length} symbols - delegating to fetch-bars-batch`);
+
+      const jobRunIds: string[] = Array.isArray(body.job_run_ids)
+        ? body.job_run_ids
+        : new Array(symbols.length).fill(job_run_id);
+
+      if (!jobRunIds.every((id) => typeof id === "string" && id.length > 0)) {
+        throw new Error("Missing required parameter: job_run_id (or job_run_ids)");
+      }
+
+      if (jobRunIds.length !== symbols.length) {
+        throw new Error("job_run_ids and symbols arrays must have same length");
+      }
       
       const batchResponse = await fetch(
         `${supabaseUrl}/functions/v1/fetch-bars-batch`,
@@ -81,10 +128,11 @@ Deno.serve(async (req) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
+            job_run_ids: jobRunIds,
             symbols,
             timeframe,
-            start: from,
-            end: to,
+            from: fromValue,
+            to: toValue,
           }),
         }
       );
@@ -100,6 +148,25 @@ Deno.serve(async (req) => {
 
       const batchResult = await batchResponse.json();
       console.log(`[fetch-bars] Batch complete: ${batchResult.total_bars} rows for ${symbols.length} symbols`);
+
+      if (symbols.length === 1) {
+        const duration = Date.now() - startTime;
+        const response: FetchBarsResponse = {
+          job_run_id: jobRunIds[0],
+          rows_written: batchResult.total_bars ?? 0,
+          provider: "alpaca",
+          from: fromValue,
+          to: toValue,
+          duration_ms: duration,
+        };
+
+        console.log(`[fetch-bars] Job complete (via batch):`, response);
+
+        return new Response(
+          JSON.stringify(response),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
       return new Response(
         JSON.stringify({
@@ -117,7 +184,7 @@ Deno.serve(async (req) => {
     console.log(`[fetch-bars] Starting job ${job_run_id}: ${symbol}/${timeframe} ${from} -> ${to}`);
 
     // Validate inputs
-    if (!job_run_id || !symbol || !timeframe || !from || !to) {
+    if (!job_run_id || !symbol || !timeframe || !fromValue || !toValue) {
       throw new Error("Missing required parameters");
     }
 
@@ -138,8 +205,8 @@ Deno.serve(async (req) => {
     const providerTimeframe = TIMEFRAME_MAP[timeframe] || timeframe;
 
     // Fetch bars from provider (with optional resampling)
-    const fromDate = new Date(from);
-    const toDate = new Date(to);
+    const fromDate = new Date(fromValue);
+    const toDate = new Date(toValue);
     
     // Calculate expected cost for Polygon requests
     const expectedCost = ["m15", "h1", "h4"].includes(providerTimeframe)
@@ -321,8 +388,8 @@ Deno.serve(async (req) => {
       job_run_id,
       rows_written: rowsWritten,
       provider,
-      from,
-      to,
+      from: fromValue,
+      to: toValue,
       duration_ms: duration,
     };
 
@@ -339,7 +406,7 @@ Deno.serve(async (req) => {
     
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: getErrorMessage(error),
         duration_ms: duration,
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -351,7 +418,7 @@ Deno.serve(async (req) => {
  * Update job run status in database
  */
 async function updateJobStatus(
-  supabase: any,
+  supabase: JobRunsUpdater,
   jobRunId: string,
   updates: Partial<{
     status: string;
