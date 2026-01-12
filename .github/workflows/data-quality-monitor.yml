@@ -2,6 +2,7 @@ name: Data Quality Monitor
 
 # Monitors data quality across all timeframes and alerts on staleness
 # Runs after each data refresh to ensure quality standards are met
+# Includes checks for: OHLC bars, options snapshots, and forecast freshness
 
 on:
   schedule:
@@ -14,6 +15,16 @@ on:
         required: false
         type: string
         default: 'AAPL,MSFT,NVDA,TSLA,META'
+      check_options:
+        description: 'Check options snapshot recency'
+        required: false
+        type: boolean
+        default: true
+      check_forecasts:
+        description: 'Check forecast staleness'
+        required: false
+        type: boolean
+        default: true
       
 permissions:
   contents: read
@@ -23,10 +34,19 @@ concurrency:
   group: data-quality-monitor-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Staleness thresholds in hours
+  OPTIONS_STALE_HOURS: 6
+  FORECAST_STALE_HOURS: 24
+
 jobs:
   validate-data:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      bars_status: ${{ steps.validate.outputs.status }}
+      options_status: ${{ steps.options_check.outputs.status }}
+      forecast_status: ${{ steps.forecast_check.outputs.status }}
     
     steps:
       - name: Checkout code
@@ -62,10 +82,10 @@ jobs:
           chmod +x scripts/validate_data_quality.sh
           if ./scripts/validate_data_quality.sh "$SYMBOLS" > /tmp/report.txt 2>&1; then
             echo "status=success" >> $GITHUB_OUTPUT
-            echo "✅ Data quality validation PASSED" >> $GITHUB_STEP_SUMMARY
+            echo "✅ OHLC Bars validation PASSED" >> $GITHUB_STEP_SUMMARY
           else
             echo "status=failure" >> $GITHUB_OUTPUT
-            echo "❌ Data quality validation FAILED" >> $GITHUB_STEP_SUMMARY
+            echo "❌ OHLC Bars validation FAILED" >> $GITHUB_STEP_SUMMARY
           fi
           
           # Add report to summary
@@ -73,12 +93,155 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat /tmp/report.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Check options snapshot recency
+        id: options_check
+        if: ${{ github.event.inputs.check_options != 'false' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          SYMBOLS="${{ github.event.inputs.symbols || 'AAPL,MSFT,NVDA,TSLA,META' }}"
+          SYMBOL_LIST=$(echo $SYMBOLS | sed "s/,/','/g")
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Options Snapshot Recency" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Query options snapshot freshness
+          SQL_QUERY="
+          SELECT 
+            s.ticker,
+            MAX(os.snapshot_at) as latest_snapshot,
+            EXTRACT(EPOCH FROM (NOW() - MAX(os.snapshot_at))) / 3600 as age_hours,
+            COUNT(*) as snapshot_count
+          FROM options_snapshots os
+          JOIN symbols s ON s.ticker = os.underlying_symbol
+          WHERE s.ticker IN ('$SYMBOL_LIST')
+          GROUP BY s.ticker
+          ORDER BY age_hours DESC;
+          "
+          
+          RESULT=$(psql "$DATABASE_URL" -t -c "$SQL_QUERY" 2>/dev/null || echo "")
+          
+          if [ -z "$RESULT" ]; then
+            echo "⚠️ No options snapshots found" >> $GITHUB_STEP_SUMMARY
+            echo "status=warning" >> $GITHUB_OUTPUT
+          else
+            echo "| Symbol | Latest Snapshot | Age (hours) | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-----------------|-------------|--------|" >> $GITHUB_STEP_SUMMARY
+            
+            stale_count=0
+            while IFS='|' read -r ticker latest age count; do
+              ticker=$(echo "$ticker" | xargs)
+              latest=$(echo "$latest" | xargs)
+              age=$(echo "$age" | xargs)
+              
+              [ -z "$ticker" ] && continue
+              
+              age_int=${age%.*}
+              if [ "$age_int" -gt "$OPTIONS_STALE_HOURS" ]; then
+                echo "| $ticker | $latest | $age | ❌ STALE |" >> $GITHUB_STEP_SUMMARY
+                stale_count=$((stale_count + 1))
+              else
+                echo "| $ticker | $latest | $age | ✅ OK |" >> $GITHUB_STEP_SUMMARY
+              fi
+            done <<< "$RESULT"
+            
+            if [ "$stale_count" -gt 0 ]; then
+              echo "status=failure" >> $GITHUB_OUTPUT
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ $stale_count symbols have stale options data (> $OPTIONS_STALE_HOURS hours)" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "status=success" >> $GITHUB_OUTPUT
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "✅ All options snapshots are fresh" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+      - name: Check forecast staleness
+        id: forecast_check
+        if: ${{ github.event.inputs.check_forecasts != 'false' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          SYMBOLS="${{ github.event.inputs.symbols || 'AAPL,MSFT,NVDA,TSLA,META' }}"
+          SYMBOL_LIST=$(echo $SYMBOLS | sed "s/,/','/g")
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Forecast Staleness" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Query forecast freshness
+          SQL_QUERY="
+          SELECT 
+            s.ticker,
+            mf.horizon,
+            mf.run_at as latest_forecast,
+            EXTRACT(EPOCH FROM (NOW() - mf.run_at)) / 3600 as age_hours,
+            mf.overall_label,
+            mf.confidence
+          FROM ml_forecasts mf
+          JOIN symbols s ON s.id = mf.symbol_id
+          WHERE s.ticker IN ('$SYMBOL_LIST')
+            AND mf.run_at = (
+              SELECT MAX(run_at) FROM ml_forecasts mf2 
+              WHERE mf2.symbol_id = mf.symbol_id AND mf2.horizon = mf.horizon
+            )
+          ORDER BY age_hours DESC;
+          "
+          
+          RESULT=$(psql "$DATABASE_URL" -t -c "$SQL_QUERY" 2>/dev/null || echo "")
+          
+          if [ -z "$RESULT" ]; then
+            echo "⚠️ No forecasts found" >> $GITHUB_STEP_SUMMARY
+            echo "status=warning" >> $GITHUB_OUTPUT
+          else
+            echo "| Symbol | Horizon | Latest Run | Age (hours) | Label | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|---------|------------|-------------|-------|--------|" >> $GITHUB_STEP_SUMMARY
+            
+            stale_count=0
+            while IFS='|' read -r ticker horizon latest age label confidence; do
+              ticker=$(echo "$ticker" | xargs)
+              horizon=$(echo "$horizon" | xargs)
+              latest=$(echo "$latest" | xargs)
+              age=$(echo "$age" | xargs)
+              label=$(echo "$label" | xargs)
+              
+              [ -z "$ticker" ] && continue
+              
+              age_int=${age%.*}
+              if [ "$age_int" -gt "$FORECAST_STALE_HOURS" ]; then
+                echo "| $ticker | $horizon | $latest | $age | $label | ❌ STALE |" >> $GITHUB_STEP_SUMMARY
+                stale_count=$((stale_count + 1))
+              else
+                echo "| $ticker | $horizon | $latest | $age | $label | ✅ OK |" >> $GITHUB_STEP_SUMMARY
+              fi
+            done <<< "$RESULT"
+            
+            if [ "$stale_count" -gt 0 ]; then
+              echo "status=failure" >> $GITHUB_OUTPUT
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ $stale_count forecasts are stale (> $FORECAST_STALE_HOURS hours)" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "status=success" >> $GITHUB_OUTPUT
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "✅ All forecasts are fresh" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
       
       - name: Check for stale data
-        if: steps.validate.outputs.status == 'failure'
+        if: steps.validate.outputs.status == 'failure' || steps.options_check.outputs.status == 'failure' || steps.forecast_check.outputs.status == 'failure'
         run: |
           echo "::warning::Data quality issues detected. Check the report for details."
           echo "Consider running the comprehensive backfill workflow to fix data gaps."
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "### Remediation Steps" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **OHLC Bars:** Run \`gh workflow run daily-data-refresh.yml --field force_full_backfill=true\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Options:** Run \`gh workflow run daily-options-scrape.yml\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Forecasts:** Run \`gh workflow run ml-forecast.yml\`" >> $GITHUB_STEP_SUMMARY
       
       - name: Upload validation report
         if: always()
@@ -89,7 +252,7 @@ jobs:
           retention-days: 14
       
       - name: Create issue on repeated failures
-        if: steps.validate.outputs.status == 'failure'
+        if: steps.validate.outputs.status == 'failure' || steps.options_check.outputs.status == 'failure' || steps.forecast_check.outputs.status == 'failure'
         uses: actions/github-script@v7
         with:
           script: |
@@ -121,6 +284,16 @@ jobs:
               }
             }
 
+            // Determine which checks failed
+            const barsStatus = '${{ steps.validate.outputs.status }}';
+            const optionsStatus = '${{ steps.options_check.outputs.status }}';
+            const forecastStatus = '${{ steps.forecast_check.outputs.status }}';
+            
+            const failures = [];
+            if (barsStatus === 'failure') failures.push('OHLC Bars');
+            if (optionsStatus === 'failure') failures.push('Options Snapshots');
+            if (forecastStatus === 'failure') failures.push('ML Forecasts');
+
             // Check if there's already an open issue about data quality
             const issues = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
@@ -134,34 +307,39 @@ jobs:
               await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                title: 'Data Quality Issues Detected',
+                title: `Data Quality Issues Detected: ${failures.join(', ')}`,
                 body: [
                   '## Data Quality Validation Failed',
                   '',
-                  'The automated data quality check has detected issues with chart data freshness or depth.',
+                  'The automated data quality check has detected issues with:',
+                  failures.map(f => `- **${f}**`).join('\n'),
                   '',
                   '**Workflow Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}',
                   '',
                   '### Recommended Actions',
                   '',
-                  '1. **Check data freshness:**',
-                  '   - Review the validation report artifact',
-                  '   - Identify which symbols/timeframes are stale',
+                  '#### For OHLC Bars:',
+                  '```bash',
+                  'gh workflow run daily-data-refresh.yml --field force_full_backfill=true',
+                  '```',
                   '',
-                  '2. **Run comprehensive backfill:**',
-                  '   ```bash',
-                  '   # Manually trigger backfill workflow',
-                  '   gh workflow run daily-data-refresh.yml --field force_full_backfill=true',
-                  '   ```',
+                  '#### For Options Snapshots:',
+                  '```bash',
+                  'gh workflow run daily-options-scrape.yml',
+                  '```',
                   '',
-                  '3. **Verify GitHub Actions:**',
-                  '   - Check if `alpaca-intraday-cron.yml` is running regularly',
-                  '   - Verify Alpaca API credentials are valid',
-                  '   - Check for rate limiting issues',
+                  '#### For ML Forecasts:',
+                  '```bash',
+                  'gh workflow run ml-forecast.yml',
+                  '```',
                   '',
-                  '4. **Database investigation:**',
-                  '   - Connect to database and run diagnostic queries',
-                  '   - Check for gaps in historical data',
+                  '### Investigation Steps',
+                  '',
+                  '1. Review the validation report artifact attached to the workflow run',
+                  '2. Check if scheduled GitHub Actions workflows are running on time',
+                  '3. Verify API credentials (Alpaca, Supabase) are valid',
+                  '4. Check for rate limiting issues in workflow logs',
+                  '5. Review database connectivity and storage limits',
                   '',
                   'This issue will auto-close when data quality validation passes.',
                 ].join('\n'),

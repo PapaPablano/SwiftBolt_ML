@@ -687,6 +687,72 @@ final class APIClient {
         return try await performRequest(request)
     }
 
+    /// Fetch consolidated chart data (new unified endpoint with all data in one call)
+    /// Includes bars, forecasts, options ranks, and freshness indicators
+    func fetchConsolidatedChart(symbol: String, timeframe: String = "d1", start: String? = nil, end: String? = nil, includeOptions: Bool = true, includeForecast: Bool = true) async throws -> ConsolidatedChartResponse {
+        guard var components = URLComponents(url: functionURL("chart"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        
+        var queryItems = [
+            URLQueryItem(name: "symbol", value: symbol),
+            URLQueryItem(name: "timeframe", value: timeframe),
+            URLQueryItem(name: "include_options", value: String(includeOptions)),
+            URLQueryItem(name: "include_forecast", value: String(includeForecast))
+        ]
+        
+        if let start = start {
+            queryItems.append(URLQueryItem(name: "start", value: start))
+        }
+        if let end = end {
+            queryItems.append(URLQueryItem(name: "end", value: end))
+        }
+        
+        components.queryItems = queryItems
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        
+        return try await performRequest(request)
+    }
+    
+    /// Fetch data health status for monitoring
+    func fetchDataHealth(symbol: String? = nil, timeframe: String? = nil) async throws -> DataHealthResponse {
+        guard var components = URLComponents(url: functionURL("data-health"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        
+        var queryItems: [URLQueryItem] = []
+        if let symbol = symbol {
+            queryItems.append(URLQueryItem(name: "symbol", value: symbol))
+        }
+        if let timeframe = timeframe {
+            queryItems.append(URLQueryItem(name: "timeframe", value: timeframe))
+        }
+        
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        return try await performRequest(request)
+    }
+
     /// Fetch ML dashboard data - aggregate metrics across all symbols
     func fetchMLDashboard() async throws -> MLDashboardResponse {
         var request = URLRequest(url: functionURL("ml-dashboard"))
@@ -934,6 +1000,9 @@ struct UserRefreshResponse: Decodable {
     let success: Bool
     let steps: [RefreshStep]
     let summary: RefreshSummary
+    let queuedJobs: [String]?
+    let warnings: [String]?
+    let nextExpectedUpdate: String?
     let message: String
     let durationMs: Int
     
@@ -950,6 +1019,156 @@ struct UserRefreshResponse: Decodable {
         let mlJobQueued: Bool
         let optionsJobQueued: Bool
         let srCalculated: Bool
+    }
+}
+
+// MARK: - Consolidated Chart Response (New unified endpoint)
+
+struct ConsolidatedChartResponse: Decodable {
+    let symbol: String
+    let timeframe: String
+    let bars: [ChartBar]
+    let forecast: ForecastData?
+    let optionsRanks: [OptionsRankItem]?
+    let meta: ChartMeta
+    let freshness: ChartFreshness
+    
+    struct ChartBar: Decodable {
+        let ts: String
+        let open: Double
+        let high: Double
+        let low: Double
+        let close: Double
+        let volume: Double
+        let provider: String
+        let dataStatus: String
+    }
+    
+    struct ForecastData: Decodable {
+        let label: String
+        let confidence: Double
+        let horizon: String
+        let runAt: String
+        let points: [ForecastPointItem]
+        
+        struct ForecastPointItem: Decodable {
+            let ts: String
+            let value: Double
+            let lower: Double
+            let upper: Double
+        }
+    }
+    
+    struct OptionsRankItem: Decodable {
+        let expiry: String
+        let strike: Double
+        let side: String
+        let mlScore: Double
+        let impliedVol: Double
+        let delta: Double
+        let gamma: Double
+        let theta: Double
+        let vega: Double
+        let openInterest: Double
+        let volume: Double
+        let runAt: String
+    }
+    
+    struct ChartMeta: Decodable {
+        let lastBarTs: String?
+        let dataStatus: String
+        let isMarketOpen: Bool
+        let latestForecastRunAt: String?
+        let hasPendingSplits: Bool
+        let pendingSplitInfo: String?
+        let totalBars: Int
+        let requestedRange: RequestedRange
+        
+        struct RequestedRange: Decodable {
+            let start: String
+            let end: String
+        }
+    }
+    
+    struct ChartFreshness: Decodable {
+        let ageMinutes: Int?
+        let slaMinutes: Int
+        let isWithinSla: Bool
+    }
+}
+
+// MARK: - Data Health Response
+
+struct DataHealthResponse: Decodable {
+    let success: Bool
+    let summary: HealthSummary
+    let healthStatuses: [HealthStatus]
+    
+    struct HealthSummary: Decodable {
+        let totalChecks: Int
+        let healthy: Int
+        let warning: Int
+        let critical: Int
+        let staleData: Int
+        let staleForecast: Int
+        let staleOptions: Int
+        let pendingSplits: Int
+        let marketOpen: Bool
+        let checkedAt: String
+    }
+    
+    struct HealthStatus: Decodable {
+        let symbol: String
+        let timeframe: String
+        let coverage: CoverageInfo
+        let freshness: FreshnessInfo
+        let jobs: JobsInfo
+        let forecast: ForecastInfo
+        let options: OptionsInfo
+        let market: MarketInfo
+        let overallHealth: String
+        let checkedAt: String
+        
+        struct CoverageInfo: Decodable {
+            let hasCoverage: Bool
+            let fromTs: String?
+            let toTs: String?
+            let lastSuccessAt: String?
+            let lastRowsWritten: Int?
+            let lastProvider: String?
+        }
+        
+        struct FreshnessInfo: Decodable {
+            let isStale: Bool
+            let ageHours: Double?
+            let slaHours: Double
+            let lastBarTs: String?
+        }
+        
+        struct JobsInfo: Decodable {
+            let latestStatus: String?
+            let latestRunAt: String?
+            let pendingJobs: Int
+            let failedJobsLast24h: Int
+        }
+        
+        struct ForecastInfo: Decodable {
+            let latestRunAt: String?
+            let isStale: Bool
+            let ageHours: Double?
+        }
+        
+        struct OptionsInfo: Decodable {
+            let latestSnapshotAt: String?
+            let isStale: Bool
+            let ageHours: Double?
+        }
+        
+        struct MarketInfo: Decodable {
+            let isOpen: Bool
+            let hasPendingSplits: Bool
+            let pendingSplitCount: Int
+        }
     }
 }
 
