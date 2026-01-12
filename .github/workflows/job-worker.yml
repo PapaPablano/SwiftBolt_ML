@@ -57,13 +57,24 @@ jobs:
             exit 0
           fi
 
-          pending_json=$(curl -sSf \
-            "${SUPABASE_URL}/rest/v1/v_job_queue_health?select=queue_name,status,job_count&status=eq.pending" \
+          pending_job_queue=$(curl -sSf \
+            "${SUPABASE_URL}/rest/v1/job_queue?select=count&status=eq.pending" \
             -H "apikey: ${SUPABASE_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_KEY}")
+            -H "Authorization: Bearer ${SUPABASE_KEY}" \
+            -H "Prefer: count=exact" \
+            -o /dev/null \
+            -D - | awk -F': ' 'tolower($1)=="content-range"{print $2}' | awk -F'/' '{print $2}' | tr -d '\r')
 
-          pending_job_queue=$(echo "$pending_json" | jq -r '[.[] | select(.queue_name=="job_queue") | .job_count] | add // 0')
-          pending_ranking=$(echo "$pending_json" | jq -r '[.[] | select(.queue_name=="ranking_jobs") | .job_count] | add // 0')
+          pending_ranking=$(curl -sSf \
+            "${SUPABASE_URL}/rest/v1/ranking_jobs?select=count&status=eq.pending" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" \
+            -H "Prefer: count=exact" \
+            -o /dev/null \
+            -D - | awk -F': ' 'tolower($1)=="content-range"{print $2}' | awk -F'/' '{print $2}' | tr -d '\r')
+
+          pending_job_queue=${pending_job_queue:-0}
+          pending_ranking=${pending_ranking:-0}
 
           if [ "${pending_job_queue}" -eq 0 ] && [ "${pending_ranking}" -eq 0 ]; then
             echo "No pending jobs (job_queue=0, ranking_jobs=0) - skipping run"
