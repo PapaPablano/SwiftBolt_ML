@@ -14,6 +14,13 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { corsHeaders, handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
+// Market hours constants (UTC)
+// NYSE/NASDAQ: 9:30 AM - 4:00 PM ET = 14:30 - 21:00 UTC (approx)
+const MARKET_OPEN_HOUR_UTC = 14;
+const MARKET_CLOSE_HOUR_UTC = 21;
+const MARKET_WEEKDAY_START = 1; // Monday
+const MARKET_WEEKDAY_END = 5;   // Friday
+
 interface ChartBar {
   ts: string;
   open: number;
@@ -138,7 +145,8 @@ serve(async (req: Request): Promise<Response> => {
     const symbolId = symbolRecord.id;
 
     // 2. Fetch bars using get_chart_data_v2 RPC (provider-aware)
-    const { data: barsData, error: barsError } = await supabase.rpc("get_chart_data_v2", {
+    let barsData: any[] | null = null;
+    const { data: rpcData, error: barsError } = await supabase.rpc("get_chart_data_v2", {
       p_symbol_id: symbolId,
       p_timeframe: timeframe,
       p_start: startDate.toISOString(),
@@ -158,9 +166,9 @@ serve(async (req: Request): Promise<Response> => {
         .lte("ts", endDate.toISOString())
         .order("ts", { ascending: true });
 
-      if (fallbackBars) {
-        (barsData as typeof fallbackBars) = fallbackBars;
-      }
+      barsData = fallbackBars;
+    } else {
+      barsData = rpcData;
     }
 
     const bars: ChartBar[] = (barsData || []).map((bar: any) => ({
@@ -241,8 +249,9 @@ serve(async (req: Request): Promise<Response> => {
       // Default to checking current time if RPC fails
       const hour = now.getUTCHours();
       const dayOfWeek = now.getUTCDay();
-      // Rough market hours check (14:30-21:00 UTC = 9:30-4:00 ET)
-      isMarketOpen = dayOfWeek >= 1 && dayOfWeek <= 5 && hour >= 14 && hour < 21;
+      // Rough market hours check using constants
+      isMarketOpen = dayOfWeek >= MARKET_WEEKDAY_START && dayOfWeek <= MARKET_WEEKDAY_END && 
+                     hour >= MARKET_OPEN_HOUR_UTC && hour < MARKET_CLOSE_HOUR_UTC;
     }
 
     // 6. Check for pending splits

@@ -13,6 +13,17 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { corsHeaders, handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
+// Constants
+const DEFAULT_RESULTS_LIMIT = 50;
+const CRITICAL_STALENESS_MULTIPLIER = 3;
+const CRITICAL_FAILURE_THRESHOLD = 3;
+
+// Helper function to round age hours to 1 decimal place
+function roundAgeHours(hours: number | null): number | null {
+  if (hours === null) return null;
+  return Math.round(hours * 10) / 10;
+}
+
 interface HealthStatus {
   symbol: string;
   timeframe: string;
@@ -158,13 +169,27 @@ serve(async (req: Request): Promise<Response> => {
     const isMarketOpen = marketStatus ?? false;
     
     // Get latest bars per symbol/timeframe
+    // First, get symbol IDs for all symbols we're checking
+    const { data: symbolRecords } = await supabase
+      .from("symbols")
+      .select("id, ticker")
+      .in("ticker", symbolsToCheck);
+    
+    const symbolIdMap: Map<string, string> = new Map();
+    (symbolRecords || []).forEach((s: { id: string; ticker: string }) => {
+      symbolIdMap.set(s.ticker, s.id);
+    });
+    
     const latestBarsMap: Map<string, string> = new Map();
     for (const symbol of symbolsToCheck) {
+      const symbolId = symbolIdMap.get(symbol);
+      if (!symbolId) continue;
+      
       for (const tf of timeframesToCheck) {
         const { data: latestBar } = await supabase
           .from("ohlc_bars_v2")
           .select("ts")
-          .eq("symbol_id", `(SELECT id FROM symbols WHERE ticker = '${symbol}')`)
+          .eq("symbol_id", symbolId)
           .eq("timeframe", tf)
           .eq("is_forecast", false)
           .order("ts", { ascending: false })
@@ -232,7 +257,7 @@ serve(async (req: Request): Promise<Response> => {
         if (failedCount > 0 || symbolPendingSplits.length > 0) {
           overallHealth = "warning";
         }
-        if ((isStale && ageHours && ageHours > slaHours * 3) || failedCount >= 3) {
+        if ((isStale && ageHours && ageHours > slaHours * CRITICAL_STALENESS_MULTIPLIER) || failedCount >= CRITICAL_FAILURE_THRESHOLD) {
           overallHealth = "critical";
         }
         
@@ -249,7 +274,7 @@ serve(async (req: Request): Promise<Response> => {
           },
           freshness: {
             isStale,
-            ageHours: ageHours !== null ? Math.round(ageHours * 10) / 10 : null,
+            ageHours: roundAgeHours(ageHours),
             slaHours,
             lastBarTs: latestBarTs || null,
           },
@@ -262,12 +287,12 @@ serve(async (req: Request): Promise<Response> => {
           forecast: {
             latestRunAt: forecast?.run_at || null,
             isStale: forecastIsStale,
-            ageHours: forecastAgeHours !== null ? Math.round(forecastAgeHours * 10) / 10 : null,
+            ageHours: roundAgeHours(forecastAgeHours),
           },
           options: {
             latestSnapshotAt: optionsSnapshot?.snapshot_at || null,
             isStale: optionsIsStale,
-            ageHours: optionsAgeHours !== null ? Math.round(optionsAgeHours * 10) / 10 : null,
+            ageHours: roundAgeHours(optionsAgeHours),
           },
           market: {
             isOpen: isMarketOpen,
@@ -297,7 +322,7 @@ serve(async (req: Request): Promise<Response> => {
     return jsonResponse({
       success: true,
       summary,
-      healthStatuses: symbolParam || timeframeParam ? healthStatuses : healthStatuses.slice(0, 50), // Limit if no filters
+      healthStatuses: symbolParam || timeframeParam ? healthStatuses : healthStatuses.slice(0, DEFAULT_RESULTS_LIMIT),
     });
     
   } catch (error) {
