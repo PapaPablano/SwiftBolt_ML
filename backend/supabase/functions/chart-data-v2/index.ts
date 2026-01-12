@@ -321,14 +321,34 @@ serve(async (req) => {
             .limit(1)
             .single();
 
-          if (intradayPath && Array.isArray(intradayPath.points) && intradayPath.points.length > 0) {
-            const conf = clampNumber(intradayPath.confidence, 0.5);
+          if (intradayForecast && Array.isArray(intradayForecast.points) && intradayForecast.points.length > 0) {
+            const conf = clampNumber(intradayForecast.confidence, 0.5);
+            
+            // Sample intraday points for cleaner visualization
+            let sampledPoints = intradayForecast.points;
+            if (intradayForecast.points.length > 8) {
+              // For intraday, show fewer points for cleaner look
+              const sampleCount = Math.min(8, intradayForecast.points.length);
+              const step = Math.floor(intradayForecast.points.length / sampleCount);
+              sampledPoints = [];
+              for (let i = 0; i < sampleCount; i++) {
+                const index = i * step;
+                if (index < intradayForecast.points.length) {
+                  sampledPoints.push(intradayForecast.points[index]);
+                }
+              }
+              // Ensure we always include the last point
+              if (sampledPoints[sampledPoints.length - 1] !== intradayForecast.points[intradayForecast.points.length - 1]) {
+                sampledPoints.push(intradayForecast.points[intradayForecast.points.length - 1]);
+              }
+            }
+            
             mlSummary = {
-              overallLabel: intradayPath.overall_label,
+              overallLabel: intradayForecast.overall_label,
               confidence: conf,
               horizons: [{
                 horizon: pathHorizon,
-                points: intradayPath.points,
+                points: sampledPoints,
               }],
               srLevels: null,
               srDensity: null,
@@ -483,12 +503,37 @@ serve(async (req) => {
             .single();
 
           if (dailyForecast && dailyForecast.points) {
+            // Convert ISO timestamps to Unix timestamps for frontend compatibility
+            const convertedPoints = dailyForecast.points.map((point: any) => ({
+              ...point,
+              ts: typeof point.ts === 'string' ? new Date(point.ts).getTime() / 1000 : point.ts
+            }));
+
+            // Sample points for cleaner visualization
+            let sampledPoints = convertedPoints;
+            if (convertedPoints.length > 5) {
+              // For longer forecasts, show key points: start, end, and evenly spaced intermediates
+              const sampleCount = Math.min(5, convertedPoints.length);
+              const step = Math.floor(convertedPoints.length / sampleCount);
+              sampledPoints = [];
+              for (let i = 0; i < sampleCount; i++) {
+                const index = i * step;
+                if (index < convertedPoints.length) {
+                  sampledPoints.push(convertedPoints[index]);
+                }
+              }
+              // Ensure we always include the last point
+              if (sampledPoints[sampledPoints.length - 1] !== convertedPoints[convertedPoints.length - 1]) {
+                sampledPoints.push(convertedPoints[convertedPoints.length - 1]);
+              }
+            }
+
             mlSummary = {
               overallLabel: dailyForecast.overall_label,
               confidence: dailyForecast.confidence,
               horizons: [{
                 horizon: dailyForecast.horizon,
-                points: dailyForecast.points,
+                points: sampledPoints,
               }],
               srLevels: dailyForecast.sr_levels || null,
               srDensity: dailyForecast.sr_density || null,

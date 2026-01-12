@@ -30,17 +30,23 @@ final class AppViewModel: ObservableObject {
 
         // Relay chartViewModel changes to trigger AppViewModel updates
         chartViewModel.objectWillChange.sink { [weak self] _ in
-            self?.objectWillChange.send()
+            DispatchQueue.main.async {
+                self?.objectWillChange.send()
+            }
         }.store(in: &cancellables)
 
         // Relay newsViewModel changes to trigger AppViewModel updates
         newsViewModel.objectWillChange.sink { [weak self] _ in
-            self?.objectWillChange.send()
+            DispatchQueue.main.async {
+                self?.objectWillChange.send()
+            }
         }.store(in: &cancellables)
 
         // Relay optionsChainViewModel changes to trigger AppViewModel updates
         optionsChainViewModel.objectWillChange.sink { [weak self] _ in
-            self?.objectWillChange.send()
+            DispatchQueue.main.async {
+                self?.objectWillChange.send()
+            }
         }.store(in: &cancellables)
 
     }
