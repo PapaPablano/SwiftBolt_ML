@@ -53,6 +53,14 @@ class MarketRegimeDetector:
         std: np.ndarray | None = None,
         apply_jitter: bool = False,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Construct standardized return/volatility features.
+
+        Returns:
+            feats: standardized features (optionally jittered)
+            mean: feature means prior to standardization
+            std: feature std with a lower bound applied
+        """
         # Daily returns and rolling volatility as proxies
         returns = df["close"].pct_change().fillna(0.0)
         vol = returns.rolling(window=20, min_periods=5).std().bfill()
@@ -67,7 +75,8 @@ class MarketRegimeDetector:
         feats = (feats - mean) / std
 
         # Small jitter to ensure positive-definite covariance (required by HMM);
-        # flat features produce singular matrices without this.
+        # flat features produce singular matrices without this. Keep mean/std
+        # from the un-jittered data so transform normalizes identically.
         if apply_jitter:
             feats = feats + self._rng.normal(scale=_JITTER_SCALE, size=feats.shape)
         return feats.astype(float), mean, std
