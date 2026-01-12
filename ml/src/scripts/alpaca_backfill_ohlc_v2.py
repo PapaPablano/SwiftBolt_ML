@@ -22,12 +22,13 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List
 
 import requests
 from dotenv import load_dotenv
+from zoneinfo import ZoneInfo
 
 # Load environment variables from root .env file
 root_dir = Path(__file__).parent.parent.parent.parent
@@ -51,6 +52,28 @@ ALPACA_API_SECRET = os.getenv("ALPACA_API_SECRET")
 
 # Rate limiting: Alpaca allows 200 requests/minute
 RATE_LIMIT_DELAY = 0.3  # 60/200 = 0.3 seconds between requests
+
+# How long we consider existing data "fresh" while markets are closed (hours)
+MAX_STALE_HOURS_WHEN_CLOSED = 72
+
+ET_ZONE = ZoneInfo("America/New_York")
+
+
+def is_us_market_open(ts: datetime) -> bool:
+    """Return True when US equities market is open (simple hours check)."""
+
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+
+    et_time = ts.astimezone(ET_ZONE)
+
+    # Closed on weekends
+    if et_time.weekday() >= 5:
+        return False
+
+    market_open = et_time.replace(hour=9, minute=30, second=0, microsecond=0)
+    market_close = et_time.replace(hour=16, minute=0, second=0, microsecond=0)
+    return market_open <= et_time <= market_close
 
 # Timeframe configurations
 TIMEFRAME_CONFIG = {
@@ -369,16 +392,43 @@ def backfill_symbol(
         logger.error(f"Invalid timeframe: {timeframe}")
         return {"success": False, "error": "Invalid timeframe"}
 
-    end_date = datetime.utcnow()
+    now_utc = datetime.now(timezone.utc)
+    end_date = now_utc
     max_days = config["max_days"]
     start_date = end_date - timedelta(days=max_days)
 
     # Skip if recently updated (unless force)
-    if not force and coverage["latest"]:
-        days_since_update = (end_date - coverage["latest"]).days
-        if days_since_update < 1:
-            logger.info(f"⏭️  Skipping {symbol} - updated {days_since_update} days ago")
-            return {"success": True, "skipped": True, "reason": "Recently updated"}
+    latest_bar = coverage["latest"]
+    if not force and latest_bar:
+        if latest_bar.tzinfo is None:
+            latest_bar = latest_bar.replace(tzinfo=timezone.utc)
+
+        hours_since_update = (end_date - latest_bar).total_seconds() / 3600.0
+        market_open_now = is_us_market_open(now_utc)
+
+        if hours_since_update < 24:
+            logger.info(
+                "⏭️  Skipping %s - updated %.1f hours ago",
+                symbol,
+                hours_since_update,
+            )
+            return {
+                "success": True,
+                "skipped": True,
+                "reason": "Recently updated",
+            }
+
+        if (not market_open_now) and hours_since_update <= MAX_STALE_HOURS_WHEN_CLOSED:
+            logger.info(
+                "⏭️  Skipping %s - market closed, data %.1f hours old",
+                symbol,
+                hours_since_update,
+            )
+            return {
+                "success": True,
+                "skipped": True,
+                "reason": "Market closed",
+            }
 
     # Fetch from Alpaca
     bars = fetch_alpaca_bars(symbol, timeframe, start_date, end_date)
