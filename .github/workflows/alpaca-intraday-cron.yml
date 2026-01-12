@@ -176,6 +176,10 @@ jobs:
             # Build command
             cmd="python src/scripts/alpaca_backfill_ohlc_v2.py --timeframe $tf"
 
+            if [ "$FORCE_REFRESH" = "true" ]; then
+              cmd="$cmd --force"
+            fi
+
             if [ -n "$INPUT_SYMBOLS" ]; then
               # Split symbols and add to command
               IFS=',' read -ra SYMBOLS <<< "$INPUT_SYMBOLS"

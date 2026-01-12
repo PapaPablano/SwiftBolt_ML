@@ -75,6 +75,7 @@ def is_us_market_open(ts: datetime) -> bool:
     market_close = et_time.replace(hour=16, minute=0, second=0, microsecond=0)
     return market_open <= et_time <= market_close
 
+
 # Timeframe configurations
 TIMEFRAME_CONFIG = {
     "m1": {"alpaca_tf": "1Min", "max_days": 7},
@@ -303,13 +304,12 @@ def get_data_coverage_v2(symbol: str, timeframe: str) -> dict:
     try:
         symbol_id = db.get_symbol_id(symbol)
 
-        # Query only Alpaca data
+        # Query any existing non-forecast bars regardless of provider.
         response = (
             db.client.table("ohlc_bars_v2")
             .select("ts")
             .eq("symbol_id", symbol_id)
             .eq("timeframe", timeframe)
-            .eq("provider", "alpaca")
             .eq("is_forecast", False)
             .order("ts", desc=False)
             .limit(1)
@@ -325,7 +325,6 @@ def get_data_coverage_v2(symbol: str, timeframe: str) -> dict:
             .select("ts")
             .eq("symbol_id", symbol_id)
             .eq("timeframe", timeframe)
-            .eq("provider", "alpaca")
             .eq("is_forecast", False)
             .order("ts", desc=True)
             .limit(1)
@@ -342,7 +341,6 @@ def get_data_coverage_v2(symbol: str, timeframe: str) -> dict:
             .select("id", count="exact")
             .eq("symbol_id", symbol_id)
             .eq("timeframe", timeframe)
-            .eq("provider", "alpaca")
             .eq("is_forecast", False)
             .execute()
         )
@@ -397,14 +395,25 @@ def backfill_symbol(
     max_days = config["max_days"]
     start_date = end_date - timedelta(days=max_days)
 
+    market_open_now = is_us_market_open(now_utc)
+
+    # When the market is closed, reuse existing Supabase data.
+    # Only hit Alpaca if we have no bars at all (seed) or the user forces a refresh.
+    if (not force) and (not market_open_now) and coverage.get("count", 0) > 0:
+        logger.info("⏭️  Skipping %s - market closed, reusing existing data", symbol)
+        return {
+            "success": True,
+            "skipped": True,
+            "reason": "Market closed",
+        }
+
     # Skip if recently updated (unless force)
     latest_bar = coverage["latest"]
-    if not force and latest_bar:
+    if (not force) and latest_bar:
         if latest_bar.tzinfo is None:
             latest_bar = latest_bar.replace(tzinfo=timezone.utc)
 
         hours_since_update = (end_date - latest_bar).total_seconds() / 3600.0
-        market_open_now = is_us_market_open(now_utc)
 
         if hours_since_update < 24:
             logger.info(
@@ -416,18 +425,6 @@ def backfill_symbol(
                 "success": True,
                 "skipped": True,
                 "reason": "Recently updated",
-            }
-
-        if (not market_open_now) and hours_since_update <= MAX_STALE_HOURS_WHEN_CLOSED:
-            logger.info(
-                "⏭️  Skipping %s - market closed, data %.1f hours old",
-                symbol,
-                hours_since_update,
-            )
-            return {
-                "success": True,
-                "skipped": True,
-                "reason": "Market closed",
             }
 
     # Fetch from Alpaca
