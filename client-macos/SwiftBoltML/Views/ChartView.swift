@@ -156,7 +156,10 @@ struct ChartView: View {
                                 horizons: mlSummary.horizons,
                                 currentPrice: referencePrice,
                                 mlSummary: mlSummary,
-                                selectedHorizon: $chartViewModel.selectedForecastHorizon
+                                selectedHorizon: Binding(
+                                    get: { chartViewModel.selectedForecastHorizon },
+                                    set: { chartViewModel.selectedForecastHorizon = $0 }
+                                )
                             )
                             .padding(.horizontal)
                             .padding(.top, 8)
@@ -435,6 +438,20 @@ struct OHLCItem: View {
             }
         } else {
             return String(format: "%.2f", value)
+        }
+    }
+
+    private func formatPrice(_ price: Double) -> String {
+        String(format: "$%.2f", price)
+    }
+
+    private func formatVolume(_ volume: Double) -> String {
+        if volume >= 1_000_000 {
+            return String(format: "%.1fM", volume / 1_000_000)
+        } else if volume >= 1_000 {
+            return String(format: "%.1fK", volume / 1_000)
+        } else {
+            return String(format: "%.0f", volume)
         }
     }
 }
