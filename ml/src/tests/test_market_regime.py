@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src.features.market_regime import add_market_regime_features
+from src.features.market_regime import MarketRegimeDetector, add_market_regime_features
 
 
 def test_market_regime_graceful_with_constant_prices(monkeypatch):
@@ -9,6 +9,7 @@ def test_market_regime_graceful_with_constant_prices(monkeypatch):
         "close": [100.0] * 60,
     }
     df = pd.DataFrame(data)
+    n_states = MarketRegimeDetector().n_states
 
     # Force HMM fit failure to exercise fallback path
     def _raise_fit(*args, **kwargs):
@@ -24,6 +25,7 @@ def test_market_regime_graceful_with_constant_prices(monkeypatch):
     # Defaults to 3 states
     assert len(prob_cols) == 3
     assert (result["hmm_regime"] == 0).all()
-    expected_probs = [1 / 3] * len(df)
+    expected_prob = 1 / n_states
+    expected_probs = [expected_prob] * len(df)
     for col in prob_cols:
         assert result[col].to_numpy() == pytest.approx(expected_probs)
