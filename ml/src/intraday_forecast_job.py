@@ -287,7 +287,7 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
 
     try:
         # Fetch intraday bars
-        df = db.fetch_ohlc_bars(symbol, timeframe=timeframe, limit=min_bars * 2)
+        df = db.fetch_ohlc_bars(symbol, timeframe=timeframe, limit=min_bars)
 
         if len(df) < min_bars:
             logger.warning(
