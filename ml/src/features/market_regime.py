@@ -36,6 +36,8 @@ class MarketRegimeDetector:
         self.n_states = n_states
         self.random_state = random_state
         self._rng = np.random.default_rng(random_state)
+        self._feature_mean = None
+        self._feature_std = None
         self.model = GaussianHMM(
             n_components=n_states,
             covariance_type=covariance_type,
@@ -44,7 +46,13 @@ class MarketRegimeDetector:
         )
         self.is_fitted = False
 
-    def _build_features(self, df: pd.DataFrame) -> np.ndarray:
+    def _build_features(
+        self,
+        df: pd.DataFrame,
+        mean: np.ndarray | None = None,
+        std: np.ndarray | None = None,
+        apply_jitter: bool = False,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         # Daily returns and rolling volatility as proxies
         returns = df["close"].pct_change().fillna(0.0)
         vol = returns.rolling(window=20, min_periods=5).std().bfill()
@@ -52,17 +60,22 @@ class MarketRegimeDetector:
 
         # Replace non-finite values and standardize to avoid near-singular covariances
         feats = np.nan_to_num(feats, nan=0.0, posinf=0.0, neginf=0.0)
-        mean = feats.mean(axis=0)
-        std = np.clip(feats.std(axis=0), _MIN_STD, None)
+        if mean is None:
+            mean = feats.mean(axis=0)
+        if std is None:
+            std = np.clip(feats.std(axis=0), _MIN_STD, None)
         feats = (feats - mean) / std
 
         # Small jitter to ensure positive-definite covariance (required by HMM);
         # flat features produce singular matrices without this.
-        feats = feats + self._rng.normal(scale=_JITTER_SCALE, size=feats.shape)
-        return feats.astype(float)
+        if apply_jitter:
+            feats = feats + self._rng.normal(scale=_JITTER_SCALE, size=feats.shape)
+        return feats.astype(float), mean, std
 
     def fit(self, df: pd.DataFrame) -> None:
-        feats = self._build_features(df)
+        feats, mean, std = self._build_features(df, apply_jitter=True)
+        self._feature_mean = mean
+        self._feature_std = std
         try:
             self.model.fit(feats)
             self.is_fitted = True
@@ -85,7 +98,7 @@ class MarketRegimeDetector:
             # code can still proceed deterministically.
             return self._fallback_predictions(len(df))
 
-        feats = self._build_features(df)
+        feats, _, _ = self._build_features(df, mean=self._feature_mean, std=self._feature_std)
         regimes = self.model.predict(feats)
         probs = self.model.predict_proba(feats)
         return regimes, probs

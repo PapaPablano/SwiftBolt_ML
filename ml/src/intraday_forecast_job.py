@@ -431,7 +431,9 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
             "15m": 15 * 60,
             "1h": 60 * 60,
         }
-        horizon_seconds = int(horizon_seconds_map.get(horizon, timeframe_interval_seconds(timeframe)))
+        horizon_seconds = int(
+            horizon_seconds_map.get(horizon, timeframe_interval_seconds(timeframe))
+        )
 
         short_steps_by_horizon = {
             "15m": 8,
@@ -504,9 +506,7 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                         confidence=synth_result.confidence,
                     )
 
-                    expires_at_path = (
-                        datetime.utcnow() + timedelta(minutes=30)
-                    ).isoformat()
+                    expires_at_path = (datetime.utcnow() + timedelta(minutes=30)).isoformat()
                     db.insert_intraday_forecast_path(
                         symbol_id=symbol_id,
                         symbol=symbol,
