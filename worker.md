@@ -386,6 +386,42 @@ Data output:
 
 Details: Double-cron plus runtime time-check ensures execution only occurs at intended local time despite DST shifts.@.github/workflows/symbol-weight-training.yml#5-27
 
+### API Contract Tests (`.github/workflows/api-contract-tests.yml`)
+Function: Validates response schemas of key endpoints to prevent breaking the SwiftUI app. Runs on PRs and pushes to main/develop when Supabase functions or Swift client code changes.@.github/workflows/api-contract-tests.yml#1-325
+
+Scripts:
+- Creates JSON schemas for `chart`, `user-refresh`, and `data-health` endpoints using ajv-cli.@.github/workflows/api-contract-tests.yml#49-150
+- Validates endpoint TypeScript types match defined schemas and checks Swift model compatibility.@.github/workflows/api-contract-tests.yml#152-280
+
+Data input:
+- No external data dependencies; uses local file system checks.
+- **Source & Ingress:** Workflow triggers on code changes; schema definitions generated inline; TypeScript/Swift files read from repository.
+
+Data output:
+- GitHub Step Summary with validation results and compatibility checks.@.github/workflows/api-contract-tests.yml#152-320
+- **Destination & Egress:** Validation report published to GitHub Actions summary; no external data writes.
+
+Details: Ensures API contract stability between backend Edge Functions and SwiftUI client, preventing breaking changes through automated schema validation.@.github/workflows/api-contract-tests.yml#31-325
+
+### Frontend Integration Checks (`.github/workflows/frontend-integration-checks.yml`)
+Function: Validates live data flow from backend to frontend during market hours and ensures ML rankings integration. Runs on code changes to client or backend.@.github/workflows/frontend-integration-checks.yml#1-594
+
+Scripts:
+- Checks live data flow patterns and ViewModel→endpoint mappings in Swift code.@.github/workflows/frontend-integration-checks.yml#43-150
+- Validates ML rankings integration and data freshness UI components.@.github/workflows/frontend-integration-checks.yml#200-350
+- Performs end-to-end data flow validation during simulated market hours.@.github/workflows/frontend-integration-checks.yml#400-550
+
+Data input:
+- Swift client code and Supabase function definitions from repository.
+- Optional manual dispatch for on-demand validation.
+- **Source & Ingress:** Repository files provide integration patterns; workflow analyzes code structure and endpoint connections.
+
+Data output:
+- Comprehensive integration report with live data flow validation results.@.github/workflows/frontend-integration-checks.yml#36-590
+- **Destination & Egress:** GitHub Step Summary with integration status; identifies missing connections or deprecated patterns.
+
+Details: Ensures SwiftUI app can properly consume live backend data and that ML rankings flow correctly to the frontend interface.@.github/workflows/frontend-integration-checks.yml#27-594
+
 ### ML Tests & Linting (`.github/workflows/test-ml.yml`)
 Function: CI pipeline running tests, linting, and security scans on ML code paths.@.github/workflows/test-ml.yml#3-120
 
@@ -438,6 +474,40 @@ Data output:
 - **Destination & Egress:** Executes SQL via Supabase RPC (`exec_sql`) against hosted Postgres; JSON response sent back to HTTP caller.
 
 Details: Enables cross-timeframe aggregation for h1 by combining historical `ohlc_bars_v2` and real-time intraday aggregations inside the new SQL function.@supabase/functions/apply-h1-fix/index.ts#68-159
+
+### chart (`supabase/functions/chart/index.ts`)
+Function: Consolidated chart data endpoint for frontend consumption. Single read path for app charts returning OHLC bars, forecasts, options ranks, and freshness indicators.@supabase/functions/chart/index.ts#1-344
+
+Scripts:
+- Calls `get_chart_data_v2` for provider-aware OHLC bars, fetches latest forecasts, and retrieves options ranks.@supabase/functions/chart/index.ts#100-280
+- Includes market status, pending splits warnings, and comprehensive metadata for UI rendering.@supabase/functions/chart/index.ts#50-344
+
+Data input:
+- GET query parameters: `symbol`, `timeframe`, optional `start`/`end` dates.@supabase/functions/chart/index.ts#80-120
+- **Source & Ingress:** Frontend app makes authenticated GET requests; function reads from multiple Supabase tables using service role credentials.
+
+Data output:
+- JSON response with bars, forecast data, options ranks, meta information, and freshness metrics.@supabase/functions/chart/index.ts#250-344
+- **Destination & Egress:** Consolidated chart data returned to caller; no database writes except read operations against `ohlc_bars_v2`, `forecasts`, `options_ranks`.
+
+Details: Eliminates need for multiple frontend API calls by providing all chart-related data in a single, provider-aware response with freshness indicators.@supabase/functions/chart/index.ts#1-344
+
+### data-health (`supabase/functions/data-health/index.ts`)
+Function: Unified health snapshot endpoint for data freshness monitoring across all symbols/timeframes. Combines coverage, job status, forecast staleness, and options data into health classifications.@supabase/functions/data-health/index.ts#1-336
+
+Scripts:
+- Queries `coverage_status`, `job_runs`, `forecasts`, and `options_chain_snapshots` tables.@supabase/functions/data-health/index.ts#80-200
+- Calculates freshness SLAs, determines health status (healthy/warning/critical), and aggregates summary metrics.@supabase/functions/data-health/index.ts#200-336
+
+Data input:
+- GET query parameters: optional `symbol` and `timeframe` filters (defaults to all).@supabase/functions/data-health/index.ts#60-80
+- **Source & Ingress:** Monitoring dashboards or alerts make authenticated GET requests; function reads from multiple Supabase tables using service role credentials.
+
+Data output:
+- JSON with per-symbol/timeframe health statuses and overall summary statistics.@supabase/functions/data-health/index.ts#250-336
+- **Destination & Egress:** Health data returned to caller; no database writes except read operations against monitoring tables.
+
+Details: Provides comprehensive health monitoring with configurable SLAs, critical thresholds, and market-hour awareness for automated alerting.@supabase/functions/data-health/index.ts#1-336
 
 ### ensure-coverage (`supabase/functions/ensure-coverage/index.ts`)
 Function: Checks bar coverage for a symbol/timeframe range and seeds backfill jobs when gaps exist.@supabase/functions/ensure-coverage/index.ts#1-133
