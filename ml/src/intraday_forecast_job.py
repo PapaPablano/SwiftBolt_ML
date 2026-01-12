@@ -321,13 +321,14 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
 
         if len(df) < min_bars:
             logger.warning(
-                "Insufficient %s bars for %s: %d (need %d)",
+                "Insufficient %s bars for %s: %d (need %d). Proceeding with fallback.",
                 timeframe,
                 symbol,
                 len(df),
                 min_bars,
             )
-            return False
+            if len(df) < 30:
+                return False
 
         # Get symbol ID
         symbol_id = db.get_symbol_id(symbol)
@@ -359,24 +360,31 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
 
         # Train simplified ensemble for intraday
         baseline = BaselineForecaster()
-        X, y = baseline.prepare_training_data(df, horizon_days=1)
+        try:
+            X, y = baseline.prepare_training_data(df, horizon_days=1)
+        except Exception as e:
+            logger.warning("Training data prep failed for %s: %s", symbol, e)
+            X = pd.DataFrame()
+            y = pd.Series(dtype=str)
 
-        if len(X) < 50:
-            logger.warning("Insufficient training samples for %s", symbol)
-            return False
-
-        # Check label distribution - if only one class, use baseline prediction
-        unique_labels = y.unique() if hasattr(y, "unique") else np.unique(y)
         ensemble_pred = None
-
-        if len(unique_labels) > 1:
-            try:
-                forecaster = EnsembleForecaster(horizon="1D", symbol_id=symbol_id)
-                forecaster.train(X, y)
-                last_features = X.tail(1)
-                ensemble_pred = forecaster.predict(last_features)
-            except Exception as e:
-                logger.warning("Ensemble training failed for %s: %s", symbol, e)
+        if len(X) >= 50:
+            unique_labels = y.unique() if hasattr(y, "unique") else np.unique(y)
+            if len(unique_labels) > 1:
+                try:
+                    forecaster = EnsembleForecaster(horizon="1D", symbol_id=symbol_id)
+                    forecaster.train(X, y)
+                    last_features = X.tail(1)
+                    ensemble_pred = forecaster.predict(last_features)
+                except Exception as e:
+                    logger.warning("Ensemble training failed for %s: %s", symbol, e)
+        else:
+            logger.warning(
+                "Insufficient training samples for %s: %d (need %d). Using fallback.",
+                symbol,
+                len(X),
+                50,
+            )
 
         # Fallback: use technical indicator based prediction
         if ensemble_pred is None:
