@@ -306,11 +306,20 @@ final class APIClient {
             throw APIError.invalidURL
         }
 
-        let symbolParam = symbols.joined(separator: ",")
-        let request = try makeRequest(
-            endpoint: "quotes",
-            queryItems: [URLQueryItem(name: "symbols", value: symbolParam)]
-        )
+        guard var components = URLComponents(url: functionURL("quotes"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        components.queryItems = [URLQueryItem(name: "symbols", value: symbols.joined(separator: ","))]
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
 
         return try await performRequest(request)
     }
