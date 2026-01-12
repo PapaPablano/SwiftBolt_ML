@@ -47,7 +47,7 @@ class MarketRegimeDetector:
     def _build_features(self, df: pd.DataFrame) -> np.ndarray:
         # Daily returns and rolling volatility as proxies
         returns = df["close"].pct_change().fillna(0.0)
-        vol = returns.rolling(window=20, min_periods=5).std().bfill().fillna(0.0)
+        vol = returns.rolling(window=20, min_periods=5).std().bfill()
         feats = np.column_stack([returns.values, vol.values])
 
         # Replace non-finite values and standardize to avoid near-singular covariances
@@ -56,7 +56,8 @@ class MarketRegimeDetector:
         std = np.clip(feats.std(axis=0), _MIN_STD, None)
         feats = (feats - mean) / std
 
-        # Small jitter to ensure positive-definite covariance
+        # Small jitter to ensure positive-definite covariance (required by HMM);
+        # flat features produce singular matrices without this.
         feats = feats + self._rng.normal(scale=_JITTER_SCALE, size=feats.shape)
         return feats.astype(float)
 
@@ -91,7 +92,8 @@ class MarketRegimeDetector:
 
     def _fallback_predictions(self, length: int) -> Tuple[np.ndarray, np.ndarray]:
         regimes = np.zeros(length, dtype=int)
-        probs = np.full((length, self.n_states), 1.0 / self.n_states)
+        uniform_prob = 1.0 / self.n_states
+        probs = np.full((length, self.n_states), uniform_prob)
         return regimes, probs
 
 
