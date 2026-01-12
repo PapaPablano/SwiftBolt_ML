@@ -11,10 +11,10 @@ def test_market_regime_graceful_with_constant_prices(monkeypatch):
     df = pd.DataFrame(data)
 
     # Force HMM fit failure to exercise fallback path
-    monkeypatch.setattr(
-        "src.features.market_regime.GaussianHMM.fit",
-        lambda self, X, lengths=None: (_ for _ in ()).throw(ValueError("boom")),
-    )
+    def _raise_fit(*args, **kwargs):
+        raise ValueError("boom")
+
+    monkeypatch.setattr("src.features.market_regime.GaussianHMM.fit", _raise_fit)
 
     result = add_market_regime_features(df)
 
