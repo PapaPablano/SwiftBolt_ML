@@ -160,7 +160,7 @@ jobs:
           cd ml
 
           # If market is closed and this isn't a forced refresh, avoid Alpaca calls entirely.
-          if [ "$MARKET_STATE" != "open" ] && [ "$FORCE_REFRESH" != "true" ]; then
+          if [ "$MARKET_STATE" != "open" ] && [ "$FORCE_REFRESH" != "true" ] && [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then
              echo "Market state is '$MARKET_STATE' and force_refresh is false. Skipping Alpaca backfill."
 
              python - <<-'PY'
