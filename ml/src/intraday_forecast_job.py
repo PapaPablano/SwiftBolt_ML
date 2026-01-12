@@ -25,8 +25,8 @@ from src.features.support_resistance_detector import (  # noqa: E402
 from src.features.technical_indicators import add_technical_features  # noqa: E402
 from src.forecast_synthesizer import ForecastSynthesizer  # noqa: E402
 from src.forecast_weights import get_default_weights  # noqa: E402
-from src.models.baseline_forecaster import BaselineForecaster  # noqa: E402
 from src.models.arima_garch_forecaster import ArimaGarchForecaster  # noqa: E402
+from src.models.baseline_forecaster import BaselineForecaster  # noqa: E402
 from src.models.ensemble_forecaster import EnsembleForecaster  # noqa: E402
 from src.strategies.supertrend_ai import SuperTrendAI  # noqa: E402
 
