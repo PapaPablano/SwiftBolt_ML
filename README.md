@@ -1,6 +1,14 @@
 # SwiftBolt ML
 
-A macOS SwiftUI application for stock, futures, and options analysis with ML-powered forecasting.
+SwiftBolt ML is an end-to-end market intelligence platform that unifies intraday/historical market data ingestion, automated Supabase orchestration, Python ML forecasting, and a macOS SwiftUI workstation for equities and options research.
+
+## Project Scope
+
+- **Data ingestion & normalization:** Supabase Edge Functions coordinate Alpaca and Polygon (Massive) feeds, corporate action reconciliation, intraday backfills, and coverage monitoring.
+- **Market intelligence layer:** Supabase Postgres models store calendars, corporate actions, OHLC/IV histories, options chains, and orchestrator telemetry for downstream consumers.
+- **Forecasting & analytics:** Python pipelines generate ensemble forecasts, ranking evaluations, and health reports that feed both dashboards and the desktop client.
+- **macOS research workstation:** The SwiftUI client renders ML overlays, options analytics, and alerting tools tailored for discretionary traders.
+
 
 ## Tech Stack
 
