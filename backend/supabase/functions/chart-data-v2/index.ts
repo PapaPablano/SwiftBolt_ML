@@ -19,6 +19,12 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import type { PostgrestError } from 'https://esm.sh/@supabase/supabase-js@2';
 
+declare const Deno: {
+  env: {
+    get(key: string): string | undefined;
+  };
+};
+
 interface ChartRequest {
   symbol: string;
   timeframe?: string;
@@ -182,6 +188,10 @@ const INTRADAY_FORECAST_MAX_POINTS = 6;
 
 const INTRADAY_FORECAST_EXPIRY_GRACE_SECONDS = 2 * 60 * 60;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 function toUnixSeconds(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return Math.floor(value);
@@ -198,21 +208,21 @@ function toUnixSeconds(value: unknown): number {
   return Math.floor(Date.now() / 1000);
 }
 
-function normalizeForecastPoint(point: any): { ts: number; value: number; lower: number; upper: number } {
+function normalizeForecastPoint(point: Record<string, unknown>): { ts: number; value: number; lower: number; upper: number } {
   return {
     ...point,
-    ts: toUnixSeconds(point?.ts ?? point?.time),
-    value: Number(point?.value ?? point?.mid ?? point?.midpoint ?? 0),
-    lower: Number(point?.lower ?? point?.min ?? point?.lower_bound ?? point?.value ?? 0),
-    upper: Number(point?.upper ?? point?.max ?? point?.upper_bound ?? point?.value ?? 0),
+    ts: toUnixSeconds(point['ts'] ?? point['time']),
+    value: Number(point['value'] ?? point['mid'] ?? point['midpoint'] ?? 0),
+    lower: Number(point['lower'] ?? point['min'] ?? point['lower_bound'] ?? point['value'] ?? 0),
+    upper: Number(point['upper'] ?? point['max'] ?? point['upper_bound'] ?? point['value'] ?? 0),
   };
 }
 
-function normalizeForecastPoints(points: any[] | null | undefined): Array<{ ts: number; value: number; lower: number; upper: number }> {
+function normalizeForecastPoints(points: unknown): Array<{ ts: number; value: number; lower: number; upper: number }> {
   if (!Array.isArray(points)) {
     return [];
   }
-  return points.map((point) => normalizeForecastPoint(point));
+  return points.map((point) => normalizeForecastPoint(isRecord(point) ? point : {}));
 }
 
 function sampleForecastPoints<T extends { ts: number }>(points: T[], maxPoints: number): T[] {
@@ -273,14 +283,15 @@ function isValidChartBarArray(data: unknown): data is ChartBar[] {
 
 function buildChartError(message: string): PostgrestError {
   return {
+    name: 'PostgrestError',
     message,
-    details: null,
-    hint: null,
+    details: '',
+    hint: '',
     code: 'NO_CHART_DATA',
   };
 }
 
-serve(async (req) => {
+serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -485,7 +496,7 @@ serve(async (req) => {
 
     // Fetch ML enrichment data if requested
     let mlSummary = null;
-    let superTrendAI = null;
+    const superTrendAI = null;
     let indicators = null;
 
     if (includeMLData) {
@@ -770,9 +781,10 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Chart data error:', error);
+    const err = error instanceof Error ? error : new Error(String(error));
+    console.error('Chart data error:', err);
     return new Response(
-      JSON.stringify({ error: 'Internal server error', details: error.message }),
+      JSON.stringify({ error: 'Internal server error', details: err.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

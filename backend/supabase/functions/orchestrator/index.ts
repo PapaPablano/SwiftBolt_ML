@@ -194,50 +194,76 @@ async function createSlicesForJob(supabase: any, jobDef: JobDefinition): Promise
     const gapTo = new Date(gap.gap_to);
     const sliceMs = config.sliceHours * 60 * 60 * 1000;
 
+    // Router will choose the right provider based on date:
+    // - Historical intraday (before today): Polygon/Massive
+    // - Today's intraday: Tradier
+    // No need to restrict slices here anymore
+
+    const candidates: Array<{ from: Date; to: Date }> = [];
     let currentFrom = gapFrom;
-    let sliceCount = 0;
 
-    while (currentFrom < gapTo && sliceCount < config.maxSlicesPerTick) {
+    while (currentFrom < gapTo && candidates.length < config.maxSlicesPerTick) {
       const currentTo = new Date(Math.min(currentFrom.getTime() + sliceMs, gapTo.getTime()));
-
-      // Router will choose the right provider based on date:
-      // - Historical intraday (before today): Polygon/Massive
-      // - Today's intraday: Tradier
-      // No need to restrict slices here anymore
-
-      // Check if slice already exists (idempotency)
-      const { data: exists } = await supabase.rpc("job_slice_exists", {
-        p_symbol: jobDef.symbol,
-        p_timeframe: jobDef.timeframe,
-        p_slice_from: currentFrom.toISOString(),
-        p_slice_to: currentTo.toISOString(),
-      });
-
-      if (!exists) {
-        // Create new job run
-        const { error: insertError } = await supabase
-          .from("job_runs")
-          .insert({
-            job_def_id: jobDef.id,
-            symbol: jobDef.symbol,
-            timeframe: jobDef.timeframe,
-            job_type: jobDef.job_type,
-            slice_from: currentFrom.toISOString(),
-            slice_to: currentTo.toISOString(),
-            status: "queued",
-            triggered_by: "cron",
-          });
-
-        if (insertError) {
-          console.error(`[Orchestrator] Error inserting job run:`, insertError);
-        } else {
-          slicesCreated++;
-          sliceCount++;
-          console.log(`[Orchestrator] Created slice: ${jobDef.symbol}/${jobDef.timeframe} ${currentFrom.toISOString()} -> ${currentTo.toISOString()}`);
-        }
-      }
-
+      candidates.push({ from: currentFrom, to: currentTo });
       currentFrom = currentTo;
+    }
+
+    if (candidates.length === 0) continue;
+
+    const rangeFromIso = candidates[0].from.toISOString();
+    const rangeToIso = candidates[candidates.length - 1].to.toISOString();
+
+    const { data: existingSlices, error: existingError } = await supabase
+      .from("job_runs")
+      .select("slice_from,slice_to")
+      .eq("symbol", jobDef.symbol)
+      .eq("timeframe", jobDef.timeframe)
+      .in("status", ["queued", "running", "success"])
+      .gte("slice_from", rangeFromIso)
+      .lte("slice_to", rangeToIso);
+
+    if (existingError) {
+      console.error(`[Orchestrator] Error checking existing slices:`, existingError);
+      continue;
+    }
+
+    const existingKeys = new Set<string>();
+    for (const row of existingSlices || []) {
+      const fromIso = row?.slice_from ? new Date(row.slice_from).toISOString() : null;
+      const toIso = row?.slice_to ? new Date(row.slice_to).toISOString() : null;
+      if (fromIso && toIso) existingKeys.add(`${fromIso}|${toIso}`);
+    }
+
+    const toInsert: any[] = [];
+    for (const c of candidates) {
+      const key = `${c.from.toISOString()}|${c.to.toISOString()}`;
+      if (!existingKeys.has(key)) {
+        toInsert.push({
+          job_def_id: jobDef.id,
+          symbol: jobDef.symbol,
+          timeframe: jobDef.timeframe,
+          job_type: jobDef.job_type,
+          slice_from: c.from.toISOString(),
+          slice_to: c.to.toISOString(),
+          status: "queued",
+          triggered_by: "cron",
+        });
+      }
+    }
+
+    if (toInsert.length > 0) {
+      const { error: insertError } = await supabase
+        .from("job_runs")
+        .insert(toInsert, { returning: "minimal" });
+
+      if (insertError) {
+        console.error(`[Orchestrator] Error inserting job runs:`, insertError);
+      } else {
+        slicesCreated += toInsert.length;
+        console.log(
+          `[Orchestrator] Created ${toInsert.length} slices: ${jobDef.symbol}/${jobDef.timeframe} ${rangeFromIso} -> ${rangeToIso}`
+        );
+      }
     }
   }
 

@@ -1,5 +1,11 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 
+declare const Deno: {
+  env: {
+    get(key: string): string | undefined;
+  };
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -119,19 +125,22 @@ serve(async (req: Request): Promise<Response> => {
           .filter((s) => s.length > 0);
       }
     } else {
-      let body: any;
+      let body: unknown;
       try {
         body = await req.json();
       } catch (_err) {
         return errorResponse("Invalid JSON body", 400);
       }
 
-      if (Array.isArray(body?.symbols)) {
-        symbolsToFetch = body.symbols
-          .map((s: string) => String(s).trim().toUpperCase())
-          .filter((s: string) => s.length > 0);
-      } else if (typeof body?.symbol === "string") {
-        symbolsToFetch = [body.symbol.trim().toUpperCase()].filter((s: string) => s.length > 0);
+      const bodyObj: Record<string, unknown> =
+        typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+
+      if (Array.isArray(bodyObj.symbols)) {
+        symbolsToFetch = bodyObj.symbols
+          .map((s) => String(s).trim().toUpperCase())
+          .filter((s) => s.length > 0);
+      } else if (typeof bodyObj.symbol === "string") {
+        symbolsToFetch = [bodyObj.symbol.trim().toUpperCase()].filter((s) => s.length > 0);
       }
     }
 
