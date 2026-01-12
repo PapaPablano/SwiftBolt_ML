@@ -31,6 +31,7 @@ class MarketRegimeDetector:
     ) -> None:
         self.n_states = n_states
         self.random_state = random_state
+        self._rng = np.random.default_rng(random_state)
         self.model = GaussianHMM(
             n_components=n_states,
             covariance_type=covariance_type,
@@ -52,8 +53,7 @@ class MarketRegimeDetector:
         feats = (feats - mean) / std
 
         # Small jitter to ensure positive-definite covariance
-        rng = np.random.default_rng(self.random_state)
-        feats = feats + rng.normal(scale=_JITTER_SCALE, size=feats.shape)
+        feats = feats + self._rng.normal(scale=_JITTER_SCALE, size=feats.shape)
         return feats.astype(float)
 
     def fit(self, df: pd.DataFrame) -> None:
@@ -75,6 +75,7 @@ class MarketRegimeDetector:
         if not self.is_fitted:
             self.fit(df)
         if not self.is_fitted:
+            # Fit failed; return stable defaults
             return self._fallback_predictions(len(df))
 
         feats = self._build_features(df)
