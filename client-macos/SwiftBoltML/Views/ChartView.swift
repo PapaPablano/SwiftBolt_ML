@@ -171,11 +171,7 @@ struct ChartView: View {
                                         }
                                         return fallback
                                     },
-                                    set: { 
-    DispatchQueue.main.async {
-        chartViewModel.selectedForecastHorizon = $0 
-    }
-}
+                                    set: { chartViewModel.selectedForecastHorizon = $0 }
                                 )
 
                                 VStack(alignment: .leading, spacing: 8) {
