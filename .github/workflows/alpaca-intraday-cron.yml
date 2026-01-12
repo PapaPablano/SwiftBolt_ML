@@ -42,6 +42,13 @@ jobs:
       - name: Check Market Hours
         id: market
         run: |
+          # Detect manual dispatch (workflow_dispatch) to allow weekend/after-hours overrides
+          manual_override=false
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            manual_override=true
+            echo "Manual dispatch detected - bypassing market-hour gating."
+          fi
+
           # Get current time in ET
           current_hour=$(TZ="America/New_York" date +%H)
           current_min=$(TZ="America/New_York" date +%M)
@@ -49,12 +56,19 @@ jobs:
 
           echo "Current ET time: $current_hour:$current_min (day $day_of_week)"
 
-          # Skip weekends
+          manual_market_state=""
+
+          # Skip weekends unless manual override is active
           if [ "$day_of_week" -gt 5 ]; then
-            echo "Weekend - skipping"
-            echo "should_run=false" >> $GITHUB_OUTPUT
-            echo "market_state=weekend" >> $GITHUB_OUTPUT
-            exit 0
+            if [ "$manual_override" = "true" ]; then
+              echo "Weekend detected but manual override enabled - continuing."
+              manual_market_state="manual_weekend"
+            else
+              echo "Weekend - skipping"
+              echo "should_run=false" >> $GITHUB_OUTPUT
+              echo "market_state=weekend" >> $GITHUB_OUTPUT
+              exit 0
+            fi
           fi
 
           # Check if within extended market hours (9:00 AM - 5:00 PM ET)
@@ -64,20 +78,26 @@ jobs:
           market_open=$((9 * 60 + 30))  # 9:30 AM = 570 minutes
           market_close=$((16 * 60))     # 4:00 PM = 960 minutes
 
-          if [ "$current_minutes" -lt "$pre_market" ] || [ "$current_minutes" -gt "$post_market" ]; then
-            echo "Outside extended market hours - skipping"
-            echo "should_run=false" >> $GITHUB_OUTPUT
-            echo "market_state=closed" >> $GITHUB_OUTPUT
-            exit 0
+          if [ "$manual_override" != "true" ]; then
+            if [ "$current_minutes" -lt "$pre_market" ] || [ "$current_minutes" -gt "$post_market" ]; then
+              echo "Outside extended market hours - skipping"
+              echo "should_run=false" >> $GITHUB_OUTPUT
+              echo "market_state=closed" >> $GITHUB_OUTPUT
+              exit 0
+            fi
           fi
 
-          # Determine market state
-          if [ "$current_minutes" -ge "$market_open" ] && [ "$current_minutes" -le "$market_close" ]; then
-            echo "market_state=open" >> $GITHUB_OUTPUT
-          elif [ "$current_minutes" -lt "$market_open" ]; then
-            echo "market_state=pre_market" >> $GITHUB_OUTPUT
+          # Determine market state unless already set by manual weekend override
+          if [ -z "$manual_market_state" ]; then
+            if [ "$current_minutes" -ge "$market_open" ] && [ "$current_minutes" -le "$market_close" ]; then
+              echo "market_state=open" >> $GITHUB_OUTPUT
+            elif [ "$current_minutes" -lt "$market_open" ]; then
+              echo "market_state=pre_market" >> $GITHUB_OUTPUT
+            else
+              echo "market_state=after_hours" >> $GITHUB_OUTPUT
+            fi
           else
-            echo "market_state=after_hours" >> $GITHUB_OUTPUT
+            echo "market_state=$manual_market_state" >> $GITHUB_OUTPUT
           fi
 
           echo "should_run=true" >> $GITHUB_OUTPUT

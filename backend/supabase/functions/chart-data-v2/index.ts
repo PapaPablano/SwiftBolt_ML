@@ -105,6 +105,73 @@ function buildIntradayForecastPoints(params: {
   return points;
 }
 
+const DAILY_FORECAST_MAX_POINTS = 6;
+const INTRADAY_FORECAST_MAX_POINTS = 6;
+
+function toUnixSeconds(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.floor(value);
+  }
+
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    const time = parsed.getTime();
+    if (!Number.isNaN(time)) {
+      return Math.floor(time / 1000);
+    }
+  }
+
+  return Math.floor(Date.now() / 1000);
+}
+
+function normalizeForecastPoint(point: any): { ts: number; value: number; lower: number; upper: number } {
+  return {
+    ...point,
+    ts: toUnixSeconds(point?.ts ?? point?.time),
+    value: Number(point?.value ?? point?.mid ?? point?.midpoint ?? 0),
+    lower: Number(point?.lower ?? point?.min ?? point?.lower_bound ?? point?.value ?? 0),
+    upper: Number(point?.upper ?? point?.max ?? point?.upper_bound ?? point?.value ?? 0),
+  };
+}
+
+function normalizeForecastPoints(points: any[] | null | undefined): Array<{ ts: number; value: number; lower: number; upper: number }> {
+  if (!Array.isArray(points)) {
+    return [];
+  }
+  return points.map((point) => normalizeForecastPoint(point));
+}
+
+function sampleForecastPoints<T extends { ts: number }>(points: T[], maxPoints: number): T[] {
+  if (!Array.isArray(points) || points.length === 0) {
+    return [];
+  }
+
+  if (!Number.isFinite(maxPoints) || maxPoints <= 0) {
+    return points.map((point) => ({ ...point }));
+  }
+
+  if (points.length <= maxPoints || maxPoints < 2) {
+    return points.map((point) => ({ ...point }));
+  }
+
+  const lastIndex = points.length - 1;
+  const indices = new Set<number>();
+
+  for (let i = 0; i < maxPoints; i += 1) {
+    const ratio = maxPoints === 1 ? 0 : i / (maxPoints - 1);
+    const idx = Math.min(Math.round(ratio * lastIndex), lastIndex);
+    indices.add(idx);
+  }
+
+  // Ensure we always include first and last points
+  indices.add(0);
+  indices.add(lastIndex);
+
+  return Array.from(indices)
+    .sort((a, b) => a - b)
+    .map((idx) => ({ ...points[idx] }));
+}
+
 function isValidChartBarArray(data: unknown): data is ChartBar[] {
   if (!Array.isArray(data)) return false;
   if (data.length === 0) return true;
@@ -323,33 +390,33 @@ serve(async (req) => {
 
           if (intradayForecast && Array.isArray(intradayForecast.points) && intradayForecast.points.length > 0) {
             const conf = clampNumber(intradayForecast.confidence, 0.5);
-            
-            // Sample intraday points for cleaner visualization
-            let sampledPoints = intradayForecast.points;
-            if (intradayForecast.points.length > 8) {
-              // For intraday, show fewer points for cleaner look
-              const sampleCount = Math.min(8, intradayForecast.points.length);
-              const step = Math.floor(intradayForecast.points.length / sampleCount);
-              sampledPoints = [];
-              for (let i = 0; i < sampleCount; i++) {
-                const index = i * step;
-                if (index < intradayForecast.points.length) {
-                  sampledPoints.push(intradayForecast.points[index]);
-                }
-              }
-              // Ensure we always include the last point
-              if (sampledPoints[sampledPoints.length - 1] !== intradayForecast.points[intradayForecast.points.length - 1]) {
-                sampledPoints.push(intradayForecast.points[intradayForecast.points.length - 1]);
+
+            const horizons: Array<{ horizon: string; points: Array<{ ts: number; value: number; lower: number; upper: number }> }> = [];
+
+            if (intradayPath && Array.isArray(intradayPath.points) && intradayPath.points.length > 0) {
+              const normalizedPathPoints = normalizeForecastPoints(intradayPath.points);
+              const sampledPathPoints = sampleForecastPoints(normalizedPathPoints, INTRADAY_FORECAST_MAX_POINTS);
+              if (sampledPathPoints.length > 0) {
+                horizons.push({
+                  horizon: pathHorizon,
+                  points: sampledPathPoints,
+                });
               }
             }
-            
+
+            const normalizedForecastPoints = normalizeForecastPoints(intradayForecast.points);
+            const sampledForecastPoints = sampleForecastPoints(normalizedForecastPoints, INTRADAY_FORECAST_MAX_POINTS);
+            if (sampledForecastPoints.length > 0) {
+              horizons.push({
+                horizon,
+                points: sampledForecastPoints,
+              });
+            }
+
             mlSummary = {
               overallLabel: intradayForecast.overall_label,
               confidence: conf,
-              horizons: [{
-                horizon: pathHorizon,
-                points: sampledPoints,
-              }],
+              horizons,
               srLevels: null,
               srDensity: null,
             };
@@ -359,7 +426,7 @@ serve(async (req) => {
               supertrendPerformance: null,
               supertrendSignal: intradayForecast?.supertrend_direction === 'BULLISH' ? 1 :
                                  intradayForecast?.supertrend_direction === 'BEARISH' ? -1 : 0,
-              trendLabel: intradayPath.overall_label,
+              trendLabel: intradayPath?.overall_label ?? intradayForecast.overall_label,
               trendConfidence: Math.round(conf * 10),
               stopLevel: null,
               trendDurationBars: null,
@@ -415,10 +482,13 @@ serve(async (req) => {
                   upper: targetPrice * 1.02,
                 }];
 
-              mlSummary.horizons.push({
-                horizon: horizon,
-                points: shortPoints,
-              });
+              const sampledShortPoints = sampleForecastPoints(shortPoints, INTRADAY_FORECAST_MAX_POINTS);
+              if (sampledShortPoints.length > 0) {
+                horizons.push({
+                  horizon,
+                  points: sampledShortPoints,
+                });
+              }
             }
           } else if (intradayForecast) {
             const intervalSec = timeframeToIntervalSeconds(timeframe);
@@ -450,7 +520,7 @@ serve(async (req) => {
               ? Math.floor(forecastSteps)
               : (defaultStepsByTimeframe[timeframe] ?? 40);
 
-            const points = intervalSec
+            const shortPoints = intervalSec
               ? buildIntradayForecastPoints({
                 baseTsSec,
                 intervalSec,
@@ -466,31 +536,35 @@ serve(async (req) => {
                 upper: targetPrice * 1.02,
               }];
 
-            mlSummary = {
-              overallLabel: intradayForecast.overall_label,
-              confidence: conf,
-              horizons: [{
-                horizon: horizon,
-                points,
-              }],
-              srLevels: null,
-              srDensity: null,
-            };
+            const sampledShortPoints = sampleForecastPoints(shortPoints, INTRADAY_FORECAST_MAX_POINTS);
 
-            indicators = {
-              supertrendFactor: null,
-              supertrendPerformance: null,
-              supertrendSignal: intradayForecast.supertrend_direction === 'BULLISH' ? 1 : 
-                                 intradayForecast.supertrend_direction === 'BEARISH' ? -1 : 0,
-              trendLabel: intradayForecast.overall_label,
-              trendConfidence: Math.round(conf * 10),
-              stopLevel: null,
-              trendDurationBars: null,
-              rsi: null,
-              adx: null,
-              macdHistogram: null,
-              kdjJ: null,
-            };
+            if (sampledShortPoints.length > 0) {
+              mlSummary = {
+                overallLabel: intradayForecast.overall_label,
+                confidence: conf,
+                horizons: [{
+                  horizon,
+                  points: sampledShortPoints,
+                }],
+                srLevels: null,
+                srDensity: null,
+              };
+
+              indicators = {
+                supertrendFactor: null,
+                supertrendPerformance: null,
+                supertrendSignal: intradayForecast?.supertrend_direction === 'BULLISH' ? 1 :
+                                   intradayForecast?.supertrend_direction === 'BEARISH' ? -1 : 0,
+                trendLabel: intradayForecast.overall_label,
+                trendConfidence: Math.round(conf * 10),
+                stopLevel: null,
+                trendDurationBars: null,
+                rsi: null,
+                adx: null,
+                macdHistogram: null,
+                kdjJ: null,
+              };
+            }
           }
         } else {
           // Fetch daily forecast for daily/weekly timeframes
@@ -503,30 +577,8 @@ serve(async (req) => {
             .single();
 
           if (dailyForecast && dailyForecast.points) {
-            // Convert ISO timestamps to Unix timestamps for frontend compatibility
-            const convertedPoints = dailyForecast.points.map((point: any) => ({
-              ...point,
-              ts: typeof point.ts === 'string' ? new Date(point.ts).getTime() / 1000 : point.ts
-            }));
-
-            // Sample points for cleaner visualization
-            let sampledPoints = convertedPoints;
-            if (convertedPoints.length > 5) {
-              // For longer forecasts, show key points: start, end, and evenly spaced intermediates
-              const sampleCount = Math.min(5, convertedPoints.length);
-              const step = Math.floor(convertedPoints.length / sampleCount);
-              sampledPoints = [];
-              for (let i = 0; i < sampleCount; i++) {
-                const index = i * step;
-                if (index < convertedPoints.length) {
-                  sampledPoints.push(convertedPoints[index]);
-                }
-              }
-              // Ensure we always include the last point
-              if (sampledPoints[sampledPoints.length - 1] !== convertedPoints[convertedPoints.length - 1]) {
-                sampledPoints.push(convertedPoints[convertedPoints.length - 1]);
-              }
-            }
+            const normalizedPoints = normalizeForecastPoints(dailyForecast.points);
+            const sampledPoints = sampleForecastPoints(normalizedPoints, DAILY_FORECAST_MAX_POINTS);
 
             mlSummary = {
               overallLabel: dailyForecast.overall_label,
