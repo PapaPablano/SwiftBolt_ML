@@ -55,6 +55,78 @@ const MAX_BARS_BY_TIMEFRAME: Record<string, number> = {
 const DEFAULT_MAX_BARS = 1000;
 const POSTGREST_MAX_ROWS = 1000;
 
+function alpacaTimeframe(timeframe: string): string | null {
+  switch (timeframe) {
+    case 'm15':
+      return '15Min';
+    case 'h1':
+      return '1Hour';
+    case 'h4':
+      return '4Hour';
+    default:
+      return null;
+  }
+}
+
+function intradayMaxAgeSeconds(timeframe: string): number {
+  switch (timeframe) {
+    case 'm15':
+      return 25 * 60;
+    case 'h1':
+      return 2 * 60 * 60;
+    case 'h4':
+      return 5 * 60 * 60;
+    default:
+      return 60 * 60;
+  }
+}
+
+type AlpacaBarsResponse = {
+  bars?: Record<string, Array<{ t: string; o: number; h: number; l: number; c: number; v: number }>>;
+  next_page_token?: string;
+};
+
+async function fetchAlpacaBars(params: {
+  symbol: string;
+  timeframe: string;
+  startIso: string;
+  endIso: string;
+  apiKey: string;
+  apiSecret: string;
+}): Promise<Array<{ t: string; o: number; h: number; l: number; c: number; v: number }>> {
+  const tf = alpacaTimeframe(params.timeframe);
+  if (!tf) {
+    return [];
+  }
+
+  const url = `https://data.alpaca.markets/v2/stocks/bars?` +
+    `symbols=${encodeURIComponent(params.symbol)}&` +
+    `timeframe=${encodeURIComponent(tf)}&` +
+    `start=${encodeURIComponent(params.startIso)}&` +
+    `end=${encodeURIComponent(params.endIso)}&` +
+    `limit=10000&` +
+    `adjustment=raw&` +
+    `feed=iex&` +
+    `sort=asc`;
+
+  const res = await fetch(url, {
+    headers: {
+      'APCA-API-KEY-ID': params.apiKey,
+      'APCA-API-SECRET-KEY': params.apiSecret,
+      Accept: 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Alpaca bars error: ${res.status} ${body}`);
+  }
+
+  const data = (await res.json()) as AlpacaBarsResponse;
+  const bars = data.bars?.[params.symbol.toUpperCase()] ?? [];
+  return Array.isArray(bars) ? bars : [];
+}
+
 function timeframeToIntervalSeconds(timeframe: string): number | null {
   switch (timeframe) {
     case 'm15':
@@ -244,6 +316,69 @@ serve(async (req) => {
     }
 
     const symbolId = symbolData.id;
+
+    // Intraday refresh: if today's Alpaca bars are missing/stale, fetch from Alpaca and upsert.
+    if (['m15', 'h1', 'h4'].includes(timeframe)) {
+      const alpacaApiKey = Deno.env.get('ALPACA_API_KEY');
+      const alpacaApiSecret = Deno.env.get('ALPACA_API_SECRET');
+
+      if (alpacaApiKey && alpacaApiSecret) {
+        const todayStartIso = new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString();
+        const { data: latestToday } = await supabase
+          .from('ohlc_bars_v2')
+          .select('ts')
+          .eq('symbol_id', symbolId)
+          .eq('timeframe', timeframe)
+          .eq('provider', 'alpaca')
+          .eq('is_forecast', false)
+          .gte('ts', todayStartIso)
+          .order('ts', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const latestIso = latestToday?.ts ? new Date(latestToday.ts).toISOString() : null;
+        const latestAgeSec = latestIso ? (Date.now() - new Date(latestIso).getTime()) / 1000 : Number.POSITIVE_INFINITY;
+        const maxAgeSec = intradayMaxAgeSeconds(timeframe);
+
+        if (!Number.isFinite(latestAgeSec) || latestAgeSec > maxAgeSec) {
+          try {
+            const nowIso = new Date().toISOString();
+            const alpacaBars = await fetchAlpacaBars({
+              symbol: symbol.toUpperCase(),
+              timeframe,
+              startIso: todayStartIso,
+              endIso: nowIso,
+              apiKey: alpacaApiKey,
+              apiSecret: alpacaApiSecret,
+            });
+
+            if (alpacaBars.length > 0) {
+              const rows = alpacaBars.map((bar) => ({
+                symbol_id: symbolId,
+                timeframe,
+                ts: bar.t,
+                open: bar.o,
+                high: bar.h,
+                low: bar.l,
+                close: bar.c,
+                volume: bar.v,
+                provider: 'alpaca',
+                is_intraday: true,
+                is_forecast: false,
+                data_status: 'live',
+                fetched_at: nowIso,
+              }));
+
+              await supabase.from('ohlc_bars_v2').upsert(rows, {
+                onConflict: 'symbol_id,timeframe,ts,provider,is_forecast',
+              });
+            }
+          } catch (alpacaErr) {
+            console.error('[chart-data-v2] Intraday Alpaca refresh failed:', alpacaErr);
+          }
+        }
+      }
+    }
 
     // Calculate date range
     const today = new Date();

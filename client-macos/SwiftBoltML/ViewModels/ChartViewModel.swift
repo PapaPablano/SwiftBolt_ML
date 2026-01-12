@@ -1276,7 +1276,7 @@ final class ChartViewModel: ObservableObject {
     // MARK: - Stale Data Detection
 
     /// Validate data recency for intraday timeframes
-    func validateDataRecency(bars: [OHLCBar], timeframe: Timeframe) -> (isStale: Bool, age: TimeInterval, recommendation: String) {
+    private func validateDataRecency(bars: [OHLCBar], timeframe: Timeframe) -> (isStale: Bool, age: TimeInterval, recommendation: String) {
         guard timeframe.isIntraday else {
             return (isStale: false, age: 0, recommendation: "Daily/weekly data - staleness check skipped")
         }
@@ -1286,7 +1286,31 @@ final class ChartViewModel: ObservableObject {
         }
 
         let age = Date().timeIntervalSince(lastBar.ts)
-        let maxAge: TimeInterval = MarketHours.isMarketOpen() ? 300 : 3600 // 5 min during market, 1 hour after
+
+        let maxAge: TimeInterval
+        if MarketHours.isMarketOpen() {
+            switch timeframe {
+            case .m15:
+                maxAge = 25 * 60
+            case .h1:
+                maxAge = 2 * 60 * 60
+            case .h4:
+                maxAge = 5 * 60 * 60
+            case .d1, .w1:
+                maxAge = 24 * 60 * 60
+            }
+        } else {
+            switch timeframe {
+            case .m15:
+                maxAge = 2 * 60 * 60
+            case .h1:
+                maxAge = 6 * 60 * 60
+            case .h4:
+                maxAge = 12 * 60 * 60
+            case .d1, .w1:
+                maxAge = 48 * 60 * 60
+            }
+        }
         let isStale = age > maxAge
 
         let recommendation: String
