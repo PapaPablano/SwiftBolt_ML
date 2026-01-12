@@ -27,6 +27,7 @@ class MarketRegimeDetector:
         random_state: int = 42,
     ) -> None:
         self.n_states = n_states
+        self.random_state = random_state
         self.model = GaussianHMM(
             n_components=n_states,
             covariance_type=covariance_type,
@@ -38,9 +39,19 @@ class MarketRegimeDetector:
     def _build_features(self, df: pd.DataFrame) -> np.ndarray:
         # Daily returns and rolling volatility as proxies
         returns = df["close"].pct_change().fillna(0.0)
-        vol = returns.rolling(window=20, min_periods=5).std().bfill()
+        vol = returns.rolling(window=20, min_periods=5).std().bfill().fillna(0.0)
         feats = np.column_stack([returns.values, vol.values])
-        return feats
+
+        # Replace non-finite values and standardize to avoid near-singular covariances
+        feats = np.nan_to_num(feats, nan=0.0, posinf=0.0, neginf=0.0)
+        mean = feats.mean(axis=0)
+        std = np.clip(feats.std(axis=0), 1e-6, None)
+        feats = (feats - mean) / std
+
+        # Small jitter to ensure positive-definite covariance
+        rng = np.random.default_rng(self.random_state)
+        feats = feats + rng.normal(scale=1e-6, size=feats.shape)
+        return feats.astype(float)
 
     def fit(self, df: pd.DataFrame) -> None:
         feats = self._build_features(df)
@@ -61,6 +72,12 @@ class MarketRegimeDetector:
         if not self.is_fitted:
             self.fit(df)
         feats = self._build_features(df)
+        if not self.is_fitted:
+            # Fallback: single regime with uniform probabilities
+            regimes = np.zeros(len(df), dtype=int)
+            probs = np.full((len(df), self.n_states), 1.0 / self.n_states)
+            return regimes, probs
+
         regimes = self.model.predict(feats)
         probs = self.model.predict_proba(feats)
         return regimes, probs
