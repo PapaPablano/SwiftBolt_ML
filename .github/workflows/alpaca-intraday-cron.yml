@@ -133,14 +133,21 @@ jobs:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
         run: |
-          cd ml
-          cat > .env << EOF
-          SUPABASE_URL=${SUPABASE_URL}
-          SUPABASE_KEY=${SUPABASE_KEY}
-          DATABASE_URL=${DATABASE_URL}
-          ALPACA_API_KEY=${ALPACA_API_KEY}
-          ALPACA_API_SECRET=${ALPACA_API_SECRET}
-          EOF
+          # Write .env at repository root so Python scripts can locate it
+          {
+            echo "SUPABASE_URL=${SUPABASE_URL}"
+            echo "SUPABASE_KEY=${SUPABASE_KEY}"
+            echo "DATABASE_URL=${DATABASE_URL}"
+            echo "ALPACA_API_KEY=${ALPACA_API_KEY}"
+            echo "ALPACA_API_SECRET=${ALPACA_API_SECRET}"
+          } > .env
+
+          # Persist critical env vars for subsequent steps
+          echo "SUPABASE_URL=${SUPABASE_URL}" >> "$GITHUB_ENV"
+          echo "SUPABASE_KEY=${SUPABASE_KEY}" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=${DATABASE_URL}" >> "$GITHUB_ENV"
+          echo "ALPACA_API_KEY=${ALPACA_API_KEY}" >> "$GITHUB_ENV"
+          echo "ALPACA_API_SECRET=${ALPACA_API_SECRET}" >> "$GITHUB_ENV"
 
       - name: Fetch intraday data from Alpaca
         id: fetch
