@@ -12,6 +12,9 @@ from hmmlearn.hmm import GaussianHMM
 
 logger = logging.getLogger(__name__)
 
+_MIN_STD = 1e-6
+_JITTER_SCALE = 1e-6
+
 
 class MarketRegimeDetector:
     """
@@ -45,12 +48,12 @@ class MarketRegimeDetector:
         # Replace non-finite values and standardize to avoid near-singular covariances
         feats = np.nan_to_num(feats, nan=0.0, posinf=0.0, neginf=0.0)
         mean = feats.mean(axis=0)
-        std = np.clip(feats.std(axis=0), 1e-6, None)
+        std = np.clip(feats.std(axis=0), _MIN_STD, None)
         feats = (feats - mean) / std
 
         # Small jitter to ensure positive-definite covariance
         rng = np.random.default_rng(self.random_state)
-        feats = feats + rng.normal(scale=1e-6, size=feats.shape)
+        feats = feats + rng.normal(scale=_JITTER_SCALE, size=feats.shape)
         return feats.astype(float)
 
     def fit(self, df: pd.DataFrame) -> None:
@@ -72,14 +75,16 @@ class MarketRegimeDetector:
         if not self.is_fitted:
             self.fit(df)
         if not self.is_fitted:
-            # Fallback: single regime with uniform probabilities
-            regimes = np.zeros(len(df), dtype=int)
-            probs = np.full((len(df), self.n_states), 1.0 / self.n_states)
-            return regimes, probs
+            return self._fallback_predictions(len(df))
 
         feats = self._build_features(df)
         regimes = self.model.predict(feats)
         probs = self.model.predict_proba(feats)
+        return regimes, probs
+
+    def _fallback_predictions(self, length: int) -> Tuple[np.ndarray, np.ndarray]:
+        regimes = np.zeros(length, dtype=int)
+        probs = np.full((length, self.n_states), 1.0 / self.n_states)
         return regimes, probs
 
 
