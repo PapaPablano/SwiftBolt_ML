@@ -1014,6 +1014,7 @@ class SupabaseDatabase:
         timeframe: str,
         overall_label: str,
         confidence: float,
+        points: list[dict] | None,
         target_price: float,
         current_price: float,
         supertrend_component: float,
@@ -1065,6 +1066,9 @@ class SupabaseDatabase:
                 "layers_agreeing": layers_agreeing,
                 "expires_at": expires_at,
             }
+
+            if points is not None:
+                forecast_data["points"] = points
 
             response = self.client.table("ml_forecasts_intraday").insert(forecast_data).execute()
 

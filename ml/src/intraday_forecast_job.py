@@ -66,6 +66,36 @@ def timeframe_interval_seconds(timeframe: str) -> int:
     raise ValueError(f"Unknown timeframe: {timeframe}")
 
 
+def build_intraday_short_points(
+    *,
+    base_ts_sec: int,
+    interval_sec: int,
+    steps: int,
+    current_price: float,
+    target_price: float,
+    confidence: float,
+) -> list[dict]:
+    safe_steps = max(1, min(500, int(steps)))
+    conf = float(np.clip(confidence, 0.0, 1.0))
+    band_pct = float(np.clip(0.03 - conf * 0.02, 0.005, 0.04))
+
+    points: list[dict] = []
+    for i in range(1, safe_steps + 1):
+        t = i / safe_steps
+        value = float(current_price + (target_price - current_price) * t)
+        lower = float(value * (1.0 - band_pct))
+        upper = float(value * (1.0 + band_pct))
+        points.append(
+            {
+                "ts": int(base_ts_sec + interval_sec * i),
+                "value": round(value, 4),
+                "lower": round(lower, 4),
+                "upper": round(upper, 4),
+            }
+        )
+    return points
+
+
 def build_intraday_path_points(
     df,
     *,
@@ -390,6 +420,27 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
             symbol=symbol,
         )
 
+        try:
+            last_ts = df["ts"].iloc[-1]
+            base_ts_sec = int(pd.to_datetime(last_ts, utc=True).timestamp())
+        except Exception:
+            base_ts_sec = int(datetime.utcnow().replace(tzinfo=timezone.utc).timestamp())
+
+        short_steps_by_timeframe = {
+            "m15": 40,
+            "h1": 40,
+            "h4": 25,
+        }
+        short_steps = int(short_steps_by_timeframe.get(timeframe, 40))
+        short_points = build_intraday_short_points(
+            base_ts_sec=base_ts_sec,
+            interval_sec=timeframe_interval_seconds(timeframe),
+            steps=short_steps,
+            current_price=float(current_price),
+            target_price=float(synth_result.target),
+            confidence=float(synth_result.confidence),
+        )
+
         # Calculate expiry time
         expires_at = get_expiry_time(horizon)
 
@@ -401,6 +452,7 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
             timeframe=timeframe,
             overall_label=synth_result.direction.lower(),
             confidence=synth_result.confidence,
+            points=short_points,
             target_price=synth_result.target,
             current_price=current_price,
             supertrend_component=synth_result.supertrend_component,
