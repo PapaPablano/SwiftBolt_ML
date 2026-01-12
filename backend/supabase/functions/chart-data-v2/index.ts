@@ -108,6 +108,8 @@ function buildIntradayForecastPoints(params: {
 const DAILY_FORECAST_MAX_POINTS = 6;
 const INTRADAY_FORECAST_MAX_POINTS = 6;
 
+const INTRADAY_FORECAST_EXPIRY_GRACE_SECONDS = 2 * 60 * 60;
+
 function toUnixSeconds(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return Math.floor(value);
@@ -365,6 +367,10 @@ serve(async (req) => {
           };
           const horizon = horizonMap[timeframe] || '1h';
 
+          const expiryCutoffIso = new Date(
+            Date.now() - INTRADAY_FORECAST_EXPIRY_GRACE_SECONDS * 1000,
+          ).toISOString();
+
           const pathHorizon = '7d';
           const { data: intradayPath } = await supabase
             .from('ml_forecast_paths_intraday')
@@ -372,7 +378,7 @@ serve(async (req) => {
             .eq('symbol_id', symbolId)
             .eq('timeframe', timeframe)
             .eq('horizon', pathHorizon)
-            .gte('expires_at', new Date().toISOString())
+            .gte('expires_at', expiryCutoffIso)
             .order('created_at', { ascending: false })
             .limit(1)
             .single();
@@ -383,7 +389,7 @@ serve(async (req) => {
             .select('*')
             .eq('symbol_id', symbolId)
             .eq('horizon', horizon)
-            .gte('expires_at', new Date().toISOString())
+            .gte('expires_at', expiryCutoffIso)
             .order('created_at', { ascending: false })
             .limit(1)
             .single();
@@ -435,61 +441,6 @@ serve(async (req) => {
               macdHistogram: null,
               kdjJ: null,
             };
-
-            if (intradayForecast) {
-              const intervalSec = timeframeToIntervalSeconds(timeframe);
-
-              const newestNonForecast = [...historical, ...intraday]
-                .filter((b) => !b.is_forecast)
-                .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime())
-                .pop();
-
-              const baseTsSec = newestNonForecast
-                ? Math.floor(new Date(newestNonForecast.ts).getTime() / 1000)
-                : Math.floor(Date.now() / 1000);
-
-              const targetPrice = Number(intradayForecast.target_price);
-              if (!Number.isFinite(targetPrice)) {
-                throw new Error('[chart-data-v2] intradayForecast.target_price is not a finite number');
-              }
-
-              const currentPrice = clampNumber(intradayForecast.current_price, targetPrice);
-              const fallbackConf = clampNumber(intradayForecast.confidence, conf);
-
-              const defaultStepsByTimeframe: Record<string, number> = {
-                m15: 40,
-                h1: 40,
-                h4: 25,
-              };
-
-              const steps = typeof forecastSteps === 'number'
-                ? Math.floor(forecastSteps)
-                : (defaultStepsByTimeframe[timeframe] ?? 40);
-
-              const shortPoints = intervalSec
-                ? buildIntradayForecastPoints({
-                  baseTsSec,
-                  intervalSec,
-                  steps,
-                  currentPrice,
-                  targetPrice,
-                  confidence: fallbackConf,
-                })
-                : [{
-                  ts: Math.floor(new Date(intradayForecast.expires_at).getTime() / 1000),
-                  value: targetPrice,
-                  lower: targetPrice * 0.98,
-                  upper: targetPrice * 1.02,
-                }];
-
-              const sampledShortPoints = sampleForecastPoints(shortPoints, INTRADAY_FORECAST_MAX_POINTS);
-              if (sampledShortPoints.length > 0) {
-                horizons.push({
-                  horizon,
-                  points: sampledShortPoints,
-                });
-              }
-            }
           } else if (intradayForecast) {
             const intervalSec = timeframeToIntervalSeconds(timeframe);
 

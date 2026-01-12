@@ -80,7 +80,7 @@ def build_intraday_short_points(
     band_pct = float(np.clip(0.03 - conf * 0.02, 0.005, 0.04))
 
     points: list[dict] = []
-    for i in range(1, safe_steps + 1):
+    for i in range(0, safe_steps + 1):
         t = i / safe_steps
         value = float(current_price + (target_price - current_price) * t)
         lower = float(value * (1.0 - band_pct))
@@ -199,20 +199,13 @@ def build_intraday_path_points(
 
 def get_expiry_time(horizon: str) -> datetime:
     """Calculate when the forecast expires based on horizon."""
-    now = datetime.utcnow()
+    now = datetime.utcnow().replace(second=0, microsecond=0)
 
     if horizon == "15m":
-        # Round to next 15-minute mark
-        minutes = (now.minute // 15 + 1) * 15
-        if minutes >= 60:
-            expiry = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
-        else:
-            expiry = now.replace(minute=minutes, second=0, microsecond=0)
+        expiry = now + timedelta(minutes=30)
     elif horizon == "1h":
-        # Round to next hour
-        expiry = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+        expiry = now + timedelta(hours=2)
     else:
-        # Default to 1 hour
         expiry = now + timedelta(hours=1)
 
     return expiry
@@ -434,15 +427,21 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
         except Exception:
             base_ts_sec = int(datetime.utcnow().replace(tzinfo=timezone.utc).timestamp())
 
-        short_steps_by_timeframe = {
-            "m15": 40,
-            "h1": 40,
-            "h4": 25,
+        horizon_seconds_map = {
+            "15m": 15 * 60,
+            "1h": 60 * 60,
         }
-        short_steps = int(short_steps_by_timeframe.get(timeframe, 40))
+        horizon_seconds = int(horizon_seconds_map.get(horizon, timeframe_interval_seconds(timeframe)))
+
+        short_steps_by_horizon = {
+            "15m": 8,
+            "1h": 12,
+        }
+        short_steps = int(short_steps_by_horizon.get(horizon, 8))
+        short_interval_sec = max(1, int(round(horizon_seconds / max(1, short_steps))))
         short_points = build_intraday_short_points(
             base_ts_sec=base_ts_sec,
-            interval_sec=timeframe_interval_seconds(timeframe),
+            interval_sec=short_interval_sec,
             steps=short_steps,
             current_price=float(current_price),
             target_price=float(synth_result.target),
