@@ -164,65 +164,65 @@ jobs:
              echo "Market state is '$MARKET_STATE' and force_refresh is false. Skipping Alpaca backfill."
 
              python - <<-'PY'
-            	import os
-            	import sys
-            	from pathlib import Path
+          	import os
+          	import sys
+          	from pathlib import Path
 
-            	from dotenv import load_dotenv
+          	from dotenv import load_dotenv
 
-            	repo_root = Path.cwd().parent
-            	load_dotenv(repo_root / ".env")
+          	repo_root = Path.cwd().parent
+          	load_dotenv(repo_root / ".env")
 
-            	sys.path.insert(0, str(repo_root))
+          	sys.path.insert(0, str(repo_root))
 
-            	from src.data.supabase_db import db
+          	from src.data.supabase_db import db
 
-            	def resolve_symbols() -> list[str]:
-            	    symbols_input = os.getenv("INPUT_SYMBOLS", "")
-            	    symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
-            	    if symbols:
-            	        return symbols
-            	    try:
-            	        from src.scripts.get_watchlist_symbols import get_watchlist_symbols
+          	def resolve_symbols() -> list[str]:
+          	    symbols_input = os.getenv("INPUT_SYMBOLS", "")
+          	    symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
+          	    if symbols:
+          	        return symbols
+          	    try:
+          	        from src.scripts.get_watchlist_symbols import get_watchlist_symbols
 
-            	        symbols = get_watchlist_symbols()
-            	        if symbols:
-            	            return symbols
-            	    except Exception as exc:
-            	        print(f"Warning: could not fetch watchlist symbols: {exc}")
-            	    return ["AAPL", "SPY", "TSLA"]
+          	        symbols = get_watchlist_symbols()
+          	        if symbols:
+          	            return symbols
+          	    except Exception as exc:
+          	        print(f"Warning: could not fetch watchlist symbols: {exc}")
+          	    return ["AAPL", "SPY", "TSLA"]
 
-            	def resolve_timeframes() -> list[str]:
-            	    tf_raw = os.getenv("INPUT_TIMEFRAMES", "m15,h1,h4")
-            	    return [t.strip() for t in tf_raw.split(",") if t.strip()]
+          	def resolve_timeframes() -> list[str]:
+          	    tf_raw = os.getenv("INPUT_TIMEFRAMES", "m15,h1,h4")
+          	    return [t.strip() for t in tf_raw.split(",") if t.strip()]
 
-            	symbols = resolve_symbols()
-            	timeframes = resolve_timeframes()
+          	symbols = resolve_symbols()
+          	timeframes = resolve_timeframes()
 
-            	summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-            	if summary_path:
-            	    with open(summary_path, "a", encoding="utf-8") as fh:
-            	        fh.write("## Supabase Intraday Snapshot\n")
-            	        fh.write("| Symbol | Timeframe | Bars | Latest Timestamp |\n")
-            	        fh.write("|--------|-----------|------|------------------|\n")
+          	summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          	if summary_path:
+          	    with open(summary_path, "a", encoding="utf-8") as fh:
+          	        fh.write("## Supabase Intraday Snapshot\n")
+          	        fh.write("| Symbol | Timeframe | Bars | Latest Timestamp |\n")
+          	        fh.write("|--------|-----------|------|------------------|\n")
 
-            	for sym in symbols:
-            	    for tf in timeframes:
-            	        try:
-            	            df = db.fetch_ohlc_bars(sym, timeframe=tf, limit=100)
-            	            count = len(df)
-            	            latest = df["ts"].max() if not df.empty else None
-            	            latest_iso = latest.isoformat() if latest is not None else "n/a"
-            	            print(f"{sym}/{tf}: {count} bars (latest={latest_iso})")
-            	            if summary_path:
-            	                with open(summary_path, "a", encoding="utf-8") as fh:
-            	                    fh.write(f"| {sym} | {tf} | {count} | {latest_iso} |\n")
-            	        except Exception as exc:
-            	            print(f"{sym}/{tf}: error reading Supabase data: {exc}")
-            	            if summary_path:
-            	                with open(summary_path, "a", encoding="utf-8") as fh:
-            	                    fh.write(f"| {sym} | {tf} | error | {exc} |\n")
-             	PY
+          	for sym in symbols:
+          	    for tf in timeframes:
+          	        try:
+          	            df = db.fetch_ohlc_bars(sym, timeframe=tf, limit=100)
+          	            count = len(df)
+          	            latest = df["ts"].max() if not df.empty else None
+          	            latest_iso = latest.isoformat() if latest is not None else "n/a"
+          	            print(f"{sym}/{tf}: {count} bars (latest={latest_iso})")
+          	            if summary_path:
+          	                with open(summary_path, "a", encoding="utf-8") as fh:
+          	                    fh.write(f"| {sym} | {tf} | {count} | {latest_iso} |\n")
+          	        except Exception as exc:
+          	            print(f"{sym}/{tf}: error reading Supabase data: {exc}")
+          	            if summary_path:
+          	                with open(summary_path, "a", encoding="utf-8") as fh:
+          	                    fh.write(f"| {sym} | {tf} | error | {exc} |\n")
+          	PY
 
              echo "total_bars=0" >> "$GITHUB_OUTPUT"
              echo "failed_timeframes=" >> "$GITHUB_OUTPUT"
