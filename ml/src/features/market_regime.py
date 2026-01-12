@@ -71,13 +71,13 @@ class MarketRegimeDetector:
         """
         if not self.is_fitted:
             self.fit(df)
-        feats = self._build_features(df)
         if not self.is_fitted:
             # Fallback: single regime with uniform probabilities
             regimes = np.zeros(len(df), dtype=int)
             probs = np.full((len(df), self.n_states), 1.0 / self.n_states)
             return regimes, probs
 
+        feats = self._build_features(df)
         regimes = self.model.predict(feats)
         probs = self.model.predict_proba(feats)
         return regimes, probs
