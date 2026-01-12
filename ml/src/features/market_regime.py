@@ -12,7 +12,11 @@ from hmmlearn.hmm import GaussianHMM
 
 logger = logging.getLogger(__name__)
 
+# Lower bound on std dev to avoid division by zero when features are flat.
+# Tuned small to preserve scale while still preventing singular covariances.
 _MIN_STD = 1e-6
+# Tiny jitter keeps covariance matrices positive-definite without materially
+# altering the signal; deterministic via class RNG for reproducibility.
 _JITTER_SCALE = 1e-6
 
 
@@ -75,7 +79,9 @@ class MarketRegimeDetector:
         if not self.is_fitted:
             self.fit(df)
         if not self.is_fitted:
-            # Fit failed; return stable defaults
+            # Fit failed; return stable defaults to keep pipeline running.
+            # All samples get regime 0 with uniform probabilities so downstream
+            # code can still proceed deterministically.
             return self._fallback_predictions(len(df))
 
         feats = self._build_features(df)
