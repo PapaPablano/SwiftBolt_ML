@@ -6,6 +6,7 @@ struct ForecastHorizonsView: View {
     let horizons: [ForecastSeries]
     let currentPrice: Double?
     let mlSummary: MLSummary?
+    @Binding var selectedHorizon: String?
     @State private var isExpanded = false
     private let collapsedHeight: CGFloat = 58
     private let expandedHeaderHeight: CGFloat = 96
@@ -39,6 +40,13 @@ struct ForecastHorizonsView: View {
 
     private var bestSeries: ForecastDisplayData? {
         displaySeries.max(by: { $0.confidence < $1.confidence })
+    }
+
+    private var selectedSeries: ForecastDisplayData? {
+        if let selectedHorizon {
+            return displaySeries.first(where: { $0.horizon == selectedHorizon }) ?? bestSeries
+        }
+        return bestSeries
     }
 
     private var longestHorizonLabel: String? {
@@ -84,6 +92,11 @@ struct ForecastHorizonsView: View {
                 expandedContent
                     .padding(16)
                     .background(Color(nsColor: .controlBackgroundColor))
+            }
+        }
+        .onAppear {
+            if selectedHorizon == nil {
+                selectedHorizon = horizons.first?.horizon
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -135,8 +148,8 @@ struct ForecastHorizonsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("ML Forecast")
                         .font(.callout.bold())
-                    if let summary = mlSummary, let best = bestSeries {
-                        Text("\(summary.overallLabel?.capitalized ?? "Unknown") • \(best.horizon.uppercased()) target \(best.formattedTarget) · \(best.shortDeltaDescription)")
+                    if let summary = mlSummary, let selected = selectedSeries {
+                        Text("\(summary.overallLabel?.capitalized ?? "Unknown") • \(selected.horizon.uppercased()) target \(selected.formattedTarget) · \(selected.shortDeltaDescription)")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -220,8 +233,8 @@ struct ForecastHorizonsView: View {
                     }
                 }
 
-                if let best = bestSeries {
-                    Text("\(best.horizon.uppercased()) target \(best.formattedTarget) • \(best.shortDeltaDescription) vs last")
+                if let selected = selectedSeries {
+                    Text("\(selected.horizon.uppercased()) target \(selected.formattedTarget) • \(selected.shortDeltaDescription) vs last")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -242,6 +255,26 @@ struct ForecastHorizonsView: View {
 
     private var expandedContent: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if displaySeries.count > 1 {
+                let fallback = displaySeries.first?.horizon
+                let selection = Binding<String>(
+                    get: {
+                        if let selectedHorizon, displaySeries.contains(where: { $0.horizon == selectedHorizon }) {
+                            return selectedHorizon
+                        }
+                        return fallback ?? ""
+                    },
+                    set: { selectedHorizon = $0 }
+                )
+
+                Picker("Forecast Horizon", selection: selection) {
+                    ForEach(displaySeries, id: \.horizon) { series in
+                        Text(series.horizon.uppercased()).tag(series.horizon)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
             if displaySeries.isEmpty {
                 Text("No horizon data available.")
                     .font(.caption)

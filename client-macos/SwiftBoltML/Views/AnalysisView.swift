@@ -213,6 +213,7 @@ struct EmptyAlertsView: View {
 struct MLForecastBreakdownSection: View {
     let mlSummary: MLSummary
     let referencePrice: Double?
+    @State private var selectedHorizon: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -246,7 +247,8 @@ struct MLForecastBreakdownSection: View {
             ForecastHorizonsView(
                 horizons: mlSummary.horizons,
                 currentPrice: referencePrice,
-                mlSummary: mlSummary
+                mlSummary: mlSummary,
+                selectedHorizon: $selectedHorizon
             )
         }
         .padding()

@@ -155,40 +155,11 @@ struct ChartView: View {
                             ForecastHorizonsView(
                                 horizons: mlSummary.horizons,
                                 currentPrice: referencePrice,
-                                mlSummary: mlSummary
+                                mlSummary: mlSummary,
+                                selectedHorizon: $chartViewModel.selectedForecastHorizon
                             )
                             .padding(.horizontal)
                             .padding(.top, 8)
-
-                            if !mlSummary.horizons.isEmpty {
-                                let horizons = mlSummary.horizons
-                                let fallback = horizons.first?.horizon ?? ""
-                                let selection = Binding<String>(
-                                    get: {
-                                        if let selected = chartViewModel.selectedForecastHorizon,
-                                           horizons.contains(where: { $0.horizon == selected }) {
-                                            return selected
-                                        }
-                                        return fallback
-                                    },
-                                    set: { chartViewModel.selectedForecastHorizon = $0 }
-                                )
-
-                                VStack(alignment: .leading, spacing: 8) {
-                                    if horizons.count > 1 {
-                                        Picker("Forecast Horizon", selection: selection) {
-                                            ForEach(horizons, id: \.horizon) { series in
-                                                Text(series.horizon).tag(series.horizon)
-                                            }
-                                        }
-                                        .pickerStyle(.segmented)
-                                    }
-
-                                    ForecastQualityPanel(summary: mlSummary, horizonLabel: chartViewModel.selectedForecastHorizon ?? horizons.first?.horizon)
-                                }
-                                .padding(.horizontal)
-                                .padding(.top, 8)
-                            }
                         }
 
                         // Choose chart renderer based on config
@@ -452,17 +423,19 @@ struct OHLCItem: View {
         }
     }
 
-    private func formatPrice(_ price: Double) -> String {
-        String(format: "%.2f", price)
-    }
-
-    private func formatVolume(_ volume: Double) -> String {
-        if volume >= 1_000_000 {
-            return String(format: "%.1fM", volume / 1_000_000)
-        } else if volume >= 1_000 {
-            return String(format: "%.1fK", volume / 1_000)
+    private func formatValue(_ value: Double) -> String {
+        if isVolume {
+            // Format volume with K/M suffix
+            if value >= 1_000_000 {
+                return String(format: "%.1fM", value / 1_000_000)
+            } else if value >= 1_000 {
+                return String(format: "%.1fK", value / 1_000)
+            } else {
+                return String(format: "%.0f", value)
+            }
+        } else {
+            return String(format: "%.2f", value)
         }
-        return String(format: "%.0f", volume)
     }
 }
 
@@ -584,65 +557,6 @@ struct IndicatorToggleMenu: View {
         }
         .menuStyle(.borderlessButton)
         .frame(maxWidth: .infinity, alignment: .trailing)
-    }
-}
-
-private struct ForecastQualityPanel: View {
-    let summary: MLSummary
-    let horizonLabel: String?
-
-    private var confidenceText: String {
-        "\(Int(summary.confidence * 100))%"
-    }
-
-    private var labelText: String {
-        (summary.overallLabel ?? "Neutral").capitalized
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Forecast Quality")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 12) {
-                Label(labelText, systemImage: "chart.line.uptrend.xyaxis")
-                    .font(.callout)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.accentColor.opacity(0.12))
-                    .cornerRadius(6)
-
-                Label("Confidence \(confidenceText)", systemImage: "shield.checkerboard")
-                    .font(.callout)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.secondary.opacity(0.12))
-                    .cornerRadius(6)
-
-                if let ensemble = summary.ensembleType {
-                    Label(ensemble.uppercased(), systemImage: "brain.head.profile")
-                        .font(.callout)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.secondary.opacity(0.08))
-                        .cornerRadius(6)
-                }
-            }
-
-            if let horizonLabel {
-                Text("Summary shown for selected horizon: \(horizonLabel)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Summary shown across available horizons")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding()
-        .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(10)
     }
 }
 

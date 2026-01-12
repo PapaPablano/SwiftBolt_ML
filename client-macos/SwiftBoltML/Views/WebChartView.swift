@@ -16,6 +16,7 @@ struct WebChartView: NSViewRepresentable {
         var hasLoadedInitialData = false
         var hasAppliedInitialZoom = false
         var lastVisibleRange: (from: Int, to: Int)?
+        var lastCandleSignature: (count: Int, lastTs: Int)?
 
         init(_ parent: WebChartView) {
             self.parent = parent
@@ -249,6 +250,15 @@ struct WebChartView: NSViewRepresentable {
             }
 
             // Set candlestick data using sanitized candles
+            let candleSignature = (
+                count: uniqueCandles.count,
+                lastTs: Int((uniqueCandles.last?.ts.timeIntervalSince1970 ?? 0))
+            )
+            if lastCandleSignature?.count != candleSignature.count || lastCandleSignature?.lastTs != candleSignature.lastTs {
+                lastCandleSignature = candleSignature
+                hasAppliedInitialZoom = false
+            }
+
             bridge.setCandles(from: uniqueCandles)
 
             // Intraday-specific forecast confidence badge/overlay
@@ -569,6 +579,15 @@ struct WebChartView: NSViewRepresentable {
             bridge.send(.clearIndicators)
 
             // Set candlestick data
+            let candleSignature = (
+                count: data.bars.count,
+                lastTs: Int((data.bars.last?.ts.timeIntervalSince1970 ?? 0))
+            )
+            if lastCandleSignature?.count != candleSignature.count || lastCandleSignature?.lastTs != candleSignature.lastTs {
+                lastCandleSignature = candleSignature
+                hasAppliedInitialZoom = false
+            }
+
             bridge.setCandles(from: data.bars)
 
             applyLegacyForecastOverlay(with: data)
