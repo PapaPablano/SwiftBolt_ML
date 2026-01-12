@@ -91,6 +91,7 @@ class MarketRegimeDetector:
         return regimes, probs
 
     def _fallback_predictions(self, length: int) -> Tuple[np.ndarray, np.ndarray]:
+        logger.info("Using fallback HMM regimes for length=%s", length)
         regimes = np.zeros(length, dtype=int)
         uniform_prob = 1.0 / self.n_states
         probs = np.full((length, self.n_states), uniform_prob)
