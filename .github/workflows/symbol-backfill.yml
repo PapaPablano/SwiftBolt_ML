@@ -1,9 +1,9 @@
 name: Symbol Backfill Worker
 
 on:
-  # Run every 10 minutes during market hours to process queued backfill jobs
-  schedule:
-    - cron: "*/10 13-22 * * 1-5"
+  # DISABLED: High-cost polling workflow. Prefer consolidated backfill orchestration.
+  # schedule:
+  #   - cron: "*/10 13-22 * * 1-5"
 
   # Manual trigger
   workflow_dispatch:

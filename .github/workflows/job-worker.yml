@@ -1,9 +1,9 @@
 name: ML Job Worker
 
 on:
-  # Run every 10 minutes during market hours to process pending jobs
+  # Run every 15 minutes during market hours to process pending jobs
   schedule:
-    - cron: '*/10 13-22 * * 1-5'
+    - cron: '*/15 13-22 * * 1-5'
   
   # Allow manual trigger
   workflow_dispatch:
@@ -29,6 +29,9 @@ jobs:
     steps:
       - name: Check market window (Mon–Fri 13:30–22:00 UTC)
         id: market_window
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
@@ -46,6 +49,29 @@ jobs:
             echo "run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
+          # If there are no pending jobs, skip expensive Python setup entirely.
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
+            echo "Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY secrets; cannot preflight job queue. Proceeding." 
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          pending_json=$(curl -sSf \
+            "${SUPABASE_URL}/rest/v1/v_job_queue_health?select=queue_name,status,job_count&status=eq.pending" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}")
+
+          pending_job_queue=$(echo "$pending_json" | jq -r '[.[] | select(.queue_name=="job_queue") | .job_count] | add // 0')
+          pending_ranking=$(echo "$pending_json" | jq -r '[.[] | select(.queue_name=="ranking_jobs") | .job_count] | add // 0')
+
+          if [ "${pending_job_queue}" -eq 0 ] && [ "${pending_ranking}" -eq 0 ]; then
+            echo "No pending jobs (job_queue=0, ranking_jobs=0) - skipping run"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Pending jobs detected (job_queue=${pending_job_queue}, ranking_jobs=${pending_ranking})"
           echo "run=true" >> "$GITHUB_OUTPUT"
           echo "Within market window"
 

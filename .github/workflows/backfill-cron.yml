@@ -2,8 +2,8 @@ name: Backfill Worker Cron
 
 on:
   schedule:
-    # Run during US market hours only (every 10 minutes, Mon–Fri)
-    - cron: '*/10 13-22 * * 1-5'
+    # Run during US market hours only (every 30 minutes, Mon–Fri)
+    - cron: '*/30 13-22 * * 1-5'
   workflow_dispatch: # Allow manual triggering
 
 jobs:
