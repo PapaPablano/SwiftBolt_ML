@@ -57,9 +57,10 @@ class MarketRegimeDetector:
         Construct standardized return/volatility features.
 
         Returns:
-            feats: standardized features (optionally jittered)
-            mean: feature means prior to standardization
-            std: feature std with a lower bound applied
+            Tuple containing:
+            - feats: standardized features (optionally jittered)
+            - mean: feature means prior to standardization
+            - std: feature std with a lower bound applied
         """
         # Daily returns and rolling volatility as proxies
         returns = df["close"].pct_change().fillna(0.0)

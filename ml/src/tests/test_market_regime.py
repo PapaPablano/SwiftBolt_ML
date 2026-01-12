@@ -26,6 +26,6 @@ def test_market_regime_graceful_with_constant_prices(monkeypatch):
     assert len(prob_cols) == 3
     assert (result["hmm_regime"] == 0).all()
     expected_prob = 1 / n_states
-    expected_probs = [expected_prob] * len(df)
+    expected_probs = pytest.approx([expected_prob] * len(df))
     for col in prob_cols:
-        assert result[col].to_numpy() == pytest.approx(expected_probs)
+        assert result[col].to_numpy() == expected_probs
