@@ -515,6 +515,7 @@ def main():
     logger.info(f"⏭️  Skipped: {len(skipped)}")
     logger.info(f"❌ Failed: {len(failed)}")
     logger.info(f"📊 Total bars inserted: {total_bars}")
+    logger.info(f"Inserted {total_bars} bars")
 
     if failed:
         logger.info("\nFailed symbols:")

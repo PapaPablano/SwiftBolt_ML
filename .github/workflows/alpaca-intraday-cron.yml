@@ -190,6 +190,7 @@ jobs:
 
             # Run backfill and capture output
             if output=$($cmd 2>&1); then
+              echo "$output" | tail -n 60
               # Extract bar count from output (look for "Inserted X bars")
               bars=$(echo "$output" | grep -oP 'Inserted \K\d+' | tail -1 || echo "0")
               bars=${bars:-0}
