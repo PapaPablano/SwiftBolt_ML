@@ -105,6 +105,25 @@
         return `rgba(${r},${g},${b},${a})`;
     };
 
+    const getCandleTimeRange = () => {
+        const bars = (state.useHeikinAshi && state.heikinAshiBars && state.heikinAshiBars.length > 0)
+            ? state.heikinAshiBars
+            : state.originalBars;
+
+        if (!bars || bars.length === 0) return null;
+
+        let minTime = bars[0].time;
+        let maxTime = bars[0].time;
+        for (let i = 1; i < bars.length; i++) {
+            const t = bars[i].time;
+            if (t < minTime) minTime = t;
+            if (t > maxTime) maxTime = t;
+        }
+
+        if (typeof minTime !== 'number' || typeof maxTime !== 'number') return null;
+        return { from: minTime, to: maxTime };
+    };
+
     // Chart options for dark theme
     const darkThemeOptions = {
         layout: {
@@ -678,7 +697,8 @@ removeSeries: function(id) {
                         wickUpColor: 'transparent',
                         wickDownColor: 'transparent',
                         priceLineVisible: false,
-                        lastValueVisible: false
+                        lastValueVisible: false,
+                        autoscaleInfoProvider: () => null
                     });
                 }
 
@@ -693,21 +713,24 @@ removeSeries: function(id) {
                 color: color,
                 lineWidth: 2,
                 lineStyle: LightweightCharts.LineStyle.Dashed,
-                name: 'Forecast'
+                name: 'Forecast',
+                autoscaleInfoProvider: () => null
             });
 
             // Upper bound
             this.setLine('forecast-upper', upperData, {
                 color: bandColor,
                 lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Dotted
+                lineStyle: LightweightCharts.LineStyle.Dotted,
+                autoscaleInfoProvider: () => null
             });
 
             // Lower bound
             this.setLine('forecast-lower', lowerData, {
                 color: bandColor,
                 lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Dotted
+                lineStyle: LightweightCharts.LineStyle.Dotted,
+                autoscaleInfoProvider: () => null
             });
 
             console.log('[ChartJS] Forecast set');
@@ -732,7 +755,8 @@ removeSeries: function(id) {
                     wickUpColor: '#4de680',
                     wickDownColor: '#ff5959',
                     priceLineVisible: false,
-                    lastValueVisible: true
+                    lastValueVisible: true,
+                    autoscaleInfoProvider: () => null
                 });
             }
 
@@ -1263,7 +1287,12 @@ removeSeries: function(id) {
          */
         fitContent: function() {
             if (state.chart) {
-                state.chart.timeScale().fitContent();
+                const range = getCandleTimeRange();
+                if (range) {
+                    state.chart.timeScale().setVisibleRange(range);
+                } else {
+                    state.chart.timeScale().fitContent();
+                }
             }
         },
 
