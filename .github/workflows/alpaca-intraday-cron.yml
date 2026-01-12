@@ -170,8 +170,8 @@ jobs:
           sys.path.insert(0, str(repo_root))
           sys.path.insert(0, str(repo_root / "src"))
 
-          from config.settings import settings  # noqa: E402
-          from src.data.supabase_db import db  # noqa: E402
+          from config.settings import settings
+          from src.data.supabase_db import db
 
           def resolve_symbols() -> list[str]:
               symbols_input = os.getenv("INPUT_SYMBOLS", "")
@@ -179,12 +179,12 @@ jobs:
               if symbols:
                   return symbols
               try:
-                  from src.scripts.get_watchlist_symbols import get_watchlist_symbols  # type: ignore[import-error]
+                  from src.scripts.get_watchlist_symbols import get_watchlist_symbols
                   symbols = get_watchlist_symbols()
                   if symbols:
                       return symbols
-              except Exception:
-                  pass
+              except Exception as exc:
+                  print(f"Warning: could not fetch watchlist symbols: {exc}")
               return ["AAPL", "SPY", "TSLA"]
 
           def resolve_timeframes() -> list[str]:
@@ -214,7 +214,11 @@ jobs:
                           with open(summary_path, "a", encoding="utf-8") as fh:
                               fh.write(f"| {sym} | {tf} | {count} | {latest_iso} |\n")
                   except Exception as exc:
-                      print(f"{sym}/{tf}: error reading Supabase data: {exc}")
+                      error_line = f"{sym}/{tf}: error reading Supabase data: {exc}"
+                      print(error_line)
+                      if summary_path:
+                          with open(summary_path, "a", encoding="utf-8") as fh:
+                              fh.write(f"| {sym} | {tf} | error | {exc} |\n")
           PY
 
       - name: Fetch intraday data from Alpaca
