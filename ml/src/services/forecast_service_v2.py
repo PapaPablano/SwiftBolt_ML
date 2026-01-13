@@ -172,13 +172,13 @@ class ForecastServiceV2:
                 microsecond=0,
             )
 
-            # Try intraday first (today's data)
+            # Try intraday first (today's data from Alpaca)
             response = (
                 self.db.client.table("ohlc_bars_v2")
                 .select("close")
                 .eq("symbol_id", symbol_id)
                 .eq("timeframe", "d1")
-                .eq("provider", "tradier")
+                .eq("provider", "alpaca")
                 .eq("is_intraday", True)
                 .gte("ts", today.isoformat() + "Z")
                 .order("ts", desc=True)
@@ -189,13 +189,13 @@ class ForecastServiceV2:
             if response.data:
                 return float(response.data[0]["close"])
 
-            # Fall back to historical
+            # Fall back to historical (Alpaca data)
             response = (
                 self.db.client.table("ohlc_bars_v2")
                 .select("close")
                 .eq("symbol_id", symbol_id)
                 .eq("timeframe", "d1")
-                .eq("provider", "polygon")
+                .eq("provider", "alpaca")
                 .eq("is_forecast", False)
                 .order("ts", desc=True)
                 .limit(1)

@@ -50,12 +50,14 @@ class SupabaseDatabase:
             )
             symbol_id = symbol_response.data["id"]
 
-            # Fetch OHLC bars
+            # Fetch OHLC bars (Alpaca data only, exclude forecasts)
             query = (
                 self.client.table("ohlc_bars_v2")
                 .select("ts, open, high, low, close, volume")
                 .eq("symbol_id", symbol_id)
                 .eq("timeframe", timeframe)
+                .eq("provider", "alpaca")
+                .eq("is_forecast", False)
                 .order("ts", desc=True)
             )
 
@@ -109,6 +111,8 @@ class SupabaseDatabase:
                 .select("ts, close")
                 .eq("symbol_id", symbol_id)
                 .eq("timeframe", timeframe)
+                .eq("provider", "alpaca")
+                .eq("is_forecast", False)
                 .lte("ts", ts_iso)
                 .order("ts", desc=True)
                 .limit(1)
@@ -246,6 +250,8 @@ class SupabaseDatabase:
                 .select("ts, close")
                 .eq("symbol_id", symbol_id)
                 .eq("timeframe", timeframe)
+                .eq("provider", "alpaca")
+                .eq("is_forecast", False)
                 .gt("ts", ts_iso)
                 .order("ts", desc=False)
                 .limit(n)
