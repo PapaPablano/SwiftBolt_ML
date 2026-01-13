@@ -2,7 +2,7 @@
 Process the symbol backfill queue.
 
 This script claims pending backfill jobs from the queue and fetches
-historical OHLC data from Polygon API.
+historical OHLC data from Alpaca API.
 
 Designed to run as a GitHub Action every 5 minutes.
 """
@@ -28,98 +28,127 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Polygon API configuration
-POLYGON_BASE_URL = "https://api.polygon.io"
-POLYGON_API_KEY = os.getenv("MASSIVE_API_KEY") or os.getenv("POLYGON_API_KEY")
+# Alpaca API configuration
+ALPACA_BASE_URL = "https://data.alpaca.markets/v2"
+ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
+ALPACA_API_SECRET = os.getenv("ALPACA_API_SECRET")
 
-# Rate limiting: Polygon free tier = 5 requests/minute
-RATE_LIMIT_DELAY = 12.5
+# Rate limiting: Alpaca allows 200 requests/minute
+RATE_LIMIT_DELAY = 0.3  # 60/200 = 0.3 seconds between requests
 
-# Timeframe configurations
+# Timeframe configurations (Alpaca format)
 TIMEFRAME_CONFIG = {
-    "m15": {"multiplier": 15, "timespan": "minute", "max_days": 60},
-    "h1": {"multiplier": 1, "timespan": "hour", "max_days": 180},
-    "h4": {"multiplier": 4, "timespan": "hour", "max_days": 365},
-    "d1": {"multiplier": 1, "timespan": "day", "max_days": 730},
-    "w1": {"multiplier": 1, "timespan": "week", "max_days": 1825},
+    "m15": {"alpaca_tf": "15Min", "max_days": 60},
+    "h1": {"alpaca_tf": "1Hour", "max_days": 180},
+    "h4": {"alpaca_tf": "4Hour", "max_days": 365},
+    "d1": {"alpaca_tf": "1Day", "max_days": 2555},  # 7 years
+    "w1": {"alpaca_tf": "1Week", "max_days": 2555},  # 7 years
 }
 
 # Maximum jobs to process per run (to stay within GitHub Action timeout)
 MAX_JOBS_PER_RUN = 3
 
 
-def fetch_polygon_bars(
+def get_alpaca_headers() -> dict:
+    """Get authentication headers for Alpaca API."""
+    return {
+        "APCA-API-KEY-ID": ALPACA_API_KEY,
+        "APCA-API-SECRET-KEY": ALPACA_API_SECRET,
+        "Accept": "application/json",
+    }
+
+
+def fetch_alpaca_bars(
     symbol: str,
     timeframe: str,
     start_date: datetime,
     end_date: datetime,
 ) -> list[dict]:
-    """Fetch OHLC bars from Polygon API."""
-    if not POLYGON_API_KEY:
-        raise ValueError("MASSIVE_API_KEY or POLYGON_API_KEY not set")
+    """Fetch OHLC bars from Alpaca API with automatic pagination."""
+    if not ALPACA_API_KEY or not ALPACA_API_SECRET:
+        raise ValueError("ALPACA_API_KEY and ALPACA_API_SECRET must be set")
 
     config = TIMEFRAME_CONFIG.get(timeframe)
     if not config:
         raise ValueError(f"Invalid timeframe: {timeframe}")
 
-    multiplier = config["multiplier"]
-    timespan = config["timespan"]
+    alpaca_timeframe = config["alpaca_tf"]
 
-    # Format dates
-    if timespan in ("day", "week", "month"):
-        from_str = start_date.strftime("%Y-%m-%d")
-        to_str = end_date.strftime("%Y-%m-%d")
-    else:
-        from_str = str(int(start_date.timestamp() * 1000))
-        to_str = str(int(end_date.timestamp() * 1000))
+    # Format dates to RFC-3339
+    start_str = start_date.strftime("%Y-%m-%dT%H:%M:%SZ")
+    end_str = end_date.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    url = (
-        f"{POLYGON_BASE_URL}/v2/aggs/ticker/{symbol.upper()}/range/"
-        f"{multiplier}/{timespan}/{from_str}/{to_str}"
-    )
-    params = {
-        "adjusted": "false",  # Use unadjusted prices for accurate historical data
-        "sort": "asc",
-        "limit": "50000",
-        "apiKey": POLYGON_API_KEY,
-    }
+    logger.info(f"Fetching {symbol} {timeframe} from {start_str} to {end_str}")
 
-    logger.info(f"Fetching {symbol} {timeframe} from {from_str} to {to_str}")
+    all_bars = []
+    page_token = None
+    page_count = 0
+    max_pages = 100  # Safety limit
 
     try:
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-
-        if data.get("status") == "ERROR":
-            logger.error(f"Polygon API error: {data}")
-            return []
-
-        results = data.get("results", [])
-        if not results:
-            logger.warning(f"No data returned for {symbol} {timeframe}")
-            return []
-
-        # Transform to our format
-        bars = []
-        for r in results:
-            bars.append(
-                {
-                    "ts": datetime.fromtimestamp(r["t"] / 1000, tz=timezone.utc).isoformat(),
-                    "open": r["o"],
-                    "high": r["h"],
-                    "low": r["l"],
-                    "close": r["c"],
-                    "volume": r["v"],
-                }
+        while page_count < max_pages:
+            # Build URL
+            url = (
+                f"{ALPACA_BASE_URL}/stocks/bars?"
+                f"symbols={symbol.upper()}&"
+                f"timeframe={alpaca_timeframe}&"
+                f"start={start_str}&"
+                f"end={end_str}&"
+                f"limit=10000&"
+                f"adjustment=raw&"
+                f"feed=iex&"
+                f"sort=asc"
             )
 
-        logger.info(f"Fetched {len(bars)} bars for {symbol} {timeframe}")
-        return bars
+            if page_token:
+                url += f"&page_token={page_token}"
+
+            response = requests.get(
+                url,
+                headers=get_alpaca_headers(),
+                timeout=30,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            # Extract bars for this symbol
+            bars_data = data.get("bars", {}).get(symbol.upper(), [])
+
+            if not bars_data and page_count == 0:
+                logger.warning(f"No data returned for {symbol} {timeframe}")
+                return []
+
+            # Transform to our format
+            for bar in bars_data:
+                all_bars.append(
+                    {
+                        "ts": bar["t"],  # Already RFC-3339 format
+                        "open": bar["o"],
+                        "high": bar["h"],
+                        "low": bar["l"],
+                        "close": bar["c"],
+                        "volume": bar["v"],
+                    }
+                )
+
+            # Check for next page
+            page_token = data.get("next_page_token")
+            page_count += 1
+
+            if page_token:
+                logger.info(f"Fetched page {page_count} with {len(bars_data)} bars, continuing...")
+                time.sleep(RATE_LIMIT_DELAY)
+            else:
+                break
+
+        logger.info(f"Fetched {len(all_bars)} bars for {symbol} {timeframe}")
+        return all_bars
 
     except requests.exceptions.HTTPError as e:
         if e.response.status_code == 429:
             logger.error("Rate limit exceeded!")
+        elif e.response.status_code == 401:
+            logger.error("Authentication failed! Verify Alpaca API credentials.")
         else:
             logger.error(f"HTTP error fetching {symbol}: {e}")
         return []
@@ -129,7 +158,7 @@ def fetch_polygon_bars(
 
 
 def persist_bars(symbol_id: str, timeframe: str, bars: list[dict]) -> int:
-    """Persist bars to database. Returns count of inserted bars."""
+    """Persist bars to ohlc_bars_v2 with provider='alpaca'. Returns count of inserted bars."""
     if not bars:
         return 0
 
@@ -145,17 +174,27 @@ def persist_bars(symbol_id: str, timeframe: str, bars: list[dict]) -> int:
                 "low": bar["low"],
                 "close": bar["close"],
                 "volume": bar["volume"],
-                "provider": "massive",
+                "provider": "alpaca",
+                "is_forecast": False,
+                "data_status": "verified",
             }
         )
 
     try:
-        db.client.table("ohlc_bars").upsert(
-            batch,
-            on_conflict="symbol_id,timeframe,ts",
-        ).execute()
-        logger.info(f"Persisted {len(batch)} bars")
-        return len(batch)
+        # Batch upsert (1000 rows per request limit)
+        inserted = 0
+        batch_size = 1000
+
+        for i in range(0, len(batch), batch_size):
+            chunk = batch[i:i + batch_size]
+            db.client.table("ohlc_bars_v2").upsert(
+                chunk,
+                on_conflict="symbol_id,timeframe,ts,provider,is_forecast",
+            ).execute()
+            inserted += len(chunk)
+
+        logger.info(f"Persisted {inserted} bars")
+        return inserted
     except Exception as e:
         logger.error(f"Error persisting bars: {e}")
         return 0
@@ -168,7 +207,7 @@ def process_backfill_job(
     timeframes: list[str],
 ) -> tuple[bool, int, Optional[str]]:
     """
-    Process a single backfill job.
+    Process a single backfill job using Alpaca API.
 
     Returns: (success, bars_inserted, error_message)
     """
@@ -186,8 +225,8 @@ def process_backfill_job(
             end_date = datetime.now(timezone.utc)
             start_date = end_date - timedelta(days=config["max_days"])
 
-            # Fetch from Polygon
-            bars = fetch_polygon_bars(ticker, tf, start_date, end_date)
+            # Fetch from Alpaca
+            bars = fetch_alpaca_bars(ticker, tf, start_date, end_date)
 
             if bars:
                 inserted = persist_bars(symbol_id, tf, bars)
@@ -242,12 +281,12 @@ def complete_job(
 
 
 def main():
-    if not POLYGON_API_KEY:
-        logger.error("MASSIVE_API_KEY or POLYGON_API_KEY not set!")
+    if not ALPACA_API_KEY or not ALPACA_API_SECRET:
+        logger.error("ALPACA_API_KEY and ALPACA_API_SECRET must be set!")
         sys.exit(1)
 
     logger.info("=" * 60)
-    logger.info("Symbol Backfill Queue Processor")
+    logger.info("Symbol Backfill Queue Processor (Alpaca)")
     logger.info(f"Max jobs per run: {MAX_JOBS_PER_RUN}")
     logger.info("=" * 60)
 

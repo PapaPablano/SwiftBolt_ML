@@ -1,13 +1,12 @@
 // Provider Factory: Initializes and exports singleton provider router
 // This is the main entry point for using the data provider abstraction layer
+// Alpaca-only strategy: Alpaca is the single source of truth for all OHLCV data
 
 import { TokenBucketRateLimiter } from "../rate-limiter/token-bucket.ts";
 import { MemoryCache } from "../cache/memory-cache.ts";
 import { getRateLimits } from "../config/rate-limits.ts";
 import { FinnhubClient } from "./finnhub-client.ts";
-import { MassiveClient } from "./massive-client.ts";
 import { YahooFinanceClient } from "./yahoo-finance-client.ts";
-import { TradierClient } from "./tradier-client.ts";
 import { AlpacaClient } from "./alpaca-client.ts";
 import { ProviderRouter } from "./router.ts";
 import type { ProviderId } from "./types.ts";
@@ -20,13 +19,18 @@ let cacheInstance: MemoryCache | null = null;
 /**
  * Initialize the provider system with rate limiting and caching
  * Call this once at application startup
+ * 
+ * Alpaca-only strategy:
+ * - Alpaca: PRIMARY provider for all OHLCV data (historical + real-time)
+ * - Finnhub: News only
+ * - Yahoo: Options chain only (Alpaca doesn't provide options)
  */
 export function initializeProviders(): ProviderRouter {
   if (routerInstance) {
     return routerInstance;
   }
 
-  console.log("[Provider Factory] Initializing provider system...");
+  console.log("[Provider Factory] Initializing provider system (Alpaca-only strategy)...");
 
   // Initialize rate limiter
   const rateLimits = getRateLimits();
@@ -39,8 +43,6 @@ export function initializeProviders(): ProviderRouter {
 
   // Initialize provider clients
   const finnhubApiKey = Deno.env.get("FINNHUB_API_KEY");
-  const massiveApiKey = Deno.env.get("MASSIVE_API_KEY");
-  const tradierApiKey = Deno.env.get("TRADIER_API_KEY");
   const alpacaApiKey = Deno.env.get("ALPACA_API_KEY");
   const alpacaApiSecret = Deno.env.get("ALPACA_API_SECRET");
 
@@ -49,15 +51,7 @@ export function initializeProviders(): ProviderRouter {
   }
 
   if (!alpacaApiKey || !alpacaApiSecret) {
-    console.warn("[Provider Factory] ALPACA_API_KEY or ALPACA_API_SECRET not set - Alpaca provider will not be available");
-  }
-
-  if (!massiveApiKey) {
-    console.warn("[Provider Factory] MASSIVE_API_KEY not set - Polygon/Massive provider will not be available");
-  }
-
-  if (!tradierApiKey) {
-    console.warn("[Provider Factory] TRADIER_API_KEY not set - Tradier provider will not be available");
+    throw new Error("Missing required API keys: ALPACA_API_KEY and ALPACA_API_SECRET are required for Alpaca-only strategy");
   }
 
   const finnhubClient = new FinnhubClient(
@@ -66,85 +60,66 @@ export function initializeProviders(): ProviderRouter {
     cacheInstance
   );
 
-  const massiveClient = massiveApiKey ? new MassiveClient(
-    massiveApiKey,
-    rateLimiterInstance,
-    cacheInstance
-  ) : null;
-
   const yahooFinanceClient = new YahooFinanceClient(
     cacheInstance
   );
 
-  const tradierClient = tradierApiKey ? new TradierClient(tradierApiKey) : null;
-  const alpacaClient = (alpacaApiKey && alpacaApiSecret) ? new AlpacaClient(
+  const alpacaClient = new AlpacaClient(
     alpacaApiKey,
     alpacaApiSecret,
     rateLimiterInstance,
     cacheInstance
-  ) : null;
+  );
 
   // Warm Alpaca assets cache on startup to avoid validation delays
-  if (alpacaClient) {
-    console.log("[Provider Factory] Alpaca credentials check: {");
-    console.log(`  hasApiKey: ${!!alpacaApiKey},`);
-    console.log(`  apiKeyLength: ${alpacaApiKey?.length},`);
-    console.log(`  hasApiSecret: ${!!alpacaApiSecret},`);
-    console.log(`  apiSecretLength: ${alpacaApiSecret?.length}`);
-    console.log("}");
+  console.log("[Provider Factory] Alpaca credentials check: {");
+  console.log(`  hasApiKey: ${!!alpacaApiKey},`);
+  console.log(`  apiKeyLength: ${alpacaApiKey?.length},`);
+  console.log(`  hasApiSecret: ${!!alpacaApiSecret},`);
+  console.log(`  apiSecretLength: ${alpacaApiSecret?.length}`);
+  console.log("}");
 
-    console.log("[Provider Factory] Alpaca client status: { initialized: true, willUsePrimary: \"alpaca\" }");
+  console.log("[Provider Factory] Alpaca client status: { initialized: true, willUsePrimary: \"alpaca\" }");
 
-    alpacaClient.getAssets().then(() => {
-      console.log("[Provider Factory] Alpaca assets cache warmed successfully");
-    }).catch((error) => {
-      console.warn("[Provider Factory] Failed to warm Alpaca assets cache:", error);
-    });
-  }
+  alpacaClient.getAssets().then(() => {
+    console.log("[Provider Factory] Alpaca assets cache warmed successfully");
+  }).catch((error) => {
+    console.warn("[Provider Factory] Failed to warm Alpaca assets cache:", error);
+  });
 
   console.log("[Provider Factory] Provider clients initialized");
 
-  // Initialize router with custom policy for intraday vs historical data
+  // Initialize router with Alpaca-only policy for OHLCV data
   const providers: Record<string, any> = {
     finnhub: finnhubClient,
     yahoo: yahooFinanceClient,
+    alpaca: alpacaClient,
   };
 
-  if (massiveClient) {
-    providers.massive = massiveClient;
-  }
-
-  if (tradierClient) {
-    providers.tradier = tradierClient;
-  }
-
-  if (alpacaClient) {
-    providers.alpaca = alpacaClient;
-  }
-
-  // Custom policy: Alpaca for real-time, Yahoo for historical, Tradier for intraday
+  // Alpaca-only policy: Single source of truth for all OHLCV data
+  // No fallbacks for OHLCV - if Alpaca fails, we want to know about it
   const policy = {
     quote: {
-      primary: alpacaClient ? "alpaca" as ProviderId : "tradier" as ProviderId,
+      primary: "alpaca" as ProviderId,
       fallback: "finnhub" as ProviderId,
     },
     historicalBars: {
-      primary: alpacaClient ? "alpaca" as ProviderId : "yahoo" as ProviderId, // Alpaca preferred, fallback to Yahoo
-      fallback: "finnhub" as ProviderId,
+      primary: "alpaca" as ProviderId,
+      fallback: undefined, // No fallback - Alpaca is single source of truth
     },
     news: {
-      primary: alpacaClient ? "alpaca" as ProviderId : "finnhub" as ProviderId,
+      primary: "alpaca" as ProviderId,
       fallback: "finnhub" as ProviderId,
     },
     optionsChain: {
-      primary: "yahoo" as ProviderId,
+      primary: "yahoo" as ProviderId, // Alpaca doesn't provide options data
       fallback: undefined,
     },
   };
 
   routerInstance = new ProviderRouter(providers, policy);
 
-  console.log("[Provider Factory] Provider router initialized");
+  console.log("[Provider Factory] Provider router initialized (Alpaca-only strategy)");
 
   return routerInstance;
 }
@@ -164,20 +139,14 @@ export function getProviderRouter(): ProviderRouter {
  * Inject Supabase client into providers for distributed rate limiting
  * Call this in Edge functions that need coordinated rate limiting
  */
-export function injectSupabaseClient(supabase: any): void {
+export function injectSupabaseClient(_supabase: any): void {
   if (!routerInstance) {
     initializeProviders();
   }
 
-  // Inject into Massive/Polygon client (if available)
-  const router = routerInstance as any;
-  const massiveProvider = router.providers?.get("massive");
-  if (massiveProvider && typeof massiveProvider.setSupabaseClient === "function") {
-    massiveProvider.setSupabaseClient(supabase);
-    console.log("[Provider Factory] Injected Supabase client into Massive provider");
-  } else {
-    console.log("[Provider Factory] Massive provider not available, skipping Supabase client injection");
-  }
+  // Note: With Alpaca-only strategy, we don't need to inject Supabase client
+  // into Massive/Polygon provider since it's no longer used
+  console.log("[Provider Factory] Supabase client injection not needed for Alpaca-only strategy");
 }
 
 /**
