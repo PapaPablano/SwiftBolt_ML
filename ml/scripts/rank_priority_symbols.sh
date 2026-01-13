@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck shell=bash
 
 # Options Ranking Scheduled Job
 # Ranks options for priority symbols (watchlist + popular stocks)
@@ -13,6 +14,8 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
 # Activate virtual environment
+# shellcheck source=../../venv/bin/activate
+# shellcheck disable=SC1091
 if [ -f "venv/bin/activate" ]; then
     source venv/bin/activate
 else
@@ -37,9 +40,11 @@ total_failed=0
 
 # Get dynamic watchlist symbols from database
 echo "Fetching watchlist symbols from database..."
-watchlist_symbols=$(python src/scripts/get_watchlist_symbols.py 2>/dev/null || echo "")
+mapfile -t WATCHLIST_SYMBOLS < <(
+    python src/scripts/get_watchlist_symbols.py 2>/dev/null || echo ""
+)
 
-if [ -z "$watchlist_symbols" ]; then
+if [ ${#WATCHLIST_SYMBOLS[@]} -eq 0 ]; then
     echo "Warning: No watchlist symbols found, using defaults only"
 fi
 
@@ -57,19 +62,19 @@ PRIORITY_SYMBOLS=(
     "AMD"    # AMD
 )
 
-# Combine watchlist and priority symbols, remove duplicates
-all_symbols=()
-for symbol in $watchlist_symbols; do
-    all_symbols+=("$symbol")
-done
-for symbol in "${PRIORITY_SYMBOLS[@]}"; do
-    all_symbols+=("$symbol")
-done
+# Build unified symbol set
+unique_symbols=()
+if [ ${#WATCHLIST_SYMBOLS[@]} -gt 0 ] || [ ${#PRIORITY_SYMBOLS[@]} -gt 0 ]; then
+    mapfile -t unique_symbols < <(
+        {
+            printf '%s\n' "${WATCHLIST_SYMBOLS[@]}"
+            printf '%s\n' "${PRIORITY_SYMBOLS[@]}"
+        } | awk '!seen[$0]++'
+    )
+fi
 
-# Remove duplicates using simpler method
-unique_symbols=($(printf "%s\n" "${all_symbols[@]}" | sort -u))
-
-echo "Ranking ${#unique_symbols[@]} symbols: ${unique_symbols[*]}"
+echo "Ranking ${#unique_symbols[@]} symbols:"
+printf '  %s\n' "${unique_symbols[@]}"
 echo "----------------------------------------"
 
 # Process each symbol

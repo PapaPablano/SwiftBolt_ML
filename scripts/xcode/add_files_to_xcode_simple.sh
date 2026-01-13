@@ -3,7 +3,7 @@
 echo "🔧 Attempting to add files to Xcode project..."
 
 # Navigate to project directory
-cd client-macos
+cd client-macos || exit 1
 
 # Use PlistBuddy to check if we can access the project
 PROJECT_FILE="SwiftBoltML.xcodeproj/project.pbxproj"

@@ -11,7 +11,10 @@ echo ""
 # Load environment variables
 if [ -f ".env" ]; then
   echo "Loading .env file..."
-  export $(cat .env | grep -v '^#' | xargs)
+  set -a
+  # shellcheck source=../.env
+  source .env
+  set +a
 fi
 
 if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
@@ -85,7 +88,7 @@ for i in {1..3}; do
   echo ""
 
   # Small delay between runs
-  if [ $i -lt 3 ]; then
+  if [ "$i" -lt 3 ]; then
     sleep 2
   fi
 done

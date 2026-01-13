@@ -31,6 +31,8 @@ interface NewsResponse {
   }[];
 }
 
+type NewsItem = NewsResponse["items"][number];
+
 interface NewsRecord {
   id: string;
   title: string;

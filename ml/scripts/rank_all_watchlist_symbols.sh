@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck shell=bash
 # Rank options for all common watchlist symbols
 
 set -e
@@ -7,6 +8,8 @@ set -e
 cd "$(dirname "$0")/.."
 
 # Activate virtual environment
+# shellcheck source=../venv/bin/activate
+# shellcheck disable=SC1091
 source venv/bin/activate
 
 # List of symbols to rank

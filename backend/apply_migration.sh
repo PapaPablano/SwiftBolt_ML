@@ -3,7 +3,6 @@
 # Run this script OR copy the SQL to Supabase SQL Editor
 
 PROJECT_REF="cygflaemtmwiwaviclks"
-SUPABASE_URL="https://${PROJECT_REF}.supabase.co"
 
 echo "=============================================="
 echo "  Apply Alpaca Provider Migration"

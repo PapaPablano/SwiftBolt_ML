@@ -82,7 +82,7 @@ for i in {1..3}; do
   echo "$WORKER_RESPONSE" | jq '.' 2>/dev/null || echo "$WORKER_RESPONSE"
 
   # Small delay between runs
-  if [ $i -lt 3 ]; then
+  if [ "$i" -lt 3 ]; then
     sleep 3
   fi
 done

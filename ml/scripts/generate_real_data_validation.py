@@ -11,21 +11,19 @@ Usage:
     python scripts/generate_real_data_validation.py
 """
 
-import sys
-from pathlib import Path
-
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
+import sys
 
-import numpy as np
 import pandas as pd
 
-from config.settings import settings
-from src.data.supabase_db import db
-from src.evaluation import OptionsRankingValidator
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from src.data.supabase_db import db  # noqa: E402
+from src.evaluation import OptionsRankingValidator  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,7 +49,9 @@ def fetch_options_rankings_with_returns(days_back: int = 120) -> pd.DataFrame:
 
     try:
         # Fetch options_chain_snapshots with ml_score
-        cutoff_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+        cutoff_date = (
+            datetime.now() - timedelta(days=days_back)
+        ).strftime("%Y-%m-%d")
 
         response = (
             db.client.table("options_chain_snapshots")
@@ -111,7 +111,9 @@ def fetch_options_rankings_with_returns(days_back: int = 120) -> pd.DataFrame:
         df = df[df["days_diff"] == 1].copy()
 
         if df.empty:
-            logger.warning("No consecutive day pairs found for forward returns")
+            logger.warning(
+                "No consecutive day pairs found for forward returns"
+            )
             return pd.DataFrame()
 
         # Calculate forward return
@@ -142,7 +144,9 @@ def fetch_options_rankings_with_returns(days_back: int = 120) -> pd.DataFrame:
         logger.info(f"Processed {len(result)} contracts with forward returns")
         if not result.empty:
             logger.info(
-                f"Date range: {result['ranking_date'].min()} to {result['ranking_date'].max()}"
+                "Date range: %s to %s",
+                result["ranking_date"].min(),
+                result["ranking_date"].max(),
             )
             logger.info(f"Unique days: {result['ranking_date'].nunique()}")
 
@@ -153,7 +157,10 @@ def fetch_options_rankings_with_returns(days_back: int = 120) -> pd.DataFrame:
         raise
 
 
-def run_validation_report(df: pd.DataFrame, report_name: str = "Real Data") -> str:
+def run_validation_report(
+    df: pd.DataFrame,
+    report_name: str = "Real Data",
+) -> str:
     """
     Run the enhanced validator on real data and generate report.
 
@@ -239,14 +246,23 @@ def main():
         df = fetch_options_rankings_with_returns(days_back=120)
     except Exception as e:
         print(f"Error fetching data: {e}")
-        print("\nMake sure SUPABASE_URL and SUPABASE_KEY are set in your environment.")
+        print(
+            "\nMake sure SUPABASE_URL and SUPABASE_KEY are set in your "
+            "environment."
+        )
         return
 
     if df.empty:
         print("No data found in options_price_history table.")
         print("\nTo generate real data reports, you need:")
-        print("  1. Options ranking jobs to have run (populating options_ranks)")
-        print("  2. Options snapshots to be captured (populating options_price_history)")
+        print(
+            "  1. Options ranking jobs to have run"
+            " (populating options_ranks)"
+        )
+        print(
+            "  2. Options snapshots to be captured "
+            "(populating options_price_history)"
+        )
         print("  3. At least 60 days of data (prefer 120)")
         return
 
@@ -260,7 +276,11 @@ def main():
     print("=" * 70)
     print(f"Total contracts with forward returns: {len(df)}")
     print(f"Unique trading days: {df['ranking_date'].nunique()}")
-    print(f"Date range: {df['ranking_date'].min()} to {df['ranking_date'].max()}")
+    print(
+        "Date range: {} to {}".format(
+            df["ranking_date"].min(), df["ranking_date"].max()
+        )
+    )
     print(f"Unique underlyings: {df['underlying_symbol'].nunique()}")
     print(f"Mean forward return: {df['forward_return'].mean():.4f}")
     print(f"Std forward return: {df['forward_return'].std():.4f}")

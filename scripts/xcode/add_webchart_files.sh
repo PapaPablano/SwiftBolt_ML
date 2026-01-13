@@ -3,8 +3,6 @@
 # Script to add WebChart files to Xcode project
 # This adds the new Swift and JavaScript files to the project
 
-PROJECT_FILE="/Users/ericpeterson/SwiftBolt_ML/client-macos/SwiftBoltML.xcodeproj/project.pbxproj"
-
 echo "Adding WebChart files to Xcode project..."
 
 # Files to add

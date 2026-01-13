@@ -112,7 +112,10 @@ DEFAULT_SYMBOLS = [
 def get_watchlist_symbols(limit: int = 200) -> List[str]:
     """Fetch symbols from user watchlists."""
     try:
-        response = db.client.rpc("get_all_watchlist_symbols", {"p_limit": limit}).execute()
+        response = db.client.rpc(
+            "get_all_watchlist_symbols",
+            {"p_limit": limit},
+        ).execute()
         if response.data:
             symbols = [row["ticker"] for row in response.data]
             logger.info(f"📋 Fetched {len(symbols)} symbols from watchlists")
@@ -184,7 +187,11 @@ def fetch_alpaca_bars(
             if page_token:
                 url += f"&page_token={page_token}"
 
-            response = requests.get(url, headers=get_alpaca_headers(), timeout=30)
+            response = requests.get(
+                url,
+                headers=get_alpaca_headers(),
+                timeout=30,
+            )
             response.raise_for_status()
             data = response.json()
 
@@ -197,7 +204,9 @@ def fetch_alpaca_bars(
 
             # Transform to our format
             for bar in bars_data:
-                bar_ts = datetime.fromisoformat(bar["t"].replace("Z", "+00:00"))
+                bar_ts = datetime.fromisoformat(
+                    bar["t"].replace("Z", "+00:00")
+                )
 
                 all_bars.append(
                     {
@@ -215,13 +224,21 @@ def fetch_alpaca_bars(
             page_count += 1
 
             if page_token:
-                logger.info(f"Fetched page {page_count} with {len(bars_data)} bars, continuing...")
-                time.sleep(RATE_LIMIT_DELAY)  # Rate limiting between pages
+                logger.info(
+                    "Fetched page %s with %s bars, continuing...",
+                    page_count,
+                    len(bars_data),
+                )
+                time.sleep(RATE_LIMIT_DELAY)
             else:
                 break
 
         logger.info(
-            f"✅ Fetched {len(all_bars)} bars for {symbol} {timeframe} across {page_count} page(s)"
+            "✅ Fetched %s bars for %s %s across %s page(s)",
+            len(all_bars),
+            symbol,
+            timeframe,
+            page_count,
         )
         return all_bars
 
@@ -229,7 +246,9 @@ def fetch_alpaca_bars(
         if e.response.status_code == 429:
             logger.error("Rate limit exceeded! Wait before retrying.")
         elif e.response.status_code == 401:
-            logger.error("Authentication failed! Check ALPACA_API_KEY and ALPACA_API_SECRET.")
+            logger.error(
+                "Authentication failed! Verify Alpaca API credentials."
+            )
         else:
             logger.error(f"HTTP error fetching {symbol}: {e}")
         return []
@@ -251,7 +270,12 @@ def persist_bars_v2(symbol: str, timeframe: str, bars: List[dict]) -> int:
 
     # Prepare batch with v2 schema
     batch = []
-    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.utcnow().replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
 
     for bar in bars:
         bar_ts = datetime.fromisoformat(bar["ts"].replace("Z", "+00:00"))
@@ -284,7 +308,7 @@ def persist_bars_v2(symbol: str, timeframe: str, bars: List[dict]) -> int:
         batch_size = 1000
 
         for i in range(0, len(batch), batch_size):
-            chunk = batch[i : i + batch_size]
+            chunk = batch[i:i + batch_size]
             db.client.table("ohlc_bars_v2").upsert(
                 chunk,
                 on_conflict="symbol_id,timeframe,ts,provider,is_forecast",
@@ -318,7 +342,9 @@ def get_data_coverage_v2(symbol: str, timeframe: str) -> dict:
 
         earliest = None
         if response.data:
-            earliest = datetime.fromisoformat(response.data[0]["ts"].replace("Z", "+00:00"))
+            earliest = datetime.fromisoformat(
+                response.data[0]["ts"].replace("Z", "+00:00")
+            )
 
         response = (
             db.client.table("ohlc_bars_v2")
@@ -333,7 +359,9 @@ def get_data_coverage_v2(symbol: str, timeframe: str) -> dict:
 
         latest = None
         if response.data:
-            latest = datetime.fromisoformat(response.data[0]["ts"].replace("Z", "+00:00"))
+            latest = datetime.fromisoformat(
+                response.data[0]["ts"].replace("Z", "+00:00")
+            )
 
         # Get count
         response = (
@@ -398,9 +426,13 @@ def backfill_symbol(
     market_open_now = is_us_market_open(now_utc)
 
     # When the market is closed, reuse existing Supabase data.
-    # Only hit Alpaca if we have no bars at all (seed) or the user forces a refresh.
+    # Only hit Alpaca if we have no bars yet (seed)
+    # or the user forces a refresh.
     if (not force) and (not market_open_now) and coverage.get("count", 0) > 0:
-        logger.info("⏭️  Skipping %s - market closed, reusing existing data", symbol)
+        logger.info(
+            "⏭️  Skipping %s - market closed, reusing existing data",
+            symbol,
+        )
         return {
             "success": True,
             "skipped": True,
@@ -450,11 +482,25 @@ def backfill_symbol(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Backfill historical OHLC data to ohlc_bars_v2 using Alpaca"
+        description=(
+            "Backfill historical OHLC data to ohlc_bars_v2 using Alpaca"
+        )
     )
-    parser.add_argument("--symbol", type=str, help="Single symbol to backfill")
-    parser.add_argument("--symbols", nargs="+", help="Multiple symbols to backfill")
-    parser.add_argument("--all", action="store_true", help="Backfill all watchlist symbols")
+    parser.add_argument(
+        "--symbol",
+        type=str,
+        help="Single symbol to backfill",
+    )
+    parser.add_argument(
+        "--symbols",
+        nargs="+",
+        help="Multiple symbols to backfill",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Backfill all watchlist symbols",
+    )
     parser.add_argument(
         "--timeframe",
         type=str,
@@ -463,7 +509,9 @@ def main():
         help="Timeframe to backfill (default: d1)",
     )
     parser.add_argument(
-        "--force", action="store_true", help="Force backfill even if recently updated"
+        "--force",
+        action="store_true",
+        help="Force backfill even if recently updated",
     )
 
     args = parser.parse_args()
@@ -520,7 +568,11 @@ def main():
     if failed:
         logger.info("\nFailed symbols:")
         for r in failed:
-            logger.info(f"  - {r.get('symbol', 'unknown')}: {r.get('error', 'unknown error')}")
+            logger.info(
+                "  - %s: %s",
+                r.get("symbol", "unknown"),
+                r.get("error", "unknown error"),
+            )
 
     return 0 if not failed else 1
 

@@ -5,7 +5,6 @@
 set -e
 
 SUPABASE_URL="${SUPABASE_URL:-https://cygflaemtmwiwaviclks.supabase.co}"
-SUPABASE_SERVICE_ROLE_KEY="${SUPABASE_SERVICE_ROLE_KEY}"
 
 if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
   echo "❌ Error: SUPABASE_SERVICE_ROLE_KEY not set"

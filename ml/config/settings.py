@@ -20,16 +20,27 @@ class Settings(BaseSettings):
 
     # Supabase Connection
     supabase_url: str
-    supabase_key: str | None = None  # Service role key (maps to SUPABASE_KEY env var)
-    supabase_service_role_key: str | None = None  # Alias for supabase_key
-    database_url: str | None = None  # Direct Postgres connection string (optional for backfill)
+    # Service role key (maps to SUPABASE_KEY env var)
+    supabase_key: str | None = None
+    # Alias for supabase_key
+    supabase_service_role_key: str | None = None
+    # Direct Postgres connection string (optional for backfill)
+    database_url: str | None = None
 
     def model_post_init(self, __context) -> None:
         """Set service_role_key alias after init."""
-        if self.supabase_key is None and self.supabase_service_role_key is not None:
-            object.__setattr__(self, "supabase_key", self.supabase_service_role_key)
-        if self.supabase_service_role_key is None and self.supabase_key is not None:
-            object.__setattr__(self, "supabase_service_role_key", self.supabase_key)
+        key_missing = self.supabase_key is None
+        service_key = self.supabase_service_role_key
+        if key_missing and service_key is not None:
+            object.__setattr__(self, "supabase_key", service_key)
+
+        service_missing = self.supabase_service_role_key is None
+        if service_missing and self.supabase_key is not None:
+            object.__setattr__(
+                self,
+                "supabase_service_role_key",
+                self.supabase_key,
+            )
 
     # ML Configuration
     forecast_horizons: list[str] = [
@@ -42,10 +53,14 @@ class Settings(BaseSettings):
         "5M",
         "6M",
     ]
-    min_bars_for_training: int = 100  # Minimum for statistical significance
-    min_bars_for_high_confidence: int = 504  # 2 years for high-quality forecasts (market cycle)
-    max_training_bars: int = 780  # ~3 years of daily data for long horizons
-    use_ensemble_forecaster: bool = True  # Use ensemble (RF+XGBoost) vs RF-only
+    # Minimum for statistical significance
+    min_bars_for_training: int = 100
+    # 2 years for high-quality forecasts (market cycle)
+    min_bars_for_high_confidence: int = 504
+    # ~3 years of daily data for long horizons
+    max_training_bars: int = 780
+    # Use ensemble (RF+XGBoost) vs RF-only
+    use_ensemble_forecaster: bool = True
     confidence_threshold: float = 0.6
     enable_feature_selection: bool = True
     max_feature_count: int = 40
@@ -53,21 +68,40 @@ class Settings(BaseSettings):
 
     # Intraday Weight Calibration Configuration
     intraday_horizons: list[str] = ["15m", "1h"]
-    intraday_calibration_min_samples: int = 50  # ~2 days of 15min data
-    intraday_lookback_hours: int = 72  # 3 days of historical data for calibration
+    # ~2 days of 15-minute data
+    intraday_calibration_min_samples: int = 50
+    # 3 days of historical data for calibration
+    intraday_lookback_hours: int = 72
     intraday_weight_update_frequency_hours: int = 4
-    intraday_min_bars: int = 100  # Minimum bars for intraday forecasting
+    # Minimum bars for intraday forecasting
+    intraday_min_bars: int = 100
     enable_intraday_calibration: bool = True
-    intraday_symbols: list[str] = ["AAPL", "NVDA", "AMD", "PLTR", "CRWD", "AMZN", "MU"]
+    intraday_symbols: list[str] = [
+        "AAPL",
+        "NVDA",
+        "AMD",
+        "PLTR",
+        "CRWD",
+        "AMZN",
+        "MU",
+    ]
 
     # Job Configuration
-    symbols_to_process: list[str] = ["AAPL", "SPY", "TSLA", "NVDA", "MSFT"]
+    symbols_to_process: list[str] = [
+        "AAPL",
+        "SPY",
+        "TSLA",
+        "NVDA",
+        "MSFT",
+    ]
     batch_size: int = 10
 
     # Tradier API (Options Data)
     tradier_api_key: str | None = None
-    tradier_base_url: str = "https://api.tradier.com/v1"  # Production
-    # tradier_base_url: str = "https://sandbox.tradier.com/v1"  # Sandbox
+    # Production endpoint
+    tradier_base_url: str = "https://api.tradier.com/v1"
+    # Sandbox endpoint
+    # tradier_base_url: str = "https://sandbox.tradier.com/v1"
 
     # Logging
     log_level: str = "INFO"

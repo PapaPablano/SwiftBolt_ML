@@ -41,14 +41,20 @@ class ForecastServiceV2:
             model_output: Optional model predictions with confidence bands
 
         Returns:
-            List of forecast dicts with ts, close, upper_band, lower_band, confidence
+            List of forecast dicts with ts, close, upper_band,
+            lower_band, and confidence
         """
         if horizon_days > 10:
-            logger.warning(f"Horizon {horizon_days} exceeds max 10, capping")
+            logger.warning("Horizon %s exceeds max 10, capping", horizon_days)
             horizon_days = 10
 
         forecasts = []
-        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today = datetime.utcnow().replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
 
         for day in range(1, horizon_days + 1):
             target_date = today + timedelta(days=day)
@@ -141,7 +147,7 @@ class ForecastServiceV2:
             }
 
         except Exception as e:
-            logger.error(f"Error persisting forecasts for {symbol}: {e}")
+            logger.error("Error persisting forecasts for %s: %s", symbol, e)
             return {
                 "success": False,
                 "error": str(e),
@@ -159,7 +165,12 @@ class ForecastServiceV2:
         """
         try:
             symbol_id = self.db.get_symbol_id(symbol)
-            today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            today = datetime.utcnow().replace(
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
 
             # Try intraday first (today's data)
             response = (
@@ -197,7 +208,7 @@ class ForecastServiceV2:
             return None
 
         except Exception as e:
-            logger.error(f"Error getting latest close for {symbol}: {e}")
+            logger.error("Error getting latest close for %s: %s", symbol, e)
             return None
 
     def update_forecasts(
@@ -275,7 +286,9 @@ class ForecastServiceV2:
                 )
 
         logger.info(
-            f"Forecast update complete: " f"{len(successful)} successful, {len(failed)} failed"
+            "Forecast update complete: %s successful, %s failed",
+            len(successful),
+            len(failed),
         )
 
         return {
@@ -289,12 +302,29 @@ def main():
     """CLI entry point for forecast updates."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Update ML forecasts in ohlc_bars_v2")
-    parser.add_argument("--symbol", type=str, help="Single symbol to update")
-    parser.add_argument("--symbols", nargs="+", help="Multiple symbols to update")
-    parser.add_argument("--all", action="store_true", help="Update all watchlist symbols")
+    parser = argparse.ArgumentParser(
+        description="Update ML forecasts in ohlc_bars_v2"
+    )
     parser.add_argument(
-        "--horizon", type=int, default=10, help="Forecast horizon in days (default: 10)"
+        "--symbol",
+        type=str,
+        help="Single symbol to update",
+    )
+    parser.add_argument(
+        "--symbols",
+        nargs="+",
+        help="Multiple symbols to update",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Update all watchlist symbols",
+    )
+    parser.add_argument(
+        "--horizon",
+        type=int,
+        default=10,
+        help="Forecast horizon in days (default: 10)",
     )
 
     args = parser.parse_args()
@@ -309,7 +339,10 @@ def main():
         symbols = args.symbols
     elif args.all:
         try:
-            response = db.client.rpc("get_all_watchlist_symbols", {"p_limit": 200}).execute()
+            response = db.client.rpc(
+                "get_all_watchlist_symbols",
+                {"p_limit": 200},
+            ).execute()
             symbols = [row["ticker"] for row in response.data]
         except Exception as e:
             logger.error(f"Error fetching watchlist: {e}")

@@ -73,6 +73,15 @@ interface DataQualityReport {
   is_clean: boolean;
 }
 
+interface OhlcBarRow {
+  ts: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number | null;
+}
+
 interface EnhancedPredictionResponse {
   symbol: string;
   timestamp: string;
@@ -147,7 +156,7 @@ serve(async (req: Request): Promise<Response> => {
 
     // Get OHLC data for multiple timeframes to compute indicators
     const timeframes = ["m15", "h1", "d1", "w1"];
-    const timeframeData: Record<string, any[]> = {};
+    const timeframeData: Record<string, OhlcBarRow[]> = {};
 
     for (const tf of timeframes) {
       const { data: bars } = await supabase
@@ -163,7 +172,7 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     // Calculate RSI for each timeframe (simplified 14-period RSI)
-    const calculateRSI = (bars: any[]): number | null => {
+    const calculateRSI = (bars: OhlcBarRow[]): number | null => {
       if (bars.length < 15) return null;
 
       let gains = 0;
@@ -276,9 +285,9 @@ serve(async (req: Request): Promise<Response> => {
 
     // Add volume feature
     if (dailyBars.length >= 20) {
-      const recentVolume = dailyBars.slice(0, 5).reduce((sum, b) => sum + b.volume, 0) / 5;
-      const avgVolume = dailyBars.slice(0, 20).reduce((sum, b) => sum + b.volume, 0) / 20;
-      const volumeRatio = recentVolume / avgVolume;
+      const recentVolume = dailyBars.slice(0, 5).reduce((sum, b) => sum + (b.volume ?? 0), 0) / 5;
+      const avgVolume = dailyBars.slice(0, 20).reduce((sum, b) => sum + (b.volume ?? 0), 0) / 20;
+      const volumeRatio = avgVolume > 0 ? recentVolume / avgVolume : 1;
       topFeatures.push({
         name: "volume_ratio",
         value: Math.round(volumeRatio * 100) / 100,
