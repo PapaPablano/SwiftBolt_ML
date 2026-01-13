@@ -60,5 +60,28 @@ public enum Timeframe: String, CaseIterable, Codable, Hashable, Identifiable {
         case .w1:  return "1Week"
         }
     }
+    
+    /// Chart auto-refresh interval in nanoseconds (matches timeframe duration)
+    /// Used for automatic chart data updates during market hours
+    var chartRefreshInterval: UInt64 {
+        switch self {
+        case .m15: return 15 * 60 * 1_000_000_000      // 15 minutes
+        case .h1:  return 60 * 60 * 1_000_000_000      // 1 hour
+        case .h4:  return 4 * 60 * 60 * 1_000_000_000  // 4 hours
+        case .d1:  return 24 * 60 * 60 * 1_000_000_000 // 24 hours (end of day)
+        case .w1:  return 7 * 24 * 60 * 60 * 1_000_000_000 // 1 week
+        }
+    }
+    
+    /// Minimum refresh interval in seconds (for rate limiting)
+    var minRefreshSeconds: Double {
+        switch self {
+        case .m15: return 60     // Don't refresh more than once per minute
+        case .h1:  return 300    // Don't refresh more than once per 5 minutes
+        case .h4:  return 900    // Don't refresh more than once per 15 minutes
+        case .d1:  return 3600   // Don't refresh more than once per hour
+        case .w1:  return 86400  // Don't refresh more than once per day
+        }
+    }
 }
 

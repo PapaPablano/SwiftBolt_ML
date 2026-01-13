@@ -13,6 +13,7 @@ final class ChartViewModel: ObservableObject {
             if selectedSymbol?.id != oldValue?.id {
                 liveQuote = nil
                 stopLiveQuoteUpdates()
+                stopChartAutoRefresh()
                 stopRealtimeSubscription()
                 stopHydrationPoller()
                 stopCoverageCheck()
@@ -27,6 +28,7 @@ final class ChartViewModel: ObservableObject {
             guard timeframe != oldValue else { return }
             stopHydrationPoller()
             stopCoverageCheck()
+            stopChartAutoRefresh()  // Restart refresh timer with new timeframe interval
             print("[DEBUG] 🕒 timeframe changed to \(timeframe.rawValue) (apiToken=\(timeframe.apiToken))")
             Task { await loadChart() }
         }
@@ -128,7 +130,9 @@ final class ChartViewModel: ObservableObject {
     private var realtimeTask: Task<Void, Never>?
     private var hydrationPollTask: Task<Void, Never>?
     private var coverageCheckTask: Task<Void, Never>?
-    private let liveQuoteInterval: UInt64 = 60 * 1_000_000_000  // 60 seconds
+    private var chartRefreshTask: Task<Void, Never>?
+    private let liveQuoteInterval: UInt64 = 5 * 1_000_000_000  // 5 seconds for streaming price updates
+    private var lastChartRefreshTime: Date = .distantPast
     private let marketTimeZone = TimeZone(identifier: "America/New_York") ?? .current
     private let isoDateFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
@@ -210,6 +214,7 @@ final class ChartViewModel: ObservableObject {
 
     deinit {
         liveQuoteTask?.cancel()
+        chartRefreshTask?.cancel()
     }
 
     // MARK: - Cache Invalidation
@@ -715,9 +720,14 @@ final class ChartViewModel: ObservableObject {
                     // Explicitly recalculate indicators with new data
                     scheduleIndicatorRecalculation()
                     
-                    // Start live quotes after first successful chart load
+                    // Start live quotes (streaming price updates every 5s during market hours)
                     if liveQuoteTask == nil || liveQuoteTask?.isCancelled == true {
                         startLiveQuoteUpdates()
+                    }
+                    
+                    // Start chart auto-refresh based on timeframe (15m/1h/4h/daily)
+                    if chartRefreshTask == nil || chartRefreshTask?.isCancelled == true {
+                        startChartAutoRefresh()
                     }
                 } else {
                     // Use legacy API
@@ -746,9 +756,14 @@ final class ChartViewModel: ObservableObject {
                     // Explicitly recalculate indicators with new data
                     scheduleIndicatorRecalculation()
                     
-                    // Start live quotes after first successful chart load
+                    // Start live quotes (streaming price updates every 5s during market hours)
                     if liveQuoteTask == nil || liveQuoteTask?.isCancelled == true {
                         startLiveQuoteUpdates()
+                    }
+                    
+                    // Start chart auto-refresh based on timeframe
+                    if chartRefreshTask == nil || chartRefreshTask?.isCancelled == true {
+                        startChartAutoRefresh()
                     }
                 }
                 
@@ -818,6 +833,7 @@ final class ChartViewModel: ObservableObject {
         isLoading = false
         liveQuote = nil
         stopLiveQuoteUpdates()
+        stopChartAutoRefresh()
     }
     
     /// Force clear all caches and reload fresh data
@@ -1008,6 +1024,70 @@ final class ChartViewModel: ObservableObject {
         let closeMinutes = 16 * 60
 
         return minutes >= openMinutes && minutes <= closeMinutes
+    }
+    
+    // MARK: - Chart Auto-Refresh (Timeframe-Based)
+    
+    /// Start automatic chart refresh based on selected timeframe
+    /// Refreshes chart data at intervals matching the timeframe (15m, 1h, 4h, etc.)
+    private func startChartAutoRefresh() {
+        chartRefreshTask?.cancel()
+        chartRefreshTask = Task(priority: .utility) { [weak self] in
+            await self?.runChartRefreshLoop()
+        }
+    }
+    
+    /// Stop the automatic chart refresh timer
+    private func stopChartAutoRefresh() {
+        chartRefreshTask?.cancel()
+        chartRefreshTask = nil
+    }
+    
+    /// Run the chart auto-refresh loop based on timeframe interval
+    private func runChartRefreshLoop() async {
+        while !Task.isCancelled {
+            // Get current state
+            let (hasSymbol, currentTimeframe, marketOpen) = await MainActor.run {
+                (selectedSymbol != nil, timeframe, isMarketHours())
+            }
+            
+            guard hasSymbol else {
+                do {
+                    try await Task.sleep(nanoseconds: 60 * 1_000_000_000) // Check every minute when no symbol
+                } catch { break }
+                continue
+            }
+            
+            // Only auto-refresh during market hours for intraday timeframes
+            let shouldRefresh: Bool
+            if currentTimeframe.isIntraday {
+                shouldRefresh = marketOpen
+            } else {
+                // For daily/weekly, refresh less frequently (check once per hour)
+                shouldRefresh = true
+            }
+            
+            if shouldRefresh {
+                // Check if enough time has passed since last refresh
+                let timeSinceLastRefresh = await MainActor.run {
+                    Date().timeIntervalSince(lastChartRefreshTime)
+                }
+                
+                if timeSinceLastRefresh >= currentTimeframe.minRefreshSeconds {
+                    print("[DEBUG] 🔄 Auto-refreshing chart for \(currentTimeframe.displayName) (last refresh: \(Int(timeSinceLastRefresh))s ago)")
+                    await loadChart()
+                    await MainActor.run {
+                        lastChartRefreshTime = Date()
+                    }
+                }
+            }
+            
+            // Sleep for the timeframe interval
+            let sleepInterval = currentTimeframe.chartRefreshInterval
+            do {
+                try await Task.sleep(nanoseconds: sleepInterval)
+            } catch { break }
+        }
     }
     
     // MARK: - SPEC-8: Backfill Orchestration
