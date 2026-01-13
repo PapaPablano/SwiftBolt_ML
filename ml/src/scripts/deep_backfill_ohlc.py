@@ -239,7 +239,7 @@ def persist_bars(symbol: str, timeframe: str, bars: List[dict]) -> int:
         # Batch upsert (1000 rows per request limit)
         batch_size = 1000
         for i in range(0, len(batch), batch_size):
-            chunk = batch[i:i + batch_size]
+            chunk = batch[i : i + batch_size]
             db.client.table("ohlc_bars_v2").upsert(
                 chunk,
                 on_conflict="symbol_id,timeframe,ts,provider,is_forecast",
@@ -372,9 +372,7 @@ def backfill_symbol(
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Deep backfill OHLC data directly from Alpaca API"
-    )
+    parser = argparse.ArgumentParser(description="Deep backfill OHLC data directly from Alpaca API")
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--symbol", type=str, help="Single symbol")

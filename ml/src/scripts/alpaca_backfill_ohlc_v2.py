@@ -204,9 +204,7 @@ def fetch_alpaca_bars(
 
             # Transform to our format
             for bar in bars_data:
-                bar_ts = datetime.fromisoformat(
-                    bar["t"].replace("Z", "+00:00")
-                )
+                bar_ts = datetime.fromisoformat(bar["t"].replace("Z", "+00:00"))
 
                 all_bars.append(
                     {
@@ -246,9 +244,7 @@ def fetch_alpaca_bars(
         if e.response.status_code == 429:
             logger.error("Rate limit exceeded! Wait before retrying.")
         elif e.response.status_code == 401:
-            logger.error(
-                "Authentication failed! Verify Alpaca API credentials."
-            )
+            logger.error("Authentication failed! Verify Alpaca API credentials.")
         else:
             logger.error(f"HTTP error fetching {symbol}: {e}")
         return []
@@ -308,7 +304,7 @@ def persist_bars_v2(symbol: str, timeframe: str, bars: List[dict]) -> int:
         batch_size = 1000
 
         for i in range(0, len(batch), batch_size):
-            chunk = batch[i:i + batch_size]
+            chunk = batch[i : i + batch_size]
             db.client.table("ohlc_bars_v2").upsert(
                 chunk,
                 on_conflict="symbol_id,timeframe,ts,provider,is_forecast",
@@ -342,9 +338,7 @@ def get_data_coverage_v2(symbol: str, timeframe: str) -> dict:
 
         earliest = None
         if response.data:
-            earliest = datetime.fromisoformat(
-                response.data[0]["ts"].replace("Z", "+00:00")
-            )
+            earliest = datetime.fromisoformat(response.data[0]["ts"].replace("Z", "+00:00"))
 
         response = (
             db.client.table("ohlc_bars_v2")
@@ -359,9 +353,7 @@ def get_data_coverage_v2(symbol: str, timeframe: str) -> dict:
 
         latest = None
         if response.data:
-            latest = datetime.fromisoformat(
-                response.data[0]["ts"].replace("Z", "+00:00")
-            )
+            latest = datetime.fromisoformat(response.data[0]["ts"].replace("Z", "+00:00"))
 
         # Get count
         response = (
@@ -482,9 +474,7 @@ def backfill_symbol(
 
 def main():
     parser = argparse.ArgumentParser(
-        description=(
-            "Backfill historical OHLC data to ohlc_bars_v2 using Alpaca"
-        )
+        description=("Backfill historical OHLC data to ohlc_bars_v2 using Alpaca")
     )
     parser.add_argument(
         "--symbol",

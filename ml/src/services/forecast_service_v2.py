@@ -302,9 +302,7 @@ def main():
     """CLI entry point for forecast updates."""
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Update ML forecasts in ohlc_bars_v2"
-    )
+    parser = argparse.ArgumentParser(description="Update ML forecasts in ohlc_bars_v2")
     parser.add_argument(
         "--symbol",
         type=str,

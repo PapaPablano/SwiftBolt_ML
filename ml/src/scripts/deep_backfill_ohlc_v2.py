@@ -393,7 +393,9 @@ def backfill_symbol(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Backfill historical OHLC data to ohlc_bars_v2 using Alpaca")
+    parser = argparse.ArgumentParser(
+        description="Backfill historical OHLC data to ohlc_bars_v2 using Alpaca"
+    )
     parser.add_argument("--symbol", type=str, help="Single symbol to backfill")
     parser.add_argument("--symbols", nargs="+", help="Multiple symbols to backfill")
     parser.add_argument("--all", action="store_true", help="Backfill all watchlist symbols")

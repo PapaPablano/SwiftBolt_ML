@@ -186,7 +186,7 @@ def persist_bars(symbol_id: str, timeframe: str, bars: list[dict]) -> int:
         batch_size = 1000
 
         for i in range(0, len(batch), batch_size):
-            chunk = batch[i:i + batch_size]
+            chunk = batch[i : i + batch_size]
             db.client.table("ohlc_bars_v2").upsert(
                 chunk,
                 on_conflict="symbol_id,timeframe,ts,provider,is_forecast",
