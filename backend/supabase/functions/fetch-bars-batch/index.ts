@@ -21,6 +21,16 @@ interface BatchFetchResponse {
   api_calls: number; // Should be 1 for batch vs symbols.length for individual
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "Unknown error";
+  }
+}
+
 const TIMEFRAME_MAP: Record<string, string> = {
   "15m": "m15",
   "1h": "h1",
@@ -95,6 +105,10 @@ Deno.serve(async (req) => {
     const toDate = new Date(to);
     const symbolsParam = symbols.join(",");
 
+    const alpacaFeed = (Deno.env.get("ALPACA_DATA_FEED") ?? "iex").toLowerCase() === "sip"
+      ? "sip"
+      : "iex";
+
     const url = `https://data.alpaca.markets/v2/stocks/bars?` +
       `symbols=${symbolsParam}&` +
       `timeframe=${alpacaTimeframe}&` +
@@ -102,7 +116,7 @@ Deno.serve(async (req) => {
       `end=${toDate.toISOString()}&` +
       `limit=10000&` +
       `adjustment=raw&` +
-      `feed=sip&` +
+      `feed=${alpacaFeed}&` +
       `sort=asc`;
 
     console.log(`[fetch-bars-batch] Calling Alpaca API: ${symbols.length} symbols`);
@@ -265,12 +279,13 @@ Deno.serve(async (req) => {
             .eq("id", jobId);
         }
       } catch (error) {
-        console.error(`[fetch-bars-batch] Error processing ${symbol}:`, error);
+        const errorMessage = getErrorMessage(error);
+        console.error(`[fetch-bars-batch] Error processing ${symbol}:`, errorMessage);
         await supabase
           .from("job_runs")
           .update({
             status: "failed",
-            error_message: error.message,
+            error_message: errorMessage,
             finished_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
@@ -295,13 +310,14 @@ Deno.serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("[fetch-bars-batch] Error:", error);
+    const errorMessage = getErrorMessage(error);
+    console.error("[fetch-bars-batch] Error:", errorMessage);
 
     const duration = Date.now() - startTime;
 
     return new Response(
       JSON.stringify({
-        error: error.message,
+        error: errorMessage,
         duration_ms: duration,
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

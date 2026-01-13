@@ -212,7 +212,9 @@ async function backfillTimeframe(
       .eq("is_forecast", false)
       .in("ts", timestamps);
 
-    const existingTimestamps = new Set((existingBars || []).map((b: any) => b.ts));
+    const existingTimestamps = new Set(
+      ((existingBars ?? []) as Array<{ ts: string }>).map((b) => b.ts)
+    );
 
     // Only insert bars that don't already exist (to avoid provider conflicts)
     const newBars = bars.filter(bar => !existingTimestamps.has(bar.ts));
@@ -241,15 +243,19 @@ async function backfillTimeframe(
       is_intraday: false,  // Historical backfill data
       is_forecast: false,  // Not a forecast
       data_status: "verified",  // Historical data is verified
+      fetched_at: new Date().toISOString(),
     }));
 
-    const { error: insertError } = await supabase
+    const { error: upsertError } = await supabase
       .from("ohlc_bars_v2")
-      .insert(barsToInsert);
+      .upsert(barsToInsert, {
+        onConflict: "symbol_id,timeframe,ts,provider,is_forecast",
+        ignoreDuplicates: false,
+      });
 
-    if (insertError) {
-      console.error(`[SymbolBackfill] Insert error for ${symbol} ${timeframe}:`, insertError);
-      return { timeframe, barsInserted: 0, error: insertError.message };
+    if (upsertError) {
+      console.error(`[SymbolBackfill] Upsert error for ${symbol} ${timeframe}:`, upsertError);
+      return { timeframe, barsInserted: 0, error: upsertError.message };
     }
 
     console.log(`[SymbolBackfill] Inserted ${newBars.length} bars for ${symbol} ${timeframe}`);

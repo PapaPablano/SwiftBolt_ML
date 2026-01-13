@@ -149,8 +149,8 @@ serve(async (req: Request): Promise<Response> => {
     const { data: rpcData, error: barsError } = await supabase.rpc("get_chart_data_v2", {
       p_symbol_id: symbolId,
       p_timeframe: timeframe,
-      p_start: startDate.toISOString(),
-      p_end: endDate.toISOString(),
+      p_start_date: startDate.toISOString(),
+      p_end_date: endDate.toISOString(),
     });
 
     if (barsError) {

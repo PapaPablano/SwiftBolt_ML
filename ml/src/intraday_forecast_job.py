@@ -28,6 +28,10 @@ from src.forecast_weights import get_default_weights  # noqa: E402
 from src.models.arima_garch_forecaster import ArimaGarchForecaster  # noqa: E402
 from src.models.baseline_forecaster import BaselineForecaster  # noqa: E402
 from src.models.ensemble_forecaster import EnsembleForecaster  # noqa: E402
+from src.services.forecast_bar_writer import (  # noqa: E402
+    path_points_to_bars,
+    upsert_forecast_bars,
+)
 from src.strategies.supertrend_ai import SuperTrendAI  # noqa: E402
 
 logging.basicConfig(
@@ -490,6 +494,8 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                     path_days = 7
 
                 path_horizon = f"{path_days}d"
+
+                path_points_by_tf: dict[str, list[dict]] = {}
                 for tf in ["m15", "h1", "h4"]:
                     interval_sec = timeframe_interval_seconds(tf)
                     steps_per_day = int(round((6.5 * 60 * 60) / interval_sec))
@@ -506,6 +512,8 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                         confidence=synth_result.confidence,
                     )
 
+                    path_points_by_tf[tf] = path_points
+
                     expires_at_path = (datetime.utcnow() + timedelta(minutes=30)).isoformat()
                     db.insert_intraday_forecast_path(
                         symbol_id=symbol_id,
@@ -520,6 +528,26 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                         points=path_points,
                         expires_at=expires_at_path,
                     )
+
+                source_points = (
+                    path_points_by_tf.get("m15")
+                    or path_points_by_tf.get("h1")
+                    or path_points_by_tf.get("h4")
+                )
+
+                if source_points:
+                    for tf in ["m15", "h1", "h4", "d1", "w1"]:
+                        rows = path_points_to_bars(points=source_points, timeframe=tf)
+                        for row in rows:
+                            row["confidence_score"] = float(synth_result.confidence)
+
+                        upsert_forecast_bars(
+                            symbol=symbol,
+                            timeframe=tf,
+                            rows=rows,
+                            status="provisional",
+                            skip_non_future_dates=True,
+                        )
 
             return True
 

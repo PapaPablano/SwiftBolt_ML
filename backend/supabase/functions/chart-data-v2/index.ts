@@ -380,9 +380,13 @@ serve(async (req: Request): Promise<Response> => {
                 fetched_at: nowIso,
               }));
 
-              await supabase.from('ohlc_bars_v2').upsert(rows, {
+              const { error: upsertError } = await supabase.from('ohlc_bars_v2').upsert(rows, {
                 onConflict: 'symbol_id,timeframe,ts,provider,is_forecast',
               });
+
+              if (upsertError) {
+                throw upsertError;
+              }
             }
           } catch (alpacaErr) {
             console.error('[chart-data-v2] Intraday Alpaca refresh failed:', alpacaErr);

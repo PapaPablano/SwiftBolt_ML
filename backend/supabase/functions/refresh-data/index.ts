@@ -193,12 +193,13 @@ serve(async (req: Request): Promise<Response> => {
             close: bar.close,
             volume: bar.volume,
             provider: "yfinance",
+            is_forecast: false,
           }));
 
           const { error: upsertError } = await supabase
             .from("ohlc_bars_v2")
             .upsert(barsToInsert, {
-              onConflict: "symbol_id,timeframe,ts",
+              onConflict: "symbol_id,timeframe,ts,provider,is_forecast",
               ignoreDuplicates: false,
             });
 
@@ -215,8 +216,9 @@ serve(async (req: Request): Promise<Response> => {
         result.dataRefresh.push(tfResult);
 
       } catch (tfError) {
-        console.error(`[refresh-data] Error fetching ${timeframe} for ${symbol}:`, tfError);
-        result.errors.push(`${timeframe} fetch failed: ${tfError.message}`);
+        const tfErrorMessage = tfError instanceof Error ? tfError.message : String(tfError);
+        console.error(`[refresh-data] Error fetching ${timeframe} for ${symbol}:`, tfErrorMessage);
+        result.errors.push(`${timeframe} fetch failed: ${tfErrorMessage}`);
         result.dataRefresh.push({
           timeframe,
           existingBars: 0,
@@ -249,7 +251,8 @@ serve(async (req: Request): Promise<Response> => {
           console.log(`[refresh-data] Queued ML forecast job for ${symbol}`);
         }
       } catch (mlError) {
-        result.errors.push(`ML job error: ${mlError.message}`);
+        const mlErrorMessage = mlError instanceof Error ? mlError.message : String(mlError);
+        result.errors.push(`ML job error: ${mlErrorMessage}`);
       }
     }
 
@@ -296,7 +299,8 @@ serve(async (req: Request): Promise<Response> => {
           }
         }
       } catch (optionsError) {
-        result.errors.push(`Options job error: ${optionsError.message}`);
+        const optionsErrorMessage = optionsError instanceof Error ? optionsError.message : String(optionsError);
+        result.errors.push(`Options job error: ${optionsErrorMessage}`);
       }
     }
 
@@ -323,12 +327,13 @@ serve(async (req: Request): Promise<Response> => {
     });
 
   } catch (error) {
-    console.error("[refresh-data] Error:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("[refresh-data] Error:", errorMessage);
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error.message || "Internal server error",
-        errors: [error.message || "Internal server error"],
+        error: errorMessage || "Internal server error",
+        errors: [errorMessage || "Internal server error"],
       }),
       {
         status: 500,

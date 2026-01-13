@@ -204,7 +204,9 @@ def fetch_alpaca_bars(
 
             # Transform to our format
             for bar in bars_data:
-                bar_ts = datetime.fromisoformat(bar["t"].replace("Z", "+00:00"))
+                bar_ts = datetime.fromisoformat(
+                    bar["t"].replace("Z", "+00:00")
+                )
 
                 all_bars.append(
                     {
@@ -244,7 +246,9 @@ def fetch_alpaca_bars(
         if e.response.status_code == 429:
             logger.error("Rate limit exceeded! Wait before retrying.")
         elif e.response.status_code == 401:
-            logger.error("Authentication failed! Verify Alpaca API credentials.")
+            logger.error(
+                "Authentication failed! Verify Alpaca API credentials."
+            )
         else:
             logger.error(f"HTTP error fetching {symbol}: {e}")
         return []
@@ -304,7 +308,7 @@ def persist_bars_v2(symbol: str, timeframe: str, bars: List[dict]) -> int:
         batch_size = 1000
 
         for i in range(0, len(batch), batch_size):
-            chunk = batch[i : i + batch_size]
+            chunk = batch[i:i + batch_size]
             db.client.table("ohlc_bars_v2").upsert(
                 chunk,
                 on_conflict="symbol_id,timeframe,ts,provider,is_forecast",
@@ -338,7 +342,9 @@ def get_data_coverage_v2(symbol: str, timeframe: str) -> dict:
 
         earliest = None
         if response.data:
-            earliest = datetime.fromisoformat(response.data[0]["ts"].replace("Z", "+00:00"))
+            earliest = datetime.fromisoformat(
+                response.data[0]["ts"].replace("Z", "+00:00")
+            )
 
         response = (
             db.client.table("ohlc_bars_v2")
@@ -353,7 +359,9 @@ def get_data_coverage_v2(symbol: str, timeframe: str) -> dict:
 
         latest = None
         if response.data:
-            latest = datetime.fromisoformat(response.data[0]["ts"].replace("Z", "+00:00"))
+            latest = datetime.fromisoformat(
+                response.data[0]["ts"].replace("Z", "+00:00")
+            )
 
         # Get count
         response = (
@@ -417,13 +425,31 @@ def backfill_symbol(
 
     market_open_now = is_us_market_open(now_utc)
 
-    # When the market is closed, reuse existing Supabase data.
-    # Only hit Alpaca if we have no bars yet (seed)
-    # or the user forces a refresh.
-    if (not force) and (not market_open_now) and coverage.get("count", 0) > 0:
+    latest_bar = coverage["latest"]
+    if latest_bar and latest_bar.tzinfo is None:
+        latest_bar = latest_bar.replace(tzinfo=timezone.utc)
+
+    hours_since_update = None
+    if latest_bar:
+        hours_since_update = (end_date - latest_bar).total_seconds() / 3600.0
+
+    # When the market is closed, avoid hitting Alpaca for intraday timeframes
+    # unless the existing data is stale.
+    if (
+        (not force)
+        and (not market_open_now)
+        and timeframe in ["m15", "h1", "h4"]
+        and (coverage.get("count", 0) > 0)
+        and (hours_since_update is not None)
+        and (hours_since_update < MAX_STALE_HOURS_WHEN_CLOSED)
+    ):
         logger.info(
-            "⏭️  Skipping %s - market closed, reusing existing data",
+            (
+                "⏭️  Skipping %s - market closed and data is fresh "
+                "(%.1f hours old)"
+            ),
             symbol,
+            hours_since_update,
         )
         return {
             "success": True,
@@ -432,13 +458,7 @@ def backfill_symbol(
         }
 
     # Skip if recently updated (unless force)
-    latest_bar = coverage["latest"]
     if (not force) and latest_bar:
-        if latest_bar.tzinfo is None:
-            latest_bar = latest_bar.replace(tzinfo=timezone.utc)
-
-        hours_since_update = (end_date - latest_bar).total_seconds() / 3600.0
-
         if hours_since_update < 24:
             logger.info(
                 "⏭️  Skipping %s - updated %.1f hours ago",
@@ -474,7 +494,9 @@ def backfill_symbol(
 
 def main():
     parser = argparse.ArgumentParser(
-        description=("Backfill historical OHLC data to ohlc_bars_v2 using Alpaca")
+        description=(
+            "Backfill historical OHLC data to ohlc_bars_v2 using Alpaca"
+        )
     )
     parser.add_argument(
         "--symbol",

@@ -110,6 +110,11 @@ export class AlpacaClient implements DataProviderAbstraction {
     this.cache = cache;
   }
 
+  private getBarsFeed(): "iex" | "sip" {
+    const raw = (Deno.env.get("ALPACA_DATA_FEED") ?? "iex").toLowerCase();
+    return raw === "sip" ? "sip" : "iex";
+  }
+
   /**
    * Get common headers for Market Data API
    * Uses Trading API authentication (APCA-API-KEY-ID and APCA-API-SECRET-KEY headers)
@@ -217,6 +222,7 @@ export class AlpacaClient implements DataProviderAbstraction {
         const endDate = this.toUTCISOString(end);
 
         // Alpaca API uses /stocks/bars?symbols= not /stocks/{symbol}/bars
+        const feed = this.getBarsFeed();
         let url = `${this.baseUrl}/stocks/bars?` +
           `symbols=${symbol}&` +
           `timeframe=${alpacaTimeframe}&` +
@@ -224,7 +230,7 @@ export class AlpacaClient implements DataProviderAbstraction {
           `end=${endDate}&` +
           `limit=10000&` +
           `adjustment=raw&` +
-          `feed=sip&` +
+          `feed=${feed}&` +
           `sort=asc`;
 
         if (nextPageToken) {
@@ -322,6 +328,7 @@ export class AlpacaClient implements DataProviderAbstraction {
 
         const startDate = this.toUTCISOString(start);
         const endDate = this.toUTCISOString(end);
+        const feed = this.getBarsFeed();
 
         let url = `${this.baseUrl}/stocks/bars?` +
           `symbols=${symbolsParam}&` +
@@ -330,7 +337,7 @@ export class AlpacaClient implements DataProviderAbstraction {
           `end=${endDate}&` +
           `limit=10000&` +
           `adjustment=raw&` +
-          `feed=sip&` +
+          `feed=${feed}&` +
           `sort=asc`;
 
         if (nextPageToken) {

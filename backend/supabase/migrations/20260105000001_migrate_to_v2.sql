@@ -3,45 +3,65 @@
 
 -- Step 1: Copy all existing data, marking it as historical Polygon data
 -- We assume all existing data is historical (not intraday or forecast)
-INSERT INTO ohlc_bars_v2 (
-  symbol_id,
-  timeframe,
-  ts,
-  open,
-  high,
-  low,
-  close,
-  volume,
-  provider,
-  is_intraday,
-  is_forecast,
-  data_status,
-  fetched_at,
-  created_at
-)
-SELECT 
-  symbol_id,
-  timeframe,
-  ts,
-  open,
-  high,
-  low,
-  close,
-  volume,
-  -- Map provider: cast ENUM to text, then map 'massive' -> 'polygon'
-  CASE 
-    WHEN provider::text = 'massive' THEN 'polygon'
-    WHEN provider::text = 'finnhub' THEN 'polygon'
-    ELSE 'polygon'
-  END as provider,
-  false as is_intraday,
-  false as is_forecast,
-  'verified' as data_status,
-  created_at as fetched_at,  -- Old table doesn't have fetched_at, use created_at
-  created_at
-FROM ohlc_bars
-WHERE DATE(ts) < CURRENT_DATE  -- Only migrate historical data (before today)
-ON CONFLICT (symbol_id, timeframe, ts, provider, is_forecast) DO NOTHING;
+DO $$
+DECLARE
+  v_validate_has_deprecated_guard BOOLEAN;
+  v_has_any_v2_rows BOOLEAN;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname = 'validate_ohlc_v2_write'
+      AND pg_get_functiondef(p.oid) ILIKE '%DEPRECATED%'
+  ) INTO v_validate_has_deprecated_guard;
+
+  SELECT EXISTS (SELECT 1 FROM ohlc_bars_v2 LIMIT 1) INTO v_has_any_v2_rows;
+
+  IF v_validate_has_deprecated_guard OR v_has_any_v2_rows THEN
+    RETURN;
+  END IF;
+
+  INSERT INTO ohlc_bars_v2 (
+    symbol_id,
+    timeframe,
+    ts,
+    open,
+    high,
+    low,
+    close,
+    volume,
+    provider,
+    is_intraday,
+    is_forecast,
+    data_status,
+    fetched_at,
+    created_at
+  )
+  SELECT 
+    symbol_id,
+    timeframe,
+    ts,
+    open,
+    high,
+    low,
+    close,
+    volume,
+    CASE 
+      WHEN provider::text = 'massive' THEN 'polygon'
+      WHEN provider::text = 'finnhub' THEN 'polygon'
+      ELSE 'polygon'
+    END as provider,
+    false as is_intraday,
+    false as is_forecast,
+    'verified' as data_status,
+    created_at as fetched_at,
+    created_at
+  FROM ohlc_bars
+  WHERE DATE(ts) < CURRENT_DATE
+  ON CONFLICT (symbol_id, timeframe, ts, provider, is_forecast) DO NOTHING;
+END $$;
 
 -- Step 2: Create index on old table for reference queries during transition
 CREATE INDEX IF NOT EXISTS idx_ohlc_bars_migration 
