@@ -176,10 +176,11 @@ $$ LANGUAGE plpgsql;
 
   } catch (error) {
     console.error('[apply-h1-fix] Error:', error);
+    const details = error instanceof Error ? error.message : String(error);
     return new Response(
       JSON.stringify({
         error: 'Failed to apply migration',
-        details: error.message,
+        details,
         help: 'You may need to apply the migration manually via Supabase Dashboard SQL Editor'
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

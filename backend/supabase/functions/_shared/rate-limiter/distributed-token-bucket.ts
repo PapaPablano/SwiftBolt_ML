@@ -2,9 +2,12 @@
 // Uses Postgres-backed token bucket for coordinated rate limiting across all workers
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import type { ProviderId } from "../providers/types.ts";
+
+type DistributedProviderId = ProviderId | "polygon";
 
 export interface TokenStatus {
-  provider: string;
+  provider: DistributedProviderId;
   available_tokens: number;
   capacity: number;
   refill_rate: number;
@@ -17,7 +20,7 @@ export interface TokenStatus {
  */
 export async function acquireToken(
   supabase: SupabaseClient,
-  provider: string,
+  provider: DistributedProviderId,
   cost: number = 1
 ): Promise<boolean> {
   const { data, error } = await supabase.rpc("take_token", {
@@ -39,7 +42,7 @@ export async function acquireToken(
  */
 export async function waitForToken(
   supabase: SupabaseClient,
-  provider: string,
+  provider: DistributedProviderId,
   cost: number = 1,
   maxWaitMs: number = 60000
 ): Promise<void> {
@@ -71,7 +74,7 @@ export async function waitForToken(
  */
 export async function getTokenStatus(
   supabase: SupabaseClient,
-  provider: string
+  provider: DistributedProviderId
 ): Promise<TokenStatus | null> {
   const { data, error } = await supabase.rpc("get_token_status", {
     p_provider: provider,

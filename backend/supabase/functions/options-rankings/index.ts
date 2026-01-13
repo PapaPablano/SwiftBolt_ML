@@ -75,6 +75,47 @@ interface PriceHistoryRow {
   mark: number | null;
 }
 
+type OptionRankRow = {
+  id: string;
+  contract_symbol: string | null;
+  expiry: string;
+  strike: number;
+  side: "call" | "put";
+  ml_score: number;
+  composite_rank: number | null;
+  momentum_score: number | null;
+  value_score: number | null;
+  greeks_score: number | null;
+  relative_value_score: number | null;
+  entry_difficulty_score: number | null;
+  ranking_stability_score: number | null;
+  ranking_mode: string | null;
+  implied_vol: number | null;
+  iv_rank: number | null;
+  spread_pct: number | null;
+  delta: number | null;
+  gamma: number | null;
+  theta: number | null;
+  vega: number | null;
+  rho: number | null;
+  open_interest: number | null;
+  volume: number | null;
+  vol_oi_ratio: number | null;
+  liquidity_confidence: number | null;
+  bid: number | null;
+  ask: number | null;
+  mark: number | null;
+  last_price: number | null;
+  signal_discount: boolean | null;
+  signal_runner: boolean | null;
+  signal_greeks: boolean | null;
+  signal_buy: boolean | null;
+  signals: string | null;
+  price_provider: string | null;
+  oi_provider: string | null;
+  run_at: string;
+};
+
 serve(async (req: Request): Promise<Response> => {
   const HISTORY_LOOKBACK_DAYS = 30;
   const PRICE_PROVIDER = "alpaca";
@@ -187,7 +228,7 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    const { data: ranksData, error: ranksError } = await query;
+    const { data: ranksData, error: ranksError } = await query.returns<OptionRankRow[]>();
 
     if (ranksError) {
       console.error("[Options Rankings] Database error:", ranksError);
@@ -196,22 +237,23 @@ serve(async (req: Request): Promise<Response> => {
 
     // Build history lookup map for average mark over recent window
     const historyMap = new Map<string, { count: number; sum: number }>();
-    const contractSymbols = (ranksData || [])
-      .map((row: any) => row.contract_symbol)
-      .filter((sym: string | null | undefined) => !!sym);
+    const contractSymbols = (ranksData ?? [])
+      .map((row) => row.contract_symbol)
+      .filter((sym): sym is string => typeof sym === "string" && sym.length > 0);
 
     if (contractSymbols.length > 0) {
       const sinceIso = new Date(Date.now() - HISTORY_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
       const { data: historyRows, error: historyError } = await supabase
         .from("options_price_history")
-        .select<PriceHistoryRow>("contract_symbol, mark")
+        .select("contract_symbol, mark")
         .in("contract_symbol", contractSymbols)
-        .gte("snapshot_at", sinceIso);
+        .gte("snapshot_at", sinceIso)
+        .returns<PriceHistoryRow[]>();
 
       if (historyError) {
         console.warn("[Options Rankings] History fetch warning:", historyError.message);
       } else {
-        for (const row of historyRows || []) {
+        for (const row of historyRows ?? []) {
           const rawSymbol = row.contract_symbol;
           if (typeof rawSymbol !== "string") continue;
           const symbolKey = rawSymbol.toUpperCase();
@@ -231,8 +273,8 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     // Transform database rows to response format
-    const ranks: OptionRank[] = (ranksData || []).map((row: any) => {
-      const computedSymbol = row.contract_symbol || `${symbol}${new Date(row.expiry).toISOString().slice(2, 10).replace(/-/g, '')}${row.side === 'call' ? 'C' : 'P'}${(row.strike * 1000).toString().padStart(8, '0')}`;
+    const ranks: OptionRank[] = (ranksData ?? []).map((row) => {
+      const computedSymbol = row.contract_symbol || `${symbol}${new Date(row.expiry).toISOString().slice(2, 10).replace(/-/g, "")}${row.side === "call" ? "C" : "P"}${(row.strike * 1000).toString().padStart(8, "0")}`;
       const historyStats = computedSymbol ? historyMap.get(computedSymbol.toUpperCase()) : undefined;
       const historySamples = historyStats?.count ?? 0;
 
@@ -244,45 +286,45 @@ serve(async (req: Request): Promise<Response> => {
         side: row.side,
         mlScore: row.ml_score,
         // Momentum Framework Scores
-        compositeRank: row.composite_rank,
-        momentumScore: row.momentum_score,
-        valueScore: row.value_score,
-        greeksScore: row.greeks_score,
-        relativeValueScore: row.relative_value_score,
-        entryDifficultyScore: row.entry_difficulty_score,
-        rankingStabilityScore: row.ranking_stability_score,
-        rankingMode: row.ranking_mode,
+        compositeRank: row.composite_rank ?? undefined,
+        momentumScore: row.momentum_score ?? undefined,
+        valueScore: row.value_score ?? undefined,
+        greeksScore: row.greeks_score ?? undefined,
+        relativeValueScore: row.relative_value_score ?? undefined,
+        entryDifficultyScore: row.entry_difficulty_score ?? undefined,
+        rankingStabilityScore: row.ranking_stability_score ?? undefined,
+        rankingMode: row.ranking_mode ?? undefined,
         // IV Metrics
-        impliedVol: row.implied_vol,
-        ivRank: row.iv_rank,
-        spreadPct: row.spread_pct,
+        impliedVol: row.implied_vol ?? undefined,
+        ivRank: row.iv_rank ?? undefined,
+        spreadPct: row.spread_pct ?? undefined,
         // Greeks
-        delta: row.delta,
-        gamma: row.gamma,
-        theta: row.theta,
-        vega: row.vega,
-        rho: row.rho,
+        delta: row.delta ?? undefined,
+        gamma: row.gamma ?? undefined,
+        theta: row.theta ?? undefined,
+        vega: row.vega ?? undefined,
+        rho: row.rho ?? undefined,
         // Volume/Liquidity
-        openInterest: row.open_interest,
-        volume: row.volume,
-        volOiRatio: row.vol_oi_ratio,
-        liquidityConfidence: row.liquidity_confidence,
+        openInterest: row.open_interest ?? undefined,
+        volume: row.volume ?? undefined,
+        volOiRatio: row.vol_oi_ratio ?? undefined,
+        liquidityConfidence: row.liquidity_confidence ?? undefined,
         // Pricing
-        bid: row.bid,
-        ask: row.ask,
-        mark: row.mark,
-        lastPrice: row.last_price,
-        priceProvider: PRICE_PROVIDER,
-        oiProvider: OI_PROVIDER,
+        bid: row.bid ?? undefined,
+        ask: row.ask ?? undefined,
+        mark: row.mark ?? undefined,
+        lastPrice: row.last_price ?? undefined,
+        priceProvider: row.price_provider ?? PRICE_PROVIDER,
+        oiProvider: row.oi_provider ?? OI_PROVIDER,
         historySamples: historySamples,
         historyAvgMark: historyStats && historyStats.count > 0 ? historyStats.sum / historyStats.count : undefined,
         historyWindowDays: historySamples > 0 ? HISTORY_LOOKBACK_DAYS : undefined,
+        signalDiscount: row.signal_discount ?? undefined,
+        signalRunner: row.signal_runner ?? undefined,
+        signalGreeks: row.signal_greeks ?? undefined,
+        signalBuy: row.signal_buy ?? undefined,
+        signals: row.signals ?? undefined,
         // Signals
-        signalDiscount: row.signal_discount,
-        signalRunner: row.signal_runner,
-        signalGreeks: row.signal_greeks,
-        signalBuy: row.signal_buy,
-        signals: row.signals,
         // Meta
         runAt: row.run_at,
       };

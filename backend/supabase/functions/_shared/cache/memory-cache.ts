@@ -26,7 +26,7 @@ export class MemoryCache implements Cache {
 
     // Check if expired
     if (Date.now() > entry.expiresAt) {
-      this.delete(key);
+      await this.delete(key);
       this.misses++;
       return null;
     }
@@ -69,9 +69,11 @@ export class MemoryCache implements Cache {
     }
   }
 
-  async delete(key: string): Promise<void> {
+  delete(key: string): Promise<void> {
     const entry = this.cache.get(key);
-    if (!entry) return;
+    if (!entry) {
+      return Promise.resolve();
+    }
 
     // Remove from tag index
     if (entry.tags) {
@@ -87,6 +89,7 @@ export class MemoryCache implements Cache {
     }
 
     this.cache.delete(key);
+    return Promise.resolve();
   }
 
   async invalidateByTag(tag: string): Promise<void> {
@@ -98,11 +101,12 @@ export class MemoryCache implements Cache {
     }
   }
 
-  async clear(): Promise<void> {
+  clear(): Promise<void> {
     this.cache.clear();
     this.tagIndex.clear();
     this.hits = 0;
     this.misses = 0;
+    return Promise.resolve();
   }
 
   async getStats(): Promise<{ hits: number; misses: number; size: number }> {

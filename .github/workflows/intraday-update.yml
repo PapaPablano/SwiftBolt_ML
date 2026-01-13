@@ -44,6 +44,7 @@ jobs:
           echo "time=$current_hour:$current_min ET" >> $GITHUB_OUTPUT
 
       - name: Trigger Intraday Update
+        id: trigger
         if: steps.market.outputs.skip != 'true'
         run: |
           echo "Triggering intraday update at ${{ steps.market.outputs.time }}"
@@ -82,6 +83,8 @@ jobs:
           market_state=$(echo "$body" | jq -r '.market_state // "unknown"')
           echo "SYMBOLS_UPDATED=$symbols_updated" >> $GITHUB_ENV
           echo "MARKET_STATE=$market_state" >> $GITHUB_ENV
+          echo "symbols_updated=$symbols_updated" >> $GITHUB_OUTPUT
+          echo "market_state=$market_state" >> $GITHUB_OUTPUT
 
       - name: Summary
         if: steps.market.outputs.skip != 'true'
@@ -91,8 +94,8 @@ jobs:
           echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Time | ${{ steps.market.outputs.time }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Market State | ${{ env.MARKET_STATE || 'unknown' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Symbols Updated | ${{ env.SYMBOLS_UPDATED || '0' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Market State | ${{ steps.trigger.outputs.market_state || 'unknown' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Symbols Updated | ${{ steps.trigger.outputs.symbols_updated || '0' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Schedule" >> $GITHUB_STEP_SUMMARY
           echo "Updates every 15 minutes during market hours (9:30 AM - 4:00 PM ET)" >> $GITHUB_STEP_SUMMARY

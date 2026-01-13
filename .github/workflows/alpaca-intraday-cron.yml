@@ -108,6 +108,12 @@ jobs:
     if: needs.check-market.outputs.should_run == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+      ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
 
     steps:
       - name: Checkout code
@@ -127,13 +133,20 @@ jobs:
 
       - name: Configure environment
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
-          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || vars.DATABASE_URL }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL || vars.WEBHOOK_URL }}
         run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL is not configured" >&2
+            exit 1
+          fi
+
+          if [ -n "$WEBHOOK_URL" ]; then
+            echo "WEBHOOK_URL configured"
+          else
+            echo "WEBHOOK_URL not set; webhook step will remain disabled"
+          fi
+
           # Write .env at repository root so Python scripts can locate it
           {
             echo "SUPABASE_URL=${SUPABASE_URL}"
@@ -150,6 +163,7 @@ jobs:
           echo "DATABASE_URL=${DATABASE_URL}" >> "$GITHUB_ENV"
           echo "ALPACA_API_KEY=${ALPACA_API_KEY}" >> "$GITHUB_ENV"
           echo "ALPACA_API_SECRET=${ALPACA_API_SECRET}" >> "$GITHUB_ENV"
+          echo "WEBHOOK_URL=${WEBHOOK_URL}" >> "$GITHUB_ENV"
 
       - name: Fetch intraday data
         id: fetch
@@ -319,7 +333,7 @@ jobs:
           echo "Data updated, clients should see fresh data on next fetch"
 
           # Could add webhook notification here if needed
-          # curl -X POST "${{ secrets.WEBHOOK_URL }}" -d '{"event": "intraday_updated"}'
+          # curl -X POST "$WEBHOOK_URL" -d '{"event": "intraday_updated"}'
 
       - name: Report results
         if: always()

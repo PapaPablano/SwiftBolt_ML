@@ -4,18 +4,18 @@
 import type { ProviderId } from "../providers/types.ts";
 import type { RateLimitConfig } from "../rate-limiter/token-bucket.ts";
 
-export interface ProviderRateLimits {
-  finnhub: RateLimitConfig;
-  massive: RateLimitConfig;
-}
+export type ProviderRateLimits = Record<ProviderId, RateLimitConfig>;
 
 /**
  * Default rate limits for free tier
  * Override via environment variables:
  * - FINNHUB_MAX_RPS, FINNHUB_MAX_RPM
  * - MASSIVE_MAX_RPS, MASSIVE_MAX_RPM
+ * - YAHOO_MAX_RPS, YAHOO_MAX_RPM
+ * - TRADIER_MAX_RPS, TRADIER_MAX_RPM
+ * - ALPACA_MAX_RPS, ALPACA_MAX_RPM
  */
-export function getRateLimits(): Record<ProviderId, RateLimitConfig> {
+export function getRateLimits(): ProviderRateLimits {
   return {
     finnhub: {
       maxPerSecond: parseInt(Deno.env.get("FINNHUB_MAX_RPS") || "30", 10),

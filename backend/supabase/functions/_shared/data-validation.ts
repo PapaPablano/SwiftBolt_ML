@@ -347,7 +347,7 @@ export class DataValidator {
     if (!rule) {
       return {
         valid: false,
-        reason: `Unknown provider: ${bar.provider}. Must be one of: polygon, tradier, ml_forecast`,
+        reason: `Unknown provider: ${bar.provider}. Must be one of: polygon, tradier, ml_forecast, alpaca, yfinance`,
       };
     }
 
