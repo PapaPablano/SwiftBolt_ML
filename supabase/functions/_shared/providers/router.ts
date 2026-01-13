@@ -122,35 +122,10 @@ export class ProviderRouter {
   }
 
   async getHistoricalBars(request: HistoricalBarsRequest): Promise<Bar[]> {
-    // Smart routing: Alpaca first (if available), then timeframe-specific fallbacks
-    const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(request.timeframe);
-    const alpacaProvider = this.providers.get("alpaca");
-    const tradierProvider = this.providers.get("tradier");
+    // Alpaca-only strategy: Use Alpaca for all OHLCV data
+    const { primary, fallback } = this.policy.historicalBars;
 
-    let primary: ProviderId;
-    let fallback: ProviderId | undefined;
-
-    // Alpaca is preferred for ALL data types (historical + intraday) when available
-    if (alpacaProvider) {
-      primary = "alpaca";
-      // Fallback depends on timeframe
-      if (isIntraday) {
-        fallback = tradierProvider ? "tradier" : this.policy.historicalBars.fallback;
-      } else {
-        fallback = this.policy.historicalBars.fallback;
-      }
-      console.log(`[Router] Using Alpaca (primary) for ${request.timeframe} with fallback: ${fallback || 'none'}`);
-    } else if (isIntraday && tradierProvider) {
-      // No Alpaca: use Tradier for intraday
-      primary = "tradier";
-      fallback = this.policy.historicalBars.fallback;
-      console.log(`[Router] Using Tradier for intraday: ${request.timeframe}`);
-    } else {
-      // Use configured policy for daily/weekly data (no Alpaca, no Tradier)
-      primary = this.policy.historicalBars.primary;
-      fallback = this.policy.historicalBars.fallback;
-      console.log(`[Router] Using ${primary} for daily/weekly timeframe: ${request.timeframe}`);
-    }
+    console.log(`[Router] Using Alpaca for ${request.timeframe} (Alpaca-only strategy)`);
 
     try {
       const provider = await this.selectProvider(primary, fallback);
@@ -161,22 +136,8 @@ export class ProviderRouter {
       console.error(`[Router] getHistoricalBars failed:`, error);
       this.recordFailure(primary);
 
-      // Try fallback if available and not a rate limit error
-      if (fallback && !(error instanceof RateLimitExceededError)) {
-        try {
-          console.log(`[Router] Attempting fallback to ${fallback}`);
-          const fallbackProvider = this.providers.get(fallback);
-          if (fallbackProvider) {
-            const result = await fallbackProvider.getHistoricalBars(request);
-            this.recordSuccess(fallback);
-            return result;
-          }
-        } catch (fallbackError) {
-          console.error(`[Router] Fallback also failed:`, fallbackError);
-          this.recordFailure(fallback);
-        }
-      }
-
+      // With Alpaca-only strategy, we don't have fallbacks for OHLCV data
+      // This is intentional - we want to know if Alpaca fails
       throw error;
     }
   }

@@ -1,27 +1,31 @@
-// symbol-backfill: Deep backfill OHLC data for a symbol using Polygon API
+// symbol-backfill: Deep backfill OHLC data for a symbol using Alpaca API
 // POST /symbol-backfill { symbol, timeframes?, force? }
 //
 // Triggered when a symbol is added to a watchlist to ensure historical data is available.
-// Uses Polygon (Massive) API for maximum historical data (2+ years for daily).
+// Uses Alpaca API for maximum historical data (7+ years for daily).
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
-const POLYGON_API_KEY = Deno.env.get("MASSIVE_API_KEY") || Deno.env.get("POLYGON_API_KEY");
-const POLYGON_BASE_URL = "https://api.polygon.io";
+const ALPACA_API_KEY = Deno.env.get("ALPACA_API_KEY");
+const ALPACA_API_SECRET = Deno.env.get("ALPACA_API_SECRET");
+const ALPACA_BASE_URL = "https://data.alpaca.markets/v2";
 
-// Timeframe configurations: how much history to fetch
-const TIMEFRAME_CONFIG: Record<string, { multiplier: number; timespan: string; maxDays: number }> = {
-  m15: { multiplier: 15, timespan: "minute", maxDays: 60 },
-  h1: { multiplier: 1, timespan: "hour", maxDays: 180 },
-  h4: { multiplier: 4, timespan: "hour", maxDays: 365 },
-  d1: { multiplier: 1, timespan: "day", maxDays: 730 },  // 2 years
-  w1: { multiplier: 1, timespan: "week", maxDays: 1825 }, // 5 years
+// Timeframe configurations: how much history to fetch (Alpaca format)
+const TIMEFRAME_CONFIG: Record<string, { alpacaTf: string; maxDays: number }> = {
+  m15: { alpacaTf: "15Min", maxDays: 60 },
+  h1: { alpacaTf: "1Hour", maxDays: 180 },
+  h4: { alpacaTf: "4Hour", maxDays: 365 },
+  d1: { alpacaTf: "1Day", maxDays: 2555 },  // 7 years
+  w1: { alpacaTf: "1Week", maxDays: 2555 }, // 7 years
 };
 
 // Default timeframes to backfill (most important first)
 const DEFAULT_TIMEFRAMES = ["d1", "h1", "w1"];
+
+// Rate limiting: Alpaca allows 200 requests/minute
+const RATE_LIMIT_DELAY = 300; // 0.3 seconds in ms
 
 interface BackfillRequest {
   symbol: string;
@@ -44,7 +48,15 @@ interface BackfillResponse {
   durationMs: number;
 }
 
-async function fetchPolygonBars(
+function getAlpacaHeaders(): Record<string, string> {
+  return {
+    "APCA-API-KEY-ID": ALPACA_API_KEY!,
+    "APCA-API-SECRET-KEY": ALPACA_API_SECRET!,
+    "Accept": "application/json",
+  };
+}
+
+async function fetchAlpacaBars(
   symbol: string,
   timeframe: string,
   startDate: Date,
@@ -55,53 +67,76 @@ async function fetchPolygonBars(
     throw new Error(`Invalid timeframe: ${timeframe}`);
   }
 
-  const { multiplier, timespan } = config;
+  const { alpacaTf } = config;
 
-  // Format dates based on timespan
-  let fromStr: string;
-  let toStr: string;
-  if (timespan === "day" || timespan === "week" || timespan === "month") {
-    fromStr = startDate.toISOString().split("T")[0];
-    toStr = endDate.toISOString().split("T")[0];
-  } else {
-    fromStr = startDate.getTime().toString();
-    toStr = endDate.getTime().toString();
+  // Format dates to RFC-3339
+  const startStr = startDate.toISOString();
+  const endStr = endDate.toISOString();
+
+  console.log(`[SymbolBackfill] Fetching ${symbol} ${timeframe} from ${startStr} to ${endStr}`);
+
+  const allBars: { ts: string; open: number; high: number; low: number; close: number; volume: number }[] = [];
+  let pageToken: string | undefined;
+  let pageCount = 0;
+  const maxPages = 100; // Safety limit
+
+  while (pageCount < maxPages) {
+    let url = `${ALPACA_BASE_URL}/stocks/bars?` +
+      `symbols=${symbol.toUpperCase()}&` +
+      `timeframe=${alpacaTf}&` +
+      `start=${startStr}&` +
+      `end=${endStr}&` +
+      `limit=10000&` +
+      `adjustment=raw&` +
+      `feed=iex&` +
+      `sort=asc`;
+
+    if (pageToken) {
+      url += `&page_token=${pageToken}`;
+    }
+
+    const response = await fetch(url, {
+      headers: getAlpacaHeaders(),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Alpaca API error: ${response.status} - ${text}`);
+    }
+
+    const data = await response.json();
+    const barsData = data.bars?.[symbol.toUpperCase()] || [];
+
+    if (barsData.length === 0 && pageCount === 0) {
+      console.log(`[SymbolBackfill] No data returned for ${symbol} ${timeframe}`);
+      return [];
+    }
+
+    // Transform to our format
+    for (const bar of barsData) {
+      allBars.push({
+        ts: bar.t,
+        open: bar.o,
+        high: bar.h,
+        low: bar.l,
+        close: bar.c,
+        volume: bar.v,
+      });
+    }
+
+    pageToken = data.next_page_token;
+    pageCount++;
+
+    if (pageToken) {
+      console.log(`[SymbolBackfill] Fetched page ${pageCount} with ${barsData.length} bars, continuing...`);
+      await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY));
+    } else {
+      break;
+    }
   }
 
-  const url = new URL(
-    `${POLYGON_BASE_URL}/v2/aggs/ticker/${symbol.toUpperCase()}/range/${multiplier}/${timespan}/${fromStr}/${toStr}`
-  );
-  url.searchParams.set("adjusted", "false");  // ALWAYS use unadjusted prices
-  url.searchParams.set("sort", "asc");
-  url.searchParams.set("limit", "50000");
-  url.searchParams.set("apiKey", POLYGON_API_KEY!);
-
-  console.log(`[SymbolBackfill] Fetching ${symbol} ${timeframe} from ${fromStr} to ${toStr}`);
-
-  const response = await fetch(url.toString());
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Polygon API error: ${response.status} - ${text}`);
-  }
-
-  const data = await response.json();
-
-  if (data.status === "ERROR") {
-    throw new Error(`Polygon API error: ${JSON.stringify(data)}`);
-  }
-
-  const results = data.results || [];
-  console.log(`[SymbolBackfill] Received ${results.length} bars for ${symbol} ${timeframe}`);
-
-  // Transform to our format
-  return results.map((r: { t: number; o: number; h: number; l: number; c: number; v: number }) => ({
-    ts: new Date(r.t).toISOString(),
-    open: r.o,
-    high: r.h,
-    low: r.l,
-    close: r.c,
-    volume: r.v,
-  }));
+  console.log(`[SymbolBackfill] Received ${allBars.length} bars for ${symbol} ${timeframe}`);
+  return allBars;
 }
 
 async function getExistingCoverage(
@@ -172,11 +207,11 @@ async function backfillTimeframe(
     const endDate = new Date();
     const startDate = new Date(endDate.getTime() - config.maxDays * 24 * 60 * 60 * 1000);
 
-    // Fetch from Polygon
-    const bars = await fetchPolygonBars(symbol, timeframe, startDate, endDate);
+    // Fetch from Alpaca
+    const bars = await fetchAlpacaBars(symbol, timeframe, startDate, endDate);
 
     if (bars.length === 0) {
-      return { timeframe, barsInserted: 0, error: "No data returned from Polygon" };
+      return { timeframe, barsInserted: 0, error: "No data returned from Alpaca" };
     }
 
     // Upsert to database
@@ -189,9 +224,9 @@ async function backfillTimeframe(
       low: bar.low,
       close: bar.close,
       volume: bar.volume,
-      provider: "polygon",
+      provider: "alpaca",
       is_forecast: false,
-      data_status: "confirmed",
+      data_status: "verified",
     }));
 
     const { error: upsertError } = await supabase
@@ -233,8 +268,8 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   // Check API key
-  if (!POLYGON_API_KEY) {
-    return errorResponse("MASSIVE_API_KEY not configured", 500);
+  if (!ALPACA_API_KEY || !ALPACA_API_SECRET) {
+    return errorResponse("ALPACA_API_KEY or ALPACA_API_SECRET not configured", 500);
   }
 
   const startTime = Date.now();
@@ -294,11 +329,11 @@ serve(async (req: Request): Promise<Response> => {
       results.push(result);
       totalBars += result.barsInserted;
 
-      // Rate limiting: Polygon free tier = 5 req/min
-      // Wait 12 seconds between timeframes to stay under limit
+      // Rate limiting: Alpaca allows 200 req/min
+      // Wait 0.3 seconds between timeframes
       if (timeframes.indexOf(tf) < timeframes.length - 1) {
-        console.log(`[SymbolBackfill] Rate limit delay (12s)...`);
-        await new Promise((resolve) => setTimeout(resolve, 12000));
+        console.log(`[SymbolBackfill] Rate limit delay (${RATE_LIMIT_DELAY}ms)...`);
+        await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY));
       }
     }
 
