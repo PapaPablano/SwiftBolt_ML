@@ -1069,16 +1069,13 @@ final class ChartViewModel: ObservableObject {
             
             if shouldRefresh {
                 // Check if enough time has passed since last refresh
-                let timeSinceLastRefresh = await MainActor.run {
-                    Date().timeIntervalSince(lastChartRefreshTime)
-                }
+                let timeSinceLastRefresh = Date().timeIntervalSince(lastChartRefreshTime)
                 
                 if timeSinceLastRefresh >= currentTimeframe.minRefreshSeconds {
+                    // Update timestamp BEFORE calling loadChart to prevent concurrent refresh calls
+                    lastChartRefreshTime = Date()
                     print("[DEBUG] 🔄 Auto-refreshing chart for \(currentTimeframe.displayName) (last refresh: \(Int(timeSinceLastRefresh))s ago)")
                     await loadChart()
-                    await MainActor.run {
-                        lastChartRefreshTime = Date()
-                    }
                 }
             }
             
