@@ -1120,11 +1120,7 @@ class SupabaseDatabase:
                 "expires_at": expires_at,
             }
 
-            response = (
-                self.client.table("ml_forecast_paths_intraday")
-                .insert(payload)
-                .execute()
-            )
+            response = self.client.table("ml_forecast_paths_intraday").insert(payload).execute()
 
             if response.data:
                 return response.data[0]["id"]

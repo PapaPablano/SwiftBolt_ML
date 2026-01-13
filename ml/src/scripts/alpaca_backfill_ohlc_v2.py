@@ -25,10 +25,10 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List
+from zoneinfo import ZoneInfo
 
 import requests
 from dotenv import load_dotenv
-from zoneinfo import ZoneInfo
 
 # Load environment variables from root .env file
 root_dir = Path(__file__).parent.parent.parent.parent

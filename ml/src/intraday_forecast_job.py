@@ -25,8 +25,8 @@ from src.features.support_resistance_detector import (  # noqa: E402
 from src.features.technical_indicators import add_technical_features  # noqa: E402
 from src.forecast_synthesizer import ForecastSynthesizer  # noqa: E402
 from src.forecast_weights import get_default_weights  # noqa: E402
-from src.models.baseline_forecaster import BaselineForecaster  # noqa: E402
 from src.models.arima_garch_forecaster import ArimaGarchForecaster  # noqa: E402
+from src.models.baseline_forecaster import BaselineForecaster  # noqa: E402
 from src.models.ensemble_forecaster import EnsembleForecaster  # noqa: E402
 from src.strategies.supertrend_ai import SuperTrendAI  # noqa: E402
 
@@ -431,7 +431,9 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
             "15m": 15 * 60,
             "1h": 60 * 60,
         }
-        horizon_seconds = int(horizon_seconds_map.get(horizon, timeframe_interval_seconds(timeframe)))
+        horizon_seconds = int(
+            horizon_seconds_map.get(horizon, timeframe_interval_seconds(timeframe))
+        )
 
         short_steps_by_horizon = {
             "15m": 8,
@@ -504,9 +506,7 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                         confidence=synth_result.confidence,
                     )
 
-                    expires_at_path = (
-                        datetime.utcnow() + timedelta(minutes=30)
-                    ).isoformat()
+                    expires_at_path = (datetime.utcnow() + timedelta(minutes=30)).isoformat()
                     db.insert_intraday_forecast_path(
                         symbol_id=symbol_id,
                         symbol=symbol,
