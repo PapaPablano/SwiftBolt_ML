@@ -205,12 +205,12 @@ struct WebChartView: NSViewRepresentable {
         private func updateChartV2(with data: ChartDataV2Response) {
             let bridge = parent.bridge
             let preservedRange = lastVisibleRange ?? bridge.visibleRange
+            let forecastBars = data.layers.forecast.data
             
             print("[WebChartView] Updating chart with V2 layered data")
             print("[WebChartView] - Historical: \(data.layers.historical.count) bars")
             print("[WebChartView] - Intraday: \(data.layers.intraday.count) bars")
-            let forecastBars = parent.viewModel.selectedForecastBars
-            print("[WebChartView] - Forecast: \(forecastBars.count) bars (selected horizon: \(parent.viewModel.selectedForecastHorizon ?? "auto"))")
+            print("[WebChartView] - Forecast: \(forecastBars.count) bars")
             
             // Guard: only render if we have candles
             let allBars = data.allBars
@@ -544,12 +544,10 @@ struct WebChartView: NSViewRepresentable {
         }
 
         private func applyForecastOverlay(using bars: [OHLCBar]? = nil) {
-            if let series = parent.viewModel.selectedForecastSeries {
-                parent.bridge.setForecast(from: series, direction: parent.viewModel.chartDataV2?.mlSummary?.overallLabel ?? "neutral")
-            }
-
-            let forecastBars = bars ?? parent.viewModel.selectedForecastBars
-            if parent.viewModel.timeframe.isIntraday, !forecastBars.isEmpty {
+            let forecastBars = bars ?? parent.viewModel.chartDataV2?.layers.forecast.data ?? []
+            guard !forecastBars.isEmpty else { return }
+            parent.bridge.setForecastLayer(from: forecastBars)
+            if parent.viewModel.timeframe.isIntraday {
                 parent.bridge.setForecastCandles(from: forecastBars)
             }
         }

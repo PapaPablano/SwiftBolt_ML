@@ -378,7 +378,11 @@ final class APIClient {
         // Build URL with cache-buster to bypass CDN caching (for all timeframes)
         var urlComponents = URLComponents(url: functionURL("chart-data-v2"), resolvingAgainstBaseURL: false)!
         let cacheBuster = Int(Date().timeIntervalSince1970)
-        urlComponents.queryItems = [URLQueryItem(name: "t", value: "\(cacheBuster)")]
+        urlComponents.queryItems = [
+            URLQueryItem(name: "t", value: "\(cacheBuster)"),
+            URLQueryItem(name: "symbol", value: symbol),
+            URLQueryItem(name: "timeframe", value: timeframe)
+        ]
 
         var body: [String: Any] = [
             "symbol": symbol,
@@ -398,7 +402,9 @@ final class APIClient {
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let bodyData = try JSONSerialization.data(withJSONObject: body)
+        request.httpBody = bodyData
+        print("[DEBUG] 📊 chart-data-v2 request: method=\(request.httpMethod ?? "nil"), bodyBytes=\(bodyData.count)")
         
         // Bypass network cache for all requests to ensure fresh data
         request.cachePolicy = .reloadIgnoringLocalCacheData

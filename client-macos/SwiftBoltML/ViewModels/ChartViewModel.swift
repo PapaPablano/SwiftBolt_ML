@@ -1,5 +1,6 @@
 import Foundation
 import WebKit
+import Supabase
 
 @MainActor
 final class ChartViewModel: ObservableObject {
@@ -134,11 +135,22 @@ final class ChartViewModel: ObservableObject {
     private let liveQuoteInterval: UInt64 = 5 * 1_000_000_000  // 5 seconds for streaming price updates
     private var lastChartRefreshTime: Date = .distantPast
     private let marketTimeZone = TimeZone(identifier: "America/New_York") ?? .current
+    private let supabase: SupabaseClient
+    private var symbolIdCache: [String: UUID] = [:]
     private let isoDateFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
     }()
+
+    init(
+        supabase: SupabaseClient = SupabaseClient(
+            supabaseURL: Config.supabaseURL,
+            supabaseKey: Config.supabaseAnonKey
+        )
+    ) {
+        self.supabase = supabase
+    }
 
     var bars: [OHLCBar] {
         chartData?.bars ?? []
@@ -634,16 +646,39 @@ final class ChartViewModel: ObservableObject {
                         case .d1, .w1: return nil
                         }
                     }() : nil
-                    
-                    print("[DEBUG] Requesting chart-data-v2 symbol=\(symbol.ticker) timeframe=\(timeframe.apiToken)")
-                    var response = try await APIClient.shared.fetchChartV2(
-                        symbol: symbol.ticker,
-                        timeframe: timeframe.apiToken,
-                        days: daysToRequest,
-                        includeForecast: true,
-                        forecastDays: 10,
-                        forecastSteps: forecastSteps
-                    )
+
+                    Task.detached { [ticker = symbol.ticker] in
+                        await APIClient.shared.triggerHistoricalBackfill(
+                            symbol: ticker,
+                            timeframes: ["m15", "h1", "h4", "d1", "w1"],
+                            force: false
+                        )
+                    }
+
+                    let resolvedSymbolId = try await resolveSymbolId(for: symbol.ticker)
+
+                    var response: ChartDataV2Response?
+                    do {
+                        response = try await fetchChartV2ViaRPC(
+                            ticker: symbol.ticker,
+                            symbolId: resolvedSymbolId,
+                            timeframe: timeframe.apiToken
+                        )
+                    } catch {
+                        print("[DEBUG] RPC get_chart_data_v2 failed, falling back to chart-data-v2 edge function: \(error)")
+                        response = try await APIClient.shared.fetchChartV2(
+                            symbol: symbol.ticker,
+                            timeframe: timeframe.apiToken,
+                            days: daysToRequest,
+                            includeForecast: true,
+                            forecastDays: 10,
+                            forecastSteps: forecastSteps
+                        )
+                    }
+
+                    guard let response else {
+                        throw APIError.invalidResponse
+                    }
 
                     guard !Task.isCancelled else {
                         print("[DEBUG] Load cancelled after fetch")
@@ -655,28 +690,18 @@ final class ChartViewModel: ObservableObject {
 
                     // Auto-retry if empty: trigger coverage + poll + refetch (ALL timeframes)
                     if bars.isEmpty {
-                        print("[DEBUG] ⚠️ 0 bars, triggering coverage + poll")
-                        
-                        if let job = try? await APIClient.shared.ensureCoverage(
-                            symbol: symbol.ticker,
-                            timeframe: timeframe.apiToken,
-                            windowDays: timeframe.isIntraday ? 5 : 7
-                        ) {
-                            print("[DEBUG] Coverage job: \(job.jobDefId)")
-                            
-                            // Poll with exponential backoff
-                            var delay: UInt64 = 400_000_000 // 0.4s
-                            for attempt in 0..<6 {
-                                try await Task.sleep(nanoseconds: delay)
-                                guard !Task.isCancelled else { return }
-                                
-                                let peek = try await APIClient.shared.fetchChartV2(
-                                    symbol: symbol.ticker,
-                                    timeframe: timeframe.apiToken,
-                                    days: daysToRequest,
-                                    includeForecast: true,
-                                    forecastDays: 10,
-                                    forecastSteps: forecastSteps
+                        print("[DEBUG] ⚠️ 0 bars, polling for data...")
+
+                        var delay: UInt64 = 500_000_000
+                        for attempt in 0..<5 {
+                            try await Task.sleep(nanoseconds: delay)
+                            guard !Task.isCancelled else { return }
+
+                            do {
+                                let peek = try await fetchChartV2ViaRPC(
+                                    ticker: symbol.ticker,
+                                    symbolId: resolvedSymbolId,
+                                    timeframe: timeframe.apiToken
                                 )
                                 let (peekBars, peekStaleness) = buildBarsWithStalenessCheck(from: peek, for: timeframe)
                                 if !peekBars.isEmpty {
@@ -687,8 +712,10 @@ final class ChartViewModel: ObservableObject {
                                     dataRecencyReport = peekStaleness
                                     break
                                 }
-                                delay = min(delay * 2, 3_000_000_000) // cap 3s
+                            } catch {
+                                print("[DEBUG] Poll attempt \(attempt + 1) failed: \(error)")
                             }
+                            delay = min(delay * 2, 4_000_000_000)
                         }
                     }
                     
@@ -782,7 +809,7 @@ final class ChartViewModel: ObservableObject {
                 errorMessage = error.localizedDescription
                 isLoading = false
             }
-
+            
             if !Task.isCancelled {
                 isLoading = false
             }
@@ -798,29 +825,224 @@ final class ChartViewModel: ObservableObject {
         timeframe = newTimeframe
         // loadChart() will be called automatically by didSet
     }
-    
-    /// Helper to build bars from response - merges all layers and sorts by timestamp
-    /// With Alpaca, all timeframes use the same API, so no special handling needed
-    private func buildBars(from response: ChartDataV2Response, for timeframe: Timeframe) -> [OHLCBar] {
-        let intraday = response.layers.intraday.data
-        let historical = response.layers.historical.data
-        
-        // Merge all bars and sort by timestamp (works for all timeframes)
-        let allBars = (historical + intraday).sorted(by: { $0.ts < $1.ts })
-        
-        let histLast = historical.last?.ts.ISO8601Format() ?? "none"
-        let intradayLast = intraday.last?.ts.ISO8601Format() ?? "none"
-        let mergedLast = allBars.last?.ts.ISO8601Format() ?? "none"
-        
-        print("[DEBUG] 📊 buildBars(\(timeframe.apiToken)): hist=\(historical.count) (last: \(histLast)) + intraday=\(intraday.count) (last: \(intradayLast)) → merged=\(allBars.count) (last: \(mergedLast))")
-        
-        return allBars
-    }
 
     func setSymbol(_ symbol: Symbol?) async {
         // Setting selectedSymbol triggers didSet which calls loadChart() automatically
         // Do NOT call loadChart() explicitly here to avoid duplicate/cancelled requests
         selectedSymbol = symbol
+    }
+
+    /// Helper to build bars from response - merges all layers and sorts by timestamp
+    /// With Alpaca, all timeframes use the same API, so no special handling needed
+    private func buildBars(from response: ChartDataV2Response, for timeframe: Timeframe) -> [OHLCBar] {
+        let intraday = response.layers.intraday.data
+        let historical = response.layers.historical.data
+
+        // Merge all bars and sort by timestamp (works for all timeframes)
+        let allBars = (historical + intraday).sorted(by: { $0.ts < $1.ts })
+
+        let histLast = historical.last?.ts.ISO8601Format() ?? "none"
+        let intradayLast = intraday.last?.ts.ISO8601Format() ?? "none"
+        let mergedLast = allBars.last?.ts.ISO8601Format() ?? "none"
+
+        print("[DEBUG] 📊 buildBars(\(timeframe.apiToken)): hist=\(historical.count) (last: \(histLast)) + intraday=\(intraday.count) (last: \(intradayLast)) → merged=\(allBars.count) (last: \(mergedLast))")
+
+        return allBars
+    }
+
+    private func resolveSymbolId(for ticker: String) async throws -> UUID {
+        let upper = ticker.uppercased()
+        if let cached = symbolIdCache[upper] {
+            return cached
+        }
+
+        let results = try await APIClient.shared.searchSymbols(query: upper)
+        guard let match = results.first(where: { $0.ticker.uppercased() == upper }) else {
+            throw APIError.invalidSymbol(symbol: upper)
+        }
+
+        symbolIdCache[upper] = match.id
+        return match.id
+    }
+
+    private func fetchChartV2ViaRPC(
+        ticker: String,
+        symbolId: UUID,
+        timeframe: String
+    ) async throws -> ChartDataV2Response {
+        struct Params: Encodable {
+            let p_symbol_id: UUID
+            let p_timeframe: String
+            let p_start_date: String
+            let p_end_date: String
+        }
+
+        let start = Date(timeIntervalSince1970: 0).ISO8601Format()
+        let end = Date().ISO8601Format()
+
+        let result = try await supabase
+            .rpc(
+                "get_chart_data_v2",
+                params: Params(
+                    p_symbol_id: symbolId,
+                    p_timeframe: timeframe,
+                    p_start_date: start,
+                    p_end_date: end
+                )
+            )
+            .execute()
+
+        let rows = try JSONDecoder().decode([ChartDataV2Row].self, from: result.data)
+
+        let intradayRows = rows.filter { $0.isIntraday && !$0.isForecast }
+        let forecastRows = rows.filter { $0.isForecast }
+        let historicalRows = rows.filter { !$0.isIntraday && !$0.isForecast }
+
+        let historicalBars = historicalRows.compactMap { $0.toOHLCBar() }
+        let intradayBars = intradayRows.compactMap { $0.toOHLCBar() }
+        let forecastBars = forecastRows.compactMap { $0.toOHLCBar() }
+
+        let allBars = (historicalBars + intradayBars + forecastBars).sorted(by: { $0.ts < $1.ts })
+        let startDate = allBars.first?.ts.ISO8601Format() ?? start
+        let endDate = allBars.last?.ts.ISO8601Format() ?? end
+
+        func layerProvider(_ rows: [ChartDataV2Row]) -> String {
+            guard let first = rows.first else { return "" }
+            let provider = first.provider
+            if rows.allSatisfy({ $0.provider == provider }) {
+                return provider
+            }
+            return "mixed"
+        }
+
+        let layers = ChartLayers(
+            historical: LayerData(
+                count: historicalBars.count,
+                provider: layerProvider(historicalRows),
+                data: historicalBars.sorted(by: { $0.ts < $1.ts }),
+                oldestBar: historicalBars.first?.ts.ISO8601Format(),
+                newestBar: historicalBars.last?.ts.ISO8601Format()
+            ),
+            intraday: LayerData(
+                count: intradayBars.count,
+                provider: layerProvider(intradayRows),
+                data: intradayBars.sorted(by: { $0.ts < $1.ts }),
+                oldestBar: intradayBars.first?.ts.ISO8601Format(),
+                newestBar: intradayBars.last?.ts.ISO8601Format()
+            ),
+            forecast: LayerData(
+                count: forecastBars.count,
+                provider: layerProvider(forecastRows),
+                data: forecastBars.sorted(by: { $0.ts < $1.ts }),
+                oldestBar: forecastBars.first?.ts.ISO8601Format(),
+                newestBar: forecastBars.last?.ts.ISO8601Format()
+            )
+        )
+
+        let metadata = ChartMetadata(
+            totalBars: historicalBars.count + intradayBars.count + forecastBars.count,
+            startDate: startDate,
+            endDate: endDate
+        )
+
+        return ChartDataV2Response(
+            symbol: ticker,
+            timeframe: timeframe,
+            layers: layers,
+            metadata: metadata,
+            dataQuality: nil,
+            mlSummary: nil,
+            indicators: nil,
+            superTrendAI: nil
+        )
+    }
+
+    private struct ChartDataV2Row: Decodable {
+        let ts: String
+        let open: Double?
+        let high: Double?
+        let low: Double?
+        let close: Double?
+        let volume: Double?
+        let provider: String
+        let isIntraday: Bool
+        let isForecast: Bool
+        let dataStatus: String?
+        let confidenceScore: Double?
+        let upperBand: Double?
+        let lowerBand: Double?
+
+        enum CodingKeys: String, CodingKey {
+            case ts, open, high, low, close, volume, provider
+            case isIntraday = "is_intraday"
+            case isForecast = "is_forecast"
+            case dataStatus = "data_status"
+            case confidenceScore = "confidence_score"
+            case upperBand = "upper_band"
+            case lowerBand = "lower_band"
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+
+            ts = try container.decode(String.self, forKey: .ts)
+            provider = try container.decode(String.self, forKey: .provider)
+            isIntraday = try container.decodeIfPresent(Bool.self, forKey: .isIntraday) ?? false
+            isForecast = try container.decodeIfPresent(Bool.self, forKey: .isForecast) ?? false
+            dataStatus = try container.decodeIfPresent(String.self, forKey: .dataStatus)
+
+            func decodeDouble(_ key: CodingKeys) -> Double? {
+                if let v = try? container.decodeIfPresent(Double.self, forKey: key) {
+                    return v
+                }
+                if let v = try? container.decodeIfPresent(Int64.self, forKey: key) {
+                    return Double(v)
+                }
+                if let v = try? container.decodeIfPresent(String.self, forKey: key) {
+                    return Double(v)
+                }
+                return nil
+            }
+
+            open = decodeDouble(.open)
+            high = decodeDouble(.high)
+            low = decodeDouble(.low)
+            close = decodeDouble(.close)
+            volume = decodeDouble(.volume)
+            confidenceScore = decodeDouble(.confidenceScore)
+            upperBand = decodeDouble(.upperBand)
+            lowerBand = decodeDouble(.lowerBand)
+        }
+
+        func toOHLCBar() -> OHLCBar? {
+            let formatters: [ISO8601DateFormatter] = {
+                let f1 = ISO8601DateFormatter()
+                f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                let f2 = ISO8601DateFormatter()
+                f2.formatOptions = [.withInternetDateTime]
+                let f3 = ISO8601DateFormatter()
+                f3.formatOptions = [.withInternetDateTime, .withColonSeparatorInTimeZone]
+                let f4 = ISO8601DateFormatter()
+                f4.formatOptions = [.withInternetDateTime, .withFractionalSeconds, .withColonSeparatorInTimeZone]
+                return [f1, f2, f3, f4]
+            }()
+
+            let parsedDate: Date? = formatters.compactMap { $0.date(from: ts) }.first
+            guard let date = parsedDate else { return nil }
+
+            let c = close ?? open ?? high ?? low ?? 0
+            return OHLCBar(
+                ts: date,
+                open: open ?? c,
+                high: high ?? c,
+                low: low ?? c,
+                close: c,
+                volume: volume ?? 0,
+                upperBand: upperBand,
+                lowerBand: lowerBand,
+                confidenceScore: confidenceScore
+            )
+        }
     }
 
     func clearData() {
