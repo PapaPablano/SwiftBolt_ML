@@ -2,14 +2,12 @@
 // Call this from an external cron service (GitHub Actions, cron-job.org, etc.)
 // No authentication required since it just triggers the worker
 
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-serve(async (req) => {
+Deno.serve(async (req: Request) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -18,6 +16,28 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const gatewayKey =
+      Deno.env.get("SB_GATEWAY_KEY") ??
+      Deno.env.get("ANON_KEY") ??
+      Deno.env.get("SUPABASE_ANON_KEY") ??
+      supabaseServiceKey;
+
+    const expectedCallerKey = Deno.env.get("SB_GATEWAY_KEY") ?? gatewayKey;
+    const authHeader = req.headers.get("authorization");
+    const apikeyHeader = req.headers.get("apikey");
+    const bearer = authHeader?.toLowerCase().startsWith("bearer ")
+      ? authHeader.slice("bearer ".length)
+      : null;
+
+    if (apikeyHeader !== expectedCallerKey && bearer !== expectedCallerKey) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
     console.log("[TriggerBackfill] Calling run-backfill-worker...");
 
@@ -26,7 +46,8 @@ serve(async (req) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${supabaseServiceKey}`,
+        "Authorization": `Bearer ${gatewayKey}`,
+        "apikey": gatewayKey,
       },
       body: "{}",
     });
@@ -46,12 +67,13 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("[TriggerBackfill] Error:", error);
+    const message = error instanceof Error ? error.message : String(error);
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
         timestamp: new Date().toISOString(),
       }),
       {

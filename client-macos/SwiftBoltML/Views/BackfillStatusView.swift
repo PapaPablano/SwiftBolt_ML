@@ -332,7 +332,10 @@ struct BackfillProgressRow: View {
         ticker: "AAPL",
         supabase: SupabaseClient(
             supabaseURL: URL(string: "https://example.supabase.co")!,
-            supabaseKey: "test-key"
+            supabaseKey: "test-key",
+            options: SupabaseClientOptions(
+                auth: .init(emitLocalSessionAsInitialSession: true)
+            )
         )
     )
     .frame(width: 400)

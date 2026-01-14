@@ -9,6 +9,153 @@ struct ChartDataV2Response: Codable, Equatable {
     let mlSummary: MLSummary?
     let indicators: IndicatorData?
     let superTrendAI: SuperTrendAIData?
+
+    private enum CodingKeys: String, CodingKey {
+        case symbol
+        case timeframe
+        case layers
+        case metadata
+        case dataQuality
+        case mlSummary
+        case indicators
+        case superTrendAI
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey {
+        case meta
+        case layers
+    }
+
+    private struct LegacyMeta: Decodable {
+        let symbol: String?
+        let timeframeEnum: String?
+        let timeframeInput: String?
+        let start: String?
+        let end: String?
+
+        enum CodingKeys: String, CodingKey {
+            case symbol
+            case timeframeEnum = "timeframe_enum"
+            case timeframeInput = "timeframe_input"
+            case start
+            case end
+        }
+    }
+
+    private struct LegacyLayers: Decodable {
+        let historical: [OHLCBar]?
+        let intraday: [OHLCBar]?
+        let forecast: [OHLCBar]?
+    }
+
+    init(from decoder: Decoder) throws {
+        var decodedSymbol = ""
+        var decodedTimeframe = ""
+
+        var decodedLayers = ChartLayers(
+            historical: LayerData(count: 0, provider: "", data: [], oldestBar: nil, newestBar: nil),
+            intraday: LayerData(count: 0, provider: "", data: [], oldestBar: nil, newestBar: nil),
+            forecast: LayerData(count: 0, provider: "", data: [], oldestBar: nil, newestBar: nil)
+        )
+
+        var decodedMetadata = ChartMetadata(totalBars: 0, startDate: "", endDate: "")
+
+        var decodedDataQuality: DataQuality?
+        var decodedMLSummary: MLSummary?
+        var decodedIndicators: IndicatorData?
+        var decodedSuperTrendAI: SuperTrendAIData?
+
+        do {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            decodedSymbol = try container.decode(String.self, forKey: .symbol)
+            decodedTimeframe = try container.decode(String.self, forKey: .timeframe)
+            decodedLayers = try container.decode(ChartLayers.self, forKey: .layers)
+            decodedMetadata = try container.decode(ChartMetadata.self, forKey: .metadata)
+            decodedDataQuality = try container.decodeIfPresent(DataQuality.self, forKey: .dataQuality)
+            decodedMLSummary = try container.decodeIfPresent(MLSummary.self, forKey: .mlSummary)
+            decodedIndicators = try container.decodeIfPresent(IndicatorData.self, forKey: .indicators)
+            decodedSuperTrendAI = try container.decodeIfPresent(SuperTrendAIData.self, forKey: .superTrendAI)
+        } catch {
+            let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
+            let meta = try legacy.decode(LegacyMeta.self, forKey: .meta)
+            let rawLayers = try legacy.decode(LegacyLayers.self, forKey: .layers)
+
+            let historicalBars = rawLayers.historical ?? []
+            let intradayBars = rawLayers.intraday ?? []
+            let forecastBars = rawLayers.forecast ?? []
+
+            let allBars = (historicalBars + intradayBars + forecastBars).sorted(by: { $0.ts < $1.ts })
+            let computedStart = allBars.first?.ts.ISO8601Format()
+            let computedEnd = allBars.last?.ts.ISO8601Format()
+
+            decodedSymbol = meta.symbol ?? ""
+            decodedTimeframe = meta.timeframeEnum ?? meta.timeframeInput ?? ""
+
+            decodedLayers = ChartLayers(
+                historical: LayerData(
+                    count: historicalBars.count,
+                    provider: "unknown",
+                    data: historicalBars,
+                    oldestBar: historicalBars.first?.ts.ISO8601Format(),
+                    newestBar: historicalBars.last?.ts.ISO8601Format()
+                ),
+                intraday: LayerData(
+                    count: intradayBars.count,
+                    provider: "unknown",
+                    data: intradayBars,
+                    oldestBar: intradayBars.first?.ts.ISO8601Format(),
+                    newestBar: intradayBars.last?.ts.ISO8601Format()
+                ),
+                forecast: LayerData(
+                    count: forecastBars.count,
+                    provider: "unknown",
+                    data: forecastBars,
+                    oldestBar: forecastBars.first?.ts.ISO8601Format(),
+                    newestBar: forecastBars.last?.ts.ISO8601Format()
+                )
+            )
+
+            decodedMetadata = ChartMetadata(
+                totalBars: allBars.count,
+                startDate: meta.start ?? computedStart ?? "",
+                endDate: meta.end ?? computedEnd ?? ""
+            )
+
+            decodedDataQuality = nil
+            decodedMLSummary = nil
+            decodedIndicators = nil
+            decodedSuperTrendAI = nil
+        }
+
+        self.symbol = decodedSymbol
+        self.timeframe = decodedTimeframe
+        self.layers = decodedLayers
+        self.metadata = decodedMetadata
+        self.dataQuality = decodedDataQuality
+        self.mlSummary = decodedMLSummary
+        self.indicators = decodedIndicators
+        self.superTrendAI = decodedSuperTrendAI
+    }
+
+    init(
+        symbol: String,
+        timeframe: String,
+        layers: ChartLayers,
+        metadata: ChartMetadata,
+        dataQuality: DataQuality?,
+        mlSummary: MLSummary?,
+        indicators: IndicatorData?,
+        superTrendAI: SuperTrendAIData?
+    ) {
+        self.symbol = symbol
+        self.timeframe = timeframe
+        self.layers = layers
+        self.metadata = metadata
+        self.dataQuality = dataQuality
+        self.mlSummary = mlSummary
+        self.indicators = indicators
+        self.superTrendAI = superTrendAI
+    }
 }
 
 struct ChartLayers: Codable, Equatable {

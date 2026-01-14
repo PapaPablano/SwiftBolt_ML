@@ -5,14 +5,23 @@ import Combine
 final class AppViewModel: ObservableObject {
     @Published var selectedSymbol: Symbol? {
         didSet {
+            if oldValue?.ticker == selectedSymbol?.ticker {
+                return
+            }
             print("[DEBUG] 🔴 selectedSymbol DIDSET TRIGGERED")
             print("[DEBUG] - Old value: \(oldValue?.ticker ?? "nil")")
             print("[DEBUG] - New value: \(selectedSymbol?.ticker ?? "nil")")
+            if oldValue != nil && selectedSymbol == nil {
+                let stack = Thread.callStackSymbols.prefix(12).joined(separator: "\n")
+                print("[DEBUG] 🔴 selectedSymbol cleared to nil. Call stack:\n\(stack)")
+            }
             handleSymbolChange()
         }
     }
 
+    @Published var symbolViewModel: SymbolViewModel
     @Published var chartViewModel: ChartViewModel
+    @Published var indicatorsViewModel: IndicatorsViewModel
     @Published var newsViewModel: NewsViewModel
     @Published var optionsChainViewModel: OptionsChainViewModel
     let searchViewModel: SymbolSearchViewModel
@@ -22,11 +31,46 @@ final class AppViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     init() {
+        self.symbolViewModel = SymbolViewModel()
         self.chartViewModel = ChartViewModel()
+        self.indicatorsViewModel = IndicatorsViewModel(config: IndicatorConfig())
         self.newsViewModel = NewsViewModel()
         self.optionsChainViewModel = OptionsChainViewModel()
         self.searchViewModel = SymbolSearchViewModel()
         self.watchlistViewModel = WatchlistViewModel()
+
+        // Keep indicator config in sync (IndicatorsViewModel <-> ChartViewModel)
+        indicatorsViewModel.$config
+            .removeDuplicates()
+            .sink { [weak self] config in
+                guard let self else { return }
+                if self.chartViewModel.indicatorConfig != config {
+                    self.chartViewModel.indicatorConfig = config
+                }
+            }
+            .store(in: &cancellables)
+
+        chartViewModel.$indicatorConfig
+            .removeDuplicates()
+            .sink { [weak self] config in
+                guard let self else { return }
+                if self.indicatorsViewModel.config != config {
+                    self.indicatorsViewModel.config = config
+                }
+            }
+            .store(in: &cancellables)
+
+        // Keep symbol selection in sync (SymbolViewModel <-> AppViewModel)
+        $selectedSymbol
+            .removeDuplicates(by: { $0?.ticker == $1?.ticker })
+            .receive(on: RunLoop.main)
+            .sink { [weak self] symbol in
+                guard let self else { return }
+                if self.symbolViewModel.selectedSymbol?.ticker != symbol?.ticker {
+                    self.symbolViewModel.selectedSymbol = symbol
+                }
+            }
+            .store(in: &cancellables)
 
         // Relay chartViewModel changes to trigger AppViewModel updates
         chartViewModel.objectWillChange.sink { [weak self] _ in
@@ -79,7 +123,9 @@ final class AppViewModel: ObservableObject {
         print("[DEBUG] - Setting chartViewModel.selectedSymbol to: \(selectedSymbol?.ticker ?? "nil")")
         // Setting selectedSymbol triggers didSet which calls loadChart() automatically
         // Do NOT call loadChart() explicitly here to avoid duplicate/cancelled requests
-        chartViewModel.selectedSymbol = selectedSymbol
+        if chartViewModel.selectedSymbol?.ticker != selectedSymbol?.ticker {
+            chartViewModel.selectedSymbol = selectedSymbol
+        }
         print("[DEBUG] - chartViewModel.selectedSymbol (AFTER): \(chartViewModel.selectedSymbol?.ticker ?? "nil")")
 
         guard selectedSymbol != nil else {

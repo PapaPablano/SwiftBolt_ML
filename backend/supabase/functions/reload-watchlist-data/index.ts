@@ -38,6 +38,18 @@ interface ReloadResult {
   };
 }
 
+type WatchlistItemRow = {
+  symbol_id: string;
+  symbols: Array<{
+    ticker: string;
+    id: string;
+  }>;
+};
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -91,10 +103,10 @@ serve(async (req) => {
     // Get unique symbols
     const symbols = Array.from(
       new Map(
-        watchlistItems.map((item: any) => [
-          item.symbols.ticker,
-          { ticker: item.symbols.ticker, id: item.symbols.id },
-        ])
+        (watchlistItems as WatchlistItemRow[])
+          .map((item) => item.symbols?.[0])
+          .filter((s): s is { ticker: string; id: string } => !!s && typeof s.ticker === "string")
+          .map((sym) => [sym.ticker, { ticker: sym.ticker, id: sym.id }])
       ).values()
     );
 
@@ -103,6 +115,11 @@ serve(async (req) => {
     const results: ReloadResult[] = [];
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const gatewayKey =
+      Deno.env.get("SB_GATEWAY_KEY") ??
+      Deno.env.get("ANON_KEY") ??
+      Deno.env.get("SUPABASE_ANON_KEY") ??
+      serviceKey;
 
     // Process each symbol
     for (const symbol of symbols) {
@@ -115,6 +132,7 @@ serve(async (req) => {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${serviceKey}`,
+            apikey: gatewayKey,
           },
           body: JSON.stringify({
             symbol: symbol.ticker,
@@ -145,6 +163,7 @@ serve(async (req) => {
               headers: {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${serviceKey}`,
+                apikey: gatewayKey,
               },
               body: JSON.stringify({
                 symbol: symbol.ticker,
@@ -163,7 +182,7 @@ serve(async (req) => {
               barsLoaded[timeframe as keyof typeof barsLoaded] = totalBars;
               console.log(`[reload-watchlist-data] ${symbol.ticker} ${timeframe}: ${totalBars} bars`);
             }
-          } catch (chartError) {
+          } catch (chartError: unknown) {
             console.error(`[reload-watchlist-data] Chart fetch error for ${symbol.ticker} ${timeframe}:`, chartError);
           }
         }
@@ -174,12 +193,12 @@ serve(async (req) => {
           message: `Loaded data for ${timeframes.join(", ")}`,
           barsLoaded,
         });
-      } catch (error) {
+      } catch (error: unknown) {
         console.error(`[reload-watchlist-data] Error processing ${symbol.ticker}:`, error);
         results.push({
           symbol: symbol.ticker,
           status: "error",
-          message: error.message,
+          message: getErrorMessage(error),
         });
       }
 
@@ -205,12 +224,12 @@ serve(async (req) => {
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("[reload-watchlist-data] Error:", error);
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || "Internal server error",
+        error: getErrorMessage(error) || "Internal server error",
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

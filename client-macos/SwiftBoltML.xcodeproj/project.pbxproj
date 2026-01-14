@@ -47,6 +47,8 @@
 		A1000017233456780000017 /* ChartViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000017233456780000017 /* ChartViewModel.swift */; };
 		A1000018233456780000018 /* NewsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000018233456780000018 /* NewsViewModel.swift */; };
 		A1000019233456780000019 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000019233456780000019 /* AppViewModel.swift */; };
+		A1B3C4D5E6F708192A3B4C5E /* SymbolViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F708192A3B4C5D /* SymbolViewModel.swift */; };
+		A1B3C4D5E6F708192A3B4C60 /* IndicatorsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F708192A3B4C5F /* IndicatorsViewModel.swift */; };
 		A1000020233456780000020 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A2000022233456780000022 /* Assets.xcassets */; };
 		A1000021233456780000021 /* TechnicalIndicators.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000023233456780000023 /* TechnicalIndicators.swift */; };
 		A1000022233456780000022 /* WatchlistViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000024233456780000024 /* WatchlistViewModel.swift */; };
@@ -148,6 +150,8 @@
 		A2000017233456780000017 /* ChartViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartViewModel.swift; sourceTree = "<group>"; };
 		A2000018233456780000018 /* NewsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewsViewModel.swift; sourceTree = "<group>"; };
 		A2000019233456780000019 /* AppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
+		A2B3C4D5E6F708192A3B4C5D /* SymbolViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SymbolViewModel.swift; sourceTree = "<group>"; };
+		A2B3C4D5E6F708192A3B4C5F /* IndicatorsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndicatorsViewModel.swift; sourceTree = "<group>"; };
 		A2000020233456780000020 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A2000021233456780000021 /* SwiftBoltML.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SwiftBoltML.entitlements; sourceTree = "<group>"; };
 		A2000022233456780000022 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -304,6 +308,8 @@
 				A2000017233456780000017 /* ChartViewModel.swift */,
 				A2000018233456780000018 /* NewsViewModel.swift */,
 				A2000019233456780000019 /* AppViewModel.swift */,
+				A2B3C4D5E6F708192A3B4C5D /* SymbolViewModel.swift */,
+				A2B3C4D5E6F708192A3B4C5F /* IndicatorsViewModel.swift */,
 				A2000024233456780000024 /* WatchlistViewModel.swift */,
 				9956271A37FA42982A5F0DDC /* PredictionsViewModel.swift */,
 				0128CA566A7D864E3938B3FA /* OptionsRankerViewModel.swift */,
@@ -516,6 +522,8 @@
 				A1000018233456780000018 /* NewsViewModel.swift in Sources */,
 				F60BB96F2EF0371A0044BE7E /* OptionsChainViewModel.swift in Sources */,
 				A1000019233456780000019 /* AppViewModel.swift in Sources */,
+				A1B3C4D5E6F708192A3B4C5E /* SymbolViewModel.swift in Sources */,
+				A1B3C4D5E6F708192A3B4C60 /* IndicatorsViewModel.swift in Sources */,
 				A1000021233456780000021 /* TechnicalIndicators.swift in Sources */,
 				A1000022233456780000022 /* WatchlistViewModel.swift in Sources */,
 				A1000023233456780000023 /* WatchlistView.swift in Sources */,

@@ -709,7 +709,7 @@ struct IndicatorDataPoint: Identifiable {
 
 // MARK: - Indicator Configuration
 
-struct IndicatorConfig {
+struct IndicatorConfig: Equatable {
     // Moving Averages
     var showSMA20: Bool = false
     var showSMA50: Bool = false

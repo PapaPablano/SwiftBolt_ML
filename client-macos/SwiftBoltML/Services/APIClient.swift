@@ -58,8 +58,8 @@ final class APIClient {
         self.baseURL = Config.supabaseURL
         self.functionsBase = Config.functionsBaseURL
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 15
-        config.timeoutIntervalForResource = 30
+        config.timeoutIntervalForRequest = 60
+        config.timeoutIntervalForResource = 120
         config.waitsForConnectivity = false
         config.httpMaximumConnectionsPerHost = 6
         self.session = URLSession(configuration: config)
@@ -86,6 +86,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         if let body = body {
@@ -295,6 +296,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         return try await performRequest(request)
@@ -318,6 +320,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
@@ -337,6 +340,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let encoder = JSONEncoder()
@@ -358,6 +362,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         return try await performRequest(request)
@@ -398,14 +403,19 @@ final class APIClient {
 
         print("[DEBUG] 📊 Fetching chart: symbol=\(symbol), timeframe=\(timeframe), cacheBuster=\(cacheBuster)")
 
-        var request = URLRequest(url: urlComponents.url!)
+        guard let url = urlComponents.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         request.httpBody = bodyData
         print("[DEBUG] 📊 chart-data-v2 request: method=\(request.httpMethod ?? "nil"), bodyBytes=\(bodyData.count)")
-        
+
         // Bypass network cache for all requests to ensure fresh data
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("no-cache, no-store, must-revalidate", forHTTPHeaderField: "Cache-Control")
@@ -502,6 +512,7 @@ final class APIClient {
         var request = URLRequest(url: functionURL("ensure-coverage"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
@@ -521,6 +532,7 @@ final class APIClient {
         var request = URLRequest(url: functionURL("reload-watchlist-data"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         
@@ -544,6 +556,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         return try await performRequest(request)
@@ -571,6 +584,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         return try await performRequest(request)
@@ -607,6 +621,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         return try await performRequest(request)
@@ -625,6 +640,7 @@ final class APIClient {
         var request = URLRequest(url: functionURL("options-quotes"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         let body = OptionsQuotesRequest(symbol: symbol, contracts: contracts)
@@ -637,6 +653,7 @@ final class APIClient {
         var request = URLRequest(url: functionURL("scanner-watchlist"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body = ["symbols": symbols]
@@ -649,6 +666,7 @@ final class APIClient {
         var request = URLRequest(url: functionURL("trigger-ranking-job"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body = ["symbol": symbol]
@@ -671,6 +689,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         return try await performRequest(request)
@@ -681,6 +700,7 @@ final class APIClient {
         var request = URLRequest(url: functionURL("refresh-data"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body = RefreshDataRequest(symbol: symbol, refreshML: refreshML, refreshOptions: refreshOptions)
@@ -694,6 +714,7 @@ final class APIClient {
         var request = URLRequest(url: functionURL("user-refresh"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body = ["symbol": symbol]
@@ -704,7 +725,7 @@ final class APIClient {
 
     /// Fetch consolidated chart data (new unified endpoint with all data in one call)
     /// Includes bars, forecasts, options ranks, and freshness indicators
-    func fetchConsolidatedChart(symbol: String, timeframe: String = "d1", start: String? = nil, end: String? = nil, includeOptions: Bool = true, includeForecast: Bool = true) async throws -> ConsolidatedChartResponse {
+    func fetchConsolidatedChart(symbol: String, timeframe: String = "d1", start: String? = nil, end: String? = nil, includeOptions: Bool = true, includeForecast: Bool = true, bearerToken: String = Config.supabaseAnonKey) async throws -> ConsolidatedChartResponse {
         guard var components = URLComponents(url: functionURL("chart"), resolvingAgainstBaseURL: false) else {
             throw APIError.invalidURL
         }
@@ -731,7 +752,8 @@ final class APIClient {
         
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+        request.setValue(bearerToken, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.cachePolicy = .reloadIgnoringLocalCacheData
         
@@ -763,6 +785,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         return try await performRequest(request)
@@ -773,6 +796,7 @@ final class APIClient {
         var request = URLRequest(url: functionURL("ml-dashboard"))
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         return try await performRequest(request)
@@ -796,6 +820,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         return try await performRequest(request)
@@ -821,6 +846,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         return try await performRequest(request)
@@ -842,6 +868,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         return try await performRequest(request)
@@ -861,6 +888,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         return try await performRequest(request)
@@ -893,6 +921,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         return try await performRequest(request)
@@ -919,6 +948,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         return try await performRequest(request)
@@ -938,6 +968,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         return try await performRequest(request)
@@ -959,6 +990,7 @@ final class APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         return try await performRequest(request)
@@ -969,6 +1001,7 @@ final class APIClient {
         var request = URLRequest(url: functionURL("ga-strategy"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body = [

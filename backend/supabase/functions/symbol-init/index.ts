@@ -112,6 +112,7 @@ serve(async (req: Request): Promise<Response> => {
         const chartResponse = await fetch(chartUrl, {
           headers: {
             Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            apikey: `${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
           },
         });
 
@@ -124,7 +125,8 @@ serve(async (req: Request): Promise<Response> => {
           result.errors.push(`Chart fetch failed: ${errorText}`);
         }
       } catch (chartError) {
-        result.errors.push(`Chart fetch error: ${chartError.message}`);
+        const message = chartError instanceof Error ? chartError.message : String(chartError);
+        result.errors.push(`Chart fetch error: ${message}`);
       }
     }
 
@@ -197,6 +199,7 @@ serve(async (req: Request): Promise<Response> => {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        apikey: `${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
       },
       body: JSON.stringify({ symbol }),
     }).catch((err) => {
@@ -209,10 +212,11 @@ serve(async (req: Request): Promise<Response> => {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("[symbol-init] Error:", error);
+    const message = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({ error: error.message || "Internal server error" }),
+      JSON.stringify({ error: message || "Internal server error" }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -25,6 +25,10 @@ interface WatchlistItem {
   avgLastPrice10d?: number | null;
 }
 
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -46,7 +50,7 @@ serve(async (req) => {
     const body: WatchlistRequest = await req.json();
 
     // Get or create default watchlist for user
-    let { data: watchlists, error: watchlistError } = await supabaseClient
+    const { data: watchlists, error: watchlistError } = await supabaseClient
       .from("watchlists")
       .select("id")
       .eq("user_id", user.id)
@@ -133,6 +137,7 @@ serve(async (req) => {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            apikey: `${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
           },
           body: JSON.stringify({ symbol: symbol.ticker }),
         }).catch((err) => {
@@ -228,7 +233,7 @@ serve(async (req) => {
 
         if (listError) throw listError;
 
-        const symbolIds = (items || []).map((item: any) => item.symbol_id).filter(Boolean);
+        const symbolIds = (items || []).map((item: { symbol_id?: string }) => item.symbol_id).filter(Boolean);
 
         const { data: averages, error: averagesError } = await supabaseClient.rpc(
           "get_symbol_ohlc_averages",
@@ -239,35 +244,44 @@ serve(async (req) => {
           console.error("[watchlist-sync] Failed to fetch OHLC averages:", averagesError);
         }
 
-        const averagesBySymbolId = new Map<string, any>();
-        for (const row of averages || []) {
-          averagesBySymbolId.set(row.symbol_id, row);
+        const averagesBySymbolId = new Map<string, Record<string, unknown>>();
+        for (const row of (averages || []) as Array<Record<string, unknown>>) {
+          const symbolId = row["symbol_id"];
+          if (typeof symbolId === "string") averagesBySymbolId.set(symbolId, row);
         }
 
         // Get job status for each symbol
         const watchlistItems: WatchlistItem[] = await Promise.all(
-          (items || []).map(async (item) => {
+          (items || []).map(async (item: { symbol_id: string; added_at: string; symbols: { ticker: string } | Array<{ ticker: string }> }) => {
+            const ticker = Array.isArray(item.symbols)
+              ? item.symbols[0]?.ticker
+              : item.symbols?.ticker;
+
+            if (typeof ticker !== "string" || ticker.length === 0) {
+              throw new Error("Invalid symbols join payload (missing ticker)");
+            }
+
             const { data: jobStatus } = await supabaseClient.rpc(
               "get_symbol_job_status",
-              { p_symbol: item.symbols.ticker }
+              { p_symbol: ticker }
             );
 
-            const forecastJob = jobStatus?.find((j: any) => j.job_type === "forecast");
-            const rankingJob = jobStatus?.find((j: any) => j.job_type === "ranking");
+            const forecastJob = (jobStatus as Array<{ job_type?: string; status?: string }> | null | undefined)?.find((j) => j.job_type === "forecast");
+            const rankingJob = (jobStatus as Array<{ job_type?: string; status?: string }> | null | undefined)?.find((j) => j.job_type === "ranking");
 
             const avgRow = averagesBySymbolId.get(item.symbol_id);
 
             return {
-              symbol: item.symbols.ticker,
+              symbol: ticker,
               addedAt: item.added_at,
               jobStatus: {
                 forecast: forecastJob?.status || null,
                 ranking: rankingJob?.status || null,
               },
-              avgDailyVolumeAll: avgRow?.avg_daily_volume_all ?? null,
-              avgDailyVolume10d: avgRow?.avg_daily_volume_10d ?? null,
-              avgLastPriceAll: avgRow?.avg_close_all ?? null,
-              avgLastPrice10d: avgRow?.avg_close_10d ?? null,
+              avgDailyVolumeAll: asNumber(avgRow?.["avg_daily_volume_all"]),
+              avgDailyVolume10d: asNumber(avgRow?.["avg_daily_volume_10d"]),
+              avgLastPriceAll: asNumber(avgRow?.["avg_close_all"]),
+              avgLastPrice10d: asNumber(avgRow?.["avg_close_10d"]),
             };
           })
         );
@@ -294,10 +308,11 @@ serve(async (req) => {
           }
         );
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Error:", error);
+    const message = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({ error: error.message || "Internal server error" }),
+      JSON.stringify({ error: message || "Internal server error" }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

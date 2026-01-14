@@ -146,7 +146,10 @@ final class ChartViewModel: ObservableObject {
     init(
         supabase: SupabaseClient = SupabaseClient(
             supabaseURL: Config.supabaseURL,
-            supabaseKey: Config.supabaseAnonKey
+            supabaseKey: Config.supabaseAnonKey,
+            options: SupabaseClientOptions(
+                auth: .init(emitLocalSessionAsInitialSession: true)
+            )
         )
     ) {
         self.supabase = supabase
@@ -676,7 +679,7 @@ final class ChartViewModel: ObservableObject {
                         )
                     }
 
-                    guard let response else {
+                    guard var response = response else {
                         throw APIError.invalidResponse
                     }
 

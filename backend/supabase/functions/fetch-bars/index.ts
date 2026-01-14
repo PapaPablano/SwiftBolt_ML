@@ -72,6 +72,11 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const gatewayKey =
+      Deno.env.get("SB_GATEWAY_KEY") ??
+      Deno.env.get("ANON_KEY") ??
+      Deno.env.get("SUPABASE_ANON_KEY") ??
+      supabaseKey;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Parse request
@@ -124,7 +129,8 @@ Deno.serve(async (req) => {
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${supabaseKey}`,
+            Authorization: `Bearer ${gatewayKey}`,
+            apikey: gatewayKey,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
