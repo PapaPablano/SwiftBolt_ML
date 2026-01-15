@@ -126,7 +126,7 @@ serve(async (req: Request): Promise<Response> => {
       volume: bar.v,
       provider: 'polygon',
       is_forecast: false,
-      data_status: 'confirmed',
+      data_status: 'provisional',
     }));
 
     // Insert bars into ohlc_bars_v2

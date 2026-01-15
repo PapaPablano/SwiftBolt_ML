@@ -271,7 +271,7 @@ serve(async (req: Request): Promise<Response> => {
             volume: bar.volume,
             provider: "tradier",
             is_forecast: false,
-            data_status: "confirmed",
+            data_status: "provisional",
           }));
 
           // Batch upsert intraday bars
@@ -301,7 +301,7 @@ serve(async (req: Request): Promise<Response> => {
               volume: currentVolume,
               provider: "tradier",
               is_forecast: false,
-              data_status: "confirmed",
+              data_status: "provisional",
             },
             { onConflict: "symbol_id,timeframe,ts,provider,is_forecast" }
           );
@@ -370,8 +370,9 @@ serve(async (req: Request): Promise<Response> => {
     );
   } catch (error) {
     console.error("[intraday-update] Error:", error);
+    const message = error instanceof Error ? error.message : String(error);
     return new Response(
-      JSON.stringify({ error: error.message || "Internal server error" }),
+      JSON.stringify({ error: message || "Internal server error" }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

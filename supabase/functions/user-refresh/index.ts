@@ -231,7 +231,7 @@ serve(async (req: Request): Promise<Response> => {
             volume: bar.volume,
             provider: "alpaca",
             is_forecast: false,
-            data_status: "confirmed",
+            data_status: "provisional",
           }));
 
           await supabase

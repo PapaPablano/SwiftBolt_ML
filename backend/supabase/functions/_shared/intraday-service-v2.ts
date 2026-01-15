@@ -226,7 +226,7 @@ export class IntradayServiceV2 {
     const intradayBarsToInsert = bars.map(bar => ({
       symbol_id: symbolId,
       timeframe: 'm5',
-      ts: new Date(bar.timestamp * 1000).toISOString(),
+      ts: new Date(bar.time).toISOString(),
       open: bar.open,
       high: bar.high,
       low: bar.low,
@@ -234,7 +234,7 @@ export class IntradayServiceV2 {
       volume: bar.volume,
       provider: 'polygon',
       is_forecast: false,
-      data_status: 'confirmed',
+      data_status: 'provisional',
     }));
 
     if (intradayBarsToInsert.length > 0) {

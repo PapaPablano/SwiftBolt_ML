@@ -134,6 +134,15 @@ interface SymbolRecord {
   asset_type: string;
 }
 
+interface OHLCBar {
+  ts: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
 interface OHLCRecord {
   ts: string;
   open: number;
@@ -384,7 +393,7 @@ serve(async (req: Request): Promise<Response> => {
             volume: bar.volume,
             provider: "alpaca",
             is_forecast: false,
-            data_status: "confirmed",
+            data_status: "provisional",
           }));
 
           const { error: upsertError } = await supabase

@@ -7,6 +7,8 @@ interface SyncRequest {
   timeframes?: string[];
 }
 
+const DEFAULT_TIMEFRAMES = ['m15', 'h1', 'h4', 'd1', 'w1'];
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -20,7 +22,7 @@ Deno.serve(async (req) => {
     );
 
     const body: SyncRequest = await req.json();
-    const { symbols, source, timeframes = ['m15', 'h1', 'h4'] } = body;
+    const { symbols, source, timeframes = DEFAULT_TIMEFRAMES } = body;
 
     if (!symbols || symbols.length === 0) {
       return errorResponse("No symbols provided", 400);
@@ -38,7 +40,7 @@ Deno.serve(async (req) => {
     
     for (const ticker of symbols) {
       // Try to find existing symbol
-      let { data: existing, error: lookupError } = await supabase
+      const { data: existing, error: lookupError } = await supabase
         .from("symbols")
         .select("id, ticker")
         .eq("ticker", ticker)
@@ -94,45 +96,33 @@ Deno.serve(async (req) => {
 
       // Create/enable job definitions for these symbols across all timeframes
       for (const timeframe of timeframes) {
-        const windowDays = timeframe === 'm15' ? 30 : timeframe === 'h1' ? 90 : 365;
-        
-        // First, try to find existing job
-        const { data: existingJob } = await supabase
-          .from("job_definitions")
-          .select("id")
-          .eq("symbol", symbol.ticker)
-          .eq("timeframe", timeframe)
-          .eq("job_type", "fetch_intraday")
-          .single();
+        const isIntraday = ['m15', 'h1', 'h4'].includes(timeframe);
+        const jobType = isIntraday ? 'fetch_intraday' : 'fetch_historical';
+        const windowDays = isIntraday
+          ? (timeframe === 'm15' ? 30 : timeframe === 'h1' ? 90 : 365)
+          : 730;
 
-        let jobResult;
-        if (existingJob) {
-          // Update existing job
-          jobResult = await supabase
-            .from("job_definitions")
-            .update({
+        const { error: upsertError } = await supabase
+          .from("job_definitions")
+          .upsert(
+            {
+              symbol: symbol.ticker,
+              timeframe: timeframe,
+              job_type: jobType,
+              batch_version: 1,
               enabled: true,
               priority: priority,
               window_days: windowDays,
-              updated_at: new Date().toISOString()
-            })
-            .eq("id", existingJob.id);
-        } else {
-          // Insert new job
-          jobResult = await supabase
-            .from("job_definitions")
-            .insert({
-              symbol: symbol.ticker,
-              timeframe: timeframe,
-              job_type: "fetch_intraday",
-              enabled: true,
-              priority: priority,
-              window_days: windowDays
-            });
-        }
+              updated_at: new Date().toISOString(),
+            },
+            {
+              onConflict: 'symbol,timeframe,job_type,batch_version',
+              ignoreDuplicates: false,
+            }
+          );
 
-        if (jobResult.error) {
-          console.error(`[sync-user-symbols] Error creating/updating job for ${symbol.ticker} ${timeframe}:`, jobResult.error);
+        if (upsertError) {
+          console.error(`[sync-user-symbols] Error creating/updating job for ${symbol.ticker} ${timeframe}:`, upsertError);
           continue;
         }
 
@@ -154,6 +144,7 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error("[sync-user-symbols] Error:", error);
-    return errorResponse(error.message || "Internal server error", 500);
+    const message = error instanceof Error ? error.message : String(error);
+    return errorResponse(message || "Internal server error", 500);
   }
 });

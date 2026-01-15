@@ -32,7 +32,7 @@ class SymbolSyncService {
     func syncSymbols(
         symbols: [String],
         source: SymbolSyncSource,
-        timeframes: [String] = ["m15", "h1", "h4"]
+        timeframes: [String] = ["m15", "h1", "h4", "d1", "w1"]
     ) async throws -> SymbolSyncResponse {
         guard !symbols.isEmpty else {
             throw NSError(domain: "SymbolSync", code: 400, userInfo: [
@@ -75,7 +75,7 @@ class SymbolSyncService {
     func syncSymbol(
         _ symbol: String,
         source: SymbolSyncSource,
-        timeframes: [String] = ["m15", "h1", "h4"]
+        timeframes: [String] = ["m15", "h1", "h4", "d1", "w1"]
     ) async throws -> SymbolSyncResponse {
         return try await syncSymbols(symbols: [symbol], source: source, timeframes: timeframes)
     }
@@ -83,7 +83,7 @@ class SymbolSyncService {
     func syncSymbolInBackground(
         _ symbol: String,
         source: SymbolSyncSource,
-        timeframes: [String] = ["m15", "h1", "h4"]
+        timeframes: [String] = ["m15", "h1", "h4", "d1", "w1"]
     ) {
         Task {
             do {
@@ -98,7 +98,7 @@ class SymbolSyncService {
     func syncSymbolsInBackground(
         _ symbols: [String],
         source: SymbolSyncSource,
-        timeframes: [String] = ["m15", "h1", "h4"]
+        timeframes: [String] = ["m15", "h1", "h4", "d1", "w1"]
     ) {
         Task {
             do {

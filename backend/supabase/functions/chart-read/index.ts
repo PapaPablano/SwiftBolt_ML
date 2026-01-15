@@ -28,6 +28,74 @@ function normalizeTimeframe(timeframe: string): string {
   }
 }
 
+function etDateString(date: Date): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatter.format(date);
+}
+
+function alpacaTimeframe(timeframe: CanonicalTimeframe): string {
+  switch (timeframe) {
+    case 'm15':
+      return '15Min';
+    case 'h1':
+      return '1Hour';
+    case 'h4':
+      return '4Hour';
+    case 'd1':
+      return '1Day';
+    case 'w1':
+      return '1Week';
+  }
+}
+
+type AlpacaBarsResponse = {
+  bars?: Record<string, Array<{ t: string; o: number; h: number; l: number; c: number; v: number }>>;
+  next_page_token?: string;
+};
+
+async function fetchAlpacaBars(params: {
+  symbol: string;
+  timeframe: CanonicalTimeframe;
+  startIso: string;
+  endIso: string;
+  apiKey: string;
+  apiSecret: string;
+  feed: 'iex' | 'sip';
+}): Promise<Array<{ t: string; o: number; h: number; l: number; c: number; v: number }>> {
+  const tf = alpacaTimeframe(params.timeframe);
+  const url = `https://data.alpaca.markets/v2/stocks/bars?` +
+    `symbols=${encodeURIComponent(params.symbol)}&` +
+    `timeframe=${encodeURIComponent(tf)}&` +
+    `start=${encodeURIComponent(params.startIso)}&` +
+    `end=${encodeURIComponent(params.endIso)}&` +
+    `limit=10000&` +
+    `adjustment=raw&` +
+    `feed=${encodeURIComponent(params.feed)}&` +
+    `sort=asc`;
+
+  const res = await fetch(url, {
+    headers: {
+      'APCA-API-KEY-ID': params.apiKey,
+      'APCA-API-SECRET-KEY': params.apiSecret,
+      Accept: 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Alpaca bars error: ${res.status} ${body}`);
+  }
+
+  const data = (await res.json()) as AlpacaBarsResponse;
+  const bars = data.bars?.[params.symbol.toUpperCase()] ?? [];
+  return Array.isArray(bars) ? bars : [];
+}
+
 const CANONICAL_TIMEFRAMES = ['m15', 'h1', 'h4', 'd1', 'w1'] as const;
 type CanonicalTimeframe = typeof CANONICAL_TIMEFRAMES[number];
 
@@ -220,6 +288,17 @@ function lastMarketCloseApprox(now: Date): Date {
   return adjusted;
 }
 
+function weekStartEtApprox(now: Date): Date {
+  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const start = new Date(et);
+  start.setHours(0, 0, 0, 0);
+
+  const day = start.getDay();
+  const daysBack = day === 0 ? 6 : day - 1;
+  start.setDate(start.getDate() - daysBack);
+  return start;
+}
+
 function effectiveTimeframeMaxAgeMs(timeframe: CanonicalTimeframe, now: Date): number {
   const base = timeframeMaxAgeMs(timeframe);
   if (timeframe === 'm15' || timeframe === 'h1' || timeframe === 'h4') {
@@ -254,17 +333,36 @@ serve(async (req: Request): Promise<Response> => {
     return handleCorsOptions();
   }
 
-  if (req.method !== "POST") {
-    return errorResponse("Method not allowed", 405);
-  }
-
   try {
-    const body = (await req.json()) as ChartReadRequest;
+    let symbol = '';
+    let timeframe = 'd1';
+    let days: number | null = null;
+    let includeMLData = true;
 
-    const symbol = (body.symbol ?? "").trim().toUpperCase();
-    const timeframe = normalizeTimeframe(body.timeframe ?? "d1");
-    const days = typeof body.days === "number" ? Math.max(1, Math.min(36500, Math.floor(body.days))) : 60;
-    const includeMLData = body.includeMLData !== false;
+    if (req.method === 'GET') {
+      const url = new URL(req.url);
+      symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
+      timeframe = normalizeTimeframe(url.searchParams.get('timeframe') ?? 'd1');
+      const daysRaw = url.searchParams.get('days');
+      if (daysRaw != null && daysRaw !== '') {
+        const parsed = Number(daysRaw);
+        if (Number.isFinite(parsed)) {
+          days = Math.max(1, Math.min(36500, Math.floor(parsed)));
+        }
+      }
+      const includeRaw = url.searchParams.get('includeMLData');
+      if (includeRaw != null) {
+        includeMLData = includeRaw !== 'false' && includeRaw !== '0';
+      }
+    } else {
+      const body = (await req.json()) as ChartReadRequest;
+      symbol = (body.symbol ?? '').trim().toUpperCase();
+      timeframe = normalizeTimeframe(body.timeframe ?? 'd1');
+      if (typeof body.days === 'number' && Number.isFinite(body.days)) {
+        days = Math.max(1, Math.min(36500, Math.floor(body.days)));
+      }
+      includeMLData = body.includeMLData !== false;
+    }
 
     if (!symbol) {
       return errorResponse("Symbol is required", 400);
@@ -295,10 +393,165 @@ serve(async (req: Request): Promise<Response> => {
       enqueuedTimeframes: [] as string[],
       insertedSlices: 0,
       error: null as string | null,
+      diagnostics: null as unknown,
     };
 
     const isIntradayTf = ['m15', 'h1', 'h4'].includes(timeframe);
     const isDailyWeeklyTf = ['d1', 'w1'].includes(timeframe);
+    const rangeDays = days ?? (isDailyWeeklyTf ? TWO_YEARS_DAYS : 60);
+
+    // Direct refresh (Alpaca) for requested timeframe.
+    // For daily/weekly, we refresh both together since they're closely related and low volume.
+    if (isCanonicalTimeframe(timeframe)) {
+      try {
+        const alpacaApiKey = Deno.env.get('ALPACA_API_KEY');
+        const alpacaApiSecret = Deno.env.get('ALPACA_API_SECRET');
+
+        const now = new Date();
+        const expectedDailyEt = etDateString(lastMarketCloseApprox(now));
+        const expectedWeeklyEt = etDateString(weekStartEtApprox(now));
+        const diag: Record<string, unknown> = {
+          alpacaConfigured: Boolean(alpacaApiKey && alpacaApiSecret),
+          expectedDailyEt,
+          expectedWeeklyEt,
+          attempted: false,
+          results: [] as Array<Record<string, unknown>>,
+        };
+
+        if (alpacaApiKey && alpacaApiSecret) {
+          const feedEnv = (Deno.env.get('ALPACA_DATA_FEED') ?? 'iex').toLowerCase();
+          const feed = feedEnv === 'sip' ? 'sip' : 'iex';
+
+          const refreshTfs: CanonicalTimeframe[] = (timeframe === 'd1')
+            ? ['d1', 'w1']
+            : (timeframe === 'w1')
+              ? ['w1', 'd1']
+              : [timeframe];
+          diag.attempted = true;
+
+          for (const tf of refreshTfs) {
+            const tfDiag: Record<string, unknown> = {
+              timeframe: tf,
+              latestDbTsBefore: null,
+              latestDbTsAfter: null,
+              shouldRefresh: false,
+              barsFetched: 0,
+              upserted: false,
+              error: null,
+            };
+
+            const { data: latestRow } = await supabase
+              .from('ohlc_bars_v2')
+              .select('ts')
+              .eq('symbol_id', symbolId)
+              .eq('timeframe', tf)
+              .eq('provider', 'alpaca')
+              .eq('is_forecast', false)
+              .order('ts', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            const latestIso = latestRow?.ts ? new Date(latestRow.ts).toISOString() : null;
+            tfDiag.latestDbTsBefore = latestIso;
+            const latestAgeMs = latestIso ? (Date.now() - new Date(latestIso).getTime()) : Number.POSITIVE_INFINITY;
+
+            const shouldRefresh = tf === 'd1'
+              ? (latestIso == null || etDateString(new Date(latestIso)) < etDateString(lastMarketCloseApprox(now)))
+              : tf === 'w1'
+                ? (latestIso == null || etDateString(new Date(latestIso)) < expectedWeeklyEt)
+                : (!Number.isFinite(latestAgeMs) || latestAgeMs > effectiveTimeframeMaxAgeMs(tf, now));
+
+            tfDiag.shouldRefresh = shouldRefresh;
+
+            if (shouldRefresh) {
+              const fallbackDays = tf === 'm15'
+                ? 3
+                : tf === 'h1'
+                  ? 14
+                  : tf === 'h4'
+                    ? 90
+                    : tf === 'd1'
+                      ? 90
+                      : 365;
+              const startIso = latestIso
+                ? new Date(Math.max(new Date(latestIso).getTime() - (fallbackDays * 24 * 60 * 60 * 1000), Date.now() - (fallbackDays * 24 * 60 * 60 * 1000))).toISOString()
+                : new Date(Date.now() - fallbackDays * 24 * 60 * 60 * 1000).toISOString();
+              const endIso = now.toISOString();
+
+              try {
+                const alpacaBars = await fetchAlpacaBars({
+                  symbol,
+                  timeframe: tf,
+                  startIso,
+                  endIso,
+                  apiKey: alpacaApiKey,
+                  apiSecret: alpacaApiSecret,
+                  feed,
+                });
+
+                tfDiag.barsFetched = alpacaBars.length;
+
+                if (alpacaBars.length > 0) {
+                  const todayStr = new Date().toISOString().split('T')[0];
+                  const rows = alpacaBars.map((bar) => ({
+                    // Note: keep this consistent with fetch-bars / fetch-bars-batch behavior.
+                    // is_intraday is true only for today's bars for intraday timeframes.
+                    symbol_id: symbolId,
+                    timeframe: tf,
+                    ts: bar.t,
+                    open: bar.o,
+                    high: bar.h,
+                    low: bar.l,
+                    close: bar.c,
+                    volume: bar.v,
+                    provider: 'alpaca',
+                    is_intraday: (() => {
+                      const barDateStr = new Date(bar.t).toISOString().split('T')[0];
+                      const isToday = barDateStr === todayStr;
+                      const isIntradayTimeframe = ['m15', 'h1', 'h4'].includes(tf);
+                      return isToday && isIntradayTimeframe;
+                    })(),
+                    is_forecast: false,
+                    data_status: 'provisional',
+                  }));
+
+                  const { error: upsertError } = await supabase
+                    .from('ohlc_bars_v2')
+                    .upsert(rows, { onConflict: 'symbol_id,timeframe,ts,provider,is_forecast' });
+
+                  if (upsertError) {
+                    tfDiag.error = upsertError;
+                  } else {
+                    tfDiag.upserted = true;
+                  }
+                }
+
+                const { data: latestAfter } = await supabase
+                  .from('ohlc_bars_v2')
+                  .select('ts')
+                  .eq('symbol_id', symbolId)
+                  .eq('timeframe', tf)
+                  .eq('provider', 'alpaca')
+                  .eq('is_forecast', false)
+                  .order('ts', { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+
+                tfDiag.latestDbTsAfter = latestAfter?.ts ? new Date(latestAfter.ts).toISOString() : null;
+              } catch (fetchErr) {
+                tfDiag.error = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+              }
+            }
+
+            (diag.results as Array<Record<string, unknown>>).push(tfDiag);
+          }
+        }
+
+        refresh.diagnostics = diag;
+      } catch (directRefreshErr) {
+        console.error('[chart-read] Direct daily/weekly refresh failed:', directRefreshErr);
+      }
+    }
 
     try {
       const now = new Date();
@@ -416,7 +669,7 @@ serve(async (req: Request): Promise<Response> => {
     } else {
       const requestedMaxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ?? 1000;
       const maxBars = Math.min(requestedMaxBars, POSTGREST_MAX_ROWS);
-      const startIso2y = new Date(Date.now() - TWO_YEARS_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      const startIso2y = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000).toISOString();
 
       const { data: dbRows, error: dbError } = await supabase
         .from("ohlc_bars_v2")
@@ -619,7 +872,7 @@ serve(async (req: Request): Promise<Response> => {
       supertrend_ai: null,
       metadata: {
         total_bars: bars.length,
-        requested_days: isDailyWeeklyTf ? TWO_YEARS_DAYS : days,
+        requested_days: rangeDays,
         max_bars: isIntradayTf ? INTRADAY_TARGET_BARS : Math.min((MAX_BARS_BY_TIMEFRAME[timeframe] ?? 1000), POSTGREST_MAX_ROWS),
       },
       dataQuality,
