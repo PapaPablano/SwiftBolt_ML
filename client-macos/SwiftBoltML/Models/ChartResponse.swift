@@ -8,6 +8,8 @@ struct ChartResponse: Codable, Equatable {
     let mlSummary: MLSummary?
     let indicators: IndicatorData?
     let superTrendAI: SuperTrendAIData?
+    let dataQuality: DataQuality?
+    let refresh: ChartReadRefresh?
 
     enum CodingKeys: String, CodingKey {
         case symbol
@@ -17,7 +19,18 @@ struct ChartResponse: Codable, Equatable {
         case mlSummary
         case indicators
         case superTrendAI = "supertrend_ai"
+        case dataQuality
+        case refresh
     }
+}
+
+struct ChartReadRefresh: Codable, Equatable {
+    let attempted: Bool
+    let timeframe: String
+    let symbol: String
+    let enqueuedTimeframes: [String]?
+    let insertedSlices: Int?
+    let error: String?
 }
 
 // MARK: - SuperTrend AI Data

@@ -132,6 +132,7 @@ final class ChartViewModel: ObservableObject {
     private var hydrationPollTask: Task<Void, Never>?
     private var coverageCheckTask: Task<Void, Never>?
     private var chartRefreshTask: Task<Void, Never>?
+    private var currentLoadId: UUID = UUID()
     private let liveQuoteInterval: UInt64 = 5 * 1_000_000_000  // 5 seconds for streaming price updates
     private var lastChartRefreshTime: Date = .distantPast
     private let marketTimeZone = TimeZone(identifier: "America/New_York") ?? .current
@@ -564,6 +565,9 @@ final class ChartViewModel: ObservableObject {
         loadTask?.cancel()
         coverageCheckTask?.cancel()
 
+        let loadId = UUID()
+        currentLoadId = loadId
+
         print("[DEBUG] ========================================")
         print("[DEBUG] ChartViewModel.loadChart() CALLED")
         print("[DEBUG] ========================================")
@@ -590,7 +594,9 @@ final class ChartViewModel: ObservableObject {
                 bars: cached,
                 mlSummary: nil,
                 indicators: nil,
-                superTrendAI: nil
+                superTrendAI: nil,
+                dataQuality: nil,
+                refresh: nil
             )
         }
 
@@ -620,141 +626,38 @@ final class ChartViewModel: ObservableObject {
         loadTask = Task {
             do {
                 if useV2API {
-                    // Use V2 API with Alpaca-only strategy:
-                    // - Historical: Alpaca (all historical data, dates < today)
-                    // - Intraday: Alpaca (today's live data only)
-                    // - Forecast: ML predictions (future dates)
-                    
-                    // Request generous date range - database now intelligently fetches
-                    // from most recent data backwards, ensuring latest bars always included
-                    let daysToRequest: Int
-                    switch timeframe {
-                    case .m15:
-                        daysToRequest = 60   // 15m: Request 2 months, DB limits to ~3 weeks
-                    case .h1:
-                        daysToRequest = 180  // 1h: Request 6 months, DB limits to ~3 months
-                    case .h4:
-                        daysToRequest = 365  // 4h: Request 1 year, DB limits to ~6 months
-                    case .d1:
-                        daysToRequest = 3650 // Daily: Request 10 years, DB limits to ~8 years
-                    case .w1:
-                        daysToRequest = 7300 // Weekly: Request 20 years, DB limits to ~38 years
-                    }
-
-                    let forecastSteps: Int? = timeframe.isIntraday ? {
-                        switch timeframe {
-                        case .m15: return 40
-                        case .h1: return 40
-                        case .h4: return 25
-                        case .d1, .w1: return nil
-                        }
-                    }() : nil
-
-                    Task.detached { [ticker = symbol.ticker] in
-                        await APIClient.shared.triggerHistoricalBackfill(
-                            symbol: ticker,
-                            timeframes: ["m15", "h1", "h4", "d1", "w1"],
-                            force: false
-                        )
-                    }
-
-                    let resolvedSymbolId = try await resolveSymbolId(for: symbol.ticker)
-
-                    var response: ChartDataV2Response?
-                    do {
-                        response = try await fetchChartV2ViaRPC(
-                            ticker: symbol.ticker,
-                            symbolId: resolvedSymbolId,
-                            timeframe: timeframe.apiToken
-                        )
-                    } catch {
-                        print("[DEBUG] RPC get_chart_data_v2 failed, falling back to chart-data-v2 edge function: \(error)")
-                        response = try await APIClient.shared.fetchChartV2(
-                            symbol: symbol.ticker,
-                            timeframe: timeframe.apiToken,
-                            days: daysToRequest,
-                            includeForecast: true,
-                            forecastDays: 10,
-                            forecastSteps: forecastSteps
-                        )
-                    }
-
-                    guard var response = response else {
-                        throw APIError.invalidResponse
-                    }
+                    let response = try await APIClient.shared.fetchChartRead(
+                        symbol: symbol.ticker,
+                        timeframe: timeframe.apiToken,
+                        includeMLData: true
+                    )
 
                     guard !Task.isCancelled else {
                         print("[DEBUG] Load cancelled after fetch")
                         return
                     }
 
-                    var (bars, stalenessReport) = buildBarsWithStalenessCheck(from: response, for: timeframe)
-                    dataRecencyReport = stalenessReport
-
-                    // Auto-retry if empty: trigger coverage + poll + refetch (ALL timeframes)
-                    if bars.isEmpty {
-                        print("[DEBUG] ⚠️ 0 bars, polling for data...")
-
-                        var delay: UInt64 = 500_000_000
-                        for attempt in 0..<5 {
-                            try await Task.sleep(nanoseconds: delay)
-                            guard !Task.isCancelled else { return }
-
-                            do {
-                                let peek = try await fetchChartV2ViaRPC(
-                                    ticker: symbol.ticker,
-                                    symbolId: resolvedSymbolId,
-                                    timeframe: timeframe.apiToken
-                                )
-                                let (peekBars, peekStaleness) = buildBarsWithStalenessCheck(from: peek, for: timeframe)
-                                if !peekBars.isEmpty {
-                                    print("[DEBUG] ✓ Data appeared after \(attempt + 1) polls")
-                                    response = peek
-                                    bars = peekBars
-                                    stalenessReport = peekStaleness
-                                    dataRecencyReport = peekStaleness
-                                    break
-                                }
-                            } catch {
-                                print("[DEBUG] Poll attempt \(attempt + 1) failed: \(error)")
-                            }
-                            delay = min(delay * 2, 4_000_000_000)
-                        }
-                    }
-                    
-                    print("[DEBUG] ChartViewModel.loadChart() - V2 SUCCESS!")
-                    print("[DEBUG] - Historical: \(response.layers.historical.count) (provider: \(response.layers.historical.provider))")
-                    print("[DEBUG] - Intraday: \(response.layers.intraday.count) (provider: \(response.layers.intraday.provider))")
-                    print("[DEBUG] - Final bars: \(bars.count)")
+                    let bars = response.bars
+                    print("[DEBUG] ChartViewModel.loadChart() - chart-read SUCCESS!")
+                    print("[DEBUG] - Bars: \(bars.count)")
                     print("[DEBUG] - ML: \(response.mlSummary != nil ? "✓" : "✗")")
-                    
-                    chartDataV2 = response
+
+                    guard currentLoadId == loadId else { return }
+                    chartDataV2 = nil
+                    chartData = response
                     updateSelectedForecastHorizon(from: response.mlSummary)
-                    
-                    // Also populate legacy chartData for indicator calculations
-                    // This triggers didSet -> invalidateIndicatorCache
-                    // Now includes ML enrichment from V2 response
-                    chartData = ChartResponse(
-                        symbol: response.symbol,
-                        assetType: "stock",
-                        timeframe: response.timeframe,
-                        bars: bars,
-                        mlSummary: response.mlSummary,
-                        indicators: response.indicators,
-                        superTrendAI: response.superTrendAI
-                    )
-                    
+
                     // Save bars to cache for instant subsequent loads
                     ChartCache.saveBars(symbol: symbol.ticker, timeframe: timeframe, bars: bars)
-                    
+
                     // Explicitly recalculate indicators with new data
                     scheduleIndicatorRecalculation()
-                    
+
                     // Start live quotes (streaming price updates every 5s during market hours)
                     if liveQuoteTask == nil || liveQuoteTask?.isCancelled == true {
                         startLiveQuoteUpdates()
                     }
-                    
+
                     // Start chart auto-refresh based on timeframe (15m/1h/4h/daily)
                     if chartRefreshTask == nil || chartRefreshTask?.isCancelled == true {
                         startChartAutoRefresh()
@@ -769,59 +672,67 @@ final class ChartViewModel: ObservableObject {
                     // Check if task was cancelled
                     guard !Task.isCancelled else {
                         print("[DEBUG] ChartViewModel.loadChart() - CANCELLED")
-                        isLoading = false
                         return
                     }
 
                     print("[DEBUG] ChartViewModel.loadChart() - SUCCESS!")
                     print("[DEBUG] - Received \(response.bars.count) bars")
                     print("[DEBUG] - Setting chartData property...")
+                    guard currentLoadId == loadId else { return }
                     chartData = response
                     updateSelectedForecastHorizon(from: response.mlSummary)
                     print("[DEBUG] - chartData is now: \(chartData == nil ? "nil" : "non-nil with \(chartData!.bars.count) bars")")
-                    
+
                     // Save bars to cache
                     ChartCache.saveBars(symbol: symbol.ticker, timeframe: timeframe, bars: response.bars)
-                    
+
                     // Explicitly recalculate indicators with new data
                     scheduleIndicatorRecalculation()
-                    
+
                     // Start live quotes (streaming price updates every 5s during market hours)
                     if liveQuoteTask == nil || liveQuoteTask?.isCancelled == true {
                         startLiveQuoteUpdates()
                     }
-                    
+
                     // Start chart auto-refresh based on timeframe
                     if chartRefreshTask == nil || chartRefreshTask?.isCancelled == true {
                         startChartAutoRefresh()
                     }
                 }
-                
+            
+            if currentLoadId == loadId {
                 errorMessage = nil
-            } catch is CancellationError {
-                // Swallow - new request superseded this one
-                print("[DEBUG] Load cancelled (CancellationError)")
-                isLoading = false  // Ensure spinner doesn't stick
-            } catch {
-                guard !Task.isCancelled else {
-                    print("[DEBUG] Load cancelled in error handler")
-                    return
+            }
+        } catch is CancellationError {
+            // Swallow - new request superseded this one
+            print("[DEBUG] Load cancelled (CancellationError)")
+            if currentLoadId == loadId {
+                isLoading = false
+            }
+        } catch {
+            guard !Task.isCancelled else {
+                print("[DEBUG] Load cancelled in error handler")
+                if currentLoadId == loadId {
+                    isLoading = false
                 }
+                return
+            }
 
-                print("[DEBUG] ChartViewModel.loadChart() - ERROR: \(error)")
+            print("[DEBUG] ChartViewModel.loadChart() - ERROR: \(error)")
+            if currentLoadId == loadId {
                 errorMessage = error.localizedDescription
                 isLoading = false
             }
-            
-            if !Task.isCancelled {
-                isLoading = false
-            }
-            print("[DEBUG] ChartViewModel.loadChart() COMPLETED")
-            print("[DEBUG] - Final state: chartData=\(chartData == nil ? "nil" : "non-nil"), isLoading=\(isLoading), errorMessage=\(errorMessage ?? "nil")")
-            print("[DEBUG] ========================================")
         }
+        
+        if currentLoadId == loadId {
+            isLoading = false
+        }
+        print("[DEBUG] ChartViewModel.loadChart() COMPLETED")
+        print("[DEBUG] - Final state: chartData=\(chartData == nil ? "nil" : "non-nil"), isLoading=\(isLoading), errorMessage=\(errorMessage ?? "nil")")
+        print("[DEBUG] ========================================")
+    }
 
-        await loadTask?.value
     }
 
     func setTimeframe(_ newTimeframe: Timeframe) async {
@@ -1066,6 +977,9 @@ final class ChartViewModel: ObservableObject {
         guard let symbol = selectedSymbol else { return }
         
         print("[DEBUG] 🔄 Force fresh reload for \(symbol.ticker)")
+
+        let previousChartData = chartData
+        let previousChartDataV2 = chartDataV2
         
         // Clear file-based cache
         ChartCache.clear(symbol: symbol.ticker, timeframe: timeframe)
@@ -1079,14 +993,17 @@ final class ChartViewModel: ObservableObject {
         await clearWebViewCache()
         print("[DEBUG] ✓ Cleared WKWebView cache")
         
-        // Clear in-memory data
-        chartData = nil
-        chartDataV2 = nil
-        print("[DEBUG] ✓ Cleared in-memory chart data")
-        
-        // Reload from server
+        // Reload from server (keep current data until new data arrives)
         print("[DEBUG] 🌐 Fetching fresh data from server...")
         await loadChart()
+
+        // If reload was cancelled or failed and left us blank, restore previous data
+        if chartData == nil {
+            chartData = previousChartData
+        }
+        if chartDataV2 == nil {
+            chartDataV2 = previousChartDataV2
+        }
     }
     
     /// Clear WKWebView cache and cookies
@@ -1468,43 +1385,21 @@ final class ChartViewModel: ObservableObject {
                         break
                     }
 
-                    // Fetch updated chart data - use generous range, DB handles intelligent limiting
-                    let daysToRequest: Int
-                    switch self.timeframe {
-                    case .m15: daysToRequest = 60
-                    case .h1: daysToRequest = 180
-                    case .h4: daysToRequest = 365
-                    case .d1: daysToRequest = 3650
-                    case .w1: daysToRequest = 7300
-                    }
-                    
-                    let peek = try await APIClient.shared.fetchChartV2(
+                    // Fetch updated chart data via chart-read (refresh-on-read)
+                    let peek = try await APIClient.shared.fetchChartRead(
                         symbol: symbol,
                         timeframe: self.timeframe.apiToken,
-                        days: daysToRequest,
-                        includeForecast: true,
-                        forecastDays: 10,
-                        forecastSteps: self.timeframe.isIntraday ? (self.timeframe == .h4 ? 25 : 40) : nil
+                        includeMLData: true
                     )
-                    let (peekBars, peekStaleness) = self.buildBarsWithStalenessCheck(from: peek, for: self.timeframe)
 
                     // Always update chart data (progressive refresh)
                     await MainActor.run {
-                        self.chartDataV2 = peek
-                        self.dataRecencyReport = peekStaleness
-                        self.chartData = ChartResponse(
-                            symbol: peek.symbol,
-                            assetType: "stock",
-                            timeframe: peek.timeframe,
-                            bars: peekBars,
-                            mlSummary: peek.mlSummary,
-                            indicators: peek.indicators,
-                            superTrendAI: peek.superTrendAI
-                        )
+                        self.chartDataV2 = nil
+                        self.chartData = peek
                     }
 
                     // Save to cache
-                    ChartCache.saveBars(symbol: symbol, timeframe: self.timeframe, bars: peekBars)
+                    ChartCache.saveBars(symbol: symbol, timeframe: self.timeframe, bars: peek.bars)
 
                 } catch {
                     print("[DEBUG] Hydration poll error: \(error)")
@@ -1529,12 +1424,15 @@ final class ChartViewModel: ObservableObject {
     /// Calculate volume profile from OHLC bars
     /// Groups volume by price levels to identify support/resistance zones
     func calculateVolumeProfile(bucketSize: Double = 0.50) {
-        guard let chartData = chartDataV2 else {
+        let bars: [OHLCBar]
+        if let chartData = chartDataV2 {
+            bars = chartData.allBars
+        } else if let chartData = chartData {
+            bars = chartData.bars
+        } else {
             volumeProfile = []
             return
         }
-        
-        let bars = chartData.allBars
         guard !bars.isEmpty else {
             volumeProfile = []
             return
@@ -1579,48 +1477,55 @@ final class ChartViewModel: ObservableObject {
 
     /// Validate data recency for intraday timeframes
     private func validateDataRecency(bars: [OHLCBar], timeframe: Timeframe) -> (isStale: Bool, age: TimeInterval, recommendation: String) {
-        guard timeframe.isIntraday else {
-            return (isStale: false, age: 0, recommendation: "Daily/weekly data - staleness check skipped")
-        }
-
         guard let lastBar = bars.last else {
-            return (isStale: true, age: .infinity, recommendation: "No bars found - TRIGGER BACKFILL")
+            return (isStale: true, age: 0, recommendation: "No data available")
         }
 
         let age = Date().timeIntervalSince(lastBar.ts)
+        let marketOpen = MarketHours.isMarketOpen()
 
-        let maxAge: TimeInterval
-        if MarketHours.isMarketOpen() {
-            switch timeframe {
-            case .m15:
-                maxAge = 25 * 60
-            case .h1:
-                maxAge = 2 * 60 * 60
-            case .h4:
-                maxAge = 5 * 60 * 60
-            case .d1, .w1:
-                maxAge = 24 * 60 * 60
+        let maxAge: TimeInterval = {
+            if timeframe.isIntraday {
+                if marketOpen {
+                    switch timeframe {
+                    case .m15: return 25 * 60
+                    case .h1: return 2 * 60 * 60
+                    case .h4: return 5 * 60 * 60
+                    case .d1, .w1: return 48 * 60 * 60
+                    }
+                } else {
+                    switch timeframe {
+                    case .m15: return 2 * 60 * 60
+                    case .h1: return 6 * 60 * 60
+                    case .h4: return 12 * 60 * 60
+                    case .d1, .w1: return 72 * 60 * 60
+                    }
+                }
             }
-        } else {
+
             switch timeframe {
-            case .m15:
-                maxAge = 2 * 60 * 60
-            case .h1:
-                maxAge = 6 * 60 * 60
-            case .h4:
-                maxAge = 12 * 60 * 60
-            case .d1, .w1:
-                maxAge = 48 * 60 * 60
+            case .d1:
+                return 48 * 60 * 60
+            case .w1:
+                return 14 * 24 * 60 * 60
+            case .m15, .h1, .h4:
+                // Shouldn't happen because these are intraday, but keep a safe default
+                return 6 * 60 * 60
             }
-        }
+        }()
+
         let isStale = age > maxAge
 
         let recommendation: String
         if isStale {
-            if MarketHours.isMarketOpen() {
-                recommendation = "Data is \(Int(age))s old during market hours - TRIGGER BACKFILL"
+            if timeframe.isIntraday {
+                if marketOpen {
+                    recommendation = "Data is \(Int(age))s old during market hours - TRIGGER BACKFILL"
+                } else {
+                    recommendation = "Market closed, \(Int(age))s old exceeds threshold"
+                }
             } else {
-                recommendation = "Market closed, \(Int(age))s old exceeds threshold"
+                recommendation = "Daily/weekly data is \(Int(age))s old - TRIGGER BACKFILL"
             }
         } else {
             recommendation = "Data is fresh (\(Int(age))s old)"

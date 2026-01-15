@@ -5,6 +5,28 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { corsHeaders } from "../_shared/cors.ts";
 
+type AlpacaBar = {
+  t: string;
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  v: number;
+};
+
+type AlpacaBarsResponse = {
+  bars?: Record<string, AlpacaBar[]>;
+};
+
+type NormalizedBar = {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
 interface BatchFetchRequest {
   job_run_ids: string[]; // Array of job run IDs (one per symbol)
   symbols: string[];      // Array of symbols to fetch
@@ -134,23 +156,20 @@ Deno.serve(async (req) => {
       throw new Error(`Alpaca API error (${response.status}): ${errorText}`);
     }
 
-    const data = await response.json();
-    const barsMap = new Map<string, any[]>();
+    const data = (await response.json()) as AlpacaBarsResponse;
+    const barsMap = new Map<string, NormalizedBar[]>();
 
-    // Parse response - Alpaca returns { bars: { SYMBOL: [bars...], ... } }
-    if (data.bars) {
-      for (const symbol of symbols) {
-        const alpacaBars = data.bars[symbol] || [];
-        const bars = alpacaBars.map((bar: any) => ({
-          timestamp: Math.floor(new Date(bar.t).getTime() / 1000),
-          open: bar.o,
-          high: bar.h,
-          low: bar.l,
-          close: bar.c,
-          volume: bar.v,
-        }));
-        barsMap.set(symbol, bars);
-      }
+    for (const symbol of symbols) {
+      const alpacaBars = data.bars?.[symbol] ?? [];
+      const bars = alpacaBars.map((bar) => ({
+        timestamp: Math.floor(new Date(bar.t).getTime() / 1000),
+        open: bar.o,
+        high: bar.h,
+        low: bar.l,
+        close: bar.c,
+        volume: bar.v,
+      }));
+      barsMap.set(symbol, bars);
     }
 
     console.log(`[fetch-bars-batch] Received data for ${barsMap.size} symbols`);
@@ -224,12 +243,21 @@ Deno.serve(async (req) => {
               };
             });
 
+          const dedupedBarsToInsert = (() => {
+            const map = new Map<string, typeof barsToInsert[number]>();
+            for (const row of barsToInsert) {
+              const key = `${row.symbol_id}|${row.timeframe}|${row.ts}|${row.provider}|${row.is_forecast}`;
+              map.set(key, row);
+            }
+            return Array.from(map.values());
+          })();
+
           // Batch upsert
           const batchSize = 1000;
           let rowsWritten = 0;
 
-          for (let j = 0; j < barsToInsert.length; j += batchSize) {
-            const batch = barsToInsert.slice(j, j + batchSize);
+          for (let j = 0; j < dedupedBarsToInsert.length; j += batchSize) {
+            const batch = dedupedBarsToInsert.slice(j, j + batchSize);
 
             const { error: upsertError } = await supabase
               .from("ohlc_bars_v2")

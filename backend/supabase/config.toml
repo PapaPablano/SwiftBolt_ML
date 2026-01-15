@@ -13,7 +13,7 @@ max_rows = 1000
 [db]
 port = 54322
 shadow_port = 54320
-major_version = 15
+major_version = 17
 
 [db.pooler]
 enabled = false
@@ -77,6 +77,9 @@ verify_jwt = false  # TODO: Enable JWT verification for production
 [functions.fetch-bars]
 verify_jwt = false  # Internal function called by orchestrator
 
+[functions.fetch-bars-batch]
+verify_jwt = false  # Internal batch worker called by orchestrator
+
 [functions.orchestrator]
 verify_jwt = false  # Internal function called by pg_cron
 
@@ -88,6 +91,12 @@ verify_jwt = false  # Called by GitHub Actions with service key
 
 [functions.chart-data-v2]
 verify_jwt = false  # Main chart endpoint for iOS app
+
+[functions.chart-read]
+verify_jwt = false
+
+[functions.chart-health]
+verify_jwt = false
 
 [functions.options-scrape]
 verify_jwt = false  # Internal function for options data

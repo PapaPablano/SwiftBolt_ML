@@ -349,10 +349,19 @@ Deno.serve(async (req) => {
           };
         });
 
+      const dedupedBarsToInsert = (() => {
+        const map = new Map<string, typeof barsToInsert[number]>();
+        for (const row of barsToInsert) {
+          const key = `${row.symbol_id}|${row.timeframe}|${row.ts}|${row.provider}|${row.is_forecast}`;
+          map.set(key, row);
+        }
+        return Array.from(map.values());
+      })();
+
       // Batch upsert (Supabase has a 1000 row limit per request)
       const batchSize = 1000;
-      for (let i = 0; i < barsToInsert.length; i += batchSize) {
-        const batch = barsToInsert.slice(i, i + batchSize);
+      for (let i = 0; i < dedupedBarsToInsert.length; i += batchSize) {
+        const batch = dedupedBarsToInsert.slice(i, i + batchSize);
         
         const { error: upsertError } = await supabase
           .from("ohlc_bars_v2")
@@ -369,7 +378,7 @@ Deno.serve(async (req) => {
         rowsWritten += batch.length;
         
         // Update progress
-        const progress = Math.floor((i + batch.length) / barsToInsert.length * 100);
+        const progress = Math.floor((i + batch.length) / dedupedBarsToInsert.length * 100);
         await updateJobStatus(supabase, job_run_id, {
           progress_percent: progress,
         });

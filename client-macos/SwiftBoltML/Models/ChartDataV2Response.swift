@@ -43,9 +43,35 @@ struct ChartDataV2Response: Codable, Equatable {
     }
 
     private struct LegacyLayers: Decodable {
-        let historical: [OHLCBar]?
-        let intraday: [OHLCBar]?
-        let forecast: [OHLCBar]?
+        let historical: [OHLCBar]
+        let intraday: [OHLCBar]
+        let forecast: [OHLCBar]
+
+        private enum CodingKeys: String, CodingKey {
+            case historical
+            case intraday
+            case forecast
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            historical = Self.decodeBars(container, forKey: .historical)
+            intraday = Self.decodeBars(container, forKey: .intraday)
+            forecast = Self.decodeBars(container, forKey: .forecast)
+        }
+
+        private static func decodeBars(_ container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> [OHLCBar] {
+            if let bars = try? container.decode([OHLCBar].self, forKey: key) {
+                return bars
+            }
+
+            // Some legacy responses wrap each layer as an object (count/provider/data/...)
+            if let layer = try? container.decode(LayerData.self, forKey: key) {
+                return layer.data
+            }
+
+            return []
+        }
     }
 
     init(from decoder: Decoder) throws {
@@ -80,9 +106,9 @@ struct ChartDataV2Response: Codable, Equatable {
             let meta = try legacy.decode(LegacyMeta.self, forKey: .meta)
             let rawLayers = try legacy.decode(LegacyLayers.self, forKey: .layers)
 
-            let historicalBars = rawLayers.historical ?? []
-            let intradayBars = rawLayers.intraday ?? []
-            let forecastBars = rawLayers.forecast ?? []
+            let historicalBars = rawLayers.historical
+            let intradayBars = rawLayers.intraday
+            let forecastBars = rawLayers.forecast
 
             let allBars = (historicalBars + intradayBars + forecastBars).sorted(by: { $0.ts < $1.ts })
             let computedStart = allBars.first?.ts.ISO8601Format()

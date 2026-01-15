@@ -41,7 +41,7 @@ struct ChartView: View {
                 lastBar: chartViewModel.bars.last,
                 liveQuote: chartViewModel.liveQuote,
                 marketState: chartViewModel.marketState,
-                dataQuality: chartViewModel.chartDataV2?.dataQuality
+                dataQuality: chartViewModel.chartData?.dataQuality
             )
 
             HStack {

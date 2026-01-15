@@ -133,6 +133,25 @@ async function handleTick(supabase: SupabaseClient) {
   };
 
   try {
+    // 0. Reset stale running jobs so the queue can make forward progress
+    const { data: resetResult, error: resetError } = await supabase.rpc("reset_stale_running_jobs", {
+      p_max_age_minutes: 60,
+      p_max_attempts: 5,
+    });
+
+    if (resetError) {
+      console.error("[Orchestrator] reset_stale_running_jobs error:", resetError);
+      results.errors.push(`reset_stale_running_jobs: ${getErrorMessage(resetError)}`);
+    } else {
+      const resetCount = Array.isArray(resetResult)
+        ? Number(resetResult?.[0]?.reset_count ?? 0)
+        : Number((resetResult as { reset_count?: unknown } | null)?.reset_count ?? 0);
+
+      if (resetCount > 0) {
+        console.log(`[Orchestrator] Reset stale running jobs: ${resetCount}`);
+      }
+    }
+
     // 1. Get all enabled job definitions, ordered by priority
     const { data: jobDefs, error: jobDefsError } = await supabase
       .from("job_definitions")
@@ -238,13 +257,15 @@ async function createSlicesForJob(supabase: SupabaseClient, jobDef: JobDefinitio
     // No need to restrict slices here anymore
 
     const candidates: Array<{ from: Date; to: Date }> = [];
-    let currentFrom = gapFrom;
+    let currentTo = gapTo;
 
-    while (currentFrom < gapTo && candidates.length < config.maxSlicesPerTick) {
-      const currentTo = new Date(Math.min(currentFrom.getTime() + sliceMs, gapTo.getTime()));
+    while (currentTo > gapFrom && candidates.length < config.maxSlicesPerTick) {
+      const currentFrom = new Date(Math.max(currentTo.getTime() - sliceMs, gapFrom.getTime()));
       candidates.push({ from: currentFrom, to: currentTo });
-      currentFrom = currentTo;
+      currentTo = currentFrom;
     }
+
+    candidates.reverse();
 
     if (candidates.length === 0) continue;
 
