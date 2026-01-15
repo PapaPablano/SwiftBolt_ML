@@ -132,6 +132,11 @@ final class ChartViewModel: ObservableObject {
     private var hydrationPollTask: Task<Void, Never>?
     private var coverageCheckTask: Task<Void, Never>?
     private var chartRefreshTask: Task<Void, Never>?
+
+    private var isLoadingHistoryPage: Bool = false
+    private var lastHistoryRequestBefore: Int?
+    private var hasReachedHistoryStart: Bool = false
+    private var lastHistoryFetchTime: Date = .distantPast
     private var currentLoadId: UUID = UUID()
     private let liveQuoteInterval: UInt64 = 5 * 1_000_000_000  // 5 seconds for streaming price updates
     private var lastChartRefreshTime: Date = .distantPast
@@ -158,6 +163,106 @@ final class ChartViewModel: ObservableObject {
 
     var bars: [OHLCBar] {
         chartData?.bars ?? []
+    }
+
+    private func barIntervalSeconds(for timeframe: Timeframe) -> Int {
+        switch timeframe {
+        case .m15:
+            return 15 * 60
+        case .h1:
+            return 60 * 60
+        case .h4:
+            return 4 * 60 * 60
+        case .d1:
+            return 24 * 60 * 60
+        case .w1:
+            return 7 * 24 * 60 * 60
+        }
+    }
+
+    func maybeLoadMoreHistory(visibleFrom: Int) {
+        guard useV2API else { return }
+        guard chartDataV2 == nil else { return }
+        guard let current = chartData else { return }
+        guard !current.bars.isEmpty else { return }
+        guard !hasReachedHistoryStart else { return }
+        guard !isLoadingHistoryPage else { return }
+
+        let now = Date()
+        if now.timeIntervalSince(lastHistoryFetchTime) < 1.0 {
+            return
+        }
+
+        let sorted = current.bars.sorted { $0.ts < $1.ts }
+        guard let first = sorted.first else { return }
+
+        let earliestTs = Int(first.ts.timeIntervalSince1970)
+        let thresholdBars = 25
+        let thresholdSec = thresholdBars * barIntervalSeconds(for: timeframe)
+
+        if visibleFrom > earliestTs + thresholdSec {
+            return
+        }
+
+        if lastHistoryRequestBefore == earliestTs {
+            return
+        }
+
+        isLoadingHistoryPage = true
+        lastHistoryRequestBefore = earliestTs
+        lastHistoryFetchTime = now
+
+        let symbol = current.symbol
+        let tf = timeframe.apiToken
+        let pageSize = 400
+
+        Task {
+            do {
+                let page = try await APIClient.shared.fetchChartReadPage(
+                    symbol: symbol,
+                    timeframe: tf,
+                    before: earliestTs,
+                    pageSize: pageSize
+                )
+
+                let olderBars = page.bars
+                if olderBars.isEmpty {
+                    hasReachedHistoryStart = true
+                    isLoadingHistoryPage = false
+                    return
+                }
+
+                var combined = current.bars
+                combined.append(contentsOf: olderBars)
+
+                var uniqueByTs: [Int: OHLCBar] = [:]
+                uniqueByTs.reserveCapacity(combined.count)
+                for bar in combined {
+                    let key = Int(bar.ts.timeIntervalSince1970)
+                    uniqueByTs[key] = bar
+                }
+
+                let mergedBars = uniqueByTs.values.sorted { $0.ts < $1.ts }
+
+                chartData = ChartResponse(
+                    symbol: current.symbol,
+                    assetType: current.assetType,
+                    timeframe: current.timeframe,
+                    bars: mergedBars,
+                    mlSummary: current.mlSummary,
+                    indicators: current.indicators,
+                    superTrendAI: current.superTrendAI,
+                    dataQuality: current.dataQuality,
+                    refresh: current.refresh
+                )
+
+                ChartCache.saveBars(symbol: current.symbol, timeframe: timeframe, bars: mergedBars)
+                scheduleIndicatorRecalculation()
+                isLoadingHistoryPage = false
+            } catch {
+                isLoadingHistoryPage = false
+            }
+        }
     }
 
     var selectedForecastSeries: ForecastSeries? {

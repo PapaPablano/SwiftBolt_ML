@@ -422,6 +422,46 @@ final class APIClient {
 
         return try await performRequestWithHeaderLogging(request, symbol: symbol, timeframe: timeframe)
     }
+
+    func fetchChartReadPage(symbol: String, timeframe: String = "d1", before: Int, pageSize: Int = 400) async throws -> ChartResponse {
+        var urlComponents = URLComponents(url: functionURL("chart-read"), resolvingAgainstBaseURL: false)!
+        let cacheBuster = Int(Date().timeIntervalSince1970)
+        urlComponents.queryItems = [
+            URLQueryItem(name: "t", value: "\(cacheBuster)"),
+            URLQueryItem(name: "symbol", value: symbol),
+            URLQueryItem(name: "timeframe", value: timeframe),
+            URLQueryItem(name: "before", value: "\(before)"),
+            URLQueryItem(name: "pageSize", value: "\(pageSize)")
+        ]
+
+        let body: [String: Any] = [
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "includeMLData": false,
+            "before": before,
+            "pageSize": pageSize
+        ]
+
+        print("[DEBUG] 📊 Fetching chart-read page: symbol=\(symbol), timeframe=\(timeframe), before=\(before), pageSize=\(pageSize), cacheBuster=\(cacheBuster)")
+
+        guard let url = urlComponents.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let bodyData = try JSONSerialization.data(withJSONObject: body)
+        request.httpBody = bodyData
+
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("no-cache, no-store, must-revalidate", forHTTPHeaderField: "Cache-Control")
+        request.setValue(UUID().uuidString, forHTTPHeaderField: "X-Request-ID")
+
+        return try await performRequestWithHeaderLogging(request, symbol: symbol, timeframe: timeframe)
+    }
     
     func fetchChartV2(symbol: String, timeframe: String = "d1", days: Int = 60, includeForecast: Bool = true, forecastDays: Int = 10, forecastSteps: Int? = nil) async throws -> ChartDataV2Response {
         // Build URL with cache-buster to bypass CDN caching (for all timeframes)

@@ -54,12 +54,13 @@ interface ChartBar {
 const MAX_BARS_BY_TIMEFRAME: Record<string, number> = {
   m15: 2000,
   h1: 1500,
-  h4: 1000,
+  h4: 950,
   d1: 2000,
   w1: 2000,
 };
-const DEFAULT_MAX_BARS = 1000;
+const DEFAULT_MAX_BARS = 950;
 const POSTGREST_MAX_ROWS = 1000;
+const SOFT_MAX_ROWS = 950;
 
 function alpacaTimeframe(timeframe: string): string | null {
   switch (timeframe) {
@@ -411,7 +412,7 @@ serve(async (req: Request): Promise<Response> => {
     console.log(`[chart-data-v2] Fetching: symbol_id=${symbolId}, timeframe=${timeframe}, start=${startDate.toISOString()}, end=${endDate.toISOString()}`);
     
     const requestedMaxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ?? DEFAULT_MAX_BARS;
-    const maxBars = Math.min(requestedMaxBars, POSTGREST_MAX_ROWS);
+    const maxBars = Math.min(requestedMaxBars, POSTGREST_MAX_ROWS, SOFT_MAX_ROWS);
 
     const { data: dynamicData, error: chartError } = await supabase
       .rpc('get_chart_data_v2_dynamic', {

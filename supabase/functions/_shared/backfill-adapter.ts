@@ -33,6 +33,11 @@ export interface BackfillRequest {
 // Map our timeframe tokens to provider Timeframe enum
 function mapTimeframeToProvider(tf: string): Timeframe {
   const map: Record<string, Timeframe> = {
+    "m15": "m15",
+    "h1": "h1",
+    "h4": "h4",
+    "d1": "d1",
+    "w1": "w1",
     "15m": "m15",
     "1h": "h1",
     "4h": "h4",

@@ -534,46 +534,6 @@ setCandles: function(data) {
 
     // Set the data
     state.series.candles.setData(displayData);
-    
-    // Calculate appropriate visible range based on bar count and spacing
-    // Show enough bars to fill the viewport without compression
-    if (displayData.length > 0) {
-        const lastBar = displayData[displayData.length - 1];
-        const firstBar = displayData[0];
-        
-        // Detect timeframe based on time difference between bars
-        let avgBarInterval = 0;
-        if (displayData.length > 1) {
-            const sampleSize = Math.min(10, displayData.length - 1);
-            let totalInterval = 0;
-            for (let i = displayData.length - sampleSize; i < displayData.length; i++) {
-                totalInterval += displayData[i].time - displayData[i - 1].time;
-            }
-            avgBarInterval = totalInterval / sampleSize;
-        }
-        
-        // Default zoom: Always show 100 most recent bars on initial load
-        // This provides consistent behavior across all timeframes
-        const targetVisibleBars = 100;
-        
-        // Calculate the start index to show target number of bars
-        const startIndex = Math.max(0, displayData.length - targetVisibleBars);
-        const fromTime = displayData[startIndex].time;
-        const toTime = lastBar.time;
-        
-        state.chart.timeScale().setVisibleRange({ from: fromTime, to: toTime });
-        
-        const barIntervalStr = avgBarInterval < 3600 ? 
-            `${Math.round(avgBarInterval / 60)}m` : 
-            avgBarInterval < 86400 ? 
-            `${Math.round(avgBarInterval / 3600)}h` : 
-            `${Math.round(avgBarInterval / 86400)}d`;
-        
-        console.log('[ChartJS] Visible range set:', 
-                    `showing ${targetVisibleBars} bars (detected: ${barIntervalStr} timeframe)`,
-                    'from', new Date(fromTime * 1000).toISOString(), 
-                    'to', new Date(toTime * 1000).toISOString());
-    }
 
     console.log('[ChartJS] Candles set:', sortedData.length, 'bars, HA:', state.useHeikinAshi);
 },

@@ -8,6 +8,8 @@ interface ChartReadRequest {
   timeframe?: string;
   days?: number;
   includeMLData?: boolean;
+  before?: string | number;
+  pageSize?: number;
 }
 
 function normalizeTimeframe(timeframe: string): string {
@@ -236,18 +238,19 @@ const DAILY_FORECAST_MAX_POINTS = 6;
 const INTRADAY_FORECAST_MAX_POINTS = 6;
 const INTRADAY_FORECAST_EXPIRY_GRACE_SECONDS = 2 * 60 * 60;
 
-const INTRADAY_TARGET_BARS = 250;
+const INTRADAY_TARGET_BARS = 950;
 const TWO_YEARS_DAYS = 730;
 
 const MAX_BARS_BY_TIMEFRAME: Record<string, number> = {
   m15: 2000,
   h1: 1500,
-  h4: 1000,
+  h4: 950,
   d1: 2000,
   w1: 2000,
 };
 
 const POSTGREST_MAX_ROWS = 1000;
+const SOFT_MAX_ROWS = 950;
 
 function isMarketHoursApprox(now: Date): boolean {
   const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
@@ -338,6 +341,8 @@ serve(async (req: Request): Promise<Response> => {
     let timeframe = 'd1';
     let days: number | null = null;
     let includeMLData = true;
+    let before: string | number | null = null;
+    let pageSize: number | null = null;
 
     if (req.method === 'GET') {
       const url = new URL(req.url);
@@ -354,6 +359,20 @@ serve(async (req: Request): Promise<Response> => {
       if (includeRaw != null) {
         includeMLData = includeRaw !== 'false' && includeRaw !== '0';
       }
+
+      const beforeRaw = url.searchParams.get('before');
+      if (beforeRaw != null && beforeRaw !== '') {
+        const parsed = Number(beforeRaw);
+        before = Number.isFinite(parsed) ? parsed : beforeRaw;
+      }
+
+      const pageSizeRaw = url.searchParams.get('pageSize');
+      if (pageSizeRaw != null && pageSizeRaw !== '') {
+        const parsed = Number(pageSizeRaw);
+        if (Number.isFinite(parsed)) {
+          pageSize = Math.max(1, Math.min(SOFT_MAX_ROWS, Math.floor(parsed)));
+        }
+      }
     } else {
       const body = (await req.json()) as ChartReadRequest;
       symbol = (body.symbol ?? '').trim().toUpperCase();
@@ -362,6 +381,10 @@ serve(async (req: Request): Promise<Response> => {
         days = Math.max(1, Math.min(36500, Math.floor(body.days)));
       }
       includeMLData = body.includeMLData !== false;
+      before = body.before ?? null;
+      if (typeof body.pageSize === 'number' && Number.isFinite(body.pageSize)) {
+        pageSize = Math.max(1, Math.min(SOFT_MAX_ROWS, Math.floor(body.pageSize)));
+      }
     }
 
     if (!symbol) {
@@ -385,6 +408,66 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const symbolId = symbolData.id as string;
+
+    const beforeIso = before != null
+      ? new Date(toUnixSeconds(before) * 1000).toISOString()
+      : null;
+
+    if (beforeIso) {
+      const limit = pageSize ?? Math.min(400, SOFT_MAX_ROWS);
+
+      const { data: dbRows, error: dbError } = await supabase
+        .from("ohlc_bars_v2")
+        .select("ts, open, high, low, close, volume, upper_band, lower_band, confidence_score")
+        .eq("symbol_id", symbolId)
+        .eq("timeframe", timeframe)
+        .eq("is_forecast", false)
+        .in("provider", ["alpaca", "polygon", "tradier", "yfinance"])
+        .lt("ts", beforeIso)
+        .order("ts", { ascending: false })
+        .limit(limit);
+
+      if (dbError) {
+        console.error("[chart-read] DB page read error:", dbError);
+        return jsonResponse({ error: "Failed to fetch chart data", details: dbError.message }, 500);
+      }
+
+      const safeRows = Array.isArray(dbRows) ? dbRows : [];
+      const bars = safeRows
+        .slice()
+        .reverse()
+        .map((r) => {
+          const record = r as Record<string, unknown>;
+          const close = typeof record.close === "number" ? (record.close as number) : 0;
+          const open = typeof record.open === "number" ? (record.open as number) : close;
+          const high = typeof record.high === "number" ? (record.high as number) : close;
+          const low = typeof record.low === "number" ? (record.low as number) : close;
+          const volume = typeof record.volume === "number" ? (record.volume as number) : 0;
+          return {
+            ts: String(record.ts ?? ''),
+            open,
+            high,
+            low,
+            close,
+            volume,
+            upper_band: (record.upper_band as number | null) ?? null,
+            lower_band: (record.lower_band as number | null) ?? null,
+            confidence_score: (record.confidence_score as number | null) ?? null,
+          };
+        });
+
+      return jsonResponse({
+        symbol,
+        assetType: "stock",
+        timeframe,
+        bars,
+        mlSummary: null,
+        indicators: null,
+        supertrend_ai: null,
+        dataQuality: null,
+        refresh: null,
+      }, 200);
+    }
 
     const refresh = {
       attempted: true,
@@ -631,7 +714,8 @@ serve(async (req: Request): Promise<Response> => {
     }> = [];
 
     if (isIntradayTf) {
-      const maxBars = INTRADAY_TARGET_BARS;
+      const requestedMaxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ?? INTRADAY_TARGET_BARS;
+      const maxBars = Math.min(requestedMaxBars, POSTGREST_MAX_ROWS, SOFT_MAX_ROWS);
       const { data: rows, error: chartError } = await supabase.rpc("get_chart_data_v2_dynamic", {
         p_symbol_id: symbolId,
         p_timeframe: timeframe,
@@ -667,8 +751,8 @@ serve(async (req: Request): Promise<Response> => {
           };
         });
     } else {
-      const requestedMaxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ?? 1000;
-      const maxBars = Math.min(requestedMaxBars, POSTGREST_MAX_ROWS);
+      const requestedMaxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ?? SOFT_MAX_ROWS;
+      const maxBars = Math.min(requestedMaxBars, POSTGREST_MAX_ROWS, SOFT_MAX_ROWS);
       const startIso2y = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000).toISOString();
 
       const { data: dbRows, error: dbError } = await supabase
@@ -873,7 +957,7 @@ serve(async (req: Request): Promise<Response> => {
       metadata: {
         total_bars: bars.length,
         requested_days: rangeDays,
-        max_bars: isIntradayTf ? INTRADAY_TARGET_BARS : Math.min((MAX_BARS_BY_TIMEFRAME[timeframe] ?? 1000), POSTGREST_MAX_ROWS),
+        max_bars: Math.min((MAX_BARS_BY_TIMEFRAME[timeframe] ?? SOFT_MAX_ROWS), POSTGREST_MAX_ROWS, SOFT_MAX_ROWS),
       },
       dataQuality,
       refresh,

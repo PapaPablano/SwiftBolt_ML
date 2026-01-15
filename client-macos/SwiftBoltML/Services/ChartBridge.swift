@@ -960,8 +960,8 @@ extension ChartBridge: WKScriptMessageHandler {
             }
 
         case "visibleRange":
-            if let from = data["from"] as? Int,
-               let to = data["to"] as? Int {
+            if let from = intValue(data["from"]),
+               let to = intValue(data["to"]) {
                 visibleRange = (from, to)
                 eventPublisher.send(.visibleRangeChange(from: from, to: to))
             }
@@ -979,5 +979,21 @@ extension ChartBridge: WKScriptMessageHandler {
         default:
             eventPublisher.send(.unknown(type: type, data: data))
         }
+    }
+
+    private func intValue(_ value: Any?) -> Int? {
+        if let int = value as? Int {
+            return int
+        }
+        if let double = value as? Double {
+            return Int(double)
+        }
+        if let number = value as? NSNumber {
+            return number.intValue
+        }
+        if let string = value as? String, let parsed = Double(string) {
+            return Int(parsed)
+        }
+        return nil
     }
 }

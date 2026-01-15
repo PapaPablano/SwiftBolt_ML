@@ -68,6 +68,7 @@ struct WebChartView: NSViewRepresentable {
                     guard let self else { return }
                     if case let .visibleRangeChange(from, to) = event {
                         self.lastVisibleRange = (from, to)
+                        self.parent.viewModel.maybeLoadMoreHistory(visibleFrom: from)
                     }
                 }
                 .store(in: &cancellables)
@@ -820,25 +821,23 @@ struct WebChartView: NSViewRepresentable {
             let sorted = bars.sorted { $0.ts < $1.ts }
             guard let last = sorted.last else { return }
 
-            // Timeframe-aware lookback - optimized for barSpacing of 12px
-            let lookbackSeconds: TimeInterval
+            let targetVisibleBars: Int
             switch parent.viewModel.timeframe {
             case .m15:
-                lookbackSeconds = 10 * 24 * 60 * 60
+                targetVisibleBars = 180
             case .h1:
-                lookbackSeconds = 45 * 24 * 60 * 60
+                targetVisibleBars = 195
             case .h4:
-                lookbackSeconds = 240 * 24 * 60 * 60
+                targetVisibleBars = 120
             case .d1:
-                lookbackSeconds = 365 * 24 * 60 * 60
+                targetVisibleBars = 180
             case .w1:
-                lookbackSeconds = 5 * 365 * 24 * 60 * 60
+                targetVisibleBars = 200
             }
 
+            let startIndex = max(0, sorted.count - targetVisibleBars)
+            let start = sorted[startIndex]
             let endDate = last.ts
-            let startTarget = endDate.addingTimeInterval(-lookbackSeconds)
-            let startBar = sorted.first(where: { $0.ts >= startTarget }) ?? sorted.first
-            guard let start = startBar else { return }
 
             parent.bridge.send(
                 .setVisibleRange(
