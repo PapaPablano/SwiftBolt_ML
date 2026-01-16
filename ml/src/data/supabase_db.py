@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from supabase import Client, create_client
 
@@ -1438,6 +1439,138 @@ class SupabaseDatabase:
                 e,
             )
             return None
+
+    def save_indicator_snapshot(
+        self,
+        symbol_id: str,
+        timeframe: str,
+        indicators: list[dict[str, Any]],
+        batch_size: int = 100,
+    ) -> int:
+        """
+        Save indicator values snapshot to indicator_values table.
+
+        Uses batch upsert for efficient multi-candle persistence.
+
+        Args:
+            symbol_id: UUID of the symbol
+            timeframe: Timeframe ('m15', 'h1', 'h4', 'd1', 'w1')
+            indicators: List of indicator dicts with keys:
+                - ts: Timestamp (ISO string or datetime)
+                - open, high, low, close, volume: OHLC data
+                - rsi_14, macd, macd_signal, macd_hist: Momentum indicators
+                - supertrend_value, supertrend_trend, supertrend_factor: SuperTrend
+                - nearest_support, nearest_resistance: S/R levels
+                - support_distance_pct, resistance_distance_pct: S/R distance metrics
+                - adx, atr_14, bb_upper, bb_lower: Additional indicators
+                - metadata: Optional JSONB dict
+            batch_size: Number of records per batch upsert (default 100)
+
+        Returns:
+            Number of records upserted
+        """
+        if not indicators:
+            return 0
+
+        def _safe_float(v: Any) -> float | None:
+            """Convert value to float, returning None for invalid values."""
+            if v is None:
+                return None
+            try:
+                f = float(v)
+                if pd.isna(f) or np.isinf(f):
+                    return None
+                return f
+            except (TypeError, ValueError):
+                return None
+
+        def _safe_int(v: Any) -> int | None:
+            """Convert value to int, returning None for invalid values."""
+            if v is None:
+                return None
+            try:
+                i = int(v)
+                if pd.isna(i):
+                    return None
+                return i
+            except (TypeError, ValueError):
+                return None
+
+        total_upserted = 0
+
+        try:
+            # Process in batches
+            for i in range(0, len(indicators), batch_size):
+                batch = indicators[i : i + batch_size]
+
+                records = []
+                for ind in batch:
+                    ts = ind.get("ts")
+                    if hasattr(ts, "isoformat"):
+                        ts = ts.isoformat()
+
+                    record = {
+                        "symbol_id": symbol_id,
+                        "timeframe": timeframe,
+                        "ts": ts,
+                        # OHLC
+                        "open": _safe_float(ind.get("open")),
+                        "high": _safe_float(ind.get("high")),
+                        "low": _safe_float(ind.get("low")),
+                        "close": _safe_float(ind.get("close")),
+                        "volume": _safe_int(ind.get("volume")),
+                        # RSI
+                        "rsi_14": _safe_float(ind.get("rsi_14")),
+                        # MACD
+                        "macd": _safe_float(ind.get("macd")),
+                        "macd_signal": _safe_float(ind.get("macd_signal")),
+                        "macd_hist": _safe_float(ind.get("macd_hist")),
+                        # SuperTrend
+                        "supertrend_value": _safe_float(ind.get("supertrend_value")),
+                        "supertrend_trend": _safe_int(ind.get("supertrend_trend")),
+                        "supertrend_factor": _safe_float(ind.get("supertrend_factor")),
+                        # S/R
+                        "nearest_support": _safe_float(ind.get("nearest_support")),
+                        "nearest_resistance": _safe_float(ind.get("nearest_resistance")),
+                        "support_distance_pct": _safe_float(
+                            ind.get("support_distance_pct")
+                        ),
+                        "resistance_distance_pct": _safe_float(
+                            ind.get("resistance_distance_pct")
+                        ),
+                        # Additional
+                        "adx": _safe_float(ind.get("adx")),
+                        "atr_14": _safe_float(ind.get("atr_14")),
+                        "bb_upper": _safe_float(ind.get("bb_upper")),
+                        "bb_lower": _safe_float(ind.get("bb_lower")),
+                        # Metadata
+                        "metadata": ind.get("metadata", {}),
+                    }
+                    records.append(record)
+
+                self.client.table("indicator_values").upsert(
+                    records,
+                    on_conflict="symbol_id,timeframe,ts",
+                ).execute()
+
+                total_upserted += len(records)
+
+            logger.info(
+                "Saved %d indicator snapshots for %s (%s)",
+                total_upserted,
+                symbol_id,
+                timeframe,
+            )
+            return total_upserted
+
+        except Exception as e:
+            logger.error(
+                "Error saving indicator snapshots for %s (%s): %s",
+                symbol_id,
+                timeframe,
+                e,
+            )
+            return total_upserted
 
     def execute_rpc(
         self,

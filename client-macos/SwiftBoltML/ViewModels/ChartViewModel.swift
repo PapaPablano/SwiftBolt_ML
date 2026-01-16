@@ -50,6 +50,7 @@ final class ChartViewModel: ObservableObject {
                 _cachedSelectedForecastBars = nil
                 rebuildSelectedForecastBars()
             }
+            invalidateIndicatorCache()
         }
     }
     @Published var selectedForecastHorizon: String? {
@@ -162,7 +163,10 @@ final class ChartViewModel: ObservableObject {
     }
 
     var bars: [OHLCBar] {
-        chartData?.bars ?? []
+        if let v2 = chartDataV2 {
+            return v2.allBars
+        }
+        return chartData?.bars ?? []
     }
 
     private func barIntervalSeconds(for timeframe: Timeframe) -> Int {

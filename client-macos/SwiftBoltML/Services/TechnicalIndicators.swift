@@ -66,6 +66,23 @@ struct TechnicalIndicators {
         return result
     }
 
+    static func rma(_ data: [Double], period: Int) -> [Double?] {
+        guard period > 0, data.count >= period else {
+            return Array(repeating: nil, count: data.count)
+        }
+
+        var result: [Double?] = Array(repeating: nil, count: period - 1)
+        var prev = data[0..<period].reduce(0, +) / Double(period)
+        result.append(prev)
+
+        for i in period..<data.count {
+            prev = (prev * Double(period - 1) + data[i]) / Double(period)
+            result.append(prev)
+        }
+
+        return result
+    }
+
     /// Calculate EMA from OHLC bars
     static func ema(bars: [OHLCBar], period: Int, useClose: Bool = true) -> [Double?] {
         let prices = useClose ? bars.map(\.close) : bars.map(\.open)
@@ -562,8 +579,7 @@ struct TechnicalIndicators {
             }
         }
 
-        // ATR using EMA
-        let atrEMA = ema(tr, period: period)
+        let atrRMA = rma(tr, period: period)
 
         var supertrend: [Double?] = []
         var trend: [Int] = []
@@ -573,7 +589,7 @@ struct TechnicalIndicators {
         for i in 0..<bars.count {
             let hl2 = (bars[i].high + bars[i].low) / 2
 
-            guard let atr = atrEMA[i] else {
+            guard let atr = atrRMA[i] else {
                 supertrend.append(nil)
                 trend.append(0)
                 finalUpper.append(hl2)
@@ -618,7 +634,7 @@ struct TechnicalIndicators {
                 // Determine trend direction based on price vs previous SuperTrend
                 var currentTrend: Int
                 
-                if prevTrend == 1 {
+                if prevTrend == 1 || prevTrend == 0 {
                     // Was bullish - check if price broke below lower band
                     if close < newLower {
                         currentTrend = -1  // Flip to bearish
@@ -647,7 +663,7 @@ struct TechnicalIndicators {
         // Capped at 100 (when price is 2x ATR away from SuperTrend)
         var strength: [Double?] = []
         for i in 0..<bars.count {
-            guard let stValue = supertrend[i], let atr = atrEMA[i], atr > 0 else {
+            guard let stValue = supertrend[i], let atr = atrRMA[i], atr > 0 else {
                 strength.append(nil)
                 continue
             }
@@ -690,7 +706,7 @@ struct TechnicalIndicators {
         }
 
         // CORRECTED: Use Wilder's EMA (not SMA) for smoothing
-        return ema(tr, period: period)
+        return rma(tr, period: period)
     }
 }
 
@@ -708,6 +724,12 @@ struct IndicatorDataPoint: Identifiable {
 }
 
 // MARK: - Indicator Configuration
+
+enum SuperTrendAIClusterSelection: String, Equatable, Codable {
+    case best
+    case average
+    case worst
+}
 
 struct IndicatorConfig: Equatable {
     // Moving Averages
@@ -739,8 +761,17 @@ struct IndicatorConfig: Equatable {
     var showTrendZones: Bool = true
     var showSignalMarkers: Bool = true
     var showConfidenceBadges: Bool = true
-    var showAdaptiveMA: Bool = true  // Show adaptive moving average of SuperTrend
+    var showAdaptiveMA: Bool = false  // Show adaptive moving average of SuperTrend
     var showSuperTrendAIPanel: Bool = false  // Disabled - SuperTrend now integrated into main chart
+
+    // SuperTrend AI Parameters (LuxAlgo parity)
+    var superTrendAIFactorMin: Double = 1.0
+    var superTrendAIFactorMax: Double = 5.0
+    var superTrendAIFactorStep: Double = 0.5
+    var superTrendAIPerfAlpha: Double = 10.0
+    var superTrendAIFromCluster: SuperTrendAIClusterSelection = .best
+    var superTrendAIMaxIterations: Int = 1_000
+    var superTrendAIHistoricalBars: Int = 10_000
 
     // Support & Resistance Indicators
     var showPivotLevels: Bool = false        // BigBeluga multi-timeframe pivots

@@ -33,6 +33,7 @@ enum ChartCommand: Encodable {
     case setPolynomialSR(resistance: [LightweightDataPoint], support: [LightweightDataPoint])
     case setPivotLevels(levels: [SRLevel])
     case setLogisticSR(levels: [SRLevel])
+    case setIndicatorConfig(config: WebIndicatorConfig)
     case hidePanel(panel: String)
     case removeVolumeProfile
     case removePriceLines(category: String)
@@ -43,6 +44,7 @@ enum ChartCommand: Encodable {
         case seriesId, markers, price, from, to
         case line, signal, histogram, kData, dData, jData, adxData, plusDI, minusDI, panel
         case trendData, strengthData, resistance, support, levels, category
+        case config
     }
 
     func encode(to encoder: Encoder) throws {
@@ -139,6 +141,9 @@ enum ChartCommand: Encodable {
         case .setLogisticSR(let levels):
             try container.encode("setLogisticSR", forKey: .type)
             try container.encode(levels, forKey: .levels)
+        case .setIndicatorConfig(let config):
+            try container.encode("setIndicatorConfig", forKey: .type)
+            try container.encode(config, forKey: .config)
         case .hidePanel(let panel):
             try container.encode("hidePanel", forKey: .type)
             try container.encode(panel, forKey: .panel)
@@ -158,6 +163,29 @@ struct SRLevel: Encodable {
     let title: String
     let lineWidth: Int
     let lineStyle: Int // 0=Solid, 1=Dotted, 2=Dashed
+}
+
+struct WebIndicatorConfig: Encodable {
+    let showSuperTrend: Bool
+    let useSuperTrendAI: Bool
+    let showRSI: Bool
+    let showMACD: Bool
+    let showKDJ: Bool
+    let showPivotLevels: Bool
+    let showSignalMarkers: Bool
+    let showConfidenceBadges: Bool
+    let showAdaptiveMA: Bool
+    let superTrendPeriod: Int
+    let superTrendMultiplier: Double
+
+    // SuperTrend AI (LuxAlgo-style)
+    let superTrendAIFactorMin: Double
+    let superTrendAIFactorMax: Double
+    let superTrendAIFactorStep: Double
+    let superTrendAIPerfAlpha: Double
+    let superTrendAIFromCluster: String
+    let superTrendAIMaxIterations: Int
+    let superTrendAIHistoricalBars: Int
 }
 
 // MARK: - Data Models for Lightweight Charts
@@ -294,6 +322,8 @@ final class ChartBridge: NSObject, ObservableObject {
 
     private weak var webView: WKWebView?
     private var pendingCommands: [String] = []
+    private var commandQueue: [String] = []
+    private var isExecutingJS: Bool = false
     private let encoder = JSONEncoder()
 
     // Event publisher for external subscribers
@@ -316,7 +346,7 @@ final class ChartBridge: NSObject, ObservableObject {
         let js = "window.chartApi.apply(\(jsonString))"
 
         if isReady {
-            executeJS(js)
+            enqueueJS(js)
         } else {
             pendingCommands.append(js)
         }
@@ -810,6 +840,31 @@ final class ChartBridge: NSObject, ObservableObject {
         executeJS(command)
         print("[ChartBridge] Heikin-Ashi toggled: \(enabled)")
     }
+
+    func setIndicatorConfig(_ config: IndicatorConfig, timeframe: Timeframe) {
+        let stParams = timeframe.superTrendParams
+        let payload = WebIndicatorConfig(
+            showSuperTrend: config.showSuperTrend,
+            useSuperTrendAI: config.useSuperTrendAI,
+            showRSI: config.showRSI,
+            showMACD: config.showMACD,
+            showKDJ: config.showKDJ,
+            showPivotLevels: config.showPivotLevels,
+            showSignalMarkers: config.showSignalMarkers,
+            showConfidenceBadges: config.showConfidenceBadges,
+            showAdaptiveMA: config.showAdaptiveMA,
+            superTrendPeriod: stParams.period,
+            superTrendMultiplier: stParams.multiplier,
+            superTrendAIFactorMin: config.superTrendAIFactorMin,
+            superTrendAIFactorMax: config.superTrendAIFactorMax,
+            superTrendAIFactorStep: config.superTrendAIFactorStep,
+            superTrendAIPerfAlpha: config.superTrendAIPerfAlpha,
+            superTrendAIFromCluster: config.superTrendAIFromCluster.rawValue.capitalized,
+            superTrendAIMaxIterations: config.superTrendAIMaxIterations,
+            superTrendAIHistoricalBars: config.superTrendAIHistoricalBars
+        )
+        send(.setIndicatorConfig(config: payload))
+    }
     
     /// Set volume profile data
     func setVolumeProfile(data: [[String: Any]]) {
@@ -903,19 +958,40 @@ final class ChartBridge: NSObject, ObservableObject {
     }
 
     private func executeJS(_ js: String) {
-        webView?.evaluateJavaScript(js) { result, error in
+        webView?.evaluateJavaScript(js) { [weak self] _, error in
+            guard let self else { return }
             if let error = error {
+                self.lastJSError = error.localizedDescription
                 print("[ChartBridge] JS error: \(error.localizedDescription)")
             }
+            self.isExecutingJS = false
+            self.drainJSQueue()
         }
     }
 
+    private func enqueueJS(_ js: String) {
+        commandQueue.append(js)
+        drainJSQueue()
+    }
+
+    private func drainJSQueue() {
+        guard isReady else { return }
+        guard !isExecutingJS else { return }
+        guard let _ = webView else { return }
+        guard !commandQueue.isEmpty else { return }
+
+        isExecutingJS = true
+        let js = commandQueue.removeFirst()
+        executeJS(js)
+    }
+
     private func flushPendingCommands() {
+        let count = pendingCommands.count
         for js in pendingCommands {
-            executeJS(js)
+            enqueueJS(js)
         }
         pendingCommands.removeAll()
-        print("[ChartBridge] Flushed \(pendingCommands.count) pending commands")
+        print("[ChartBridge] Flushed \(count) pending commands")
     }
 }
 

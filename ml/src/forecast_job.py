@@ -844,6 +844,71 @@ def process_symbol(symbol: str) -> None:
                 "atr": current_price * 0.02,
             }
 
+        # === Save Indicator Snapshot for Chart Visualization ===
+        try:
+            # Build indicator records from the last N bars
+            snapshot_bars = min(len(df), 50)  # Last 50 bars
+            indicator_records = []
+
+            for idx in range(-snapshot_bars, 0):
+                row = df.iloc[idx]
+                record = {
+                    "ts": row.get("ts") if "ts" in df.columns else row.name,
+                    "open": row.get("open"),
+                    "high": row.get("high"),
+                    "low": row.get("low"),
+                    "close": row.get("close"),
+                    "volume": row.get("volume"),
+                    # Momentum indicators
+                    "rsi_14": row.get("rsi_14"),
+                    "macd": row.get("macd"),
+                    "macd_signal": row.get("macd_signal"),
+                    "macd_hist": row.get("macd_hist"),
+                    # ADX
+                    "adx": row.get("adx"),
+                    "atr_14": row.get("atr_14"),
+                    # Bollinger Bands
+                    "bb_upper": row.get("bb_upper"),
+                    "bb_lower": row.get("bb_lower"),
+                }
+
+                # Add SuperTrend if calculated successfully
+                if supertrend_data and "supertrend" in df.columns:
+                    record["supertrend_value"] = row.get("supertrend")
+                    record["supertrend_trend"] = (
+                        1 if row.get("supertrend_signal", 0) > 0 else 0
+                    )
+                    record["supertrend_factor"] = supertrend_data.get(
+                        "supertrend_factor"
+                    )
+
+                indicator_records.append(record)
+
+            # Add S/R levels to the most recent record
+            if indicator_records and sr_levels:
+                indicator_records[-1]["nearest_support"] = sr_levels.get(
+                    "nearest_support"
+                )
+                indicator_records[-1]["nearest_resistance"] = sr_levels.get(
+                    "nearest_resistance"
+                )
+                indicator_records[-1]["support_distance_pct"] = sr_levels.get(
+                    "support_distance_pct"
+                )
+                indicator_records[-1]["resistance_distance_pct"] = sr_levels.get(
+                    "resistance_distance_pct"
+                )
+
+            # Save to database
+            db.save_indicator_snapshot(
+                symbol_id=symbol_id,
+                timeframe="d1",
+                indicators=indicator_records,
+            )
+
+        except Exception as e:
+            logger.warning("Failed to save indicator snapshot for %s: %s", symbol, e)
+
         # === Initialize Forecast Synthesizer ===
         synthesizer = ForecastSynthesizer(weights=get_default_weights())
         sr_response = convert_sr_to_synthesizer_format(sr_levels, current_price)

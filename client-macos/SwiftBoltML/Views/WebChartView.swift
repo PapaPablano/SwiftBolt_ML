@@ -291,8 +291,9 @@ struct WebChartView: NSViewRepresentable {
                 applyForecastOverlay(using: forecastBars)
             }
             
-            // Set indicators based on config (using combined historical + intraday data)
+            // Push indicator configuration down to bridge (drives JS-side panel layout)
             let config = parent.viewModel.indicatorConfig
+            bridge.setIndicatorConfig(config, timeframe: parent.viewModel.timeframe)
             
             if config.showSMA20 {
                 bridge.setIndicator(
@@ -475,72 +476,74 @@ struct WebChartView: NSViewRepresentable {
             }
             
             // Set Support & Resistance Indicators
-            if config.showPolynomialSR {
-                if let poly = parent.viewModel.polynomialSRIndicator.resistanceLine {
-                    let resPoints: [LightweightDataPoint] = poly.predictedPoints.compactMap { pt in
-                        let i = Int(pt.x)
-                        guard i >= 0, i < allBars.count else { return nil }
-                        return LightweightDataPoint(
-                            time: Int(allBars[i].ts.timeIntervalSince1970),
-                            value: Double(pt.y)
-                        )
-                    }
-                    
-                    let supPoints: [LightweightDataPoint] =
-                        parent.viewModel.polynomialSRIndicator.supportLine?.predictedPoints.compactMap { pt in
+            if !config.useWebChart {
+                if config.showPolynomialSR {
+                    if let poly = parent.viewModel.polynomialSRIndicator.resistanceLine {
+                        let resPoints: [LightweightDataPoint] = poly.predictedPoints.compactMap { pt in
                             let i = Int(pt.x)
                             guard i >= 0, i < allBars.count else { return nil }
                             return LightweightDataPoint(
                                 time: Int(allBars[i].ts.timeIntervalSince1970),
                                 value: Double(pt.y)
                             )
-                        } ?? []
-                    
-                    bridge.send(.setPolynomialSR(resistance: resPoints, support: supPoints))
+                        }
+                        
+                        let supPoints: [LightweightDataPoint] =
+                            parent.viewModel.polynomialSRIndicator.supportLine?.predictedPoints.compactMap { pt in
+                                let i = Int(pt.x)
+                                guard i >= 0, i < allBars.count else { return nil }
+                                return LightweightDataPoint(
+                                    time: Int(allBars[i].ts.timeIntervalSince1970),
+                                    value: Double(pt.y)
+                                )
+                            } ?? []
+                        
+                        bridge.send(.setPolynomialSR(resistance: resPoints, support: supPoints))
+                    }
+                } else {
+                    bridge.send(.removeSeries(id: "poly-res"))
+                    bridge.send(.removeSeries(id: "poly-sup"))
                 }
-            } else {
-                bridge.send(.removeSeries(id: "poly-res"))
-                bridge.send(.removeSeries(id: "poly-sup"))
-            }
-            
-            if config.showPivotLevels {
-                let levels = parent.viewModel.pivotLevelsIndicator.pivotLevels.map { level in
-                    SRLevel(
-                        price: level.levelHigh > 0 ? level.levelHigh : level.levelLow,
-                        color: level.levelHigh > 0 ? "#FF5252" : "#4CAF50", // Red for Res, Green for Sup
-                        title: "Pivot \(level.length)",
-                        lineWidth: 1,
-                        lineStyle: 2 // Dashed
-                    )
+                
+                if config.showPivotLevels {
+                    let levels = parent.viewModel.pivotLevelsIndicator.pivotLevels.map { level in
+                        SRLevel(
+                            price: level.levelHigh > 0 ? level.levelHigh : level.levelLow,
+                            color: level.levelHigh > 0 ? "#FF5252" : "#4CAF50", // Red for Res, Green for Sup
+                            title: "Pivot \(level.length)",
+                            lineWidth: 1,
+                            lineStyle: 2 // Dashed
+                        )
+                    }
+                    bridge.send(.setPivotLevels(levels: levels))
+                } else {
+                    bridge.send(.removePriceLines(category: "pivots"))
                 }
-                bridge.send(.setPivotLevels(levels: levels))
-            } else {
-                bridge.send(.removePriceLines(category: "pivots"))
-            }
-            
-            if config.showLogisticSR {
-                var levels: [SRLevel] = []
-                for level in parent.viewModel.logisticSRIndicator.supportLevels {
-                    levels.append(SRLevel(
-                        price: level.level,
-                        color: "#089981", // Teal
-                        title: "ML Sup",
-                        lineWidth: 2,
-                        lineStyle: 0 // Solid
-                    ))
+                
+                if config.showLogisticSR {
+                    var levels: [SRLevel] = []
+                    for level in parent.viewModel.logisticSRIndicator.supportLevels {
+                        levels.append(SRLevel(
+                            price: level.level,
+                            color: "#089981", // Teal
+                            title: "ML Sup",
+                            lineWidth: 2,
+                            lineStyle: 0 // Solid
+                        ))
+                    }
+                    for level in parent.viewModel.logisticSRIndicator.resistanceLevels {
+                        levels.append(SRLevel(
+                            price: level.level,
+                            color: "#F23645", // Red
+                            title: "ML Res",
+                            lineWidth: 2,
+                            lineStyle: 0 // Solid
+                        ))
+                    }
+                    bridge.send(.setLogisticSR(levels: levels))
+                } else {
+                    bridge.send(.removePriceLines(category: "logistic"))
                 }
-                for level in parent.viewModel.logisticSRIndicator.resistanceLevels {
-                    levels.append(SRLevel(
-                        price: level.level,
-                        color: "#F23645", // Red
-                        title: "ML Res",
-                        lineWidth: 2,
-                        lineStyle: 0 // Solid
-                    ))
-                }
-                bridge.send(.setLogisticSR(levels: levels))
-            } else {
-                bridge.send(.removePriceLines(category: "logistic"))
             }
         }
 
@@ -591,8 +594,9 @@ struct WebChartView: NSViewRepresentable {
 
             applyLegacyForecastOverlay(with: data)
 
-            // Set indicators based on config
+            // Push indicator configuration down to bridge (drives JS-side panel layout)
             let config = parent.viewModel.indicatorConfig
+            bridge.setIndicatorConfig(config, timeframe: parent.viewModel.timeframe)
 
             if config.showSMA20 {
                 bridge.setIndicator(
@@ -983,10 +987,14 @@ struct WebChartView: NSViewRepresentable {
 
 // MARK: - Preview
 
-#Preview {
-    WebChartView(viewModel: ChartViewModel())
-        .frame(width: 800, height: 500)
+#if DEBUG
+struct WebChartView_Previews: PreviewProvider {
+    static var previews: some View {
+        WebChartView(viewModel: ChartViewModel())
+            .frame(width: 800, height: 500)
+    }
 }
+#endif
 
 // MARK: - Convenience Modifiers
 
@@ -999,6 +1007,7 @@ extension WebChartView {
     }
 }
 
+#if DEBUG
 // MARK: - Optional: Standalone Preview Container
 
 /// For testing the web chart in isolation
@@ -1058,6 +1067,9 @@ struct WebChartPreviewContainer: View {
     }
 }
 
-#Preview("Standalone Container") {
-    WebChartPreviewContainer()
+struct WebChartPreviewContainer_Previews: PreviewProvider {
+    static var previews: some View {
+        WebChartPreviewContainer()
+    }
 }
+#endif

@@ -113,6 +113,23 @@ interface ForecastRow {
   sr_density: number | null;
 }
 
+interface IndicatorSnapshot {
+  ts: string;
+  rsi_14?: number | null;
+  macd?: number | null;
+  macd_signal?: number | null;
+  macd_hist?: number | null;
+  supertrend_value?: number | null;
+  supertrend_trend?: number | null;
+  nearest_support?: number | null;
+  nearest_resistance?: number | null;
+  support_distance_pct?: number | null;
+  resistance_distance_pct?: number | null;
+  adx?: number | null;
+  bb_upper?: number | null;
+  bb_lower?: number | null;
+}
+
 interface ChartResponse {
   symbol: string;
   assetType: string;
@@ -126,6 +143,10 @@ interface ChartResponse {
     volume: number;
   }[];
   mlSummary?: MLSummary;
+  indicators?: {
+    latest: IndicatorSnapshot | null;
+    history: IndicatorSnapshot[];
+  };
 }
 
 interface SymbolRecord {
@@ -247,6 +268,36 @@ serve(async (req: Request): Promise<Response> => {
     } catch (forecastError) {
       console.error("Error loading ML forecasts:", forecastError);
       // Continue without forecasts if query fails
+    }
+
+    // 2b. Query indicator values for this symbol (optional enhancement)
+    let indicatorData: { latest: IndicatorSnapshot | null; history: IndicatorSnapshot[] } | undefined;
+    try {
+      const { data: indicators, error: indicatorError } = await supabase
+        .from("indicator_values")
+        .select(`
+          ts, rsi_14, macd, macd_signal, macd_hist,
+          supertrend_value, supertrend_trend,
+          nearest_support, nearest_resistance,
+          support_distance_pct, resistance_distance_pct,
+          adx, bb_upper, bb_lower
+        `)
+        .eq("symbol_id", symbolId)
+        .eq("timeframe", timeframe)
+        .order("ts", { ascending: false })
+        .limit(100);
+
+      if (!indicatorError && indicators && indicators.length > 0) {
+        const typedIndicators = indicators as IndicatorSnapshot[];
+        indicatorData = {
+          latest: typedIndicators[0],
+          history: typedIndicators.slice().reverse(), // Chronological order
+        };
+        console.log(`[Chart] Loaded ${indicators.length} indicator values for ${ticker}`);
+      }
+    } catch (indicatorQueryError) {
+      console.error("Error loading indicator values:", indicatorQueryError);
+      // Continue without indicators if query fails
     }
 
     // 3. Check for cached data
@@ -484,13 +535,14 @@ serve(async (req: Request): Promise<Response> => {
       console.log(`[Chart] Filtered ML forecasts to future-only for ${ticker}`);
     }
 
-    // 8. Return response with ML forecasts
+    // 8. Return response with ML forecasts and indicators
     const response: ChartResponse = {
       symbol: ticker,
       assetType: assetType,
       timeframe: timeframe,
       bars: bars,
       mlSummary: mlSummary,
+      indicators: indicatorData,
     };
 
     return jsonResponse(response);

@@ -355,6 +355,68 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                 "atr": current_price * 0.01,
             }
 
+        # === Save Indicator Snapshot for Intraday ===
+        try:
+            # Save fewer bars for intraday (last 20)
+            snapshot_bars = min(len(df), 20)
+            indicator_records = []
+
+            for idx in range(-snapshot_bars, 0):
+                row = df.iloc[idx]
+                record = {
+                    "ts": row.get("ts") if "ts" in df.columns else row.name,
+                    "open": row.get("open"),
+                    "high": row.get("high"),
+                    "low": row.get("low"),
+                    "close": row.get("close"),
+                    "volume": row.get("volume"),
+                    # Momentum indicators
+                    "rsi_14": row.get("rsi_14"),
+                    "macd": row.get("macd"),
+                    "macd_signal": row.get("macd_signal"),
+                    "macd_hist": row.get("macd_hist"),
+                    # ADX
+                    "adx": row.get("adx"),
+                    "atr_14": row.get("atr_14"),
+                }
+
+                # Add SuperTrend if available
+                if "supertrend" in df.columns:
+                    record["supertrend_value"] = row.get("supertrend")
+                    record["supertrend_trend"] = (
+                        1 if row.get("supertrend_signal", 0) > 0 else 0
+                    )
+
+                indicator_records.append(record)
+
+            # Add S/R levels to most recent record
+            if indicator_records and sr_levels:
+                indicator_records[-1]["nearest_support"] = sr_levels.get(
+                    "nearest_support"
+                )
+                indicator_records[-1]["nearest_resistance"] = sr_levels.get(
+                    "nearest_resistance"
+                )
+                indicator_records[-1]["support_distance_pct"] = sr_levels.get(
+                    "support_distance_pct"
+                )
+                indicator_records[-1]["resistance_distance_pct"] = sr_levels.get(
+                    "resistance_distance_pct"
+                )
+
+            # Map timeframe to db format (h1 -> h1, m15 -> m15)
+            db_timeframe = timeframe  # Already in correct format
+            db.save_indicator_snapshot(
+                symbol_id=symbol_id,
+                timeframe=db_timeframe,
+                indicators=indicator_records,
+            )
+
+        except Exception as e:
+            logger.warning(
+                "Failed to save intraday indicator snapshot for %s: %s", symbol, e
+            )
+
         # Train simplified ensemble for intraday
         baseline = BaselineForecaster()
         try:
