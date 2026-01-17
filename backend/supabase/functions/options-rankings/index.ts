@@ -8,26 +8,27 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
+// Response interface uses snake_case to match Swift CodingKeys
 interface OptionRank {
   id: string;
-  contractSymbol: string;
+  contract_symbol: string;
   expiry: string;
   strike: number;
   side: "call" | "put";
-  mlScore: number;
+  ml_score: number;
   // Momentum Framework Scores (0-100)
-  compositeRank?: number;
-  momentumScore?: number;
-  valueScore?: number;
-  greeksScore?: number;
-  relativeValueScore?: number;
-  entryDifficultyScore?: number;
-  rankingStabilityScore?: number;
-  rankingMode?: string;
+  composite_rank?: number;
+  momentum_score?: number;
+  value_score?: number;
+  greeks_score?: number;
+  relative_value_score?: number;
+  entry_difficulty_score?: number;
+  ranking_stability_score?: number;
+  ranking_mode?: string;
   // IV Metrics
-  impliedVol?: number;
-  ivRank?: number;
-  spreadPct?: number;
+  implied_vol?: number;
+  iv_rank?: number;
+  spread_pct?: number;
   // Greeks
   delta?: number;
   gamma?: number;
@@ -35,29 +36,34 @@ interface OptionRank {
   vega?: number;
   rho?: number;
   // Volume/Liquidity
-  openInterest?: number;
+  open_interest?: number;
   volume?: number;
-  volOiRatio?: number;
+  vol_oi_ratio?: number;
+  liquidity_confidence?: number;
   // Pricing
   bid?: number;
   ask?: number;
   mark?: number;
-  lastPrice?: number;
-  liquidityConfidence?: number;
+  last_price?: number;
   // Providers/history
-  priceProvider?: string;
-  oiProvider?: string;
-  historySamples?: number;
-  historyAvgMark?: number;
-  historyWindowDays?: number;
+  price_provider?: string;
+  oi_provider?: string;
+  history_samples?: number;
+  history_avg_mark?: number;
+  history_window_days?: number;
   // Signals
-  signalDiscount?: boolean;
-  signalRunner?: boolean;
-  signalGreeks?: boolean;
-  signalBuy?: boolean;
+  signal_discount?: boolean;
+  signal_runner?: boolean;
+  signal_greeks?: boolean;
+  signal_buy?: boolean;
   signals?: string;
+  // 7-Day Underlying Metrics
+  underlying_ret_7d?: number;
+  underlying_vol_7d?: number;
+  underlying_drawdown_7d?: number;
+  underlying_gap_count?: number;
   // Meta
-  runAt: string;
+  run_at: string;
 }
 
 interface OptionsRankingsResponse {
@@ -113,6 +119,11 @@ type OptionRankRow = {
   signals: string | null;
   price_provider: string | null;
   oi_provider: string | null;
+  // 7-Day Underlying Metrics
+  underlying_ret_7d: number | null;
+  underlying_vol_7d: number | null;
+  underlying_drawdown_7d: number | null;
+  underlying_gap_count: number | null;
   run_at: string;
 };
 
@@ -272,7 +283,7 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    // Transform database rows to response format
+    // Transform database rows to response format (snake_case for Swift CodingKeys)
     const ranks: OptionRank[] = (ranksData ?? []).map((row) => {
       const computedSymbol = row.contract_symbol || `${symbol}${new Date(row.expiry).toISOString().slice(2, 10).replace(/-/g, "")}${row.side === "call" ? "C" : "P"}${(row.strike * 1000).toString().padStart(8, "0")}`;
       const historyStats = computedSymbol ? historyMap.get(computedSymbol.toUpperCase()) : undefined;
@@ -280,24 +291,24 @@ serve(async (req: Request): Promise<Response> => {
 
       return {
         id: row.id,
-        contractSymbol: computedSymbol,
+        contract_symbol: computedSymbol,
         expiry: row.expiry,
         strike: row.strike,
         side: row.side,
-        mlScore: row.ml_score,
+        ml_score: row.ml_score,
         // Momentum Framework Scores
-        compositeRank: row.composite_rank ?? undefined,
-        momentumScore: row.momentum_score ?? undefined,
-        valueScore: row.value_score ?? undefined,
-        greeksScore: row.greeks_score ?? undefined,
-        relativeValueScore: row.relative_value_score ?? undefined,
-        entryDifficultyScore: row.entry_difficulty_score ?? undefined,
-        rankingStabilityScore: row.ranking_stability_score ?? undefined,
-        rankingMode: row.ranking_mode ?? undefined,
+        composite_rank: row.composite_rank ?? undefined,
+        momentum_score: row.momentum_score ?? undefined,
+        value_score: row.value_score ?? undefined,
+        greeks_score: row.greeks_score ?? undefined,
+        relative_value_score: row.relative_value_score ?? undefined,
+        entry_difficulty_score: row.entry_difficulty_score ?? undefined,
+        ranking_stability_score: row.ranking_stability_score ?? undefined,
+        ranking_mode: row.ranking_mode ?? undefined,
         // IV Metrics
-        impliedVol: row.implied_vol ?? undefined,
-        ivRank: row.iv_rank ?? undefined,
-        spreadPct: row.spread_pct ?? undefined,
+        implied_vol: row.implied_vol ?? undefined,
+        iv_rank: row.iv_rank ?? undefined,
+        spread_pct: row.spread_pct ?? undefined,
         // Greeks
         delta: row.delta ?? undefined,
         gamma: row.gamma ?? undefined,
@@ -305,28 +316,33 @@ serve(async (req: Request): Promise<Response> => {
         vega: row.vega ?? undefined,
         rho: row.rho ?? undefined,
         // Volume/Liquidity
-        openInterest: row.open_interest ?? undefined,
+        open_interest: row.open_interest ?? undefined,
         volume: row.volume ?? undefined,
-        volOiRatio: row.vol_oi_ratio ?? undefined,
-        liquidityConfidence: row.liquidity_confidence ?? undefined,
+        vol_oi_ratio: row.vol_oi_ratio ?? undefined,
+        liquidity_confidence: row.liquidity_confidence ?? undefined,
         // Pricing
         bid: row.bid ?? undefined,
         ask: row.ask ?? undefined,
         mark: row.mark ?? undefined,
-        lastPrice: row.last_price ?? undefined,
-        priceProvider: row.price_provider ?? PRICE_PROVIDER,
-        oiProvider: row.oi_provider ?? OI_PROVIDER,
-        historySamples: historySamples,
-        historyAvgMark: historyStats && historyStats.count > 0 ? historyStats.sum / historyStats.count : undefined,
-        historyWindowDays: historySamples > 0 ? HISTORY_LOOKBACK_DAYS : undefined,
-        signalDiscount: row.signal_discount ?? undefined,
-        signalRunner: row.signal_runner ?? undefined,
-        signalGreeks: row.signal_greeks ?? undefined,
-        signalBuy: row.signal_buy ?? undefined,
-        signals: row.signals ?? undefined,
+        last_price: row.last_price ?? undefined,
+        price_provider: row.price_provider ?? PRICE_PROVIDER,
+        oi_provider: row.oi_provider ?? OI_PROVIDER,
+        history_samples: historySamples,
+        history_avg_mark: historyStats && historyStats.count > 0 ? historyStats.sum / historyStats.count : undefined,
+        history_window_days: historySamples > 0 ? HISTORY_LOOKBACK_DAYS : undefined,
         // Signals
+        signal_discount: row.signal_discount ?? undefined,
+        signal_runner: row.signal_runner ?? undefined,
+        signal_greeks: row.signal_greeks ?? undefined,
+        signal_buy: row.signal_buy ?? undefined,
+        signals: row.signals ?? undefined,
+        // 7-Day Underlying Metrics
+        underlying_ret_7d: row.underlying_ret_7d ?? undefined,
+        underlying_vol_7d: row.underlying_vol_7d ?? undefined,
+        underlying_drawdown_7d: row.underlying_drawdown_7d ?? undefined,
+        underlying_gap_count: row.underlying_gap_count ?? undefined,
         // Meta
-        runAt: row.run_at,
+        run_at: row.run_at,
       };
     });
 

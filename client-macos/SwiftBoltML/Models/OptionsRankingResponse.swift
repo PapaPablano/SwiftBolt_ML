@@ -8,6 +8,13 @@ struct OptionsRankingsResponse: Codable {
     let totalRanks: Int
     let ranks: [OptionRank]
     let filters: RankingFilters
+
+    enum CodingKeys: String, CodingKey {
+        case symbol
+        case totalRanks
+        case ranks
+        case filters
+    }
 }
 
 struct OptionsQuotesResponse: Codable {
