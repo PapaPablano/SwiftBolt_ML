@@ -236,3 +236,69 @@ jobs:
           echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
           echo "- Intraday Forecast workflow will trigger automatically" >> $GITHUB_STEP_SUMMARY
           echo "- Check \`intraday-forecast.yml\` for forecast generation" >> $GITHUB_STEP_SUMMARY
+
+  # =============================================================================
+  # UNDERLYING HISTORY REFRESH (After Hours)
+  # =============================================================================
+  # Refreshes 7-day underlying metrics for options ranking
+  # Only runs during after-hours (4-5 PM ET) or manual dispatch
+  refresh-underlying-history:
+    needs: [check-market, ingest-data]
+    if: |
+      always() &&
+      needs.ingest-data.result == 'success' &&
+      (needs.check-market.outputs.market_state == 'after_hours' ||
+       needs.check-market.outputs.market_state == 'manual')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup ML Environment
+        uses: ./.github/actions/setup-ml-env
+        with:
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          database-url: ${{ secrets.DATABASE_URL }}
+          alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
+          alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
+
+      - name: Refresh underlying history
+        id: refresh
+        run: |
+          cd ml
+          echo "📊 Refreshing 7-day underlying history for watchlist symbols..."
+
+          if output=$(python -m src.scripts.refresh_underlying_history --watchlist --timeframe d1 2>&1); then
+            echo "$output"
+            successful=$(echo "$output" | grep -oP 'Successful: \K\d+' || echo "0")
+            failed=$(echo "$output" | grep -oP 'Failed: \K\d+' || echo "0")
+            bars=$(echo "$output" | grep -oP 'Total bars upserted: \K\d+' || echo "0")
+
+            echo "successful=$successful" >> $GITHUB_OUTPUT
+            echo "failed=$failed" >> $GITHUB_OUTPUT
+            echo "bars=$bars" >> $GITHUB_OUTPUT
+
+            if [ "$failed" -gt 0 ]; then
+              echo "status=partial" >> $GITHUB_OUTPUT
+              echo "::warning::Some symbols failed to refresh"
+            else
+              echo "status=success" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "::error::Underlying history refresh failed"
+            exit 1
+          fi
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## Underlying History Refresh" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ steps.refresh.outputs.status || 'unknown' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Successful**: ${{ steps.refresh.outputs.successful || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Failed**: ${{ steps.refresh.outputs.failed || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Bars**: ${{ steps.refresh.outputs.bars || '0' }}" >> $GITHUB_STEP_SUMMARY

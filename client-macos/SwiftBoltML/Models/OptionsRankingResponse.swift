@@ -134,7 +134,57 @@ struct OptionRank: Codable, Identifiable {
     let signalBuy: Bool?
     let signals: String?
 
+    // 7-Day Underlying Metrics (from options ranking enhancement)
+    let underlying7dReturn: Double?
+    let underlying7dVolatility: Double?
+    let underlying7dDrawdown: Double?
+    let underlying7dGapCount: Int?
+
     let runAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case contractSymbol = "contract_symbol"
+        case expiry
+        case strike
+        case side
+        case compositeRank = "composite_rank"
+        case momentumScore = "momentum_score"
+        case valueScore = "value_score"
+        case greeksScore = "greeks_score"
+        case mlScore = "ml_score"
+        case impliedVol = "implied_vol"
+        case ivRank = "iv_rank"
+        case spreadPct = "spread_pct"
+        case delta
+        case gamma
+        case theta
+        case vega
+        case rho
+        case openInterest = "open_interest"
+        case volume
+        case volOiRatio = "vol_oi_ratio"
+        case liquidityConfidence = "liquidity_confidence"
+        case priceProvider = "price_provider"
+        case oiProvider = "oi_provider"
+        case historySamples = "history_samples"
+        case historyAvgMark = "history_avg_mark"
+        case historyWindowDays = "history_window_days"
+        case bid
+        case ask
+        case mark
+        case lastPrice = "last_price"
+        case signalDiscount = "signal_discount"
+        case signalRunner = "signal_runner"
+        case signalGreeks = "signal_greeks"
+        case signalBuy = "signal_buy"
+        case signals
+        case underlying7dReturn = "underlying_ret_7d"
+        case underlying7dVolatility = "underlying_vol_7d"
+        case underlying7dDrawdown = "underlying_drawdown_7d"
+        case underlying7dGapCount = "underlying_gap_count"
+        case runAt = "run_at"
+    }
 
     // Computed properties
     var expiryDate: Date? {
@@ -282,6 +332,65 @@ struct OptionRank: Codable, Identifiable {
         }
         return "\(samples) samples"
     }
+
+    // MARK: - 7-Day Underlying Metrics Helpers
+
+    var has7DayMetrics: Bool {
+        underlying7dReturn != nil || underlying7dVolatility != nil
+    }
+
+    var underlying7dReturnFormatted: String {
+        guard let ret = underlying7dReturn else { return "N/A" }
+        return String(format: "%+.1f%%", ret)
+    }
+
+    var underlying7dVolatilityFormatted: String {
+        guard let vol = underlying7dVolatility else { return "N/A" }
+        return String(format: "%.1f%%", vol)
+    }
+
+    var underlying7dDrawdownFormatted: String {
+        guard let dd = underlying7dDrawdown else { return "N/A" }
+        return String(format: "%.1f%%", abs(dd))
+    }
+
+    var underlying7dReturnColor: Color {
+        guard let ret = underlying7dReturn else { return .gray }
+        if ret > 5.0 { return .green }
+        if ret > 0.0 { return .green.opacity(0.7) }
+        if ret > -5.0 { return .orange }
+        return .red
+    }
+
+    var underlying7dVolatilityColor: Color {
+        guard let vol = underlying7dVolatility else { return .gray }
+        if vol < 20.0 { return .green }
+        if vol < 35.0 { return .orange }
+        return .red
+    }
+
+    var underlying7dDrawdownColor: Color {
+        guard let dd = underlying7dDrawdown else { return .gray }
+        let absDd = abs(dd)
+        if absDd < 3.0 { return .green }
+        if absDd < 7.0 { return .orange }
+        return .red
+    }
+
+    var underlying7dGapCountColor: Color {
+        guard let gaps = underlying7dGapCount else { return .gray }
+        if gaps <= 1 { return .green }
+        if gaps <= 3 { return .orange }
+        return .red
+    }
+
+    var underlyingMomentumLabel: String {
+        guard let ret = underlying7dReturn else { return "Unknown" }
+        if ret > 5.0 { return "Strong" }
+        if ret > 0.0 { return "Positive" }
+        if ret > -5.0 { return "Weak" }
+        return "Negative"
+    }
 }
 
 // Extension for easy preview/testing
@@ -323,6 +432,10 @@ extension OptionRank {
         signalGreeks: true,
         signalBuy: true,
         signals: "DISCOUNT,GREEKS,BUY",
+        underlying7dReturn: 3.5,
+        underlying7dVolatility: 25.0,
+        underlying7dDrawdown: -2.1,
+        underlying7dGapCount: 1,
         runAt: ISO8601DateFormatter().string(from: Date())
     )
 }

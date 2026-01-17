@@ -53,9 +53,15 @@ struct OptionRankDetailView: View {
 
                 // Greeks & Risk Metrics
                 greeksSection
-                
+
+                // 7-Day Underlying Metrics (if available)
+                if rank.has7DayMetrics {
+                    Divider()
+                    underlying7DaySection
+                }
+
                 Divider()
-                
+
                 // Historical Strike Analysis
                 StrikeAnalysisView(
                     symbol: symbol,
@@ -389,6 +395,108 @@ struct OptionRankDetailView: View {
         }
     }
 
+    // MARK: - 7-Day Underlying Metrics Section
+
+    private var underlying7DaySection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("7-Day Underlying Metrics")
+                    .font(.headline)
+
+                Spacer()
+
+                // Momentum indicator badge
+                HStack(spacing: 4) {
+                    Image(systemName: rank.underlying7dReturn ?? 0 >= 0 ? "arrow.up.right" : "arrow.down.right")
+                        .font(.caption)
+                    Text(rank.underlyingMomentumLabel)
+                        .font(.caption.weight(.medium))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(rank.underlying7dReturnColor.opacity(0.15))
+                .foregroundColor(rank.underlying7dReturnColor)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+
+            Text("Performance metrics for \(symbol) over the past 7 trading days")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Grid(alignment: .leading, horizontalSpacing: 40, verticalSpacing: 12) {
+                GridRow {
+                    underlyingMetricBadge(
+                        label: "7D Return",
+                        value: rank.underlying7dReturnFormatted,
+                        color: rank.underlying7dReturnColor,
+                        icon: rank.underlying7dReturn ?? 0 >= 0 ? "chart.line.uptrend.xyaxis" : "chart.line.downtrend.xyaxis"
+                    )
+
+                    underlyingMetricBadge(
+                        label: "7D Volatility",
+                        value: rank.underlying7dVolatilityFormatted,
+                        color: rank.underlying7dVolatilityColor,
+                        icon: "waveform.path"
+                    )
+                }
+
+                GridRow {
+                    underlyingMetricBadge(
+                        label: "Max Drawdown",
+                        value: rank.underlying7dDrawdownFormatted,
+                        color: rank.underlying7dDrawdownColor,
+                        icon: "arrow.down.to.line"
+                    )
+
+                    underlyingMetricBadge(
+                        label: "Gap Count",
+                        value: rank.underlying7dGapCount.map { "\($0)" } ?? "N/A",
+                        color: rank.underlying7dGapCountColor,
+                        icon: "rectangle.split.2x1"
+                    )
+                }
+            }
+
+            // Explanation text
+            VStack(alignment: .leading, spacing: 4) {
+                Text("How these metrics affect ranking:")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                Text("• Strong returns with low volatility boost momentum score")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+
+                Text("• High drawdown or gaps may reduce confidence")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.top, 8)
+        }
+    }
+
+    @ViewBuilder
+    private func underlyingMetricBadge(label: String, value: String, color: Color, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.caption)
+                    .foregroundColor(color)
+                Text(label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(value)
+                .font(.title3.weight(.semibold))
+                .foregroundColor(color)
+        }
+        .frame(minWidth: 120, alignment: .leading)
+        .padding(12)
+        .background(color.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
     // MARK: - Helper Views
 
     private func factorRow(name: String, score: Double, weight: Double, description: String) -> some View {
@@ -714,6 +822,10 @@ struct StrikeComparisonRow: View {
             signalGreeks: true,
             signalBuy: true,
             signals: "DISCOUNT,GREEKS,BUY",
+            underlying7dReturn: 4.2,
+            underlying7dVolatility: 28.5,
+            underlying7dDrawdown: -3.1,
+            underlying7dGapCount: 2,
             runAt: ISO8601DateFormatter().string(from: Date())
         ),
         symbol: "CRWD",

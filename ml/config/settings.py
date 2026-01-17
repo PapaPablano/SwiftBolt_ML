@@ -103,6 +103,15 @@ class Settings(BaseSettings):
     # Sandbox endpoint
     # tradier_base_url: str = "https://sandbox.tradier.com/v1"
 
+    # Alpaca API (Market Data)
+    alpaca_api_key: str | None = None
+    alpaca_api_secret: str | None = None
+    alpaca_base_url: str = "https://data.alpaca.markets/v2"
+
+    # Underlying History Configuration
+    underlying_history_lookback_days: int = 7
+    underlying_history_timeframes: list[str] = ["d1"]
+
     # Logging
     log_level: str = "INFO"
 
