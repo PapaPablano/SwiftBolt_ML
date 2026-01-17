@@ -21,8 +21,8 @@ from .technical_indicators import add_all_technical_features
 logger = logging.getLogger(__name__)
 
 
-# Default timeframes aligned with Swift app ChartViewModel
-DEFAULT_TIMEFRAMES = ["m15", "h1", "d1", "w1"]
+# Default timeframes aligned with Swift app ChartViewModel (and ML stack requirement)
+DEFAULT_TIMEFRAMES = ["m15", "h1", "h4", "d1", "w1"]
 
 # Columns to exclude from feature suffixing (raw OHLCV data)
 OHLCV_COLUMNS = {"ts", "open", "high", "low", "close", "volume"}

@@ -731,10 +731,69 @@ class SupportResistanceDetector:
                 (nearest_resistance - current_price) / current_price * 100, 2
             )
 
+        sr_ratio = None
+        if nearest_support and nearest_resistance:
+            support_gap = current_price - nearest_support
+            resistance_gap = nearest_resistance - current_price
+            if support_gap > 0:
+                sr_ratio = round(resistance_gap / support_gap, 4)
+
         # Collect signals from all indicators
         all_signals = []
         all_signals.extend(poly_result.get("signals", []))
         all_signals.extend([{"type": s} for s in logistic_result.get("signals", [])])
+
+        legacy_pivot_points = self._build_legacy_pivot_map(
+            pivot_result.get("pivot_levels", []), current_price
+        )
+
+        computed_at = None
+        if "ts" in df.columns and len(df["ts"]):
+            computed_at = pd.to_datetime(df["ts"].iloc[-1])
+        else:
+            computed_at = pd.Timestamp.utcnow()
+
+        support_hold_prob = self._extract_hold_probability(
+            logistic_result.get("support_levels", [])
+        )
+        resistance_hold_prob = self._extract_hold_probability(
+            logistic_result.get("resistance_levels", [])
+        )
+
+        logistic_support_slope, logistic_resistance_slope = self._compute_logistic_slopes(
+            logistic_result.get("support_levels", []),
+            logistic_result.get("resistance_levels", []),
+        )
+
+        support_methods_agreeing = self._count_method_agreement(
+            nearest_support,
+            [
+                pivot_result.get("nearest_support"),
+                poly_result.get("current_support"),
+                logistic_result.get("nearest_support"),
+            ],
+            current_price,
+        )
+        resistance_methods_agreeing = self._count_method_agreement(
+            nearest_resistance,
+            [
+                pivot_result.get("nearest_resistance"),
+                poly_result.get("current_resistance"),
+                logistic_result.get("nearest_resistance"),
+            ],
+            current_price,
+        )
+
+        pivot_confidence = self._compute_pivot_confidence(
+            pivot_result.get("pivot_levels", []),
+            nearest_support,
+            nearest_resistance,
+            current_price,
+        )
+
+        period_high = float(df["high"].max()) if "high" in df.columns else None
+        period_low = float(df["low"].min()) if "low" in df.columns else None
+        lookback_bars = len(df)
 
         result = {
             "current_price": round(current_price, 2),
@@ -742,9 +801,22 @@ class SupportResistanceDetector:
             "nearest_resistance": nearest_resistance,
             "support_distance_pct": support_distance_pct,
             "resistance_distance_pct": resistance_distance_pct,
+            "sr_ratio": sr_ratio,
             "all_supports": supports_below[:10],
             "all_resistances": resistances_above[:10],
             "signals": all_signals,
+            "support_hold_probability": support_hold_prob,
+            "resistance_hold_probability": resistance_hold_prob,
+            "support_methods_agreeing": support_methods_agreeing,
+            "resistance_methods_agreeing": resistance_methods_agreeing,
+            "pivot_confidence": pivot_confidence,
+            "logistic_support_slope": logistic_support_slope,
+            "logistic_resistance_slope": logistic_resistance_slope,
+            "bar_count": lookback_bars,
+            "lookback_bars": lookback_bars,
+            "period_high": period_high,
+            "period_low": period_low,
+            "computed_at": computed_at,
             "indicators": {
                 "pivot_levels": pivot_result,
                 "polynomial": poly_result,
@@ -753,6 +825,7 @@ class SupportResistanceDetector:
             # Legacy key for backwards compatibility
             "methods": {
                 "pivot_levels": pivot_result.get("pivot_levels", []),
+                "pivot_points": legacy_pivot_points,
                 "polynomial": {
                     "support": poly_result.get("current_support"),
                     "resistance": poly_result.get("current_resistance"),
@@ -773,6 +846,38 @@ class SupportResistanceDetector:
         )
 
         return result
+
+    def _build_legacy_pivot_map(
+        self, pivot_levels: List[Dict[str, Any]], current_price: float
+    ) -> Dict[str, Optional[float]]:
+        """Translate modern pivot levels into legacy PP/S1/S2/R1/R2 map."""
+
+        if current_price is None:
+            return {}
+
+        supports = [
+            float(level["level_low"])
+            for level in pivot_levels
+            if level.get("level_low") and float(level["level_low"]) < current_price
+        ]
+        resistances = [
+            float(level["level_high"])
+            for level in pivot_levels
+            if level.get("level_high") and float(level["level_high"]) > current_price
+        ]
+
+        supports = sorted(set(round(s, 2) for s in supports), reverse=True)
+        resistances = sorted(set(round(r, 2) for r in resistances))
+
+        legacy_map: Dict[str, Optional[float]] = {"PP": round(current_price, 2)}
+
+        for key, value in zip(["S1", "S2", "S3"], supports):
+            legacy_map[key] = value
+
+        for key, value in zip(["R1", "R2", "R3"], resistances):
+            legacy_map[key] = value
+
+        return legacy_map
 
     def _find_levels_legacy(
         self,
@@ -950,7 +1055,8 @@ class SupportResistanceDetector:
             df["sr_ratio"] = np.nan
 
         # Pivot point
-        pivots = levels["methods"]["pivot_points"]
+        methods = levels.get("methods") or {}
+        pivots = methods.get("pivot_points") or {}
         df["pivot_pp"] = pivots.get("PP", np.nan)
 
         # Price position relative to pivot
@@ -960,8 +1066,14 @@ class SupportResistanceDetector:
             df["price_vs_pivot_pct"] = np.nan
 
         # Fibonacci levels
-        fib = levels["methods"]["fibonacci"]
-        fib_levels = list(fib["levels"].values())
+        fib = methods.get("fibonacci") or {}
+        fib_levels_dict = fib.get("levels") or {}
+        if isinstance(fib_levels_dict, dict):
+            fib_levels = list(fib_levels_dict.values())
+        elif isinstance(fib_levels_dict, list):
+            fib_levels = fib_levels_dict
+        else:
+            fib_levels = []
 
         # Find nearest Fibonacci level
         if fib_levels:
