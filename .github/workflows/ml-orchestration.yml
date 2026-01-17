@@ -12,8 +12,10 @@ name: ML Orchestration
 #   - ml-evaluation.yml (feedback loop)
 #   - data-quality-monitor.yml (quality checks)
 #   - drift-monitoring.yml (staleness detection)
-#   - daily-options-scrape.yml (options during market hours - separate)
 #   - options-nightly.yml (options processing)
+#
+# Note: daily-options-scrape.yml runs separately during market hours for
+# real-time options data and is NOT consolidated into this workflow.
 #
 # Data Flow:
 #   Daily Data Refresh (success) → ML Orchestration
@@ -52,6 +54,9 @@ on:
 concurrency:
   group: ml-orchestration-${{ github.ref }}
   cancel-in-progress: false  # Don't cancel nightly processing
+
+permissions:
+  contents: read
 
 env:
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

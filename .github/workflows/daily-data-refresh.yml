@@ -45,6 +45,9 @@ concurrency:
   group: daily-data-refresh-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 env:
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

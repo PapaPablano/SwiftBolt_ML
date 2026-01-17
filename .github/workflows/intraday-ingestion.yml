@@ -41,6 +41,9 @@ concurrency:
   group: intraday-ingestion-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 env:
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -110,10 +113,6 @@ jobs:
     if: needs.check-market.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        timeframe: ${{ inputs.timeframes != '' && fromJSON(format('["{0}"]', inputs.timeframes)) || fromJSON('["m15", "h1"]') }}
 
     steps:
       - name: Checkout code
@@ -128,37 +127,63 @@ jobs:
           alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
           alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
 
-      - name: Fetch ${{ matrix.timeframe }} data
+      - name: Fetch intraday data
         id: fetch
+        env:
+          INPUT_TIMEFRAMES: ${{ inputs.timeframes || 'm15,h1' }}
+          INPUT_SYMBOLS: ${{ inputs.symbols }}
+          FORCE_REFRESH: ${{ inputs.force_refresh }}
         run: |
           cd ml
           
           SYMBOL_FLAG=""
-          if [ -n "${{ inputs.symbols }}" ]; then
-            SYMBOL_FLAG="--symbols ${{ inputs.symbols }}"
+          if [ -n "$INPUT_SYMBOLS" ]; then
+            SYMBOL_FLAG="--symbols $INPUT_SYMBOLS"
           else
             SYMBOL_FLAG="--all"
           fi
           
           FORCE_FLAG=""
-          if [ "${{ inputs.force_refresh }}" = "true" ]; then
+          if [ "$FORCE_REFRESH" = "true" ]; then
             FORCE_FLAG="--force"
           fi
           
-          echo "📊 Fetching ${{ matrix.timeframe }} data..."
+          total_bars=0
+          failed_timeframes=""
           
-          if output=$(python src/scripts/alpaca_backfill_ohlc_v2.py $SYMBOL_FLAG --timeframe ${{ matrix.timeframe }} $FORCE_FLAG 2>&1); then
-            echo "$output" | tail -n 30
-            bars=$(echo "$output" | grep -oP 'Inserted \K\d+' | tail -1 || echo "0")
-            echo "bars_updated=${bars:-0}" >> $GITHUB_OUTPUT
-            echo "status=success" >> $GITHUB_OUTPUT
+          # Parse and iterate over timeframes
+          IFS=',' read -ra TIMEFRAMES <<< "$INPUT_TIMEFRAMES"
+          for tf in "${TIMEFRAMES[@]}"; do
+            tf=$(echo "$tf" | xargs)  # Trim whitespace
+            [ -z "$tf" ] && continue
+            
+            echo "📊 Fetching $tf data..."
+            
+            if output=$(python src/scripts/alpaca_backfill_ohlc_v2.py $SYMBOL_FLAG --timeframe $tf $FORCE_FLAG 2>&1); then
+              echo "$output" | tail -n 30
+              bars=$(echo "$output" | grep -oP 'Inserted \K\d+' | tail -1 || echo "0")
+              bars=${bars:-0}
+              total_bars=$((total_bars + bars))
+              echo "✅ $tf: $bars bars"
+            else
+              echo "❌ $tf failed"
+              failed_timeframes="$failed_timeframes $tf"
+            fi
+          done
+          
+          echo "total_bars=$total_bars" >> $GITHUB_OUTPUT
+          
+          if [ -n "$failed_timeframes" ]; then
+            echo "status=partial" >> $GITHUB_OUTPUT
+            echo "::warning::Some timeframes failed:$failed_timeframes"
           else
-            echo "status=failed" >> $GITHUB_OUTPUT
-            echo "bars_updated=0" >> $GITHUB_OUTPUT
-            echo "::warning::${{ matrix.timeframe }} fetch failed"
+            echo "status=success" >> $GITHUB_OUTPUT
           fi
 
       - name: Quick validation
+        env:
+          INPUT_TIMEFRAMES: ${{ inputs.timeframes || 'm15,h1' }}
+          INPUT_SYMBOLS: ${{ inputs.symbols }}
         run: |
           cd ml
           python -c "
@@ -168,26 +193,32 @@ jobs:
           
           from src.data.supabase_db import db
           
-          symbols = '${{ inputs.symbols }}'.split(',') if '${{ inputs.symbols }}' else ['SPY', 'AAPL']
+          symbols_input = os.environ.get('INPUT_SYMBOLS', '')
+          symbols = symbols_input.split(',') if symbols_input else ['SPY', 'AAPL']
+          timeframes_input = os.environ.get('INPUT_TIMEFRAMES', 'm15,h1')
+          timeframes = [tf.strip() for tf in timeframes_input.split(',') if tf.strip()]
+          
           for sym in symbols[:3]:
             sym = sym.strip()
             if not sym:
               continue
-            df = db.fetch_ohlc_bars(sym, timeframe='${{ matrix.timeframe }}', limit=5)
-            if not df.empty:
-              print(f'✅ {sym}/${{ matrix.timeframe }}: {len(df)} bars, latest: {df.ts.max()}')
-            else:
-              print(f'⚠️ {sym}/${{ matrix.timeframe }}: No data')
+            for tf in timeframes[:2]:
+              df = db.fetch_ohlc_bars(sym, timeframe=tf, limit=5)
+              if not df.empty:
+                print(f'✅ {sym}/{tf}: {len(df)} bars, latest: {df.ts.max()}')
+              else:
+                print(f'⚠️ {sym}/{tf}: No data')
           "
 
       - name: Job summary
         if: always()
         run: |
-          echo "## Intraday Ingestion: ${{ matrix.timeframe }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Intraday Ingestion" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ steps.fetch.outputs.status }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Market State**: ${{ needs.check-market.outputs.market_state }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Bars Updated**: ${{ steps.fetch.outputs.bars_updated }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Bars Updated**: ${{ steps.fetch.outputs.total_bars }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timeframes**: ${{ inputs.timeframes || 'm15,h1' }}" >> $GITHUB_STEP_SUMMARY
 
   push-metrics:
     needs: [check-market, ingest-data]
