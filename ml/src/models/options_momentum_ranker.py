@@ -245,6 +245,10 @@ class OptionsMomentumRanker:
     MOMENTUM_SMOOTHING_WINDOW = 3  # 3-day EMA for momentum stability
     MOMENTUM_MAX_DAILY_CHANGE = 30.0
 
+    # 7-day underlying metrics defaults
+    DEFAULT_VOLATILITY_7D = 25.0  # Default 7-day annualized volatility (%)
+    TRADING_DAYS_PER_YEAR = 252  # Standard trading days for annualization
+
     def __init__(
         self,
         momentum_weight: float = 0.40,
@@ -318,7 +322,7 @@ class OptionsMomentumRanker:
         # Integrate 7-day underlying metrics into momentum score
         if underlying_metrics is not None:
             # Determine volatility regime from underlying metrics
-            vol_7d = underlying_metrics.get("vol_7d", 25.0) or 25.0
+            vol_7d = underlying_metrics.get("vol_7d", self.DEFAULT_VOLATILITY_7D) or self.DEFAULT_VOLATILITY_7D
             if vol_7d < 20.0:
                 vol_regime = "low"
             elif vol_7d < 40.0:
@@ -807,7 +811,7 @@ class OptionsMomentumRanker:
 
         # Extract metrics with defaults
         ret_7d = underlying_metrics.get("ret_7d", 0.0) or 0.0
-        vol_7d = underlying_metrics.get("vol_7d", 25.0) or 25.0
+        vol_7d = underlying_metrics.get("vol_7d", self.DEFAULT_VOLATILITY_7D) or self.DEFAULT_VOLATILITY_7D
         drawdown_7d = underlying_metrics.get("drawdown_7d", 0.0) or 0.0
         gap_count = underlying_metrics.get("gap_count", 0) or 0
 

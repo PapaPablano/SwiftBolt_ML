@@ -24,8 +24,12 @@ from src.data.supabase_db import db  # noqa: E402
 from src.models.options_momentum_ranker import (  # noqa: E402
     CalibratedMomentumRanker,
     IVStatistics,
+    OptionsMomentumRanker,
 )
 from src.options_historical_backfill import ensure_options_history  # noqa: E402
+
+# Use constant from OptionsMomentumRanker for consistency
+TRADING_DAYS_PER_YEAR = OptionsMomentumRanker.TRADING_DAYS_PER_YEAR
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -425,7 +429,7 @@ def process_symbol_options(
                     if close_prices.iloc[0] > 0
                     else 0.0
                 )
-                vol_7d = close_prices.pct_change().dropna().std() * (252**0.5) * 100
+                vol_7d = close_prices.pct_change().dropna().std() * (TRADING_DAYS_PER_YEAR**0.5) * 100
 
                 underlying_metrics = {
                     "ret_7d": ret_7d,

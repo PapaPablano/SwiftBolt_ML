@@ -38,15 +38,19 @@ echo ""
 echo "Step 1: Refreshing 7-day underlying history..."
 echo "------------------------------------------"
 
+# Convert bash array to comma-separated string for Python
+SYMBOLS_CSV=$(IFS=,; echo "${SYMBOLS[*]}")
+
 python -c "
 import asyncio
 import sys
 sys.path.insert(0, '.')
 
-from src.data.alpaca_underlying_history import fetch_underlying_history_batch, get_client
+from src.data.alpaca_underlying_history import get_client
 from src.data.supabase_db import db
 
-SYMBOLS = $( printf '%s\n' "${SYMBOLS[@]}" | python -c "import sys; print([s.strip() for s in sys.stdin if s.strip()])" )
+# Parse symbols from comma-separated string
+SYMBOLS = '$SYMBOLS_CSV'.split(',')
 
 async def refresh_underlying_history():
     '''Refresh 7-day underlying metrics for all symbols.'''
@@ -62,7 +66,7 @@ async def refresh_underlying_history():
                 try:
                     symbol_id = db.get_symbol_id(symbol)
                 except Exception:
-                    print(f'  ⚠️  Symbol {symbol} not found in database')
+                    print(f'  Warning: Symbol {symbol} not found in database')
                     continue
 
                 # Fetch bars and upsert
@@ -78,16 +82,16 @@ async def refresh_underlying_history():
                     count = db.upsert_underlying_history(
                         symbol_id, 'd1', bars, metrics_dict, 'alpaca'
                     )
-                    print(f'  ✅ {symbol}: {count} bars, ret={metrics.return_7d:.2f}%')
+                    print(f'  OK {symbol}: {count} bars, ret={metrics.return_7d:.2f}%')
             else:
-                print(f'  ⚠️  {symbol}: No bars available')
+                print(f'  Warning: {symbol}: No bars available')
 
         except Exception as e:
-            print(f'  ❌ {symbol}: Error - {e}')
+            print(f'  Error {symbol}: {e}')
 
 asyncio.run(refresh_underlying_history())
 print('Underlying history refresh complete.')
-" || echo "⚠️  Underlying history refresh failed (continuing with ranking)"
+" || echo "Warning: Underlying history refresh failed (continuing with ranking)"
 
 # Step 2: Rank options for each symbol
 echo ""
@@ -99,7 +103,7 @@ for symbol in "${SYMBOLS[@]}"; do
     echo "------------------------------------------"
     echo "Processing: $symbol"
     echo "------------------------------------------"
-    python src/options_ranking_job.py --symbol "$symbol" || echo "⚠️  Failed to rank $symbol (may not have OHLC data)"
+    python src/options_ranking_job.py --symbol "$symbol" || echo "Warning: Failed to rank $symbol (may not have OHLC data)"
 done
 
 echo ""
