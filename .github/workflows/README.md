@@ -1,180 +1,233 @@
 # GitHub Actions Workflows
 
-## backfill-ohlc.yml
+This document describes the consolidated GitHub Actions workflow architecture for SwiftBolt ML.
 
-Automated OHLC data backfill workflow that runs every 6 hours to keep historical stock data up-to-date.
+## Architecture Overview
 
-### Schedule
-
-Runs automatically at:
-- 00:00 UTC (4:00 PM PST / 7:00 PM EST)
-- 06:00 UTC (10:00 PM PST / 1:00 AM EST)
-- 12:00 UTC (4:00 AM PST / 7:00 AM EST)
-- 18:00 UTC (10:00 AM PST / 1:00 PM EST)
-
-### Manual Trigger
-
-You can also run this workflow manually from the GitHub Actions UI:
-
-1. Go to **Actions** → **Automated OHLC Backfill**
-2. Click **Run workflow**
-3. Optionally specify:
-   - **Symbol**: Single symbol to backfill (e.g., `AAPL`)
-   - **Timeframe**: Timeframe to use (default: `d1`)
-4. Leave both blank to backfill all watchlist symbols
-
-### Required Secrets
-
-Configure these in your GitHub repository settings (Settings → Secrets and variables → Actions):
-
-- `SUPABASE_URL`: Your Supabase project URL
-- `SUPABASE_SERVICE_ROLE_KEY`: Supabase service role key (not anon key!)
-- `FINNHUB_API_KEY`: Finnhub API key
-- `MASSIVE_API_KEY`: Polygon.io API key
-
-### How It Works
-
-1. **Scheduled runs**: Backfills all watchlist symbols defined in `ml/src/scripts/backfill_ohlc.py`
-2. **Manual runs**: Backfills specified symbol or all watchlist symbols
-3. **Data source**: Fetches from Polygon.io via the `/chart` Edge Function
-4. **Storage**: Upserts data into `ohlc_bars` table in Supabase
-5. **Deduplication**: Uses upsert to avoid duplicate bars
-
-### Monitoring
-
-- Check the **Actions** tab to see workflow runs
-- Each run provides a summary with success/failure counts
-- Detailed logs show which symbols were processed
-- Job summary shows configuration and results
-
-### Troubleshooting
-
-**Workflow fails with authentication error:**
-- Verify all required secrets are set correctly
-- Check that `SUPABASE_SERVICE_ROLE_KEY` is the service role key, not the anon key
-
-**No data is being inserted:**
-- Check Edge Function logs: `supabase functions logs chart`
-- Verify Polygon.io API key has sufficient credits
-- Ensure symbols exist in the `symbols` table
-
-**Timeout errors:**
-- The workflow has a 30-minute timeout
-- If backfilling many symbols, consider breaking into smaller batches
-- Check network connectivity to Supabase and Polygon.io
-
-### Customization
-
-To modify the schedule, edit the `cron` expression in `backfill-ohlc.yml`:
-
-```yaml
-schedule:
-  - cron: "0 */6 * * *"  # Every 6 hours
+```
+Daily Data Refresh ──▶ ML Orchestration
+        │                    │
+        │                    ├── ML Forecast
+        │                    ├── Options Processing
+        │                    ├── Model Health
+        │                    └── Smoke Tests
+        │
+Intraday Ingestion ──▶ Intraday Forecast
 ```
 
-Examples:
-- `"0 0 * * *"` - Daily at midnight UTC
-- `"0 */12 * * *"` - Every 12 hours
-- `"0 0 * * 1-5"` - Daily at midnight UTC, Monday-Friday only
+## Primary Workflows
 
-To add/remove symbols from the watchlist, edit `WATCHLIST_SYMBOLS` in `ml/src/scripts/backfill_ohlc.py`.
+### 1. Daily Data Refresh (`daily-data-refresh.yml`)
+
+**The canonical workflow for all OHLC data ingestion.**
+
+| Property | Value |
+|----------|-------|
+| Schedule | `0 6 * * *` (6:00 AM UTC daily) |
+| Trigger | `workflow_run` triggers ML Orchestration |
+
+#### Inputs
+
+| Input | Description | Default |
+|-------|-------------|---------|
+| `full_backfill` | Run complete backfill with gap detection | `false` |
+| `symbol` | Single symbol to process | All watchlist |
+| `timeframe` | Single timeframe to process | All (m15, h1, h4, d1, w1) |
+
+#### Usage
+
+```bash
+# Incremental refresh (default)
+gh workflow run daily-data-refresh.yml
+
+# Full backfill for specific symbol
+gh workflow run daily-data-refresh.yml -f full_backfill=true -f symbol=AAPL
+
+# Single timeframe refresh
+gh workflow run daily-data-refresh.yml -f timeframe=d1
+```
 
 ---
 
-## daily-data-refresh.yml
+### 2. Intraday Ingestion (`intraday-ingestion.yml`)
 
-**NEW:** Automated daily data refresh with gap detection and validation. Runs every morning to ensure all chart data is current and complete.
+**Fetches fresh intraday OHLC data during market hours.**
 
-### Schedule
+| Property | Value |
+|----------|-------|
+| Schedule | `*/15 13-22 * * 1-5` (every 15 min, market hours) |
+| Trigger | `workflow_run` triggers Intraday Forecast |
 
-Runs automatically at:
-- **6:00 AM UTC** (12:00 AM CST / 1:00 AM EST) every day
+#### Inputs
 
-### Manual Trigger
+| Input | Description | Default |
+|-------|-------------|---------|
+| `symbols` | Comma-separated symbols | All watchlist |
+| `timeframes` | Comma-separated timeframes | `m15,h1` |
+| `force_refresh` | Force refresh even if data exists | `false` |
 
-Run manually from GitHub Actions UI:
+---
 
-1. Go to **Actions** → **Daily Data Refresh**
-2. Click **Run workflow**
-3. Options:
-   - **Force full backfill**: Enable to run complete backfill with gap detection (slower but more thorough)
-   - Leave unchecked for quick incremental update (default)
+### 3. Intraday Forecast (`intraday-forecast.yml`)
 
-### Required Secrets
+**Generates intraday forecasts after fresh data is ingested.**
 
-Configure these in GitHub repository settings:
+| Property | Value |
+|----------|-------|
+| Schedule | Triggered by Intraday Ingestion |
+| Backup | `5,20,35,50 13-22 * * 1-5` (5 min offset) |
 
-- `SUPABASE_URL`: Your Supabase project URL
-- `SUPABASE_SERVICE_ROLE_KEY`: Supabase service role key
-- `DATABASE_URL`: Direct Postgres connection string
-- `ALPACA_API_KEY`: Alpaca API key
-- `ALPACA_API_SECRET`: Alpaca API secret
+---
 
-### What It Does
+### 4. ML Orchestration (`ml-orchestration.yml`)
 
-**Incremental Mode (Default):**
-1. Fetches latest bars for all timeframes (m15, h1, h4, d1, w1)
-2. Updates only new data since last run
-3. Validates data quality
-4. Reports any gaps detected
+**Consolidated ML pipeline for nightly processing.**
 
-**Full Backfill Mode (Manual trigger):**
-1. Runs complete backfill with gap detection
-2. Auto-retries any symbols/timeframes with issues
-3. Validates final data quality
-4. Ensures 100% coverage
+| Property | Value |
+|----------|-------|
+| Schedule | `0 4 * * 1-5` (4:00 AM UTC weekdays) |
+| Trigger | `workflow_run` from Daily Data Refresh |
 
-### Features
+#### Jobs
 
-- ✅ **Gap Detection**: Automatically finds missing data periods
-- ✅ **Auto-Retry**: Fixes issues without manual intervention
-- ✅ **Quality Validation**: Ensures data completeness
-- ✅ **Artifact Upload**: Saves validation reports for review
-- ✅ **Failure Notifications**: Alerts if critical gaps remain
+| Job | Description |
+|-----|-------------|
+| `ml-forecast` | Ensemble predictions (RF + XGBoost) |
+| `options-processing` | Options backfill and snapshots |
+| `model-health` | Evaluation, drift detection, data quality |
+| `smoke-tests` | Basic validation checks |
 
-### Monitoring
+#### Inputs
 
-- Check **Actions** tab for daily run status
-- Download validation report artifacts to see detailed coverage
-- Workflow fails if critical gaps detected (requires attention)
+| Input | Description | Default |
+|-------|-------------|---------|
+| `job_filter` | Specific job to run | All jobs |
+| `symbol` | Single symbol to process | All watchlist |
 
-### Validation Report
+---
 
-Each run generates a validation report showing:
-- Bar counts per symbol/timeframe
-- Coverage percentage (expected vs actual bars)
-- Gap detection results
-- Recommended retry commands if issues found
+## Supporting Workflows
 
-Example output:
+### Deployment
+
+| Workflow | Description |
+|----------|-------------|
+| `deploy-supabase.yml` | Deploy Edge Functions and migrations |
+| `deploy-ml-dashboard.yml` | Deploy ML dashboard function |
+
+### CI/Testing
+
+| Workflow | Description |
+|----------|-------------|
+| `test-ml.yml` | ML tests and linting (push/PR trigger) |
+| `api-contract-tests.yml` | API schema validation |
+| `frontend-integration-checks.yml` | E2E integration checks |
+
+### Queue Processing
+
+| Workflow | Description |
+|----------|-------------|
+| `job-worker.yml` | Process pending forecast/ranking jobs |
+| `orchestrator-cron.yml` | Supabase orchestrator (manual only) |
+
+---
+
+## Legacy Workflows (Cron Disabled)
+
+These workflows have been consolidated but retain `workflow_dispatch` for manual runs:
+
+| Workflow | Consolidated Into |
+|----------|-------------------|
+| `backfill-ohlc.yml` | `daily-data-refresh.yml` |
+| `batch-backfill-cron.yml` | `daily-data-refresh.yml` |
+| `daily-historical-sync.yml` | `daily-data-refresh.yml` |
+| `alpaca-intraday-cron.yml` | `intraday-ingestion.yml` |
+| `intraday-update.yml` | `intraday-ingestion.yml` |
+| `intraday-update-v2.yml` | `intraday-ingestion.yml` |
+| `ml-forecast.yml` | `ml-orchestration.yml` |
+| `ml-evaluation.yml` | `ml-orchestration.yml` |
+| `data-quality-monitor.yml` | `ml-orchestration.yml` |
+| `drift-monitoring.yml` | `ml-orchestration.yml` |
+| `options-nightly.yml` | `ml-orchestration.yml` |
+
+---
+
+## Required Secrets
+
+Configure these in GitHub repository settings (Settings → Secrets and variables → Actions):
+
+| Secret | Description |
+|--------|-------------|
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
+| `SUPABASE_ANON_KEY` | Supabase anonymous key |
+| `SUPABASE_ACCESS_TOKEN` | Supabase CLI access token |
+| `SUPABASE_PROJECT_REF` | Supabase project reference |
+| `DATABASE_URL` | Direct Postgres connection string |
+| `ALPACA_API_KEY` | Alpaca API key |
+| `ALPACA_API_SECRET` | Alpaca API secret |
+
+---
+
+## Composite Actions
+
+### Setup ML Environment (`.github/actions/setup-ml-env`)
+
+Shared setup for ML Python environment with caching.
+
+```yaml
+- name: Setup ML Environment
+  uses: ./.github/actions/setup-ml-env
+  with:
+    supabase-url: ${{ secrets.SUPABASE_URL }}
+    supabase-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    database-url: ${{ secrets.DATABASE_URL }}
+    alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
+    alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
 ```
-✅ AAPL   m15  | Bars:  1055 | Coverage:  98.5% | Gaps:  0
-✅ AAPL   h1   | Bars:  1047 | Coverage:  99.2% | Gaps:  0
-✅ AAPL   h4   | Bars:   598 | Coverage:  97.8% | Gaps:  0
-✅ AAPL   d1   | Bars:   501 | Coverage: 100.0% | Gaps:  0
-✅ AAPL   w1   | Bars:   285 | Coverage: 100.0% | Gaps:  0
-```
 
-### Troubleshooting
+---
 
-**Workflow reports gaps detected:**
-- Download the validation report artifact
-- Review which symbols/timeframes have issues
-- Run manual workflow with "Force full backfill" enabled
+## Monitoring
 
-**Timeout errors:**
-- 60-minute timeout per run
-- If needed, reduce number of symbols in watchlist
-- Or run incremental updates more frequently
+### Supabase Tables Updated
 
-**Authentication errors:**
-- Verify all secrets are set correctly
-- Ensure `ALPACA_API_KEY` and `ALPACA_API_SECRET` are valid
-- Check Supabase credentials
+| Table | Workflow |
+|-------|----------|
+| `ohlc_bars_v2` | Daily Data Refresh, Intraday Ingestion |
+| `indicator_values` | Intraday Forecast |
+| `ml_forecasts` | ML Orchestration |
+| `forecast_evaluations` | ML Orchestration (model-health) |
+| `model_weights` | ML Orchestration (model-health) |
+| `options_chain_snapshots` | ML Orchestration (options-processing) |
+| `options_ranks` | ML Orchestration (options-processing) |
 
-### Best Practices
+### Data Flow
 
-1. **Let it run daily**: Incremental mode is fast and keeps data fresh
-2. **Monthly full backfill**: Run full backfill mode once a month for validation
-3. **Monitor artifacts**: Check validation reports weekly
-4. **Act on failures**: If workflow fails, investigate and fix gaps promptly
+1. **Daily**: `Daily Data Refresh` → `ML Orchestration` → Fresh forecasts
+2. **Intraday**: `Intraday Ingestion` → `Intraday Forecast` → Real-time signals
+3. **On Demand**: Manual `workflow_dispatch` for targeted operations
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+**Workflow skipped (weekend/after-hours):**
+- Intraday workflows only run during market hours
+- Use `workflow_dispatch` for manual override
+
+**Gap detection failures:**
+- Run with `full_backfill=true` to repair data gaps
+- Check Alpaca API rate limits
+
+**ML Orchestration not triggering:**
+- Verify Daily Data Refresh completed successfully
+- Check `workflow_run` trigger configuration
+
+### Logs and Artifacts
+
+- Each workflow uploads validation reports as artifacts
+- Check job summaries for detailed results
+- Use `gh run view <run-id>` for CLI access

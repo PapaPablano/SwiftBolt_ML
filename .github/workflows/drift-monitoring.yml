@@ -1,9 +1,18 @@
 name: Model Drift Monitoring
 
+# =============================================================================
+# LEGACY WORKFLOW - CRON DISABLED
+# =============================================================================
+# This workflow's functionality has been consolidated into ml-orchestration.yml
+# The cron schedule is disabled but workflow_dispatch is preserved for manual runs.
+# See: .github/workflows/ml-orchestration.yml
+# =============================================================================
+
 on:
-  schedule:
-    # Daily at 8 AM UTC (2 AM CST)
-    - cron: '0 8 * * *'
+  # DISABLED: Consolidated into ml-orchestration.yml
+  # schedule:
+  #   # Daily at 8 AM UTC (2 AM CST)
+  #   - cron: '0 8 * * *'
   workflow_dispatch:
     inputs:
       window_days:

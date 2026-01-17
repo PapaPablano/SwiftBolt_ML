@@ -1,10 +1,17 @@
 name: ML Forecast (Ensemble)
 
+# =============================================================================
+# LEGACY WORKFLOW - CRON DISABLED
+# =============================================================================
+# This workflow's functionality has been consolidated into ml-orchestration.yml
+# The cron schedule is disabled but workflow_dispatch is preserved for manual runs.
+# See: .github/workflows/ml-orchestration.yml
+# =============================================================================
+
 on:
-  # Run after market close on weekdays (03:00 UTC = 21:00 CST / 22:00 EST)
-  # Scheduled 1 hour after options-nightly to ensure OHLC data is fresh
-  schedule:
-    - cron: "0 3 * * 1-5"  # Weekdays only (Mon-Fri)
+  # DISABLED: Consolidated into ml-orchestration.yml
+  # schedule:
+  #   - cron: "0 3 * * 1-5"  # Weekdays only (Mon-Fri)
 
   # Manual trigger (GitHub UI -> Actions -> Run workflow)
   workflow_dispatch:

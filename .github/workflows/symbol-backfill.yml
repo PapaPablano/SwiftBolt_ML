@@ -1,5 +1,13 @@
 name: Symbol Backfill Worker
 
+# =============================================================================
+# LEGACY WORKFLOW - CRON DISABLED
+# =============================================================================
+# This workflow's functionality has been consolidated into daily-data-refresh.yml
+# The cron schedule is disabled but workflow_dispatch is preserved for manual runs.
+# See: .github/workflows/daily-data-refresh.yml
+# =============================================================================
+
 on:
   # DISABLED: High-cost polling workflow. Prefer consolidated backfill orchestration.
   # schedule:

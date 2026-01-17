@@ -1,5 +1,12 @@
 name: Symbol Weight Training
 
+# =============================================================================
+# ACTIVE WORKFLOW - Kept separate from ML Orchestration
+# =============================================================================
+# Symbol weight training runs pre-market to update symbol-level weights.
+# This is intentionally separate from ML Orchestration for scheduling reasons.
+# =============================================================================
+
 on:
   schedule:
     # Run twice to handle DST shifts (8:45am America/Chicago is 13:45 UTC in CST, 14:45 UTC in CDT)

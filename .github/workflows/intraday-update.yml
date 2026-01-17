@@ -1,6 +1,15 @@
 name: Intraday Data Update
 
+# =============================================================================
+# LEGACY WORKFLOW - DEPRECATED
+# =============================================================================
+# This workflow has been replaced by intraday-ingestion.yml
+# The schedule is disabled but workflow_dispatch is preserved for manual runs.
+# See: .github/workflows/intraday-ingestion.yml
+# =============================================================================
+
 on:
+  # DISABLED: Replaced by intraday-ingestion.yml
   workflow_dispatch:  # Allow manual trigger
     inputs:
       symbols:
