@@ -24,8 +24,12 @@ from src.data.supabase_db import db  # noqa: E402
 from src.models.options_momentum_ranker import (  # noqa: E402
     CalibratedMomentumRanker,
     IVStatistics,
+    OptionsMomentumRanker,
 )
 from src.options_historical_backfill import ensure_options_history  # noqa: E402
+
+# Use constant from OptionsMomentumRanker for consistency
+TRADING_DAYS_PER_YEAR = OptionsMomentumRanker.TRADING_DAYS_PER_YEAR
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -405,6 +409,36 @@ def process_symbol_options(
             f"HV={historical_vol:.2%}, trend={underlying_trend}"
         )
 
+        # Fetch 7-day underlying metrics from database (if available)
+        underlying_metrics = db.get_underlying_metrics(symbol_id, timeframe="d1")
+        if underlying_metrics:
+            logger.info(
+                f"{symbol} 7d metrics: ret={underlying_metrics.get('ret_7d', 0):.2f}%, "
+                f"vol={underlying_metrics.get('vol_7d', 0):.1f}%, "
+                f"drawdown={underlying_metrics.get('drawdown_7d', 0):.1f}%"
+            )
+        else:
+            # Compute 7-day metrics from OHLC data if not in database
+            if len(df_ohlc) >= 7:
+                recent_ohlc = df_ohlc.tail(7)
+                close_prices = recent_ohlc["close"].astype(float)
+
+                # Calculate basic metrics
+                ret_7d = (
+                    (close_prices.iloc[-1] - close_prices.iloc[0]) / close_prices.iloc[0] * 100
+                    if close_prices.iloc[0] > 0
+                    else 0.0
+                )
+                vol_7d = close_prices.pct_change().dropna().std() * (TRADING_DAYS_PER_YEAR**0.5) * 100
+
+                underlying_metrics = {
+                    "ret_7d": ret_7d,
+                    "vol_7d": vol_7d,
+                    "drawdown_7d": 0.0,  # Simplified
+                    "gap_count": 0,
+                }
+                logger.info(f"{symbol} computed 7d metrics from OHLC: ret={ret_7d:.2f}%")
+
         # Fetch options chain from API
         api_response = fetch_options_from_api(symbol)
         options_df = parse_options_chain(api_response)
@@ -444,7 +478,7 @@ def process_symbol_options(
 
         previous_rankings = fetch_previous_rankings(symbol_id, ranking_mode)
 
-        # Use calibrated ranking with regime conditioning
+        # Use calibrated ranking with regime conditioning and underlying metrics
         ranked_df = ranker.rank_options_calibrated(
             options_df,
             iv_stats=iv_stats,
@@ -453,6 +487,7 @@ def process_symbol_options(
             underlying_trend=underlying_trend,
             previous_rankings=(previous_rankings if not previous_rankings.empty else None),
             ranking_mode=ranking_mode,
+            underlying_metrics=underlying_metrics,
         )
 
         # Log regime info if available

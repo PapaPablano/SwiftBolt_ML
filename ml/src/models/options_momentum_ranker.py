@@ -245,6 +245,10 @@ class OptionsMomentumRanker:
     MOMENTUM_SMOOTHING_WINDOW = 3  # 3-day EMA for momentum stability
     MOMENTUM_MAX_DAILY_CHANGE = 30.0
 
+    # 7-day underlying metrics defaults
+    DEFAULT_VOLATILITY_7D = 25.0  # Default 7-day annualized volatility (%)
+    TRADING_DAYS_PER_YEAR = 252  # Standard trading days for annualization
+
     def __init__(
         self,
         momentum_weight: float = 0.40,
@@ -283,6 +287,7 @@ class OptionsMomentumRanker:
         underlying_trend: str = "neutral",
         previous_rankings: Optional[pd.DataFrame] = None,
         ranking_mode: str = "entry",
+        underlying_metrics: Optional[dict] = None,
     ) -> pd.DataFrame:
         """
         Rank options using the Momentum-Value-Greeks framework.
@@ -298,6 +303,7 @@ class OptionsMomentumRanker:
             options_history: Historical options data (5+ days) for momentum
             underlying_trend: bullish/neutral/bearish
             previous_rankings: Previous day's rankings for temporal smoothing
+            underlying_metrics: 7-day underlying metrics (ret_7d, vol_7d, etc.)
 
         Returns:
             DataFrame with added scoring columns and sorted by composite_rank
@@ -312,6 +318,21 @@ class OptionsMomentumRanker:
         df = self._calculate_value_scores(df, iv_stats)
         df = self._calculate_momentum_scores(df, options_history)
         df = self._calculate_greeks_scores(df, underlying_trend)
+
+        # Integrate 7-day underlying metrics into momentum score
+        if underlying_metrics is not None:
+            # Determine volatility regime from underlying metrics
+            vol_7d = underlying_metrics.get("vol_7d", self.DEFAULT_VOLATILITY_7D) or self.DEFAULT_VOLATILITY_7D
+            if vol_7d < 20.0:
+                vol_regime = "low"
+            elif vol_7d < 40.0:
+                vol_regime = "normal"
+            else:
+                vol_regime = "high"
+
+            df = self._integrate_underlying_metrics(
+                df, underlying_metrics, underlying_trend, vol_regime
+            )
 
         for col in ["momentum_score", "value_score", "greeks_score"]:
             if col in df.columns:
@@ -765,6 +786,158 @@ class OptionsMomentumRanker:
 
         return df
 
+    def _calculate_underlying_7d_score(
+        self,
+        underlying_metrics: Optional[dict] = None,
+        trend_regime: str = "neutral",
+        vol_regime: str = "normal",
+    ) -> float:
+        """
+        Calculate score from underlying 7-day metrics.
+
+        Integrates return, volatility, drawdown, and gap count from
+        the underlying asset's 7-day price history.
+
+        Args:
+            underlying_metrics: Dict with ret_7d, vol_7d, drawdown_7d, gap_count
+            trend_regime: Current trend regime (bullish, bearish, neutral)
+            vol_regime: Current volatility regime (low, normal, high)
+
+        Returns:
+            Score from 0-100 based on underlying performance
+        """
+        if underlying_metrics is None:
+            return 50.0  # Neutral score if no metrics available
+
+        # Extract metrics with defaults
+        ret_7d = underlying_metrics.get("ret_7d", 0.0) or 0.0
+        vol_7d = underlying_metrics.get("vol_7d", self.DEFAULT_VOLATILITY_7D) or self.DEFAULT_VOLATILITY_7D
+        drawdown_7d = underlying_metrics.get("drawdown_7d", 0.0) or 0.0
+        gap_count = underlying_metrics.get("gap_count", 0) or 0
+
+        # Score return component (0-100)
+        # >10% return = 100, 0% = 50, <-10% = 0
+        if ret_7d >= 10.0:
+            return_score = 100.0
+        elif ret_7d >= 5.0:
+            return_score = 75.0 + (ret_7d - 5.0) * 5.0
+        elif ret_7d >= 0.0:
+            return_score = 50.0 + ret_7d * 5.0
+        elif ret_7d >= -5.0:
+            return_score = 50.0 + ret_7d * 5.0
+        elif ret_7d >= -10.0:
+            return_score = 25.0 + (ret_7d + 5.0) * 5.0
+        else:
+            return_score = max(0.0, 25.0 + (ret_7d + 10.0) * 2.5)
+
+        # Score volatility component (0-100)
+        # Low volatility during uptrend = good, high volatility = risky
+        if vol_7d < 15.0:
+            vol_score = 80.0  # Low volatility = stable
+        elif vol_7d < 30.0:
+            vol_score = 60.0  # Normal volatility
+        elif vol_7d < 50.0:
+            vol_score = 40.0  # Elevated volatility
+        else:
+            vol_score = 20.0  # High volatility = risky
+
+        # Score drawdown component (0-100)
+        # Lower drawdown = better
+        if drawdown_7d < 3.0:
+            drawdown_score = 90.0  # Minor drawdown
+        elif drawdown_7d < 7.0:
+            drawdown_score = 70.0  # Moderate drawdown
+        elif drawdown_7d < 15.0:
+            drawdown_score = 40.0  # Significant drawdown
+        else:
+            drawdown_score = 20.0  # Severe drawdown
+
+        # Score gap count component (0-100)
+        # Fewer gaps = more stable price action
+        if gap_count <= 1:
+            gap_score = 90.0  # Very stable
+        elif gap_count <= 3:
+            gap_score = 60.0  # Some discontinuity
+        else:
+            gap_score = 30.0  # High discontinuity
+
+        # Combine scores with weights from config
+        # Default weights: return=0.40, volatility=0.30, drawdown=0.20, gaps=0.10
+        combined_score = (
+            return_score * 0.40
+            + vol_score * 0.30
+            + drawdown_score * 0.20
+            + gap_score * 0.10
+        )
+
+        # Apply regime multipliers if in specific regime
+        regime_key = f"{trend_regime}_{vol_regime}".lower()
+        regime_multipliers = {
+            "bullish_low": 1.1,
+            "bullish_normal": 1.0,
+            "bullish_high": 0.95,
+            "bearish_low": 0.9,
+            "bearish_normal": 0.85,
+            "bearish_high": 0.8,
+            "neutral_low": 1.0,
+            "neutral_normal": 1.0,
+            "neutral_high": 0.9,
+        }
+
+        multiplier = regime_multipliers.get(regime_key, 1.0)
+        final_score = combined_score * multiplier
+
+        return max(0.0, min(100.0, final_score))
+
+    def _integrate_underlying_metrics(
+        self,
+        df: pd.DataFrame,
+        underlying_metrics: Optional[dict] = None,
+        trend_regime: str = "neutral",
+        vol_regime: str = "normal",
+    ) -> pd.DataFrame:
+        """
+        Integrate underlying 7-day metrics into the momentum score.
+
+        Blends the underlying performance score with the existing
+        option-specific momentum score.
+
+        Args:
+            df: DataFrame with momentum_score column
+            underlying_metrics: Dict with ret_7d, vol_7d, drawdown_7d, gap_count
+            trend_regime: Current trend regime
+            vol_regime: Current volatility regime
+
+        Returns:
+            DataFrame with updated momentum_score incorporating underlying metrics
+        """
+        if underlying_metrics is None:
+            # No underlying metrics available, return unchanged
+            df["underlying_7d_score"] = 50.0
+            return df
+
+        # Calculate underlying 7-day score
+        underlying_score = self._calculate_underlying_7d_score(
+            underlying_metrics, trend_regime, vol_regime
+        )
+        df["underlying_7d_score"] = underlying_score
+
+        # Store individual metric values for transparency
+        df["underlying_ret_7d"] = underlying_metrics.get("ret_7d", 0.0)
+        df["underlying_vol_7d"] = underlying_metrics.get("vol_7d", 0.0)
+        df["underlying_drawdown_7d"] = underlying_metrics.get("drawdown_7d", 0.0)
+        df["underlying_gap_count"] = underlying_metrics.get("gap_count", 0)
+
+        # Blend underlying score into momentum
+        # Default blend: 80% option momentum + 20% underlying momentum
+        underlying_weight = 0.20
+        df["momentum_score"] = (
+            df["momentum_score"] * (1 - underlying_weight)
+            + underlying_score * underlying_weight
+        )
+
+        return df
+
     def _calculate_price_momentum(
         self,
         df: pd.DataFrame,
@@ -1211,6 +1384,7 @@ class CalibratedMomentumRanker(OptionsMomentumRanker):
         underlying_trend: str = "neutral",
         previous_rankings: Optional[pd.DataFrame] = None,
         ranking_mode: str = "entry",
+        underlying_metrics: Optional[dict] = None,
     ) -> pd.DataFrame:
         """
         Rank options with calibration and regime-conditioning.
@@ -1218,7 +1392,7 @@ class CalibratedMomentumRanker(OptionsMomentumRanker):
         This is the enhanced entry point that:
         1. Detects market regime from underlying OHLC
         2. Adjusts weights based on regime
-        3. Applies base ranking
+        3. Applies base ranking with 7-day underlying metrics
         4. Calibrates scores to forward return percentiles
 
         Args:
@@ -1229,6 +1403,7 @@ class CalibratedMomentumRanker(OptionsMomentumRanker):
             underlying_trend: Fallback trend if no OHLC
             previous_rankings: Previous rankings for smoothing
             ranking_mode: 'entry' or 'exit'
+            underlying_metrics: 7-day underlying metrics (ret_7d, vol_7d, etc.)
 
         Returns:
             DataFrame with calibrated rankings
@@ -1256,7 +1431,7 @@ class CalibratedMomentumRanker(OptionsMomentumRanker):
                     f"V={weights.value:.0%}, G={weights.greeks:.0%}"
                 )
 
-        # Step 2: Apply base ranking
+        # Step 2: Apply base ranking with underlying metrics
         ranked_df = self.rank_options(
             options_df,
             iv_stats=iv_stats,
@@ -1264,6 +1439,7 @@ class CalibratedMomentumRanker(OptionsMomentumRanker):
             underlying_trend=underlying_trend,
             previous_rankings=previous_rankings,
             ranking_mode=ranking_mode,
+            underlying_metrics=underlying_metrics,
         )
 
         # Restore original weights if we changed them
