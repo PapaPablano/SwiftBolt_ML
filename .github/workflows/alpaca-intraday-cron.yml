@@ -12,11 +12,11 @@ name: Alpaca Intraday Update (Market Hours)
 # This is the PRIMARY source for real-time chart data in the iOS app
 
 on:
-  # DISABLED: Consolidated into intraday-ingestion.yml
-  # schedule:
-  #   # Run every 15 minutes during extended market hours (9:00 AM - 5:00 PM ET)
-  #   # Cron is in UTC: ET is UTC-5 (winter) or UTC-4 (DST)
-  #   - cron: '*/15 13-22 * * 1-5'  # Every 15 min, 1PM-10PM UTC, Mon-Fri
+  # RE-ENABLED: Fixed missing rsi_14 column issue
+  schedule:
+    # Run every 15 minutes during extended market hours (9:00 AM - 5:00 PM ET)
+    # Cron is in UTC: ET is UTC-5 (winter) or UTC-4 (DST)
+    - cron: '*/15 13-22 * * 1-5'  # Every 15 min, 1PM-10PM UTC, Mon-Fri
   workflow_dispatch:
     inputs:
       symbols:
