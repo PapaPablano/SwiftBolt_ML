@@ -65,20 +65,31 @@ DEFAULT_SYMBOLS = [
 
 
 def get_watchlist_symbols(limit: int = 100) -> list[str]:
-    """Fetch symbols from user watchlists."""
+    """Fetch symbols from user watchlists.
+
+    Returns watchlist symbols if available, otherwise falls back to DEFAULT_SYMBOLS.
+    Never returns an empty list.
+    """
     try:
         response = db.client.rpc(
             "get_all_watchlist_symbols",
             {"p_limit": limit},
         ).execute()
         if response.data:
-            symbols = [row["ticker"] for row in response.data]
-            logger.info(f"Fetched {len(symbols)} symbols from watchlists")
-            return symbols
+            symbols = [
+                row["ticker"]
+                for row in response.data
+                if row.get("ticker")  # Filter out None/empty tickers
+            ]
+            if symbols:
+                logger.info(f"Fetched {len(symbols)} symbols from watchlists")
+                return symbols
+            else:
+                logger.warning("Watchlist returned but no valid tickers found")
     except Exception as e:
         logger.warning(f"Could not fetch watchlist: {e}")
 
-    logger.info("Using default symbol list")
+    logger.info(f"Using default symbol list ({len(DEFAULT_SYMBOLS)} symbols)")
     return DEFAULT_SYMBOLS
 
 
@@ -256,6 +267,14 @@ def main():
         symbols = DEFAULT_SYMBOLS
     else:
         logger.error("Must specify --symbol, --symbols, --all, or --watchlist")
+        return 1
+
+    # Fail gracefully if no symbols to process
+    if not symbols:
+        logger.error(
+            "No symbols found to refresh. "
+            "Check watchlist configuration or use --all for defaults."
+        )
         return 1
 
     logger.info(f"\n{'='*60}")
