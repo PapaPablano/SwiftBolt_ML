@@ -1,5 +1,14 @@
 name: Daily Historical Sync (Yahoo Finance)
 
+# =============================================================================
+# LEGACY WORKFLOW - CRON DISABLED
+# =============================================================================
+# This workflow's functionality has been consolidated into daily-data-refresh.yml
+# The cron schedule is disabled but workflow_dispatch is preserved for manual runs.
+# Note: YFinance provider deprecated in favor of Alpaca-only strategy.
+# See: .github/workflows/daily-data-refresh.yml
+# =============================================================================
+
 # Syncs yesterday's verified data from Yahoo Finance to ohlc_bars_v2
 # This ensures the historical layer is always up-to-date after market close
 

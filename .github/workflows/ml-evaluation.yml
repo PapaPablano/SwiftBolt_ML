@@ -1,10 +1,17 @@
 name: ML Forecast Evaluation (Feedback Loop)
 
+# =============================================================================
+# LEGACY WORKFLOW - CRON DISABLED
+# =============================================================================
+# This workflow's functionality has been consolidated into ml-orchestration.yml
+# The cron schedule is disabled but workflow_dispatch is preserved for manual runs.
+# See: .github/workflows/ml-orchestration.yml
+# =============================================================================
+
 on:
-  # Run daily after forecasts have been evaluated (06:00 UTC = 00:00 CST / 01:00 EST)
-  # This gives time for market close + data refresh + forecast generation
-  schedule:
-    - cron: "0 6 * * 1-5"  # Weekdays only (Mon-Fri)
+  # DISABLED: Consolidated into ml-orchestration.yml
+  # schedule:
+  #   - cron: "0 6 * * 1-5"  # Weekdays only (Mon-Fri)
 
   # Manual trigger (GitHub UI -> Actions -> Run workflow)
   workflow_dispatch:

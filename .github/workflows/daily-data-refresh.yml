@@ -1,81 +1,165 @@
 name: Daily Data Refresh
 
+# =============================================================================
+# CONSOLIDATED DATA INGESTION WORKFLOW
+# =============================================================================
+# This is the canonical workflow for all OHLC data ingestion.
+# It replaces the following legacy workflows:
+#   - backfill-ohlc.yml (now workflow_dispatch only)
+#   - batch-backfill-cron.yml (cron disabled)
+#   - daily-historical-sync.yml (cron disabled, yfinance deprecated)
+#
+# Usage:
+#   - Scheduled: Runs daily incremental refresh
+#   - Manual: Use workflow_dispatch inputs for targeted operations
+# =============================================================================
+
 on:
   schedule:
     # Run at 6:00 AM UTC (12:00 AM CST) every day
     - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
-      force_full_backfill:
-        description: 'Force full backfill (not just incremental)'
+      full_backfill:
+        description: 'Run full backfill with gap detection (slower, more thorough)'
         required: false
         type: boolean
         default: false
+      symbol:
+        description: 'Single symbol to process (leave empty for all watchlist)'
+        required: false
+        type: string
+      timeframe:
+        description: 'Single timeframe to process (leave empty for all: m15,h1,h4,d1,w1)'
+        required: false
+        type: choice
+        options:
+          - ''
+          - m15
+          - h1
+          - h4
+          - d1
+          - w1
+
+concurrency:
+  group: daily-data-refresh-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+  ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
 
 jobs:
-  refresh-data:
+  # ===========================================================================
+  # INCREMENTAL REFRESH (Default: runs daily on schedule)
+  # ===========================================================================
+  incremental-refresh:
+    if: ${{ !inputs.full_backfill }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        timeframe: ${{ inputs.timeframe != '' && fromJSON(format('["{0}"]', inputs.timeframe)) || fromJSON('["m15", "h1", "h4", "d1", "w1"]') }}
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Setup ML Environment
+        uses: ./.github/actions/setup-ml-env
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          database-url: ${{ secrets.DATABASE_URL }}
+          alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
+          alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
       
-      - name: Install dependencies
+      - name: Refresh ${{ matrix.timeframe }} data
         run: |
           cd ml
-          pip install -r requirements.txt
-      
-      - name: Configure environment
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
-          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
-        run: |
-          cd ml
-          cat > .env << EOF
-          SUPABASE_URL=${SUPABASE_URL}
-          SUPABASE_KEY=${SUPABASE_KEY}
-          DATABASE_URL=${DATABASE_URL}
-          ALPACA_API_KEY=${ALPACA_API_KEY}
-          ALPACA_API_SECRET=${ALPACA_API_SECRET}
-          EOF
-      
-      - name: Run incremental data refresh
-        if: ${{ !inputs.force_full_backfill }}
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
-          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
-        run: |
-          cd ml
-          echo "📊 Running incremental data refresh for all timeframes..."
+          echo "📊 Refreshing ${{ matrix.timeframe }} timeframe..."
           
-          # Refresh intraday timeframes (15m, 1h, 4h)
-          python src/scripts/alpaca_backfill_ohlc_v2.py --all --timeframe m15 || echo "⚠️ m15 failed"
-          python src/scripts/alpaca_backfill_ohlc_v2.py --all --timeframe h1 || echo "⚠️ h1 failed"
-          python src/scripts/alpaca_backfill_ohlc_v2.py --all --timeframe h4 || echo "⚠️ h4 failed"
+          SYMBOL_FLAG=""
+          if [ -n "${{ inputs.symbol }}" ]; then
+            SYMBOL_FLAG="--symbols ${{ inputs.symbol }}"
+          else
+            SYMBOL_FLAG="--all"
+          fi
           
-          # Refresh daily and weekly
-          python src/scripts/alpaca_backfill_ohlc_v2.py --all --timeframe d1 || echo "⚠️ d1 failed"
-          python src/scripts/alpaca_backfill_ohlc_v2.py --all --timeframe w1 || echo "⚠️ w1 failed"
+          python src/scripts/alpaca_backfill_ohlc_v2.py $SYMBOL_FLAG --timeframe ${{ matrix.timeframe }}
+      
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## Incremental Refresh: ${{ matrix.timeframe }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Symbol**: ${{ inputs.symbol || 'All watchlist' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timeframe**: ${{ matrix.timeframe }}" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # FULL BACKFILL (Manual trigger with full_backfill=true)
+  # ===========================================================================
+  full-backfill:
+    if: ${{ inputs.full_backfill == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup ML Environment
+        uses: ./.github/actions/setup-ml-env
+        with:
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          database-url: ${{ secrets.DATABASE_URL }}
+          alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
+          alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
       
       - name: Run full backfill with gap detection
-        if: ${{ inputs.force_full_backfill }}
         run: |
           cd ml
           echo "🔄 Running full backfill with gap detection..."
-          chmod +x src/scripts/smart_backfill_all.sh
-          ./src/scripts/smart_backfill_all.sh
+          
+          if [ -n "${{ inputs.symbol }}" ]; then
+            # Single symbol backfill
+            for tf in m15 h1 h4 d1 w1; do
+              echo "📊 Backfilling ${{ inputs.symbol }} - $tf"
+              python src/scripts/alpaca_backfill_ohlc_v2.py --symbols ${{ inputs.symbol }} --timeframe $tf --force || echo "⚠️ $tf failed"
+            done
+          else
+            # Full backfill all symbols
+            chmod +x src/scripts/smart_backfill_all.sh
+            ./src/scripts/smart_backfill_all.sh
+          fi
+
+  # ===========================================================================
+  # VALIDATION (Runs after both incremental and full backfill)
+  # ===========================================================================
+  validate-data:
+    needs: [incremental-refresh, full-backfill]
+    if: always() && (needs.incremental-refresh.result == 'success' || needs.full-backfill.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup ML Environment
+        uses: ./.github/actions/setup-ml-env
+        with:
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          database-url: ${{ secrets.DATABASE_URL }}
+          alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
+          alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
       
       - name: Validate data quality
         run: |
@@ -93,10 +177,9 @@ jobs:
           retention-days: 7
       
       - name: Check for critical gaps
-        continue-on-error: true  # Don't fail workflow during initial backfill phase
+        continue-on-error: true
         run: |
           cd ml
-          # Exit with error if validation found issues (for notifications)
           python src/scripts/backfill_with_gap_detection.py --all
       
       - name: Notify on failure
@@ -105,3 +188,20 @@ jobs:
           echo "❌ Data refresh failed or gaps detected!"
           echo "Check the validation report artifact for details."
           echo "Manual intervention may be required."
+      
+      - name: Final summary
+        if: always()
+        run: |
+          echo "## Daily Data Refresh Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: ${{ inputs.full_backfill && 'Full Backfill' || 'Incremental' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Symbol**: ${{ inputs.symbol || 'All watchlist' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timeframe**: ${{ inputs.timeframe || 'All (m15, h1, h4, d1, w1)' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Data Tables Updated" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ohlc_bars_v2\` - Multi-timeframe OHLC data" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Workflows" >> $GITHUB_STEP_SUMMARY
+          echo "- ML Orchestration will trigger automatically on success" >> $GITHUB_STEP_SUMMARY
+          echo "- Check \`intraday-ingestion.yml\` for real-time updates during market hours" >> $GITHUB_STEP_SUMMARY

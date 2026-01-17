@@ -1,5 +1,13 @@
 name: Intraday Update V2 (Tradier)
 
+# =============================================================================
+# LEGACY WORKFLOW - DEPRECATED
+# =============================================================================
+# This workflow has been replaced by intraday-ingestion.yml (uses Alpaca)
+# The Tradier provider is deprecated in favor of Alpaca-only strategy.
+# See: .github/workflows/intraday-ingestion.yml
+# =============================================================================
+
 on:
   # DISABLED: Using deprecated Tradier provider - conflicts with Alpaca-only strategy
   # schedule:

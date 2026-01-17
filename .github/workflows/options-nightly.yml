@@ -1,5 +1,13 @@
 name: Nightly Options Backfill
 
+# =============================================================================
+# LEGACY WORKFLOW - CONSOLIDATED
+# =============================================================================
+# This workflow's functionality has been consolidated into ml-orchestration.yml
+# The workflow_dispatch is preserved for manual runs.
+# See: .github/workflows/ml-orchestration.yml
+# =============================================================================
+
 on:
   # Manual trigger (GitHub UI -> Actions -> Run workflow)
   workflow_dispatch:

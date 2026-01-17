@@ -1,13 +1,22 @@
 name: Data Quality Monitor
 
+# =============================================================================
+# LEGACY WORKFLOW - CRON DISABLED
+# =============================================================================
+# This workflow's functionality has been consolidated into ml-orchestration.yml
+# The cron schedule is disabled but workflow_dispatch is preserved for manual runs.
+# See: .github/workflows/ml-orchestration.yml
+# =============================================================================
+
 # Monitors data quality across all timeframes and alerts on staleness
 # Runs after each data refresh to ensure quality standards are met
 # Includes checks for: OHLC bars, options snapshots, and forecast freshness
 
 on:
-  schedule:
-    # Run every 6 hours to check data quality
-    - cron: '0 */6 * * *'
+  # DISABLED: Consolidated into ml-orchestration.yml
+  # schedule:
+  #   # Run every 6 hours to check data quality
+  #   - cron: '0 */6 * * *'
   workflow_dispatch:
     inputs:
       symbols:

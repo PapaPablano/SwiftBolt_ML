@@ -1,9 +1,18 @@
 name: Phase 2 Batch Backfill Cron
 
+# =============================================================================
+# LEGACY WORKFLOW - CRON DISABLED
+# =============================================================================
+# This workflow's functionality has been consolidated into daily-data-refresh.yml
+# The cron schedule is disabled but workflow_dispatch is preserved for manual runs.
+# See: .github/workflows/daily-data-refresh.yml
+# =============================================================================
+
 on:
-  schedule:
-    # Single nightly window after market close (02:30 UTC Mon–Sat)
-    - cron: '30 2 * * 1-6'
+  # DISABLED: Consolidated into daily-data-refresh.yml
+  # schedule:
+  #   # Single nightly window after market close (02:30 UTC Mon–Sat)
+  #   - cron: '30 2 * * 1-6'
   workflow_dispatch: # Allow manual triggering
     inputs:
       symbols_count:

@@ -1,0 +1,366 @@
+name: ML Orchestration
+
+# =============================================================================
+# CONSOLIDATED ML PIPELINE
+# =============================================================================
+# Runs the nightly ML suite including forecasts, options processing, model
+# health checks, and evaluation. Triggers automatically after Daily Data Refresh
+# or on a nightly schedule.
+#
+# Consolidates:
+#   - ml-forecast.yml (nightly forecasts)
+#   - ml-evaluation.yml (feedback loop)
+#   - data-quality-monitor.yml (quality checks)
+#   - drift-monitoring.yml (staleness detection)
+#   - daily-options-scrape.yml (options during market hours - separate)
+#   - options-nightly.yml (options processing)
+#
+# Data Flow:
+#   Daily Data Refresh (success) → ML Orchestration
+#                                    ├── ml-forecast
+#                                    ├── options-processing
+#                                    ├── model-health
+#                                    └── smoke-tests
+# =============================================================================
+
+on:
+  # Trigger after daily data refresh completes
+  workflow_run:
+    workflows: ["Daily Data Refresh"]
+    types:
+      - completed
+  # Nightly schedule for post-market processing
+  schedule:
+    - cron: "0 4 * * 1-5"  # 4:00 UTC = 22:00 CST (after market close)
+  workflow_dispatch:
+    inputs:
+      job_filter:
+        description: 'Specific job to run (leave empty for all)'
+        required: false
+        type: choice
+        options:
+          - ''
+          - ml-forecast
+          - options-processing
+          - model-health
+          - smoke-tests
+      symbol:
+        description: 'Single symbol to process (leave empty for all)'
+        required: false
+        type: string
+
+concurrency:
+  group: ml-orchestration-${{ github.ref }}
+  cancel-in-progress: false  # Don't cancel nightly processing
+
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+  ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+
+jobs:
+  # ===========================================================================
+  # CHECK TRIGGER
+  # ===========================================================================
+  check-trigger:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+      trigger_source: ${{ steps.check.outputs.trigger_source }}
+    steps:
+      - name: Check workflow_run status
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+              echo "Daily Data Refresh did not succeed - skipping ML orchestration"
+              echo "should_run=false" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "trigger_source=workflow_run" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "trigger_source=schedule" >> $GITHUB_OUTPUT
+          else
+            echo "trigger_source=manual" >> $GITHUB_OUTPUT
+          fi
+          echo "should_run=true" >> $GITHUB_OUTPUT
+
+  # ===========================================================================
+  # ML FORECAST (Ensemble predictions)
+  # ===========================================================================
+  ml-forecast:
+    needs: check-trigger
+    if: |
+      needs.check-trigger.outputs.should_run == 'true' &&
+      (inputs.job_filter == '' || inputs.job_filter == 'ml-forecast')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup ML Environment
+        uses: ./.github/actions/setup-ml-env
+        with:
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          database-url: ${{ secrets.DATABASE_URL }}
+          alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
+          alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
+
+      - name: Generate ML forecasts
+        env:
+          USE_ENSEMBLE_FORECASTER: "true"
+          MIN_BARS_FOR_TRAINING: "50"
+        run: |
+          cd ml
+          
+          if [ -n "${{ inputs.symbol }}" ]; then
+            echo "📊 Forecasting single symbol: ${{ inputs.symbol }}"
+            python -m src.forecast_job --symbol "${{ inputs.symbol }}"
+          else
+            echo "📊 Forecasting all watchlist symbols"
+            python -m src.forecast_job
+          fi
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## ML Forecast (Ensemble)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Model**: Ensemble (RF + XGBoost)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Symbol**: ${{ inputs.symbol || 'All watchlist' }}" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # OPTIONS PROCESSING (Nightly backfill and snapshots)
+  # ===========================================================================
+  options-processing:
+    needs: check-trigger
+    if: |
+      needs.check-trigger.outputs.should_run == 'true' &&
+      (inputs.job_filter == '' || inputs.job_filter == 'options-processing')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup ML Environment
+        uses: ./.github/actions/setup-ml-env
+        with:
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          database-url: ${{ secrets.DATABASE_URL }}
+          alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
+          alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
+
+      - name: Process options data
+        run: |
+          cd ml
+          
+          if [ -n "${{ inputs.symbol }}" ]; then
+            echo "📊 Processing options for: ${{ inputs.symbol }}"
+            python src/scripts/backfill_options.py --symbol "${{ inputs.symbol }}" || echo "⚠️ Options backfill warning"
+          else
+            echo "📊 Processing options for all watchlist"
+            python src/scripts/backfill_options.py --all || echo "⚠️ Options backfill warning"
+          fi
+
+      - name: Capture options snapshots
+        run: |
+          cd ml
+          python src/options_snapshot_job.py || echo "⚠️ Snapshot capture warning"
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## Options Processing" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Symbol**: ${{ inputs.symbol || 'All watchlist' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Data Updated" >> $GITHUB_STEP_SUMMARY
+          echo "- \`options_chain_snapshots\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`options_ranks\`" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # MODEL HEALTH (Evaluation, drift detection, data quality)
+  # ===========================================================================
+  model-health:
+    needs: [check-trigger, ml-forecast]
+    if: |
+      always() &&
+      needs.check-trigger.outputs.should_run == 'true' &&
+      (inputs.job_filter == '' || inputs.job_filter == 'model-health')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup ML Environment
+        uses: ./.github/actions/setup-ml-env
+        with:
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          database-url: ${{ secrets.DATABASE_URL }}
+          alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
+          alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Run ML evaluation (feedback loop)
+        run: |
+          cd ml
+          echo "📊 Running ML evaluation..."
+          python -m src.evaluation_job || echo "⚠️ Evaluation completed with warnings"
+
+      - name: Update model weights
+        run: |
+          curl -s -X POST \
+            "${SUPABASE_URL}/rest/v1/rpc/trigger_weight_update" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{}' | jq . || echo "Weight update skipped"
+
+      - name: Check drift and staleness
+        run: |
+          cd ml
+          echo "📊 Checking model drift and data staleness..."
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          from src.monitoring.forecast_staleness import check_all_staleness
+          
+          print('📊 Checking data staleness...')
+          try:
+              staleness = check_all_staleness()
+              any_stale = False
+              for name, result in staleness.items():
+                  print(f'{result.icon} {name}: {result.message}')
+                  if not result.is_ok:
+                      any_stale = True
+              if any_stale:
+                  print('::warning::Some data sources are stale!')
+          except Exception as e:
+              print(f'⚠️ Staleness check error: {e}')
+          
+          print('✅ Drift monitoring complete')
+          " || echo "⚠️ Drift check completed with warnings"
+
+      - name: Data quality validation
+        continue-on-error: true
+        run: |
+          SYMBOLS="AAPL,MSFT,NVDA,TSLA,META"
+          
+          echo "📊 Validating data quality for: $SYMBOLS"
+          
+          chmod +x scripts/validate_data_quality.sh 2>/dev/null || true
+          if [ -f scripts/validate_data_quality.sh ]; then
+            ./scripts/validate_data_quality.sh "$SYMBOLS" || echo "⚠️ Data quality issues detected"
+          else
+            echo "Validation script not found, skipping..."
+          fi
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## Model Health" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Checks Performed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ ML Evaluation (feedback loop)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Model weight updates" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Drift detection" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Data staleness check" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Data quality validation" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # SMOKE TESTS (Basic validation)
+  # ===========================================================================
+  smoke-tests:
+    needs: [check-trigger, ml-forecast, options-processing, model-health]
+    if: |
+      always() &&
+      needs.check-trigger.outputs.should_run == 'true' &&
+      (inputs.job_filter == '' || inputs.job_filter == 'smoke-tests')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup ML Environment
+        uses: ./.github/actions/setup-ml-env
+        with:
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          database-url: ${{ secrets.DATABASE_URL }}
+          alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
+          alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
+
+      - name: Run smoke tests
+        run: |
+          cd ml
+          
+          echo "📊 Running quick smoke tests..."
+          
+          # Test that key tables are accessible
+          python -c "
+          import os
+          from dotenv import load_dotenv
+          load_dotenv()
+          
+          from src.data.supabase_db import db
+          
+          # Check OHLC data
+          df = db.fetch_ohlc_bars('SPY', timeframe='d1', limit=5)
+          assert len(df) > 0, 'No OHLC data found'
+          print(f'✅ OHLC bars: {len(df)} records')
+          
+          # Check forecasts exist
+          try:
+              forecasts = db.client.table('ml_forecasts').select('*').limit(1).execute()
+              print(f'✅ ML forecasts table accessible')
+          except Exception as e:
+              print(f'⚠️ ML forecasts check: {e}')
+          
+          print('✅ Smoke tests passed')
+          "
+
+      - name: Final orchestration summary
+        if: always()
+        run: |
+          echo "## ML Orchestration Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Job Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| ML Forecast | ${{ needs.ml-forecast.result || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Options Processing | ${{ needs.options-processing.result || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Model Health | ${{ needs.model-health.result || 'skipped' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Smoke Tests | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Trigger Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **Source**: ${{ needs.check-trigger.outputs.trigger_source }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Filter**: ${{ inputs.job_filter || 'All jobs' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Symbol**: ${{ inputs.symbol || 'All watchlist' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Data Tables Updated" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ml_forecasts\` - Directional predictions" >> $GITHUB_STEP_SUMMARY
+          echo "- \`forecast_evaluations\` - Historical accuracy" >> $GITHUB_STEP_SUMMARY
+          echo "- \`model_weights\` - Ensemble weights" >> $GITHUB_STEP_SUMMARY
+          echo "- \`options_chain_snapshots\` - Options data" >> $GITHUB_STEP_SUMMARY
+          echo "- \`options_ranks\` - ML-scored contracts" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,207 @@
+name: Intraday Ingestion
+
+# =============================================================================
+# CONSOLIDATED INTRADAY DATA INGESTION
+# =============================================================================
+# Fetches fresh intraday OHLC data during market hours.
+# This is the primary source for real-time chart data in the iOS app.
+#
+# Replaces:
+#   - alpaca-intraday-cron.yml (now triggers this workflow)
+#   - intraday-update.yml (deprecated)
+#   - intraday-update-v2.yml (deprecated, Tradier)
+#
+# Data Flow:
+#   Intraday Ingestion → Intraday Forecast (workflow_run trigger)
+# =============================================================================
+
+on:
+  schedule:
+    # Run every 15 minutes during extended market hours (9:00 AM - 5:00 PM ET)
+    # Cron is in UTC: ET is UTC-5 (winter) or UTC-4 (DST)
+    - cron: '*/15 13-22 * * 1-5'  # Every 15 min, 1PM-10PM UTC, Mon-Fri
+  workflow_dispatch:
+    inputs:
+      symbols:
+        description: 'Comma-separated symbols (leave empty for all watchlist)'
+        required: false
+        type: string
+      timeframes:
+        description: 'Comma-separated timeframes'
+        required: false
+        type: string
+        default: 'm15,h1'
+      force_refresh:
+        description: 'Force refresh even if data exists'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: intraday-ingestion-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+  ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+
+jobs:
+  check-market:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.market.outputs.should_run }}
+      market_state: ${{ steps.market.outputs.market_state }}
+    steps:
+      - name: Check Market Hours
+        id: market
+        run: |
+          # Manual dispatch bypasses market hour checks
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch - bypassing market-hour gating"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "market_state=manual" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Get current time in ET
+          current_hour=$(TZ="America/New_York" date +%H)
+          current_min=$(TZ="America/New_York" date +%M)
+          day_of_week=$(TZ="America/New_York" date +%u)
+
+          echo "Current ET time: $current_hour:$current_min (day $day_of_week)"
+
+          # Skip weekends
+          if [ "$day_of_week" -gt 5 ]; then
+            echo "Weekend - skipping"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "market_state=weekend" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check if within extended market hours (9:00 AM - 5:00 PM ET)
+          current_minutes=$((current_hour * 60 + current_min))
+          pre_market=$((9 * 60))
+          post_market=$((17 * 60))
+          market_open=$((9 * 60 + 30))
+          market_close=$((16 * 60))
+
+          if [ "$current_minutes" -lt "$pre_market" ] || [ "$current_minutes" -gt "$post_market" ]; then
+            echo "Outside extended market hours - skipping"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "market_state=closed" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Determine market state
+          if [ "$current_minutes" -ge "$market_open" ] && [ "$current_minutes" -le "$market_close" ]; then
+            echo "market_state=open" >> $GITHUB_OUTPUT
+          elif [ "$current_minutes" -lt "$market_open" ]; then
+            echo "market_state=pre_market" >> $GITHUB_OUTPUT
+          else
+            echo "market_state=after_hours" >> $GITHUB_OUTPUT
+          fi
+
+          echo "should_run=true" >> $GITHUB_OUTPUT
+
+  ingest-data:
+    needs: check-market
+    if: needs.check-market.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        timeframe: ${{ inputs.timeframes != '' && fromJSON(format('["{0}"]', inputs.timeframes)) || fromJSON('["m15", "h1"]') }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup ML Environment
+        uses: ./.github/actions/setup-ml-env
+        with:
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          database-url: ${{ secrets.DATABASE_URL }}
+          alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
+          alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
+
+      - name: Fetch ${{ matrix.timeframe }} data
+        id: fetch
+        run: |
+          cd ml
+          
+          SYMBOL_FLAG=""
+          if [ -n "${{ inputs.symbols }}" ]; then
+            SYMBOL_FLAG="--symbols ${{ inputs.symbols }}"
+          else
+            SYMBOL_FLAG="--all"
+          fi
+          
+          FORCE_FLAG=""
+          if [ "${{ inputs.force_refresh }}" = "true" ]; then
+            FORCE_FLAG="--force"
+          fi
+          
+          echo "📊 Fetching ${{ matrix.timeframe }} data..."
+          
+          if output=$(python src/scripts/alpaca_backfill_ohlc_v2.py $SYMBOL_FLAG --timeframe ${{ matrix.timeframe }} $FORCE_FLAG 2>&1); then
+            echo "$output" | tail -n 30
+            bars=$(echo "$output" | grep -oP 'Inserted \K\d+' | tail -1 || echo "0")
+            echo "bars_updated=${bars:-0}" >> $GITHUB_OUTPUT
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "bars_updated=0" >> $GITHUB_OUTPUT
+            echo "::warning::${{ matrix.timeframe }} fetch failed"
+          fi
+
+      - name: Quick validation
+        run: |
+          cd ml
+          python -c "
+          import os
+          from dotenv import load_dotenv
+          load_dotenv()
+          
+          from src.data.supabase_db import db
+          
+          symbols = '${{ inputs.symbols }}'.split(',') if '${{ inputs.symbols }}' else ['SPY', 'AAPL']
+          for sym in symbols[:3]:
+            sym = sym.strip()
+            if not sym:
+              continue
+            df = db.fetch_ohlc_bars(sym, timeframe='${{ matrix.timeframe }}', limit=5)
+            if not df.empty:
+              print(f'✅ {sym}/${{ matrix.timeframe }}: {len(df)} bars, latest: {df.ts.max()}')
+            else:
+              print(f'⚠️ {sym}/${{ matrix.timeframe }}: No data')
+          "
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## Intraday Ingestion: ${{ matrix.timeframe }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ steps.fetch.outputs.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Market State**: ${{ needs.check-market.outputs.market_state }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Bars Updated**: ${{ steps.fetch.outputs.bars_updated }}" >> $GITHUB_STEP_SUMMARY
+
+  push-metrics:
+    needs: [check-market, ingest-data]
+    if: always() && needs.ingest-data.result == 'success'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Report success metrics
+        run: |
+          echo "## Intraday Ingestion Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Market State**: ${{ needs.check-market.outputs.market_state }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "- Intraday Forecast workflow will trigger automatically" >> $GITHUB_STEP_SUMMARY
+          echo "- Check \`intraday-forecast.yml\` for forecast generation" >> $GITHUB_STEP_SUMMARY
