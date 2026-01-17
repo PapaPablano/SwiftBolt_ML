@@ -223,12 +223,14 @@ jobs:
           
           from src.data.supabase_db import db
           
+          TABLE_NAME = "ohlc_bars"
+
           try:
-              result = (
-                  db.client.table("ohlc_bars_v2").select("symbol_id").limit(1).execute()
-              )
+              result = db.client.table(TABLE_NAME).select("symbol_id").limit(1).execute()
               row_count = len(result.data or [])
-              print(f"✅ Database connection successful (rows fetched: {row_count})")
+              print(
+                  f"✅ Database connection to '{TABLE_NAME}' succeeded (rows fetched: {row_count})"
+              )
           except Exception as exc:
               print(f"❌ Database connection failed: {exc}")
               raise
