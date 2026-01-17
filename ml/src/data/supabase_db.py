@@ -1601,6 +1601,117 @@ class SupabaseDatabase:
             )
             return None
 
+    def upsert_underlying_history(
+        self,
+        symbol_id: str,
+        timeframe: str,
+        bars: list[dict[str, Any]],
+        metrics: dict[str, Any] | None = None,
+        source_provider: str = "alpaca",
+    ) -> int:
+        """
+        Upsert underlying price history and 7-day metrics.
+
+        Args:
+            symbol_id: UUID of the underlying symbol
+            timeframe: Timeframe ('m15', 'h1', 'h4', 'd1', 'w1')
+            bars: List of OHLCV bar dicts with keys: ts, open, high, low, close, volume
+            metrics: Optional dict with ret_7d, vol_7d, drawdown_7d, gap_count
+            source_provider: Data source ('alpaca', 'polygon', 'yfinance', 'tradier')
+
+        Returns:
+            Number of records upserted
+        """
+        if not bars:
+            return 0
+
+        records = []
+        for bar in bars:
+            ts = bar.get("ts")
+            if hasattr(ts, "isoformat"):
+                ts = ts.isoformat()
+
+            record = {
+                "underlying_symbol_id": symbol_id,
+                "timeframe": timeframe,
+                "ts": ts,
+                "open": float(bar.get("open", 0)) if bar.get("open") else None,
+                "high": float(bar.get("high", 0)) if bar.get("high") else None,
+                "low": float(bar.get("low", 0)) if bar.get("low") else None,
+                "close": float(bar.get("close", 0)) if bar.get("close") else None,
+                "volume": int(bar.get("volume", 0)) if bar.get("volume") else None,
+                "source_provider": source_provider,
+            }
+
+            # Add metrics if provided (apply to all bars for consistency)
+            if metrics:
+                record["ret_7d"] = metrics.get("ret_7d")
+                record["vol_7d"] = metrics.get("vol_7d")
+                record["drawdown_7d"] = metrics.get("drawdown_7d")
+                record["gap_count"] = metrics.get("gap_count")
+
+            records.append(record)
+
+        try:
+            self.client.table("options_underlying_history").upsert(
+                records,
+                on_conflict="underlying_symbol_id,timeframe,ts",
+            ).execute()
+
+            logger.info(
+                "Upserted %d underlying history records for %s (%s)",
+                len(records),
+                symbol_id,
+                timeframe,
+            )
+            return len(records)
+
+        except Exception as e:
+            logger.error(
+                "Error upserting underlying history for %s (%s): %s",
+                symbol_id,
+                timeframe,
+                e,
+            )
+            return 0
+
+    def get_underlying_metrics(
+        self,
+        symbol_id: str,
+        timeframe: str = "d1",
+    ) -> dict[str, Any] | None:
+        """
+        Get latest 7-day metrics for an underlying symbol.
+
+        Args:
+            symbol_id: UUID of the underlying symbol
+            timeframe: Timeframe ('m15', 'h1', 'h4', 'd1', 'w1')
+
+        Returns:
+            Dict with ret_7d, vol_7d, drawdown_7d, gap_count or None
+        """
+        try:
+            response = self.client.rpc(
+                "get_latest_underlying_metrics",
+                {
+                    "p_symbol_id": symbol_id,
+                    "p_timeframe": timeframe,
+                },
+            ).execute()
+
+            if response.data and len(response.data) > 0:
+                return dict(response.data[0])
+            return None
+
+        except Exception as e:
+            logger.warning(
+                "Error fetching underlying metrics for %s (%s): %s",
+                symbol_id,
+                timeframe,
+                e,
+            )
+            return None
+
     def close(self) -> None:
         """Close the Supabase client (no-op for REST API)."""
         logger.info("Supabase client closed")

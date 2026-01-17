@@ -87,3 +87,79 @@ drift_detection:
   significance_level: 0.05
   # Percentage of drifted features to trigger retraining
   drift_threshold: 0.1
+
+# ============================================================================
+# Options Momentum Ranking Configuration
+# ============================================================================
+
+options_momentum:
+  # Base framework weights (sum to 1.0)
+  base_weights:
+    momentum: 0.40
+    value: 0.35
+    greeks: 0.25
+
+  # 7-day underlying metrics feature weights
+  # These augment the momentum score with underlying price context
+  underlying_7d_metrics:
+    enabled: true
+    # Weight applied to underlying metrics within momentum calculation
+    weight_in_momentum: 0.20
+    # Individual feature contributions (sum to 1.0)
+    feature_weights:
+      return_7d: 0.40      # 7-day price return
+      volatility_7d: 0.30  # 7-day annualized volatility
+      drawdown_7d: 0.20    # Maximum drawdown over 7 days
+      gap_count: 0.10      # Number of significant gaps
+
+    # Regime-specific multipliers
+    # Applied when market is in specific trend/volatility regime
+    regime_multipliers:
+      bullish_low_vol:
+        return_7d: 1.2
+        volatility_7d: 0.8
+        drawdown_7d: 0.9
+        gap_count: 0.7
+      bullish_high_vol:
+        return_7d: 1.0
+        volatility_7d: 1.2
+        drawdown_7d: 1.1
+        gap_count: 1.0
+      bearish_low_vol:
+        return_7d: 0.8
+        volatility_7d: 0.9
+        drawdown_7d: 1.2
+        gap_count: 0.8
+      bearish_high_vol:
+        return_7d: 0.9
+        volatility_7d: 1.3
+        drawdown_7d: 1.3
+        gap_count: 1.1
+      neutral:
+        return_7d: 1.0
+        volatility_7d: 1.0
+        drawdown_7d: 1.0
+        gap_count: 1.0
+
+  # Thresholds for 7-day metrics scoring
+  scoring_thresholds:
+    # Return thresholds (percentage)
+    return_excellent: 10.0    # >10% = excellent momentum
+    return_good: 5.0          # >5% = good momentum
+    return_poor: -5.0         # <-5% = poor momentum
+    return_terrible: -10.0    # <-10% = terrible momentum
+
+    # Volatility thresholds (annualized percentage)
+    volatility_low: 15.0      # <15% = low volatility
+    volatility_normal: 30.0   # 15-30% = normal
+    volatility_high: 50.0     # >50% = high volatility
+
+    # Drawdown thresholds (percentage)
+    drawdown_minor: 3.0       # <3% = minor drawdown
+    drawdown_moderate: 7.0    # 3-7% = moderate
+    drawdown_severe: 15.0     # >15% = severe drawdown
+
+    # Gap count thresholds
+    gaps_few: 1               # <=1 gap = stable
+    gaps_moderate: 3          # 2-3 gaps = some discontinuity
+    gaps_many: 5              # >5 gaps = high discontinuity
