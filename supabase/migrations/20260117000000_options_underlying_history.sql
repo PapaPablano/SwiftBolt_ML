@@ -3,10 +3,20 @@
 -- Enables momentum ranking with underlying price context
 
 -- Create enum if not exists for data provider
-DO $$ BEGIN
+DO $$
+BEGIN
     CREATE TYPE data_provider AS ENUM ('alpaca', 'polygon', 'yfinance', 'tradier');
 EXCEPTION
-    WHEN duplicate_object THEN null;
+    WHEN duplicate_object THEN NULL;
+END $$;
+
+-- Ensure enum contains required values even if type already existed
+DO $$
+BEGIN
+    ALTER TYPE data_provider ADD VALUE IF NOT EXISTS 'alpaca';
+    ALTER TYPE data_provider ADD VALUE IF NOT EXISTS 'polygon';
+    ALTER TYPE data_provider ADD VALUE IF NOT EXISTS 'yfinance';
+    ALTER TYPE data_provider ADD VALUE IF NOT EXISTS 'tradier';
 END $$;
 
 -- Create options_underlying_history table
@@ -36,7 +46,7 @@ CREATE TABLE IF NOT EXISTS options_underlying_history (
     gap_count INTEGER DEFAULT 0, -- Number of significant gaps
 
     -- Data source tracking
-    source_provider data_provider DEFAULT 'alpaca',
+    source_provider data_provider,
 
     -- Metadata
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

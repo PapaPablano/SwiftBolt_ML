@@ -29,8 +29,8 @@ CHECK (option_b_outcome IS NULL OR option_b_outcome IN ('FULL_HIT', 'DIRECTIONAL
 CREATE INDEX IF NOT EXISTS idx_intraday_eval_option_b_outcome 
 ON ml_forecast_evaluations_intraday(option_b_outcome);
 
-CREATE INDEX IF NOT EXISTS idx_intraday_eval_option_b_created 
-ON ml_forecast_evaluations_intraday(created_at, option_b_outcome);
+CREATE INDEX IF NOT EXISTS idx_intraday_eval_option_b_evaluated 
+ON ml_forecast_evaluations_intraday(evaluated_at, option_b_outcome);
 
 -- Add Option B columns to daily forecast evaluations table (if exists)
 DO $$

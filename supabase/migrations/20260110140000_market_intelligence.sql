@@ -52,7 +52,7 @@ CREATE OR REPLACE FUNCTION is_market_open(check_date DATE DEFAULT CURRENT_DATE)
 RETURNS BOOLEAN AS $$
 DECLARE
   trading_day market_calendar%ROWTYPE;
-  current_time TIME;
+  current_time_val TIME;
 BEGIN
   SELECT * INTO trading_day FROM market_calendar WHERE date = check_date;
   
@@ -64,8 +64,8 @@ BEGIN
     RETURN FALSE;  -- Market closed (holiday/weekend)
   END IF;
   
-  current_time := CURRENT_TIME;
-  RETURN current_time BETWEEN trading_day.market_open AND trading_day.market_close;
+  current_time_val := CURRENT_TIME;
+  RETURN current_time_val BETWEEN trading_day.market_open AND trading_day.market_close;
 END;
 $$ LANGUAGE plpgsql STABLE;
 
@@ -96,7 +96,7 @@ RETURNS TABLE (
     ca.ratio,
     COUNT(b.id) as bars_affected
   FROM corporate_actions ca
-  LEFT JOIN ohlcbarsv2 b ON b.symbol_id = (
+  LEFT JOIN ohlc_bars_v2 b ON b.symbol_id = (
     SELECT id FROM symbols WHERE ticker = ca.symbol LIMIT 1
   ) AND b.ts < ca.ex_date
   WHERE ca.bars_adjusted = FALSE
@@ -116,14 +116,14 @@ RETURNS BOOLEAN AS $$
   );
 $$ LANGUAGE sql STABLE;
 
--- Add adjusted_for column to ohlcbarsv2 if it doesn't exist
+-- Add adjusted_for column to ohlc_bars_v2 if it doesn't exist
 DO $$ 
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns 
-    WHERE table_name = 'ohlcbarsv2' AND column_name = 'adjusted_for'
+    WHERE table_name = 'ohlc_bars_v2' AND column_name = 'adjusted_for'
   ) THEN
-    ALTER TABLE ohlcbarsv2 ADD COLUMN adjusted_for UUID REFERENCES corporate_actions(id);
-    CREATE INDEX idx_ohlcbarsv2_adjusted_for ON ohlcbarsv2(adjusted_for);
+    ALTER TABLE ohlc_bars_v2 ADD COLUMN adjusted_for UUID REFERENCES corporate_actions(id);
+    CREATE INDEX idx_ohlc_bars_v2_adjusted_for ON ohlc_bars_v2(adjusted_for);
   END IF;
 END $$;

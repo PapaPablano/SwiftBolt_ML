@@ -64,10 +64,14 @@ ON indicator_values(symbol_id, timeframe, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_indicator_values_ts
 ON indicator_values(ts DESC);
 
--- Partial index for recent data (most common query pattern)
-CREATE INDEX IF NOT EXISTS idx_indicator_values_recent
-ON indicator_values(symbol_id, timeframe, ts DESC)
-WHERE ts > NOW() - INTERVAL '90 days';
+
+-- Partial index for recent data (using fixed cutoff captured at migration time, 90 days prior)
+DROP INDEX IF EXISTS idx_indicator_values_recent;
+DROP INDEX IF EXISTS idx_indicator_values_ts_recent;
+
+CREATE INDEX idx_indicator_values_ts_recent
+ON indicator_values(ts)
+WHERE ts >= TIMESTAMPTZ '2025-10-19 00:00:00+00';
 
 -- ============================================================================
 -- Row Level Security

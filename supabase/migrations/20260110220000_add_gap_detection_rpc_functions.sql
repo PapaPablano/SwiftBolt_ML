@@ -33,9 +33,9 @@ BEGIN
     ORDER BY o.ts
   )
   SELECT
-    b.ts::TIMESTAMP WITH TIME ZONE as gap_start,
-    b.next_ts::TIMESTAMP WITH TIME ZONE as gap_end,
-    b.gap_hrs::DECIMAL as gap_hours
+    b.ts as gap_start,
+    b.next_ts as gap_end,
+    b.gap_hrs as gap_hours
   FROM bars_with_next b
   WHERE b.gap_hrs > p_max_gap_hours
   ORDER BY b.gap_hrs DESC;

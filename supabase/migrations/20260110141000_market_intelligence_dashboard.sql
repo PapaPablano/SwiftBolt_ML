@@ -38,7 +38,7 @@ SELECT
   COUNT(*)::TEXT,
   NULL,
   'data_quality'
-FROM ohlcbarsv2
+FROM ohlc_bars_v2
 WHERE adjusted_for IS NULL
   AND symbol_id IN (
     SELECT symbol_id 
@@ -61,7 +61,7 @@ SELECT
   COUNT(CASE WHEN b.adjusted_for = ca.id THEN 1 END) as adjusted_bars
 FROM corporate_actions ca
 LEFT JOIN symbols s ON s.ticker = ca.symbol
-LEFT JOIN ohlcbarsv2 b ON b.symbol_id = s.id AND b.ts < ca.ex_date
+LEFT JOIN ohlc_bars_v2 b ON b.symbol_id = s.id AND b.ts < ca.ex_date
 WHERE ca.action_type IN ('stock_split', 'reverse_split')
 GROUP BY ca.id, ca.symbol, ca.action_type, ca.ex_date, ca.ratio, ca.bars_adjusted, ca.adjusted_at
 ORDER BY ca.ex_date DESC;
@@ -148,7 +148,7 @@ BEGIN
       COUNT(*) as total_bars,
       COUNT(*) FILTER (WHERE adjusted_for IS NULL) as unadjusted_bars,
       (COUNT(*) FILTER (WHERE adjusted_for IS NULL)::NUMERIC / NULLIF(COUNT(*), 0) * 100) as unadjusted_pct
-    FROM ohlcbarsv2
+    FROM ohlc_bars_v2
     WHERE symbol_id IN (
       SELECT DISTINCT symbol_id 
       FROM corporate_actions 

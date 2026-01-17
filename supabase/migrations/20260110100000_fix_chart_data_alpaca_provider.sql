@@ -6,7 +6,9 @@
 -- Update get_chart_data_v2 to include Alpaca provider for intraday data
 -- ============================================================================
 
-DROP FUNCTION IF EXISTS get_chart_data_v2 CASCADE;
+DROP FUNCTION IF EXISTS get_chart_data_v2(UUID, TEXT, TIMESTAMP WITH TIME ZONE, TIMESTAMP WITH TIME ZONE) CASCADE;
+DROP FUNCTION IF EXISTS get_chart_data_v2(UUID, CHARACTER VARYING, TIMESTAMP WITH TIME ZONE, TIMESTAMP WITH TIME ZONE) CASCADE;
+DROP FUNCTION IF EXISTS get_chart_data_v2(UUID, timeframe, TIMESTAMP WITH TIME ZONE, TIMESTAMP WITH TIME ZONE) CASCADE;
 
 CREATE FUNCTION get_chart_data_v2(
   p_symbol_id UUID,
@@ -137,7 +139,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-COMMENT ON FUNCTION get_chart_data_v2 IS
+COMMENT ON FUNCTION get_chart_data_v2(uuid, character varying, timestamp with time zone, timestamp with time zone) IS
 'Returns chart data with proper data source routing including Polygon, Alpaca, and Yahoo Finance.
 Uses DISTINCT ON for efficient deduplication (avoids PostgREST 1000-row limit issues).
 For intraday timeframes (m15/h1/h4):

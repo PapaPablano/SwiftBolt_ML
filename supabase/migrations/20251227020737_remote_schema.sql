@@ -2,107 +2,90 @@ create schema if not exists "pgmq";
 
 create extension if not exists "pgmq" with schema "pgmq";
 
-drop policy "Authenticated users can read ml_features" on "public"."ml_features";
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name = 'ml_features'
+  ) THEN
+    EXECUTE 'DROP POLICY IF EXISTS "Authenticated users can read ml_features" ON public.ml_features';
+    EXECUTE 'DROP POLICY IF EXISTS "Service role manages ml_features" ON public.ml_features';
+    EXECUTE 'DROP POLICY IF EXISTS "options_ranks_select_anon" ON public.options_ranks';
+    EXECUTE 'DROP POLICY IF EXISTS "symbols_select_anon" ON public.symbols';
 
-drop policy "Service role manages ml_features" on "public"."ml_features";
+    EXECUTE 'REVOKE DELETE ON TABLE public.ml_features FROM anon';
+    EXECUTE 'REVOKE INSERT ON TABLE public.ml_features FROM anon';
+    EXECUTE 'REVOKE REFERENCES ON TABLE public.ml_features FROM anon';
+    EXECUTE 'REVOKE SELECT ON TABLE public.ml_features FROM anon';
+    EXECUTE 'REVOKE TRIGGER ON TABLE public.ml_features FROM anon';
+    EXECUTE 'REVOKE TRUNCATE ON TABLE public.ml_features FROM anon';
+    EXECUTE 'REVOKE UPDATE ON TABLE public.ml_features FROM anon';
 
-drop policy "options_ranks_select_anon" on "public"."options_ranks";
+    EXECUTE 'REVOKE DELETE ON TABLE public.ml_features FROM authenticated';
+    EXECUTE 'REVOKE INSERT ON TABLE public.ml_features FROM authenticated';
+    EXECUTE 'REVOKE REFERENCES ON TABLE public.ml_features FROM authenticated';
+    EXECUTE 'REVOKE SELECT ON TABLE public.ml_features FROM authenticated';
+    EXECUTE 'REVOKE TRIGGER ON TABLE public.ml_features FROM authenticated';
+    EXECUTE 'REVOKE TRUNCATE ON TABLE public.ml_features FROM authenticated';
+    EXECUTE 'REVOKE UPDATE ON TABLE public.ml_features FROM authenticated';
 
-drop policy "retention_policies_authenticated_read" on "public"."retention_policies";
+    EXECUTE 'REVOKE DELETE ON TABLE public.ml_features FROM service_role';
+    EXECUTE 'REVOKE INSERT ON TABLE public.ml_features FROM service_role';
+    EXECUTE 'REVOKE REFERENCES ON TABLE public.ml_features FROM service_role';
+    EXECUTE 'REVOKE SELECT ON TABLE public.ml_features FROM service_role';
+    EXECUTE 'REVOKE TRIGGER ON TABLE public.ml_features FROM service_role';
+    EXECUTE 'REVOKE TRUNCATE ON TABLE public.ml_features FROM service_role';
+    EXECUTE 'REVOKE UPDATE ON TABLE public.ml_features FROM service_role';
 
-drop policy "retention_policies_service_role_all" on "public"."retention_policies";
+    EXECUTE 'ALTER TABLE public.ml_features DROP CONSTRAINT IF EXISTS ml_features_symbol_id_fkey';
+    EXECUTE 'ALTER TABLE public.ml_features DROP CONSTRAINT IF EXISTS ml_features_unique';
+    EXECUTE 'ALTER TABLE public.ml_features DROP CONSTRAINT IF EXISTS ml_features_pkey';
+    EXECUTE 'DROP TABLE IF EXISTS public.ml_features';
+  END IF;
+END $$;
 
-drop policy "symbols_select_anon" on "public"."symbols";
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name = 'retention_policies'
+  ) THEN
+    EXECUTE 'DROP POLICY IF EXISTS "retention_policies_authenticated_read" ON public.retention_policies';
+    EXECUTE 'DROP POLICY IF EXISTS "retention_policies_service_role_all" ON public.retention_policies';
 
-revoke delete on table "public"."ml_features" from "anon";
+    EXECUTE 'REVOKE DELETE ON TABLE public.retention_policies FROM anon';
+    EXECUTE 'REVOKE INSERT ON TABLE public.retention_policies FROM anon';
+    EXECUTE 'REVOKE REFERENCES ON TABLE public.retention_policies FROM anon';
+    EXECUTE 'REVOKE SELECT ON TABLE public.retention_policies FROM anon';
+    EXECUTE 'REVOKE TRIGGER ON TABLE public.retention_policies FROM anon';
+    EXECUTE 'REVOKE TRUNCATE ON TABLE public.retention_policies FROM anon';
+    EXECUTE 'REVOKE UPDATE ON TABLE public.retention_policies FROM anon';
 
-revoke insert on table "public"."ml_features" from "anon";
+    EXECUTE 'REVOKE DELETE ON TABLE public.retention_policies FROM authenticated';
+    EXECUTE 'REVOKE INSERT ON TABLE public.retention_policies FROM authenticated';
+    EXECUTE 'REVOKE REFERENCES ON TABLE public.retention_policies FROM authenticated';
+    EXECUTE 'REVOKE SELECT ON TABLE public.retention_policies FROM authenticated';
+    EXECUTE 'REVOKE TRIGGER ON TABLE public.retention_policies FROM authenticated';
+    EXECUTE 'REVOKE TRUNCATE ON TABLE public.retention_policies FROM authenticated';
+    EXECUTE 'REVOKE UPDATE ON TABLE public.retention_policies FROM authenticated';
 
-revoke references on table "public"."ml_features" from "anon";
+    EXECUTE 'REVOKE DELETE ON TABLE public.retention_policies FROM service_role';
+    EXECUTE 'REVOKE INSERT ON TABLE public.retention_policies FROM service_role';
+    EXECUTE 'REVOKE REFERENCES ON TABLE public.retention_policies FROM service_role';
+    EXECUTE 'REVOKE SELECT ON TABLE public.retention_policies FROM service_role';
+    EXECUTE 'REVOKE TRIGGER ON TABLE public.retention_policies FROM service_role';
+    EXECUTE 'REVOKE TRUNCATE ON TABLE public.retention_policies FROM service_role';
+    EXECUTE 'REVOKE UPDATE ON TABLE public.retention_policies FROM service_role';
 
-revoke select on table "public"."ml_features" from "anon";
-
-revoke trigger on table "public"."ml_features" from "anon";
-
-revoke truncate on table "public"."ml_features" from "anon";
-
-revoke update on table "public"."ml_features" from "anon";
-
-revoke delete on table "public"."ml_features" from "authenticated";
-
-revoke insert on table "public"."ml_features" from "authenticated";
-
-revoke references on table "public"."ml_features" from "authenticated";
-
-revoke select on table "public"."ml_features" from "authenticated";
-
-revoke trigger on table "public"."ml_features" from "authenticated";
-
-revoke truncate on table "public"."ml_features" from "authenticated";
-
-revoke update on table "public"."ml_features" from "authenticated";
-
-revoke delete on table "public"."ml_features" from "service_role";
-
-revoke insert on table "public"."ml_features" from "service_role";
-
-revoke references on table "public"."ml_features" from "service_role";
-
-revoke select on table "public"."ml_features" from "service_role";
-
-revoke trigger on table "public"."ml_features" from "service_role";
-
-revoke truncate on table "public"."ml_features" from "service_role";
-
-revoke update on table "public"."ml_features" from "service_role";
-
-revoke delete on table "public"."retention_policies" from "anon";
-
-revoke insert on table "public"."retention_policies" from "anon";
-
-revoke references on table "public"."retention_policies" from "anon";
-
-revoke select on table "public"."retention_policies" from "anon";
-
-revoke trigger on table "public"."retention_policies" from "anon";
-
-revoke truncate on table "public"."retention_policies" from "anon";
-
-revoke update on table "public"."retention_policies" from "anon";
-
-revoke delete on table "public"."retention_policies" from "authenticated";
-
-revoke insert on table "public"."retention_policies" from "authenticated";
-
-revoke references on table "public"."retention_policies" from "authenticated";
-
-revoke select on table "public"."retention_policies" from "authenticated";
-
-revoke trigger on table "public"."retention_policies" from "authenticated";
-
-revoke truncate on table "public"."retention_policies" from "authenticated";
-
-revoke update on table "public"."retention_policies" from "authenticated";
-
-revoke delete on table "public"."retention_policies" from "service_role";
-
-revoke insert on table "public"."retention_policies" from "service_role";
-
-revoke references on table "public"."retention_policies" from "service_role";
-
-revoke select on table "public"."retention_policies" from "service_role";
-
-revoke trigger on table "public"."retention_policies" from "service_role";
-
-revoke truncate on table "public"."retention_policies" from "service_role";
-
-revoke update on table "public"."retention_policies" from "service_role";
-
-alter table "public"."ml_features" drop constraint "ml_features_symbol_id_fkey";
-
-alter table "public"."ml_features" drop constraint "ml_features_unique";
-
-alter table "public"."retention_policies" drop constraint "retention_policies_table_name_key";
+    EXECUTE 'ALTER TABLE public.retention_policies DROP CONSTRAINT IF EXISTS retention_policies_table_name_key';
+    EXECUTE 'ALTER TABLE public.retention_policies DROP CONSTRAINT IF EXISTS retention_policies_pkey';
+    EXECUTE 'DROP TABLE IF EXISTS public.retention_policies';
+  END IF;
+END $$;
 
 alter table "public"."supertrend_signals" drop constraint "supertrend_signals_outcome_check";
 
@@ -132,10 +115,6 @@ drop function if exists "public"."worker_get_ranking_job"();
 
 drop view if exists "public"."strike_price_stats";
 
-alter table "public"."ml_features" drop constraint "ml_features_pkey";
-
-alter table "public"."retention_policies" drop constraint "retention_policies_pkey";
-
 drop index if exists "public"."idx_forecast_jobs_stale_check";
 
 drop index if exists "public"."idx_forecast_jobs_status_priority";
@@ -160,18 +139,6 @@ drop index if exists "public"."idx_ranking_jobs_stale_check";
 
 drop index if exists "public"."idx_ranking_jobs_symbol_status";
 
-drop index if exists "public"."ml_features_pkey";
-
-drop index if exists "public"."ml_features_unique";
-
-drop index if exists "public"."retention_policies_pkey";
-
-drop index if exists "public"."retention_policies_table_name_key";
-
-drop table "public"."ml_features";
-
-drop table "public"."retention_policies";
-
 alter table "public"."ml_forecasts" drop column "composite_signal";
 
 alter table "public"."ml_forecasts" drop column "indicator_scores";
@@ -184,7 +151,7 @@ alter table "public"."ml_forecasts" alter column "training_stats" set not null;
 
 alter table "public"."options_chain_snapshots" add column "ml_score" numeric(5,4);
 
-alter table "public"."options_price_history" drop column "snapshot_date";
+alter table "public"."options_price_history" drop column if exists "snapshot_date";
 
 alter table "public"."options_ranks" drop column "supertrend_factor";
 

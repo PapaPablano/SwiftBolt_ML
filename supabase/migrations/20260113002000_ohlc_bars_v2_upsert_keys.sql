@@ -1,42 +1,6 @@
 DROP VIEW IF EXISTS ohlc_bars_unified;
 DROP VIEW IF EXISTS provider_coverage_summary;
 
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'ohlc_bars_v2'
-      AND column_name = 'ts'
-      AND data_type = 'timestamp without time zone'
-  ) THEN
-    EXECUTE 'ALTER TABLE ohlc_bars_v2 ALTER COLUMN ts TYPE timestamptz USING ts AT TIME ZONE ''UTC''';
-  END IF;
-
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'ohlc_bars_v2'
-      AND column_name = 'fetched_at'
-      AND data_type = 'timestamp without time zone'
-  ) THEN
-    EXECUTE 'ALTER TABLE ohlc_bars_v2 ALTER COLUMN fetched_at TYPE timestamptz USING fetched_at AT TIME ZONE ''UTC''';
-  END IF;
-
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'ohlc_bars_v2'
-      AND column_name = 'updated_at'
-      AND data_type = 'timestamp without time zone'
-  ) THEN
-    EXECUTE 'ALTER TABLE ohlc_bars_v2 ALTER COLUMN updated_at TYPE timestamptz USING updated_at AT TIME ZONE ''UTC''';
-  END IF;
-END $$;
-
 WITH ranked AS (
   SELECT
     id,
