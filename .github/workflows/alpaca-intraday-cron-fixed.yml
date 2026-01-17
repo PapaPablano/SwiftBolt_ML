@@ -223,9 +223,15 @@ jobs:
           
           from src.data.supabase_db import db
           
-          # Test connection
-          result = db.client.rpc('version').execute()
-          print(f"✅ Database connection successful: {result.data}")
+          try:
+              result = (
+                  db.client.table("ohlc_bars_v2").select("symbol_id").limit(1).execute()
+              )
+              row_count = len(result.data or [])
+              print(f"✅ Database connection successful (rows fetched: {row_count})")
+          except Exception as exc:
+              print(f"❌ Database connection failed: {exc}")
+              raise
           PY
 
       - name: Fetch intraday data with retry
