@@ -302,13 +302,16 @@ class TestModuleFunctions:
             computed_at=datetime.now(timezone.utc),
         )
 
+        # Create a new client instance for testing (don't use singleton)
+        client = AlpacaUnderlyingHistoryClient()
+
+        # Patch the instance method directly
         with patch.object(
-            AlpacaUnderlyingHistoryClient,
+            client,
             "fetch_7day_metrics",
             new_callable=AsyncMock,
             return_value=mock_metrics,
         ):
-            client = get_client()
             result = await client.fetch_7day_metrics("AAPL", "d1")
             assert result.symbol == "AAPL"
             assert result.return_7d == 5.0
