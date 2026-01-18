@@ -127,6 +127,14 @@ jobs:
           alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
           alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
 
+      - name: Resolve processing universe
+        env:
+          INPUT_SYMBOLS: ${{ inputs.symbols }}
+          INPUT_TIMEFRAMES: ${{ inputs.timeframes || 'm15,h1' }}
+        run: |
+          cd ml
+          python -m src.scripts.resolve_universe --output env >> $GITHUB_ENV
+
       - name: Fetch intraday data
         id: fetch
         env:
@@ -136,11 +144,10 @@ jobs:
         run: |
           cd ml
           
-          SYMBOL_FLAG=""
-          if [ -n "$INPUT_SYMBOLS" ]; then
-            SYMBOL_FLAG="--symbols $INPUT_SYMBOLS"
-          else
-            SYMBOL_FLAG="--all"
+          SYMBOL_LIST=${SWIFTBOLT_SYMBOLS:-$INPUT_SYMBOLS}
+          SYMBOL_FLAG="--all"
+          if [ -n "$SYMBOL_LIST" ]; then
+            SYMBOL_FLAG="--symbols $SYMBOL_LIST"
           fi
           
           FORCE_FLAG=""
@@ -152,7 +159,8 @@ jobs:
           failed_timeframes=""
           
           # Parse and iterate over timeframes
-          IFS=',' read -ra TIMEFRAMES <<< "$INPUT_TIMEFRAMES"
+          TIMEFRAME_CSV=${SWIFTBOLT_TIMEFRAMES:-$INPUT_TIMEFRAMES}
+          IFS=',' read -ra TIMEFRAMES <<< "$TIMEFRAME_CSV"
           for tf in "${TIMEFRAMES[@]}"; do
             tf=$(echo "$tf" | xargs)  # Trim whitespace
             [ -z "$tf" ] && continue
@@ -181,9 +189,6 @@ jobs:
           fi
 
       - name: Quick validation
-        env:
-          INPUT_TIMEFRAMES: ${{ inputs.timeframes || 'm15,h1' }}
-          INPUT_SYMBOLS: ${{ inputs.symbols }}
         run: |
           cd ml
           python -c "
@@ -192,11 +197,11 @@ jobs:
           load_dotenv()
           
           from src.data.supabase_db import db
-          
-          symbols_input = os.environ.get('INPUT_SYMBOLS', '')
-          symbols = symbols_input.split(',') if symbols_input else ['SPY', 'AAPL']
-          timeframes_input = os.environ.get('INPUT_TIMEFRAMES', 'm15,h1')
-          timeframes = [tf.strip() for tf in timeframes_input.split(',') if tf.strip()]
+          from src.scripts.universe_utils import get_symbol_universe
+
+          universe = get_symbol_universe()
+          symbols = universe.get('symbols', []) or ['SPY', 'AAPL']
+          timeframes = universe.get('timeframes', []) or ['m15', 'h1']
           
           for sym in symbols[:3]:
             sym = sym.strip()

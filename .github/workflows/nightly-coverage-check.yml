@@ -1,0 +1,64 @@
+name: Nightly Coverage Check
+
+on:
+  schedule:
+    - cron: "0 5 * * *"  # 5:00 UTC nightly (11:00 PM CST)
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-coverage-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  coverage-audit:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - name: Run coverage RPC
+        id: coverage
+        run: |
+          set -euo pipefail
+          PAYLOAD='{ "p_max_age_hours": 6, "p_min_bars_24h": 5 }'
+          RESPONSE=$(curl -sS \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" \
+            -H "Content-Type: application/json" \
+            -X POST \
+            -d "$PAYLOAD" \
+            "${SUPABASE_URL}/rest/v1/rpc/get_watchlist_coverage_gaps")
+
+          echo "$RESPONSE" | jq '.' > coverage_report.json
+          COUNT=$(echo "$RESPONSE" | jq 'length')
+
+          echo "gap_count=$COUNT" >> "$GITHUB_OUTPUT"
+
+          if [ "$COUNT" -gt 0 ]; then
+            echo "::warning::$COUNT symbol/timeframe pairs exceed coverage SLAs"
+            exit 1
+          fi
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-coverage-report-${{ github.run_number }}
+          path: coverage_report.json
+          retention-days: 7
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          GAP_COUNT="${{ steps.coverage.outputs.gap_count || '0' }}"
+          echo "## Nightly Coverage Check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Gap Count**: $GAP_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "- **Thresholds**: max age 6h, min Alpaca bars 5/24h" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "$GAP_COUNT" != "0" ]; then
+            echo "### Action Items" >> $GITHUB_STEP_SUMMARY
+            echo "- Review artifact nightly-coverage-report-${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Inspect affected symbols listed in the artifact JSON" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "All watchlist symbols meet the configured coverage thresholds." >> $GITHUB_STEP_SUMMARY

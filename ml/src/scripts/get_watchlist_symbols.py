@@ -6,7 +6,7 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.data.supabase_db import db  # noqa: E402
+from src.scripts.universe_utils import resolve_symbol_list  # noqa: E402
 
 
 def get_watchlist_symbols() -> list[str]:
@@ -17,22 +17,8 @@ def get_watchlist_symbols() -> list[str]:
         List of unique ticker symbols
     """
     try:
-        response = db.client.table("watchlist_items").select("symbol_id(ticker)").execute()
-
-        if not response.data:
-            return []
-
-        # Get unique tickers
-        symbols = sorted(
-            set(
-                row.get("symbol_id", {}).get("ticker")
-                for row in response.data
-                if row.get("symbol_id", {}).get("ticker")
-            )
-        )
-        return symbols
-
-    except Exception as e:
+        return resolve_symbol_list()
+    except Exception as e:  # pragma: no cover - CLI helper fallback
         print(f"Error fetching watchlist symbols: {e}", file=sys.stderr)
         return []
 

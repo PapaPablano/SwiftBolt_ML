@@ -116,6 +116,13 @@ jobs:
           alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
           alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
 
+      - name: Resolve processing universe
+        env:
+          INPUT_SYMBOLS: ${{ inputs.symbol }}
+        run: |
+          cd ml
+          python -m src.scripts.resolve_universe --output env >> $GITHUB_ENV
+
       - name: Generate ML forecasts
         env:
           USE_ENSEMBLE_FORECASTER: "true"
@@ -163,6 +170,13 @@ jobs:
           database-url: ${{ secrets.DATABASE_URL }}
           alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
           alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
+
+      - name: Resolve processing universe
+        env:
+          INPUT_SYMBOLS: ${{ inputs.symbol }}
+        run: |
+          cd ml
+          python -m src.scripts.resolve_universe --output env >> $GITHUB_ENV
 
       - name: Process options data
         run: |
@@ -217,6 +231,13 @@ jobs:
           database-url: ${{ secrets.DATABASE_URL }}
           alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
           alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
+
+      - name: Resolve processing universe
+        env:
+          INPUT_SYMBOLS: ${{ inputs.symbol }}
+        run: |
+          cd ml
+          python -m src.scripts.resolve_universe --output env >> $GITHUB_ENV
 
       - name: Install PostgreSQL client
         run: |
@@ -316,6 +337,13 @@ jobs:
           alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
           alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
 
+      - name: Resolve processing universe
+        env:
+          INPUT_SYMBOLS: ${{ inputs.symbol }}
+        run: |
+          cd ml
+          python -m src.scripts.resolve_universe --output env >> $GITHUB_ENV
+
       - name: Run smoke tests
         run: |
           cd ml
@@ -344,6 +372,55 @@ jobs:
           
           print('✅ Smoke tests passed')
           "
+
+      - name: Log provider coverage snapshot
+        if: always()
+        env:
+          WORKFLOW_SYMBOL: ${{ inputs.symbol }}
+        run: >-
+          set -euo pipefail;
+          SYMBOL_SOURCE="${WORKFLOW_SYMBOL:-${SWIFTBOLT_SYMBOLS:-}}";
+          SYMBOL_SOURCE="${SYMBOL_SOURCE#,}";
+          SYMBOL="${SYMBOL_SOURCE%%,*}";
+          if [ -z "$SYMBOL" ]; then SYMBOL="SPY"; fi;
+          TIMEFRAME_SOURCE="${SWIFTBOLT_TIMEFRAMES:-m15,h1,h4,d1,w1}";
+          SUMMARY_FILE="${GITHUB_STEP_SUMMARY:-/tmp/provider-coverage.txt}";
+          {
+            echo "## Provider Coverage Snapshot";
+            echo "";
+            echo "| Symbol | Timeframe | Hist Provider | Hist Bars | Intraday Provider | Intraday Bars |";
+            echo "|--------|-----------|---------------|-----------|-------------------|---------------|";
+          } >> "$SUMMARY_FILE";
+          IFS=',' read -ra TIMEFRAMES <<< "$TIMEFRAME_SOURCE";
+          for TF in "${TIMEFRAMES[@]}"; do
+            TF_TRIMMED="$(echo "$TF" | xargs)";
+            [ -z "$TF_TRIMMED" ] && continue;
+            case "$TF_TRIMMED" in
+              w1) DAYS=730 ;;
+              d1) DAYS=365 ;;
+              *) DAYS=120 ;;
+            esac;
+            PAYLOAD=$(printf '{"symbol":"%s","timeframe":"%s","days":%s}' "$SYMBOL" "$TF_TRIMMED" "$DAYS");
+            RESPONSE=$(curl -sS \
+              -H "apikey: ${SUPABASE_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_KEY}" \
+              -H "Content-Type: application/json" \
+              -X POST \
+              -d "$PAYLOAD" \
+              "${SUPABASE_URL}/functions/v1/chart-data-v2") || true;
+            if [ -z "$RESPONSE" ]; then
+              printf "| %s | %s | %s | %s | %s | %s |\n" "$SYMBOL" "$TF_TRIMMED" "error" "0" "error" "0" >> "$SUMMARY_FILE";
+              echo "::warning::No response for $SYMBOL/$TF_TRIMMED";
+              continue;
+            fi;
+            HIST_PROVIDER=$(echo "$RESPONSE" | jq -r '.layers.historical.provider // "unknown"') || HIST_PROVIDER="unknown";
+            HIST_COUNT=$(echo "$RESPONSE" | jq -r '.layers.historical.count // 0' || echo "0");
+            INTRA_PROVIDER=$(echo "$RESPONSE" | jq -r '.layers.intraday.provider // "unknown"') || INTRA_PROVIDER="unknown";
+            INTRA_COUNT=$(echo "$RESPONSE" | jq -r '.layers.intraday.count // 0' || echo "0");
+            printf "| %s | %s | %s | %s | %s | %s |\n" \
+              "$SYMBOL" "$TF_TRIMMED" "$HIST_PROVIDER" "$HIST_COUNT" "$INTRA_PROVIDER" "$INTRA_COUNT" >> "$SUMMARY_FILE";
+            echo "::notice::[$SYMBOL/$TF_TRIMMED] historical=$HIST_PROVIDER($HIST_COUNT) intraday=$INTRA_PROVIDER($INTRA_COUNT)";
+          done
 
       - name: Final orchestration summary
         if: always()

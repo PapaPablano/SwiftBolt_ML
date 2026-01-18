@@ -210,6 +210,16 @@ jobs:
           echo "ALPACA_API_KEY=${ALPACA_API_KEY}" >> "$GITHUB_ENV"
           echo "ALPACA_API_SECRET=${ALPACA_API_SECRET}" >> "$GITHUB_ENV"
 
+      - name: Resolve processing universe
+        env:
+          INPUT_SYMBOLS: ${{ github.event.inputs.symbols }}
+          INPUT_TIMEFRAMES: ${{ github.event.inputs.timeframes }}
+        run: |
+          tmpfile=$(mktemp)
+          cd ml
+          python -m src.scripts.resolve_universe --output env > "$tmpfile"
+          cat "$tmpfile" >> $GITHUB_ENV
+
       - name: Test database connection
         run: |
           cd ml
@@ -261,28 +271,12 @@ jobs:
            
            sys.path.insert(0, str(repo_root))
            from src.data.supabase_db import db
-           
-           def resolve_symbols() -> list[str]:
-               symbols_input = os.getenv("INPUT_SYMBOLS", "")
-               symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
-               if symbols:
-                   return symbols
-               try:
-                   from src.scripts.get_watchlist_symbols import get_watchlist_symbols
-                   symbols = get_watchlist_symbols()
-                   if symbols:
-                       return symbols
-               except Exception as exc:
-                   print(f"Warning: could not fetch watchlist symbols: {exc}")
-               return ["AAPL", "SPY", "TSLA"]
-           
-           def resolve_timeframes() -> list[str]:
-               tf_raw = os.getenv("INPUT_TIMEFRAMES", "m15,h1,h4")
-               return [t.strip() for t in tf_raw.split(",") if t.strip()]
-           
-           symbols = resolve_symbols()
-           timeframes = resolve_timeframes()
-           
+           from src.scripts.universe_utils import get_symbol_universe
+
+           universe = get_symbol_universe()
+           symbols = universe.get("symbols", [])
+           timeframes = universe.get("timeframes", [])
+
            summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
            if summary_path:
                with open(summary_path, "a", encoding="utf-8") as fh:
@@ -421,24 +415,18 @@ jobs:
           load_dotenv(repo_root / ".env")
           
           # Get symbols from input or watchlist
-          symbols_input = os.getenv("INPUT_SYMBOLS", "")
-          if symbols_input:
-              symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
-          else:
-              try:
-                  from src.scripts.get_watchlist_symbols import get_watchlist_symbols
-                  symbols = get_watchlist_symbols()
-              except:
-                  symbols = ["AAPL", "SPY", "TSLA"]
-          
-          timeframes = ['m15', 'h1', 'h4']
+          from src.scripts.universe_utils import get_symbol_universe
+
+          universe = get_symbol_universe()
+          symbols = universe.get('symbols', [])
+          timeframes = universe.get('timeframes', [])
           total_indicators = 0
-          
+
           from src.data.supabase_db import db
           from datetime import datetime, timedelta
           
           for sym in symbols[:5]:  # Limit to first 5 symbols for performance
-              for tf in timeframes:
+              for tf in timeframes[:3]:
                   try:
                       # Get latest bar to calculate indicators for
                       df = db.fetch_ohlc_bars(sym, timeframe=tf, limit=200)
