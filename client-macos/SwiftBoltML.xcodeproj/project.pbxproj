@@ -264,7 +264,6 @@
 		A5000004233456780000004 /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				F670CAD82F1C882A00B4A7C2 /* MultiTimeframeForecastView.swift */,
 				MF0003012345678900000001 /* Components */,
 				F6370B202F13723F00011F78 /* DataQualityBadge.swift */,
 				F6161BBE2EF2D49A0065ABA1 /* OptionRankDetailView.swift */,
@@ -300,6 +299,7 @@
 				F050475A57EE1E86842D9FB8 /* WebChartView.swift */,
 				WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */,
 				7156051C39BF4F2F832E38AA /* HydrationBanner.swift */,
+				F670CAD82F1C882A00B4A7C2 /* MultiTimeframeForecastView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";

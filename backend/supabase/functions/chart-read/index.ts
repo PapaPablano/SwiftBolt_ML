@@ -831,7 +831,7 @@ serve(async (req: Request): Promise<Response> => {
           const expiryCutoffIso = new Date(Date.now() - INTRADAY_FORECAST_EXPIRY_GRACE_SECONDS * 1000).toISOString();
 
           const pathHorizon = "7d";
-          const { data: intradayPath } = await supabase
+          const { data: intradayPathFresh } = await supabase
             .from("ml_forecast_paths_intraday")
             .select("*")
             .eq("symbol_id", symbolId)
@@ -842,7 +842,7 @@ serve(async (req: Request): Promise<Response> => {
             .limit(1)
             .single();
 
-          const { data: intradayForecast } = await supabase
+          const { data: intradayForecastFresh } = await supabase
             .from("ml_forecasts_intraday")
             .select("*")
             .eq("symbol_id", symbolId)
@@ -852,6 +852,26 @@ serve(async (req: Request): Promise<Response> => {
             .order("created_at", { ascending: false })
             .limit(1)
             .single();
+
+          const intradayPath = intradayPathFresh ?? (await supabase
+            .from("ml_forecast_paths_intraday")
+            .select("*")
+            .eq("symbol_id", symbolId)
+            .eq("timeframe", timeframe)
+            .eq("horizon", pathHorizon)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single()).data;
+
+          const intradayForecast = intradayForecastFresh ?? (await supabase
+            .from("ml_forecasts_intraday")
+            .select("*")
+            .eq("symbol_id", symbolId)
+            .eq("timeframe", timeframe)
+            .eq("horizon", horizon)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single()).data;
 
           if (intradayForecast || intradayPath) {
             const confidenceBase = intradayForecast?.confidence ?? intradayPath?.confidence ?? 0.5;

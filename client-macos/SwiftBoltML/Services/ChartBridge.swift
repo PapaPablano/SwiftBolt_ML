@@ -10,7 +10,7 @@ enum ChartCommand: Encodable {
     case setCandles(data: [LightweightCandle])
     case updateCandle(candle: LightweightCandle)
     case setLine(id: String, data: [LightweightDataPoint], options: LineOptions?)
-    case setForecastCandles(data: [LightweightCandle])
+    case setForecastCandles(data: [LightweightCandle], direction: String?)
     case setForecast(midData: [LightweightDataPoint], upperData: [LightweightDataPoint], lowerData: [LightweightDataPoint], options: ForecastOptions?)
     case setMarkers(seriesId: String, markers: [ChartMarker])
     case addPriceLine(seriesId: String, price: Double, options: PriceLineOptions?)
@@ -65,9 +65,10 @@ enum ChartCommand: Encodable {
             try container.encode(id, forKey: .id)
             try container.encode(data, forKey: .data)
             try container.encodeIfPresent(options, forKey: .options)
-        case .setForecastCandles(let data):
+        case .setForecastCandles(let data, let direction):
             try container.encode("setForecastCandles", forKey: .type)
             try container.encode(data, forKey: .data)
+            try container.encodeIfPresent(direction, forKey: .direction)
         case .setForecast(let midData, let upperData, let lowerData, let options):
             try container.encode("setForecast", forKey: .type)
             try container.encode(midData, forKey: .midData)
@@ -793,7 +794,10 @@ final class ChartBridge: NSObject, ObservableObject {
             )
         }
         
-        send(.setForecastCandles(data: candles))
+        let firstClose = sortedBars.first?.close ?? 0
+        let lastClose = sortedBars.last?.close ?? 0
+        let direction = lastClose >= firstClose ? "bullish" : "bearish"
+        send(.setForecastCandles(data: candles, direction: direction))
     }
     
     /// Set forecast layer (dashed line with confidence bands)

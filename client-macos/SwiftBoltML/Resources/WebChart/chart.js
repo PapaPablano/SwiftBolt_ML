@@ -2049,7 +2049,7 @@
         /**
          * Set forecast as overlay candlestick series (intraday-specific)
          */
-        setForecastCandles: function(data) {
+        setForecastCandles: function(data, direction) {
             if (!state.chart) {
                 console.error('[ChartJS] Chart not initialized');
                 return;
@@ -2070,8 +2070,32 @@
                 });
             }
 
+            const currentPrice = state.originalBars?.length
+                ? state.originalBars[state.originalBars.length - 1].close
+                : null;
+
+            const isBullish = (direction || '').toLowerCase() === 'bullish';
+            const isBearish = (direction || '').toLowerCase() === 'bearish';
+
             // Sort data by time and apply
-            const sortedData = [...data].sort((a, b) => a.time - b.time);
+            const sortedData = [...data].sort((a, b) => a.time - b.time).map(candle => {
+                if (!Number.isFinite(currentPrice) || (!isBullish && !isBearish)) {
+                    return candle;
+                }
+
+                const hide = isBullish ? candle.close < currentPrice : candle.close > currentPrice;
+                if (!hide) {
+                    return candle;
+                }
+
+                return {
+                    ...candle,
+                    color: 'rgba(0,0,0,0)',
+                    borderColor: 'rgba(0,0,0,0)',
+                    wickColor: 'rgba(0,0,0,0)'
+                };
+            });
+
             state.series.forecast_candles.setData(sortedData);
 
             console.log('[ChartJS] Forecast candles set:', sortedData.length);
@@ -2770,7 +2794,7 @@
                         this.setForecast(cmd.midData, cmd.upperData, cmd.lowerData, cmd.options || {});
                         break;
                     case 'setForecastCandles':
-                        this.setForecastCandles(cmd.data);
+                        this.setForecastCandles(cmd.data, cmd.direction);
                         break;
                     case 'setMarkers':
                         this.setMarkers(cmd.seriesId, cmd.markers);
