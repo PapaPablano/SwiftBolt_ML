@@ -41,6 +41,7 @@ enum ChartCommand: Encodable {
     // Custom encoding to match JS API
     private enum CodingKeys: String, CodingKey {
         case type, options, data, candle, id, midData, upperData, lowerData
+        case direction
         case seriesId, markers, price, from, to
         case line, signal, histogram, kData, dData, jData, adxData, plusDI, minusDI, panel
         case trendData, strengthData, resistance, support, levels, category

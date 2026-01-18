@@ -2070,20 +2070,29 @@
                 });
             }
 
+            const sortedData = [...data].sort((a, b) => a.time - b.time);
+            const forecastDirection = (direction || '').toLowerCase();
+            const derivedDirection = sortedData.length
+                ? (sortedData[sortedData.length - 1].close >= sortedData[0].close ? 'bullish' : 'bearish')
+                : '';
+            const resolvedDirection = forecastDirection || derivedDirection;
+            const isBullish = resolvedDirection === 'bullish';
+            const isBearish = resolvedDirection === 'bearish';
+
             const currentPrice = state.originalBars?.length
                 ? state.originalBars[state.originalBars.length - 1].close
-                : null;
+                : (sortedData.length ? sortedData[0].close : null);
 
-            const isBullish = (direction || '').toLowerCase() === 'bullish';
-            const isBearish = (direction || '').toLowerCase() === 'bearish';
-
-            // Sort data by time and apply
-            const sortedData = [...data].sort((a, b) => a.time - b.time).map(candle => {
+            // Apply transparency based on trend direction + current price
+            const styledData = sortedData.map(candle => {
                 if (!Number.isFinite(currentPrice) || (!isBullish && !isBearish)) {
                     return candle;
                 }
 
-                const hide = isBullish ? candle.close < currentPrice : candle.close > currentPrice;
+                const hide = isBullish
+                    ? candle.low < currentPrice
+                    : candle.high > currentPrice;
+
                 if (!hide) {
                     return candle;
                 }
@@ -2096,9 +2105,9 @@
                 };
             });
 
-            state.series.forecast_candles.setData(sortedData);
+            state.series.forecast_candles.setData(styledData);
 
-            console.log('[ChartJS] Forecast candles set:', sortedData.length);
+            console.log('[ChartJS] Forecast candles set:', styledData.length);
         },
 
         /**
