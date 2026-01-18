@@ -28,6 +28,7 @@ class SupabaseDatabase:
         symbol: str,
         timeframe: str = "d1",
         limit: int | None = None,
+        providers: list[str] | tuple[str, ...] | None = None,
     ) -> pd.DataFrame:
         """
         Fetch OHLC bars for a symbol from the database.
@@ -51,44 +52,74 @@ class SupabaseDatabase:
             )
             symbol_id = symbol_response.data["id"]
 
-            # Fetch OHLC bars (Alpaca data only, exclude forecasts)
-            query = (
-                self.client.table("ohlc_bars_v2")
-                .select("ts, open, high, low, close, volume")
-                .eq("symbol_id", symbol_id)
-                .eq("timeframe", timeframe)
-                .eq("provider", "alpaca")
-                .eq("is_forecast", False)
-                .order("ts", desc=True)
+            preferred_providers = list(
+                dict.fromkeys(
+                    providers
+                    or [
+                        "alpaca",
+                        "polygon",
+                        "yfinance",
+                    ]
+                )
             )
+            # Final fallback removes provider filter entirely
+            preferred_providers.append(None)
 
-            if limit:
-                query = query.limit(limit)
+            attempts: list[str] = []
+            last_df: pd.DataFrame = pd.DataFrame()
 
-            response = query.execute()
+            for provider in preferred_providers:
+                query = (
+                    self.client.table("ohlc_bars_v2")
+                    .select("ts, open, high, low, close, volume")
+                    .eq("symbol_id", symbol_id)
+                    .eq("timeframe", timeframe)
+                    .eq("is_forecast", False)
+                    .order("ts", desc=True)
+                )
 
-            # Convert to DataFrame
-            df = pd.DataFrame(response.data)
+                if provider:
+                    query = query.eq("provider", provider)
+                    attempts.append(provider)
+                else:
+                    attempts.append("any")
 
-            if df.empty:
-                logger.warning(
-                    "No OHLC bars found for %s (%s)",
+                if limit:
+                    query = query.limit(limit)
+
+                response = query.execute()
+                df = pd.DataFrame(response.data)
+                df.attrs["provider"] = provider or "any"
+                last_df = df
+
+                if df.empty:
+                    logger.debug(
+                        "No OHLC bars for %s (%s) via provider=%s",
+                        symbol,
+                        timeframe,
+                        provider or "any",
+                    )
+                    continue
+
+                df["ts"] = pd.to_datetime(df["ts"])
+                df = df.sort_values("ts").reset_index(drop=True)
+                df.attrs["provider"] = provider or "any"
+                logger.info(
+                    "Fetched %s bars for %s (%s) via provider=%s",
+                    len(df),
                     symbol,
                     timeframe,
+                    provider or "any",
                 )
                 return df
 
-            # Convert timestamp to datetime and sort ascending
-            df["ts"] = pd.to_datetime(df["ts"])
-            df = df.sort_values("ts").reset_index(drop=True)
-
-            logger.info(
-                "Fetched %s bars for %s (%s)",
-                len(df),
+            logger.warning(
+                "No OHLC bars found for %s (%s) after trying providers: %s",
                 symbol,
                 timeframe,
+                ", ".join(attempts),
             )
-            return df
+            return last_df
 
         except Exception as e:
             logger.error(
