@@ -261,57 +261,57 @@ jobs:
              echo "Market state is '$MARKET_STATE' and force_refresh is false. Showing data snapshot."
 
              python - <<-'PY'
-           import os
-           import sys
-           from pathlib import Path
-           from dotenv import load_dotenv
-           
-           repo_root = Path.cwd().parent
-           load_dotenv(repo_root / ".env")
-           
-           sys.path.insert(0, str(repo_root))
-           from src.data.supabase_db import db
-           from src.scripts.universe_utils import get_symbol_universe
+          import os
+          import sys
+          from pathlib import Path
+          from dotenv import load_dotenv
+          
+          repo_root = Path.cwd().parent
+          load_dotenv(repo_root / ".env")
+          
+          sys.path.insert(0, str(repo_root))
+          from src.data.supabase_db import db
+          from src.scripts.universe_utils import get_symbol_universe
 
-           universe = get_symbol_universe()
-           symbols = universe.get("symbols", [])
-           timeframes = universe.get("timeframes", [])
+          universe = get_symbol_universe()
+          symbols = universe.get("symbols", [])
+          timeframes = universe.get("timeframes", [])
 
-           summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-           if summary_path:
-               with open(summary_path, "a", encoding="utf-8") as fh:
-                   fh.write("## Supabase Data Snapshot\n")
-                   fh.write("| Symbol | Timeframe | Bars | Latest Timestamp | Age (hours) |\n")
-                   fh.write("|--------|-----------|------|------------------|-------------|\n")
-           
-           from datetime import datetime, timezone
-           now = datetime.now(timezone.utc)
-           
-           for sym in symbols:
-               for tf in timeframes:
-                   try:
-                       df = db.fetch_ohlc_bars(sym, timeframe=tf, limit=100)
-                       count = len(df)
-                       latest = df["ts"].max() if not df.empty else None
-                       latest_iso = latest.isoformat() if latest is not None else "n/a"
-                       
-                       # Calculate age
-                       if latest is not None:
-                           age_hours = (now - latest).total_seconds() / 3600
-                           age_str = f"{age_hours:.1f}"
-                       else:
-                           age_str = "n/a"
-                       
-                       print(f"{sym}/{tf}: {count} bars (latest={latest_iso}, age={age_str}h)")
-                       if summary_path:
-                           with open(summary_path, "a", encoding="utf-8") as fh:
-                               fh.write(f"| {sym} | {tf} | {count} | {latest_iso} | {age_str} |\n")
-                   except Exception as exc:
-                       print(f"{sym}/{tf}: error reading Supabase data: {exc}")
-                       if summary_path:
-                           with open(summary_path, "a", encoding="utf-8") as fh:
-                               fh.write(f"| {sym} | {tf} | error | {exc} | - |\n")
-           PY
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_path:
+              with open(summary_path, "a", encoding="utf-8") as fh:
+                  fh.write("## Supabase Data Snapshot\n")
+                  fh.write("| Symbol | Timeframe | Bars | Latest Timestamp | Age (hours) |\n")
+                  fh.write("|--------|-----------|------|------------------|-------------|\n")
+          
+          from datetime import datetime, timezone
+          now = datetime.now(timezone.utc)
+          
+          for sym in symbols:
+              for tf in timeframes:
+                  try:
+                      df = db.fetch_ohlc_bars(sym, timeframe=tf, limit=100)
+                      count = len(df)
+                      latest = df["ts"].max() if not df.empty else None
+                      latest_iso = latest.isoformat() if latest is not None else "n/a"
+                      
+                      # Calculate age
+                      if latest is not None:
+                          age_hours = (now - latest).total_seconds() / 3600
+                          age_str = f"{age_hours:.1f}"
+                      else:
+                          age_str = "n/a"
+                      
+                      print(f"{sym}/{tf}: {count} bars (latest={latest_iso}, age={age_str}h)")
+                      if summary_path:
+                          with open(summary_path, "a", encoding="utf-8") as fh:
+                              fh.write(f"| {sym} | {tf} | {count} | {latest_iso} | {age_str} |\n")
+                  except Exception as exc:
+                      print(f"{sym}/{tf}: error reading Supabase data: {exc}")
+                      if summary_path:
+                          with open(summary_path, "a", encoding="utf-8") as fh:
+                              fh.write(f"| {sym} | {tf} | error | {exc} | - |\n")
+          PY
 
              echo "total_bars=0" >> "$GITHUB_OUTPUT"
              echo "failed_timeframes=" >> "$GITHUB_OUTPUT"
