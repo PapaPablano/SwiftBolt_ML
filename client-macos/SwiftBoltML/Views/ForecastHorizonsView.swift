@@ -441,6 +441,30 @@ private struct ForecastHorizonCard: View {
                         .stroke(series.color.opacity(0.3), lineWidth: 1)
                 )
         )
+        // Improvement 2: Forecast UX consistency - tooltip with confidence + time delta
+        .help(tooltipText)
+    }
+
+    private var tooltipText: String {
+        var lines: [String] = []
+        lines.append("\(series.horizon.uppercased()) Forecast")
+        lines.append("Confidence: \(Int(series.confidence * 100))%")
+
+        if let target = series.target {
+            lines.append("Target: $\(String(format: "%.2f", target))")
+        }
+        if let delta = series.deltaPct {
+            let direction = delta >= 0 ? "+" : ""
+            lines.append("Delta: \(direction)\(String(format: "%.2f", delta))% vs current price")
+        }
+        if let lower = series.lower, let upper = series.upper {
+            lines.append("Range: $\(String(format: "%.2f", lower)) - $\(String(format: "%.2f", upper))")
+        }
+
+        // Time estimate
+        lines.append("Timeline: ~\(series.timelinePosition) trading days")
+
+        return lines.joined(separator: "\n")
     }
 }
 

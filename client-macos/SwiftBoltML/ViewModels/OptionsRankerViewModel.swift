@@ -50,6 +50,9 @@ class OptionsRankerViewModel: ObservableObject {
     @Published var useGAFilter: Bool = false
     @Published var isLoadingGA: Bool = false
 
+    // Ranking freshness tracking (Fix D)
+    @Published var lastRankingRefresh: Date?
+
     @Published var isAutoRefreshing: Bool = false
     @Published var autoRefreshInterval: TimeInterval?
 
@@ -245,17 +248,48 @@ class OptionsRankerViewModel: ObservableObject {
     private func updateRankingStatus() {
         guard let firstRank = rankings.first else {
             rankingStatus = .unavailable
+            lastRankingRefresh = nil
             return
         }
 
-        // Parse the run_at timestamp
-        let dateFormatter = ISO8601DateFormatter()
-        if let runAt = dateFormatter.date(from: firstRank.runAt) {
+        // Fix D: Try multiple ISO8601 formats with fallbacks
+        let runAtDate = parseISO8601Date(firstRank.runAt)
+
+        if let runAt = runAtDate {
+            lastRankingRefresh = runAt
             let hourAgo = Date().addingTimeInterval(-3600)
             rankingStatus = runAt > hourAgo ? .fresh : .stale
         } else {
+            // Fallback: use current time as "unknown freshness" but still show the badge
+            lastRankingRefresh = nil
             rankingStatus = .unknown
         }
+    }
+
+    /// Helper to parse ISO8601 dates with multiple format fallbacks (Fix D)
+    private func parseISO8601Date(_ dateString: String) -> Date? {
+        // Try with fractional seconds first
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = isoFormatter.date(from: dateString) {
+            return date
+        }
+
+        // Try without fractional seconds
+        isoFormatter.formatOptions = [.withInternetDateTime]
+        if let date = isoFormatter.date(from: dateString) {
+            return date
+        }
+
+        // Try basic date formatter as last resort
+        let basicFormatter = DateFormatter()
+        basicFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+        if let date = basicFormatter.date(from: dateString) {
+            return date
+        }
+
+        basicFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+        return basicFormatter.date(from: dateString)
     }
 
     func setExpiry(_ expiry: String?) {

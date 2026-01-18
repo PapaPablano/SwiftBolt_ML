@@ -32,6 +32,7 @@ struct OptionsRankerView: View {
             if let symbol = newValue?.ticker {
                 Task {
                     await rankerViewModel.loadRankings(for: symbol)
+                    await rankerViewModel.loadGAStrategy(for: symbol)  // Fix C: load GA strategy
                     rankerViewModel.startAutoRefresh(for: symbol)
                 }
             }
@@ -40,6 +41,7 @@ struct OptionsRankerView: View {
             if let symbol = appViewModel.selectedSymbol?.ticker {
                 Task {
                     await rankerViewModel.loadRankings(for: symbol)
+                    await rankerViewModel.loadGAStrategy(for: symbol)  // Fix C: load GA strategy
                     rankerViewModel.startAutoRefresh(for: symbol)
                 }
             }
@@ -209,6 +211,20 @@ struct RankerHeader: View {
             .padding(.horizontal)
             .padding(.top, 12)
 
+            // GA Strategy Summary Card (Fix C)
+            if let strategy = rankerViewModel.gaStrategy {
+                GAStrategySummaryCard(
+                    strategy: strategy,
+                    recommendation: rankerViewModel.gaRecommendation,
+                    useGAFilter: $rankerViewModel.useGAFilter,
+                    isLoading: rankerViewModel.isLoadingGA,
+                    onOptimize: {
+                        await rankerViewModel.triggerGAOptimization(for: symbol)
+                    }
+                )
+                .padding(.horizontal)
+            }
+
             // Filters
             VStack(spacing: 8) {
                 // Row 0: Entry/Exit Mode Toggle
@@ -370,26 +386,53 @@ struct RankerHeader: View {
     private var statusBadge: some View {
         switch rankerViewModel.rankingStatus {
         case .fresh:
-            Text("FRESH")
-                .font(.caption2.bold())
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.green.opacity(0.2))
-                .foregroundStyle(.green)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+            HStack(spacing: 4) {
+                Text("FRESH")
+                    .font(.caption2.bold())
+                // Fix D: Show relative timestamp if available
+                if let lastRefresh = rankerViewModel.lastRankingRefresh {
+                    Text("(\(relativeTimeString(from: lastRefresh)))")
+                        .font(.caption2)
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.green.opacity(0.2))
+            .foregroundStyle(.green)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
         case .stale:
-            Text("STALE")
-                .font(.caption2.bold())
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.orange.opacity(0.2))
-                .foregroundStyle(.orange)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+            HStack(spacing: 4) {
+                Text("STALE")
+                    .font(.caption2.bold())
+                // Fix D: Show relative timestamp if available
+                if let lastRefresh = rankerViewModel.lastRankingRefresh {
+                    Text("(\(relativeTimeString(from: lastRefresh)))")
+                        .font(.caption2)
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.orange.opacity(0.2))
+            .foregroundStyle(.orange)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
         case .unavailable:
             EmptyView()
         case .unknown:
-            EmptyView()
+            // Fix D: Show unknown badge instead of hiding it completely
+            Text("UNKNOWN")
+                .font(.caption2.bold())
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.gray.opacity(0.2))
+                .foregroundStyle(.gray)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
         }
+    }
+
+    private func relativeTimeString(from date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 
     private func formatExpiry(_ expiry: String) -> String {
@@ -414,6 +457,151 @@ struct RankerHeader: View {
         formatter.unitsStyle = .abbreviated
         let relative = formatter.localizedString(for: last, relativeTo: Date())
         return "Quotes \(relative)"
+    }
+}
+
+// MARK: - GA Strategy Summary Card (Fix C)
+
+struct GAStrategySummaryCard: View {
+    let strategy: GAStrategy
+    let recommendation: GARecommendation?
+    @Binding var useGAFilter: Bool
+    let isLoading: Bool
+    let onOptimize: () async -> Void
+
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(spacing: 8) {
+            // Header row
+            HStack {
+                Image(systemName: "brain.head.profile.fill")
+                    .foregroundStyle(.purple)
+                Text("GA Strategy")
+                    .font(.caption.bold())
+
+                // Quality badge
+                Text(strategy.fitness.qualityLabel.uppercased())
+                    .font(.caption2.bold())
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(strategy.fitness.qualityColor.opacity(0.2))
+                    .foregroundStyle(strategy.fitness.qualityColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                Spacer()
+
+                // Expand/collapse
+                Button(action: { withAnimation { isExpanded.toggle() } }) {
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+            }
+
+            // Metrics row
+            HStack(spacing: 16) {
+                metricPill(label: "Win", value: strategy.fitness.winRateDisplay, color: .green)
+                metricPill(label: "PF", value: strategy.fitness.profitFactorDisplay, color: .blue)
+                metricPill(label: "Sharpe", value: strategy.fitness.sharpeDisplay, color: .purple)
+                metricPill(label: "DD", value: strategy.fitness.maxDrawdownDisplay, color: .orange)
+
+                Spacer()
+
+                Text(strategy.ageDescription)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            // GA Filter toggle
+            HStack {
+                Toggle("Use GA Filter", isOn: $useGAFilter)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+
+                Spacer()
+
+                // Optimize button
+                Button(action: {
+                    Task { await onOptimize() }
+                }) {
+                    HStack(spacing: 4) {
+                        if isLoading {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                        } else {
+                            Image(systemName: "wand.and.stars")
+                                .font(.caption2)
+                        }
+                        Text("Optimize")
+                            .font(.caption2)
+                    }
+                }
+                .buttonStyle(.borderless)
+                .disabled(isLoading)
+            }
+
+            // Expanded details
+            if isExpanded, let rec = recommendation {
+                VStack(alignment: .leading, spacing: 8) {
+                    Divider()
+
+                    if !rec.entryConditions.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Entry Conditions")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.secondary)
+                            ForEach(rec.entryConditions, id: \.self) { condition in
+                                Text("• \(condition)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.primary)
+                            }
+                        }
+                    }
+
+                    if !rec.exitConditions.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Exit Conditions")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.secondary)
+                            ForEach(rec.exitConditions, id: \.self) { condition in
+                                Text("• \(condition)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.primary)
+                            }
+                        }
+                    }
+
+                    if !rec.riskManagement.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Risk Management")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.secondary)
+                            ForEach(rec.riskManagement, id: \.self) { rule in
+                                Text("• \(rule)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.primary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.purple.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func metricPill(label: String, value: String, color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.caption.bold())
+                .foregroundStyle(color)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 

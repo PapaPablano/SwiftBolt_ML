@@ -1,6 +1,7 @@
 import Foundation
 import WebKit
 import Supabase
+import SwiftUI
 
 @MainActor
 final class ChartViewModel: ObservableObject {
@@ -78,6 +79,97 @@ final class ChartViewModel: ObservableObject {
         }
     }
     @Published private(set) var volumeProfile: [[String: Any]] = []
+
+    // Multi-Timeframe Forecasts (Fix F)
+    @Published var isMultiTimeframeMode: Bool = false
+    @Published private(set) var isLoadingMultiTimeframe: Bool = false
+    @Published private(set) var multiTimeframeForecasts: [String: ChartResponse] = [:]
+    static let multiTimeframes: [Timeframe] = [.m15, .h1, .h4, .d1, .w1]
+
+    // Cross-Timeframe Trend Alignment (Fix G)
+    struct TrendAlignment {
+        let bullishCount: Int
+        let bearishCount: Int
+        let neutralCount: Int
+        let totalTimeframes: Int
+        let contributingTimeframes: [String]
+
+        var alignmentScore: Double {
+            guard totalTimeframes > 0 else { return 0 }
+            let maxAgreement = Double(max(bullishCount, bearishCount, neutralCount))
+            return maxAgreement / Double(totalTimeframes)
+        }
+
+        enum Status {
+            case aligned    // 80%+ agreement
+            case mixed      // 60-80% agreement
+            case conflicting // <60% agreement
+
+            var color: Color {
+                switch self {
+                case .aligned: return .green
+                case .mixed: return .yellow
+                case .conflicting: return .red
+                }
+            }
+
+            var label: String {
+                switch self {
+                case .aligned: return "ALIGNED"
+                case .mixed: return "MIXED"
+                case .conflicting: return "CONFLICTING"
+                }
+            }
+        }
+
+        var status: Status {
+            if alignmentScore >= 0.8 { return .aligned }
+            if alignmentScore >= 0.6 { return .mixed }
+            return .conflicting
+        }
+
+        var dominantDirection: String {
+            if bullishCount >= bearishCount && bullishCount >= neutralCount { return "bullish" }
+            if bearishCount >= bullishCount && bearishCount >= neutralCount { return "bearish" }
+            return "neutral"
+        }
+
+        var summaryText: String {
+            let dominant = dominantDirection.capitalized
+            return "\(max(bullishCount, bearishCount, neutralCount))/\(totalTimeframes) \(dominant)"
+        }
+    }
+
+    /// Computed trend alignment based on multi-timeframe forecasts (Fix G)
+    var trendAlignment: TrendAlignment? {
+        guard !multiTimeframeForecasts.isEmpty else { return nil }
+
+        var bullish = 0
+        var bearish = 0
+        var neutral = 0
+        var contributing: [String] = []
+
+        for (timeframe, response) in multiTimeframeForecasts {
+            guard let label = response.mlSummary?.overallLabel?.lowercased() else { continue }
+            contributing.append(timeframe)
+
+            switch label {
+            case "bullish": bullish += 1
+            case "bearish": bearish += 1
+            default: neutral += 1
+            }
+        }
+
+        guard !contributing.isEmpty else { return nil }
+
+        return TrendAlignment(
+            bullishCount: bullish,
+            bearishCount: bearish,
+            neutralCount: neutral,
+            totalTimeframes: contributing.count,
+            contributingTimeframes: contributing
+        )
+    }
 
     // Refresh state
     @Published private(set) var isRefreshing: Bool = false
@@ -335,6 +427,35 @@ final class ChartViewModel: ObservableObject {
 
     private func rebuildSelectedForecastBars() {
         _cachedSelectedForecastBars = buildSelectedForecastBars()
+
+        // Update chartDataV2 forecast layer when horizon changes (Fix A continuation)
+        if let existingV2 = chartDataV2,
+           let chartResponse = chartData,
+           indicatorConfig.useWebChart {
+            let forecastBars = _cachedSelectedForecastBars ?? []
+            let newForecastLayer = LayerData(
+                count: forecastBars.count,
+                provider: "ml-forecast",
+                data: forecastBars,
+                oldestBar: forecastBars.first?.ts.ISO8601Format(),
+                newestBar: forecastBars.last?.ts.ISO8601Format()
+            )
+            let newLayers = ChartLayers(
+                historical: existingV2.layers.historical,
+                intraday: existingV2.layers.intraday,
+                forecast: newForecastLayer
+            )
+            chartDataV2 = ChartDataV2Response(
+                symbol: chartResponse.symbol,
+                timeframe: chartResponse.timeframe,
+                layers: newLayers,
+                metadata: existingV2.metadata,
+                dataQuality: chartResponse.dataQuality,
+                mlSummary: chartResponse.mlSummary,
+                indicators: chartResponse.indicators,
+                superTrendAI: chartResponse.superTrendAI
+            )
+        }
     }
 
     deinit {
@@ -752,9 +873,15 @@ final class ChartViewModel: ObservableObject {
                     print("[DEBUG] - ML: \(response.mlSummary != nil ? "✓" : "✗")")
 
                     guard currentLoadId == loadId else { return }
-                    chartDataV2 = nil
                     chartData = response
                     updateSelectedForecastHorizon(from: response.mlSummary)
+
+                    // Populate chartDataV2 for WebChartView layered rendering (Fix A)
+                    if indicatorConfig.useWebChart {
+                        chartDataV2 = convertToV2Response(response)
+                    } else {
+                        chartDataV2 = nil
+                    }
 
                     // Save bars to cache for instant subsequent loads
                     ChartCache.saveBars(symbol: symbol.ticker, timeframe: timeframe, bars: bars)
@@ -855,6 +982,52 @@ final class ChartViewModel: ObservableObject {
         selectedSymbol = symbol
     }
 
+    // MARK: - Multi-Timeframe Forecasts (Fix F)
+
+    /// Loads forecasts for all multi-timeframe periods (m15/h1/h4/d1/w1) in parallel
+    func loadMultiTimeframeForecasts() async {
+        guard let symbol = selectedSymbol else { return }
+
+        isLoadingMultiTimeframe = true
+        var results: [String: ChartResponse] = [:]
+
+        await withTaskGroup(of: (String, ChartResponse?).self) { group in
+            for tf in Self.multiTimeframes {
+                group.addTask {
+                    do {
+                        let response = try await APIClient.shared.fetchChartRead(
+                            symbol: symbol.ticker,
+                            timeframe: tf.apiToken,
+                            includeMLData: true
+                        )
+                        return (tf.apiToken, response)
+                    } catch {
+                        print("[MultiTF] Failed to load \(tf.apiToken): \(error.localizedDescription)")
+                        return (tf.apiToken, nil)
+                    }
+                }
+            }
+
+            for await (timeframe, response) in group {
+                if let response = response {
+                    results[timeframe] = response
+                }
+            }
+        }
+
+        multiTimeframeForecasts = results
+        isLoadingMultiTimeframe = false
+        print("[MultiTF] Loaded \(results.count)/\(Self.multiTimeframes.count) timeframes")
+    }
+
+    /// Toggle multi-timeframe mode and load data if needed
+    func toggleMultiTimeframeMode() async {
+        isMultiTimeframeMode.toggle()
+        if isMultiTimeframeMode && multiTimeframeForecasts.isEmpty {
+            await loadMultiTimeframeForecasts()
+        }
+    }
+
     /// Helper to build bars from response - merges all layers and sorts by timestamp
     /// With Alpaca, all timeframes use the same API, so no special handling needed
     private func buildBars(from response: ChartDataV2Response, for timeframe: Timeframe) -> [OHLCBar] {
@@ -871,6 +1044,61 @@ final class ChartViewModel: ObservableObject {
         print("[DEBUG] 📊 buildBars(\(timeframe.apiToken)): hist=\(historical.count) (last: \(histLast)) + intraday=\(intraday.count) (last: \(intradayLast)) → merged=\(allBars.count) (last: \(mergedLast))")
 
         return allBars
+    }
+
+    /// Converts a ChartResponse to ChartDataV2Response format for WebChartView layered rendering
+    private func convertToV2Response(_ response: ChartResponse) -> ChartDataV2Response {
+        let bars = response.bars.sorted(by: { $0.ts < $1.ts })
+
+        // Build forecast bars from ML summary horizons if available
+        let forecastBars = buildSelectedForecastBars()
+
+        let historicalLayer = LayerData(
+            count: bars.count,
+            provider: "chart-read",
+            data: bars,
+            oldestBar: bars.first?.ts.ISO8601Format(),
+            newestBar: bars.last?.ts.ISO8601Format()
+        )
+
+        let intradayLayer = LayerData(
+            count: 0,
+            provider: "chart-read",
+            data: [],
+            oldestBar: nil,
+            newestBar: nil
+        )
+
+        let forecastLayer = LayerData(
+            count: forecastBars.count,
+            provider: "ml-forecast",
+            data: forecastBars,
+            oldestBar: forecastBars.first?.ts.ISO8601Format(),
+            newestBar: forecastBars.last?.ts.ISO8601Format()
+        )
+
+        let layers = ChartLayers(
+            historical: historicalLayer,
+            intraday: intradayLayer,
+            forecast: forecastLayer
+        )
+
+        let metadata = ChartMetadata(
+            totalBars: bars.count + forecastBars.count,
+            startDate: bars.first?.ts.ISO8601Format() ?? "",
+            endDate: forecastBars.last?.ts.ISO8601Format() ?? bars.last?.ts.ISO8601Format() ?? ""
+        )
+
+        return ChartDataV2Response(
+            symbol: response.symbol,
+            timeframe: response.timeframe,
+            layers: layers,
+            metadata: metadata,
+            dataQuality: response.dataQuality,
+            mlSummary: response.mlSummary,
+            indicators: response.indicators,
+            superTrendAI: response.superTrendAI
+        )
     }
 
     private func resolveSymbolId(for ticker: String) async throws -> UUID {

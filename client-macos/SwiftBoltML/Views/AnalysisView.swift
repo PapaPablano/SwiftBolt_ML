@@ -17,12 +17,13 @@ struct AnalysisView: View {
 
                 Divider()
 
-                // ML Forecast Breakdown Section
+                // ML Forecast Breakdown Section (Fix B: shared horizon selection)
                 if let mlSummary = chartViewModel.chartData?.mlSummary {
                     let referencePrice = chartViewModel.liveQuote?.last ?? chartViewModel.bars.last?.close
                     MLForecastBreakdownSection(
                         mlSummary: mlSummary,
-                        referencePrice: referencePrice
+                        referencePrice: referencePrice,
+                        chartViewModel: chartViewModel
                     )
                     Divider()
                 }
@@ -213,7 +214,7 @@ struct EmptyAlertsView: View {
 struct MLForecastBreakdownSection: View {
     let mlSummary: MLSummary
     let referencePrice: Double?
-    @State private var selectedHorizon: String? = nil
+    @ObservedObject var chartViewModel: ChartViewModel  // Fix B: shared horizon selection
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -244,11 +245,15 @@ struct MLForecastBreakdownSection: View {
             .background(labelColor(for: mlSummary.overallLabel ?? "unknown").opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 12))
 
+            // Fix B: Use shared horizon selection binding from ChartViewModel
             ForecastHorizonsView(
                 horizons: mlSummary.horizons,
                 currentPrice: referencePrice,
                 mlSummary: mlSummary,
-                selectedHorizon: $selectedHorizon
+                selectedHorizon: Binding(
+                    get: { chartViewModel.selectedForecastHorizon },
+                    set: { chartViewModel.selectedForecastHorizon = $0 }
+                )
             )
         }
         .padding()
