@@ -1,8 +1,11 @@
 import SwiftUI
 
 struct PredictionsView: View {
-    @StateObject private var viewModel = PredictionsViewModel()
-    @State private var selectedTab = 0
+    @EnvironmentObject var appViewModel: AppViewModel
+
+    private var viewModel: PredictionsViewModel {
+        appViewModel.predictionsViewModel
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -10,7 +13,7 @@ struct PredictionsView: View {
             headerSection
 
             // Tab selector
-            Picker("", selection: $selectedTab) {
+            Picker("", selection: $appViewModel.selectedPredictionsTab) {
                 Text("Overview").tag(0)
                 Text("Model Performance").tag(1)
                 Text("Statistical Validation").tag(2)
@@ -33,7 +36,7 @@ struct PredictionsView: View {
             } else {
                 ScrollView {
                     VStack(spacing: 20) {
-                        switch selectedTab {
+                        switch appViewModel.selectedPredictionsTab {
                         case 0:
                             OverviewTabView(viewModel: viewModel)
                         case 1:
@@ -41,7 +44,7 @@ struct PredictionsView: View {
                         case 2:
                             StatisticalValidationTabView(viewModel: viewModel)
                         case 3:
-                            FeatureImportanceTabView()
+                            FeatureImportanceTabView(viewModel: viewModel)
                         case 4:
                             ForecastAccuracyTabView()
                         default:
@@ -935,6 +938,7 @@ struct ImplementationLevelCard: View {
 // MARK: - Feature Importance Tab
 
 struct FeatureImportanceTabView: View {
+    @ObservedObject var viewModel: PredictionsViewModel
     // Static feature importance data from the ML model
     private let modelFeatures: [(name: String, importance: Double, category: String)] = [
         ("SuperTrend Signal", 0.18, "trend"),
@@ -1117,5 +1121,6 @@ struct DashboardCard<Content: View>: View {
 
 #Preview {
     PredictionsView()
+        .environmentObject(AppViewModel())
         .frame(width: 900, height: 800)
 }

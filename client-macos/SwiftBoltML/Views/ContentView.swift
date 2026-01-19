@@ -19,6 +19,7 @@ struct ContentView: View {
             switch activeSection {
             case .predictions:
                 PredictionsView()
+                    .environmentObject(appViewModel)
             case .portfolio:
                 Text("Portfolio")
             default:

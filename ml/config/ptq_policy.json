@@ -1,0 +1,5 @@
+{
+  "max_change": 0.01,
+  "max_prob_delta": 0.005,
+  "notes": "PTQ auto-disable thresholds. Adjust only if accuracy risk is acceptable."
+}

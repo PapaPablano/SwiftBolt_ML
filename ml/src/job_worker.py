@@ -17,7 +17,7 @@ from typing import Optional
 
 from config.settings import settings
 from src.data.supabase_db import SupabaseDatabase
-from src.features.technical_indicators import add_technical_features
+from src.features.feature_cache import fetch_or_build_features
 from src.models.baseline_forecaster import BaselineForecaster
 from src.strategies.supertrend_ai import SuperTrendAI
 
@@ -35,8 +35,13 @@ def process_forecast_job(
     try:
         logger.info(f"Processing forecast job for {symbol}")
 
-        # Fetch OHLC data (252 bars = 1 year for S/R detection, newest first)
-        df = db.fetch_ohlc_bars(symbol, timeframe="d1", limit=252)
+        # Fetch/cache features across all timeframes, then use d1 for training
+        features_by_tf = fetch_or_build_features(
+            db=db,
+            symbol=symbol,
+            limits={"d1": 252},
+        )
+        df = features_by_tf.get("d1")
 
         if len(df) < settings.min_bars_for_training:
             msg = (
@@ -45,9 +50,6 @@ def process_forecast_job(
             )
             logger.warning(msg)
             return False, msg
-
-        # Add technical features (includes S/R features)
-        df = add_technical_features(df)
 
         # Get symbol_id for database operations
         symbol_id = db.get_symbol_id(symbol)
@@ -135,7 +137,10 @@ def process_job(db: SupabaseDatabase, job: dict) -> tuple[bool, Optional[str]]:
         return False, str(e)
 
 
-def claim_and_process_job(db: SupabaseDatabase, job_type: Optional[str] = None) -> bool:
+def claim_and_process_job(
+    db: SupabaseDatabase,
+    job_type: Optional[str] = None,
+) -> bool:
     """Claim the next pending job and process it."""
     # Claim next job using the database function
     result = db.client.rpc(
@@ -154,7 +159,12 @@ def claim_and_process_job(db: SupabaseDatabase, job_type: Optional[str] = None) 
 
     # Mark job as completed or failed
     db.client.rpc(
-        "complete_job", {"p_job_id": str(job_id), "p_success": success, "p_error": error}
+        "complete_job",
+        {
+            "p_job_id": str(job_id),
+            "p_success": success,
+            "p_error": error,
+        },
     ).execute()
 
     return True
@@ -168,7 +178,10 @@ def run_worker(
     """Run the job worker."""
     logger.info("=" * 60)
     logger.info("Job Worker Starting")
-    logger.info(f"Mode: {'Continuous' if continuous else 'Single Run'}")
+    logger.info(
+        "Mode: %s",
+        "Continuous" if continuous else "Single Run",
+    )
     if job_type:
         logger.info(f"Job Type Filter: {job_type}")
     logger.info("=" * 60)
@@ -185,7 +198,10 @@ def run_worker(
             if not continuous:
                 break
 
-            logger.debug(f"No pending jobs, sleeping for {poll_interval}s...")
+            logger.debug(
+                "No pending jobs, sleeping for %ss...",
+                poll_interval,
+            )
             time.sleep(poll_interval)
 
     except KeyboardInterrupt:
@@ -193,14 +209,19 @@ def run_worker(
     finally:
         db.close()
         logger.info("=" * 60)
-        logger.info(f"Job Worker Complete - Processed {jobs_processed} jobs")
+        logger.info(
+            "Job Worker Complete - Processed %s jobs",
+            jobs_processed,
+        )
         logger.info("=" * 60)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Process jobs from the queue")
     parser.add_argument(
-        "--continuous", action="store_true", help="Run continuously, polling for new jobs"
+        "--continuous",
+        action="store_true",
+        help="Run continuously, polling for new jobs",
     )
     parser.add_argument(
         "--job-type",
@@ -216,7 +237,11 @@ def main():
     )
 
     args = parser.parse_args()
-    run_worker(continuous=args.continuous, job_type=args.job_type, poll_interval=args.poll_interval)
+    run_worker(
+        continuous=args.continuous,
+        job_type=args.job_type,
+        poll_interval=args.poll_interval,
+    )
 
 
 if __name__ == "__main__":

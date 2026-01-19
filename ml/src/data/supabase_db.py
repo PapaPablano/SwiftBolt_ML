@@ -129,6 +129,106 @@ class SupabaseDatabase:
             )
             raise
 
+    def fetch_indicator_values(
+        self,
+        symbol_id: str,
+        timeframe: str = "d1",
+        limit: int | None = None,
+    ) -> pd.DataFrame:
+        """Fetch indicator_values rows for a symbol/timeframe."""
+        try:
+            query = (
+                self.client.table("indicator_values")
+                .select("*")
+                .eq("symbol_id", symbol_id)
+                .eq("timeframe", timeframe)
+                .order("ts", desc=True)
+            )
+            if limit:
+                query = query.limit(limit)
+            response = query.execute()
+            df = pd.DataFrame(response.data or [])
+            if df.empty:
+                return df
+            df["ts"] = pd.to_datetime(df["ts"])
+            return df.sort_values("ts").reset_index(drop=True)
+        except Exception as e:
+            logger.warning(
+                "Error fetching indicator_values for %s (%s): %s",
+                symbol_id,
+                timeframe,
+                e,
+            )
+            return pd.DataFrame()
+
+    def upsert_indicator_values(
+        self,
+        symbol_id: str,
+        timeframe: str,
+        df: pd.DataFrame,
+    ) -> None:
+        """Upsert indicator values for a symbol/timeframe."""
+        if df.empty:
+            return
+
+        columns = [
+            "ts",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "rsi",
+            "rsi_14",
+            "macd",
+            "macd_signal",
+            "macd_hist",
+            "adx",
+            "atr_14",
+            "bb_upper",
+            "bb_lower",
+            "supertrend_value",
+            "supertrend_trend",
+            "supertrend_factor",
+            "nearest_support",
+            "nearest_resistance",
+            "support_distance_pct",
+            "resistance_distance_pct",
+            "stoch_k",
+            "stoch_d",
+            "williams_r",
+            "cci",
+            "mfi",
+            "obv",
+        ]
+
+        records = []
+        for _, row in df.iterrows():
+            record = {
+                "symbol_id": symbol_id,
+                "timeframe": timeframe,
+            }
+            for col in columns:
+                if col in row.index:
+                    value = row.get(col)
+                    if pd.isna(value):
+                        value = None
+                    record[col] = value
+            records.append(record)
+
+        try:
+            self.client.table("indicator_values").upsert(
+                records,
+                on_conflict="symbol_id,timeframe,ts",
+            ).execute()
+        except Exception as e:
+            logger.warning(
+                "Error upserting indicator_values for %s (%s): %s",
+                symbol_id,
+                timeframe,
+                e,
+            )
+
     def get_last_close_at_or_before(
         self,
         symbol: str,
@@ -164,6 +264,87 @@ class SupabaseDatabase:
                 e,
             )
             return None
+
+    def fetch_forecast_validation_data(
+        self,
+        lookback_days: int = 90,
+        limit: int = 2000,
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Fetch paired forecasts and actuals for ForecastValidator."""
+        try:
+            response = (
+                self.client.table("forecast_evaluations")
+                .select(
+                    "symbol,horizon,evaluation_date,realized_price,"
+                    "predicted_label,"
+                    "ml_forecasts!inner(points,confidence,"
+                    "overall_label,run_at)"
+                )
+                .gte(
+                    "evaluation_date",
+                    (
+                        pd.Timestamp.now() - pd.Timedelta(days=lookback_days)
+                    ).isoformat(),
+                )
+                .limit(limit)
+                .execute()
+            )
+
+            rows = response.data or []
+            if not rows:
+                return pd.DataFrame(), pd.DataFrame()
+
+            forecast_rows = []
+            actual_rows = []
+            for row in rows:
+                symbol = row.get("symbol")
+                horizon = row.get("horizon")
+                eval_date = row.get("evaluation_date")
+                realized_price = row.get("realized_price")
+                predicted_label = row.get("predicted_label")
+
+                forecast_meta = row.get("ml_forecasts") or {}
+                points = forecast_meta.get("points") or []
+                target = None
+                upper = None
+                lower = None
+                if isinstance(points, list) and points:
+                    last_point = points[-1]
+                    target = last_point.get("value")
+                    upper = last_point.get("upper")
+                    lower = last_point.get("lower")
+
+                forecast_rows.append(
+                    {
+                        "symbol": symbol,
+                        "horizon": horizon,
+                        "label": (
+                            forecast_meta.get("overall_label")
+                            or predicted_label
+                        ),
+                        "confidence": forecast_meta.get("confidence"),
+                        "target": target,
+                        "upper_band": upper,
+                        "lower_band": lower,
+                        "forecast_date": forecast_meta.get("run_at"),
+                    }
+                )
+
+                actual_rows.append(
+                    {
+                        "symbol": symbol,
+                        "date": eval_date,
+                        "close": realized_price,
+                    }
+                )
+
+            forecasts_df = pd.DataFrame(forecast_rows)
+            actuals_df = pd.DataFrame(actual_rows)
+
+            return forecasts_df, actuals_df
+        except Exception as e:
+            logger.warning("Could not fetch forecast validation data: %s", e)
+            return pd.DataFrame(), pd.DataFrame()
 
     def fetch_recent_forecast_evaluations(
         self,
@@ -331,6 +512,112 @@ class SupabaseDatabase:
             )
             raise
 
+    def fetch_recent_forecast_horizons(
+        self,
+        symbol_id: str,
+        since_ts: pd.Timestamp,
+    ) -> set[str]:
+        """Fetch forecast horizons with run_at >= since_ts for a symbol."""
+        try:
+            response = (
+                self.client.table("ml_forecasts")
+                .select("horizon, run_at")
+                .eq("symbol_id", symbol_id)
+                .gte("run_at", since_ts.isoformat())
+                .execute()
+            )
+            horizons: set[str] = set()
+            for row in response.data or []:
+                horizon = row.get("horizon")
+                if horizon:
+                    horizons.add(str(horizon))
+            return horizons
+        except Exception as e:
+            logger.warning(
+                "Error fetching recent forecast horizons for %s: %s",
+                symbol_id,
+                e,
+            )
+            return set()
+
+    def get_latest_forecast(self, symbol: str) -> dict[str, Any] | None:
+        """Fetch latest forecast record for a symbol."""
+        try:
+            symbol_id = self.get_symbol_id(symbol)
+            response = (
+                self.client.table("ml_forecasts")
+                .select("run_at,confidence,points,synthesis_data")
+                .eq("symbol_id", symbol_id)
+                .order("run_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if not response.data:
+                return None
+            return dict(response.data[0])
+        except Exception as exc:
+            logger.warning("Error fetching latest forecast for %s: %s", symbol, exc)
+            return None
+
+    def get_forecast_record(
+        self,
+        symbol_id: str,
+        horizon: str,
+    ) -> dict[str, Any] | None:
+        """Fetch existing forecast record for audit comparison."""
+        try:
+            response = (
+                self.client.table("ml_forecasts")
+                .select("id,overall_label,confidence,points,training_stats")
+                .eq("symbol_id", symbol_id)
+                .eq("horizon", horizon)
+                .limit(1)
+                .execute()
+            )
+            if not response.data:
+                return None
+            return dict(response.data[0])
+        except Exception as exc:
+            logger.warning("Error fetching forecast record: %s", exc)
+            return None
+
+    def get_current_prices(
+        self,
+        symbol: str,
+        timeframes: list[str] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Fetch latest OHLC bars for all timeframes."""
+        timeframes = timeframes or ["m15", "h1", "h4", "d1", "w1"]
+        results: dict[str, dict[str, Any]] = {}
+        try:
+            symbol_id = self.get_symbol_id(symbol)
+        except Exception:
+            return results
+
+        for timeframe in timeframes:
+            try:
+                response = (
+                    self.client.table("ohlc_bars_v2")
+                    .select("ts, close")
+                    .eq("symbol_id", symbol_id)
+                    .eq("timeframe", timeframe)
+                    .eq("provider", "alpaca")
+                    .eq("is_forecast", False)
+                    .order("ts", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                if response.data:
+                    results[timeframe] = dict(response.data[0])
+            except Exception as exc:
+                logger.warning(
+                    "Error fetching current price for %s (%s): %s",
+                    symbol,
+                    timeframe,
+                    exc,
+                )
+        return results
+
     def upsert_forecast(
         self,
         symbol_id: str,
@@ -427,6 +714,50 @@ class SupabaseDatabase:
                 e,
             )
             raise
+
+    def insert_model_version(
+        self,
+        symbol_id: str,
+        model_type: str,
+        version_hash: str | None,
+        parameters: dict[str, Any] | None = None,
+        training_stats: dict[str, Any] | None = None,
+        performance_metrics: dict[str, Any] | None = None,
+    ) -> None:
+        """Insert a model version record for audit trail."""
+        payload: dict[str, Any] = {
+            "symbol_id": symbol_id,
+            "model_type": model_type,
+            "version_hash": version_hash,
+            "parameters": parameters or {},
+            "training_stats": training_stats or {},
+            "performance_metrics": performance_metrics or {},
+        }
+        try:
+            self.client.table("ml_model_versions").insert(payload).execute()
+        except Exception as exc:
+            logger.warning("Failed to insert model version: %s", exc)
+
+    def insert_forecast_change(
+        self,
+        forecast_id: str,
+        field_name: str,
+        old_value: Any,
+        new_value: Any,
+        reason: str,
+    ) -> None:
+        """Insert a forecast change record for audit trail."""
+        payload = {
+            "forecast_id": forecast_id,
+            "field_name": field_name,
+            "old_value": old_value,
+            "new_value": new_value,
+            "change_reason": reason,
+        }
+        try:
+            self.client.table("ml_forecast_changes").insert(payload).execute()
+        except Exception as exc:
+            logger.warning("Failed to insert forecast change: %s", exc)
 
     def upsert_supertrend_signals(
         self,

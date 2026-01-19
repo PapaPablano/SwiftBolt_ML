@@ -48,7 +48,12 @@ class PriceMonitor:
     MOVE_THRESHOLD_ATR = 2.0  # Trigger on 2+ ATR move
     MOVE_THRESHOLD_PCT = 5.0  # Or 5%+ move
 
-    def __init__(self, db_client: Any = None) -> None:
+    def __init__(
+        self,
+        db_client: Any = None,
+        move_threshold_atr: float | None = None,
+        move_threshold_pct: float | None = None,
+    ) -> None:
         """
         Initialize price monitor.
 
@@ -59,6 +64,16 @@ class PriceMonitor:
         self.last_prices: Dict[str, float] = {}
         self.last_atrs: Dict[str, float] = {}
         self.last_check: Dict[str, datetime] = {}
+        self.move_threshold_atr = (
+            move_threshold_atr
+            if move_threshold_atr is not None
+            else self.MOVE_THRESHOLD_ATR
+        )
+        self.move_threshold_pct = (
+            move_threshold_pct
+            if move_threshold_pct is not None
+            else self.MOVE_THRESHOLD_PCT
+        )
 
     def check_for_triggers(
         self,
@@ -94,8 +109,10 @@ class PriceMonitor:
         if not forecast:
             return None
 
-        forecast_price = forecast.get("current_price", 0)
-        forecast_atr = forecast.get("atr", forecast_price * 0.02)
+        forecast_points = forecast.get("points") or []
+        last_point = forecast_points[-1] if forecast_points else {}
+        forecast_price = last_point.get("value", 0)
+        forecast_atr = forecast.get("atr") or (forecast_price * 0.02)
 
         if forecast_price <= 0:
             return None
@@ -111,10 +128,13 @@ class PriceMonitor:
 
         # Calculate move
         move_pct = abs(current_price - forecast_price) / forecast_price * 100
-        move_atr = abs(current_price - forecast_price) / forecast_atr if forecast_atr > 0 else 0
+        if forecast_atr > 0:
+            move_atr = abs(current_price - forecast_price) / forecast_atr
+        else:
+            move_atr = 0
 
         # Check ATR threshold
-        if move_atr >= self.MOVE_THRESHOLD_ATR:
+        if move_atr >= self.move_threshold_atr:
             return RefreshTrigger(
                 symbol=symbol,
                 reason=f"Price moved {move_atr:.1f} ATR since last forecast",
@@ -124,7 +144,7 @@ class PriceMonitor:
             )
 
         # Check percentage threshold
-        if move_pct >= self.MOVE_THRESHOLD_PCT:
+        if move_pct >= self.move_threshold_pct:
             return RefreshTrigger(
                 symbol=symbol,
                 reason=f"Price moved {move_pct:.1f}% since last forecast",
@@ -159,6 +179,9 @@ class PriceMonitor:
     def _get_current_price(self, symbol: str) -> Optional[Dict]:
         """Get current price for symbol from database."""
         try:
+            if hasattr(self.db, "get_current_prices"):
+                prices = self.db.get_current_prices(symbol)
+                return prices.get("d1") if prices else None
             if hasattr(self.db, "get_current_price"):
                 return self.db.get_current_price(symbol)
             elif hasattr(self.db, "client"):

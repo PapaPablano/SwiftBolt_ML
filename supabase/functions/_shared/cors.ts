@@ -24,17 +24,36 @@ export function handleCorsOptions(): Response {
  */
 export function jsonResponse(
   data: unknown,
-  status = 200
+  status = 200,
+  reqHeaders?: Headers
 ): Response {
-  return new Response(JSON.stringify(data), {
+  const headers: Record<string, string> = {
+    ...corsHeaders,
+    "Content-Type": "application/json",
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+    "Expires": "0",
+  };
+
+  const json = JSON.stringify(data);
+  const accepts = reqHeaders?.get("accept-encoding") ?? "";
+  const supportsGzip = accepts.toLowerCase().includes("gzip");
+
+  if (supportsGzip) {
+    headers["Content-Encoding"] = "gzip";
+    const compressed = new CompressionStream("gzip");
+    const writer = compressed.writable.getWriter();
+    writer.write(new TextEncoder().encode(json));
+    writer.close();
+    return new Response(compressed.readable, {
+      status,
+      headers,
+    });
+  }
+
+  return new Response(json, {
     status,
-    headers: {
-      ...corsHeaders,
-      "Content-Type": "application/json",
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-      "Pragma": "no-cache",
-      "Expires": "0",
-    },
+    headers,
   });
 }
 
@@ -43,7 +62,8 @@ export function jsonResponse(
  */
 export function errorResponse(
   message: string,
-  status = 400
+  status = 400,
+  reqHeaders?: Headers
 ): Response {
-  return jsonResponse({ error: message }, status);
+  return jsonResponse({ error: message }, status, reqHeaders);
 }

@@ -4,10 +4,11 @@ import argparse
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -21,9 +22,7 @@ from src.data.supabase_db import db  # noqa: E402
 from src.features.support_resistance_detector import (  # noqa: E402
     SupportResistanceDetector,
 )
-from src.features.technical_indicators import (  # noqa: E402
-    add_technical_features,
-)
+from src.features.feature_cache import fetch_or_build_features  # noqa: E402
 from src.forecast_synthesizer import (  # noqa: E402
     ForecastResult,
     ForecastSynthesizer,
@@ -46,10 +45,17 @@ from src.monitoring.confidence_calibrator import (  # noqa: E402
 from src.monitoring.forecast_quality import (  # noqa: E402
     ForecastQualityMonitor,
 )
+from src.monitoring.forecast_validator import (  # noqa: E402
+    ForecastValidator,
+)
+from src.monitoring.price_monitor import (  # noqa: E402
+    PriceMonitor,
+)
 from src.strategies.supertrend_ai import SuperTrendAI  # noqa: E402
 
 # Global calibrator instance (loaded once, reused across symbols)
 _calibrator: ConfidenceCalibrator | None = None
+_validation_metrics: dict | None = None
 
 
 def get_calibrator() -> ConfidenceCalibrator:
@@ -70,7 +76,10 @@ def get_calibrator() -> ConfidenceCalibrator:
                     len(historical),
                 )
             else:
-                logger.info("Insufficient historical data for calibration, using raw confidence")
+                logger.info(
+                    "Insufficient historical data for calibration, "
+                    "using raw confidence"
+                )
         except Exception as e:
             logger.warning("Could not load calibration data: %s", e)
     return _calibrator
@@ -88,6 +97,97 @@ def _bool_env(name: str, default: bool = False) -> bool:
     if val is None:
         return default
     return val.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _get_forecast_cache_window() -> timedelta:
+    try:
+        minutes = int(os.getenv("FORECAST_CACHE_MINUTES", "8"))
+    except Exception:
+        minutes = 8
+    return timedelta(minutes=max(1, minutes))
+
+
+def _get_refresh_trigger(symbol: str) -> dict | None:
+    if not _bool_env("ENABLE_EVENT_REFRESH", default=True):
+        return None
+
+    try:
+        move_atr = float(os.getenv("REFRESH_MOVE_ATR", "2.0"))
+    except Exception:
+        move_atr = 2.0
+
+    try:
+        move_pct = float(os.getenv("REFRESH_MOVE_PCT", "5.0"))
+    except Exception:
+        move_pct = 5.0
+
+    monitor = PriceMonitor(
+        db_client=db,
+        move_threshold_atr=move_atr,
+        move_threshold_pct=move_pct,
+    )
+    trigger = monitor._check_symbol(symbol)
+    return trigger.to_dict() if trigger else None
+
+
+def get_validation_metrics() -> dict | None:
+    """Compute forecast validation metrics from recent evaluations."""
+    global _validation_metrics
+    if _validation_metrics is not None:
+        return _validation_metrics
+
+    if not _bool_env("ENABLE_FORECAST_VALIDATION", default=True):
+        return None
+
+    try:
+        lookback = int(os.getenv("FORECAST_VALIDATION_LOOKBACK_DAYS", "90"))
+    except Exception:
+        lookback = 90
+
+    try:
+        forecasts_df, actuals_df = db.fetch_forecast_validation_data(
+            lookback_days=lookback,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Forecast validation fetch failed: %s", exc)
+        return None
+
+    if forecasts_df.empty or actuals_df.empty:
+        logger.info("No forecast validation data available")
+        return None
+
+    validator = ForecastValidator()
+    metrics = validator.validate(forecasts_df, actuals_df)
+    _validation_metrics = metrics.to_dict()
+    _validation_metrics["quality_grade"] = metrics.get_quality_grade()
+    return _validation_metrics
+
+
+def _should_skip_forecast(symbol_id: str, horizons: list[str]) -> bool:
+    if not _bool_env("ENABLE_FORECAST_CACHE", default=True):
+        return False
+
+    window = _get_forecast_cache_window()
+    since_ts = pd.Timestamp.utcnow() - window
+    recent = db.fetch_recent_forecast_horizons(symbol_id, since_ts)
+    if not recent:
+        return False
+
+    missing = [h for h in horizons if h not in recent]
+    if missing:
+        logger.info(
+            "Forecast cache miss for %s (missing horizons: %s)",
+            symbol_id,
+            missing,
+        )
+        return False
+
+    logger.info(
+        "Skipping %s: forecasts generated within last %s minutes",
+        symbol_id,
+        int(window.total_seconds() // 60),
+    )
+    return True
 
 
 def _get_symbol_layer_weights(
@@ -704,8 +804,13 @@ def process_symbol(symbol: str) -> None:
     logger.info(f"Processing {symbol}...")
 
     try:
-        # Fetch most recent bars (returns latest first, sorted ascending)
-        df = db.fetch_ohlc_bars(symbol, timeframe="d1", limit=252)
+        # Fetch/cache features across all timeframes, then use d1 for training
+        features_by_tf = fetch_or_build_features(
+            db=db,
+            symbol=symbol,
+            limits={"d1": 252},
+        )
+        df = features_by_tf.get("d1", pd.DataFrame())
 
         if len(df) < settings.min_bars_for_training:
             logger.warning(
@@ -738,9 +843,6 @@ def process_symbol(symbol: str) -> None:
 
         # Get confidence calibrator
         calibrator = get_calibrator()
-
-        # Add technical indicators (includes S/R features)
-        df = add_technical_features(df)
 
         # Extract S/R levels using new 3-indicator system
         sr_detector = SupportResistanceDetector()
@@ -781,6 +883,23 @@ def process_symbol(symbol: str) -> None:
 
         # Get symbol_id
         symbol_id = db.get_symbol_id(symbol)
+        existing_forecast = db.get_forecast_record(
+            symbol_id,
+            horizon="1D",
+        )
+        refresh_trigger = _get_refresh_trigger(symbol)
+        if refresh_trigger:
+            logger.info(
+                "Event refresh triggered for %s: %s",
+                symbol,
+                refresh_trigger.get("reason"),
+            )
+
+        if not refresh_trigger and _should_skip_forecast(
+            symbol_id,
+            settings.forecast_horizons,
+        ):
+            return
 
         # === Walk-forward backtest (validation) ===
         backtester = WalkForwardBacktester(
@@ -1190,6 +1309,17 @@ def process_symbol(symbol: str) -> None:
                 }
             )
 
+            validation_metrics = get_validation_metrics()
+            training_stats = forecast.get("training_stats")
+            if not isinstance(training_stats, dict):
+                training_stats = {}
+            if validation_metrics:
+                training_stats = training_stats.copy()
+                training_stats["forecast_validation"] = validation_metrics
+            if refresh_trigger:
+                training_stats = training_stats.copy()
+                training_stats["event_refresh"] = refresh_trigger
+
             # Save to database (include SuperTrend, S/R, and synthesis data)
             db.upsert_forecast(
                 symbol_id=symbol_id,
@@ -1202,10 +1332,50 @@ def process_symbol(symbol: str) -> None:
                 quality_score=quality_score,
                 quality_issues=issues,
                 model_agreement=forecast.get("agreement"),
-                training_stats=forecast.get("training_stats"),
+                training_stats=training_stats,
                 sr_levels=forecast.get("sr_levels"),
                 sr_density=forecast.get("sr_density"),
                 synthesis_data=forecast.get("synthesis"),
+            )
+
+            if existing_forecast:
+                forecast_id = existing_forecast.get("id")
+                if forecast_id:
+                    if (
+                        existing_forecast.get("overall_label")
+                        != forecast.get("label")
+                    ):
+                        db.insert_forecast_change(
+                            forecast_id=forecast_id,
+                            field_name="overall_label",
+                            old_value=existing_forecast.get("overall_label"),
+                            new_value=forecast.get("label"),
+                            reason="forecast_job_update",
+                        )
+                    if (
+                        existing_forecast.get("confidence")
+                        != forecast.get("confidence")
+                    ):
+                        db.insert_forecast_change(
+                            forecast_id=forecast_id,
+                            field_name="confidence",
+                            old_value=existing_forecast.get("confidence"),
+                            new_value=forecast.get("confidence"),
+                            reason="forecast_job_update",
+                        )
+
+            model_version_hash = None
+            training_stats = training_stats or {}
+            if isinstance(training_stats, dict):
+                model_version_hash = training_stats.get("model_hash")
+
+            db.insert_model_version(
+                symbol_id=symbol_id,
+                model_type="forecast_synth",
+                version_hash=model_version_hash,
+                parameters=forecast.get("synthesis") or {},
+                training_stats=training_stats,
+                performance_metrics=forecast.get("backtest") or {},
             )
 
             # Log synthesis results

@@ -7,6 +7,7 @@ Designed to complement Random Forest in ensemble.
 """
 
 import logging
+import os
 import pickle
 from typing import Dict, List
 
@@ -58,6 +59,27 @@ class GradientBoostingForecaster:
 
     def _build_model(self) -> XGBClassifier:
         """Construct XGBoost model with optimized hyperparameters."""
+        tree_method = os.getenv("XGBOOST_TREE_METHOD")
+        predictor = os.getenv("XGBOOST_PREDICTOR")
+        try:
+            n_jobs = int(os.getenv("XGBOOST_N_JOBS", "-1"))
+        except Exception:
+            n_jobs = -1
+
+        max_bin = os.getenv("XGBOOST_MAX_BIN")
+        try:
+            max_bin_value = int(max_bin) if max_bin else None
+        except Exception:
+            max_bin_value = None
+
+        params = {
+            "tree_method": tree_method,
+            "predictor": predictor,
+            "n_jobs": n_jobs,
+            "max_bin": max_bin_value,
+        }
+        params = {k: v for k, v in params.items() if v}
+
         return XGBClassifier(
             n_estimators=200,  # More trees than RF (shallow trees)
             max_depth=3,  # Shallow tree depth (prevents overfitting)
@@ -74,7 +96,8 @@ class GradientBoostingForecaster:
             num_class=3,  # 3 classes (Bearish, Neutral, Bullish)
             eval_metric="mlogloss",  # Evaluation metric
             verbosity=0,  # No training output
-            n_jobs=-1,  # Use all CPU cores
+            n_jobs=n_jobs,  # Use all CPU cores (override via env)
+            **params,
         )
 
     def train(

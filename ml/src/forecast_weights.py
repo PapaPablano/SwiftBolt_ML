@@ -12,6 +12,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Dict
 
+from src.features.sr_correlation_analyzer import SRCorrelationAnalyzer
+
 
 @dataclass
 class ForecastWeights:
@@ -145,6 +147,22 @@ class ForecastWeights:
             return adjusted
 
         return self
+
+    def adjust_sr_weights_for_correlation(
+        self,
+        pivot_levels,
+        polynomial_levels,
+        logistic_levels,
+    ) -> dict:
+        """Adjust S/R weights based on indicator redundancy."""
+        analyzer = SRCorrelationAnalyzer()
+        result = analyzer.analyze(pivot_levels, polynomial_levels, logistic_levels)
+        self.sr_weights = {
+            "pivot_levels": result["adjusted_weights"]["pivot"],
+            "polynomial": result["adjusted_weights"]["polynomial"],
+            "logistic": result["adjusted_weights"]["logistic"],
+        }
+        return result
 
     def to_dict(self) -> Dict:
         """Convert to dictionary for serialization."""

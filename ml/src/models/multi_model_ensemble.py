@@ -18,6 +18,8 @@ Key Features:
 """
 
 import logging
+import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
@@ -25,6 +27,13 @@ import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+def _bool_env(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 class MultiModelEnsemble:
@@ -280,25 +289,53 @@ class MultiModelEnsemble:
                 if self.enable_gb:
                     self._redistribute_weights(self.MODEL_GB)
 
-        # Train ARIMA-GARCH
-        if self.enable_arima_garch and self.MODEL_AG in self.models:
-            try:
-                self.models[self.MODEL_AG].train(ohlc_df)
-                self.model_trained[self.MODEL_AG] = True
-                logger.info("ARIMA-GARCH trained successfully")
-            except Exception as e:
-                logger.warning("ARIMA-GARCH training failed: %s", e)
-                self._redistribute_weights(self.MODEL_AG)
+        def _train_model(model_key: str, label: str) -> None:
+            model = self.models[model_key]
+            model.train(ohlc_df)
+            self.model_trained[model_key] = True
+            logger.info("%s trained successfully", label)
 
-        # Train Prophet
-        if self.enable_prophet and self.MODEL_PROPHET in self.models:
-            try:
-                self.models[self.MODEL_PROPHET].train(ohlc_df)
-                self.model_trained[self.MODEL_PROPHET] = True
-                logger.info("Prophet trained successfully")
-            except Exception as e:
-                logger.warning("Prophet training failed: %s", e)
-                self._redistribute_weights(self.MODEL_PROPHET)
+        parallel = _bool_env("ENABLE_PARALLEL_MODEL_TRAINING", default=False)
+        if parallel:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                futures = {}
+                if self.enable_arima_garch and self.MODEL_AG in self.models:
+                    future = executor.submit(
+                        _train_model,
+                        self.MODEL_AG,
+                        "ARIMA-GARCH",
+                    )
+                    futures[future] = (self.MODEL_AG, "ARIMA-GARCH")
+                if self.enable_prophet and self.MODEL_PROPHET in self.models:
+                    future = executor.submit(
+                        _train_model,
+                        self.MODEL_PROPHET,
+                        "Prophet",
+                    )
+                    futures[future] = (self.MODEL_PROPHET, "Prophet")
+
+                for future, (model_key, label) in futures.items():
+                    try:
+                        future.result()
+                    except Exception as e:
+                        logger.warning("%s training failed: %s", label, e)
+                        self._redistribute_weights(model_key)
+        else:
+            # Train ARIMA-GARCH
+            if self.enable_arima_garch and self.MODEL_AG in self.models:
+                try:
+                    _train_model(self.MODEL_AG, "ARIMA-GARCH")
+                except Exception as e:
+                    logger.warning("ARIMA-GARCH training failed: %s", e)
+                    self._redistribute_weights(self.MODEL_AG)
+
+            # Train Prophet
+            if self.enable_prophet and self.MODEL_PROPHET in self.models:
+                try:
+                    _train_model(self.MODEL_PROPHET, "Prophet")
+                except Exception as e:
+                    logger.warning("Prophet training failed: %s", e)
+                    self._redistribute_weights(self.MODEL_PROPHET)
 
         # Train LSTM
         if self.enable_lstm and self.MODEL_LSTM in self.models:
