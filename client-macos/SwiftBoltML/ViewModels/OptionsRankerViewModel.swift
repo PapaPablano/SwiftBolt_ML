@@ -58,6 +58,7 @@ class OptionsRankerViewModel: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
     private var quoteTimerCancellable: AnyCancellable?
+    private var activeSymbol: String?
 
     enum RankingStatus {
         case unknown
@@ -163,6 +164,7 @@ class OptionsRankerViewModel: ObservableObject {
             rankings = response.ranks
             updateRankingStatus()
             isLoading = false
+            activeSymbol = symbol
 
             print("[OptionsRanker] Loaded \(rankings.count) ranked options for \(symbol)")
 
@@ -177,6 +179,33 @@ class OptionsRankerViewModel: ObservableObject {
 
     func refresh(for symbol: String) async {
         await loadRankings(for: symbol)
+    }
+
+    func clearData() {
+        rankings = []
+        liveQuotes = [:]
+        lastQuoteRefresh = nil
+        errorMessage = nil
+        isLoading = false
+        isGeneratingRankings = false
+        rankingStatus = .unknown
+        gaStrategy = nil
+        gaRecommendation = nil
+        isLoadingGA = false
+        lastRankingRefresh = nil
+        activeSymbol = nil
+        stopAutoRefresh()
+    }
+
+    func ensureLoaded(for symbol: String) async {
+        if activeSymbol == symbol, !rankings.isEmpty {
+            startAutoRefresh(for: symbol)
+            return
+        }
+
+        await loadRankings(for: symbol)
+        await loadGAStrategy(for: symbol)
+        startAutoRefresh(for: symbol)
     }
 
     func triggerRankingJob(for symbol: String) async {

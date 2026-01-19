@@ -2,7 +2,10 @@ import SwiftUI
 
 struct OptionsRankerView: View {
     @EnvironmentObject var appViewModel: AppViewModel
-    @StateObject private var rankerViewModel = OptionsRankerViewModel()
+
+    private var rankerViewModel: OptionsRankerViewModel {
+        appViewModel.optionsRankerViewModel
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,21 +31,17 @@ struct OptionsRankerView: View {
                 )
             }
         }
-        .onChange(of: appViewModel.selectedSymbol) { oldValue, newValue in
+        .onChange(of: appViewModel.selectedSymbol) { _, newValue in
             if let symbol = newValue?.ticker {
                 Task {
-                    await rankerViewModel.loadRankings(for: symbol)
-                    await rankerViewModel.loadGAStrategy(for: symbol)  // Fix C: load GA strategy
-                    rankerViewModel.startAutoRefresh(for: symbol)
+                    await rankerViewModel.ensureLoaded(for: symbol)
                 }
             }
         }
         .onAppear {
             if let symbol = appViewModel.selectedSymbol?.ticker {
                 Task {
-                    await rankerViewModel.loadRankings(for: symbol)
-                    await rankerViewModel.loadGAStrategy(for: symbol)  // Fix C: load GA strategy
-                    rankerViewModel.startAutoRefresh(for: symbol)
+                    await rankerViewModel.ensureLoaded(for: symbol)
                 }
             }
         }

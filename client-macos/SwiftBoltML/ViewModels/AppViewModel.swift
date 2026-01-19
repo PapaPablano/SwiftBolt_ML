@@ -24,6 +24,9 @@ final class AppViewModel: ObservableObject {
     @Published var indicatorsViewModel: IndicatorsViewModel
     @Published var newsViewModel: NewsViewModel
     @Published var optionsChainViewModel: OptionsChainViewModel
+    @Published var optionsRankerViewModel: OptionsRankerViewModel
+    @Published var selectedDetailTab: Int = 0
+    @Published var selectedOptionsTab: Int = 0
     let searchViewModel: SymbolSearchViewModel
     let watchlistViewModel: WatchlistViewModel
 
@@ -36,6 +39,7 @@ final class AppViewModel: ObservableObject {
         self.indicatorsViewModel = IndicatorsViewModel(config: IndicatorConfig())
         self.newsViewModel = NewsViewModel()
         self.optionsChainViewModel = OptionsChainViewModel()
+        self.optionsRankerViewModel = OptionsRankerViewModel()
         self.searchViewModel = SymbolSearchViewModel()
         self.watchlistViewModel = WatchlistViewModel()
 
@@ -93,6 +97,13 @@ final class AppViewModel: ObservableObject {
             }
         }.store(in: &cancellables)
 
+        // Relay optionsRankerViewModel changes to trigger AppViewModel updates
+        optionsRankerViewModel.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.objectWillChange.send()
+            }
+        }.store(in: &cancellables)
+
     }
 
     private func handleSymbolChange() {
@@ -119,6 +130,7 @@ final class AppViewModel: ObservableObject {
         chartViewModel.clearData()
         newsViewModel.clearData()
         optionsChainViewModel.clearData()
+        optionsRankerViewModel.clearData()
 
         print("[DEBUG] - Setting chartViewModel.selectedSymbol to: \(selectedSymbol?.ticker ?? "nil")")
         // Setting selectedSymbol triggers didSet which calls loadChart() automatically
@@ -140,8 +152,9 @@ final class AppViewModel: ObservableObject {
         // Only load news and options here to avoid duplicate chart requests
         async let newsLoad: () = newsViewModel.loadNews(for: selectedSymbol?.ticker)
         async let optionsLoad: () = optionsChainViewModel.loadOptionsChain(for: selectedSymbol?.ticker ?? "")
+        async let rankerLoad: () = optionsRankerViewModel.ensureLoaded(for: selectedSymbol?.ticker ?? "")
 
-        _ = await (newsLoad, optionsLoad)
+        _ = await (newsLoad, optionsLoad, rankerLoad)
         print("[DEBUG] AppViewModel.refreshData() COMPLETED")
         print("[DEBUG] ========================================")
     }
