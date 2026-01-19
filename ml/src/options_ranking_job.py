@@ -8,6 +8,7 @@ produces composite_rank (0-100) based on:
 """
 
 import argparse
+import json
 import logging
 import sys
 from datetime import datetime
@@ -192,9 +193,11 @@ def select_balanced_expiry_contracts(
         result = pd.DataFrame()
 
     if len(result) < total_contracts:
-        # Get remaining contracts from overall top-ranked
+        # FIX: Use contract_symbol for exclusion instead of index to avoid
+        # inconsistencies if indexes were reset earlier
         remaining_count = total_contracts - len(result)
-        excluded = ranked_df[~ranked_df.index.isin(result.index)]
+        selected_symbols = set(result["contract_symbol"].tolist()) if not result.empty else set()
+        excluded = ranked_df[~ranked_df["contract_symbol"].isin(selected_symbols)]
         if not excluded.empty:
             backfill = excluded.nlargest(remaining_count, "composite_rank")
             result = pd.concat([result, backfill], ignore_index=True)
@@ -269,7 +272,12 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
                 "signal_runner": bool(row.get("signal_runner", False)),
                 "signal_greeks": bool(row.get("signal_greeks", False)),
                 "signal_buy": bool(row.get("signal_buy", False)),
-                "signals": str(row.get("signals", "")),
+                # FIX: Store signals as JSON array for consistent parsing
+                "signals": json.dumps(
+                    row.get("signals", "").split(",")
+                    if row.get("signals")
+                    else []
+                ),
             }
 
             db.upsert_option_rank_extended(**record)

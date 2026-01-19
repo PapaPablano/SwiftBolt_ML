@@ -416,15 +416,27 @@ class OptionsMomentumRanker:
 
         # Match contracts between current and previous
         for idx, row in current.iterrows():
-            contract_id = row.get("contract_symbol", f"{row['strike']}_{row['side']}")
+            # FIX: Include expiration in fallback key to prevent cross-expiry collisions
+            expiration = row.get("expiration", "")
+            contract_id = row.get(
+                "contract_symbol", f"{row['strike']}_{row['side']}_{expiration}"
+            )
 
             # Find previous momentum score
             if "contract_symbol" in previous.columns:
                 prev_match = previous[previous["contract_symbol"] == contract_id]
             else:
-                prev_match = previous[
-                    (previous["strike"] == row["strike"]) & (previous["side"] == row["side"])
-                ]
+                # FIX: Also match on expiration to avoid blending unrelated contracts
+                if "expiration" in previous.columns and expiration:
+                    prev_match = previous[
+                        (previous["strike"] == row["strike"])
+                        & (previous["side"] == row["side"])
+                        & (previous["expiration"] == expiration)
+                    ]
+                else:
+                    prev_match = previous[
+                        (previous["strike"] == row["strike"]) & (previous["side"] == row["side"])
+                    ]
 
             if len(prev_match) > 0:
                 prev_momentum = prev_match.iloc[0].get("momentum_score", row["momentum_score"])
@@ -558,14 +570,26 @@ class OptionsMomentumRanker:
         scores = pd.Series(np.nan, index=current.index)
 
         for idx, row in current.iterrows():
-            contract_id = row.get("contract_symbol", f"{row['strike']}_{row['side']}")
+            # FIX: Include expiration in fallback key for consistent matching
+            expiration = row.get("expiration", "")
+            contract_id = row.get(
+                "contract_symbol", f"{row['strike']}_{row['side']}_{expiration}"
+            )
 
             if "contract_symbol" in previous.columns:
                 prev_match = previous[previous["contract_symbol"] == contract_id]
             else:
-                prev_match = previous[
-                    (previous["strike"] == row["strike"]) & (previous["side"] == row["side"])
-                ]
+                # FIX: Also match on expiration to avoid cross-expiry collisions
+                if "expiration" in previous.columns and expiration:
+                    prev_match = previous[
+                        (previous["strike"] == row["strike"])
+                        & (previous["side"] == row["side"])
+                        & (previous["expiration"] == expiration)
+                    ]
+                else:
+                    prev_match = previous[
+                        (previous["strike"] == row["strike"]) & (previous["side"] == row["side"])
+                    ]
 
             if len(prev_match) > 0:
                 prev_rank = prev_match.iloc[0].get("composite_rank", np.nan)
@@ -639,19 +663,24 @@ class OptionsMomentumRanker:
         """Calculate IV Rank: (IV_current - IV_52low) / (IV_52high - IV_52low) × 100.
 
         If no IV stats provided, estimate from current chain.
+        Also adds iv_rank_source column to track the source of IV rank calculation.
         """
         if "iv" not in df.columns:
             logger.warning("No IV column found, defaulting to 50")
+            df["iv_rank_source"] = "default"
             return pd.Series(50.0, index=df.index)
 
         if iv_stats:
-            # Use provided 52-week statistics
+            # Use provided 52-week statistics (preferred method)
             iv_range = iv_stats.iv_high - iv_stats.iv_low
             if iv_range > 0:
                 iv_rank = ((df["iv"] - iv_stats.iv_low) / iv_range) * 100
+                df["iv_rank_source"] = "rpc"  # From database RPC with historical stats
             else:
                 iv_rank = pd.Series(50.0, index=df.index)
+                df["iv_rank_source"] = "rpc_no_range"
         else:
+            # FIX: Track that we're using chain estimate (less reliable)
             # Estimate from current chain (ATM IV as proxy)
             iv_min = df["iv"].min()
             iv_max = df["iv"].max()
@@ -659,10 +688,15 @@ class OptionsMomentumRanker:
 
             if iv_range > 0:
                 iv_rank = ((df["iv"] - iv_min) / iv_range) * 100
+                df["iv_rank_source"] = "chain_estimate"  # Estimated from current chain
             else:
                 iv_rank = pd.Series(50.0, index=df.index)
+                df["iv_rank_source"] = "chain_no_range"
 
-            logger.debug(f"Estimated IV Rank from chain: min={iv_min:.2%}, max={iv_max:.2%}")
+            logger.warning(
+                f"Using chain-estimated IV Rank (less reliable): "
+                f"min={iv_min:.2%}, max={iv_max:.2%}"
+            )
 
         return iv_rank.clip(0, 100)
 

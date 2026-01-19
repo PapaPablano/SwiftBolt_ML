@@ -86,7 +86,7 @@ class StrategyGenes:
     max_concurrent_trades: int  # 1-5: Max simultaneous positions
 
     # === TRADE FREQUENCY ===
-    min_trades_per_day: int  # 1-5: Daily trade limit
+    max_trades_per_day: int  # 1-5: Daily trade limit (cap)
     max_trades_per_symbol: int  # 1-10: Per-symbol limit
 
     @classmethod
@@ -112,7 +112,7 @@ class StrategyGenes:
             stop_loss_pct=np.random.uniform(-15, -3),
             position_size_pct=np.random.uniform(2, 6),
             max_concurrent_trades=np.random.randint(2, 4),
-            min_trades_per_day=np.random.randint(1, 3),
+            max_trades_per_day=np.random.randint(1, 3),
             max_trades_per_symbol=np.random.randint(2, 6),
         )
 
@@ -139,7 +139,7 @@ class StrategyGenes:
             stop_loss_pct=-8.0,
             position_size_pct=3.0,
             max_concurrent_trades=3,
-            min_trades_per_day=2,
+            max_trades_per_day=2,
             max_trades_per_symbol=4,
         )
 
@@ -171,7 +171,7 @@ class StrategyGenes:
             stop_loss_pct=self._mutate_float(self.stop_loss_pct, -15, -3, mutation_rate),
             position_size_pct=self._mutate_float(self.position_size_pct, 2, 6, mutation_rate),
             max_concurrent_trades=self._mutate_int(self.max_concurrent_trades, 2, 4, mutation_rate),
-            min_trades_per_day=self._mutate_int(self.min_trades_per_day, 1, 3, mutation_rate),
+            max_trades_per_day=self._mutate_int(self.max_trades_per_day, 1, 3, mutation_rate),
             max_trades_per_symbol=self._mutate_int(self.max_trades_per_symbol, 2, 6, mutation_rate),
         )
 
@@ -352,6 +352,20 @@ class OptionsStrategy:
             df[time_col] = pd.to_datetime(df[time_col])
             df = df.sort_values(time_col)
 
+        # Build lookup table for contract-specific data by timestamp
+        # This allows exit checks to use the correct contract's row, not any row
+        contract_data_by_time: Dict[str, Dict[str, pd.Series]] = {}
+        for idx, row in df.iterrows():
+            row_time = row.get(time_col)
+            if isinstance(row_time, str):
+                row_time = datetime.fromisoformat(row_time.replace("Z", "+00:00"))
+            time_key = str(row_time)
+            contract_sym = row.get("contract_symbol", "")
+            if time_key not in contract_data_by_time:
+                contract_data_by_time[time_key] = {}
+            if contract_sym:
+                contract_data_by_time[time_key][contract_sym] = row
+
         for idx, row in df.iterrows():
             current_time = row.get(time_col, datetime.now())
             if isinstance(current_time, str):
@@ -359,29 +373,40 @@ class OptionsStrategy:
 
             symbol = row.get("symbol", row.get("underlying_symbol", "UNKNOWN"))
             hour = current_time.hour if hasattr(current_time, "hour") else 12
+            time_key = str(current_time)
 
             # === CHECK EXITS ===
+            # FIX: Use contract-specific row data for exit checks, not the current iteration row
             positions_to_close = []
+            current_time_contracts = contract_data_by_time.get(time_key, {})
 
             for contract, trade in open_positions.items():
-                should_exit, exit_reason = self._check_exit_conditions(trade, row, current_time)
-                if should_exit:
-                    positions_to_close.append((contract, exit_reason))
+                # Get the row data for THIS specific contract at this timestamp
+                contract_row = current_time_contracts.get(contract)
+                if contract_row is None:
+                    # Contract not in current timestamp data, skip exit check
+                    continue
 
-            # Close positions
-            for contract, exit_reason in positions_to_close:
+                should_exit, exit_reason = self._check_exit_conditions(
+                    trade, contract_row, current_time
+                )
+                if should_exit:
+                    positions_to_close.append((contract, exit_reason, contract_row))
+
+            # Close positions using contract-specific data
+            for contract, exit_reason, contract_row in positions_to_close:
                 trade = open_positions[contract]
                 trade.exit_date = (
                     current_time.isoformat()
                     if hasattr(current_time, "isoformat")
                     else str(current_time)
                 )
-                trade.exit_price = self._get_price(row)
+                trade.exit_price = self._get_price(contract_row)
                 trade.exit_reason = exit_reason
-                trade.delta_exit = row.get("delta", 0)
-                trade.gamma_exit = row.get("gamma", 0)
-                trade.vega_exit = row.get("vega", 0)
-                trade.theta_exit = row.get("theta", 0)
+                trade.delta_exit = contract_row.get("delta", 0)
+                trade.gamma_exit = contract_row.get("gamma", 0)
+                trade.vega_exit = contract_row.get("vega", 0)
+                trade.theta_exit = contract_row.get("theta", 0)
 
                 # Update capital
                 pnl = trade.pnl_pct * capital / 100
@@ -493,7 +518,7 @@ class OptionsStrategy:
         # Daily trade limit
         if hasattr(current_time, "date"):
             today = current_time.date()
-            if daily_trades.get(today, 0) >= self.genes.min_trades_per_day:
+            if daily_trades.get(today, 0) >= self.genes.max_trades_per_day:
                 return False
 
         # Symbol trade limit
@@ -845,8 +870,8 @@ class OptionsStrategyGA:
             max_concurrent_trades=int(
                 alpha * genes1.max_concurrent_trades + (1 - alpha) * genes2.max_concurrent_trades
             ),
-            min_trades_per_day=int(
-                alpha * genes1.min_trades_per_day + (1 - alpha) * genes2.min_trades_per_day
+            max_trades_per_day=int(
+                alpha * genes1.max_trades_per_day + (1 - alpha) * genes2.max_trades_per_day
             ),
             max_trades_per_symbol=int(
                 alpha * genes1.max_trades_per_symbol + (1 - alpha) * genes2.max_trades_per_symbol
@@ -886,8 +911,8 @@ class OptionsStrategyGA:
             max_concurrent_trades=int(
                 (1 - alpha) * genes1.max_concurrent_trades + alpha * genes2.max_concurrent_trades
             ),
-            min_trades_per_day=int(
-                (1 - alpha) * genes1.min_trades_per_day + alpha * genes2.min_trades_per_day
+            max_trades_per_day=int(
+                (1 - alpha) * genes1.max_trades_per_day + alpha * genes2.max_trades_per_day
             ),
             max_trades_per_symbol=int(
                 (1 - alpha) * genes1.max_trades_per_symbol + alpha * genes2.max_trades_per_symbol
