@@ -569,6 +569,88 @@ def convert_supertrend_to_synthesizer_format(st_info: dict) -> dict:
     }
 
 
+def _series_from_levels(levels: list[float | int | None]) -> pd.Series:
+    values = [float(v) for v in levels if v is not None]
+    return pd.Series(values, dtype="float64")
+
+
+def _build_sr_correlation_inputs(
+    sr_levels: dict,
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    indicators = sr_levels.get("indicators", {})
+    pivot_in = indicators.get("pivot_levels", {})
+    pivot_levels = []
+    for level in pivot_in.get("pivot_levels", []):
+        pivot_levels.extend(
+            [
+                level.get("level_low"),
+                level.get("level_high"),
+            ]
+        )
+
+    poly_in = indicators.get("polynomial", {})
+    poly_levels = [
+        poly_in.get("current_support"),
+        poly_in.get("current_resistance"),
+    ]
+    poly_levels.extend(poly_in.get("forecast_support", []) or [])
+    poly_levels.extend(poly_in.get("forecast_resistance", []) or [])
+
+    logistic_in = indicators.get("logistic", {})
+    logistic_levels = [
+        lvl.get("level")
+        for lvl in (
+            logistic_in.get("support_levels", [])
+            + logistic_in.get("resistance_levels", [])
+        )
+    ]
+
+    return (
+        _series_from_levels(pivot_levels),
+        _series_from_levels(poly_levels),
+        _series_from_levels(logistic_levels),
+    )
+
+
+def _record_forecast_audit_changes(
+    forecast_id: str,
+    existing_forecast: dict,
+    forecast: dict,
+) -> None:
+    if existing_forecast.get("overall_label") != forecast.get("label"):
+        db.insert_forecast_change(
+            forecast_id=forecast_id,
+            field_name="overall_label",
+            old_value=existing_forecast.get("overall_label"),
+            new_value=forecast.get("label"),
+            reason="forecast_job_update",
+        )
+
+    if existing_forecast.get("confidence") != forecast.get("confidence"):
+        db.insert_forecast_change(
+            forecast_id=forecast_id,
+            field_name="confidence",
+            old_value=existing_forecast.get("confidence"),
+            new_value=forecast.get("confidence"),
+            reason="forecast_job_update",
+        )
+
+    existing_synth = existing_forecast.get("synthesis_data")
+    new_synth = forecast.get("synthesis")
+    if not isinstance(existing_synth, dict) or not isinstance(new_synth, dict):
+        return
+
+    for key in ("target", "upper_band", "lower_band", "layers_agreeing"):
+        if existing_synth.get(key) != new_synth.get(key):
+            db.insert_forecast_change(
+                forecast_id=forecast_id,
+                field_name=f"synthesis.{key}",
+                old_value=existing_synth.get(key),
+                new_value=new_synth.get(key),
+                reason="forecast_job_update",
+            )
+
+
 def forecast_result_to_points(
     result: ForecastResult,
     start_ts: datetime,
@@ -1029,7 +1111,28 @@ def process_symbol(symbol: str) -> None:
             logger.warning("Failed to save indicator snapshot for %s: %s", symbol, e)
 
         # === Initialize Forecast Synthesizer ===
-        synthesizer = ForecastSynthesizer(weights=get_default_weights())
+        weights = get_default_weights()
+        sr_correlation_result = None
+        (
+            pivot_series,
+            poly_series,
+            logistic_series,
+        ) = _build_sr_correlation_inputs(sr_levels)
+        if (
+            len(pivot_series) >= 10
+            and len(poly_series) >= 10
+            and len(logistic_series) >= 10
+        ):
+            sr_correlation_result = weights.adjust_sr_weights_for_correlation(
+                pivot_series,
+                poly_series,
+                logistic_series,
+            )
+            logger.info(
+                "S/R correlation weights updated: %s",
+                sr_correlation_result.get("adjusted_weights"),
+            )
+        synthesizer = ForecastSynthesizer(weights=weights)
         sr_response = convert_sr_to_synthesizer_format(sr_levels, current_price)
         supertrend_for_synth = convert_supertrend_to_synthesizer_format(st_info_raw)
 
@@ -1153,6 +1256,7 @@ def process_symbol(symbol: str) -> None:
                         "supertrend_component": synth_result.supertrend_component,
                         "polynomial_component": synth_result.polynomial_component,
                         "ml_component": synth_result.ml_component,
+                        "sr_correlation": sr_correlation_result,
                     },
                 }
 
@@ -1341,28 +1445,11 @@ def process_symbol(symbol: str) -> None:
             if existing_forecast:
                 forecast_id = existing_forecast.get("id")
                 if forecast_id:
-                    if (
-                        existing_forecast.get("overall_label")
-                        != forecast.get("label")
-                    ):
-                        db.insert_forecast_change(
-                            forecast_id=forecast_id,
-                            field_name="overall_label",
-                            old_value=existing_forecast.get("overall_label"),
-                            new_value=forecast.get("label"),
-                            reason="forecast_job_update",
-                        )
-                    if (
-                        existing_forecast.get("confidence")
-                        != forecast.get("confidence")
-                    ):
-                        db.insert_forecast_change(
-                            forecast_id=forecast_id,
-                            field_name="confidence",
-                            old_value=existing_forecast.get("confidence"),
-                            new_value=forecast.get("confidence"),
-                            reason="forecast_job_update",
-                        )
+                    _record_forecast_audit_changes(
+                        forecast_id=forecast_id,
+                        existing_forecast=existing_forecast,
+                        forecast=forecast,
+                    )
 
             model_version_hash = None
             training_stats = training_stats or {}

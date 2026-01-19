@@ -1222,3 +1222,10 @@ python -m src.backtesting.run_baseline_benchmark
 ```
 
 This creates a snapshot to compare against after improvements.
+
+**Latest baseline run (2026-01-18, Alpaca-only)**:
+- Output: `ml/data/benchmarks/baseline_benchmark_20260118_210813.json`
+- Data validation: `is_valid=true`, `quality_score=1.0`, `rows_flagged=0`
+- Forecaster: `1D` accuracy **55.2%**, `1W` accuracy **30.3%**, `1M` accuracy **12.0%**
+- Summary: avg accuracy **32.5%**, avg Sharpe **0.44**, avg F1 **0.32**
+- Calibration report: adjustment factors ranged from **0.59–0.78** across buckets

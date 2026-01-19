@@ -566,9 +566,17 @@ class SupabaseDatabase:
     ) -> dict[str, Any] | None:
         """Fetch existing forecast record for audit comparison."""
         try:
+            select_fields = [
+                "id",
+                "overall_label",
+                "confidence",
+                "points",
+                "training_stats",
+                "synthesis_data",
+            ]
             response = (
                 self.client.table("ml_forecasts")
-                .select("id,overall_label,confidence,points,training_stats")
+                .select(",".join(select_fields))
                 .eq("symbol_id", symbol_id)
                 .eq("horizon", horizon)
                 .limit(1)

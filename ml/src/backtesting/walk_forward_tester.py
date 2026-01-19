@@ -12,6 +12,8 @@ from typing import Any, List
 import numpy as np
 import pandas as pd
 
+from src.features.temporal_indicators import TemporalFeatureEngineer
+
 logger = logging.getLogger(__name__)
 
 
@@ -151,6 +153,8 @@ class WalkForwardBacktester:
 
             train_df = df.iloc[start_train:end_train].copy()
             test_df = df.iloc[end_train:end_test].copy()
+            combined_df = pd.concat([train_df, test_df], ignore_index=True)
+            feature_engineer = TemporalFeatureEngineer()
 
             # Train model
             try:
@@ -169,13 +173,20 @@ class WalkForwardBacktester:
 
             # Test on test window
             for test_idx in range(len(test_df)):
-                test_point = test_df.iloc[test_idx : test_idx + 1]
+                combined_idx = len(train_df) + test_idx
+                if combined_idx < 50:
+                    continue
 
                 try:
-                    label, confidence, proba = forecaster.predict(test_point)
+                    features = feature_engineer.add_features_to_point(
+                        combined_df,
+                        combined_idx,
+                    )
+                    feature_df = pd.DataFrame([features])
+                    label, confidence, proba = forecaster.predict(feature_df)
 
                     if test_idx + 1 < len(test_df):
-                        current_price = test_point["close"].iloc[0]
+                        current_price = combined_df["close"].iloc[combined_idx]
                         next_price = test_df["close"].iloc[test_idx + 1]
                         actual_return = (next_price - current_price) / current_price
 
