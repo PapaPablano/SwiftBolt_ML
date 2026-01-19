@@ -94,7 +94,11 @@ class PriceMonitor:
             trigger = self._check_symbol(symbol)
             if trigger:
                 triggers.append(trigger)
-                logger.info(f"Refresh triggered for {symbol}: {trigger.reason}")
+                logger.info(
+                    "Refresh triggered for %s: %s",
+                    symbol,
+                    trigger.reason,
+                )
 
         return triggers
 
@@ -254,10 +258,12 @@ class PriceMonitor:
                 stale.append(symbol)
                 continue
 
-            created_at = forecast.get("created_at")
+            created_at = forecast.get("created_at") or forecast.get("run_at")
             if created_at:
                 if isinstance(created_at, str):
-                    created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                    created_at = datetime.fromisoformat(
+                        created_at.replace("Z", "+00:00")
+                    )
                 age_hours = (now - created_at).total_seconds() / 3600
                 if age_hours > max_age_hours:
                     stale.append(symbol)

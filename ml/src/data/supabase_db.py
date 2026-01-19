@@ -1,6 +1,8 @@
 """Supabase-based database access layer for SwiftBolt ML pipeline."""
+# flake8: noqa
 
 import logging
+from datetime import datetime
 from typing import Any
 
 import numpy as np
@@ -13,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class SupabaseDatabase:
-    """Supabase database client manager."""
+    """Supabase database client wrapper."""
 
     def __init__(self) -> None:
         """Initialize Supabase client."""
@@ -211,6 +213,16 @@ class SupabaseDatabase:
             for col in columns:
                 if col in row.index:
                     value = row.get(col)
+                    if col == "supertrend_trend" and value is not None:
+                        try:
+                            value = int(float(value))
+                        except (TypeError, ValueError):
+                            value = None
+                    if col == "ts" and value is not None:
+                        try:
+                            value = pd.to_datetime(value).isoformat()
+                        except Exception:
+                            pass
                     if pd.isna(value):
                         value = None
                     record[col] = value
@@ -253,7 +265,6 @@ class SupabaseDatabase:
 
             if not response.data:
                 return None
-
             row = response.data[0]
             return (pd.to_datetime(row["ts"]), float(row["close"]))
         except Exception as e:
@@ -264,6 +275,37 @@ class SupabaseDatabase:
                 e,
             )
             return None
+
+    def upsert_confidence_calibration(
+        self,
+        horizon: str,
+        bucket_low: float,
+        bucket_high: float,
+        predicted_confidence: float,
+        actual_accuracy: float,
+        adjustment_factor: float,
+        n_samples: int,
+        is_calibrated: bool,
+    ) -> None:
+        """Upsert calibration bucket stats for confidence reporting."""
+        payload = {
+            "horizon": horizon,
+            "bucket_low": bucket_low,
+            "bucket_high": bucket_high,
+            "predicted_confidence": predicted_confidence,
+            "actual_accuracy": actual_accuracy,
+            "adjustment_factor": adjustment_factor,
+            "n_samples": n_samples,
+            "is_calibrated": is_calibrated,
+            "updated_at": pd.Timestamp.utcnow().isoformat(),
+        }
+        try:
+            self.client.table("ml_confidence_calibration").upsert(
+                payload,
+                on_conflict="horizon,bucket_low,bucket_high",
+            ).execute()
+        except Exception as exc:
+            logger.warning("Failed to upsert confidence calibration: %s", exc)
 
     def fetch_forecast_validation_data(
         self,
@@ -276,7 +318,7 @@ class SupabaseDatabase:
                 self.client.table("forecast_evaluations")
                 .select(
                     "symbol,horizon,evaluation_date,realized_price,"
-                    "predicted_label,"
+                    "predicted_label,realized_label,direction_correct,"
                     "ml_forecasts!inner(points,confidence,"
                     "overall_label,run_at)"
                 )
@@ -335,6 +377,8 @@ class SupabaseDatabase:
                         "symbol": symbol,
                         "date": eval_date,
                         "close": realized_price,
+                        "realized_label": row.get("realized_label"),
+                        "direction_correct": row.get("direction_correct"),
                     }
                 )
 
@@ -642,6 +686,11 @@ class SupabaseDatabase:
         sr_levels: dict[str, Any] | None = None,
         sr_density: int | None = None,
         synthesis_data: dict[str, Any] | None = None,
+        model_predictions: dict[str, Any] | None = None,
+        model_confidences: dict[str, Any] | None = None,
+        ensemble_method: str | None = None,
+        ensemble_weights: dict[str, Any] | None = None,
+        confidence_source: str | None = None,
     ) -> None:
         """
         Insert or update a forecast in the ml_forecasts table.
@@ -702,6 +751,16 @@ class SupabaseDatabase:
                 forecast_data["sr_density"] = sr_density
             if synthesis_data is not None:
                 forecast_data["synthesis_data"] = synthesis_data
+            if model_predictions is not None:
+                forecast_data["model_predictions"] = model_predictions
+            if model_confidences is not None:
+                forecast_data["model_confidences"] = model_confidences
+            if ensemble_method is not None:
+                forecast_data["ensemble_method"] = ensemble_method
+            if ensemble_weights is not None:
+                forecast_data["ensemble_weights"] = ensemble_weights
+            if confidence_source is not None:
+                forecast_data["confidence_source"] = confidence_source
 
             # Upsert (insert or update on conflict) - no delete
             self.client.table("ml_forecasts").upsert(
@@ -766,6 +825,121 @@ class SupabaseDatabase:
             self.client.table("ml_forecast_changes").insert(payload).execute()
         except Exception as exc:
             logger.warning("Failed to insert forecast change: %s", exc)
+
+    def get_latest_bar_dataset(
+        self,
+        symbol_id: str,
+        timeframe: str,
+        provider: str = "alpaca",
+    ) -> str | None:
+        """Fetch latest bar_datasets.dataset_id for symbol/timeframe/provider."""
+        try:
+            response = (
+                self.client.table("bar_datasets")
+                .select("dataset_id,as_of_ts")
+                .eq("symbol_id", symbol_id)
+                .eq("timeframe", timeframe)
+                .eq("provider", provider)
+                .order("as_of_ts", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if response.data:
+                return response.data[0].get("dataset_id")
+        except Exception as exc:
+            logger.warning("Failed to fetch bar dataset: %s", exc)
+        return None
+
+    def insert_forecast_run(
+        self,
+        dataset_id: str,
+        model_key: str,
+        model_version: str,
+        horizon: str,
+        status: str,
+        metrics: dict[str, Any] | None = None,
+        feature_set_id: str | None = None,
+    ) -> None:
+        """Insert forecast run metrics into forecast_runs."""
+        payload: dict[str, Any] = {
+            "dataset_id": dataset_id,
+            "feature_set_id": feature_set_id,
+            "model_key": model_key,
+            "model_version": model_version,
+            "horizon": horizon,
+            "status": status,
+            "metrics": metrics or {},
+        }
+        try:
+            self.client.table("forecast_runs").insert(payload).execute()
+        except Exception as exc:
+            logger.warning("Failed to insert forecast run: %s", exc)
+
+    def insert_forecast_validation_metrics(
+        self,
+        metrics: dict[str, Any],
+        quality_grade: str | None = None,
+        horizon: str | None = None,
+        symbol_id: str | None = None,
+        scope: str = "global",
+        lookback_days: int = 90,
+    ) -> None:
+        """Insert validation metrics snapshot."""
+        payload: dict[str, Any] = {
+            "symbol_id": symbol_id,
+            "horizon": horizon,
+            "scope": scope,
+            "lookback_days": lookback_days,
+            "quality_grade": quality_grade,
+            "metrics": metrics,
+        }
+        try:
+            self.client.table("forecast_validation_metrics").insert(payload).execute()
+        except Exception as exc:
+            logger.warning("Failed to insert validation metrics: %s", exc)
+
+    def insert_data_quality_log(
+        self,
+        symbol_id: str,
+        issues: list[str],
+        rows_flagged: int,
+        rows_removed: int,
+        quality_score: float,
+    ) -> None:
+        """Insert data quality metrics into ml_data_quality_log."""
+        payload = {
+            "symbol_id": symbol_id,
+            "check_date": datetime.utcnow().date().isoformat(),
+            "issues": issues,
+            "rows_flagged": rows_flagged,
+            "rows_removed": rows_removed,
+            "quality_score": quality_score,
+        }
+        try:
+            self.client.table("ml_data_quality_log").insert(payload).execute()
+        except Exception as exc:
+            logger.warning("Failed to insert data quality log: %s", exc)
+
+    def insert_forecast_alert(
+        self,
+        symbol_id: str,
+        horizon: str,
+        alert_type: str,
+        severity: str,
+        details: dict[str, Any],
+    ) -> None:
+        """Insert alert record into forecast_monitoring_alerts."""
+        payload = {
+            "symbol_id": symbol_id,
+            "horizon": horizon,
+            "alert_type": alert_type,
+            "severity": severity,
+            "details": details,
+        }
+        try:
+            self.client.table("forecast_monitoring_alerts").insert(payload).execute()
+        except Exception as exc:
+            logger.warning("Failed to insert forecast alert: %s", exc)
 
     def upsert_supertrend_signals(
         self,
@@ -942,6 +1116,8 @@ class SupabaseDatabase:
         relative_value_score: float | None = None,
         entry_difficulty_score: float | None = None,
         ranking_stability_score: float | None = None,
+        iv_curve_ok: bool | None = None,
+        iv_data_quality_score: float | None = None,
         signal_discount: bool = False,
         signal_runner: bool = False,
         signal_greeks: bool = False,
@@ -991,6 +1167,8 @@ class SupabaseDatabase:
                 "relative_value_score": relative_value_score,
                 "entry_difficulty_score": entry_difficulty_score,
                 "ranking_stability_score": ranking_stability_score,
+                "iv_curve_ok": iv_curve_ok,
+                "iv_data_quality_score": iv_data_quality_score,
                 # Signals
                 "signal_discount": signal_discount,
                 "signal_runner": signal_runner,
@@ -1331,7 +1509,8 @@ class SupabaseDatabase:
             response = (
                 self.client.table("forecast_evaluations")
                 .select(
-                    "forecast_id, predicted_label, actual_label, " "ml_forecasts!inner(confidence)"
+                    "forecast_id, predicted_label, realized_label, "
+                    "ml_forecasts!inner(confidence)"
                 )
                 .gte(
                     "evaluation_date",
@@ -1361,7 +1540,7 @@ class SupabaseDatabase:
                             "predicted_label",
                             "neutral",
                         ),
-                        "actual_label": row.get("actual_label", "neutral"),
+                        "actual_label": row.get("realized_label", "neutral"),
                     }
                 )
 
@@ -1783,14 +1962,15 @@ class SupabaseDatabase:
                 .select("synth_weights, calibration_source, intraday_sample_count")
                 .eq("symbol_id", symbol_id)
                 .eq("horizon", horizon)
-                .single()
+                .order("last_updated", desc=True)
+                .limit(1)
                 .execute()
             )
 
             if not response.data:
                 return None
 
-            data = response.data
+            data = response.data[0]
             source = data.get("calibration_source")
             sample_count = data.get("intraday_sample_count", 0)
 

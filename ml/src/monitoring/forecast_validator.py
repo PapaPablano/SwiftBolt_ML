@@ -166,7 +166,15 @@ class ForecastValidator:
         logger.info(f"Validating {len(matched)} matched forecasts")
 
         # Direction accuracy
-        direction_correct = matched["predicted_direction"] == matched["actual_direction"]
+        if (
+            "direction_correct" in matched.columns
+            and matched["direction_correct"].notna().any()
+        ):
+            direction_correct = matched["direction_correct"].fillna(False)
+        else:
+            direction_correct = (
+                matched["predicted_direction"] == matched["actual_direction"]
+            )
         direction_accuracy = direction_correct.mean()
 
         # Target precision
@@ -312,6 +320,8 @@ class ForecastValidator:
                 continue
 
             actual_close = outcome.iloc[0]["close"]
+            realized_label = outcome.iloc[0].get("realized_label")
+            direction_correct = outcome.iloc[0].get("direction_correct")
 
             # Get entry price
             entry_price = forecast.get("entry_price") or forecast.get("current_price")
@@ -344,9 +354,13 @@ class ForecastValidator:
             # Determine directions
             predicted_label = str(forecast.get("label", "neutral")).lower()
             actual_direction = (
-                "bullish"
-                if actual_return > 0.005
-                else ("bearish" if actual_return < -0.005 else "neutral")
+                str(realized_label).lower()
+                if realized_label is not None
+                else (
+                    "bullish"
+                    if actual_return > 0.005
+                    else ("bearish" if actual_return < -0.005 else "neutral")
+                )
             )
 
             row = {
@@ -361,6 +375,7 @@ class ForecastValidator:
                 "actual_return": actual_return,
                 "predicted_direction": predicted_label,
                 "actual_direction": actual_direction,
+                "direction_correct": direction_correct,
                 "confidence": forecast.get("confidence", 0.5),
             }
 

@@ -17,7 +17,10 @@ from config.settings import settings  # noqa: E402
 from src.backtesting.walk_forward_tester import (  # noqa: E402
     WalkForwardBacktester,
 )
-from src.data.data_validator import OHLCValidator  # noqa: E402
+from src.data.data_validator import (  # noqa: E402
+    OHLCValidator,
+    ValidationResult,
+)
 from src.data.supabase_db import db  # noqa: E402
 from src.features.support_resistance_detector import (  # noqa: E402
     SupportResistanceDetector,
@@ -70,11 +73,33 @@ def get_calibrator() -> ConfidenceCalibrator:
                 min_samples=100,
             )
             if historical is not None and len(historical) >= 100:
-                _calibrator.fit(historical)
+                results = _calibrator.fit(historical)
                 logger.info(
                     "Confidence calibrator fitted with %s samples",
                     len(historical),
                 )
+                for result in results:
+                    try:
+                        bucket_parts = (
+                            result.bucket.replace("%", "").split("-")
+                        )
+                        bucket_low = float(bucket_parts[0]) / 100
+                        bucket_high = float(bucket_parts[1]) / 100
+                        db.upsert_confidence_calibration(
+                            horizon="global",
+                            bucket_low=bucket_low,
+                            bucket_high=bucket_high,
+                            predicted_confidence=result.predicted_confidence,
+                            actual_accuracy=result.actual_accuracy,
+                            adjustment_factor=result.adjustment_factor,
+                            n_samples=result.n_samples,
+                            is_calibrated=result.is_calibrated,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            "Failed to persist calibration bucket: %s",
+                            exc,
+                        )
             else:
                 logger.info(
                     "Insufficient historical data for calibration, "
@@ -105,6 +130,107 @@ def _get_forecast_cache_window() -> timedelta:
     except Exception:
         minutes = 8
     return timedelta(minutes=max(1, minutes))
+
+
+def _get_metric_thresholds() -> dict[str, float]:
+    try:
+        min_direction_accuracy = float(
+            os.getenv("ALERT_DIRECTION_ACCURACY_MIN", "0.55")
+        )
+    except Exception:
+        min_direction_accuracy = 0.55
+
+    try:
+        max_edge_gap = float(os.getenv("ALERT_EDGE_GAP_MAX", "0.05"))
+    except Exception:
+        max_edge_gap = 0.05
+
+    return {
+        "min_direction_accuracy": min_direction_accuracy,
+        "max_edge_gap": max_edge_gap,
+    }
+
+
+def _log_data_quality_metrics(
+    symbol_id: str,
+    validation_result: ValidationResult,
+    data_quality_score: float,
+) -> None:
+    try:
+        db.insert_data_quality_log(
+            symbol_id=symbol_id,
+            issues=validation_result.issues,
+            rows_flagged=validation_result.rows_flagged,
+            rows_removed=validation_result.rows_removed,
+            quality_score=data_quality_score,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to log data quality metrics: %s", exc)
+
+
+def _log_forecast_run_metrics(
+    symbol_id: str,
+    horizon: str,
+    forecast: dict,
+    validation_metrics: dict | None,
+    data_quality_score: float,
+    quality_score: float,
+) -> None:
+    dataset_id = db.get_latest_bar_dataset(symbol_id, timeframe="d1")
+    if not dataset_id:
+        return
+
+    training_stats = forecast.get("training_stats")
+    if not isinstance(training_stats, dict):
+        training_stats = {}
+
+    model_version = training_stats.get("model_hash") or "unknown"
+    metrics_payload = {
+        "quality_score": quality_score,
+        "data_quality_score": data_quality_score,
+        "model_agreement": forecast.get("agreement"),
+        "validation": validation_metrics or {},
+        "confidence": forecast.get("confidence"),
+        "raw_confidence": forecast.get("raw_confidence"),
+    }
+
+    db.insert_forecast_run(
+        dataset_id=dataset_id,
+        model_key="forecast_job",
+        model_version=str(model_version),
+        horizon=horizon,
+        status="success",
+        metrics=metrics_payload,
+    )
+
+    thresholds = _get_metric_thresholds()
+    if validation_metrics:
+        direction_accuracy = validation_metrics.get("direction_accuracy")
+        edge_gap = validation_metrics.get("edge_gap")
+        if direction_accuracy is not None and direction_accuracy < thresholds[
+            "min_direction_accuracy"
+        ]:
+            db.insert_forecast_alert(
+                symbol_id=symbol_id,
+                horizon=horizon,
+                alert_type="low_direction_accuracy",
+                severity="warning",
+                details={
+                    "direction_accuracy": direction_accuracy,
+                    "threshold": thresholds["min_direction_accuracy"],
+                },
+            )
+        if edge_gap is not None and abs(edge_gap) > thresholds["max_edge_gap"]:
+            db.insert_forecast_alert(
+                symbol_id=symbol_id,
+                horizon=horizon,
+                alert_type="edge_gap_drift",
+                severity="warning",
+                details={
+                    "edge_gap": edge_gap,
+                    "threshold": thresholds["max_edge_gap"],
+                },
+            )
 
 
 def _get_refresh_trigger(symbol: str) -> dict | None:
@@ -160,6 +286,14 @@ def get_validation_metrics() -> dict | None:
     metrics = validator.validate(forecasts_df, actuals_df)
     _validation_metrics = metrics.to_dict()
     _validation_metrics["quality_grade"] = metrics.get_quality_grade()
+    db.insert_forecast_validation_metrics(
+        metrics=_validation_metrics,
+        quality_grade=metrics.get_quality_grade(),
+        horizon=None,
+        symbol_id=None,
+        scope="global",
+        lookback_days=lookback,
+    )
     return _validation_metrics
 
 
@@ -188,6 +322,16 @@ def _should_skip_forecast(symbol_id: str, horizons: list[str]) -> bool:
         int(window.total_seconds() // 60),
     )
     return True
+
+
+def _should_run_forecast(
+    symbol_id: str,
+    horizons: list[str],
+    refresh_trigger: dict | None,
+) -> bool:
+    if refresh_trigger:
+        return True
+    return not _should_skip_forecast(symbol_id, horizons)
 
 
 def _get_symbol_layer_weights(
@@ -901,10 +1045,19 @@ def process_symbol(symbol: str) -> None:
             )
             return
 
+        # Get symbol_id
+        symbol_id = db.get_symbol_id(symbol)
+
         # === Data Validation (ML Improvement Plan 2.1) ===
         validator = OHLCValidator()
         df, validation_result = validator.validate(df, fix_issues=True)
         data_quality_score = validator.get_data_quality_score(df)
+
+        _log_data_quality_metrics(
+            symbol_id,
+            validation_result,
+            data_quality_score,
+        )
 
         if not validation_result.is_valid:
             logger.warning(f"Data quality issues for {symbol}: {validation_result.issues}")
@@ -963,8 +1116,6 @@ def process_symbol(symbol: str) -> None:
         # S/R probabilities extracted directly from logistic in apply_sr_constraints
         sr_probabilities = {}
 
-        # Get symbol_id
-        symbol_id = db.get_symbol_id(symbol)
         existing_forecast = db.get_forecast_record(
             symbol_id,
             horizon="1D",
@@ -977,35 +1128,33 @@ def process_symbol(symbol: str) -> None:
                 refresh_trigger.get("reason"),
             )
 
-        if not refresh_trigger and _should_skip_forecast(
+        if not _should_run_forecast(
             symbol_id,
             settings.forecast_horizons,
+            refresh_trigger,
         ):
             return
 
         # === Walk-forward backtest (validation) ===
-        backtester = WalkForwardBacktester(
-            train_window=252,
-            test_window=21,
-            step_size=5,
-        )
-        backtest_metrics = None
-        try:
-            baseline_bt = BaselineForecaster()
-            backtest_metrics = backtester.backtest(
-                df,
-                baseline_bt,
-                horizons=["1D"],
-            )
-            logger.info(
-                "Backtest %s - acc=%.2f%%, sharpe=%.2f, win_rate=%.2f%%",
-                symbol,
-                backtest_metrics.accuracy * 100,
-                backtest_metrics.sharpe_ratio,
-                backtest_metrics.win_rate * 100,
-            )
-        except Exception as e:  # noqa: BLE001
-            logger.warning("Backtest failed for %s: %s", symbol, e)
+        for horizon in settings.forecast_horizons:
+            backtester = WalkForwardBacktester(horizon=horizon)
+            backtest_metrics = None
+            try:
+                baseline_bt = BaselineForecaster()
+                backtest_metrics = backtester.backtest(
+                    df,
+                    baseline_bt,
+                    horizons=[horizon],
+                )
+                logger.info(
+                    "Backtest %s - acc=%.2f%%, sharpe=%.2f, win_rate=%.2f%%",
+                    symbol,
+                    backtest_metrics.accuracy * 100,
+                    backtest_metrics.sharpe_ratio,
+                    backtest_metrics.win_rate * 100,
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Backtest failed for %s: %s", symbol, e)
 
         # === SuperTrend AI Processing ===
         supertrend_data = None
@@ -1152,6 +1301,15 @@ def process_symbol(symbol: str) -> None:
                     horizon_days=baseline._parse_horizon(horizon),
                 )
 
+                if X.empty or y.empty:
+                    logger.warning(
+                        "Insufficient training data for ensemble (%s %s); "
+                        "falling back to baseline",
+                        symbol,
+                        horizon,
+                    )
+                    use_ensemble = False
+
                 # Create and train ensemble (enhanced or basic)
                 if use_enhanced:
                     # Use new 5-model ensemble with monitoring
@@ -1160,6 +1318,20 @@ def process_symbol(symbol: str) -> None:
                         symbol_id=symbol_id,
                     )
                     forecaster.train(X, y, ohlc_df=df)
+                    validation_window = min(50, len(X))
+                    if validation_window > 0:
+                        val_X = X.tail(validation_window)
+                        val_y = y.tail(validation_window)
+                        val_ohlc = df.tail(validation_window)
+                        forecaster.optimize_weights(
+                            features_df=val_X,
+                            labels=val_y,
+                            ohlc_df=val_ohlc,
+                            method=os.getenv(
+                                "ENSEMBLE_OPTIMIZATION_METHOD",
+                                "ridge",
+                            ),
+                        )
                     logger.info(
                         "Using enhanced ensemble: %d models",
                         forecaster.n_models,
@@ -1175,7 +1347,10 @@ def process_symbol(symbol: str) -> None:
                 # Generate prediction
                 last_features = X.tail(1)
                 if use_enhanced:
-                    ensemble_pred = forecaster.predict(last_features, ohlc_df=df)
+                    ensemble_pred = forecaster.predict(
+                        last_features,
+                        ohlc_df=df,
+                    )
                 else:
                     ensemble_pred = forecaster.predict(last_features)
 
@@ -1233,6 +1408,35 @@ def process_symbol(symbol: str) -> None:
                     ensemble_type = "RF+GB"
                     model_preds = {}
 
+                aft_model_predictions = None
+                aft_model_confidences = None
+                aft_ensemble_weights = None
+                aft_ensemble_method = None
+                aft_confidence_source = None
+
+                if use_enhanced:
+                    aft_model_predictions = model_preds
+                    aft_ensemble_weights = ensemble_pred.get("weights")
+                    aft_ensemble_method = ensemble_pred.get("ensemble_method")
+                    if aft_ensemble_method is None:
+                        aft_ensemble_method = os.getenv(
+                            "ENSEMBLE_OPTIMIZATION_METHOD",
+                            "ridge",
+                        )
+                    aft_confidence_source = "ensemble"
+
+                    confidences: dict[str, float] = {}
+                    for name, pred in model_preds.items():
+                        if isinstance(pred, dict):
+                            conf = pred.get("confidence")
+                            if conf is not None:
+                                try:
+                                    confidences[name] = float(conf)
+                                except (TypeError, ValueError):
+                                    continue
+                    if confidences:
+                        aft_model_confidences = confidences
+
                 forecast = {
                     "label": synth_result.direction.lower(),
                     "confidence": synth_result.confidence,
@@ -1243,6 +1447,11 @@ def process_symbol(symbol: str) -> None:
                     "gb_prediction": ensemble_pred.get("gb_prediction"),
                     "agreement": ensemble_pred.get("agreement"),
                     "ensemble_type": ensemble_type,
+                    "model_predictions": aft_model_predictions,
+                    "model_confidences": aft_model_confidences,
+                    "ensemble_method": aft_ensemble_method,
+                    "ensemble_weights": aft_ensemble_weights,
+                    "confidence_source": aft_confidence_source,
                     "backtest": (backtest_metrics.__dict__ if backtest_metrics else None),
                     "training_stats": forecaster.training_stats,
                     # 3-layer synthesis metadata
@@ -1424,6 +1633,15 @@ def process_symbol(symbol: str) -> None:
                 training_stats = training_stats.copy()
                 training_stats["event_refresh"] = refresh_trigger
 
+            _log_forecast_run_metrics(
+                symbol_id=symbol_id,
+                horizon=forecast["horizon"],
+                forecast=forecast,
+                validation_metrics=validation_metrics,
+                data_quality_score=data_quality_score,
+                quality_score=quality_score,
+            )
+
             # Save to database (include SuperTrend, S/R, and synthesis data)
             db.upsert_forecast(
                 symbol_id=symbol_id,
@@ -1440,6 +1658,11 @@ def process_symbol(symbol: str) -> None:
                 sr_levels=forecast.get("sr_levels"),
                 sr_density=forecast.get("sr_density"),
                 synthesis_data=forecast.get("synthesis"),
+                model_predictions=forecast.get("model_predictions"),
+                model_confidences=forecast.get("model_confidences"),
+                ensemble_method=forecast.get("ensemble_method"),
+                ensemble_weights=forecast.get("ensemble_weights"),
+                confidence_source=forecast.get("confidence_source"),
             )
 
             if existing_forecast:

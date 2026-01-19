@@ -10,6 +10,7 @@ produces composite_rank (0-100) based on:
 import argparse
 import json
 import logging
+import math
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -219,6 +220,18 @@ def select_balanced_expiry_contracts(
     return result
 
 
+def _sanitize_number(value: float | int | None, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(num):
+        return default
+    return num
+
+
 def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
     """Save ranked options to database with momentum framework scores."""
     saved_count = 0
@@ -230,7 +243,7 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
             expiry_date = datetime.fromtimestamp(row["expiration"]).strftime("%Y-%m-%d")
 
             # Get composite_rank (primary score from Momentum Framework)
-            composite_rank = float(row.get("composite_rank", 0))
+            composite_rank = _sanitize_number(row.get("composite_rank", 0))
 
             # Build record with all columns
             # ml_score is derived from composite_rank for backwards compatibility
@@ -238,35 +251,47 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
                 "underlying_symbol_id": symbol_id,
                 "contract_symbol": row["contract_symbol"],
                 "expiry": expiry_date,
-                "strike": float(row["strike"]),
+                "strike": _sanitize_number(row["strike"]),
                 "side": row["side"],
                 "ml_score": composite_rank / 100.0,  # Normalize to 0-1 for legacy field
-                "implied_vol": float(row.get("impliedVolatility", row.get("iv", 0))),
-                "delta": float(row.get("delta", 0)),
-                "gamma": float(row.get("gamma", 0)),
-                "theta": float(row.get("theta", 0)),
-                "vega": float(row.get("vega", 0)),
-                "rho": float(row.get("rho", 0)),
-                "bid": float(row.get("bid", 0)),
-                "ask": float(row.get("ask", 0)),
-                "mark": float(row.get("mark", 0)),
-                "last_price": float(row.get("last_price", 0)),
-                "volume": int(row.get("volume", 0)),
-                "open_interest": int(row.get("openInterest", row.get("open_interest", 0))),
+                "implied_vol": _sanitize_number(
+                    row.get("impliedVolatility", row.get("iv", 0))
+                ),
+                "delta": _sanitize_number(row.get("delta", 0)),
+                "gamma": _sanitize_number(row.get("gamma", 0)),
+                "theta": _sanitize_number(row.get("theta", 0)),
+                "vega": _sanitize_number(row.get("vega", 0)),
+                "rho": _sanitize_number(row.get("rho", 0)),
+                "bid": _sanitize_number(row.get("bid", 0)),
+                "ask": _sanitize_number(row.get("ask", 0)),
+                "mark": _sanitize_number(row.get("mark", 0)),
+                "last_price": _sanitize_number(row.get("last_price", 0)),
+                "volume": int(_sanitize_number(row.get("volume", 0))),
+                "open_interest": int(
+                    _sanitize_number(row.get("openInterest", row.get("open_interest", 0)))
+                ),
                 "run_at": run_at,
                 # Momentum Framework scores
-                "composite_rank": float(row.get("composite_rank", 0)),
-                "momentum_score": float(row.get("momentum_score", 0)),
-                "value_score": float(row.get("value_score", 0)),
-                "greeks_score": float(row.get("greeks_score", 0)),
-                "iv_rank": float(row.get("iv_rank", 0)),
-                "spread_pct": float(row.get("spread_pct", 0)),
-                "vol_oi_ratio": float(row.get("vol_oi_ratio", 0)),
-                "liquidity_confidence": float(row.get("liquidity_confidence", 1.0)),
+                "composite_rank": composite_rank,
+                "momentum_score": _sanitize_number(row.get("momentum_score", 0)),
+                "value_score": _sanitize_number(row.get("value_score", 0)),
+                "greeks_score": _sanitize_number(row.get("greeks_score", 0)),
+                "iv_rank": _sanitize_number(row.get("iv_rank", 0)),
+                "spread_pct": _sanitize_number(row.get("spread_pct", 0)),
+                "vol_oi_ratio": _sanitize_number(row.get("vol_oi_ratio", 0)),
+                "liquidity_confidence": _sanitize_number(row.get("liquidity_confidence", 1.0)),
                 "ranking_mode": str(row.get("ranking_mode", "entry")),
-                "relative_value_score": float(row.get("relative_value_score", 0)),
-                "entry_difficulty_score": float(row.get("entry_difficulty_score", 0)),
-                "ranking_stability_score": float(row.get("ranking_stability_score", 0)),
+                "relative_value_score": _sanitize_number(row.get("relative_value_score", 0)),
+                "entry_difficulty_score": _sanitize_number(
+                    row.get("entry_difficulty_score", 0)
+                ),
+                "ranking_stability_score": _sanitize_number(
+                    row.get("ranking_stability_score", 0)
+                ),
+                "iv_curve_ok": bool(row.get("iv_curve_ok", True)),
+                "iv_data_quality_score": _sanitize_number(
+                    row.get("iv_data_quality_score", 1.0)
+                ),
                 # Signals
                 "signal_discount": bool(row.get("signal_discount", False)),
                 "signal_runner": bool(row.get("signal_runner", False)),

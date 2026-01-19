@@ -32,6 +32,7 @@ SCORING FORMULAS (all normalized to 0-100):
 """
 
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -50,6 +51,21 @@ class SignalType(Enum):
     MOMENTUM_RUNNER = "runner"  # Hot momentum + high volume
     GREEKS_ALIGNED = "greeks"  # Optimal Greeks for directional trade
     BUY = "buy"  # Composite signal meeting threshold
+
+
+def _get_iv_jump_threshold() -> float:
+    try:
+        return float(os.getenv("IV_JUMP_THRESHOLD", "5.0"))
+    except Exception:
+        return 5.0
+
+
+def _force_iv_jump() -> bool:
+    return os.getenv("IV_FORCE_JUMP", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
 
 @dataclass
@@ -140,16 +156,62 @@ class IVStatistics:
             return True
 
         strikes = sorted(iv_by_strike.keys())
+        if _force_iv_jump() and len(strikes) > 1:
+            anchor = strikes[len(strikes) // 2]
+            current = iv_by_strike[anchor]
+            iv_value = (
+                current.get("iv") if isinstance(current, dict) else current
+            )
+            if iv_value:
+                logger.warning(
+                    "Forcing synthetic IV jump at strike %s (%.2f%% -> %.2f%%)",
+                    anchor,
+                    iv_value * 100,
+                    iv_value * 115,
+                )
+                if isinstance(current, dict):
+                    current["iv"] = iv_value * 1.15
+                else:
+                    iv_by_strike[anchor] = iv_value * 1.15
         for i in range(1, len(strikes)):
-            iv_current = iv_by_strike[strikes[i]]
-            iv_prev = iv_by_strike[strikes[i - 1]]
+            current = iv_by_strike[strikes[i]]
+            previous = iv_by_strike[strikes[i - 1]]
 
-            if iv_prev > 0:
+            iv_current = current.get("iv") if isinstance(current, dict) else current
+            iv_prev = previous.get("iv") if isinstance(previous, dict) else previous
+
+            if iv_prev and iv_prev > 0:
                 iv_jump_pct = abs(iv_current - iv_prev) / iv_prev * 100
-                if iv_jump_pct > 5.0:  # >5% jump is suspicious
+                threshold = _get_iv_jump_threshold()
+
+                if isinstance(current, dict):
+                    delta = current.get("delta")
+                    volume = current.get("volume")
+                    open_interest = current.get("open_interest")
+                    if volume is not None and volume < 10:
+                        threshold += 2.5
+                    if open_interest is not None and open_interest < 50:
+                        threshold += 2.5
+                    if delta is not None and abs(delta) < 0.2:
+                        threshold += 2.5
+                    if (
+                        volume is not None
+                        and volume >= 100
+                        and open_interest is not None
+                        and open_interest >= 500
+                        and delta is not None
+                        and abs(delta) >= 0.3
+                    ):
+                        threshold = 4.0
+
+                if iv_jump_pct > threshold:
                     logger.warning(
-                        f"Suspicious IV jump: {strikes[i-1]}={iv_prev:.2%} -> "
-                        f"{strikes[i]}={iv_current:.2%} ({iv_jump_pct:.1f}%)"
+                        "Suspicious IV jump: %s=%.2f%% -> %s=%.2f%% (%.1f%%)",
+                        strikes[i - 1],
+                        iv_prev * 100,
+                        strikes[i],
+                        iv_current * 100,
+                        iv_jump_pct,
                     )
                     return False
 
@@ -161,14 +223,16 @@ class IVStatistics:
         Combined data quality score (0-1).
 
         Factors:
-        - Freshness (0.5 weight)
-        - Days of data coverage (0.5 weight)
+        - Freshness (0.4 weight)
+        - Days of data coverage (0.4 weight)
+        - IV curve smoothness (0.2 weight)
         """
         freshness_score = 1.0 - self.staleness_penalty
         # Data coverage score: 1.0 at 252 days, lower for less
         coverage_score = min(1.0, self.days_of_data / 252)
+        curve_score = 1.0 if getattr(self, "_iv_curve_ok", True) else 0.7
 
-        return freshness_score * 0.5 + coverage_score * 0.5
+        return freshness_score * 0.4 + coverage_score * 0.4 + curve_score * 0.2
 
 
 class OptionsMomentumRanker:
@@ -348,6 +412,37 @@ class OptionsMomentumRanker:
             staleness_penalty = iv_stats.staleness_penalty
             logger.warning(f"IV data is stale, applying {staleness_penalty:.1%} penalty")
             df["value_score"] *= 1 - staleness_penalty
+
+        # Apply IV curve smoothness penalty if curve looks suspicious
+        if iv_stats is not None and "iv" in df.columns and "strike" in df.columns:
+            iv_by_strike = {}
+            grouped = df.groupby("strike")
+            for strike, group in grouped:
+                iv_value = group["iv"].median()
+                if pd.isna(iv_value):
+                    continue
+                iv_by_strike[strike] = {
+                    "iv": float(iv_value),
+                    "delta": group["delta"].median()
+                    if "delta" in group.columns
+                    else None,
+                    "volume": group["volume"].median()
+                    if "volume" in group.columns
+                    else None,
+                    "open_interest": group["open_interest"].median()
+                    if "open_interest" in group.columns
+                    else None,
+                }
+            if iv_by_strike:
+                iv_curve_ok = iv_stats.is_iv_curve_reasonable(iv_by_strike)
+                iv_stats._iv_curve_ok = iv_curve_ok  # cache for data_quality_score
+                if not iv_curve_ok:
+                    logger.warning("IV curve appears noisy; applying value score penalty")
+                    df["value_score"] *= 0.85
+
+        if iv_stats is not None:
+            df["iv_curve_ok"] = bool(getattr(iv_stats, "_iv_curve_ok", True))
+            df["iv_data_quality_score"] = float(iv_stats.data_quality_score)
 
         mode = (ranking_mode or "entry").lower()
         if mode == "exit":

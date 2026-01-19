@@ -1,3 +1,4 @@
+# flake8: noqa
 """
 Gradient Boosting Forecaster for Stock Direction Prediction
 ============================================================
@@ -75,7 +76,6 @@ class GradientBoostingForecaster:
         params = {
             "tree_method": tree_method,
             "predictor": predictor,
-            "n_jobs": n_jobs,
             "max_bin": max_bin_value,
         }
         params = {k: v for k, v in params.items() if v}

@@ -182,6 +182,11 @@ class EnsembleForecaster:
             dropped = set(features_df.columns) - set(numeric_features.columns)
             logger.info("Dropped non-numeric columns for training: %s", dropped)
 
+        if numeric_features.empty or labels_series.empty:
+            raise ValueError(
+                "Insufficient numeric training data for ensemble training"
+            )
+
         # Dynamically set k_neighbors based on smallest class size
         min_class_count = labels_series.value_counts().min()
         k_neighbors = min(5, min_class_count - 1) if min_class_count > 1 else 0

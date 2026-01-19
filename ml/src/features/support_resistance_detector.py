@@ -836,6 +836,20 @@ class SupportResistanceDetector:
                     "support_levels": logistic_result.get("support_levels", []),
                     "resistance_levels": logistic_result.get("resistance_levels", []),
                 },
+                "zigzag": {"swings": []},
+                "local_extrema": {
+                    "local_maxima": [],
+                    "local_minima": [],
+                    "resistance_levels": [],
+                    "support_levels": [],
+                },
+                "kmeans": {
+                    "cluster_centers": [],
+                    "support_zones": [],
+                    "resistance_zones": [],
+                    "cluster_labels": [],
+                },
+                "fibonacci": {"levels": {}},
             },
         }
 
@@ -846,6 +860,96 @@ class SupportResistanceDetector:
         )
 
         return result
+
+    def _extract_hold_probability(self, levels: List[Dict[str, Any]]) -> Optional[float]:
+        """Extract a representative hold probability from logistic levels."""
+        probabilities = []
+        for level in levels or []:
+            prob = level.get("probability")
+            if prob is None:
+                prob = level.get("detected_prediction")
+            if isinstance(prob, (int, float)):
+                probabilities.append(float(prob))
+
+        if not probabilities:
+            return None
+        return round(max(probabilities), 4)
+
+    def _compute_logistic_slopes(
+        self,
+        support_levels: List[Dict[str, Any]],
+        resistance_levels: List[Dict[str, Any]],
+    ) -> tuple[float, float]:
+        """Estimate slope of logistic support/resistance levels."""
+
+        def _slope(levels: List[Dict[str, Any]]) -> float:
+            pairs = [
+                (level.get("start_index"), level.get("level"))
+                for level in levels or []
+                if level.get("start_index") is not None and level.get("level") is not None
+            ]
+            if len(pairs) < 2:
+                return 0.0
+            pairs = sorted(pairs, key=lambda pair: pair[0])
+            (x0, y0), (x1, y1) = pairs[0], pairs[-1]
+            if x0 == x1:
+                return 0.0
+            return float((y1 - y0) / (x1 - x0))
+
+        return _slope(support_levels), _slope(resistance_levels)
+
+    def _count_method_agreement(
+        self,
+        nearest_level: Optional[float],
+        candidate_levels: List[Optional[float]],
+        current_price: float,
+    ) -> int:
+        """Count how many methods agree on the nearest level."""
+        if nearest_level is None:
+            return 0
+
+        tolerance = current_price * 0.005  # 0.5% of price
+        return sum(
+            1
+            for candidate in candidate_levels
+            if isinstance(candidate, (int, float))
+            and abs(candidate - nearest_level) <= tolerance
+        )
+
+    def _compute_pivot_confidence(
+        self,
+        pivot_levels: List[Dict[str, Any]],
+        nearest_support: Optional[float],
+        nearest_resistance: Optional[float],
+        current_price: float,
+    ) -> float:
+        """Compute a simple confidence score for pivot-derived S/R."""
+        if not pivot_levels:
+            return 0.0
+
+        tolerance = current_price * 0.005
+        support_match = 0
+        resistance_match = 0
+
+        if nearest_support is not None:
+            support_match = sum(
+                1
+                for level in pivot_levels
+                if level.get("level_low")
+                and abs(float(level["level_low"]) - nearest_support) <= tolerance
+            )
+        if nearest_resistance is not None:
+            resistance_match = sum(
+                1
+                for level in pivot_levels
+                if level.get("level_high")
+                and abs(float(level["level_high"]) - nearest_resistance) <= tolerance
+            )
+
+        total_slots = int(nearest_support is not None) + int(nearest_resistance is not None)
+        if total_slots == 0:
+            return 0.0
+        return round((support_match + resistance_match) / total_slots, 3)
 
     def _build_legacy_pivot_map(
         self, pivot_levels: List[Dict[str, Any]], current_price: float
@@ -1068,6 +1172,9 @@ class SupportResistanceDetector:
         # Fibonacci levels
         fib = methods.get("fibonacci") or {}
         fib_levels_dict = fib.get("levels") or {}
+        if not fib_levels_dict:
+            fib = self.fibonacci_retracement(df)
+            fib_levels_dict = fib.get("levels") or {}
         if isinstance(fib_levels_dict, dict):
             fib_levels = list(fib_levels_dict.values())
         elif isinstance(fib_levels_dict, list):

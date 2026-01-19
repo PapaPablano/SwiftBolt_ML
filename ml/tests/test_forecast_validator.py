@@ -16,7 +16,21 @@ if "imblearn" not in sys.modules:
     sys.modules["imblearn"] = imblearn_module
     sys.modules["imblearn.over_sampling"] = over_sampling_module
 
-from src import forecast_job
+settings_stub = types.SimpleNamespace(
+    log_level="INFO",
+    supabase_url="http://localhost",
+    supabase_key="test-key",
+    supabase_service_role_key="test-key",
+    enable_intraday_calibration=False,
+    intraday_calibration_min_samples=50,
+    min_bars_for_training=100,
+    min_bars_for_high_confidence=504,
+    forecast_horizons=["1D"],
+    symbols_to_process=[],
+)
+sys.modules["config.settings"] = types.SimpleNamespace(settings=settings_stub)
+
+from src import forecast_job  # noqa: E402
 
 
 def test_forecast_validator_generate_report():
@@ -151,3 +165,24 @@ def test_summarize_forecast_accuracy():
     assert summary.outcome_counts[ForecastOutcome.DIRECTIONAL_HIT.value] == 1
     assert summary.outcome_counts[ForecastOutcome.MISS.value] == 1
     assert summary.directional_accuracy > 0
+
+
+def test_should_run_forecast_bypasses_cache_on_event_refresh(monkeypatch):
+    monkeypatch.setattr(forecast_job, "_should_skip_forecast", lambda *_: True)
+    assert (
+        forecast_job._should_run_forecast(
+            "symbol-id",
+            ["1D"],
+            {"reason": "event"},
+        )
+        is True
+    )
+
+    assert (
+        forecast_job._should_run_forecast(
+            "symbol-id",
+            ["1D"],
+            None,
+        )
+        is False
+    )
