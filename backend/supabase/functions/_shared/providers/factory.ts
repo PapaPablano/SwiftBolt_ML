@@ -8,7 +8,9 @@ import { FinnhubClient } from "./finnhub-client.ts";
 import { MassiveClient } from "./massive-client.ts";
 import { TradierClient } from "./tradier-client.ts";
 import { AlpacaClient } from "./alpaca-client.ts";
+import { YahooFinanceClient } from "./yahoo-finance-client.ts";
 import { ProviderRouter } from "./router.ts";
+import type { DataProviderAbstraction } from "./abstraction.ts";
 import type { ProviderId } from "./types.ts";
 
 // Singleton instances
@@ -65,6 +67,8 @@ export function initializeProviders(): ProviderRouter {
     cacheInstance
   );
 
+  const yahooClient = new YahooFinanceClient(cacheInstance);
+
   const massiveClient = massiveApiKey ? new MassiveClient(
     massiveApiKey,
     rateLimiterInstance,
@@ -100,21 +104,23 @@ export function initializeProviders(): ProviderRouter {
   console.log("[Provider Factory] Provider clients initialized");
 
   // Initialize router with Alpaca-only policy for OHLCV data
-  const providers: Record<string, any> = {
-    finnhub: finnhubClient,
-  };
+  const providers = new Map<ProviderId, DataProviderAbstraction>([
+    ["finnhub", finnhubClient],
+  ]);
 
   if (massiveClient) {
-    providers.massive = massiveClient;
+    providers.set("massive", massiveClient);
   }
 
   if (tradierClient) {
-    providers.tradier = tradierClient;
+    providers.set("tradier", tradierClient);
   }
 
   if (alpacaClient) {
-    providers.alpaca = alpacaClient;
+    providers.set("alpaca", alpacaClient);
   }
+
+  providers.set("yahoo", yahooClient);
 
   // Alpaca-only policy: Single source of truth for all OHLCV data
   // Finnhub remains for news only (no options chain support in current implementation)
@@ -132,12 +138,12 @@ export function initializeProviders(): ProviderRouter {
       fallback: "finnhub" as ProviderId,
     },
     optionsChain: {
-      primary: "alpaca" as ProviderId,
-      fallback: undefined,
+      primary: "yahoo" as ProviderId,
+      fallback: alpacaClient ? "alpaca" as ProviderId : undefined,
     },
   };
 
-  routerInstance = new ProviderRouter(providers, policy);
+  routerInstance = new ProviderRouter(Object.fromEntries(providers), policy);
 
   console.log("[Provider Factory] Provider router initialized");
 
@@ -159,15 +165,19 @@ export function getProviderRouter(): ProviderRouter {
  * Inject Supabase client into providers for distributed rate limiting
  * Call this in Edge functions that need coordinated rate limiting
  */
-export function injectSupabaseClient(supabase: any): void {
+type ProviderWithSupabase = {
+  setSupabaseClient?: (supabase: unknown) => void;
+};
+
+export function injectSupabaseClient(supabase: unknown): void {
   if (!routerInstance) {
     initializeProviders();
   }
 
   // Inject into Massive/Polygon client (if available)
-  const router = routerInstance as any;
+  const router = routerInstance as unknown as { providers?: Map<string, ProviderWithSupabase> };
   const massiveProvider = router.providers?.get("massive");
-  if (massiveProvider && typeof massiveProvider.setSupabaseClient === "function") {
+  if (massiveProvider?.setSupabaseClient) {
     massiveProvider.setSupabaseClient(supabase);
     console.log("[Provider Factory] Injected Supabase client into Massive provider");
   } else {

@@ -130,10 +130,11 @@ export class ProviderRouter {
   private readonly cooldownPeriod: number = 300000; // 5 minutes
 
   constructor(
-    providers: Record<ProviderId, DataProviderAbstraction>,
+    providers: Partial<Record<ProviderId, DataProviderAbstraction>>,
     policy: RouterPolicy = DEFAULT_POLICY
   ) {
-    this.providers = new Map(Object.entries(providers) as [ProviderId, DataProviderAbstraction][]);
+    const entries = Object.entries(providers).filter(([, provider]) => !!provider) as [ProviderId, DataProviderAbstraction][];
+    this.providers = new Map(entries);
     this.policy = policy;
     this.health = new Map();
 
@@ -375,10 +376,10 @@ export class ProviderRouter {
    * Select the best provider based on health status
    * If primary is unhealthy and in cooldown, use fallback
    */
-  private async selectProvider(
+  private selectProvider(
     primary: ProviderId,
     fallback?: ProviderId
-  ): Promise<DataProviderAbstraction> {
+  ): DataProviderAbstraction {
     const primaryHealth = this.health.get(primary);
     const now = Date.now();
 

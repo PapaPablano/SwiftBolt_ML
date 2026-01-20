@@ -4,10 +4,12 @@
 // Greeks calculated from Black-Scholes model
 
 import type {
+  DataProviderAbstraction,
   OptionsChainRequest,
   HistoricalBarsRequest,
+  NewsRequest,
 } from "./abstraction.ts";
-import type { Bar, OptionContract, OptionsChain, OptionType } from "./types.ts";
+import type { Bar, NewsItem, OptionContract, OptionsChain, OptionType, Quote } from "./types.ts";
 import type { Cache } from "../cache/interface.ts";
 import { CACHE_TTL } from "../config/rate-limits.ts";
 
@@ -102,7 +104,7 @@ interface YahooOptionsChainResponse {
   }>;
 }
 
-export class YahooFinanceClient {
+export class YahooFinanceClient implements DataProviderAbstraction {
   private readonly cache: Cache;
   private readonly baseURL: string;
   private cookie: string | null = null;
@@ -115,6 +117,18 @@ export class YahooFinanceClient {
   ) {
     this.cache = cache;
     this.baseURL = baseURL;
+  }
+
+  async getQuote(_symbols: string[]): Promise<Quote[]> {
+    console.warn("[Yahoo Finance] getQuote not supported; returning empty quotes.");
+    await Promise.resolve();
+    return [];
+  }
+
+  async getNews(_request: NewsRequest): Promise<NewsItem[]> {
+    console.warn("[Yahoo Finance] getNews not supported; returning empty news.");
+    await Promise.resolve();
+    return [];
   }
 
   /**
@@ -520,7 +534,7 @@ export class YahooFinanceClient {
    * Process options data from Yahoo Finance API response
    */
   private processOptionsData(
-    optionsData: any[],
+    optionsData: unknown[],
     ticker: string,
     underlyingPrice: number
   ): { calls: OptionContract[]; puts: OptionContract[] } {
@@ -528,8 +542,9 @@ export class YahooFinanceClient {
     const puts: OptionContract[] = [];
 
     for (const optionData of optionsData) {
+      const data = optionData as { calls?: YahooOptionContract[]; puts?: YahooOptionContract[] };
       // Process calls
-      for (const call of optionData.calls || []) {
+      for (const call of data.calls ?? []) {
         const greeks = this.calculateGreeks(
           underlyingPrice,
           call.strike,
@@ -563,7 +578,7 @@ export class YahooFinanceClient {
       }
 
       // Process puts
-      for (const put of optionData.puts || []) {
+      for (const put of data.puts ?? []) {
         const greeks = this.calculateGreeks(
           underlyingPrice,
           put.strike,
