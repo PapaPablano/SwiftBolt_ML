@@ -257,6 +257,47 @@ function sampleForecastPoints<T extends { ts: number }>(points: T[], maxPoints: 
     .map((idx) => ({ ...points[idx] }));
 }
 
+function buildForecastBarsFromSummary(summary: unknown): ChartBar[] {
+  if (!isRecord(summary) || !Array.isArray(summary['horizons'])) {
+    return [];
+  }
+
+  const horizons = summary['horizons'] as Array<Record<string, unknown>>;
+  const confidence = clampNumber(summary['confidence'], 0.5);
+  const todayStr = new Date().toISOString().split('T')[0];
+  const bars: ChartBar[] = [];
+
+  for (const horizon of horizons) {
+    const points = normalizeForecastPoints(horizon?.['points']);
+    for (const point of points) {
+      if (!Number.isFinite(point.ts)) {
+        continue;
+      }
+      const tsIso = new Date(point.ts * 1000).toISOString();
+      if (tsIso.split('T')[0] <= todayStr) {
+        continue;
+      }
+      bars.push({
+        ts: tsIso,
+        open: point.value,
+        high: point.upper,
+        low: point.lower,
+        close: point.value,
+        volume: null,
+        provider: 'ml_forecast',
+        is_intraday: false,
+        is_forecast: true,
+        data_status: 'forecast',
+        confidence_score: confidence,
+        upper_band: point.upper,
+        lower_band: point.lower,
+      });
+    }
+  }
+
+  return bars;
+}
+
 function isValidChartBarArray(data: unknown): data is ChartBar[] {
   if (!Array.isArray(data)) return false;
   if (data.length === 0) return true;
@@ -711,6 +752,19 @@ serve(async (req: Request): Promise<Response> => {
       } catch (mlError) {
         console.error('[chart-data-v2] ML enrichment error:', mlError);
         // Continue without ML data
+      }
+    }
+
+    if (includeForecast && mlSummary) {
+      const synthesizedForecast = buildForecastBarsFromSummary(mlSummary);
+      if (synthesizedForecast.length > 0) {
+        const existingTs = new Set(forecast.map((bar) => bar.ts));
+        for (const bar of synthesizedForecast) {
+          if (!existingTs.has(bar.ts)) {
+            forecast.push(bar);
+          }
+        }
+        forecast.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
       }
     }
 

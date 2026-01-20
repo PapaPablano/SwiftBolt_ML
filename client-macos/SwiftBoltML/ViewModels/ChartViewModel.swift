@@ -856,29 +856,79 @@ final class ChartViewModel: ObservableObject {
         loadTask = Task {
             do {
                 if useV2API {
-                    let response = try await APIClient.shared.fetchChartRead(
-                        symbol: symbol.ticker,
-                        timeframe: timeframe.apiToken,
-                        includeMLData: true
-                    )
+                    let response: ChartDataV2Response
+                    do {
+                        response = try await APIClient.shared.fetchChartV2(
+                            symbol: symbol.ticker,
+                            timeframe: timeframe.apiToken,
+                            includeForecast: true
+                        )
+                    } catch {
+                        print("[DEBUG] chart-data-v2 failed: \(error). Falling back to chart-read.")
+                        let fallback = try await APIClient.shared.fetchChartRead(
+                            symbol: symbol.ticker,
+                            timeframe: timeframe.apiToken,
+                            includeMLData: true
+                        )
+                        let fallbackBars = fallback.bars
+                        guard !Task.isCancelled else {
+                            print("[DEBUG] Load cancelled after fallback fetch")
+                            return
+                        }
+
+                        print("[DEBUG] ChartViewModel.loadChart() - chart-read fallback SUCCESS!")
+                        print("[DEBUG] - Bars: \(fallbackBars.count)")
+                        print("[DEBUG] - ML: \(fallback.mlSummary != nil ? "✓" : "✗")")
+
+                        guard currentLoadId == loadId else { return }
+                        chartData = fallback
+                        updateSelectedForecastHorizon(from: fallback.mlSummary)
+
+                        if indicatorConfig.useWebChart {
+                            chartDataV2 = convertToV2Response(fallback)
+                        } else {
+                            chartDataV2 = nil
+                        }
+
+                        ChartCache.saveBars(symbol: symbol.ticker, timeframe: timeframe, bars: fallbackBars)
+                        scheduleIndicatorRecalculation()
+
+                        if liveQuoteTask == nil || liveQuoteTask?.isCancelled == true {
+                            startLiveQuoteUpdates()
+                        }
+
+                        if chartRefreshTask == nil || chartRefreshTask?.isCancelled == true {
+                            startChartAutoRefresh()
+                        }
+                        return
+                    }
 
                     guard !Task.isCancelled else {
                         print("[DEBUG] Load cancelled after fetch")
                         return
                     }
 
-                    let bars = response.bars
-                    print("[DEBUG] ChartViewModel.loadChart() - chart-read SUCCESS!")
+                    let bars = buildBars(from: response, for: timeframe)
+                    print("[DEBUG] ChartViewModel.loadChart() - chart-data-v2 SUCCESS!")
                     print("[DEBUG] - Bars: \(bars.count)")
                     print("[DEBUG] - ML: \(response.mlSummary != nil ? "✓" : "✗")")
 
                     guard currentLoadId == loadId else { return }
-                    chartData = response
+                    chartData = ChartResponse(
+                        symbol: symbol.ticker,
+                        assetType: symbol.assetType,
+                        timeframe: timeframe.apiToken,
+                        bars: bars,
+                        mlSummary: response.mlSummary,
+                        indicators: response.indicators,
+                        superTrendAI: response.superTrendAI,
+                        dataQuality: response.dataQuality,
+                        refresh: nil
+                    )
                     updateSelectedForecastHorizon(from: response.mlSummary)
 
-                    // Populate chartDataV2 for WebChartView layered rendering (Fix A)
                     if indicatorConfig.useWebChart {
-                        chartDataV2 = convertToV2Response(response)
+                        chartDataV2 = response
                     } else {
                         chartDataV2 = nil
                     }
