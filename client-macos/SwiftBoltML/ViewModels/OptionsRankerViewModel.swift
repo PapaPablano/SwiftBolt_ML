@@ -49,7 +49,9 @@ class OptionsRankerViewModel: ObservableObject {
     @Published var gaRecommendation: GARecommendation?
     @Published var useGAFilter: Bool = false {
         didSet {
-            applyGAFilterState()
+            DispatchQueue.main.async { [weak self] in
+                self?.applyGAFilterState()
+            }
         }
     }
     @Published var isLoadingGA: Bool = false
@@ -159,7 +161,7 @@ class OptionsRankerViewModel: ObservableObject {
         return Array(expiries).sorted()
     }
 
-    func loadRankings(for symbol: String) async {
+    func loadRankings(for symbol: String, allowExitFallback: Bool = true) async {
         isLoading = true
         errorMessage = nil
 
@@ -171,6 +173,14 @@ class OptionsRankerViewModel: ObservableObject {
                 mode: rankingMode.rawValue,
                 limit: 100
             )
+
+            if response.ranks.isEmpty, rankingMode == .exit, allowExitFallback {
+                await MainActor.run {
+                    self.rankingMode = .entry
+                }
+                await loadRankings(for: symbol, allowExitFallback: false)
+                return
+            }
 
             rankings = response.ranks
             updateRankingStatus()

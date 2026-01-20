@@ -194,41 +194,8 @@ struct TriggerOptimizationResponse: Codable {
 extension OptionRank {
     /// Check if this option passes GA strategy entry filters
     func passesGAFilters(_ genes: StrategyGenes) -> Bool {
-        // Check composite rank
-        guard effectiveCompositeRank >= genes.minCompositeRank else { return false }
-
-        // Check component scores if available
-        if let momentum = momentumScore, momentum < genes.minMomentumScore * 100 {
-            return false
-        }
-        if let value = valueScore, value < genes.minValueScore * 100 {
-            return false
-        }
-
-        // Check signal filter
-        if genes.signalFilter != "any" {
-            switch genes.signalFilter {
-            case "buy": if signalBuy != true { return false }
-            case "discount": if signalDiscount != true { return false }
-            case "runner": if signalRunner != true { return false }
-            case "greeks": if signalGreeks != true { return false }
-            default: break
-            }
-        }
-
-        // Check IV rank
-        if let ivr = ivRank {
-            if ivr < genes.ivRankMin || ivr > genes.ivRankMax {
-                return false
-            }
-        }
-
-        // Check theta
-        if let t = theta, t < genes.thetaMin {
-            return false
-        }
-
-        return true
+        let requiredConfidence = max(0.0, min(1.0, genes.minCompositeRank / 100.0))
+        return gaConfidence(genes) >= requiredConfidence
     }
 
     /// GA confidence score based on how well it matches optimized criteria

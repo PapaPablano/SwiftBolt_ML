@@ -102,21 +102,56 @@ struct AllContractsView: View {
             Divider()
 
             // Ranked options list
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(rankerViewModel.filteredRankings) { rank in
-                        RankedOptionRow(
-                            rank: rank,
-                            liveQuote: rankerViewModel.liveQuotes[rank.contractSymbol],
-                            symbol: symbol
-                        )
-                            .padding(.horizontal)
-                            .onTapGesture {
-                                selectedRank = rank
+            if rankerViewModel.filteredRankings.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "line.3.horizontal.decrease.circle")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.purple)
+                    Text("No contracts match the current filters")
+                        .font(.headline)
+                    Text("Try relaxing the filters or disabling the GA filter.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+
+                    HStack(spacing: 12) {
+                        if rankerViewModel.useGAFilter {
+                            Button("Disable GA Filter") {
+                                rankerViewModel.useGAFilter = false
                             }
+                            .buttonStyle(.borderedProminent)
+                        }
+
+                        Button("Reset Filters") {
+                            rankerViewModel.minScore = 0
+                            rankerViewModel.setSignalFilter(.all)
+                            rankerViewModel.setSortOption(.composite)
+                            rankerViewModel.clearPriceFilters()
+                        }
+                        .buttonStyle(.bordered)
                     }
                 }
-                .padding(.vertical, 8)
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(rankerViewModel.filteredRankings) { rank in
+                            RankedOptionRow(
+                                rank: rank,
+                                liveQuote: rankerViewModel.liveQuotes[rank.contractSymbol],
+                                symbol: symbol,
+                                gaGenes: rankerViewModel.gaStrategy?.genes
+                            )
+                                .padding(.horizontal)
+                                .onTapGesture {
+                                    selectedRank = rank
+                                }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
             }
         }
         .sheet(item: $selectedRank) { rank in
@@ -221,6 +256,18 @@ struct RankerHeader: View {
                         await rankerViewModel.triggerGAOptimization(for: symbol)
                     }
                 )
+                .padding(.horizontal)
+            }
+
+            if let genes = rankerViewModel.gaStrategy?.genes {
+                HStack(spacing: 12) {
+                    Text("All: \(rankerViewModel.rankings.count)")
+                    Text("Filtered: \(rankerViewModel.filteredRankings.count)")
+                    Text("MinRank: \(Int(genes.minCompositeRank))")
+                    Text("Signal: \(genes.signalFilter.uppercased())")
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
                 .padding(.horizontal)
             }
 
@@ -608,6 +655,7 @@ struct RankedOptionRow: View {
     let rank: OptionRank
     let liveQuote: OptionContractQuote?
     let symbol: String
+    let gaGenes: StrategyGenes?
     @State private var isHovering = false
     @State private var showStrikeAnalysis = false
     @State private var showHistoryChart = false
@@ -678,6 +726,13 @@ struct RankedOptionRow: View {
                     HStack(spacing: 12) {
                         if let dte = rank.daysToExpiry {
                             metricBlock(title: "DTE:", value: "\(dte)", systemImage: "calendar")
+                        }
+                        if let genes = gaGenes {
+                            metricBlock(
+                                title: "GA",
+                                value: String(format: "%.0f%%", rank.gaConfidence(genes) * 100),
+                                systemImage: "sparkles"
+                            )
                         }
                         if let ivRank = rank.ivRank {
                             metricBlock(title: "IV Rank", value: "\(Int(ivRank))%", systemImage: "chart.bar.fill")
