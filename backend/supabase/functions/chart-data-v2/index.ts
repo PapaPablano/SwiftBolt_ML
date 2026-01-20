@@ -35,6 +35,88 @@ interface ChartRequest {
   includeMLData?: boolean;
 }
 
+type DailyBarRow = {
+  ts: string;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  volume: number | null;
+};
+
+type WeeklyBarRow = DailyBarRow;
+
+function normalizeBarTimestamp(ts: string): Date | null {
+  if (!ts) return null;
+  const normalized = ts.includes('T') ? ts : ts.replace(' ', 'T');
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function weekStartKey(date: Date): string {
+  const day = date.getUTCDay();
+  const offset = (day + 6) % 7; // Monday-based
+  const monday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  monday.setUTCDate(monday.getUTCDate() - offset);
+  return monday.toISOString().split('T')[0];
+}
+
+function aggregateWeeklyBars(dailyBars: DailyBarRow[]): WeeklyBarRow[] {
+  if (!dailyBars.length) return [];
+  const buckets = new Map<string, DailyBarRow[]>();
+
+  for (const bar of dailyBars) {
+    const date = normalizeBarTimestamp(bar.ts);
+    if (!date) continue;
+    const key = weekStartKey(date);
+    const existing = buckets.get(key);
+    if (existing) {
+      existing.push(bar);
+    } else {
+      buckets.set(key, [bar]);
+    }
+  }
+
+  const weeklyBars: WeeklyBarRow[] = [];
+  for (const [_key, bars] of buckets) {
+    bars.sort((a, b) => {
+      const aDate = normalizeBarTimestamp(a.ts) ?? new Date(0);
+      const bDate = normalizeBarTimestamp(b.ts) ?? new Date(0);
+      return aDate.getTime() - bDate.getTime();
+    });
+    const first = bars[0];
+    const last = bars[bars.length - 1];
+    const firstDate = normalizeBarTimestamp(first.ts);
+    const timeSuffix = firstDate
+      ? `T${String(firstDate.getUTCHours()).padStart(2, '0')}:${String(firstDate.getUTCMinutes()).padStart(2, '0')}:00Z`
+      : 'T05:00:00Z';
+    const ts = `${weekStartKey(firstDate ?? new Date())}${timeSuffix}`;
+    const highs = bars.map((b) => b.high ?? Number.NEGATIVE_INFINITY);
+    const lows = bars.map((b) => b.low ?? Number.POSITIVE_INFINITY);
+    weeklyBars.push({
+      ts,
+      open: first.open,
+      high: Math.max(...highs),
+      low: Math.min(...lows),
+      close: last.close,
+      volume: bars.reduce((sum, b) => sum + (b.volume ?? 0), 0),
+    });
+  }
+
+  weeklyBars.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  return weeklyBars;
+}
+
+function isWeeklyBarCurrent(latestIso: string | null): boolean {
+  if (!latestIso) return false;
+  const latest = normalizeBarTimestamp(latestIso);
+  if (!latest) return false;
+  const now = new Date();
+  const currentWeekStart = weekStartKey(now);
+  const latestWeekStart = weekStartKey(latest);
+  return latestWeekStart >= currentWeekStart;
+}
+
 interface ChartBar {
   ts: string;
   open: number | null;
@@ -401,8 +483,9 @@ serve(async (req: Request): Promise<Response> => {
         const latestIso = latestBar?.ts ? new Date(latestBar.ts).toISOString() : null;
         const latestAgeSec = latestIso ? (Date.now() - new Date(latestIso).getTime()) / 1000 : Number.POSITIVE_INFINITY;
         const maxAgeSec = timeframeMaxAgeSeconds(tf);
+        const weeklyStale = tf === 'w1' && !isWeeklyBarCurrent(latestIso);
 
-        if (!Number.isFinite(latestAgeSec) || latestAgeSec > maxAgeSec) {
+        if (!Number.isFinite(latestAgeSec) || latestAgeSec > maxAgeSec || weeklyStale) {
           try {
             const startIso = latestIso
               ? new Date(new Date(latestIso).getTime() - intervalSec * 1000 * 2).toISOString()
@@ -417,7 +500,14 @@ serve(async (req: Request): Promise<Response> => {
               apiSecret: alpacaApiSecret,
             });
 
-            if (alpacaBars.length > 0) {
+            const newestAlpacaIso = alpacaBars.length > 0
+              ? new Date(alpacaBars[alpacaBars.length - 1].t).toISOString()
+              : null;
+            const isWeeklyStale = tf === 'w1'
+              && latestIso
+              && (!newestAlpacaIso || new Date(newestAlpacaIso).getTime() <= new Date(latestIso).getTime());
+
+            if (alpacaBars.length > 0 && !isWeeklyStale) {
               const isIntraday = ['m15', 'h1', 'h4'].includes(tf);
               const rows = alpacaBars.map((bar) => ({
                 symbol_id: symbolId,
@@ -441,6 +531,45 @@ serve(async (req: Request): Promise<Response> => {
 
               if (upsertError) {
                 throw upsertError;
+              }
+            } else if (tf === 'w1') {
+              const weeklyStartIso = latestIso ?? new Date(new Date().setUTCFullYear(new Date().getUTCFullYear() - 2)).toISOString();
+              const { data: dailyBars } = await supabase
+                .from('ohlc_bars_v2')
+                .select('ts, open, high, low, close, volume')
+                .eq('symbol_id', symbolId)
+                .eq('timeframe', 'd1')
+                .eq('provider', 'alpaca')
+                .eq('is_forecast', false)
+                .gte('ts', weeklyStartIso)
+                .order('ts', { ascending: true })
+                .limit(2000);
+
+              const weeklyBars = aggregateWeeklyBars((dailyBars ?? []) as DailyBarRow[]);
+              if (weeklyBars.length > 0) {
+                const rows = weeklyBars.map((bar) => ({
+                  symbol_id: symbolId,
+                  timeframe: tf,
+                  ts: bar.ts,
+                  open: bar.open,
+                  high: bar.high,
+                  low: bar.low,
+                  close: bar.close,
+                  volume: bar.volume,
+                  provider: 'alpaca',
+                  is_intraday: false,
+                  is_forecast: false,
+                  data_status: 'verified',
+                  fetched_at: nowIso,
+                }));
+
+                const { error: weeklyUpsertError } = await supabase.from('ohlc_bars_v2').upsert(rows, {
+                  onConflict: 'symbol_id,timeframe,ts,provider,is_forecast',
+                });
+
+                if (weeklyUpsertError) {
+                  throw weeklyUpsertError;
+                }
               }
             }
           } catch (alpacaErr) {
