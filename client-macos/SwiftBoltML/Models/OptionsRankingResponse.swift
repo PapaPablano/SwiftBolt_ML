@@ -57,6 +57,38 @@ struct OptionContractQuote: Codable {
         case impliedVol = "implied_vol"
         case updatedAt = "updated_at"
     }
+
+    var updatedAtDate: Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: updatedAt) {
+            return date
+        }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: updatedAt)
+    }
+
+    var ageSeconds: TimeInterval? {
+        guard let date = updatedAtDate else { return nil }
+        return Date().timeIntervalSince(date)
+    }
+
+    var ageLabel: String? {
+        guard let seconds = ageSeconds, seconds >= 0 else { return nil }
+        if seconds < 60 {
+            return "\(Int(seconds))s"
+        }
+        let minutes = Int(seconds / 60)
+        if minutes < 60 {
+            return "\(minutes)m"
+        }
+        let hours = Int(seconds / 3600)
+        if hours < 24 {
+            return "\(hours)h"
+        }
+        let days = Int(seconds / 86400)
+        return "\(days)d"
+    }
 }
 
 struct RankingFilters: Codable {

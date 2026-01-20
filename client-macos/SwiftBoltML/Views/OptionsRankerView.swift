@@ -749,9 +749,10 @@ struct RankedOptionRow: View {
 
     @ViewBuilder
     private var quoteStack: some View {
-        let displayBid = liveQuote?.bid ?? rank.bid
-        let displayAsk = liveQuote?.ask ?? rank.ask
-        let displayMark = liveQuote?.mark ?? rank.derivedMark
+        let resolved = resolvedQuote
+        let displayBid = resolved.bid
+        let displayAsk = resolved.ask
+        let displayMark = resolved.mark
 
         if let bid = displayBid, let ask = displayAsk {
             VStack(alignment: .trailing, spacing: 2) {
@@ -777,7 +778,7 @@ struct RankedOptionRow: View {
             }
         } else if let mark = displayMark {
             VStack(alignment: .trailing, spacing: 2) {
-                Text("Mid (cached)")
+                Text(resolved.isLive ? "Mid (live)" : "Mid (snapshot)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Text("$\(String(format: "%.2f", mark))")
@@ -796,16 +797,59 @@ struct RankedOptionRow: View {
     }
 
     private var quoteAgeLabel: String? {
-        guard let _ = rank.markAgeSeconds else { return nil }
-        if let secs = rank.markAgeSeconds, secs > 900 {
-            return "Stale \(rank.markAgeLabel)"
+        let resolved = resolvedQuote
+        guard let secs = resolved.ageSeconds, let label = resolved.ageLabel else { return nil }
+        if secs > 900 {
+            return "Stale \(label)"
         }
-        return "Cached \(rank.markAgeLabel)"
+        return "\(resolved.isLive ? "Live" : "Snapshot") \(label)"
     }
 
     private var quoteAgeColor: Color {
-        guard let secs = rank.markAgeSeconds else { return .secondary }
+        let ageSeconds = resolvedQuote.ageSeconds
+        guard let secs = ageSeconds else { return .secondary }
         return secs > 900 ? .orange : .secondary
+    }
+
+    private struct ResolvedQuote {
+        let bid: Double?
+        let ask: Double?
+        let mark: Double?
+        let ageLabel: String?
+        let ageSeconds: TimeInterval?
+        let isLive: Bool
+    }
+
+    private var resolvedQuote: ResolvedQuote {
+        let liveDate = liveQuote?.updatedAtDate
+        let rankDate = rank.runAtDate
+        let shouldUseLive: Bool
+
+        if let liveDate, let rankDate {
+            shouldUseLive = liveDate >= rankDate
+        } else {
+            shouldUseLive = liveDate != nil
+        }
+
+        if shouldUseLive, let liveQuote {
+            return ResolvedQuote(
+                bid: liveQuote.bid,
+                ask: liveQuote.ask,
+                mark: liveQuote.mark ?? liveQuote.last,
+                ageLabel: liveQuote.ageLabel,
+                ageSeconds: liveQuote.ageSeconds,
+                isLive: true
+            )
+        }
+
+        return ResolvedQuote(
+            bid: rank.bid,
+            ask: rank.ask,
+            mark: rank.derivedMark,
+            ageLabel: rank.markAgeLabel,
+            ageSeconds: rank.markAgeSeconds,
+            isLive: false
+        )
     }
 
     @ViewBuilder

@@ -187,6 +187,25 @@ serve(async (req: Request): Promise<Response> => {
 
     const symbolId = symbolData.id;
 
+    const { data: latestRunRows, error: latestRunError } = await supabase
+      .from("options_ranks")
+      .select("run_at")
+      .eq("underlying_symbol_id", symbolId)
+      .eq("ranking_mode", modeParam || "entry")
+      .order("run_at", { ascending: false })
+      .limit(1)
+      .returns<{ run_at: string }[]>();
+
+    if (latestRunError) {
+      console.warn("[Options Rankings] Failed to fetch latest run_at:", latestRunError.message);
+    }
+
+    const latestRunAt = latestRunRows?.[0]?.run_at;
+    const runWindowHours = 72;
+    const runWindowStart = latestRunAt
+      ? new Date(new Date(latestRunAt).getTime() - runWindowHours * 60 * 60 * 1000).toISOString()
+      : undefined;
+
     // Get today's date in YYYY-MM-DD format for filtering expired options
     const today = new Date().toISOString().split('T')[0];
 
@@ -214,6 +233,10 @@ serve(async (req: Request): Promise<Response> => {
     // Avoid returning legacy rows with NULL sort values when sorting by framework columns
     if (sortColumn !== "ml_score") {
       query = query.not(sortColumn, "is", null);
+    }
+
+    if (runWindowStart) {
+      query = query.gte("run_at", runWindowStart);
     }
 
     // Apply filters
