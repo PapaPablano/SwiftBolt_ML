@@ -60,14 +60,6 @@ def _get_iv_jump_threshold() -> float:
         return 5.0
 
 
-def _force_iv_jump() -> bool:
-    return os.getenv("IV_FORCE_JUMP", "0").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-    }
-
-
 @dataclass
 class OptionSignals:
     """Trading signals for an option contract."""
@@ -156,23 +148,6 @@ class IVStatistics:
             return True
 
         strikes = sorted(iv_by_strike.keys())
-        if _force_iv_jump() and len(strikes) > 1:
-            anchor = strikes[len(strikes) // 2]
-            current = iv_by_strike[anchor]
-            iv_value = (
-                current.get("iv") if isinstance(current, dict) else current
-            )
-            if iv_value:
-                logger.warning(
-                    "Forcing synthetic IV jump at strike %s (%.2f%% -> %.2f%%)",
-                    anchor,
-                    iv_value * 100,
-                    iv_value * 115,
-                )
-                if isinstance(current, dict):
-                    current["iv"] = iv_value * 1.15
-                else:
-                    iv_by_strike[anchor] = iv_value * 1.15
         for i in range(1, len(strikes)):
             current = iv_by_strike[strikes[i]]
             previous = iv_by_strike[strikes[i - 1]]

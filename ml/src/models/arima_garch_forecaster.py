@@ -95,6 +95,35 @@ class ArimaGarchForecaster:
         }
         return horizon_map.get(horizon, 1)
 
+    def _ensure_datetime_index(self, series: pd.Series) -> pd.Series:
+        """Ensure series uses a DatetimeIndex with a frequency."""
+        if not isinstance(series.index, pd.DatetimeIndex):
+            series = series.copy()
+            series.index = pd.date_range(
+                end=pd.Timestamp.now(),
+                periods=len(series),
+                freq="B",
+            )
+            return series
+
+        freq = series.index.freq or pd.infer_freq(series.index)
+        if freq is None:
+            freq = "B"
+        series = series.copy()
+        series.index = pd.DatetimeIndex(series.index, freq=freq)
+        return series
+
+    def _build_returns_series(self, df: pd.DataFrame) -> pd.Series:
+        """Build returns series with a supported datetime index."""
+        returns = df["close"].pct_change().dropna()
+
+        if "ts" in df.columns:
+            ts = pd.to_datetime(df.loc[returns.index, "ts"], errors="coerce")
+            returns = returns.copy()
+            returns.index = ts
+
+        return self._ensure_datetime_index(returns)
+
     def _select_arima_order(
         self,
         returns: pd.Series,
@@ -162,8 +191,8 @@ class ArimaGarchForecaster:
         if "close" not in df.columns:
             raise ValueError("DataFrame must contain 'close' column")
 
-        # Calculate returns
-        returns = df["close"].pct_change().dropna()
+        # Calculate returns with a supported datetime index
+        returns = self._build_returns_series(df)
 
         if len(returns) < min_samples:
             raise ValueError(f"Insufficient data: {len(returns)} < {min_samples}")
@@ -315,7 +344,7 @@ class ArimaGarchForecaster:
 
         # Refit on new data if provided
         if df is not None and "close" in df.columns:
-            returns = df["close"].pct_change().dropna()
+            returns = self._build_returns_series(df)
             try:
                 arima_model = ARIMA(returns, order=self.arima_order)
                 self.fitted_arima = arima_model.fit()

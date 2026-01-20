@@ -1,10 +1,9 @@
 name: Orchestrator Cron
 
 on:
-  # DISABLED: May conflict with Alpaca-only data strategy - re-enable after verifying orchestrator uses Alpaca
-  # schedule:
-  #   # Run every minute
-  #   - cron: '* * * * *'
+  schedule:
+    # Run every 5 minutes (GitHub Actions minimum interval)
+    - cron: '*/5 * * * *'
   workflow_dispatch: # Allow manual trigger
 
 jobs:

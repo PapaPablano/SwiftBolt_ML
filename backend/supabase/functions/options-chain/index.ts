@@ -85,12 +85,16 @@ serve(async (req: Request): Promise<Response> => {
 
     // Check cache if we have a symbol_id
     if (symbolId) {
-      const cacheThreshold = new Date(Date.now() - CACHE_TTL_MS).toISOString();
-      const cacheKey = `${underlying}:${expiration || "all"}`;
+      const _cacheThreshold = new Date(Date.now() - CACHE_TTL_MS).toISOString();
+      const _cacheKey = `${underlying}:${expiration || "all"}`;
 
       // For now, skip DB caching and fetch live data
       // In production, you'd want to cache options chain data in a table
     }
+
+    const persistParam = url.searchParams.get("persist");
+    const persistChains =
+      persistParam !== "0" && Deno.env.get("OPTIONS_CHAIN_PERSIST") !== "0";
 
     // Fetch fresh options chain via ProviderRouter
     console.log(`Fetching options chain for ${underlying}, expiration: ${expiration || "all"}`);
@@ -156,6 +160,50 @@ serve(async (req: Request): Promise<Response> => {
           change: contract.change,
         })),
       };
+
+      if (persistChains && symbolId) {
+        const snapshotDate = new Date().toISOString().split("T")[0];
+        const toDate = (exp: number) =>
+          new Date(exp * 1000).toISOString().split("T")[0];
+        const buildRecord = (contract: OptionContractResponse) => ({
+          underlying_symbol_id: symbolId,
+          expiry: toDate(contract.expiration),
+          strike: contract.strike,
+          side: contract.type,
+          bid: contract.bid,
+          ask: contract.ask,
+          mark: contract.mark,
+          last_price: contract.last,
+          volume: contract.volume,
+          open_interest: contract.openInterest,
+          implied_vol: contract.impliedVolatility,
+          delta: contract.delta,
+          gamma: contract.gamma,
+          theta: contract.theta,
+          vega: contract.vega,
+          rho: contract.rho,
+          snapshot_date: snapshotDate,
+        });
+
+        const records = [
+          ...response.calls.map(buildRecord),
+          ...response.puts.map(buildRecord),
+        ];
+
+        for (let i = 0; i < records.length; i += 500) {
+          const chunk = records.slice(i, i + 500);
+          const { error } = await supabase
+            .from("options_chain_snapshots")
+            .upsert(chunk, {
+              onConflict:
+                "underlying_symbol_id,expiry,strike,side,snapshot_date",
+            });
+          if (error) {
+            console.error("[Options Chain] Snapshot upsert error:", error);
+            break;
+          }
+        }
+      }
 
       return jsonResponse(response);
     } catch (fetchError) {

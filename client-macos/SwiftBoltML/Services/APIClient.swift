@@ -36,7 +36,7 @@ enum APIError: LocalizedError {
             return "Service temporarily unavailable: \(message)"
         }
     }
-    
+
     var isRetryable: Bool {
         switch self {
         case .rateLimitExceeded, .serviceUnavailable, .networkError:
@@ -68,6 +68,10 @@ final class APIClient {
     /// Helper to build Edge Function URLs without duplicating paths
     private func functionURL(_ name: String) -> URL {
         Config.functionURL(name)
+    }
+
+    private struct OptionsChainPersistResponse: Decodable {
+        let underlying: String
     }
 
     private func makeRequest(endpoint: String, queryItems: [URLQueryItem]? = nil, method: String = "GET", body: [String: Any]? = nil) throws -> URLRequest {
@@ -175,6 +179,36 @@ final class APIClient {
             print("[DEBUG] Decoding error: \(error)")
             throw APIError.decodingError(error)
         }
+    }
+
+    func persistOptionsChainSnapshot(symbol: String) async throws {
+        let functionURL = functionURL("options-chain")
+        guard var components = URLComponents(
+            url: functionURL,
+            resolvingAgainstBaseURL: false
+        ) else {
+            throw APIError.invalidURL
+        }
+
+        components.queryItems = [
+            URLQueryItem(name: "underlying", value: symbol),
+            URLQueryItem(name: "persist", value: "1"),
+        ]
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(
+            "Bearer \(Config.supabaseAnonKey)",
+            forHTTPHeaderField: "Authorization"
+        )
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let _: OptionsChainPersistResponse = try await performRequest(request)
     }
 
     /// Enhanced performRequest with response header logging for chart data debugging

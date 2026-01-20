@@ -1,0 +1,54 @@
+name: Orchestrator Health Check
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Hourly
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check orchestrator heartbeat
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+
+          response=$(curl -sS \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" \
+            "${SUPABASE_URL}/rest/v1/orchestrator_heartbeat?select=last_seen,status,message&name=eq.orchestrator&limit=1")
+
+          last_seen=$(echo "$response" | jq -r '.[0].last_seen // empty')
+          status=$(echo "$response" | jq -r '.[0].status // empty')
+          message=$(echo "$response" | jq -r '.[0].message // empty')
+
+          if [ -z "$last_seen" ]; then
+            echo "::error::No orchestrator heartbeat found"
+            exit 1
+          fi
+
+          last_seen_epoch=$(date -u -d "$last_seen" +%s)
+          now_epoch=$(date -u +%s)
+          age=$((now_epoch - last_seen_epoch))
+
+          echo "Heartbeat age: ${age}s"
+          echo "Status: ${status}"
+          if [ -n "$message" ]; then
+            echo "Message: ${message}"
+          fi
+
+          if [ "$age" -gt 1800 ]; then
+            echo "::error::Heartbeat stale (>30 min)"
+            exit 1
+          fi
+
+          if [ "$status" = "error" ]; then
+            echo "::error::Heartbeat reports error"
+            exit 1
+          fi

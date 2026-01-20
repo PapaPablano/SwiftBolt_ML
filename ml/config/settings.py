@@ -70,8 +70,8 @@ class Settings(BaseSettings):
     intraday_horizons: list[str] = ["15m", "1h"]
     # ~2 days of 15-minute data
     intraday_calibration_min_samples: int = 50
-    # 3 days of historical data for calibration
-    intraday_lookback_hours: int = 72
+    # 14 days of historical data for calibration
+    intraday_lookback_hours: int = 336
     intraday_weight_update_frequency_hours: int = 4
     # Minimum bars for intraday forecasting
     intraday_min_bars: int = 100

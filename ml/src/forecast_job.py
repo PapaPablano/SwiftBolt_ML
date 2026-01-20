@@ -1291,7 +1291,11 @@ def process_symbol(symbol: str) -> None:
 
             # Use ensemble forecaster for better accuracy
             use_ensemble = getattr(settings, "use_ensemble_forecaster", True)
-            use_enhanced = _bool_env("ENABLE_ENHANCED_ENSEMBLE", default=False)
+            use_aft = _bool_env("ENABLE_AFT_PATH", default=False)
+            use_enhanced = use_aft or _bool_env(
+                "ENABLE_ENHANCED_ENSEMBLE",
+                default=False,
+            )
 
             if use_ensemble:
                 # Prepare data for ensemble
@@ -1316,6 +1320,7 @@ def process_symbol(symbol: str) -> None:
                     forecaster = get_production_ensemble(
                         horizon=horizon,
                         symbol_id=symbol_id,
+                        enable_advanced_models=use_aft or None,
                     )
                     forecaster.train(X, y, ohlc_df=df)
                     validation_window = min(50, len(X))

@@ -719,6 +719,8 @@ class SupabaseDatabase:
                 "overall_label": overall_label,
                 "confidence": confidence,
                 "points": points,
+                "run_at": pd.Timestamp.now().isoformat(),
+                "updated_at": pd.Timestamp.now().isoformat(),
             }
 
             # Add SuperTrend AI data if available
@@ -1867,6 +1869,96 @@ class SupabaseDatabase:
         except Exception as e:
             logger.error(
                 "Error fetching intraday evaluations for calibration: %s",
+                e,
+            )
+            return pd.DataFrame()
+
+    def get_intraday_forecasts_for_calibration(
+        self,
+        symbol_id: str,
+        lookback_hours: int = 72,
+    ) -> pd.DataFrame:
+        """
+        Fetch intraday forecasts for calibration backfill.
+
+        Args:
+            symbol_id: UUID of the symbol
+            lookback_hours: Hours of history to fetch
+
+        Returns:
+            DataFrame with intraday forecasts
+        """
+        try:
+            response = (
+                self.client.table("ml_forecasts_intraday")
+                .select(
+                    "id, horizon, timeframe, target_price, current_price, "
+                    "supertrend_component, sr_component, ensemble_component, "
+                    "created_at, expires_at"
+                )
+                .eq("symbol_id", symbol_id)
+                .gte(
+                    "created_at",
+                    (pd.Timestamp.now() - pd.Timedelta(hours=lookback_hours)).isoformat(),
+                )
+                .order("created_at", desc=False)
+                .execute()
+            )
+
+            if not response.data:
+                return pd.DataFrame()
+
+            df = pd.DataFrame(response.data)
+            df["created_at"] = pd.to_datetime(df["created_at"])
+            df["expires_at"] = pd.to_datetime(df["expires_at"])
+            return df
+
+        except Exception as e:
+            logger.error(
+                "Error fetching intraday forecasts for calibration: %s",
+                e,
+            )
+            return pd.DataFrame()
+
+    def fetch_ohlc_bars_multi_timeframe(
+        self,
+        symbol_id: str,
+        start_ts: str,
+        end_ts: str,
+    ) -> pd.DataFrame:
+        """
+        Fetch OHLC bars across all timeframes for a symbol.
+
+        Args:
+            symbol_id: UUID of the symbol
+            start_ts: ISO timestamp start
+            end_ts: ISO timestamp end
+
+        Returns:
+            DataFrame with OHLC bars across m15/h1/h4/d1/w1
+        """
+        try:
+            response = (
+                self.client.table("ohlc_bars_v2")
+                .select("timeframe, ts, close, high, low")
+                .eq("symbol_id", symbol_id)
+                .gte("ts", start_ts)
+                .lte("ts", end_ts)
+                .in_("timeframe", ["m15", "h1", "h4", "d1", "w1"])
+                .order("ts", desc=False)
+                .execute()
+            )
+
+            if not response.data:
+                return pd.DataFrame()
+
+            df = pd.DataFrame(response.data)
+            df["ts"] = pd.to_datetime(df["ts"])
+            return df
+
+        except Exception as e:
+            logger.error(
+                "Error fetching multi-timeframe OHLC bars: %s",
                 e,
             )
             return pd.DataFrame()

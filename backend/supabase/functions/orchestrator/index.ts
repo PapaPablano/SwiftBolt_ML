@@ -64,6 +64,31 @@ interface CoverageGap {
   gap_hours: number;
 }
 
+async function recordHeartbeat(
+  supabase: SupabaseClient,
+  status: "healthy" | "warning" | "error",
+  message: string | null = null
+): Promise<void> {
+  try {
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from("orchestrator_heartbeat")
+      .upsert({
+        name: "orchestrator",
+        last_seen: now,
+        status,
+        message,
+        updated_at: now,
+      });
+
+    if (error) {
+      console.error("[Orchestrator] Heartbeat error:", error);
+    }
+  } catch (error) {
+    console.error("[Orchestrator] Heartbeat exception:", error);
+  }
+}
+
 const SLICE_CONFIGS = {
   fetch_intraday: {
     sliceHours: 2, // 2-hour slices for intraday
@@ -133,6 +158,7 @@ async function handleTick(supabase: SupabaseClient) {
   };
 
   try {
+    await recordHeartbeat(supabase, "healthy");
     // 0. Reset stale running jobs so the queue can make forward progress
     const { data: resetResult, error: resetError } = await supabase.rpc("reset_stale_running_jobs", {
       p_max_age_minutes: 60,
@@ -187,6 +213,11 @@ async function handleTick(supabase: SupabaseClient) {
     results.jobs_dispatched = dispatched;
 
     const duration = Date.now() - startTime;
+    const heartbeatStatus = results.errors.length > 0 ? "warning" : "healthy";
+    const heartbeatMessage = results.errors.length > 0
+      ? `errors=${results.errors.slice(0, 3).join("; ")}`
+      : null;
+    await recordHeartbeat(supabase, heartbeatStatus, heartbeatMessage);
     console.log(`[Orchestrator] Tick complete in ${duration}ms:`, results);
 
     return new Response(
@@ -194,6 +225,7 @@ async function handleTick(supabase: SupabaseClient) {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
+    await recordHeartbeat(supabase, "error", getErrorMessage(error));
     console.error("[Orchestrator] Tick error:", error);
     return new Response(
       JSON.stringify({ error: getErrorMessage(error), results }),
