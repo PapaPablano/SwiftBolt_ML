@@ -143,6 +143,10 @@ export function initializeProviders(): ProviderRouter {
     },
   };
 
+  if (policy.optionsChain.primary !== "yahoo") {
+    throw new Error("[Provider Factory] optionsChain primary must be yahoo to ensure multi-expiry coverage");
+  }
+
   routerInstance = new ProviderRouter(Object.fromEntries(providers), policy);
 
   console.log("[Provider Factory] Provider router initialized");
