@@ -989,7 +989,11 @@
             if (t !== last) {
                 const isBuy = t > last;
                 const f = (typeof factor === 'number' && isFinite(factor)) ? factor : null;
-                const label = f != null ? `${isBuy ? 'BUY' : 'SELL'} ${f.toFixed(1)}x` : (isBuy ? 'BUY' : 'SELL');
+                const label = (() => {
+                    if (f == null) return isBuy ? 'BUY' : 'SELL';
+                    if (isBuy) return `BUY ${f.toFixed(1)}x`;
+                    return `S ${f.toFixed(0)}x`;
+                })();
                 markers.push({
                     time: bars[i].time,
                     type: isBuy ? 'buy' : 'sell',
