@@ -47,7 +47,11 @@ class OptionsRankerViewModel: ObservableObject {
     // GA Strategy
     @Published var gaStrategy: GAStrategy?
     @Published var gaRecommendation: GARecommendation?
-    @Published var useGAFilter: Bool = false
+    @Published var useGAFilter: Bool = false {
+        didSet {
+            applyGAFilterState()
+        }
+    }
     @Published var isLoadingGA: Bool = false
 
     // Ranking freshness tracking (Fix D)
@@ -59,6 +63,13 @@ class OptionsRankerViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var quoteTimerCancellable: AnyCancellable?
     private var activeSymbol: String?
+    private var gaFilterSnapshot: GAFilterSnapshot?
+
+    private struct GAFilterSnapshot {
+        let minScore: Double
+        let selectedSignal: SignalFilter
+        let sortOption: RankingSortOption
+    }
 
     enum RankingStatus {
         case unknown
@@ -341,6 +352,53 @@ class OptionsRankerViewModel: ObservableObject {
         useGAFilter = enabled
     }
 
+    private func applyGAFilterState() {
+        guard useGAFilter else {
+            if let snapshot = gaFilterSnapshot {
+                minScore = snapshot.minScore
+                selectedSignal = snapshot.selectedSignal
+                sortOption = snapshot.sortOption
+                gaFilterSnapshot = nil
+            }
+            return
+        }
+
+        guard let genes = gaStrategy?.genes else { return }
+
+        if gaFilterSnapshot == nil {
+            gaFilterSnapshot = GAFilterSnapshot(
+                minScore: minScore,
+                selectedSignal: selectedSignal,
+                sortOption: sortOption
+            )
+        }
+
+        minScore = max(minScore, genes.minCompositeRank / 100)
+
+        if let gaSignal = mapGASignalFilter(genes.signalFilter) {
+            selectedSignal = gaSignal
+        }
+
+        sortOption = .gaConfidence
+    }
+
+    private func mapGASignalFilter(_ raw: String) -> SignalFilter? {
+        switch raw.lowercased() {
+        case "buy":
+            return .buy
+        case "discount":
+            return .discount
+        case "runner":
+            return .runner
+        case "greeks":
+            return .greeks
+        case "any", "all", "":
+            return nil
+        default:
+            return nil
+        }
+    }
+
     func clearPriceFilters() {
         minPriceInput = ""
         maxPriceInput = ""
@@ -355,6 +413,10 @@ class OptionsRankerViewModel: ObservableObject {
             let response = try await APIClient.shared.fetchGAStrategy(symbol: symbol)
             gaStrategy = response.strategy
             gaRecommendation = response.recommendation
+
+            if useGAFilter {
+                applyGAFilterState()
+            }
 
             if response.hasStrategy {
                 print("[OptionsRanker] Loaded GA strategy for \(symbol)")
