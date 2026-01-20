@@ -359,11 +359,18 @@ alter table "public"."indicator_values" alter column "close" set data type numer
 
 alter table "public"."indicator_values" alter column "high" set data type numeric(18,6) using "high"::numeric(18,6);
 
-alter table "public"."indicator_values" alter column "id" drop default;
-
-alter table "public"."indicator_values" alter column "id" add generated always as identity;
-
-alter table "public"."indicator_values" alter column "id" set data type bigint using "id"::bigint;
+do $$
+begin
+  if (select data_type
+      from information_schema.columns
+      where table_schema = 'public'
+        and table_name = 'indicator_values'
+        and column_name = 'id') <> 'uuid' then
+    execute 'alter table "public"."indicator_values" alter column "id" drop default';
+    execute 'alter table "public"."indicator_values" alter column "id" set data type bigint using "id"::bigint';
+    execute 'alter table "public"."indicator_values" alter column "id" add generated always as identity';
+  end if;
+end $$;
 
 alter table "public"."indicator_values" alter column "low" set data type numeric(18,6) using "low"::numeric(18,6);
 
@@ -1624,7 +1631,7 @@ $function$
 
 create or replace view "public"."market_intelligence_dashboard" as  SELECT 'Market Status'::text AS metric,
         CASE
-            WHEN public.is_market_open() THEN 'OPEN'::text
+            WHEN public.is_market_open(now(), 'America/New_York') THEN 'OPEN'::text
             ELSE 'CLOSED'::text
         END AS value,
     (public.next_trading_day())::text AS next_event,

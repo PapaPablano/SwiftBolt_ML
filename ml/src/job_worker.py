@@ -15,6 +15,8 @@ import logging
 import time
 from typing import Optional
 
+import requests
+
 from config.settings import settings
 from src.data.supabase_db import SupabaseDatabase
 from src.features.feature_cache import fetch_or_build_features
@@ -117,6 +119,33 @@ def process_forecast_job(
         return False, str(e)
 
 
+def process_ranking_job(symbol: str) -> tuple[bool, Optional[str]]:
+    """Process a ranking job via the trigger-ranking-job Edge Function."""
+    if not settings.supabase_key:
+        return False, "Missing SUPABASE_KEY for ranking job execution"
+
+    try:
+        url = f"{settings.supabase_url}/functions/v1/trigger-ranking-job"
+        headers = {
+            "apikey": settings.supabase_key,
+            "Authorization": f"Bearer {settings.supabase_key}",
+        }
+        response = requests.post(
+            url,
+            json={"symbol": symbol},
+            headers=headers,
+            timeout=120,
+        )
+        if response.ok:
+            return True, None
+        return (
+            False,
+            f"Ranking job failed: {response.status_code} {response.text}",
+        )
+    except Exception as exc:
+        return False, str(exc)
+
+
 def process_job(db: SupabaseDatabase, job: dict) -> tuple[bool, Optional[str]]:
     """Process a single job from the queue."""
     job_id = job["job_id"]
@@ -130,6 +159,9 @@ def process_job(db: SupabaseDatabase, job: dict) -> tuple[bool, Optional[str]]:
         if job_type == "forecast":
             success, error = process_forecast_job(db, symbol, payload)
             return success, error or "Forecast generation failed"
+        if job_type == "ranking":
+            success, error = process_ranking_job(symbol)
+            return success, error or "Ranking generation failed"
         logger.warning(f"Unknown job type: {job_type}")
         return False, f"Unknown job type: {job_type}"
     except Exception as e:

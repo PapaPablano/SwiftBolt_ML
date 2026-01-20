@@ -129,5 +129,5 @@ jobs:
           JOB_TYPE="${{ github.event.inputs.job_type }}"
           if [ "$JOB_TYPE" = "ranking" ] || [ "$JOB_TYPE" = "all" ] || [ -z "$JOB_TYPE" ]; then
             echo "Processing ranking jobs..."
-            python src/ranking_job_worker.py
+            python -m src.job_worker --job-type ranking
           fi

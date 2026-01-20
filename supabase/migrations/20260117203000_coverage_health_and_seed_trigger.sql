@@ -38,16 +38,18 @@ select
   provider_stats.last_fetched_at
 from watchlist_timeframes wtf
 left join public.coverage_status cs
-  on cs.timeframe = wtf.timeframe
- and (cs.symbol_id = wtf.symbol_id or cs.symbol = wtf.ticker)
+  on cs.timeframe::text = wtf.timeframe
+  and (cs.symbol_id = wtf.symbol_id or cs.symbol = wtf.ticker)
 left join lateral (
   select
-    sum(case when provider = 'alpaca' then bars_count else 0 end) filter (where day_utc >= (current_date - interval '1 day')) as alpaca_bars_last_24h,
-    sum(bars_count) filter (where day_utc >= (current_date - interval '1 day')) as total_bars_last_24h,
-    max(last_fetched_at) as last_fetched_at
-  from public.provider_coverage_summary pcs
-  where pcs.symbol_id = wtf.symbol_id
-    and pcs.timeframe = wtf.timeframe
+    sum(case when o.provider = 'alpaca' then 1 else 0 end)
+      filter (where o.ts >= (now() - interval '1 day')) as alpaca_bars_last_24h,
+    count(*) filter (where o.ts >= (now() - interval '1 day')) as total_bars_last_24h,
+    max(o.fetched_at) as last_fetched_at
+  from public.ohlc_bars_v2 o
+  where o.symbol_id = wtf.symbol_id
+    and o.timeframe::text = wtf.timeframe
+    and o.is_forecast = false
 ) provider_stats on true;
 
 comment on view public.coverage_watchlist_status is
