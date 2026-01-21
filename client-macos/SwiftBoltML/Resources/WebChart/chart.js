@@ -989,15 +989,17 @@
             if (t !== last) {
                 const isBuy = t > last;
                 const f = (typeof factor === 'number' && isFinite(factor)) ? factor : null;
+                const anchorIndex = isBuy ? i : Math.min(i + 1, n - 1);
+                const anchorBar = bars[anchorIndex] || bars[i];
                 const label = (() => {
                     if (f == null) return isBuy ? 'BUY' : 'SELL';
                     if (isBuy) return `BUY ${f.toFixed(1)}x`;
                     return `S ${f.toFixed(0)}x`;
                 })();
                 markers.push({
-                    time: bars[i].time,
+                    time: anchorBar.time,
                     type: isBuy ? 'buy' : 'sell',
-                    position: 'inBar',
+                    position: isBuy ? 'belowBar' : 'aboveBar',
                     color: isBuy ? colors.superTrendBull : colors.superTrendBear,
                     shape: isBuy ? 'arrowUp' : 'arrowDown',
                     text: label,
@@ -1054,7 +1056,7 @@
                             markers.push({
                                 time: bars[i].time,
                                 type: 'buy',
-                                position: 'inBar',
+                                position: 'belowBar',
                                 color: colors.superTrendBull,
                                 shape: 'arrowUp',
                                 text: `${Math.floor(p * 10)}`,
@@ -1062,10 +1064,11 @@
                             });
                         } else if (ai.os[i] < ai.os[i - 1]) {
                             const p = Math.max(0, Math.min(1, ai.perfIdx[i] ?? 0));
+                            const anchorIndex = Math.min(i + 1, bars.length - 1);
                             markers.push({
-                                time: bars[i].time,
+                                time: bars[anchorIndex].time,
                                 type: 'sell',
-                                position: 'inBar',
+                                position: 'aboveBar',
                                 color: colors.superTrendBear,
                                 shape: 'arrowDown',
                                 text: `${Math.floor(p * 10)}`,
