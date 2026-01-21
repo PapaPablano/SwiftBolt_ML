@@ -42,7 +42,7 @@ struct PredictionsView: View {
                         case 1:
                             ModelPerformanceTabView(viewModel: viewModel)
                         case 2:
-                            StatisticalValidationTabView(viewModel: viewModel)
+                            ValidationDashboardView(viewModel: appViewModel.validationViewModel)
                         case 3:
                             FeatureImportanceTabView(viewModel: viewModel)
                         case 4:

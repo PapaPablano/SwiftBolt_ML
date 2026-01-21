@@ -74,6 +74,26 @@ final class APIClient {
         let underlying: String
     }
 
+    private struct ValidationAuditPayload: Encodable {
+        let symbol: String
+        let confidence: Double
+        let weights: ValidationWeights
+        let timestamp: Int
+        let clientState: [String: String]?
+
+        enum CodingKeys: String, CodingKey {
+            case symbol
+            case confidence
+            case weights
+            case timestamp
+            case clientState = "client_state"
+        }
+    }
+
+    private struct ValidationAuditResponse: Decodable {
+        let success: Bool
+    }
+
     private func makeRequest(endpoint: String, queryItems: [URLQueryItem]? = nil, method: String = "GET", body: [String: Any]? = nil) throws -> URLRequest {
         guard var components = URLComponents(string: baseURL.appendingPathComponent(endpoint).absoluteString) else {
             throw APIError.invalidURL
@@ -921,7 +941,64 @@ final class APIClient {
         
         return try await performRequest(request)
     }
-    
+
+    /// Fetch unified validation data
+    func fetchUnifiedValidation(symbol: String) async throws -> UnifiedValidator {
+        guard var components = URLComponents(
+            url: functionURL("get-unified-validation"),
+            resolvingAgainstBaseURL: false
+        ) else {
+            throw APIError.invalidURL
+        }
+
+        components.queryItems = [URLQueryItem(name: "symbol", value: symbol.uppercased())]
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
+        return try await performRequest(request)
+    }
+
+    /// Log validation audit
+    func logValidationAudit(
+        symbol: String,
+        validator: UnifiedValidator,
+        weights: ValidationWeights,
+        clientState: [String: String]? = nil
+    ) async {
+        let payload = ValidationAuditPayload(
+            symbol: symbol.uppercased(),
+            confidence: validator.confidence,
+            weights: weights,
+            timestamp: Int(Date().timeIntervalSince1970),
+            clientState: clientState
+        )
+
+        var request = URLRequest(url: functionURL("log-validation-audit"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        do {
+            let encoder = JSONEncoder()
+            request.httpBody = try encoder.encode(payload)
+            let _: ValidationAuditResponse = try await performRequest(request)
+        } catch {
+            #if DEBUG
+            print("[ValidationAudit] Failed to log audit: \(error)")
+            #endif
+        }
+    }
+
     /// Fetch Support & Resistance levels for a symbol (default 252 bars = 1 year of trading days)
     func fetchSupportResistance(symbol: String, lookback: Int = 252) async throws -> SupportResistanceResponse {
         guard var components = URLComponents(url: functionURL("support-resistance"), resolvingAgainstBaseURL: false) else {

@@ -116,5 +116,35 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
 
+# Multi-Horizon Forecasting Configuration
+# Each timeframe generates multiple horizon forecasts for cascading coverage
+TIMEFRAME_HORIZONS = {
+    "m15": {
+        "horizons": ["4h", "1d", "1w"],  # 4 hours, 1 day, 1 week
+        "horizon_days": [0.167, 1, 7],  # In days (4h = 0.167 days)
+        "training_bars": 950,  # Historical bars used
+    },
+    "h1": {
+        "horizons": ["5d", "15d", "30d"],  # 5 days, 15 days, 30 days
+        "horizon_days": [5, 15, 30],
+        "training_bars": 950,
+    },
+    "h4": {
+        "horizons": ["30d", "45d", "90d"],  # 30 days, 45 days, 90 days
+        "horizon_days": [30, 45, 90],
+        "training_bars": 616,
+    },
+    "d1": {
+        "horizons": ["30d", "60d", "120d"],  # 30 days, 60 days, 120 days
+        "horizon_days": [30, 60, 120],
+        "training_bars": 500,
+    },
+    "w1": {
+        "horizons": ["90d", "180d", "360d"],  # 90 days, 180 days, 360 days
+        "horizon_days": [90, 180, 360],
+        "training_bars": 104,
+    },
+}
+
 # Singleton settings instance
 settings = Settings()  # type: ignore

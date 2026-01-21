@@ -79,6 +79,52 @@ class ForecastSynthesizer:
     def __init__(self, weights: Optional[ForecastWeights] = None):
         self.weights = weights or get_default_weights()
 
+    def generate_forecast(
+        self,
+        current_price: float,
+        df: pd.DataFrame,
+        supertrend_info: Dict,
+        sr_response: Dict,
+        ensemble_result: Dict,
+        horizon_days: float = 1.0,
+        symbol: Optional[str] = None,
+        timeframe: str = "d1",
+    ) -> ForecastResult:
+        """
+        Generate forecast for any horizon length.
+
+        Args:
+            current_price: Latest close price
+            df: DataFrame with OHLCV and indicators (including 'atr')
+            supertrend_info: Output from SuperTrendAI.calculate()
+            sr_response: Output from S/R indicator API/detector
+            ensemble_result: Output from EnsembleForecaster.predict()
+            horizon_days: Number of days to forecast (e.g., 0.167 for 4h, 30 for 30d)
+            symbol: Optional stock ticker for logging
+            timeframe: Source timeframe (e.g., "m15", "h1", "d1")
+
+        Returns:
+            ForecastResult with target, bands, confidence
+        """
+        # Scale ATR-based moves by horizon length
+        horizon_scale = np.sqrt(horizon_days)  # Volatility scales with sqrt(time)
+        
+        result = self._generate_base_forecast(
+            current_price=current_price,
+            df=df,
+            supertrend_info=supertrend_info,
+            sr_response=sr_response,
+            ensemble_result=ensemble_result,
+            horizon_scale=horizon_scale,
+            symbol=symbol,
+        )
+        
+        # Update horizon metadata
+        result.horizon = self._format_horizon(horizon_days)
+        result.symbol = symbol
+        
+        return result
+
     def generate_1d_forecast(
         self,
         current_price: float,
@@ -705,6 +751,253 @@ class ForecastSynthesizer:
             upper_band = current_price + atr
 
         return lower_band, upper_band
+
+    def _generate_base_forecast(
+        self,
+        current_price: float,
+        df: pd.DataFrame,
+        supertrend_info: Dict,
+        sr_response: Dict,
+        ensemble_result: Dict,
+        horizon_scale: float,
+        symbol: Optional[str] = None,
+    ) -> ForecastResult:
+        """
+        Generate base forecast with horizon scaling applied.
+        
+        This is the core forecast logic extracted from generate_1d_forecast
+        with horizon_scale applied to ATR-based moves.
+        """
+        # ===== LAYER 1: SuperTrend Bias =====
+        trend_direction = supertrend_info.get("current_trend", "NEUTRAL")
+        signal_strength = supertrend_info.get("signal_strength", 5) / 10.0
+        performance_idx = supertrend_info.get("performance_index", 0.5)
+
+        # Get ATR
+        if "atr" in df.columns and len(df) > 0:
+            atr = df["atr"].iloc[-1]
+        else:
+            atr = supertrend_info.get("atr", current_price * 0.02)
+
+        if atr is None or (isinstance(atr, float) and np.isnan(atr)):
+            atr = supertrend_info.get("atr")
+
+        if atr is None or (isinstance(atr, float) and np.isnan(atr)):
+            if all(c in df.columns for c in ["high", "low", "close"]) and len(df) > 1:
+                high = df["high"].astype(float)
+                low = df["low"].astype(float)
+                close = df["close"].astype(float)
+                prev_close = close.shift(1)
+                tr = pd.concat(
+                    [
+                        (high - low).abs(),
+                        (high - prev_close).abs(),
+                        (low - prev_close).abs(),
+                    ],
+                    axis=1,
+                ).max(axis=1)
+                atr = float(tr.tail(14).mean())
+
+        if atr is None or (isinstance(atr, float) and np.isnan(atr)):
+            atr = current_price * 0.02
+
+        atr = float(atr)
+
+        # Apply horizon scaling to ATR-based moves
+        scaled_atr = atr * horizon_scale
+        st_target_move = scaled_atr * signal_strength * (0.5 + 0.5 * performance_idx)
+
+        if trend_direction == "BULLISH":
+            st_target = current_price + st_target_move
+            st_bias = 1
+        elif trend_direction == "BEARISH":
+            st_target = current_price - st_target_move
+            st_bias = -1
+        else:
+            st_target = current_price
+            st_bias = 0
+
+        # ===== LAYER 2: S/R Constraints =====
+        support_weighted = self._calculate_sr_weighted(
+            sr_response, is_support=True, current_price=current_price
+        )
+        resistance_weighted = self._calculate_sr_weighted(
+            sr_response, is_support=False, current_price=current_price
+        )
+
+        polynomial = sr_response.get("polynomial", {})
+        poly_support_trend = polynomial.get("supportTrend", "flat")
+        poly_resistance_trend = polynomial.get("resistanceTrend", "flat")
+        poly_is_expanding = polynomial.get("isDiverging", False)
+        poly_is_converging = polynomial.get("isConverging", False)
+
+        poly_forecast_support = polynomial.get("forecastSupport", [current_price])
+        poly_forecast_resistance = polynomial.get("forecastResistance", [current_price])
+        poly_target_support = poly_forecast_support[0] if poly_forecast_support else current_price
+        poly_target_resistance = (
+            poly_forecast_resistance[0] if poly_forecast_resistance else current_price
+        )
+
+        logistic = sr_response.get("logistic", {})
+        logistic_resistance_levels = logistic.get("resistanceLevels", [])
+        logistic_support_levels = logistic.get("supportLevels", [])
+
+        logistic_resistance_prob = (
+            logistic_resistance_levels[0].get("probability", 0.5)
+            if logistic_resistance_levels
+            else 0.5
+        )
+        logistic_support_prob = (
+            logistic_support_levels[0].get("probability", 0.5) if logistic_support_levels else 0.5
+        )
+
+        # ===== LAYER 3: Ensemble Direction =====
+        ml_label = ensemble_result.get("label", "Neutral")
+        ml_confidence = ensemble_result.get("confidence", 0.5)
+        ml_agreement = ensemble_result.get("agreement", False)
+
+        if ml_label.lower() == "bullish":
+            ml_bias = 1
+        elif ml_label.lower() == "bearish":
+            ml_bias = -1
+        else:
+            ml_bias = 0
+
+        # ===== SYNTHESIZE FORECAST =====
+        agreeing_layers = 0
+        if st_bias == 1:
+            agreeing_layers += 1
+        if ml_bias == 1:
+            agreeing_layers += 1
+        if st_bias == 1 and resistance_weighted > current_price * 1.01:
+            agreeing_layers += 1
+        elif st_bias == -1 and support_weighted < current_price * 0.99:
+            agreeing_layers += 1
+
+        # Determine overall direction
+        if st_bias == 1 and ml_bias >= 0:
+            direction = "BULLISH"
+        elif st_bias == -1 and ml_bias <= 0:
+            direction = "BEARISH"
+        elif ml_bias == 1 and st_bias >= 0:
+            direction = "BULLISH"
+        elif ml_bias == -1 and st_bias <= 0:
+            direction = "BEARISH"
+        else:
+            direction = "NEUTRAL"
+
+        # Calculate primary target
+        if direction == "BULLISH":
+            primary_target, upper_band, lower_band = self._calculate_bullish_target(
+                current_price=current_price,
+                st_target=st_target,
+                atr=scaled_atr,
+                poly_target=poly_target_resistance,
+                poly_slope=poly_resistance_trend,
+                resistance_weighted=resistance_weighted,
+                support_weighted=support_weighted,
+                logistic_resistance_prob=logistic_resistance_prob,
+                poly_is_expanding=poly_is_expanding,
+            )
+            poly_component = poly_target_resistance
+
+        elif direction == "BEARISH":
+            primary_target, upper_band, lower_band = self._calculate_bearish_target(
+                current_price=current_price,
+                st_target=st_target,
+                atr=scaled_atr,
+                poly_target=poly_target_support,
+                poly_slope=poly_support_trend,
+                resistance_weighted=resistance_weighted,
+                support_weighted=support_weighted,
+                logistic_support_prob=logistic_support_prob,
+                poly_is_expanding=poly_is_expanding,
+            )
+            poly_component = poly_target_support
+
+        else:  # NEUTRAL
+            primary_target = current_price
+            upper_band = resistance_weighted
+            lower_band = support_weighted
+            poly_component = current_price
+
+        # Calculate confidence
+        confidence = self._calculate_confidence(
+            trend_strength=signal_strength,
+            ml_confidence=ml_confidence,
+            ml_agreement=ml_agreement,
+            st_bias=st_bias,
+            ml_bias=ml_bias,
+            logistic_resistance_prob=logistic_resistance_prob,
+            logistic_support_prob=logistic_support_prob,
+            poly_is_expanding=poly_is_expanding,
+            poly_is_converging=poly_is_converging,
+            direction=direction,
+        )
+
+        # Build reasoning
+        drivers, reasoning = self._build_reasoning(
+            direction=direction,
+            signal_strength=signal_strength * 10,
+            ml_confidence=ml_confidence,
+            ml_agreement=ml_agreement,
+            poly_is_expanding=poly_is_expanding,
+            logistic_resistance_prob=logistic_resistance_prob,
+            logistic_support_prob=logistic_support_prob,
+            st_bias=st_bias,
+        )
+
+        # Validate bands
+        lower_band, upper_band = self._validate_bands(
+            current_price=current_price,
+            target=primary_target,
+            lower_band=lower_band,
+            upper_band=upper_band,
+            atr=scaled_atr,
+        )
+
+        return ForecastResult(
+            target=round(primary_target, 2),
+            upper_band=round(upper_band, 2),
+            lower_band=round(lower_band, 2),
+            confidence=round(confidence, 2),
+            direction=direction,
+            layers_agreeing=agreeing_layers,
+            reasoning=reasoning,
+            key_drivers=drivers,
+            supertrend_component=round(st_target, 2),
+            polynomial_component=round(poly_component, 2),
+            ml_component=(
+                round(current_price * (1 + 0.02 * ml_bias), 2)
+                if ml_bias != 0
+                else round(current_price, 2)
+            ),
+            sr_constraint_range=f"{round(lower_band, 2)} - {round(upper_band, 2)}",
+            symbol=symbol,
+            horizon="1D",
+        )
+
+    def _format_horizon(self, horizon_days: float) -> str:
+        """Format horizon_days into readable string (e.g., 0.167 -> '4h', 30 -> '30d')."""
+        if horizon_days < 1:
+            hours = int(horizon_days * 24)
+            return f"{hours}h"
+        elif horizon_days == 7:
+            return "1w"
+        elif horizon_days == 30:
+            return "1M"
+        elif horizon_days == 60:
+            return "2M"
+        elif horizon_days == 90:
+            return "3M"
+        elif horizon_days == 120:
+            return "4M"
+        elif horizon_days == 180:
+            return "6M"
+        elif horizon_days == 360:
+            return "1Y"
+        else:
+            return f"{int(horizon_days)}d"
 
 
 # Convenience function

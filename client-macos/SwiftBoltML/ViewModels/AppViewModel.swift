@@ -26,6 +26,7 @@ final class AppViewModel: ObservableObject {
     @Published var optionsChainViewModel: OptionsChainViewModel
     @Published var optionsRankerViewModel: OptionsRankerViewModel
     @Published var predictionsViewModel: PredictionsViewModel
+    @Published var validationViewModel: ValidationViewModel
     @Published var selectedDetailTab: Int = 0
     @Published var selectedOptionsTab: Int = 0
     @Published var selectedPredictionsTab: Int = 0
@@ -43,6 +44,7 @@ final class AppViewModel: ObservableObject {
         self.optionsChainViewModel = OptionsChainViewModel()
         self.optionsRankerViewModel = OptionsRankerViewModel()
         self.predictionsViewModel = PredictionsViewModel()
+        self.validationViewModel = ValidationViewModel()
         self.searchViewModel = SymbolSearchViewModel()
         self.watchlistViewModel = WatchlistViewModel()
 
@@ -128,6 +130,12 @@ final class AppViewModel: ObservableObject {
         refreshTask = Task {
             await refreshData()
         }
+
+        if let ticker = selectedSymbol?.ticker {
+            validationViewModel.startMonitoring(symbol: ticker)
+        } else {
+            validationViewModel.stopMonitoring()
+        }
     }
 
     func refreshData() async {
@@ -183,6 +191,7 @@ final class AppViewModel: ObservableObject {
 
     func clearSelection() {
         selectedSymbol = nil
+        validationViewModel.stopMonitoring()
     }
 
     #if DEBUG
