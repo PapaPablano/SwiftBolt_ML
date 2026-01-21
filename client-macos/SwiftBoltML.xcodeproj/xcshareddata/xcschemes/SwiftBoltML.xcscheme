@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A6000001233456780000001"
-               BuildableName = "SwiftBoltML.app"
+               BuildableName = "SwiftBoltML"
                BlueprintName = "SwiftBoltML"
                ReferencedContainer = "container:SwiftBoltML.xcodeproj">
             </BuildableReference>
@@ -30,7 +30,8 @@
       shouldUseLaunchSchemeArgsEnv = "YES">
       <TestPlans>
          <TestPlanReference
-            reference = "container:TestPlan.xctestplan">
+            reference = "container:TestPlan.xctestplan"
+            default = "YES">
          </TestPlanReference>
       </TestPlans>
    </TestAction>
@@ -49,7 +50,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A6000001233456780000001"
-            BuildableName = "SwiftBoltML.app"
+            BuildableName = "SwiftBoltML"
             BlueprintName = "SwiftBoltML"
             ReferencedContainer = "container:SwiftBoltML.xcodeproj">
          </BuildableReference>
@@ -66,7 +67,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A6000001233456780000001"
-            BuildableName = "SwiftBoltML.app"
+            BuildableName = "SwiftBoltML"
             BlueprintName = "SwiftBoltML"
             ReferencedContainer = "container:SwiftBoltML.xcodeproj">
          </BuildableReference>

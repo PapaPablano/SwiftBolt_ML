@@ -163,6 +163,7 @@ struct MultiLegCreateStrategyView: View {
 
     private var strategyCategories: [(name: String, types: [StrategyType])] {
         [
+            ("Single Options", [.longCall, .longPut, .shortCall, .shortPut, .coveredCall, .cashSecuredPut]),
             ("Vertical Spreads", [.bullCallSpread, .bearCallSpread, .bullPutSpread, .bearPutSpread]),
             ("Volatility Plays", [.longStraddle, .shortStraddle, .longStrangle, .shortStrangle]),
             ("Multi-Leg", [.ironCondor, .ironButterfly, .butterflySpread]),
@@ -418,6 +419,16 @@ struct MultiLegCreateStrategyView: View {
         legs = []
 
         switch type {
+        // Single-leg strategies
+        case .longCall:
+            legs = [LegInput(position: .long, optionType: .call)]
+        case .longPut:
+            legs = [LegInput(position: .long, optionType: .put)]
+        case .shortCall, .coveredCall:
+            legs = [LegInput(position: .short, optionType: .call)]
+        case .shortPut, .cashSecuredPut:
+            legs = [LegInput(position: .short, optionType: .put)]
+        // Two-leg strategies
         case .bullCallSpread:
             legs = [
                 LegInput(position: .long, optionType: .call),

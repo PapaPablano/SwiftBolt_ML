@@ -217,6 +217,26 @@ function validateStrategyStructure(request: CreateStrategyRequest): ValidationEr
   const legs = request.legs;
 
   switch (request.strategyType) {
+    // Single-leg strategies
+    case "long_call":
+      errors.push(...validateSingleLeg(legs, "long", "call"));
+      break;
+    case "long_put":
+      errors.push(...validateSingleLeg(legs, "long", "put"));
+      break;
+    case "short_call":
+      errors.push(...validateSingleLeg(legs, "short", "call"));
+      break;
+    case "short_put":
+      errors.push(...validateSingleLeg(legs, "short", "put"));
+      break;
+    case "covered_call":
+      errors.push(...validateSingleLeg(legs, "short", "call"));
+      break;
+    case "cash_secured_put":
+      errors.push(...validateSingleLeg(legs, "short", "put"));
+      break;
+    // Two-leg strategies
     case "bull_call_spread":
       errors.push(...validateBullCallSpread(legs));
       break;
@@ -256,6 +276,43 @@ function validateStrategyStructure(request: CreateStrategyRequest): ValidationEr
 // ============================================================================
 // STRATEGY-SPECIFIC VALIDATORS
 // ============================================================================
+
+function validateSingleLeg(
+  legs: CreateLegInput[],
+  expectedPosition: "long" | "short",
+  expectedOptionType: "call" | "put"
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  if (legs.length !== 1) {
+    errors.push({
+      field: "legs",
+      message: `Single-option strategy requires exactly 1 leg, got ${legs.length}`,
+      code: "INVALID_LEG_COUNT",
+    });
+    return errors;
+  }
+
+  const leg = legs[0];
+
+  if (leg.positionType !== expectedPosition) {
+    errors.push({
+      field: "legs[0].positionType",
+      message: `Expected ${expectedPosition} position for this strategy type`,
+      code: "INVALID_POSITION_TYPE",
+    });
+  }
+
+  if (leg.optionType !== expectedOptionType) {
+    errors.push({
+      field: "legs[0].optionType",
+      message: `Expected ${expectedOptionType} option for this strategy type`,
+      code: "INVALID_OPTION_TYPE",
+    });
+  }
+
+  return errors;
+}
 
 function validateBullCallSpread(legs: CreateLegInput[]): ValidationError[] {
   const errors: ValidationError[] = [];

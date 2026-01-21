@@ -656,9 +656,11 @@ struct RankedOptionRow: View {
     let liveQuote: OptionContractQuote?
     let symbol: String
     let gaGenes: StrategyGenes?
+    var symbolId: String = ""
     @State private var isHovering = false
     @State private var showStrikeAnalysis = false
     @State private var showHistoryChart = false
+    @State private var showAddToStrategy = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -760,16 +762,30 @@ struct RankedOptionRow: View {
 
             Divider()
 
-            // Historical price chart button
-            Button {
-                showHistoryChart = true
-            } label: {
-                Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.caption)
-                    .foregroundStyle(.blue)
+            // Action buttons
+            VStack(spacing: 8) {
+                // Add to Strategy button
+                Button {
+                    showAddToStrategy = true
+                } label: {
+                    Image(systemName: "plus.rectangle.on.folder")
+                        .font(.caption)
+                        .foregroundStyle(.purple)
+                }
+                .buttonStyle(.borderless)
+                .help("Add to Strategy")
+
+                // Historical price chart button
+                Button {
+                    showHistoryChart = true
+                } label: {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+                }
+                .buttonStyle(.borderless)
+                .help("View historical mark price chart")
             }
-            .buttonStyle(.borderless)
-            .help("View historical mark price chart")
         }
         .padding(12)
         .background(isHovering ? Color(nsColor: .controlBackgroundColor).opacity(0.8) : Color(nsColor: .controlBackgroundColor))
@@ -798,6 +814,13 @@ struct RankedOptionRow: View {
                 side: rank.side.rawValue,
                 expiry: rank.expiry,
                 contractSymbol: rank.contractSymbol
+            )
+        }
+        .sheet(isPresented: $showAddToStrategy) {
+            AddToStrategySheet(
+                optionRank: rank,
+                symbol: symbol,
+                symbolId: symbolId
             )
         }
     }

@@ -6,6 +6,14 @@
 // ============================================================================
 
 export type StrategyType =
+  // Single-leg strategies
+  | "long_call"
+  | "long_put"
+  | "short_call"
+  | "short_put"
+  | "covered_call"
+  | "cash_secured_put"
+  // Multi-leg strategies
   | "bull_call_spread"
   | "bear_call_spread"
   | "bull_put_spread"
@@ -729,9 +737,19 @@ export function alertRowToModel(row: AlertRow): MultiLegAlert {
 
 /**
  * Get the expected number of legs for a strategy type
+ * Returns null if leg count is flexible (custom strategies)
  */
 export function getExpectedLegCount(strategyType: StrategyType): number | null {
   switch (strategyType) {
+    // Single-leg strategies
+    case "long_call":
+    case "long_put":
+    case "short_call":
+    case "short_put":
+    case "covered_call":
+    case "cash_secured_put":
+      return 1;
+    // Two-leg strategies
     case "bull_call_spread":
     case "bear_call_spread":
     case "bull_put_spread":
@@ -743,15 +761,17 @@ export function getExpectedLegCount(strategyType: StrategyType): number | null {
     case "calendar_spread":
     case "diagonal_spread":
       return 2;
+    // Three-leg strategies
     case "call_ratio_backspread":
     case "put_ratio_backspread":
     case "butterfly_spread":
       return 3;
+    // Four-leg strategies
     case "iron_condor":
     case "iron_butterfly":
       return 4;
     case "custom":
-      return null; // Variable
+      return null; // Variable - user decides
   }
 }
 
@@ -760,6 +780,14 @@ export function getExpectedLegCount(strategyType: StrategyType): number | null {
  */
 export function getStrategyDisplayName(strategyType: StrategyType): string {
   const names: Record<StrategyType, string> = {
+    // Single-leg strategies
+    long_call: "Long Call",
+    long_put: "Long Put",
+    short_call: "Short Call (Naked)",
+    short_put: "Short Put (Naked)",
+    covered_call: "Covered Call",
+    cash_secured_put: "Cash Secured Put",
+    // Multi-leg strategies
     bull_call_spread: "Bull Call Spread",
     bear_call_spread: "Bear Call Spread",
     bull_put_spread: "Bull Put Spread",

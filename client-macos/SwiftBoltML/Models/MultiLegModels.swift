@@ -4,6 +4,14 @@ import SwiftUI
 // MARK: - Strategy Types
 
 enum StrategyType: String, Codable, CaseIterable {
+    // Single-leg strategies
+    case longCall = "long_call"
+    case longPut = "long_put"
+    case shortCall = "short_call"
+    case shortPut = "short_put"
+    case coveredCall = "covered_call"
+    case cashSecuredPut = "cash_secured_put"
+    // Multi-leg strategies
     case bullCallSpread = "bull_call_spread"
     case bearCallSpread = "bear_call_spread"
     case bullPutSpread = "bull_put_spread"
@@ -23,6 +31,14 @@ enum StrategyType: String, Codable, CaseIterable {
 
     var displayName: String {
         switch self {
+        // Single-leg
+        case .longCall: return "Long Call"
+        case .longPut: return "Long Put"
+        case .shortCall: return "Short Call (Naked)"
+        case .shortPut: return "Short Put (Naked)"
+        case .coveredCall: return "Covered Call"
+        case .cashSecuredPut: return "Cash Secured Put"
+        // Multi-leg
         case .bullCallSpread: return "Bull Call Spread"
         case .bearCallSpread: return "Bear Call Spread"
         case .bullPutSpread: return "Bull Put Spread"
@@ -44,12 +60,18 @@ enum StrategyType: String, Codable, CaseIterable {
 
     var expectedLegCount: Int? {
         switch self {
+        // Single-leg strategies
+        case .longCall, .longPut, .shortCall, .shortPut, .coveredCall, .cashSecuredPut:
+            return 1
+        // Two-leg strategies
         case .bullCallSpread, .bearCallSpread, .bullPutSpread, .bearPutSpread,
              .longStraddle, .shortStraddle, .longStrangle, .shortStrangle,
              .calendarSpread, .diagonalSpread:
             return 2
+        // Three-leg strategies
         case .callRatioBackspread, .putRatioBackspread, .butterflySpread:
             return 3
+        // Four-leg strategies
         case .ironCondor, .ironButterfly:
             return 4
         case .custom:
@@ -57,9 +79,18 @@ enum StrategyType: String, Codable, CaseIterable {
         }
     }
 
+    var isSingleLeg: Bool {
+        switch self {
+        case .longCall, .longPut, .shortCall, .shortPut, .coveredCall, .cashSecuredPut:
+            return true
+        default:
+            return false
+        }
+    }
+
     var isBullish: Bool {
         switch self {
-        case .bullCallSpread, .bullPutSpread, .longStraddle, .longStrangle, .callRatioBackspread:
+        case .longCall, .cashSecuredPut, .bullCallSpread, .bullPutSpread, .longStraddle, .longStrangle, .callRatioBackspread:
             return true
         default:
             return false
@@ -68,7 +99,7 @@ enum StrategyType: String, Codable, CaseIterable {
 
     var isBearish: Bool {
         switch self {
-        case .bearCallSpread, .bearPutSpread, .putRatioBackspread:
+        case .longPut, .bearCallSpread, .bearPutSpread, .putRatioBackspread:
             return true
         default:
             return false
@@ -77,10 +108,28 @@ enum StrategyType: String, Codable, CaseIterable {
 
     var isNeutral: Bool {
         switch self {
-        case .shortStraddle, .shortStrangle, .ironCondor, .ironButterfly, .butterflySpread:
+        case .shortStraddle, .shortStrangle, .ironCondor, .ironButterfly, .butterflySpread, .coveredCall:
             return true
         default:
             return false
+        }
+    }
+
+    /// Default position type for single-leg strategies
+    var defaultPositionType: PositionType? {
+        switch self {
+        case .longCall, .longPut: return .long
+        case .shortCall, .shortPut, .coveredCall, .cashSecuredPut: return .short
+        default: return nil
+        }
+    }
+
+    /// Default option type for single-leg strategies
+    var defaultOptionType: MultiLegOptionType? {
+        switch self {
+        case .longCall, .shortCall, .coveredCall: return .call
+        case .longPut, .shortPut, .cashSecuredPut: return .put
+        default: return nil
         }
     }
 }

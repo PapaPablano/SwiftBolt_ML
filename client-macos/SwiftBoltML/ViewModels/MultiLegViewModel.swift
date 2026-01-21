@@ -145,7 +145,9 @@ class MultiLegViewModel: ObservableObject {
             .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
             .removeDuplicates()
             .sink { [weak self] _ in
-                // Search is applied locally via filteredStrategies computed property
+                // Maintain weak capture (for symmetry with other observers) and explicitly
+                // trigger an update cycle so dependent views refresh immediately.
+                self?.objectWillChange.send()
             }
             .store(in: &cancellables)
 

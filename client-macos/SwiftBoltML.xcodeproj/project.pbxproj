@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        893B3E6734F63C82006BBA70 /* AddToStrategySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 893B3E6634F63C82006BBA70 /* AddToStrategySheet.swift */; };
 		0B281429F99B764ACF20AE52 /* OptionsRankerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */; };
 		136FE9F67FA29A26AE074312 /* MultiTimeframeConsensusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144206D7859B6361AEFE13D9 /* MultiTimeframeConsensusView.swift */; };
 		1469ED89052E948868C57E9E /* PivotLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CE2E34EE4D81F3060BC9AF1 /* PivotLevel.swift */; };
@@ -116,6 +117,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+        893B3E6634F63C82006BBA70 /* AddToStrategySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddToStrategySheet.swift; sourceTree = "<group>"; };
 		0128CA566A7D864E3938B3FA /* OptionsRankerViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerViewModel.swift; sourceTree = "<group>"; };
 		07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerView.swift; sourceTree = "<group>"; };
 		0A4D3D1FC85DBCBD8C45CCA5 /* WatchlistModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchlistModels.swift; sourceTree = "<group>"; };
@@ -171,7 +173,6 @@
 		A2000030233456780000030 /* SymbolSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SymbolSyncService.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F708192A3B4C5D /* SymbolViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SymbolViewModel.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F708192A3B4C5F /* IndicatorsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndicatorsViewModel.swift; sourceTree = "<group>"; };
-		A3000001233456780000001 /* SwiftBoltML.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftBoltML.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1B744048995733E3EF70004 /* PredictionsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PredictionsView.swift; sourceTree = "<group>"; };
 		B29181F82545367180388B23 /* ChartBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ChartBridge.swift; sourceTree = "<group>"; };
 		B73A321AD0316BC1B2434132 /* SuperTrendAIIndicator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SuperTrendAIIndicator.swift; sourceTree = "<group>"; };
@@ -412,6 +413,7 @@
 				BAEC8C02158A22493B1B2537 /* MultiLegStrategyListView.swift */,
 				A0FBC98DD5D3AA21FD643B9B /* MultiLegStrategyDetailView.swift */,
 				C4B15838B1E6488AF66CA162 /* MultiLegCreateStrategyView.swift */,
+				893B3E6634F63C82006BBA70 /* AddToStrategySheet.swift */,
 			);
 			name = MultiLeg;
 			path = MultiLeg;
@@ -615,6 +617,7 @@
 				E86094E11441AE6E464BA239 /* MultiLegStrategyListView.swift in Sources */,
 				BBF26E749EE9864119C5E5C3 /* MultiLegStrategyDetailView.swift in Sources */,
 				9A481B5659E62F5F2C7EC5EB /* MultiLegCreateStrategyView.swift in Sources */,
+				893B3E6734F63C82006BBA70 /* AddToStrategySheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
