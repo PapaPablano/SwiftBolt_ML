@@ -62,13 +62,34 @@ drop index if exists "public"."orchestrator_heartbeat_pkey";
 
 drop table "public"."orchestrator_heartbeat";
 
-alter table "public"."indicator_values" add column "rsi_14" double precision;
+alter table "public"."indicator_values" add column if not exists "rsi_14" double precision;
 
-alter table "public"."indicator_values" alter column "id" drop default;
+-- Guard identity column conversion: only run if not already identity
+DO $$
+BEGIN
+  -- Check if column is not already an identity column
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'indicator_values'
+      AND column_name = 'id'
+      AND is_identity = 'YES'
+  ) THEN
+    -- Only alter if it's not already identity
+    BEGIN
+      ALTER TABLE public.indicator_values ALTER COLUMN id DROP DEFAULT;
+      ALTER TABLE public.indicator_values ALTER COLUMN id ADD GENERATED ALWAYS AS IDENTITY;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'indicator_values.id already configured: %', SQLERRM;
+    END;
+  END IF;
 
-alter table "public"."indicator_values" alter column "id" add generated always as identity;
-
-alter table "public"."indicator_values" alter column "id" set data type bigint using "id"::bigint;
+  -- Ensure bigint type (no-op if already bigint)
+  IF (SELECT data_type FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'indicator_values' AND column_name = 'id') != 'bigint' THEN
+    ALTER TABLE public.indicator_values ALTER COLUMN id SET DATA TYPE bigint USING id::bigint;
+  END IF;
+END $$;
 
 alter table "public"."ml_forecasts" add column "updated_at" timestamp with time zone default now();
 
