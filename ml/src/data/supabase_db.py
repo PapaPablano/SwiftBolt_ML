@@ -250,23 +250,45 @@ class SupabaseDatabase:
         try:
             symbol_id = self.get_symbol_id(symbol)
             ts_iso = pd.to_datetime(target_ts).isoformat()
-            response = (
-                self.client.table("ohlc_bars_v2")
-                .select("ts, close")
-                .eq("symbol_id", symbol_id)
-                .eq("timeframe", timeframe)
-                .eq("provider", "alpaca")
-                .eq("is_forecast", False)
-                .lte("ts", ts_iso)
-                .order("ts", desc=True)
-                .limit(1)
-                .execute()
-            )
 
-            if not response.data:
-                return None
-            row = response.data[0]
-            return (pd.to_datetime(row["ts"]), float(row["close"]))
+            # Try providers in preference order: alpaca > polygon > yfinance > any
+            providers_to_try = ["alpaca", "polygon", "yfinance", None]
+
+            for provider in providers_to_try:
+                query = (
+                    self.client.table("ohlc_bars_v2")
+                    .select("ts, close, provider")
+                    .eq("symbol_id", symbol_id)
+                    .eq("timeframe", timeframe)
+                    .eq("is_forecast", False)
+                    .lte("ts", ts_iso)
+                    .order("ts", desc=True)
+                    .limit(1)
+                )
+
+                if provider is not None:
+                    query = query.eq("provider", provider)
+
+                response = query.execute()
+
+                if response.data:
+                    row = response.data[0]
+                    used_provider = row.get("provider", "unknown")
+                    if provider is None:
+                        logger.info(
+                            "Using fallback provider '%s' for %s last close (preferred providers unavailable)",
+                            used_provider,
+                            symbol,
+                        )
+                    elif provider != "alpaca":
+                        logger.debug(
+                            "Using '%s' provider for %s last close (alpaca unavailable)",
+                            provider,
+                            symbol,
+                        )
+                    return (pd.to_datetime(row["ts"]), float(row["close"]))
+
+            return None
         except Exception as e:
             logger.warning(
                 "Error fetching last close for %s (%s): %s",
@@ -502,24 +524,45 @@ class SupabaseDatabase:
         try:
             symbol_id = self.get_symbol_id(symbol)
             ts_iso = pd.to_datetime(after_ts).isoformat()
-            response = (
-                self.client.table("ohlc_bars_v2")
-                .select("ts, close")
-                .eq("symbol_id", symbol_id)
-                .eq("timeframe", timeframe)
-                .eq("provider", "alpaca")
-                .eq("is_forecast", False)
-                .gt("ts", ts_iso)
-                .order("ts", desc=False)
-                .limit(n)
-                .execute()
-            )
 
-            if not response.data or len(response.data) < n:
-                return None
+            # Try providers in preference order: alpaca > polygon > yfinance > any
+            providers_to_try = ["alpaca", "polygon", "yfinance", None]
 
-            row = response.data[n - 1]
-            return (pd.to_datetime(row["ts"]), float(row["close"]))
+            for provider in providers_to_try:
+                query = (
+                    self.client.table("ohlc_bars_v2")
+                    .select("ts, close, provider")
+                    .eq("symbol_id", symbol_id)
+                    .eq("timeframe", timeframe)
+                    .eq("is_forecast", False)
+                    .gt("ts", ts_iso)
+                    .order("ts", desc=False)
+                    .limit(n)
+                )
+
+                if provider is not None:
+                    query = query.eq("provider", provider)
+
+                response = query.execute()
+
+                if response.data and len(response.data) >= n:
+                    row = response.data[n - 1]
+                    used_provider = row.get("provider", "unknown")
+                    if provider is None:
+                        logger.info(
+                            "Using fallback provider '%s' for %s future close (preferred providers unavailable)",
+                            used_provider,
+                            symbol,
+                        )
+                    elif provider != "alpaca":
+                        logger.debug(
+                            "Using '%s' provider for %s future close (alpaca unavailable)",
+                            provider,
+                            symbol,
+                        )
+                    return (pd.to_datetime(row["ts"]), float(row["close"]))
+
+            return None
         except Exception as e:
             logger.warning(
                 "Error fetching future close for %s (%s): %s",
