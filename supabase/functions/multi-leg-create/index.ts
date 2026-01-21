@@ -284,11 +284,13 @@ serve(async (req: Request): Promise<Response> => {
 
     // Build response
     const strategy = strategyRowToModel(finalStrategy as StrategyRow);
-    strategy.legs = (legsData as LegRow[]).map(legRowToModel);
+    const legs = (legsData as LegRow[]).map(legRowToModel);
+    strategy.legs = legs;
 
     return jsonResponse(
       {
         strategy,
+        legs,  // Also include legs at top level for client compatibility
         warnings: validation.warnings,
       },
       201
