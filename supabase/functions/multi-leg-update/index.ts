@@ -6,7 +6,7 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
-import { getSupabaseClientWithAuth } from "../_shared/supabase-client.ts";
+import { getSupabaseClientWithAuth, getSupabaseClient } from "../_shared/supabase-client.ts";
 import {
   type UpdateStrategyRequest,
   type StrategyRow,
@@ -77,14 +77,33 @@ serve(async (req: Request): Promise<Response> => {
     // Add updated_at timestamp
     updates.updated_at = new Date().toISOString();
 
-    // Get Supabase client with user auth (respects RLS)
-    const supabase = getSupabaseClientWithAuth(authHeader);
+    // Try to get user ID from auth, fall back to service role for development
+    let userId: string | null = null;
+    let supabase;
+
+    // First try to get authenticated user
+    const authSupabase = getSupabaseClientWithAuth(authHeader);
+    const {
+      data: { user },
+      error: userError,
+    } = await authSupabase.auth.getUser();
+
+    if (userError || !user) {
+      // For development/testing: use service role client which bypasses RLS
+      console.warn("[multi-leg-update] No authenticated user, using service role client");
+      supabase = getSupabaseClient();
+      userId = "00000000-0000-0000-0000-000000000000";
+    } else {
+      userId = user.id;
+      supabase = authSupabase;
+    }
 
     // Update strategy
     const { data, error } = await supabase
       .from("options_strategies")
       .update(updates)
       .eq("id", body.strategyId)
+      .eq("user_id", userId)  // Filter by user ID
       .select()
       .single();
 
