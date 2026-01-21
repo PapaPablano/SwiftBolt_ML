@@ -276,8 +276,16 @@ jobs:
           cd ml
           echo "📊 Refreshing 7-day underlying history for watchlist symbols..."
 
-          if output=$(python -m src.scripts.refresh_underlying_history --watchlist --timeframe d1 2>&1); then
-            echo "$output"
+          # Capture output and exit code separately
+          set +e
+          output=$(python -m src.scripts.refresh_underlying_history --watchlist --timeframe d1 2>&1)
+          exit_code=$?
+          set -e
+
+          # Always print the output for debugging
+          echo "$output"
+
+          if [ $exit_code -eq 0 ]; then
             successful=$(echo "$output" | grep -oP 'Successful: \K\d+' || echo "0")
             failed=$(echo "$output" | grep -oP 'Failed: \K\d+' || echo "0")
             bars=$(echo "$output" | grep -oP 'Total bars upserted: \K\d+' || echo "0")
@@ -294,7 +302,12 @@ jobs:
             fi
           else
             echo "status=failed" >> $GITHUB_OUTPUT
-            echo "::error::Underlying history refresh failed"
+            echo "::error::Underlying history refresh failed with exit code $exit_code"
+            # Log to summary for visibility
+            echo "## ❌ Underlying History Refresh Failed" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "$output" | tail -50 >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
 
