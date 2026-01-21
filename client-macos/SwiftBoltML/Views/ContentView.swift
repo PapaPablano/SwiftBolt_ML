@@ -3,6 +3,7 @@ import SwiftUI
 enum SidebarSection: Hashable {
     case stocks
     case portfolio
+    case multileg
     case predictions
     case devtools
 }
@@ -22,6 +23,9 @@ struct ContentView: View {
                     .environmentObject(appViewModel)
             case .portfolio:
                 Text("Portfolio")
+            case .multileg:
+                MultiLegStrategyListView()
+                    .environmentObject(appViewModel)
             default:
                 DetailView()
                     .environmentObject(appViewModel)
@@ -69,6 +73,9 @@ struct SidebarView: View {
                 Section("Navigation") {
                     NavigationLink(value: SidebarSection.portfolio) {
                         Label("Portfolio", systemImage: "chart.pie.fill")
+                    }
+                    NavigationLink(value: SidebarSection.multileg) {
+                        Label("Multi-Leg", systemImage: "square.stack.3d.up")
                     }
                     NavigationLink(value: SidebarSection.predictions) {
                         Label("Predictions", systemImage: "waveform.path.ecg")

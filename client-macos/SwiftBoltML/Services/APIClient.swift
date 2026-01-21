@@ -1134,6 +1134,158 @@ final class APIClient {
 
         return try await performRequest(request)
     }
+
+    // MARK: - Multi-Leg Options Strategy API
+
+    /// List multi-leg strategies with optional filters
+    func listMultiLegStrategies(
+        status: StrategyStatus? = nil,
+        underlyingSymbolId: String? = nil,
+        strategyType: StrategyType? = nil,
+        limit: Int = 50,
+        offset: Int = 0
+    ) async throws -> ListStrategiesResponse {
+        guard var components = URLComponents(url: functionURL("multi-leg-list"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "offset", value: String(offset))
+        ]
+
+        if let status = status {
+            queryItems.append(URLQueryItem(name: "status", value: status.rawValue))
+        }
+        if let symbolId = underlyingSymbolId {
+            queryItems.append(URLQueryItem(name: "underlyingSymbolId", value: symbolId))
+        }
+        if let type = strategyType {
+            queryItems.append(URLQueryItem(name: "strategyType", value: type.rawValue))
+        }
+
+        components.queryItems = queryItems
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        return try await performRequest(request)
+    }
+
+    /// Get detailed info for a single strategy including legs and alerts
+    func getMultiLegStrategyDetail(strategyId: String) async throws -> StrategyDetailResponse {
+        guard var components = URLComponents(url: functionURL("multi-leg-detail"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+
+        components.queryItems = [URLQueryItem(name: "strategyId", value: strategyId)]
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        return try await performRequest(request)
+    }
+
+    /// Create a new multi-leg strategy with legs
+    func createMultiLegStrategy(_ request: CreateStrategyRequest) async throws -> CreateStrategyResponse {
+        var urlRequest = URLRequest(url: functionURL("multi-leg-create"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let encoder = JSONEncoder()
+        urlRequest.httpBody = try encoder.encode(request)
+
+        return try await performRequest(urlRequest)
+    }
+
+    /// Update strategy metadata
+    func updateMultiLegStrategy(strategyId: String, update: UpdateStrategyRequest) async throws -> MultiLegStrategy {
+        guard var components = URLComponents(url: functionURL("multi-leg-update"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+
+        components.queryItems = [URLQueryItem(name: "strategyId", value: strategyId)]
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let encoder = JSONEncoder()
+        request.httpBody = try encoder.encode(update)
+
+        return try await performRequest(request)
+    }
+
+    /// Close a single leg of a strategy
+    func closeMultiLegLeg(strategyId: String, request: CloseLegRequest) async throws -> CloseLegResponse {
+        guard var components = URLComponents(url: functionURL("multi-leg-close-leg"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+
+        components.queryItems = [URLQueryItem(name: "strategyId", value: strategyId)]
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let encoder = JSONEncoder()
+        urlRequest.httpBody = try encoder.encode(request)
+
+        return try await performRequest(urlRequest)
+    }
+
+    /// Close an entire strategy (all legs at once)
+    func closeMultiLegStrategy(_ request: CloseStrategyRequest) async throws -> CloseStrategyResponse {
+        var urlRequest = URLRequest(url: functionURL("multi-leg-close-strategy"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let encoder = JSONEncoder()
+        urlRequest.httpBody = try encoder.encode(request)
+
+        return try await performRequest(urlRequest)
+    }
+
+    /// Fetch strategy templates
+    func fetchStrategyTemplates() async throws -> TemplatesResponse {
+        var request = URLRequest(url: functionURL("multi-leg-templates"))
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        return try await performRequest(request)
+    }
 }
 
 // MARK: - Refresh Data Request/Response
