@@ -132,23 +132,18 @@ gh workflow run daily-data-refresh.yml -f timeframe=d1
 
 ---
 
-## Legacy Workflows (Cron Disabled)
+## Legacy Workflows (Archived)
 
-These workflows have been consolidated but retain `workflow_dispatch` for manual runs:
+Legacy workflows have been moved to `./legacy/` directory. See `legacy/README.md` for details.
 
-| Workflow | Consolidated Into |
-|----------|-------------------|
-| `backfill-ohlc.yml` | `daily-data-refresh.yml` |
-| `batch-backfill-cron.yml` | `daily-data-refresh.yml` |
-| `daily-historical-sync.yml` | `daily-data-refresh.yml` |
-| `alpaca-intraday-cron.yml` | `intraday-ingestion.yml` |
-| `intraday-update.yml` | `intraday-ingestion.yml` |
-| `intraday-update-v2.yml` | `intraday-ingestion.yml` |
-| `ml-forecast.yml` | `ml-orchestration.yml` |
-| `ml-evaluation.yml` | `ml-orchestration.yml` |
-| `data-quality-monitor.yml` | `ml-orchestration.yml` |
-| `drift-monitoring.yml` | `ml-orchestration.yml` |
-| `options-nightly.yml` | `ml-orchestration.yml` |
+**Consolidated Summary (22 → 8 workflows):**
+
+| Archived From | Consolidated Into |
+|---------------|-------------------|
+| `backfill-*.yml`, `daily-historical-sync.yml` | `daily-data-refresh.yml` |
+| `alpaca-intraday-*.yml`, `intraday-update*.yml` | `intraday-ingestion.yml` |
+| `ml-forecast.yml`, `ml-evaluation.yml`, `*-monitoring.yml`, `options-nightly.yml` | `ml-orchestration.yml` |
+| `job-worker.yml`, `orchestrator-*.yml`, `symbol-*.yml` | Various or deprecated |
 
 ---
 
