@@ -3,17 +3,12 @@
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-let supabaseClient: SupabaseClient | null = null;
-
 /**
  * Gets or creates a Supabase client using service role credentials.
  * Service role bypasses RLS for server-side operations.
+ * Note: Creates a new client for each request to avoid caching issues.
  */
 export function getSupabaseClient(): SupabaseClient {
-  if (supabaseClient) {
-    return supabaseClient;
-  }
-
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -23,14 +18,12 @@ export function getSupabaseClient(): SupabaseClient {
     );
   }
 
-  supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
+  return createClient(supabaseUrl, supabaseServiceKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
     },
   });
-
-  return supabaseClient;
 }
 
 /**

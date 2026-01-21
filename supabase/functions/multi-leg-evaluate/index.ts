@@ -131,9 +131,10 @@ async function evaluateSingleStrategy(
 
   const underlyingPrice = quoteData?.last ?? 0;
 
+  // Note: We continue even if underlyingPrice is 0 to update Greeks
+  // P&L calculations will be skipped but leg Greeks will still be updated
   if (underlyingPrice === 0) {
-    console.log(`[multi-leg-evaluate] No quote for ${strategy.underlyingTicker}, skipping`);
-    return { alertsGenerated: 0 };
+    console.log(`[multi-leg-evaluate] No quote for ${strategy.underlyingTicker}, will update Greeks only`);
   }
 
   // Fetch forecast if linked
