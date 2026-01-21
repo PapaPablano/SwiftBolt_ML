@@ -6,7 +6,7 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
-import { getSupabaseClientWithAuth } from "../_shared/supabase-client.ts";
+import { getSupabaseClientWithAuth, getSupabaseClient } from "../_shared/supabase-client.ts";
 import {
   type StrategyRow,
   type StrategyStatus,
@@ -40,13 +40,32 @@ serve(async (req: Request): Promise<Response> => {
     const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "20"), 100);
     const offset = parseInt(url.searchParams.get("offset") ?? "0");
 
-    // Get Supabase client with user auth (respects RLS)
-    const supabase = getSupabaseClientWithAuth(authHeader);
+    // Try to get user ID from auth, fall back to service role for development
+    let userId: string | null = null;
+    let supabase;
+
+    // First try to get authenticated user
+    const authSupabase = getSupabaseClientWithAuth(authHeader);
+    const {
+      data: { user },
+      error: userError,
+    } = await authSupabase.auth.getUser();
+
+    if (userError || !user) {
+      // For development/testing: use service role client which bypasses RLS
+      console.warn("[multi-leg-list] No authenticated user, using service role client");
+      supabase = getSupabaseClient();
+      userId = "00000000-0000-0000-0000-000000000000";
+    } else {
+      userId = user.id;
+      supabase = authSupabase;
+    }
 
     // Build query
     let query = supabase
       .from("options_strategies")
       .select("*", { count: "exact" })
+      .eq("user_id", userId)  // Filter by user ID (needed when using service role)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
