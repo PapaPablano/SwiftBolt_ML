@@ -220,6 +220,98 @@ def select_balanced_expiry_contracts(
     return result
 
 
+def build_contract_symbol(
+    underlying: str,
+    expiry: str,
+    strike: float,
+    side: str,
+) -> str:
+    """
+    Build OCC-format contract symbol from components.
+
+    Format: SYMBOL + YYMMDD + C/P + Strike*1000 (8 digits, zero-padded)
+    Example: AAPL240119C00150000 = AAPL, 2024-01-19, Call, $150
+
+    Args:
+        underlying: Stock ticker symbol
+        expiry: Expiration date in 'YYYY-MM-DD' format
+        strike: Strike price
+        side: Option type ('call' or 'put')
+
+    Returns:
+        OCC-format contract symbol
+    """
+    exp_date = datetime.strptime(expiry, "%Y-%m-%d")
+    exp_str = exp_date.strftime("%y%m%d")
+    opt_char = "C" if side.lower() == "call" else "P"
+    strike_int = int(strike * 1000)
+    strike_str = f"{strike_int:08d}"
+    return f"{underlying.upper()}{exp_str}{opt_char}{strike_str}"
+
+
+def fetch_specific_option_quotes(
+    symbol: str,
+    contracts: list[str],
+) -> dict[str, dict]:
+    """
+    Fetch live quotes for specific option contracts via options-quotes Edge Function.
+
+    Args:
+        symbol: Underlying ticker symbol
+        contracts: List of OCC-format contract symbols to fetch
+
+    Returns:
+        Dict mapping contract_symbol -> quote data (bid, ask, mark, Greeks)
+    """
+    if not contracts:
+        return {}
+
+    url = f"{settings.supabase_url}/functions/v1/options-quotes"
+    headers = {
+        "Authorization": f"Bearer {settings.supabase_service_role_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "symbol": symbol,
+        "contracts": contracts,
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+
+        result = {}
+        for quote in data.get("quotes", []):
+            symbol_key = quote.get("contract_symbol")
+            if symbol_key:
+                result[symbol_key] = {
+                    "bid": quote.get("bid") or 0,
+                    "ask": quote.get("ask") or 0,
+                    "mark": quote.get("mark") or (
+                        ((quote.get("bid") or 0) + (quote.get("ask") or 0)) / 2
+                    ),
+                    "last": quote.get("last") or 0,
+                    "volume": quote.get("volume") or 0,
+                    "open_interest": quote.get("open_interest") or 0,
+                    "implied_vol": quote.get("implied_vol") or 0,
+                    "delta": quote.get("delta") or 0,
+                    "gamma": quote.get("gamma") or 0,
+                    "theta": quote.get("theta") or 0,
+                    "vega": quote.get("vega") or 0,
+                    "rho": quote.get("rho") or 0,
+                }
+
+        logger.info(
+            f"Fetched quotes for {len(result)}/{len(contracts)} strategy contracts"
+        )
+        return result
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to fetch strategy option quotes: {e}")
+        return {}
+
+
 def _sanitize_number(value: float | int | None, default: float = 0.0) -> float:
     if value is None:
         return default
@@ -559,6 +651,102 @@ def process_symbol_options(
         saved_count = save_rankings_to_db(symbol_id, top_ranked)
 
         logger.info(f"Saved {saved_count} ranked contracts for {symbol}")
+
+        # Include options from active multi-leg strategies
+        active_strategy_options = db.get_active_strategy_options(symbol_id)
+
+        if active_strategy_options:
+            logger.info(
+                f"Found {len(active_strategy_options)} active strategy options for {symbol}"
+            )
+
+            # Build set of (expiry, strike, side) from top_ranked for deduplication
+            top_ranked_keys: set[tuple[str, float, str]] = set()
+            for _, row in top_ranked.iterrows():
+                exp_date = datetime.fromtimestamp(row["expiration"]).strftime("%Y-%m-%d")
+                top_ranked_keys.add((exp_date, row["strike"], row["side"]))
+
+            # Identify strategy options NOT in top-ranked
+            missing_options = []
+            for opt in active_strategy_options:
+                key = (opt["expiry"], opt["strike"], opt["side"])
+                if key not in top_ranked_keys:
+                    missing_options.append(opt)
+
+            if missing_options:
+                logger.info(
+                    f"Adding {len(missing_options)} strategy options not in top-ranked"
+                )
+
+                # Build contract symbols for missing options
+                missing_symbols = []
+                for opt in missing_options:
+                    contract_sym = build_contract_symbol(
+                        symbol, opt["expiry"], opt["strike"], opt["side"]
+                    )
+                    missing_symbols.append(contract_sym)
+                    opt["contract_symbol"] = contract_sym
+
+                # Fetch live quotes for missing options
+                quotes = fetch_specific_option_quotes(symbol, missing_symbols)
+
+                # Save strategy options to options_ranks
+                run_at = datetime.utcnow().isoformat()
+                strategy_saved = 0
+
+                for opt in missing_options:
+                    contract_sym = opt["contract_symbol"]
+                    quote = quotes.get(contract_sym, {})
+
+                    record = {
+                        "underlying_symbol_id": symbol_id,
+                        "contract_symbol": contract_sym,
+                        "expiry": opt["expiry"],
+                        "strike": _sanitize_number(opt["strike"]),
+                        "side": opt["side"],
+                        "ml_score": 0.0,
+                        "implied_vol": _sanitize_number(quote.get("implied_vol", 0)),
+                        "delta": _sanitize_number(quote.get("delta", 0)),
+                        "gamma": _sanitize_number(quote.get("gamma", 0)),
+                        "theta": _sanitize_number(quote.get("theta", 0)),
+                        "vega": _sanitize_number(quote.get("vega", 0)),
+                        "rho": _sanitize_number(quote.get("rho", 0)),
+                        "bid": _sanitize_number(quote.get("bid", 0)),
+                        "ask": _sanitize_number(quote.get("ask", 0)),
+                        "mark": _sanitize_number(quote.get("mark", 0)),
+                        "last_price": _sanitize_number(quote.get("last", 0)),
+                        "volume": int(_sanitize_number(quote.get("volume", 0))),
+                        "open_interest": int(
+                            _sanitize_number(quote.get("open_interest", 0))
+                        ),
+                        "run_at": run_at,
+                        "composite_rank": 0.0,
+                        "momentum_score": 0.0,
+                        "value_score": 0.0,
+                        "greeks_score": 0.0,
+                        "iv_rank": 0.0,
+                        "spread_pct": 0.0,
+                        "vol_oi_ratio": 0.0,
+                        "liquidity_confidence": 0.0,
+                        "ranking_mode": "strategy",
+                        "signal_discount": False,
+                        "signal_runner": False,
+                        "signal_greeks": False,
+                        "signal_buy": False,
+                        "signals": "[]",
+                    }
+
+                    try:
+                        db.upsert_option_rank_extended(**record)
+                        strategy_saved += 1
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to save strategy option {contract_sym}: {e}"
+                        )
+
+                logger.info(
+                    f"Saved {strategy_saved} strategy options for {symbol}"
+                )
 
     except Exception as e:
         logger.error(f"Error processing options for {symbol}: {e}", exc_info=True)

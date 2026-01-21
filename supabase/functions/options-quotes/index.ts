@@ -17,6 +17,11 @@ interface QuotePayload {
   volume: number | null;
   open_interest: number | null;
   implied_vol: number | null;
+  delta: number | null;
+  gamma: number | null;
+  theta: number | null;
+  vega: number | null;
+  rho: number | null;
   updated_at: string;
 }
 
@@ -114,6 +119,11 @@ serve(async (req: Request): Promise<Response> => {
         volume: typeof match.volume === "number" ? match.volume : null,
         open_interest: typeof match.openInterest === "number" ? match.openInterest : null,
         implied_vol: typeof match.impliedVolatility === "number" ? match.impliedVolatility : null,
+        delta: typeof match.delta === "number" ? match.delta : null,
+        gamma: typeof match.gamma === "number" ? match.gamma : null,
+        theta: typeof match.theta === "number" ? match.theta : null,
+        vega: typeof match.vega === "number" ? match.vega : null,
+        rho: typeof match.rho === "number" ? match.rho : null,
         updated_at: updatedIso,
       });
     }

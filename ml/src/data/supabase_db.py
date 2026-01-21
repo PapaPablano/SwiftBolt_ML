@@ -2397,6 +2397,89 @@ class SupabaseDatabase:
             )
             return None
 
+    def get_active_strategy_options(
+        self,
+        symbol_id: str,
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch unique options from active multi-leg strategies for a symbol.
+
+        Used to ensure these options are always included in options_ranks,
+        regardless of their ranking score.
+
+        Args:
+            symbol_id: UUID of the underlying symbol
+
+        Returns:
+            List of dicts with: strike, expiry, side, leg_id, strategy_id
+            Deduplicated by (strike, expiry, option_type)
+        """
+        try:
+            # First, get active strategy IDs for this symbol
+            strategies_response = (
+                self.client.table("options_strategies")
+                .select("id")
+                .eq("underlying_symbol_id", symbol_id)
+                .eq("status", "open")
+                .execute()
+            )
+
+            if not strategies_response.data:
+                logger.debug(
+                    "No active strategies found for symbol %s",
+                    symbol_id,
+                )
+                return []
+
+            strategy_ids = [s["id"] for s in strategies_response.data]
+
+            # Fetch legs for those strategies
+            legs_response = (
+                self.client.table("options_legs")
+                .select("id, strategy_id, strike, expiry, option_type")
+                .in_("strategy_id", strategy_ids)
+                .eq("is_closed", False)
+                .execute()
+            )
+
+            if not legs_response.data:
+                logger.debug(
+                    "No open legs found for %d active strategies",
+                    len(strategy_ids),
+                )
+                return []
+
+            # Deduplicate by (strike, expiry, option_type)
+            seen: set[tuple[float, str, str]] = set()
+            unique_options: list[dict[str, Any]] = []
+
+            for row in legs_response.data:
+                key = (row["strike"], row["expiry"], row["option_type"])
+                if key not in seen:
+                    seen.add(key)
+                    unique_options.append({
+                        "strike": row["strike"],
+                        "expiry": row["expiry"],
+                        "side": row["option_type"],
+                        "leg_id": row["id"],
+                        "strategy_id": row["strategy_id"],
+                    })
+
+            logger.info(
+                "Found %d unique active strategy options for symbol %s",
+                len(unique_options),
+                symbol_id,
+            )
+            return unique_options
+
+        except Exception as e:
+            logger.warning(
+                "Error fetching active strategy options for %s: %s",
+                symbol_id,
+                e,
+            )
+            return []
+
     def close(self) -> None:
         """Close the Supabase client (no-op for REST API)."""
         logger.info("Supabase client closed")
