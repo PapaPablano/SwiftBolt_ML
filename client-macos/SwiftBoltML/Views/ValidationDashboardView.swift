@@ -258,9 +258,9 @@ private struct ConsensusCard: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 HStack(spacing: 8) {
-                    SignalBadge(label: "M15", signal: validator.m15Signal)
-                    SignalBadge(label: "H1", signal: validator.h1Signal)
-                    SignalBadge(label: "D1", signal: validator.d1Signal)
+                    ValidatorSignalBadge(label: "M15", signal: validator.m15Signal)
+                    ValidatorSignalBadge(label: "H1", signal: validator.h1Signal)
+                    ValidatorSignalBadge(label: "D1", signal: validator.d1Signal)
                 }
             }
         }
@@ -275,7 +275,7 @@ private struct ConsensusCard: View {
     }
 }
 
-private struct SignalBadge: View {
+private struct ValidatorSignalBadge: View {
     let label: String
     let signal: Signal
 
@@ -361,7 +361,7 @@ struct ValidationSettingsView: View {
                     weightSlider(title: "Live", value: $draftWeights.live)
                     Text("Total: \(Int(totalWeight * 100))%")
                         .font(.caption)
-                        .foregroundStyle(totalWeight.approxEquals(1) ? .secondary : .orange)
+                        .foregroundStyle(totalWeight.approxEquals(1) ? Color.secondary : Color.orange)
                 }
 
                 Section(header: Text("Timeframe Consensus")) {

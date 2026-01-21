@@ -23,12 +23,12 @@ final class ValidationViewModel: ObservableObject {
     private let networkMonitor: NetworkMonitor
     private let userDefaults: UserDefaults
 
-    init(networkMonitor: NetworkMonitor = .shared, userDefaults: UserDefaults = .standard) {
-        self.networkMonitor = networkMonitor
+    init(networkMonitor: NetworkMonitor? = nil, userDefaults: UserDefaults = .standard) {
+        self.networkMonitor = networkMonitor ?? NetworkMonitor.shared
         self.userDefaults = userDefaults
         self.weights = ValidationWeights.load()
 
-        networkCancellable = networkMonitor.$isConnected
+        networkCancellable = self.networkMonitor.$isConnected
             .receive(on: RunLoop.main)
             .sink { [weak self] connected in
                 guard let self else { return }

@@ -79,6 +79,10 @@
 		EAB197F7318F24B608BAA78D /* MLDashboardModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 495F16DC7FC5729654ADE6C7 /* MLDashboardModels.swift */; };
 		EBE85EE02C19C722FFEA64F4 /* lightweight-charts.standalone.production.js in Resources */ = {isa = PBXBuildFile; fileRef = F903565D8F0B0D702A53E8B0 /* lightweight-charts.standalone.production.js */; };
 		F60BB96C2EF036FA0044BE7E /* OptionContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96A2EF036FA0044BE7E /* OptionContract.swift */; };
+		FEAA00012F4444440000001 /* ValidationDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000001 /* ValidationDashboardView.swift */; };
+		FEAA00012F4444440000002 /* UnifiedValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000002 /* UnifiedValidator.swift */; };
+		FEAA00012F4444440000003 /* ValidationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000003 /* ValidationViewModel.swift */; };
+		FEAA00012F4444440000004 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000004 /* NetworkMonitor.swift */; };
 		F60BB96D2EF036FA0044BE7E /* OptionsChainResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96B2EF036FA0044BE7E /* OptionsChainResponse.swift */; };
 		F60BB96F2EF0371A0044BE7E /* OptionsChainViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96E2EF036FA0044BE7E /* OptionsChainViewModel.swift */; };
 		F60BB9712EF037360044BE7E /* OptionsChainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB9702EF037360044BE7E /* OptionsChainView.swift */; };
@@ -220,6 +224,10 @@
 		SR0000012345678900000004 /* SupportResistanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportResistanceView.swift; sourceTree = "<group>"; };
 		TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GAStrategyModels.swift; sourceTree = "<group>"; };
 		WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebChartControlsView.swift; sourceTree = "<group>"; };
+		FEAA00002F4444440000001 /* ValidationDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValidationDashboardView.swift; sourceTree = "<group>"; };
+		FEAA00002F4444440000002 /* UnifiedValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedValidator.swift; sourceTree = "<group>"; };
+		FEAA00002F4444440000003 /* ValidationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValidationViewModel.swift; sourceTree = "<group>"; };
+		FEAA00002F4444440000004 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -312,6 +320,7 @@
 				7156051C39BF4F2F832E38AA /* HydrationBanner.swift */,
 				F670CAD82F1C882A00B4A7C2 /* MultiTimeframeForecastView.swift */,
 				E28D1955541C13B4BB03A52F /* MultiLeg */,
+				FEAA00002F4444440000001 /* ValidationDashboardView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -331,6 +340,7 @@
 				2FB6D0158AE11968F0D3B3C2 /* AnalysisViewModel.swift */,
 				F60BB96E2EF036FA0044BE7E /* OptionsChainViewModel.swift */,
 				36F40CF767C45A1B6E4592C5 /* MultiLegViewModel.swift */,
+				FEAA00002F4444440000003 /* ValidationViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -361,6 +371,7 @@
 				10E36986FAE84774B166FF52 /* EnsureCoverageResponse.swift */,
 				13B11ECAF44D603B49B6D931 /* ReloadWatchlistResponse.swift */,
 				F91ACF2F4CD1323E2B106D55 /* MultiLegModels.swift */,
+				FEAA00002F4444440000002 /* UnifiedValidator.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -383,6 +394,7 @@
 				B73A321AD0316BC1B2434132 /* SuperTrendAIIndicator.swift */,
 				B29181F82545367180388B23 /* ChartBridge.swift */,
 				F6F972F32F0F72670010C828 /* ChartCache.swift */,
+				FEAA00002F4444440000004 /* NetworkMonitor.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -442,6 +454,7 @@
 				MF0002012345678900000003 /* CacheManager.swift */,
 				MF0002012345678900000005 /* Debouncer.swift */,
 				MF0002012345678900000006 /* Downsampler.swift */,
+				FEAA00002F4444440000004 /* NetworkMonitor.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -575,6 +588,10 @@
 				EAB197F7318F24B608BAA78D /* MLDashboardModels.swift in Sources */,
 				C01BE4658F2DADDC3E59B1DC /* PredictionsView.swift in Sources */,
 				75E6EC514BD3BA75308497C8 /* PredictionsViewModel.swift in Sources */,
+				FEAA00012F4444440000001 /* ValidationDashboardView.swift in Sources */,
+				FEAA00012F4444440000002 /* UnifiedValidator.swift in Sources */,
+				FEAA00012F4444440000003 /* ValidationViewModel.swift in Sources */,
+				FEAA00012F4444440000004 /* NetworkMonitor.swift in Sources */,
 				SR0000012345678900000001 /* SupportResistanceModels.swift in Sources */,
 				SR0000012345678900000003 /* SupportResistanceView.swift in Sources */,
 				F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */,
