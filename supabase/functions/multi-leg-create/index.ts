@@ -75,6 +75,42 @@ serve(async (req: Request): Promise<Response> => {
       supabase = authSupabase;
     }
 
+    // Look up symbol ID from ticker, or create if it doesn't exist
+    const ticker = body.underlyingTicker.toUpperCase();
+    let symbolId: string;
+
+    // First, try to look up the symbol by ticker
+    const { data: existingSymbol } = await supabase
+      .from("symbols")
+      .select("id")
+      .eq("ticker", ticker)
+      .single();
+
+    if (existingSymbol) {
+      symbolId = existingSymbol.id;
+      console.log(`[multi-leg-create] Found symbol ID for ${ticker}: ${symbolId}`);
+    } else {
+      // Symbol doesn't exist, create it
+      console.log(`[multi-leg-create] Symbol ${ticker} not found, creating...`);
+      const { data: newSymbol, error: createError } = await supabase
+        .from("symbols")
+        .insert({
+          ticker: ticker,
+          asset_type: "stock", // Default to stock
+          description: `${ticker} (auto-created)`,
+        })
+        .select("id")
+        .single();
+
+      if (createError || !newSymbol) {
+        console.error("[multi-leg-create] Symbol create error:", createError);
+        return errorResponse(`Failed to create symbol for ${ticker}: ${createError?.message}`, 500);
+      }
+
+      symbolId = newSymbol.id;
+      console.log(`[multi-leg-create] Created symbol ID for ${ticker}: ${symbolId}`);
+    }
+
     // Calculate max risk/reward and breakevens
     // First, convert CreateLegInput to OptionsLeg format for calculation
     const legsForCalc = body.legs.map((leg) => ({
@@ -119,8 +155,8 @@ serve(async (req: Request): Promise<Response> => {
       user_id: userId,
       name: body.name,
       strategy_type: body.strategyType,
-      underlying_symbol_id: body.underlyingSymbolId,
-      underlying_ticker: body.underlyingTicker,
+      underlying_symbol_id: symbolId,
+      underlying_ticker: ticker,
       status: "open",
       opened_at: new Date().toISOString(),
       total_debit: totalDebit,
