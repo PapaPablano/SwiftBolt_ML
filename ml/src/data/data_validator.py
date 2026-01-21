@@ -104,11 +104,11 @@ class OHLCValidator:
             # Avoid division by zero
             valid_atr = atr_aligned > 0
             if valid_atr.any():
-                large_gaps_mask = pd.Series(False, index=df.index[1:])
-                large_gaps_mask[valid_atr] = gaps[valid_atr] > (
-                    atr_aligned[valid_atr] * self.MAX_GAP_ATRS
-                )
-                large_gaps = pd.Series(False, index=df.index)
+                large_gaps_mask = pd.Series(False, index=df.index[1:], dtype=bool)
+                large_gaps_mask.loc[valid_atr] = (
+                    gaps[valid_atr] > (atr_aligned[valid_atr] * self.MAX_GAP_ATRS)
+                ).astype(bool)
+                large_gaps = pd.Series(False, index=df.index, dtype=bool)
                 large_gaps.iloc[1:] = large_gaps_mask.values
 
                 if large_gaps.any():
