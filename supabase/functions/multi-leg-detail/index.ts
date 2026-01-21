@@ -175,11 +175,12 @@ serve(async (req: Request): Promise<Response> => {
       criticalAlertCount: m.critical_alert_count,
     }));
 
+    // Include legs at top level for client compatibility
+    strategy.legs = legs;
+
     return jsonResponse({
-      strategy: {
-        ...strategy,
-        legs,
-      },
+      strategy,
+      legs,  // Also at top level for client decoding
       alerts,
       metrics,
     });

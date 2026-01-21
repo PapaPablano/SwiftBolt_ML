@@ -8,6 +8,8 @@ struct MultiLegStrategyDetailView: View {
     @State private var showCloseStrategySheet = false
     @State private var showEditSheet = false
     @State private var selectedLegToClose: OptionsLeg?
+    @State private var showDeleteConfirmation = false
+    @State private var isDeleting = false
 
     var body: some View {
         NavigationStack {
@@ -60,7 +62,29 @@ struct MultiLegStrategyDetailView: View {
                         }
                         .tint(.orange)
                     }
+
+                    Button {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .tint(.red)
                 }
+            }
+            .alert("Delete Strategy", isPresented: $showDeleteConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete", role: .destructive) {
+                    Task {
+                        isDeleting = true
+                        let success = await viewModel.deleteStrategy(strategyId: strategy.id)
+                        isDeleting = false
+                        if success {
+                            dismiss()
+                        }
+                    }
+                }
+            } message: {
+                Text("Are you sure you want to permanently delete '\(strategy.name)'? This action cannot be undone.")
             }
         }
         .sheet(isPresented: $showCloseStrategySheet) {

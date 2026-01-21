@@ -1286,6 +1286,27 @@ final class APIClient {
 
         return try await performRequest(request)
     }
+
+    /// Delete a multi-leg strategy permanently
+    func deleteMultiLegStrategy(strategyId: String) async throws -> DeleteStrategyResponse {
+        guard var components = URLComponents(url: functionURL("multi-leg-delete"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+
+        components.queryItems = [URLQueryItem(name: "strategyId", value: strategyId)]
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        return try await performRequest(request)
+    }
 }
 
 // MARK: - Refresh Data Request/Response

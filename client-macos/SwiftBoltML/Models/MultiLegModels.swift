@@ -844,6 +844,12 @@ struct TemplatesResponse: Codable {
     let templates: [StrategyTemplate]
 }
 
+struct DeleteStrategyResponse: Codable {
+    let success: Bool
+    let deletedId: String
+    let deletedName: String
+}
+
 // MARK: - Helpers
 // Note: AnyCodable is defined in ScannerResponse.swift
 

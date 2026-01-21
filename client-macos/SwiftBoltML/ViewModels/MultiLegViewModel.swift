@@ -373,6 +373,38 @@ class MultiLegViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Delete Strategy
+
+    @Published var isDeleting = false
+
+    func deleteStrategy(strategyId: String) async -> Bool {
+        isDeleting = true
+        errorMessage = nil
+
+        do {
+            let response = try await APIClient.shared.deleteMultiLegStrategy(strategyId: strategyId)
+
+            // Remove from list
+            strategies.removeAll { $0.id == strategyId }
+            totalCount -= 1
+
+            // Clear selection if it was the deleted strategy
+            if selectedStrategy?.id == strategyId {
+                selectedStrategy = nil
+                strategyDetail = nil
+            }
+
+            print("[MultiLeg] Deleted strategy: \(response.deletedName) (\(response.deletedId))")
+            isDeleting = false
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            print("[MultiLeg] Error deleting strategy: \(error)")
+            isDeleting = false
+            return false
+        }
+    }
+
     // MARK: - Templates
 
     func loadTemplates() async {
