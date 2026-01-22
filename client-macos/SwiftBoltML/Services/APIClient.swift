@@ -1384,6 +1384,180 @@ final class APIClient {
 
         return try await performRequest(request)
     }
+    
+    // MARK: - Technical Indicators
+    
+    /// Fetch technical indicators for a symbol/timeframe
+    func fetchTechnicalIndicators(symbol: String, timeframe: String = "d1") async throws -> TechnicalIndicatorsResponse {
+        guard var components = URLComponents(url: functionURL("technical-indicators"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        
+        components.queryItems = [
+            URLQueryItem(name: "symbol", value: symbol.uppercased()),
+            URLQueryItem(name: "timeframe", value: timeframe)
+        ]
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        
+        return try await performRequest(request)
+    }
+    
+    // MARK: - Backtesting
+    
+    /// Run backtest for a trading strategy
+    func runBacktest(request: BacktestRequest) async throws -> BacktestResponse {
+        var urlRequest = URLRequest(url: functionURL("backtest-strategy"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Manually build JSON to handle [String: Any] params
+        var jsonDict: [String: Any] = [
+            "symbol": request.symbol,
+            "strategy": request.strategy,
+            "startDate": request.startDate,
+            "endDate": request.endDate
+        ]
+        
+        if let timeframe = request.timeframe {
+            jsonDict["timeframe"] = timeframe
+        }
+        if let capital = request.initialCapital {
+            jsonDict["initialCapital"] = capital
+        }
+        if let params = request.params {
+            jsonDict["params"] = params
+        }
+        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
+        
+        return try await performRequest(urlRequest)
+    }
+    
+    // MARK: - Walk-Forward Optimization
+    
+    /// Run walk-forward optimization for ML forecasters
+    func runWalkForward(request: WalkForwardRequest) async throws -> WalkForwardResponse {
+        var urlRequest = URLRequest(url: functionURL("walk-forward-optimize"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Build JSON request
+        var jsonDict: [String: Any] = [
+            "symbol": request.symbol,
+            "horizon": request.horizon
+        ]
+        
+        if let forecaster = request.forecaster {
+            jsonDict["forecaster"] = forecaster
+        }
+        if let timeframe = request.timeframe {
+            jsonDict["timeframe"] = timeframe
+        }
+        if let windows = request.windows {
+            var windowsDict: [String: Any] = [:]
+            if let trainWindow = windows.trainWindow {
+                windowsDict["trainWindow"] = trainWindow
+            }
+            if let testWindow = windows.testWindow {
+                windowsDict["testWindow"] = testWindow
+            }
+            if let stepSize = windows.stepSize {
+                windowsDict["stepSize"] = stepSize
+            }
+            if !windowsDict.isEmpty {
+                jsonDict["windows"] = windowsDict
+            }
+        }
+        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
+        
+        return try await performRequest(urlRequest)
+    }
+    
+    // MARK: - Portfolio Optimization
+    
+    /// Optimize portfolio allocation
+    func optimizePortfolio(request: PortfolioOptimizeRequest) async throws -> PortfolioOptimizeResponse {
+        var urlRequest = URLRequest(url: functionURL("portfolio-optimize"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Build JSON request
+        var jsonDict: [String: Any] = [
+            "symbols": request.symbols,
+            "method": request.method.rawValue
+        ]
+        
+        if let timeframe = request.timeframe {
+            jsonDict["timeframe"] = timeframe
+        }
+        if let lookbackDays = request.lookbackDays {
+            jsonDict["lookbackDays"] = lookbackDays
+        }
+        if let riskFreeRate = request.riskFreeRate {
+            jsonDict["riskFreeRate"] = riskFreeRate
+        }
+        if let targetReturn = request.targetReturn {
+            jsonDict["targetReturn"] = targetReturn
+        }
+        if let minWeight = request.minWeight {
+            jsonDict["minWeight"] = minWeight
+        }
+        if let maxWeight = request.maxWeight {
+            jsonDict["maxWeight"] = maxWeight
+        }
+        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
+        
+        return try await performRequest(urlRequest)
+    }
+    
+    // MARK: - Stress Testing
+    
+    /// Run stress test on portfolio
+    func runStressTest(request: StressTestRequest) async throws -> StressTestResponse {
+        var urlRequest = URLRequest(url: functionURL("stress-test"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Build JSON request
+        var jsonDict: [String: Any] = [
+            "positions": request.positions,
+            "prices": request.prices
+        ]
+        
+        if let scenario = request.scenario {
+            jsonDict["scenario"] = scenario.rawValue
+        }
+        if let customShocks = request.customShocks {
+            jsonDict["customShocks"] = customShocks
+        }
+        if let varLevel = request.varLevel {
+            jsonDict["varLevel"] = varLevel
+        }
+        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
+        
+        return try await performRequest(urlRequest)
+    }
 }
 
 // MARK: - Refresh Data Request/Response
