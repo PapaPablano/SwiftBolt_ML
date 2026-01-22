@@ -734,6 +734,7 @@ class SupabaseDatabase:
         ensemble_method: str | None = None,
         ensemble_weights: dict[str, Any] | None = None,
         confidence_source: str | None = None,
+        timeframe: str | None = None,
     ) -> None:
         """
         Insert or update a forecast in the ml_forecasts table.
@@ -756,6 +757,8 @@ class SupabaseDatabase:
         """
         try:
             # Build forecast data for upsert keyed by (symbol_id, horizon)
+            timeframe_value = timeframe or "legacy"
+
             forecast_data = {
                 "symbol_id": symbol_id,
                 "horizon": horizon,
@@ -764,6 +767,7 @@ class SupabaseDatabase:
                 "points": points,
                 "run_at": pd.Timestamp.now().isoformat(),
                 "updated_at": pd.Timestamp.now().isoformat(),
+                "timeframe": timeframe_value,
             }
 
             # Add SuperTrend AI data if available
@@ -810,7 +814,7 @@ class SupabaseDatabase:
             # Upsert (insert or update on conflict) - no delete
             self.client.table("ml_forecasts").upsert(
                 forecast_data,
-                on_conflict="symbol_id,horizon",
+                on_conflict="symbol_id,timeframe,horizon",
             ).execute()
 
             logger.info(
@@ -820,10 +824,133 @@ class SupabaseDatabase:
                 confidence * 100,
             )
 
-        except Exception as e:
+        except Exception as exc:
+            logger.error("Error upserting forecast for %s: %s", symbol_id, exc)
+            raise
+
+    def upsert_multi_horizon_forecasts(
+        self,
+        *,
+        symbol_id: str,
+        timeframe: str,
+        forecasts: list[dict[str, Any]],
+    ) -> None:
+        """Batch upsert multi-horizon forecasts with timeframe metadata.
+
+        Each forecast dict must include keys: horizon, overall_label, confidence,
+        target_price, upper_band, lower_band, is_base_horizon, handoff_confidence,
+        consensus_weight, key_drivers, reasoning, layers_agreeing, model_agreement,
+        synthesis_data.
+        """
+
+        if not forecasts:
+            return
+
+        payload: list[dict[str, Any]] = []
+        now_iso = pd.Timestamp.utcnow().isoformat()
+
+        for raw_forecast in forecasts:
+            forecast = {**raw_forecast}
+            payload.append(
+                {
+                    "symbol_id": symbol_id,
+                    "timeframe": timeframe,
+                    "horizon": forecast.get("horizon"),
+                    "overall_label": forecast.get("overall_label"),
+                    "confidence": forecast.get("confidence"),
+                    "target_price": forecast.get("target_price"),
+                    "ci_upper": forecast.get("upper_band"),
+                    "ci_lower": forecast.get("lower_band"),
+                    "is_base_horizon": forecast.get("is_base_horizon", False),
+                    "handoff_confidence": forecast.get("handoff_confidence"),
+                    "consensus_weight": forecast.get("consensus_weight"),
+                    "synthesis_data": {
+                        "key_drivers": forecast.get("key_drivers"),
+                        "layers_agreeing": forecast.get("layers_agreeing"),
+                        "reasoning": forecast.get("reasoning"),
+                    },
+                    "model_agreement": forecast.get("model_agreement"),
+                    "points": [
+                        {
+                            "ts": now_iso,
+                            "value": forecast.get("target_price"),
+                            "upper": forecast.get("upper_band"),
+                            "lower": forecast.get("lower_band"),
+                        }
+                    ],
+                    "run_at": now_iso,
+                    "updated_at": now_iso,
+                }
+            )
+
+        try:
+            self.client.table("ml_forecasts").upsert(
+                payload,
+                on_conflict="symbol_id,timeframe,horizon",
+            ).execute()
+        except Exception as exc:
             logger.error(
-                "Error upserting forecast: %s",
-                e,
+                "Error upserting multi-horizon forecasts for %s (%s): %s",
+                symbol_id,
+                timeframe,
+                exc,
+            )
+            raise
+
+    def upsert_consensus_forecasts(
+        self,
+        *,
+        symbol_id: str,
+        forecasts: list[dict[str, Any]],
+    ) -> None:
+        """Batch upsert consensus forecasts (is_consensus = true)."""
+
+        if not forecasts:
+            return
+
+        payload = []
+        now_iso = pd.Timestamp.utcnow().isoformat()
+
+        for forecast in forecasts:
+            payload.append(
+                {
+                    "symbol_id": symbol_id,
+                    "timeframe": "consensus",
+                    "horizon": forecast.get("horizon"),
+                    "overall_label": forecast.get("overall_label"),
+                    "confidence": forecast.get("confidence"),
+                    "target_price": forecast.get("target_price"),
+                    "ci_upper": forecast.get("upper_band"),
+                    "ci_lower": forecast.get("lower_band"),
+                    "is_consensus": True,
+                    "model_agreement": {
+                        "contributing_timeframes": forecast.get("contributing_timeframes"),
+                        "agreement_score": forecast.get("agreement_score"),
+                        "handoff_quality": forecast.get("handoff_quality"),
+                    },
+                    "points": [
+                        {
+                            "ts": now_iso,
+                            "value": forecast.get("target_price"),
+                            "upper": forecast.get("upper_band"),
+                            "lower": forecast.get("lower_band"),
+                        }
+                    ],
+                    "run_at": now_iso,
+                    "updated_at": now_iso,
+                }
+            )
+
+        try:
+            self.client.table("ml_forecasts").upsert(
+                payload,
+                on_conflict="symbol_id,timeframe,horizon",
+            ).execute()
+        except Exception as exc:
+            logger.error(
+                "Error upserting consensus forecasts for %s: %s",
+                symbol_id,
+                exc,
             )
             raise
 

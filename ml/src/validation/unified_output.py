@@ -10,7 +10,6 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from data.db import db
 from validation.unified_framework import (
     UnifiedValidator,
     ValidationScores,
@@ -35,7 +34,9 @@ class UnifiedPredictionStore:
             validator: Optional UnifiedValidator instance (creates default if None)
         """
         self.validator = validator or UnifiedValidator()
-        self.db = db
+        # Lazy import to avoid database connection at module load time
+        from data.db import get_db
+        self.db = get_db()
 
     def store_prediction(
         self,

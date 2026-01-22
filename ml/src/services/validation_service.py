@@ -108,9 +108,10 @@ class ValidationService:
         """
         Fetch 3-month historical accuracy from backtesting.
         
-        Queries ml_model_metrics for symbol with:
+        Queries model_validation_stats for symbol with:
         - Time window: 90 days (3 months)
         - Metric: accuracy
+        - Validation type: backtest
         - Aggregation: mean of all runs in window
         
         Args:
@@ -122,15 +123,31 @@ class ValidationService:
         try:
             three_months_ago = datetime.now() - timedelta(days=90)
             
+            # First get symbol_id
+            symbol_result = (
+                self.db.client.table("symbols")
+                .select("id")
+                .eq("ticker", symbol)
+                .execute()
+            )
+            
+            if not symbol_result.data:
+                logger.warning(f"Symbol {symbol} not found in database")
+                return 0.55
+            
+            symbol_id = symbol_result.data[0]["id"]
+            
+            # Query model_validation_stats
             result = (
-                self.db.client.table("ml_model_metrics")
+                self.db.client.table("model_validation_stats")
                 .select("accuracy")
-                .eq("symbol", symbol)
+                .eq("symbol_id", symbol_id)
+                .eq("validation_type", "backtest")
                 .gte("created_at", three_months_ago.isoformat())
                 .execute()
             )
             
-            if not result.
+            if not result.data:
                 logger.warning(f"No backtesting metrics for {symbol}")
                 return 0.55  # Conservative default
             
@@ -139,7 +156,7 @@ class ValidationService:
             if not accuracies:
                 return 0.55
             
-            score = sum(accuracies) / len(accuracies)
+            score = float(sum(accuracies) / len(accuracies))
             logger.debug(f"{symbol} backtesting score: {score:.1%}")
             return score
             
@@ -151,8 +168,9 @@ class ValidationService:
         """
         Fetch quarterly rolling accuracy from walk-forward validation.
         
-        Queries rolling_evaluation for symbol with:
+        Queries model_validation_stats for symbol with:
         - Time window: 13 weeks (quarterly rolling)
+        - Validation type: walkforward
         - Metric: mean accuracy across rolling windows
         
         Args:
@@ -164,15 +182,31 @@ class ValidationService:
         try:
             thirteen_weeks_ago = datetime.now() - timedelta(weeks=13)
             
-            result = (
-                self.db.client.table("rolling_evaluation")
-                .select("accuracy")
-                .eq("symbol", symbol)
-                .gte("evaluation_date", thirteen_weeks_ago.isoformat())
+            # First get symbol_id
+            symbol_result = (
+                self.db.client.table("symbols")
+                .select("id")
+                .eq("ticker", symbol)
                 .execute()
             )
             
-            if not result.
+            if not symbol_result.data:
+                logger.warning(f"Symbol {symbol} not found in database")
+                return 0.60
+            
+            symbol_id = symbol_result.data[0]["id"]
+            
+            # Query model_validation_stats
+            result = (
+                self.db.client.table("model_validation_stats")
+                .select("accuracy")
+                .eq("symbol_id", symbol_id)
+                .eq("validation_type", "walkforward")
+                .gte("created_at", thirteen_weeks_ago.isoformat())
+                .execute()
+            )
+            
+            if not result.data:
                 logger.warning(f"No walk-forward metrics for {symbol}")
                 return 0.60  # Conservative default
             
@@ -181,7 +215,7 @@ class ValidationService:
             if not accuracies:
                 return 0.60
             
-            score = sum(accuracies) / len(accuracies)
+            score = float(sum(accuracies) / len(accuracies))
             logger.debug(f"{symbol} walk-forward score: {score:.1%}")
             return score
             
@@ -193,10 +227,10 @@ class ValidationService:
         """
         Fetch current accuracy from live predictions.
         
-        Calculates accuracy of last 30 predictions by:
-        1. Query live_predictions for symbol (last 30)
-        2. Compare prediction direction to actual realized direction
-        3. Return accuracy (correct predictions / total)
+        Calculates mean accuracy score across all timeframes from last 30 predictions:
+        1. Query live_predictions for symbol (last 30 per timeframe)
+        2. Use accuracy_score field directly
+        3. Return mean accuracy across timeframes
         
         Args:
             symbol: Trading symbol
@@ -205,29 +239,48 @@ class ValidationService:
             Live prediction accuracy 0-1. Defaults to 0.50 if insufficient data.
         """
         try:
-            # Fetch last 30 live predictions
-            result = (
-                self.db.client.table("live_predictions")
-                .select("direction, realized_direction")
-                .eq("symbol", symbol)
-                .order("predicted_at", desc=True)
-                .limit(30)
+            # First get symbol_id
+            symbol_result = (
+                self.db.client.table("symbols")
+                .select("id")
+                .eq("ticker", symbol)
                 .execute()
             )
             
-            if not result.data or len(result.data) < 10:
+            if not symbol_result.data:
+                logger.warning(f"Symbol {symbol} not found in database")
+                return 0.50
+            
+            symbol_id = symbol_result.data[0]["id"]
+            
+            # Fetch recent live predictions (across all timeframes)
+            result = (
+                self.db.client.table("live_predictions")
+                .select("accuracy_score, timeframe")
+                .eq("symbol_id", symbol_id)
+                .order("prediction_time", desc=True)
+                .limit(50)  # Get more to account for multiple timeframes
+                .execute()
+            )
+            
+            if not result.data or len(result.data) < 5:
                 logger.warning(f"Insufficient live data for {symbol} (got {len(result.data or [])} predictions)")
                 return 0.50  # Conservative default
             
-            # Calculate accuracy
-            correct = sum(
-                1 for row in result.data
-                if row.get("direction") == row.get("realized_direction")
-            )
-            accuracy = correct / len(result.data)
+            # Calculate mean accuracy across predictions
+            accuracy_scores = [
+                float(row["accuracy_score"]) 
+                for row in result.data 
+                if row.get("accuracy_score") is not None
+            ]
+            
+            if not accuracy_scores:
+                return 0.50
+            
+            accuracy = sum(accuracy_scores) / len(accuracy_scores)
             
             logger.debug(
-                f"{symbol} live score: {accuracy:.1%} ({correct}/{len(result.data)} correct)"
+                f"{symbol} live score: {accuracy:.1%} (mean of {len(accuracy_scores)} predictions)"
             )
             return accuracy
             
@@ -272,7 +325,7 @@ class ValidationService:
                         .execute()
                     )
                     
-                    if result.
+                    if result.data:
                         score = result.data[0].get("prediction_score", 0.0)
                         multi_tf_scores[tf] = score
                         logger.debug(f"{symbol} {tf} score: {score:.2f}")
@@ -306,16 +359,31 @@ class ValidationService:
             result: UnifiedPrediction object
         """
         try:
+            # Get symbol_id
+            symbol_result = (
+                self.db.client.table("symbols")
+                .select("id")
+                .eq("ticker", symbol)
+                .execute()
+            )
+            
+            if not symbol_result.data:
+                logger.warning(f"Symbol {symbol} not found, skipping validation storage")
+                return
+            
+            symbol_id = symbol_result.data[0]["id"]
+            
             # Convert result to storable format
             data = {
+                "symbol_id": symbol_id,
                 "symbol": symbol,
                 "direction": result.direction,
-                "unified_confidence": result.unified_confidence,
-                "backtesting_score": result.backtesting_score,
-                "walkforward_score": result.walkforward_score,
-                "live_score": result.live_score,
+                "unified_confidence": float(result.unified_confidence),
+                "backtesting_score": float(result.backtesting_score),
+                "walkforward_score": float(result.walkforward_score),
+                "live_score": float(result.live_score),
                 "drift_detected": result.drift_detected,
-                "drift_magnitude": result.drift_magnitude,
+                "drift_magnitude": float(result.drift_magnitude),
                 "drift_severity": result.drift_severity,
                 "drift_explanation": result.drift_explanation,
                 "timeframe_conflict": result.timeframe_conflict,
@@ -323,7 +391,7 @@ class ValidationService:
                 "conflict_explanation": result.conflict_explanation,
                 "recommendation": result.recommendation,
                 "retraining_trigger": result.retraining_trigger,
-                "retraining_reason": result.retraining_reason,
+                "retraining_reason": result.retraining_reason or "",
                 "created_at": datetime.now().isoformat(),
             }
             
