@@ -1,5 +1,7 @@
-"""Backtesting module for ML model evaluation."""
+"""Backtesting framework for options trading strategies."""
 
-from src.backtesting.walk_forward_tester import BacktestMetrics, WalkForwardBacktester
+from .backtest_engine import BacktestEngine
+from .performance_metrics import PerformanceMetrics
+from .trade_logger import TradeLogger, Trade
 
-__all__ = ["BacktestMetrics", "WalkForwardBacktester"]
+__all__ = ['BacktestEngine', 'PerformanceMetrics', 'TradeLogger', 'Trade']
