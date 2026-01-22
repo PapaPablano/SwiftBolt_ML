@@ -1,0 +1,425 @@
+name: CI - Comprehensive Tests
+
+# Trigger on pushes and PRs to main branches
+on:
+  push:
+    branches: [ master, main, develop ]
+  pull_request:
+    branches: [ master, main, develop ]
+  workflow_dispatch:  # Allow manual trigger
+
+# Cancel in-progress runs for same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ===========================================================================
+  # CHANGE DETECTION - Determine what needs testing
+  # ===========================================================================
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      ml: ${{ steps.filter.outputs.ml }}
+      edge_functions: ${{ steps.filter.outputs.edge_functions }}
+      swift: ${{ steps.filter.outputs.swift }}
+      migrations: ${{ steps.filter.outputs.migrations }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Check changed files
+      uses: dorny/paths-filter@v3
+      id: filter
+      with:
+        filters: |
+          ml:
+            - 'ml/**'
+            - 'requirements*.txt'
+          edge_functions:
+            - 'supabase/functions/**'
+            - 'backend/supabase/functions/**'
+          swift:
+            - 'client-macos/**/*.swift'
+            - 'client-macos/**/*.xcodeproj/**'
+          migrations:
+            - 'supabase/migrations/**'
+            - 'supabase/seed.sql'
+
+  # ===========================================================================
+  # ML PIPELINE TESTS
+  # ===========================================================================
+  test-ml:
+    name: ML Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ml == 'true'
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+        cache-dependency-path: ml/requirements*.txt
+    
+    - name: Cache Python packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('ml/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-${{ matrix.python-version }}-
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        cd ml
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+        # Install dev dependencies if they exist
+        if [ -f requirements-dev.txt ]; then
+          pip install -r requirements-dev.txt
+        else
+          # Install common test tools
+          pip install pytest pytest-cov pytest-asyncio
+        fi
+    
+    - name: Run tests with coverage
+      run: |
+        cd ml
+        pytest tests/ \
+          --cov=src \
+          --cov-report=xml \
+          --cov-report=term-missing \
+          --cov-report=html \
+          -v \
+          --tb=short \
+          --maxfail=5
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./ml/coverage.xml
+        flags: ml-tests-py${{ matrix.python-version }}
+        name: ml-coverage-py${{ matrix.python-version }}
+        fail_ci_if_error: false
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    
+    - name: Upload HTML coverage report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ml-coverage-html-py${{ matrix.python-version }}
+        path: ml/htmlcov/
+        retention-days: 7
+
+  # ===========================================================================
+  # ML CODE QUALITY
+  # ===========================================================================
+  lint-ml:
+    name: ML Linting & Type Checks
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.ml == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install linting tools
+      run: |
+        cd ml
+        python -m pip install --upgrade pip
+        pip install black mypy flake8 isort bandit safety
+    
+    - name: Check formatting (Black)
+      run: |
+        cd ml
+        black --check src tests || (
+          echo "❌ Code formatting issues detected"
+          echo "Run: black src tests"
+          exit 1
+        )
+    
+    - name: Check import sorting (isort)
+      run: |
+        cd ml
+        isort --check-only src tests || (
+          echo "❌ Import sorting issues detected"
+          echo "Run: isort src tests"
+          exit 1
+        )
+    
+    - name: Lint (flake8)
+      run: |
+        cd ml
+        flake8 src tests \
+          --max-line-length=120 \
+          --extend-ignore=E203,W503 \
+          --statistics
+    
+    - name: Type check (mypy)
+      continue-on-error: true
+      run: |
+        cd ml
+        mypy src --ignore-missing-imports --pretty
+    
+    - name: Security check (Bandit)
+      continue-on-error: true
+      run: |
+        cd ml
+        bandit -r src -f json -o bandit-report.json
+        bandit -r src -f screen
+    
+    - name: Dependency vulnerabilities (Safety)
+      continue-on-error: true
+      run: |
+        cd ml
+        safety check --json || echo "⚠️ Some vulnerabilities detected"
+
+  # ===========================================================================
+  # EDGE FUNCTIONS TESTS
+  # ===========================================================================
+  test-edge-functions:
+    name: Edge Functions Tests
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.edge_functions == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Deno
+      uses: denoland/setup-deno@v1
+      with:
+        deno-version: v1.x
+    
+    - name: Cache Deno dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.deno
+          ~/.cache/deno
+        key: ${{ runner.os }}-deno-${{ hashFiles('**/deno.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-deno-
+    
+    - name: Format check
+      run: deno fmt --check supabase/functions/
+    
+    - name: Lint
+      run: deno lint supabase/functions/
+    
+    - name: Type check
+      run: |
+        for func in supabase/functions/*/index.ts; do
+          if [ -f "$func" ]; then
+            echo "Type checking: $func"
+            deno check "$func"
+          fi
+        done
+    
+    - name: Run tests
+      continue-on-error: true
+      run: |
+        if ls supabase/functions/**/*_test.ts 2>/dev/null; then
+          deno test --allow-all supabase/functions/
+        else
+          echo "⚠️ No tests found - consider adding *_test.ts files"
+        fi
+    
+    - name: Validate structure
+      run: |
+        for dir in supabase/functions/*/; do
+          func_name=$(basename "$dir")
+          if [ "$func_name" = "_shared" ]; then continue; fi
+          
+          if [ ! -f "${dir}index.ts" ]; then
+            echo "❌ Missing index.ts in $func_name"
+            exit 1
+          fi
+        done
+        echo "✅ All functions have valid structure"
+
+  # ===========================================================================
+  # DATABASE MIGRATION VALIDATION
+  # ===========================================================================
+  validate-migrations:
+    name: Validate DB Migrations
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.migrations == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Supabase CLI
+      uses: supabase/setup-cli@v1
+      with:
+        version: latest
+    
+    - name: Validate migration files
+      run: |
+        echo "Validating migration file structure..."
+        
+        # Check migration naming convention
+        for file in supabase/migrations/*.sql; do
+          if [ -f "$file" ]; then
+            filename=$(basename "$file")
+            
+            # Check format: YYYYMMDDHHMMSS_description.sql
+            if ! echo "$filename" | grep -qE '^[0-9]{14}_.*\.sql$'; then
+              echo "❌ Invalid migration name: $filename"
+              echo "Expected format: YYYYMMDDHHMMSS_description.sql"
+              exit 1
+            fi
+            
+            echo "✅ $filename"
+          fi
+        done
+    
+    - name: Check for SQL syntax errors
+      run: |
+        echo "Checking SQL syntax..."
+        
+        for file in supabase/migrations/*.sql; do
+          if [ -f "$file" ]; then
+            # Basic syntax validation (checks for common errors)
+            if grep -qE "(CREAT TABLE|ALTE TABLE|DELTE FROM)" "$file"; then
+              echo "⚠️ Possible typo in $file"
+            fi
+          fi
+        done
+    
+    - name: Start local Supabase
+      run: supabase start
+    
+    - name: Run migrations on local instance
+      run: |
+        supabase db reset --db-url postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        echo "✅ Migrations applied successfully to local instance"
+    
+    - name: Stop local Supabase
+      if: always()
+      run: supabase stop
+
+  # ===========================================================================
+  # COMPREHENSIVE REPORT
+  # ===========================================================================
+  ci-summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-ml, lint-ml, test-edge-functions, validate-migrations]
+    if: always()
+    
+    steps:
+    - name: Generate summary
+      run: |
+        echo "# 🚀 CI Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "**Branch**: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "**Actor**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        echo "## 📊 Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Changed components
+        echo "### Changed Components" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ needs.detect-changes.outputs.ml }}" = "true" ]; then
+          echo "- 🐍 ML Pipeline" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ "${{ needs.detect-changes.outputs.edge_functions }}" = "true" ]; then
+          echo "- ⚡ Edge Functions" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ "${{ needs.detect-changes.outputs.migrations }}" = "true" ]; then
+          echo "- 🗄️ Database Migrations" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ "${{ needs.detect-changes.outputs.swift }}" = "true" ]; then
+          echo "- 🍎 Swift Client (skipped in CI)" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Job results
+        echo "### Job Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # ML Tests
+        if [ "${{ needs.detect-changes.outputs.ml }}" = "true" ]; then
+          if [ "${{ needs.test-ml.result }}" = "success" ]; then
+            echo "✅ ML Tests: **PASSED**" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.test-ml.result }}" = "skipped" ]; then
+            echo "⏭️ ML Tests: SKIPPED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ ML Tests: **FAILED**" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.lint-ml.result }}" = "success" ]; then
+            echo "✅ ML Linting: **PASSED**" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.lint-ml.result }}" = "skipped" ]; then
+            echo "⏭️ ML Linting: SKIPPED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ ML Linting: **FAILED**" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+        
+        # Edge Functions
+        if [ "${{ needs.detect-changes.outputs.edge_functions }}" = "true" ]; then
+          if [ "${{ needs.test-edge-functions.result }}" = "success" ]; then
+            echo "✅ Edge Functions: **PASSED**" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.test-edge-functions.result }}" = "skipped" ]; then
+            echo "⏭️ Edge Functions: SKIPPED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Edge Functions: **FAILED**" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+        
+        # Migrations
+        if [ "${{ needs.detect-changes.outputs.migrations }}" = "true" ]; then
+          if [ "${{ needs.validate-migrations.result }}" = "success" ]; then
+            echo "✅ Migration Validation: **PASSED**" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.validate-migrations.result }}" = "skipped" ]; then
+            echo "⏭️ Migration Validation: SKIPPED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Migration Validation: **FAILED**" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "---" >> $GITHUB_STEP_SUMMARY
+        echo "_Generated by GitHub Actions_" >> $GITHUB_STEP_SUMMARY
+    
+    - name: Check overall status
+      run: |
+        # Fail if any required job failed
+        if [ "${{ needs.test-ml.result }}" = "failure" ] || \
+           [ "${{ needs.lint-ml.result }}" = "failure" ] || \
+           [ "${{ needs.test-edge-functions.result }}" = "failure" ] || \
+           [ "${{ needs.validate-migrations.result }}" = "failure" ]; then
+          echo "❌ One or more CI jobs failed"
+          exit 1
+        fi
+        
+        echo "✅ All CI checks passed!"

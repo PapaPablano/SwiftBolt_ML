@@ -139,8 +139,10 @@ const FRESHNESS_SLA_MINUTES: Record<string, number> = {
 };
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("origin");
+  
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   if (req.method !== "GET") {

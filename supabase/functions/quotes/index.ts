@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
+import { getCorsHeaders, handlePreflight, corsResponse } from "../_shared/cors.ts";
 
 declare const Deno: {
   env: {
@@ -6,20 +7,8 @@ declare const Deno: {
   };
 };
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-};
-
-function handleCorsOptions(): Response {
-  return new Response(null, {
-    status: 204,
-    headers: corsHeaders,
-  });
-}
-
-function jsonResponse(data: unknown, status = 200): Response {
+function jsonResponse(data: unknown, status = 200, origin: string | null = null): Response {
+  const corsHeaders = getCorsHeaders(origin);
   return new Response(JSON.stringify(data), {
     status,
     headers: {
@@ -32,8 +21,8 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
-function errorResponse(message: string, status = 400): Response {
-  return jsonResponse({ error: message }, status);
+function errorResponse(message: string, status = 400, origin: string | null = null): Response {
+  return jsonResponse({ error: message }, status, origin);
 }
 
 const ALPACA_DATA_BASE = "https://data.alpaca.markets/v2";
@@ -97,8 +86,10 @@ function buildMarketState(isOpen: boolean): { market_state: string; market_descr
 }
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("origin");
+  
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handlePreflight(origin);
   }
 
   if (req.method !== "GET" && req.method !== "POST") {
@@ -110,7 +101,7 @@ serve(async (req: Request): Promise<Response> => {
     const alpacaApiSecret = Deno.env.get("ALPACA_API_SECRET");
 
     if (!alpacaApiKey || !alpacaApiSecret) {
-      return errorResponse("ALPACA_API_KEY/ALPACA_API_SECRET not configured", 500);
+      return errorResponse("ALPACA_API_KEY/ALPACA_API_SECRET not configured", 500, origin);
     }
 
     let symbolsToFetch: string[] = [];
@@ -129,7 +120,7 @@ serve(async (req: Request): Promise<Response> => {
       try {
         body = await req.json();
       } catch (_err) {
-        return errorResponse("Invalid JSON body", 400);
+        return errorResponse("Invalid JSON body", 400, origin);
       }
 
       const bodyObj: Record<string, unknown> =
@@ -145,7 +136,7 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     if (symbolsToFetch.length === 0) {
-      return errorResponse("No symbols specified", 400);
+      return errorResponse("No symbols specified", 400, origin);
     }
 
     const MAX_BATCH_SIZE = 50;
@@ -210,10 +201,10 @@ serve(async (req: Request): Promise<Response> => {
       timestamp: new Date().toISOString(),
       count: quoteData.length,
       quotes: quoteData,
-    });
+    }, 200, origin);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[quotes] Error:", error);
-    return errorResponse(message || "Internal server error", 500);
+    return errorResponse(message || "Internal server error", 500, origin);
   }
 });
