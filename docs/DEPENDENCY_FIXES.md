@@ -139,6 +139,33 @@ After these fixes, the workflow should:
 4. `ml/src/features/feature_cache.py` - Fixed `Timestamp.utcnow()`
 5. `ml/src/symbol_weight_training_job.py` - Fixed `Timestamp.utcnow()`
 6. `ml/src/monitoring/forecast_validator.py` - Fixed date parsing with ISO8601 format
+7. `ml/requirements.txt` - Added plotly>=5.18.0 for visualization
+
+---
+
+### ✅ Fix 3: Missing Plotly Dependency
+
+**Issue**: Plotly warnings appear because it's not in requirements.txt
+```
+WARNING:root:Plotly not available. Install with: pip install plotly
+```
+
+**File**: `ml/requirements.txt`
+
+**Fix**: Added plotly to requirements (optional but recommended for visualization)
+
+**Before**:
+```txt
+# No plotly in requirements
+```
+
+**After**:
+```txt
+# Visualization (optional but recommended)
+plotly>=5.18.0
+```
+
+**Impact**: Eliminates warnings when visualization modules are imported
 
 ---
 
