@@ -10,6 +10,11 @@ struct OverviewTabView: View {
     
     var body: some View {
         VStack(spacing: 20) {
+            // Mode Comparison (all three ranks)
+            modeComparisonSection
+            
+            Divider()
+            
             // Momentum Framework Breakdown
             momentumFrameworkSection
             
@@ -28,6 +33,73 @@ struct OverviewTabView: View {
             
             // Contract Summary
             summarySection
+        }
+    }
+    
+    // MARK: - Mode Comparison Section
+    
+    @ViewBuilder
+    private var modeComparisonSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Ranking Modes")
+                .font(.headline)
+            
+            // Use adaptive layout based on available width
+            ViewThatFits {
+                // Horizontal layout (preferred for wider screens)
+                HStack(spacing: 12) {
+                    // Entry Rank
+                    ModeRankCard(
+                        mode: .entry,
+                        rank: rank.entryRank ?? rank.effectiveCompositeRank,
+                        isCurrent: appViewModel.optionsRankerViewModel.rankingMode == .entry
+                    )
+                    
+                    // Exit Rank
+                    ModeRankCard(
+                        mode: .exit,
+                        rank: rank.exitRank ?? rank.effectiveCompositeRank,
+                        isCurrent: appViewModel.optionsRankerViewModel.rankingMode == .exit
+                    )
+                    
+                    // Monitor Rank
+                    ModeRankCard(
+                        mode: .monitor,
+                        rank: rank.effectiveCompositeRank,
+                        isCurrent: appViewModel.optionsRankerViewModel.rankingMode == .monitor
+                    )
+                }
+                
+                // Vertical layout (fallback for narrower screens)
+                VStack(spacing: 12) {
+                    // Entry Rank
+                    ModeRankCard(
+                        mode: .entry,
+                        rank: rank.entryRank ?? rank.effectiveCompositeRank,
+                        isCurrent: appViewModel.optionsRankerViewModel.rankingMode == .entry
+                    )
+                    
+                    // Exit Rank
+                    ModeRankCard(
+                        mode: .exit,
+                        rank: rank.exitRank ?? rank.effectiveCompositeRank,
+                        isCurrent: appViewModel.optionsRankerViewModel.rankingMode == .exit
+                    )
+                    
+                    // Monitor Rank
+                    ModeRankCard(
+                        mode: .monitor,
+                        rank: rank.effectiveCompositeRank,
+                        isCurrent: appViewModel.optionsRankerViewModel.rankingMode == .monitor
+                    )
+                }
+            }
+            
+            // Mode interpretation
+            Text(modeInterpretation)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
         }
     }
     
@@ -192,6 +264,23 @@ struct OverviewTabView: View {
     
     // MARK: - Helper Methods
     
+    private var modeInterpretation: String {
+        let entryRank = rank.entryRank ?? rank.effectiveCompositeRank
+        let exitRank = rank.exitRank ?? rank.effectiveCompositeRank
+        
+        if entryRank > 70 && exitRank < 40 {
+            return "Strong buy signal: High entry rank (\(Int(entryRank))) with low exit rank (\(Int(exitRank))) suggests undervalued opportunity."
+        } else if exitRank > 70 && entryRank < 40 {
+            return "Strong exit signal: High exit rank (\(Int(exitRank))) with low entry rank (\(Int(entryRank))) suggests profit protection recommended."
+        } else if entryRank > 60 && exitRank > 60 {
+            return "Mixed signals: Both entry and exit ranks elevated - consider position timing and market conditions."
+        } else if entryRank < 40 && exitRank < 40 {
+            return "Weak opportunity: Both entry and exit ranks low - consider avoiding or waiting for better setup."
+        } else {
+            return "Moderate signals across modes - evaluate based on your current position and strategy."
+        }
+    }
+    
     private func gaConfidence(_ strategy: GAStrategy) -> Double {
         return rank.gaConfidence(strategy.genes)
     }
@@ -231,9 +320,9 @@ struct OverviewTabView: View {
         // Price assessment
         if let spreadPct = rank.spreadPctDisplay {
             if spreadPct < 2.0 {
-                parts.append("tight spread (\(spreadPct, specifier: "%.1f")%)")
+                parts.append("tight spread (\(String(format: "%.1f%%", spreadPct)))")
             } else if spreadPct > 5.0 {
-                parts.append("wide spread (\(spreadPct, specifier: "%.1f")%)")
+                parts.append("wide spread (\(String(format: "%.1f%%", spreadPct)))")
             }
         }
         
@@ -268,10 +357,10 @@ struct OverviewTabView: View {
     
     private var spreadQuality: String {
         guard let spreadPct = rank.spreadPctDisplay else { return "Unknown" }
-        if spreadPct < 2.0 { return "Excellent (\(spreadPct, specifier: "%.1f")%)" }
-        if spreadPct < 5.0 { return "Good (\(spreadPct, specifier: "%.1f")%)" }
-        if spreadPct < 10.0 { return "Fair (\(spreadPct, specifier: "%.1f")%)" }
-        return "Poor (\(spreadPct, specifier: "%.1f")%)"
+        if spreadPct < 2.0 { return "Excellent (\(String(format: "%.1f%%", spreadPct)))" }
+        if spreadPct < 5.0 { return "Good (\(String(format: "%.1f%%", spreadPct)))" }
+        if spreadPct < 10.0 { return "Fair (\(String(format: "%.1f%%", spreadPct)))" }
+        return "Poor (\(String(format: "%.1f%%", spreadPct)))"
     }
     
     private func formatOI() -> String {
@@ -362,6 +451,69 @@ private struct ScoreBar: View {
             }
             .frame(height: 8)
         }
+    }
+}
+
+// MARK: - Mode Rank Card Component
+
+private struct ModeRankCard: View {
+    let mode: RankingMode
+    let rank: Double
+    let isCurrent: Bool
+    
+    private var rankColor: Color {
+        if rank >= 75 { return .green }
+        if rank >= 60 { return .blue }
+        if rank >= 45 { return .orange }
+        return .red
+    }
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            // Mode icon and name
+            VStack(spacing: 4) {
+                Image(systemName: mode.icon)
+                    .font(.title3)
+                    .foregroundStyle(isCurrent ? rankColor : .secondary)
+                
+                Text(mode.displayName)
+                    .font(.caption2)
+                    .foregroundStyle(isCurrent ? .primary : .secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            
+            // Rank value
+            Text("\(Int(rank))")
+                .font(.title2)
+                .fontWeight(.bold)
+                .foregroundColor(isCurrent ? rankColor : .secondary)
+            
+            // Badge if current mode
+            if isCurrent {
+                Text("CURRENT")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(rankColor)
+                    .cornerRadius(4)
+            } else {
+                Text("") // Spacer to maintain height
+                    .font(.system(size: 8))
+                    .padding(.vertical, 2)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(12)
+        .background(isCurrent ? rankColor.opacity(0.1) : Color(nsColor: .controlBackgroundColor))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isCurrent ? rankColor.opacity(0.5) : Color.clear, lineWidth: 2)
+        )
     }
 }
 

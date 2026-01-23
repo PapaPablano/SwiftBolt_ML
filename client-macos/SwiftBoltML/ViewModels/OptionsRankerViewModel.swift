@@ -19,10 +19,7 @@ enum RankingSortOption: String, CaseIterable {
     case gaConfidence = "GA Confidence"
 }
 
-enum RankingMode: String, CaseIterable {
-    case entry
-    case exit
-}
+// Note: RankingMode is defined in OptionsRankingResponse.swift to avoid duplication
 
 @MainActor
 class OptionsRankerViewModel: ObservableObject {
@@ -37,7 +34,7 @@ class OptionsRankerViewModel: ObservableObject {
     @Published var selectedSignal: SignalFilter = .all
     @Published var sortOption: RankingSortOption = .composite
     @Published var minScore: Double = 0.0
-    @Published var rankingMode: RankingMode = .entry
+    @Published var rankingMode: RankingMode = .monitor
     @Published var liveQuotes: [String: OptionContractQuote] = [:]
     @Published var lastQuoteRefresh: Date?
     @Published var isRefreshingQuotes: Bool = false
@@ -95,8 +92,18 @@ class OptionsRankerViewModel: ObservableObject {
 
         return rankings
             .filter { rank in
-                // Score filter using effective composite rank (0-100)
-                let score = rank.effectiveCompositeRank / 100
+                // Score filter using mode-specific rank (0-100)
+                // Use the appropriate rank based on current mode
+                let modeRank: Double
+                switch rankingMode {
+                case .entry:
+                    modeRank = rank.entryRank ?? rank.effectiveCompositeRank
+                case .exit:
+                    modeRank = rank.exitRank ?? rank.effectiveCompositeRank
+                case .monitor:
+                    modeRank = rank.effectiveCompositeRank
+                }
+                let score = modeRank / 100
                 guard score >= minScore else { return false }
 
                 // GA filter (if enabled and strategy exists)
@@ -140,7 +147,21 @@ class OptionsRankerViewModel: ObservableObject {
             .sorted { lhs, rhs in
                 switch sortOption {
                 case .composite:
-                    return lhs.effectiveCompositeRank > rhs.effectiveCompositeRank
+                    // Sort by mode-specific rank
+                    let lhsRank: Double
+                    let rhsRank: Double
+                    switch rankingMode {
+                    case .entry:
+                        lhsRank = lhs.entryRank ?? lhs.effectiveCompositeRank
+                        rhsRank = rhs.entryRank ?? rhs.effectiveCompositeRank
+                    case .exit:
+                        lhsRank = lhs.exitRank ?? lhs.effectiveCompositeRank
+                        rhsRank = rhs.exitRank ?? rhs.effectiveCompositeRank
+                    case .monitor:
+                        lhsRank = lhs.effectiveCompositeRank
+                        rhsRank = rhs.effectiveCompositeRank
+                    }
+                    return lhsRank > rhsRank
                 case .momentum:
                     return (lhs.momentumScore ?? 0) > (rhs.momentumScore ?? 0)
                 case .value:

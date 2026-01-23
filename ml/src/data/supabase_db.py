@@ -1298,6 +1298,16 @@ class SupabaseDatabase:
         signal_greeks: bool = False,
         signal_buy: bool = False,
         signals: str = "",
+        # Entry/Exit mode columns
+        entry_rank: float | None = None,
+        exit_rank: float | None = None,
+        entry_value_score: float | None = None,
+        catalyst_score: float | None = None,
+        iv_percentile: float | None = None,
+        iv_discount_score: float | None = None,
+        profit_protection_score: float | None = None,
+        deterioration_score: float | None = None,
+        time_urgency_score: float | None = None,
     ) -> None:
         """
         Insert or update an option rank with momentum framework scores.
@@ -1307,6 +1317,7 @@ class SupabaseDatabase:
         - Momentum, Value, Greeks component scores
         - IV Rank and spread metrics
         - Trading signals (DISCOUNT, RUNNER, GREEKS, BUY)
+        - Entry/Exit mode-specific ranks and component scores
         """
         try:
             rank_data = {
@@ -1350,6 +1361,16 @@ class SupabaseDatabase:
                 "signal_greeks": signal_greeks,
                 "signal_buy": signal_buy,
                 "signals": signals,
+                # Entry/Exit mode columns
+                "entry_rank": entry_rank,
+                "exit_rank": exit_rank,
+                "entry_value_score": entry_value_score,
+                "catalyst_score": catalyst_score,
+                "iv_percentile": iv_percentile,
+                "iv_discount_score": iv_discount_score,
+                "profit_protection_score": profit_protection_score,
+                "deterioration_score": deterioration_score,
+                "time_urgency_score": time_urgency_score,
             }
 
             # Delete existing rank for this contract if it exists

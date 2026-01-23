@@ -38,7 +38,7 @@ struct PredictionsView: View {
                     VStack(spacing: 20) {
                         switch appViewModel.selectedPredictionsTab {
                         case 0:
-                            OverviewTabView(viewModel: viewModel)
+                            PredictionsOverviewTabView(viewModel: viewModel)
                         case 1:
                             ModelPerformanceTabView(viewModel: viewModel)
                         case 2:
@@ -121,7 +121,7 @@ struct PredictionsView: View {
 
 // MARK: - Overview Tab
 
-struct OverviewTabView: View {
+struct PredictionsOverviewTabView: View {
     @ObservedObject var viewModel: PredictionsViewModel
     @EnvironmentObject var appViewModel: AppViewModel
     @StateObject private var qualityViewModel = ForecastQualityViewModel()

@@ -1,6 +1,40 @@
 import Foundation
 import SwiftUI
 
+// MARK: - Ranking Mode
+
+enum RankingMode: String, Codable, CaseIterable, Identifiable {
+    case entry = "entry"       // Optimized for finding undervalued opportunities
+    case exit = "exit"         // Optimized for profit-taking and decay detection
+    case monitor = "monitor"   // Balanced view for general screening
+    
+    var id: String { rawValue }
+    
+    var displayName: String {
+        switch self {
+        case .entry: return "Find Entry"
+        case .exit: return "Manage Exit"
+        case .monitor: return "Monitor"
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .entry: return "Find undervalued options with strong catalysts"
+        case .exit: return "Detect when to take profit or cut losses"
+        case .monitor: return "Balanced screening for all opportunities"
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .entry: return "arrow.down.circle.fill"
+        case .exit: return "arrow.up.circle.fill"
+        case .monitor: return "chart.bar.fill"
+        }
+    }
+}
+
 // MARK: - Options Rankings Response
 
 struct OptionsRankingsResponse: Codable {
@@ -8,12 +42,14 @@ struct OptionsRankingsResponse: Codable {
     let totalRanks: Int
     let ranks: [OptionRank]
     let filters: RankingFilters
+    let mode: RankingMode?
 
     enum CodingKeys: String, CodingKey {
         case symbol
         case totalRanks
         case ranks
         case filters
+        case mode
     }
 }
 
@@ -115,14 +151,30 @@ struct OptionRank: Codable, Identifiable {
     let strike: Double
     let side: OptionSide
 
-    // Primary score: Momentum Framework composite rank (0-100)
+    // Ranking mode used for this ranking
+    let rankingMode: RankingMode?
+    
+    // Primary score: Momentum Framework composite rank (0-100) [MONITOR mode]
     // Optional for backwards compatibility with old records that only have mlScore
     let compositeRank: Double?
+    
+    // Mode-specific ranks (0-100)
+    let entryRank: Double?        // ENTRY mode: Value 40%, Catalyst 35%, Greeks 25%
+    let exitRank: Double?         // EXIT mode: Profit 50%, Deterioration 30%, Time 20%
 
-    // Momentum Framework component scores (0-100)
+    // Momentum Framework component scores (0-100) [for MONITOR mode]
     let momentumScore: Double?
     let valueScore: Double?
     let greeksScore: Double?
+    
+    // Entry mode component scores (0-100)
+    let entryValueScore: Double?
+    let catalystScore: Double?
+    
+    // Exit mode component scores (0-100)
+    let profitProtectionScore: Double?
+    let deteriorationScore: Double?
+    let timeUrgencyScore: Double?
 
     // Legacy field (ml_score from old ranking system, 0-1 scale)
     let mlScore: Double?
@@ -135,6 +187,15 @@ struct OptionRank: Codable, Identifiable {
             return score * 100  // Convert 0-1 scale to 0-100
         }
         return 0
+    }
+    
+    // Get rank for specific mode
+    func rank(for mode: RankingMode) -> Double {
+        switch mode {
+        case .entry: return entryRank ?? effectiveCompositeRank
+        case .exit: return exitRank ?? effectiveCompositeRank
+        case .monitor: return effectiveCompositeRank
+        }
     }
 
     // IV Metrics
@@ -187,10 +248,18 @@ struct OptionRank: Codable, Identifiable {
         case expiry
         case strike
         case side
+        case rankingMode = "ranking_mode"
         case compositeRank = "composite_rank"
+        case entryRank = "entry_rank"
+        case exitRank = "exit_rank"
         case momentumScore = "momentum_score"
         case valueScore = "value_score"
         case greeksScore = "greeks_score"
+        case entryValueScore = "entry_value_score"
+        case catalystScore = "catalyst_score"
+        case profitProtectionScore = "profit_protection_score"
+        case deteriorationScore = "deterioration_score"
+        case timeUrgencyScore = "time_urgency_score"
         case mlScore = "ml_score"
         case impliedVol = "implied_vol"
         case ivRank = "iv_rank"
@@ -440,10 +509,18 @@ extension OptionRank {
         expiry: "2024-01-19",
         strike: 150.0,
         side: .call,
+        rankingMode: .entry,
         compositeRank: 78.5,
+        entryRank: 75.7,
+        exitRank: 36.2,
         momentumScore: 82.0,
         valueScore: 75.0,
         greeksScore: 80.0,
+        entryValueScore: 77.0,
+        catalystScore: 75.5,
+        profitProtectionScore: 42.1,
+        deteriorationScore: 29.5,
+        timeUrgencyScore: 38.0,
         mlScore: 0.785,
         impliedVol: 0.32,
         ivRank: 45.0,

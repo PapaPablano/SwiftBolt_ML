@@ -59,7 +59,11 @@ struct ContractWorkbenchView: View {
                     case .overview:
                         OverviewTabView(rank: rank, symbol: symbol)
                     case .whyRanked:
-                        WhyRankedTabView(rank: rank, strategy: appViewModel.selectedContractState.gaStrategy)
+                        WhyRankedTabView(
+                            rank: rank, 
+                            strategy: appViewModel.selectedContractState.gaStrategy,
+                            rankingMode: appViewModel.optionsRankerViewModel.rankingMode
+                        )
                     case .contract:
                         ContractTabView(rank: rank, symbol: symbol)
                     case .surfaces:

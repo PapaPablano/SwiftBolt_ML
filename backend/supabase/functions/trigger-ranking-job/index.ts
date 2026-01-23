@@ -559,7 +559,7 @@ serve(async (req: Request): Promise<Response> => {
     const runAt = new Date().toISOString();
     const records = rankedOptions.map(opt => ({
       underlying_symbol_id: symbolId,
-      ranking_mode: "entry",
+      ranking_mode: "monitor",  // Legacy inline ranking uses monitor mode
       contract_symbol: opt.contract_symbol,
       expiry: opt.expiry,
       strike: opt.strike,

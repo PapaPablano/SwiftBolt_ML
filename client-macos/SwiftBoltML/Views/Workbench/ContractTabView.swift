@@ -53,7 +53,7 @@ struct ContractTabView: View {
             
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 DetailField(label: "Contract Symbol", value: rank.contractSymbol, copyable: true)
-                DetailField(label: "Strike", value: "$\(rank.strike, specifier: "%.2f")")
+                DetailField(label: "Strike", value: String(format: "$%.2f", rank.strike))
                 DetailField(label: "Expiration", value: rank.expiry)
                 DetailField(label: "Side", value: rank.side.rawValue.uppercased())
                 
@@ -62,7 +62,7 @@ struct ContractTabView: View {
                 }
                 
                 if let expiryDate = rank.expiryDate {
-                    DetailField(label: "Expiry Date", value: "\(expiryDate, style: .date)")
+                    DetailField(label: "Expiry Date", value: expiryDate.formatted(date: .abbreviated, time: .omitted))
                 }
             }
         }
@@ -76,33 +76,33 @@ struct ContractTabView: View {
             
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 if let bid = rank.bid {
-                    DetailField(label: "Bid", value: "$\(bid, specifier: "%.2f")", color: .red)
+                    DetailField(label: "Bid", value: String(format: "$%.2f", bid), color: .red)
                 }
                 
                 if let ask = rank.ask {
-                    DetailField(label: "Ask", value: "$\(ask, specifier: "%.2f")", color: .green)
+                    DetailField(label: "Ask", value: String(format: "$%.2f", ask), color: .green)
                 }
                 
                 if let mark = rank.mark {
-                    DetailField(label: "Mark", value: "$\(mark, specifier: "%.2f")", color: .blue)
+                    DetailField(label: "Mark", value: String(format: "$%.2f", mark), color: .blue)
                 }
                 
                 if let derivedMark = rank.derivedMark {
-                    DetailField(label: "Derived Mid", value: "$\(derivedMark, specifier: "%.2f")")
+                    DetailField(label: "Derived Mid", value: String(format: "$%.2f", derivedMark))
                 }
                 
                 if let lastPrice = rank.lastPrice {
-                    DetailField(label: "Last Price", value: "$\(lastPrice, specifier: "%.2f")")
+                    DetailField(label: "Last Price", value: String(format: "$%.2f", lastPrice))
                 }
                 
                 if let spread = rank.spread {
-                    DetailField(label: "Spread", value: "$\(spread, specifier: "%.2f")")
+                    DetailField(label: "Spread", value: String(format: "$%.2f", spread))
                 }
                 
                 if let spreadPct = rank.spreadPctDisplay {
                     DetailField(
                         label: "Spread %",
-                        value: "\(spreadPct, specifier: "%.2f")%",
+                        value: String(format: "%.2f%%", spreadPct),
                         color: spreadColor
                     )
                 }
@@ -118,23 +118,23 @@ struct ContractTabView: View {
             
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 if let delta = rank.delta {
-                    DetailField(label: "Delta", value: "\(delta, specifier: "%.4f")", color: deltaColor)
+                    DetailField(label: "Delta", value: String(format: "%.4f", delta), color: deltaColor)
                 }
                 
                 if let gamma = rank.gamma {
-                    DetailField(label: "Gamma", value: "\(gamma, specifier: "%.4f")", color: .orange)
+                    DetailField(label: "Gamma", value: String(format: "%.4f", gamma), color: .orange)
                 }
                 
                 if let theta = rank.theta {
-                    DetailField(label: "Theta", value: "\(theta, specifier: "%.4f")", color: .red)
+                    DetailField(label: "Theta", value: String(format: "%.4f", theta), color: .red)
                 }
                 
                 if let vega = rank.vega {
-                    DetailField(label: "Vega", value: "\(vega, specifier: "%.4f")", color: .purple)
+                    DetailField(label: "Vega", value: String(format: "%.4f", vega), color: .purple)
                 }
                 
                 if let rho = rank.rho {
-                    DetailField(label: "Rho", value: "\(rho, specifier: "%.4f")", color: .blue)
+                    DetailField(label: "Rho", value: String(format: "%.4f", rho), color: .blue)
                 }
             }
         }
@@ -156,7 +156,7 @@ struct ContractTabView: View {
                 }
                 
                 if let volOiRatio = rank.volOiRatio {
-                    DetailField(label: "Vol/OI Ratio", value: "\(volOiRatio, specifier: "%.2f")")
+                    DetailField(label: "Vol/OI Ratio", value: String(format: "%.2f", volOiRatio))
                 }
             }
         }
@@ -170,7 +170,7 @@ struct ContractTabView: View {
             
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 if let iv = rank.impliedVol {
-                    DetailField(label: "Implied Vol", value: "\(iv, specifier: "%.2f")%")
+                    DetailField(label: "Implied Vol", value: String(format: "%.2f%%", iv))
                 }
                 
                 if let ivRank = rank.ivRank {
@@ -194,7 +194,7 @@ struct ContractTabView: View {
                 if let liquidityConf = rank.liquidityConfidence {
                     DetailField(
                         label: "Liquidity Confidence",
-                        value: "\(liquidityConf, specifier: "%.2f")",
+                        value: String(format: "%.2f", liquidityConf),
                         color: rank.liquidityColor
                     )
                 }
@@ -218,7 +218,7 @@ struct ContractTabView: View {
                 }
                 
                 if let historyAvgMark = rank.historyAvgMark {
-                    DetailField(label: "Historical Avg Mark", value: "$\(historyAvgMark, specifier: "%.2f")")
+                    DetailField(label: "Historical Avg Mark", value: String(format: "$%.2f", historyAvgMark))
                 }
                 
                 if let historyWindow = rank.historyWindowDays {
@@ -242,7 +242,7 @@ struct ContractTabView: View {
                 DetailField(label: "Run At", value: rank.runAt)
                 
                 if let runDate = rank.runAtDate {
-                    DetailField(label: "Run Date", value: "\(runDate, style: .date)")
+                    DetailField(label: "Run Date", value: runDate.formatted(date: .abbreviated, time: .shortened))
                 }
                 
                 DetailField(label: "Mark Age", value: rank.markAgeLabel, color: markAgeColor)

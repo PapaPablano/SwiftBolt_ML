@@ -44,7 +44,7 @@ final class MarketDataService {
         if let forecast = response.forecast {
             let points: [ForecastPoint] = try forecast.points.map { p in
                 ForecastPoint(
-                    ts: Int(Self.parseISO8601(p.ts).timeIntervalSince1970),
+                    ts: Int(try Self.parseISO8601(p.ts).timeIntervalSince1970),
                     value: p.value,
                     lower: p.lower,
                     upper: p.upper

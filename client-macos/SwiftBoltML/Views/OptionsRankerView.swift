@@ -143,7 +143,8 @@ struct AllContractsView: View {
                                 rank: rank,
                                 liveQuote: rankerViewModel.liveQuotes[rank.contractSymbol],
                                 symbol: symbol,
-                                gaGenes: rankerViewModel.gaStrategy?.genes
+                                gaGenes: rankerViewModel.gaStrategy?.genes,
+                                rankingMode: rankerViewModel.rankingMode
                             )
                                 .padding(.horizontal)
                                 .background(
@@ -283,25 +284,25 @@ struct RankerHeader: View {
 
             // Filters
             VStack(spacing: 8) {
-                // Row 0: Entry/Exit Mode Toggle
+                // Row 0: Entry/Exit/Monitor Mode Toggle
                 HStack {
                     Text("Ranking Mode")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
 
                     Picker("", selection: $rankerViewModel.rankingMode) {
-                        Text("Entry").tag(RankingMode.entry)
-                        Text("Exit").tag(RankingMode.exit)
+                        ForEach(RankingMode.allCases) { mode in
+                            Label(mode.displayName, systemImage: mode.icon)
+                                .tag(mode)
+                        }
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 140)
+                    .frame(width: 220)
 
                     Spacer()
 
                     // Mode description
-                    Text(rankerViewModel.rankingMode == .entry
-                        ? "Find undervalued contracts to buy"
-                        : "Find contracts with momentum to sell")
+                    Text(rankerViewModel.rankingMode.description)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -666,26 +667,59 @@ struct RankedOptionRow: View {
     let liveQuote: OptionContractQuote?
     let symbol: String
     let gaGenes: StrategyGenes?
+    let rankingMode: RankingMode
     var symbolId: String = ""
     @State private var isHovering = false
     @State private var showStrikeAnalysis = false
     @State private var showHistoryChart = false
     @State private var showAddToStrategy = false
+    
+    // Mode-specific rank display
+    private var displayRank: Int {
+        switch rankingMode {
+        case .entry:
+            return Int(rank.entryRank ?? rank.effectiveCompositeRank)
+        case .exit:
+            return Int(rank.exitRank ?? rank.effectiveCompositeRank)
+        case .monitor:
+            return rank.compositeScoreDisplay
+        }
+    }
+    
+    private var rankColor: Color {
+        switch rankingMode {
+        case .entry:
+            let r = rank.entryRank ?? rank.effectiveCompositeRank
+            return rankScoreColor(r)
+        case .exit:
+            let r = rank.exitRank ?? rank.effectiveCompositeRank
+            return rankScoreColor(r)
+        case .monitor:
+            return rank.compositeColor
+        }
+    }
+    
+    private func rankScoreColor(_ score: Double) -> Color {
+        if score >= 75 { return .green }
+        if score >= 60 { return .blue }
+        if score >= 45 { return .orange }
+        return .red
+    }
 
     var body: some View {
         HStack(spacing: 12) {
-            // Composite Score badge (Momentum Framework 0-100)
+            // Mode-specific Score badge
             VStack(spacing: 2) {
-                Text("\(rank.compositeScoreDisplay)")
+                Text("\(displayRank)")
                     .font(.title3.bold())
-                    .foregroundStyle(rank.compositeColor)
-                Text("RANK")
-                    .font(.caption2)
+                    .foregroundStyle(rankColor)
+                Text(rankingMode.displayName.uppercased())
+                    .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(.secondary)
             }
             .frame(width: 50)
             .padding(.vertical, 8)
-            .background(rank.compositeColor.opacity(0.1))
+            .background(rankColor.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
             Divider()

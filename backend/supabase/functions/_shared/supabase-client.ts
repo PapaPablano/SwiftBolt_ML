@@ -1,7 +1,7 @@
 // Shared Supabase client for Edge Functions
 // Uses Deno environment variables for configuration
 
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 let supabaseClient: SupabaseClient | null = null;
 

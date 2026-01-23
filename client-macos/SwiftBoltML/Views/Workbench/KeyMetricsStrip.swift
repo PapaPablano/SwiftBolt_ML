@@ -75,17 +75,17 @@ struct KeyMetricsStrip: View {
     
     private func formatPrice(_ price: Double?) -> String {
         guard let price = price else { return "—" }
-        return "$\(price, specifier: "%.2f")"
+        return String(format: "$%.2f", price)
     }
     
     private func formatBidAsk() -> String {
         guard let bid = rank.bid, let ask = rank.ask else { return "—" }
-        return "$\(bid, specifier: "%.2f") / $\(ask, specifier: "%.2f")"
+        return "\(String(format: "$%.2f", bid)) / \(String(format: "$%.2f", ask))"
     }
     
     private func formatSpread() -> String {
         guard let spreadPct = rank.spreadPctDisplay else { return "—" }
-        return "\(spreadPct, specifier: "%.1f")%"
+        return String(format: "%.1f%%", spreadPct)
     }
     
     private func formatIVRank() -> String {
@@ -95,7 +95,7 @@ struct KeyMetricsStrip: View {
     
     private func formatDelta() -> String {
         guard let delta = rank.delta else { return "—" }
-        return "\(delta, specifier: "%.3f")"
+        return String(format: "%.3f", delta)
     }
     
     private func formatOpenInterest() -> String {

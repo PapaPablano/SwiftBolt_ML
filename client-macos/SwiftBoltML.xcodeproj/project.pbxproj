@@ -101,38 +101,6 @@
 		F63BBA1D2F22F047003EE3B0 /* StressTestingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA182F22F047003EE3B0 /* StressTestingViewModel.swift */; };
 		F63BBA1E2F22F047003EE3B0 /* TechnicalIndicatorsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA192F22F047003EE3B0 /* TechnicalIndicatorsViewModel.swift */; };
 		F63BBA1F2F22F047003EE3B0 /* PortfolioOptimizationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA172F22F047003EE3B0 /* PortfolioOptimizationViewModel.swift */; };
-		F64681A92EF0E00900FBEF04 /* MLReportCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F64681A82EF0E00900FBEF04 /* MLReportCard.swift */; };
-		F670CAD92F1C882A00B4A7C2 /* MultiTimeframeForecastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F670CAD82F1C882A00B4A7C2 /* MultiTimeframeForecastView.swift */; };
-		F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */; };
-		F6F972F42F0F72670010C828 /* ChartCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F972F32F0F72670010C828 /* ChartCache.swift */; };
-		F6FD04842F0D8B0C00AF337E /* Timeframe.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6FD04832F0D8B0C00AF337E /* Timeframe.swift */; };
-		F768A2A036F22E169CA9E8AC /* ReloadWatchlistResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B11ECAF44D603B49B6D931 /* ReloadWatchlistResponse.swift */; };
-		FEAA00012F4444440000001 /* ValidationDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000001 /* ValidationDashboardView.swift */; };
-		FEAA00012F4444440000002 /* UnifiedValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000002 /* UnifiedValidator.swift */; };
-		FEAA00012F4444440000003 /* ValidationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000003 /* ValidationViewModel.swift */; };
-		FEAA00012F4444440000004 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000004 /* NetworkMonitor.swift */; };
-		FF7F2A0E2FD7B4A0009F9712 /* QuoteResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */; };
-		MF0001012345678900000001 /* BackfillService.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000001 /* BackfillService.swift */; };
-		MF0001012345678900000002 /* BackfillStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000002 /* BackfillStatusView.swift */; };
-		MF0001012345678900000003 /* CacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000003 /* CacheManager.swift */; };
-		MF0001012345678900011 /* RequestDeduplicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900011 /* RequestDeduplicator.swift */; };
-		MF0001012345678900012 /* RetryPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900012 /* RetryPolicy.swift */; };
-		MF0001012345678900013 /* ErrorFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900013 /* ErrorFormatter.swift */; };
-		MF0001012345678900000004 /* DataValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000004 /* DataValidator.swift */; };
-		MF0001012345678900000005 /* Debouncer.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000005 /* Debouncer.swift */; };
-		MF0001012345678900000006 /* Downsampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000006 /* Downsampler.swift */; };
-		MF0001012345678900000007 /* MarketStatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000007 /* MarketStatusBadge.swift */; };
-		MF0001012345678900000008 /* MarketStatusService.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000008 /* MarketStatusService.swift */; };
-		MF0001012345678900000009 /* SecondaryDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000009 /* SecondaryDataSource.swift */; };
-		MF0001012345678900000010 /* SplitAdjustmentAlert.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000010 /* SplitAdjustmentAlert.swift */; };
-		MF0001012345678900014 /* SkeletonViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900014 /* SkeletonViews.swift */; };
-		MF0001012345678900015 /* StandardStateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900015 /* StandardStateViews.swift */; };
-		OHC10001233456780000001 /* OptionHistoryChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = OHC20001233456780000001 /* OptionHistoryChartView.swift */; };
-		SA0000012345678900000003 /* StrikeAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SA0000012345678900000004 /* StrikeAnalysisView.swift */; };
-		SR0000012345678900000001 /* SupportResistanceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000002 /* SupportResistanceModels.swift */; };
-		SR0000012345678900000003 /* SupportResistanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000004 /* SupportResistanceView.swift */; };
-		TRGA0000123456789ABCDEF /* GAStrategyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */; };
-		WC734A8413BAD142EF9439139C /* WebChartControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */; };
 		F63BBA202F22F047003EE3B0 /* TechnicalIndicatorsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA1A2F22F047003EE3B1 /* TechnicalIndicatorsView.swift */; };
 		F63BBA212F22F047003EE3B0 /* BacktestingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA1B2F22F047003EE3B1 /* BacktestingView.swift */; };
 		F63BBA222F22F047003EE3B0 /* WalkForwardOptimizationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA1C2F22F047003EE3B1 /* WalkForwardOptimizationView.swift */; };
@@ -144,12 +112,53 @@
 		F63BBA282F22F047003EE3B0 /* ForecastQualityViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA2C2F22F047003EE3B0 /* ForecastQualityViewModel.swift */; };
 		F63BBA292F22F047003EE3B0 /* ModelTrainingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA2D2F22F047003EE3B0 /* ModelTrainingView.swift */; };
 		F63BBA2A2F22F047003EE3B0 /* ForecastQualityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA2E2F22F047003EE3B0 /* ForecastQualityView.swift */; };
+		F64681A92EF0E00900FBEF04 /* MLReportCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F64681A82EF0E00900FBEF04 /* MLReportCard.swift */; };
+		F670CAD92F1C882A00B4A7C2 /* MultiTimeframeForecastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F670CAD82F1C882A00B4A7C2 /* MultiTimeframeForecastView.swift */; };
+		F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */; };
+		F6EBEFB92F23DD2C001C6A4D /* SelectedContractState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFB82F23DD2C001C6A4D /* SelectedContractState.swift */; };
+		F6EBEFBB2F23DD3D001C6A4D /* MarketDataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFBA2F23DD3D001C6A4D /* MarketDataService.swift */; };
+		F6EBEFC42F23DD7D001C6A4D /* KeyMetricsStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFC02F23DD7D001C6A4D /* KeyMetricsStrip.swift */; };
+		F6EBEFC52F23DD7D001C6A4D /* WhyRankedTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFC22F23DD7D001C6A4D /* WhyRankedTabView.swift */; };
+		F6EBEFC62F23DD7D001C6A4D /* ContractWorkbenchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFBC2F23DD7D001C6A4D /* ContractWorkbenchView.swift */; };
+		F6EBEFC72F23DD7D001C6A4D /* MultiHorizonForecastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFBD2F23DD7D001C6A4D /* MultiHorizonForecastView.swift */; };
+		F6EBEFC82F23DD7D001C6A4D /* ContractWorkbenchHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFBF2F23DD7D001C6A4D /* ContractWorkbenchHeader.swift */; };
+		F6EBEFC92F23DD7D001C6A4D /* ContractTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFBE2F23DD7D001C6A4D /* ContractTabView.swift */; };
+		F6EBEFCA2F23DD7D001C6A4D /* OverviewTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFC12F23DD7D001C6A4D /* OverviewTabView.swift */; };
+		F6F972F42F0F72670010C828 /* ChartCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F972F32F0F72670010C828 /* ChartCache.swift */; };
+		F6FD04842F0D8B0C00AF337E /* Timeframe.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6FD04832F0D8B0C00AF337E /* Timeframe.swift */; };
+		F768A2A036F22E169CA9E8AC /* ReloadWatchlistResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B11ECAF44D603B49B6D931 /* ReloadWatchlistResponse.swift */; };
+		FEAA00012F4444440000001 /* ValidationDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000001 /* ValidationDashboardView.swift */; };
+		FEAA00012F4444440000002 /* UnifiedValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000002 /* UnifiedValidator.swift */; };
+		FEAA00012F4444440000003 /* ValidationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000003 /* ValidationViewModel.swift */; };
+		FEAA00012F4444440000004 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000004 /* NetworkMonitor.swift */; };
+		FF7F2A0E2FD7B4A0009F9712 /* QuoteResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */; };
 		GS0000012345678900000001 /* GreeksSurfaceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = GS0000012345678900000002 /* GreeksSurfaceModels.swift */; };
 		GS0000012345678900000003 /* VolatilitySurfaceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = GS0000012345678900000004 /* VolatilitySurfaceModels.swift */; };
 		GS0000012345678900000005 /* GreeksSurfaceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = GS0000012345678900000006 /* GreeksSurfaceViewModel.swift */; };
 		GS0000012345678900000007 /* VolatilitySurfaceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = GS0000012345678900000008 /* VolatilitySurfaceViewModel.swift */; };
 		GS0000012345678900000009 /* GreeksSurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GS0000012345678900000010 /* GreeksSurfaceView.swift */; };
 		GS0000012345678900000011 /* VolatilitySurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GS0000012345678900000012 /* VolatilitySurfaceView.swift */; };
+		MF0001012345678900000001 /* BackfillService.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000001 /* BackfillService.swift */; };
+		MF0001012345678900000002 /* BackfillStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000002 /* BackfillStatusView.swift */; };
+		MF0001012345678900000003 /* CacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000003 /* CacheManager.swift */; };
+		MF0001012345678900000004 /* DataValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000004 /* DataValidator.swift */; };
+		MF0001012345678900000005 /* Debouncer.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000005 /* Debouncer.swift */; };
+		MF0001012345678900000006 /* Downsampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000006 /* Downsampler.swift */; };
+		MF0001012345678900000007 /* MarketStatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000007 /* MarketStatusBadge.swift */; };
+		MF0001012345678900000008 /* MarketStatusService.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000008 /* MarketStatusService.swift */; };
+		MF0001012345678900000009 /* SecondaryDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000009 /* SecondaryDataSource.swift */; };
+		MF0001012345678900000010 /* SplitAdjustmentAlert.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000010 /* SplitAdjustmentAlert.swift */; };
+		MF0001012345678900011 /* RequestDeduplicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900011 /* RequestDeduplicator.swift */; };
+		MF0001012345678900012 /* RetryPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900012 /* RetryPolicy.swift */; };
+		MF0001012345678900013 /* ErrorFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900013 /* ErrorFormatter.swift */; };
+		MF0001012345678900014 /* SkeletonViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900014 /* SkeletonViews.swift */; };
+		MF0001012345678900015 /* StandardStateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900015 /* StandardStateViews.swift */; };
+		OHC10001233456780000001 /* OptionHistoryChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = OHC20001233456780000001 /* OptionHistoryChartView.swift */; };
+		SA0000012345678900000003 /* StrikeAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SA0000012345678900000004 /* StrikeAnalysisView.swift */; };
+		SR0000012345678900000001 /* SupportResistanceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000002 /* SupportResistanceModels.swift */; };
+		SR0000012345678900000003 /* SupportResistanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000004 /* SupportResistanceView.swift */; };
+		TRGA0000123456789ABCDEF /* GAStrategyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */; };
+		WC734A8413BAD142EF9439139C /* WebChartControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -236,14 +245,34 @@
 		F63BBA0E2F22EFF2003EE3B0 /* StressTestingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressTestingModels.swift; sourceTree = "<group>"; };
 		F63BBA0F2F22EFF2003EE3B0 /* TechnicalIndicatorsModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TechnicalIndicatorsModels.swift; sourceTree = "<group>"; };
 		F63BBA102F22EFF2003EE3B0 /* WalkForwardModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkForwardModels.swift; sourceTree = "<group>"; };
+		F63BBA112F22F047003EE3B0 /* ModelTrainingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTrainingModels.swift; sourceTree = "<group>"; };
+		F63BBA122F22F047003EE3B0 /* ForecastQualityModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastQualityModels.swift; sourceTree = "<group>"; };
 		F63BBA162F22F047003EE3B0 /* BacktestingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BacktestingViewModel.swift; sourceTree = "<group>"; };
 		F63BBA172F22F047003EE3B0 /* PortfolioOptimizationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortfolioOptimizationViewModel.swift; sourceTree = "<group>"; };
 		F63BBA182F22F047003EE3B0 /* StressTestingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressTestingViewModel.swift; sourceTree = "<group>"; };
 		F63BBA192F22F047003EE3B0 /* TechnicalIndicatorsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TechnicalIndicatorsViewModel.swift; sourceTree = "<group>"; };
 		F63BBA1A2F22F047003EE3B0 /* WalkForwardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkForwardViewModel.swift; sourceTree = "<group>"; };
+		F63BBA1A2F22F047003EE3B1 /* TechnicalIndicatorsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TechnicalIndicatorsView.swift; sourceTree = "<group>"; };
+		F63BBA1B2F22F047003EE3B1 /* BacktestingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BacktestingView.swift; sourceTree = "<group>"; };
+		F63BBA1C2F22F047003EE3B1 /* WalkForwardOptimizationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkForwardOptimizationView.swift; sourceTree = "<group>"; };
+		F63BBA1D2F22F047003EE3B1 /* PortfolioOptimizationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortfolioOptimizationView.swift; sourceTree = "<group>"; };
+		F63BBA1E2F22F047003EE3B1 /* StressTestingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressTestingView.swift; sourceTree = "<group>"; };
+		F63BBA2B2F22F047003EE3B0 /* ModelTrainingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTrainingViewModel.swift; sourceTree = "<group>"; };
+		F63BBA2C2F22F047003EE3B0 /* ForecastQualityViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastQualityViewModel.swift; sourceTree = "<group>"; };
+		F63BBA2D2F22F047003EE3B0 /* ModelTrainingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTrainingView.swift; sourceTree = "<group>"; };
+		F63BBA2E2F22F047003EE3B0 /* ForecastQualityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastQualityView.swift; sourceTree = "<group>"; };
 		F64681A82EF0E00900FBEF04 /* MLReportCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLReportCard.swift; sourceTree = "<group>"; };
 		F670CAD82F1C882A00B4A7C2 /* MultiTimeframeForecastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiTimeframeForecastView.swift; sourceTree = "<group>"; };
 		F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastHorizonsView.swift; sourceTree = "<group>"; };
+		F6EBEFB82F23DD2C001C6A4D /* SelectedContractState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectedContractState.swift; sourceTree = "<group>"; };
+		F6EBEFBA2F23DD3D001C6A4D /* MarketDataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketDataService.swift; sourceTree = "<group>"; };
+		F6EBEFBC2F23DD7D001C6A4D /* ContractWorkbenchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractWorkbenchView.swift; sourceTree = "<group>"; };
+		F6EBEFBD2F23DD7D001C6A4D /* MultiHorizonForecastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiHorizonForecastView.swift; sourceTree = "<group>"; };
+		F6EBEFBE2F23DD7D001C6A4D /* ContractTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractTabView.swift; sourceTree = "<group>"; };
+		F6EBEFBF2F23DD7D001C6A4D /* ContractWorkbenchHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractWorkbenchHeader.swift; sourceTree = "<group>"; };
+		F6EBEFC02F23DD7D001C6A4D /* KeyMetricsStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyMetricsStrip.swift; sourceTree = "<group>"; };
+		F6EBEFC12F23DD7D001C6A4D /* OverviewTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewTabView.swift; sourceTree = "<group>"; };
+		F6EBEFC22F23DD7D001C6A4D /* WhyRankedTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhyRankedTabView.swift; sourceTree = "<group>"; };
 		F6F972F32F0F72670010C828 /* ChartCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartCache.swift; sourceTree = "<group>"; };
 		F6FD04832F0D8B0C00AF337E /* Timeframe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Timeframe.swift; sourceTree = "<group>"; };
 		F857540C973ADC971FC52E92 /* SupportResistanceOverlayView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SupportResistanceOverlayView.swift; sourceTree = "<group>"; };
@@ -254,12 +283,15 @@
 		FEAA00002F4444440000003 /* ValidationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValidationViewModel.swift; sourceTree = "<group>"; };
 		FEAA00002F4444440000004 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
 		FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuoteResponse.swift; sourceTree = "<group>"; };
+		GS0000012345678900000002 /* GreeksSurfaceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GreeksSurfaceModels.swift; sourceTree = "<group>"; };
+		GS0000012345678900000004 /* VolatilitySurfaceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolatilitySurfaceModels.swift; sourceTree = "<group>"; };
+		GS0000012345678900000006 /* GreeksSurfaceViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GreeksSurfaceViewModel.swift; sourceTree = "<group>"; };
+		GS0000012345678900000008 /* VolatilitySurfaceViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolatilitySurfaceViewModel.swift; sourceTree = "<group>"; };
+		GS0000012345678900000010 /* GreeksSurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GreeksSurfaceView.swift; sourceTree = "<group>"; };
+		GS0000012345678900000012 /* VolatilitySurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolatilitySurfaceView.swift; sourceTree = "<group>"; };
 		MF0002012345678900000001 /* BackfillService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackfillService.swift; sourceTree = "<group>"; };
 		MF0002012345678900000002 /* BackfillStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackfillStatusView.swift; sourceTree = "<group>"; };
 		MF0002012345678900000003 /* CacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheManager.swift; sourceTree = "<group>"; };
-		MF0002012345678900011 /* RequestDeduplicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestDeduplicator.swift; sourceTree = "<group>"; };
-		MF0002012345678900012 /* RetryPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetryPolicy.swift; sourceTree = "<group>"; };
-		MF0002012345678900013 /* ErrorFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorFormatter.swift; sourceTree = "<group>"; };
 		MF0002012345678900000004 /* DataValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataValidator.swift; sourceTree = "<group>"; };
 		MF0002012345678900000005 /* Debouncer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Debouncer.swift; sourceTree = "<group>"; };
 		MF0002012345678900000006 /* Downsampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Downsampler.swift; sourceTree = "<group>"; };
@@ -267,6 +299,9 @@
 		MF0002012345678900000008 /* MarketStatusService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketStatusService.swift; sourceTree = "<group>"; };
 		MF0002012345678900000009 /* SecondaryDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecondaryDataSource.swift; sourceTree = "<group>"; };
 		MF0002012345678900000010 /* SplitAdjustmentAlert.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplitAdjustmentAlert.swift; sourceTree = "<group>"; };
+		MF0002012345678900011 /* RequestDeduplicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestDeduplicator.swift; sourceTree = "<group>"; };
+		MF0002012345678900012 /* RetryPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetryPolicy.swift; sourceTree = "<group>"; };
+		MF0002012345678900013 /* ErrorFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorFormatter.swift; sourceTree = "<group>"; };
 		MF0002012345678900014 /* SkeletonViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonViews.swift; sourceTree = "<group>"; };
 		MF0002012345678900015 /* StandardStateViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandardStateViews.swift; sourceTree = "<group>"; };
 		OHC20001233456780000001 /* OptionHistoryChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionHistoryChartView.swift; sourceTree = "<group>"; };
@@ -275,23 +310,6 @@
 		SR0000012345678900000004 /* SupportResistanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportResistanceView.swift; sourceTree = "<group>"; };
 		TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GAStrategyModels.swift; sourceTree = "<group>"; };
 		WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebChartControlsView.swift; sourceTree = "<group>"; };
-		F63BBA1A2F22F047003EE3B1 /* TechnicalIndicatorsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TechnicalIndicatorsView.swift; sourceTree = "<group>"; };
-		F63BBA1B2F22F047003EE3B1 /* BacktestingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BacktestingView.swift; sourceTree = "<group>"; };
-		F63BBA1C2F22F047003EE3B1 /* WalkForwardOptimizationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkForwardOptimizationView.swift; sourceTree = "<group>"; };
-		F63BBA1D2F22F047003EE3B1 /* PortfolioOptimizationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortfolioOptimizationView.swift; sourceTree = "<group>"; };
-		F63BBA1E2F22F047003EE3B1 /* StressTestingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressTestingView.swift; sourceTree = "<group>"; };
-		F63BBA112F22F047003EE3B0 /* ModelTrainingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTrainingModels.swift; sourceTree = "<group>"; };
-		F63BBA122F22F047003EE3B0 /* ForecastQualityModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastQualityModels.swift; sourceTree = "<group>"; };
-		F63BBA2B2F22F047003EE3B0 /* ModelTrainingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTrainingViewModel.swift; sourceTree = "<group>"; };
-		F63BBA2C2F22F047003EE3B0 /* ForecastQualityViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastQualityViewModel.swift; sourceTree = "<group>"; };
-		F63BBA2D2F22F047003EE3B0 /* ModelTrainingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTrainingView.swift; sourceTree = "<group>"; };
-		F63BBA2E2F22F047003EE3B0 /* ForecastQualityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastQualityView.swift; sourceTree = "<group>"; };
-		GS0000012345678900000002 /* GreeksSurfaceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GreeksSurfaceModels.swift; sourceTree = "<group>"; };
-		GS0000012345678900000004 /* VolatilitySurfaceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolatilitySurfaceModels.swift; sourceTree = "<group>"; };
-		GS0000012345678900000006 /* GreeksSurfaceViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GreeksSurfaceViewModel.swift; sourceTree = "<group>"; };
-		GS0000012345678900000008 /* VolatilitySurfaceViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolatilitySurfaceViewModel.swift; sourceTree = "<group>"; };
-		GS0000012345678900000010 /* GreeksSurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GreeksSurfaceView.swift; sourceTree = "<group>"; };
-		GS0000012345678900000012 /* VolatilitySurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolatilitySurfaceView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -347,6 +365,9 @@
 		A5000004233456780000004 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				F6EBEFBC2F23DD7D001C6A4D /* ContractWorkbenchView.swift */,
+				F6EBEFBD2F23DD7D001C6A4D /* MultiHorizonForecastView.swift */,
+				F6EBEFC32F23DD7D001C6A4D /* Workbench */,
 				MF0003012345678900000001 /* Components */,
 				F6370B202F13723F00011F78 /* DataQualityBadge.swift */,
 				F6161BBE2EF2D49A0065ABA1 /* OptionRankDetailView.swift */,
@@ -430,6 +451,7 @@
 		A5000006233456780000006 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				F6EBEFB82F23DD2C001C6A4D /* SelectedContractState.swift */,
 				F63BBA0C2F22EFF2003EE3B0 /* BacktestingModels.swift */,
 				F63BBA0D2F22EFF2003EE3B0 /* PortfolioOptimizationModels.swift */,
 				F63BBA0E2F22EFF2003EE3B0 /* StressTestingModels.swift */,
@@ -470,6 +492,7 @@
 		A5000007233456780000007 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				F6EBEFBA2F23DD3D001C6A4D /* MarketDataService.swift */,
 				A2000013233456780000013 /* APIClient.swift */,
 				MF0002012345678900000001 /* BackfillService.swift */,
 				A2000014233456780000014 /* Config.swift */,
@@ -517,6 +540,18 @@
 				893B3E6634F63C82006BBA70 /* AddToStrategySheet.swift */,
 			);
 			path = MultiLeg;
+			sourceTree = "<group>";
+		};
+		F6EBEFC32F23DD7D001C6A4D /* Workbench */ = {
+			isa = PBXGroup;
+			children = (
+				F6EBEFBE2F23DD7D001C6A4D /* ContractTabView.swift */,
+				F6EBEFBF2F23DD7D001C6A4D /* ContractWorkbenchHeader.swift */,
+				F6EBEFC02F23DD7D001C6A4D /* KeyMetricsStrip.swift */,
+				F6EBEFC12F23DD7D001C6A4D /* OverviewTabView.swift */,
+				F6EBEFC22F23DD7D001C6A4D /* WhyRankedTabView.swift */,
+			);
+			path = Workbench;
 			sourceTree = "<group>";
 		};
 		F89BDDD0E2F7083E6DF7258B /* Resources */ = {
@@ -632,6 +667,13 @@
 				A1000002233456780000002 /* ContentView.swift in Sources */,
 				A1000003233456780000003 /* DevToolsView.swift in Sources */,
 				A1000004233456780000004 /* SymbolSearchView.swift in Sources */,
+				F6EBEFC42F23DD7D001C6A4D /* KeyMetricsStrip.swift in Sources */,
+				F6EBEFC52F23DD7D001C6A4D /* WhyRankedTabView.swift in Sources */,
+				F6EBEFC62F23DD7D001C6A4D /* ContractWorkbenchView.swift in Sources */,
+				F6EBEFC72F23DD7D001C6A4D /* MultiHorizonForecastView.swift in Sources */,
+				F6EBEFC82F23DD7D001C6A4D /* ContractWorkbenchHeader.swift in Sources */,
+				F6EBEFC92F23DD7D001C6A4D /* ContractTabView.swift in Sources */,
+				F6EBEFCA2F23DD7D001C6A4D /* OverviewTabView.swift in Sources */,
 				A1000005233456780000005 /* ChartView.swift in Sources */,
 				A1000006233456780000006 /* PriceChartView.swift in Sources */,
 				A1000007233456780000007 /* NewsListView.swift in Sources */,
@@ -714,6 +756,7 @@
 				F63BBA1D2F22F047003EE3B0 /* StressTestingViewModel.swift in Sources */,
 				F63BBA1E2F22F047003EE3B0 /* TechnicalIndicatorsViewModel.swift in Sources */,
 				F63BBA1F2F22F047003EE3B0 /* PortfolioOptimizationViewModel.swift in Sources */,
+				F6EBEFB92F23DD2C001C6A4D /* SelectedContractState.swift in Sources */,
 				A8052D8012DDF9B50B591DA6 /* AnalysisView.swift in Sources */,
 				4529AC756E5F22D03E743400 /* ChartBridge.swift in Sources */,
 				89DD292B67C2CFAB0A8731F5 /* WebChartView.swift in Sources */,
@@ -758,6 +801,7 @@
 				E86094E11441AE6E464BA239 /* MultiLegStrategyListView.swift in Sources */,
 				BBF26E749EE9864119C5E5C3 /* MultiLegStrategyDetailView.swift in Sources */,
 				9A481B5659E62F5F2C7EC5EB /* MultiLegCreateStrategyView.swift in Sources */,
+				F6EBEFBB2F23DD3D001C6A4D /* MarketDataService.swift in Sources */,
 				893B3E6734F63C82006BBA70 /* AddToStrategySheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

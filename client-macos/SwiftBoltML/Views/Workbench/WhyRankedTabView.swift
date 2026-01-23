@@ -5,6 +5,7 @@ import SwiftUI
 struct WhyRankedTabView: View {
     let rank: OptionRank
     let strategy: GAStrategy?
+    let rankingMode: RankingMode?  // New parameter to show mode-specific breakdown
     
     var body: some View {
         VStack(spacing: 20) {
@@ -40,44 +41,156 @@ struct WhyRankedTabView: View {
     @ViewBuilder
     private var signalContributionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Signal Contributions")
-                .font(.headline)
-            
-            // Individual score contributions (weights: 40/35/25)
-            ContributionRow(
-                label: "Momentum Score",
-                score: rank.momentumScore ?? 0,
-                weight: MOMENTUM_WEIGHT,
-                color: .green
-            )
-            
-            ContributionRow(
-                label: "Value Score",
-                score: rank.valueScore ?? 0,
-                weight: VALUE_WEIGHT,
-                color: .blue
-            )
-            
-            ContributionRow(
-                label: "Greeks Score",
-                score: rank.greeksScore ?? 0,
-                weight: GREEKS_WEIGHT,
-                color: .orange
-            )
-            
-            // Total
             HStack {
-                Text("Total Composite Rank")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
+                Text("Signal Contributions")
+                    .font(.headline)
                 Spacer()
-                Text("\(rank.compositeScoreDisplay)/100")
-                    .font(.title3)
-                    .fontWeight(.bold)
-                    .foregroundColor(rank.compositeColor)
+                if let mode = rankingMode {
+                    Label(mode.displayName, systemImage: mode.icon)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-            .padding(.top, 8)
+            
+            // Mode-specific component breakdown
+            if let mode = rankingMode {
+                switch mode {
+                case .entry:
+                    entryModeContributions
+                case .exit:
+                    exitModeContributions
+                case .monitor:
+                    monitorModeContributions
+                }
+            } else {
+                // Fallback to monitor mode if no mode specified
+                monitorModeContributions
+            }
         }
+    }
+    
+    @ViewBuilder
+    private var entryModeContributions: some View {
+        // ENTRY MODE: Value 40%, Catalyst 35%, Greeks 25%
+        ContributionRow(
+            label: "Entry Value Score",
+            score: rank.entryValueScore ?? rank.valueScore ?? 0,
+            weight: 0.40,
+            color: .blue
+        )
+        
+        ContributionRow(
+            label: "Catalyst Score",
+            score: rank.catalystScore ?? rank.momentumScore ?? 0,
+            weight: 0.35,
+            color: .purple
+        )
+        
+        ContributionRow(
+            label: "Greeks Score",
+            score: rank.greeksScore ?? 0,
+            weight: 0.25,
+            color: .orange
+        )
+        
+        // Total Entry Rank
+        HStack {
+            Text("Total Entry Rank")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            Spacer()
+            Text("\(Int(rank.entryRank ?? rank.effectiveCompositeRank))/100")
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(rank.compositeColor)
+        }
+        .padding(.top, 8)
+        
+        // Also show monitor rank for comparison
+        Text("Monitor Rank: \(Int(rank.effectiveCompositeRank))/100")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+    
+    @ViewBuilder
+    private var exitModeContributions: some View {
+        // EXIT MODE: Profit 50%, Deterioration 30%, Time 20%
+        ContributionRow(
+            label: "Profit Protection",
+            score: rank.profitProtectionScore ?? 50,
+            weight: 0.50,
+            color: .green
+        )
+        
+        ContributionRow(
+            label: "Deterioration Score",
+            score: rank.deteriorationScore ?? 50,
+            weight: 0.30,
+            color: .red
+        )
+        
+        ContributionRow(
+            label: "Time Urgency",
+            score: rank.timeUrgencyScore ?? 50,
+            weight: 0.20,
+            color: .orange
+        )
+        
+        // Total Exit Rank
+        HStack {
+            Text("Total Exit Rank")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            Spacer()
+            Text("\(Int(rank.exitRank ?? rank.effectiveCompositeRank))/100")
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(rank.compositeColor)
+        }
+        .padding(.top, 8)
+        
+        // Also show monitor rank for comparison
+        Text("Monitor Rank: \(Int(rank.effectiveCompositeRank))/100")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+    
+    @ViewBuilder
+    private var monitorModeContributions: some View {
+        // MONITOR MODE: Momentum 40%, Value 35%, Greeks 25%
+        ContributionRow(
+            label: "Momentum Score",
+            score: rank.momentumScore ?? 0,
+            weight: MOMENTUM_WEIGHT,
+            color: .green
+        )
+        
+        ContributionRow(
+            label: "Value Score",
+            score: rank.valueScore ?? 0,
+            weight: VALUE_WEIGHT,
+            color: .blue
+        )
+        
+        ContributionRow(
+            label: "Greeks Score",
+            score: rank.greeksScore ?? 0,
+            weight: GREEKS_WEIGHT,
+            color: .orange
+        )
+        
+        // Total Composite Rank
+        HStack {
+            Text("Total Composite Rank")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            Spacer()
+            Text("\(rank.compositeScoreDisplay)/100")
+                .font(.title3)
+                .fontWeight(.bold)
+                .foregroundColor(rank.compositeColor)
+        }
+        .padding(.top, 8)
     }
     
     // MARK: - Quality Adjustments
@@ -92,14 +205,14 @@ struct WhyRankedTabView: View {
                 label: "Liquidity Confidence",
                 value: rank.liquidityLabel,
                 isPassing: (rank.liquidityConfidence ?? 0) >= 0.5,
-                detail: rank.liquidityConfidence.map { "\($0, specifier: "%.2f")" } ?? "N/A"
+                detail: rank.liquidityConfidence.map { String(format: "%.2f", $0) } ?? "N/A"
             )
             
             AdjustmentRow(
                 label: "Spread Quality",
                 value: spreadQualityLabel,
                 isPassing: (rank.spreadPctDisplay ?? 100) < 5.0,
-                detail: rank.spreadPctDisplay.map { "\($0, specifier: "%.1f")%" } ?? "N/A"
+                detail: rank.spreadPctDisplay.map { String(format: "%.1f%%", $0) } ?? "N/A"
             )
             
             AdjustmentRow(
@@ -235,7 +348,7 @@ struct WhyRankedTabView: View {
                     RuleRow(
                         icon: "waveform.path.ecg",
                         label: "Greeks Exits",
-                        value: "Δ<\(genes.deltaExit, specifier: "%.2f")",
+                        value: "Δ<\(String(format: "%.2f", genes.deltaExit))",
                         passed: nil
                     )
                 }
@@ -249,7 +362,7 @@ struct WhyRankedTabView: View {
         GroupBox("Risk Management") {
             HStack(spacing: 16) {
                 VStack {
-                    Text("\(genes.positionSizePct, specifier: "%.1f")%")
+                    Text(String(format: "%.1f%%", genes.positionSizePct))
                         .font(.title3)
                         .fontWeight(.bold)
                     Text("Position Size")
@@ -416,18 +529,18 @@ struct WhyRankedTabView: View {
         // Add underlying context
         if let ret7d = rank.underlying7dReturn {
             if ret7d > 2.0 {
-                explanation += ". The underlying has shown positive 7-day momentum (+\(ret7d, specifier: "%.1f")%)"
+                explanation += ". The underlying has shown positive 7-day momentum (+\(String(format: "%.1f%%", ret7d)))"
             } else if ret7d < -2.0 {
-                explanation += ". Note: The underlying has shown negative 7-day momentum (\(ret7d, specifier: "%.1f")%)"
+                explanation += ". Note: The underlying has shown negative 7-day momentum (\(String(format: "%.1f%%", ret7d)))"
             }
         }
         
         // Add volatility context
         if let vol = rank.underlying7dVolatility {
             if vol < 20.0 {
-                explanation += " with low volatility (\(vol, specifier: "%.1f")%)"
+                explanation += " with low volatility (\(String(format: "%.1f%%", vol)))"
             } else if vol > 35.0 {
-                explanation += " with elevated volatility (\(vol, specifier: "%.1f")%)"
+                explanation += " with elevated volatility (\(String(format: "%.1f%%", vol)))"
             }
         }
         
@@ -464,7 +577,7 @@ private struct ContributionRow: View {
             Text("=")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text("+\(contribution, specifier: "%.1f")")
+            Text(String(format: "+%.1f", contribution))
                 .font(.subheadline)
                 .fontWeight(.semibold)
                 .foregroundColor(color)
@@ -621,7 +734,8 @@ private struct FlowLayout: Layout {
     ScrollView {
         WhyRankedTabView(
             rank: OptionRank.example,
-            strategy: GAStrategy.example
+            strategy: GAStrategy.example,
+            rankingMode: .entry
         )
         .padding()
     }

@@ -27,6 +27,7 @@ from src.models.options_momentum_ranker import (  # noqa: E402
     CalibratedMomentumRanker,
     IVStatistics,
     OptionsMomentumRanker,
+    RankingMode,
 )
 from src.options_historical_backfill import ensure_options_history  # noqa: E402
 
@@ -324,8 +325,8 @@ def _sanitize_number(value: float | int | None, default: float = 0.0) -> float:
     return num
 
 
-def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
-    """Save ranked options to database with momentum framework scores."""
+def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame, ranking_mode: str = "monitor") -> int:
+    """Save ranked options to database with momentum framework scores and entry/exit rankings."""
     saved_count = 0
     run_at = datetime.utcnow().isoformat()
 
@@ -363,16 +364,30 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
                     _sanitize_number(row.get("openInterest", row.get("open_interest", 0)))
                 ),
                 "run_at": run_at,
-                # Momentum Framework scores
+                # Mode tracking
+                "ranking_mode": ranking_mode,
+                # Momentum Framework scores (always populated)
                 "composite_rank": composite_rank,
                 "momentum_score": _sanitize_number(row.get("momentum_score", 0)),
                 "value_score": _sanitize_number(row.get("value_score", 0)),
                 "greeks_score": _sanitize_number(row.get("greeks_score", 0)),
+                # Entry/Exit mode-specific ranks
+                "entry_rank": _sanitize_number(row.get("entry_rank")) if "entry_rank" in row else None,
+                "exit_rank": _sanitize_number(row.get("exit_rank")) if "exit_rank" in row else None,
+                # Entry mode component scores
+                "entry_value_score": _sanitize_number(row.get("entry_value_score")) if "entry_value_score" in row else None,
+                "catalyst_score": _sanitize_number(row.get("catalyst_score")) if "catalyst_score" in row else None,
+                "iv_percentile": _sanitize_number(row.get("iv_percentile")) if "iv_percentile" in row else None,
+                "iv_discount_score": _sanitize_number(row.get("iv_discount_score")) if "iv_discount_score" in row else None,
+                # Exit mode component scores
+                "profit_protection_score": _sanitize_number(row.get("profit_protection_score")) if "profit_protection_score" in row else None,
+                "deterioration_score": _sanitize_number(row.get("deterioration_score")) if "deterioration_score" in row else None,
+                "time_urgency_score": _sanitize_number(row.get("time_urgency_score")) if "time_urgency_score" in row else None,
+                # Other scores
                 "iv_rank": _sanitize_number(row.get("iv_rank", 0)),
                 "spread_pct": _sanitize_number(row.get("spread_pct", 0)),
                 "vol_oi_ratio": _sanitize_number(row.get("vol_oi_ratio", 0)),
                 "liquidity_confidence": _sanitize_number(row.get("liquidity_confidence", 1.0)),
-                "ranking_mode": str(row.get("ranking_mode", "entry")),
                 "relative_value_score": _sanitize_number(row.get("relative_value_score", 0)),
                 "entry_difficulty_score": _sanitize_number(
                     row.get("entry_difficulty_score", 0)
@@ -401,6 +416,7 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
             saved_count += 1
         except Exception as e:
             logger.error(f"Error saving rank for {row.get('contract_symbol')}: {e}")
+            logger.error(f"Row data: {row.to_dict()}")
 
     return saved_count
 
@@ -491,6 +507,7 @@ def determine_trend(df_ohlc: pd.DataFrame) -> str:
 def process_symbol_options(
     symbol: str,
     ranking_mode: str = "entry",
+    entry_price: float | None = None,
     use_calibration: bool = True,
     use_regime_conditioning: bool = True,
 ) -> None:
@@ -504,7 +521,8 @@ def process_symbol_options(
 
     Args:
         symbol: Stock ticker symbol
-        ranking_mode: 'entry' or 'exit'
+        ranking_mode: 'entry', 'exit', or 'monitor'
+        entry_price: Entry price for exit mode (optional, required for exit mode)
         use_calibration: Apply isotonic calibration
         use_regime_conditioning: Adjust weights by market regime
     """
@@ -603,6 +621,21 @@ def process_symbol_options(
 
         previous_rankings = fetch_previous_rankings(symbol_id, ranking_mode)
 
+        # Convert ranking_mode string to RankingMode enum
+        mode_enum = RankingMode[ranking_mode.upper()]
+        
+        # Prepare entry_data for EXIT mode
+        entry_data = None
+        if mode_enum == RankingMode.EXIT:
+            if entry_price is None:
+                logger.warning(
+                    f"EXIT mode requires --entry-price parameter, using mark price as fallback"
+                )
+            entry_data = {"entry_price": entry_price} if entry_price else None
+
+        logger.info(f"Ranking in {mode_enum.value.upper()} mode" + 
+                   (f" with entry_price=${entry_price}" if entry_price else ""))
+
         # Use calibrated ranking with regime conditioning and underlying metrics
         ranked_df = ranker.rank_options_calibrated(
             options_df,
@@ -611,8 +644,9 @@ def process_symbol_options(
             underlying_df=df_ohlc if use_regime_conditioning else None,
             underlying_trend=underlying_trend,
             previous_rankings=(previous_rankings if not previous_rankings.empty else None),
-            ranking_mode=ranking_mode,
             underlying_metrics=underlying_metrics,
+            mode=mode_enum,
+            entry_data=entry_data,
         )
 
         # Log regime info if available
@@ -648,9 +682,9 @@ def process_symbol_options(
 
         # Save top contracts with balanced expiry distribution
         top_ranked = select_balanced_expiry_contracts(ranked_df)
-        saved_count = save_rankings_to_db(symbol_id, top_ranked)
+        saved_count = save_rankings_to_db(symbol_id, top_ranked, ranking_mode)
 
-        logger.info(f"Saved {saved_count} ranked contracts for {symbol}")
+        logger.info(f"Saved {saved_count} {ranking_mode.upper()} ranked contracts for {symbol}")
 
         # Include options from active multi-leg strategies
         active_strategy_options = db.get_active_strategy_options(symbol_id)
@@ -754,7 +788,21 @@ def process_symbol_options(
 
 def main() -> None:
     """Main options ranking job entry point."""
-    parser = argparse.ArgumentParser(description="Rank options contracts using Momentum Framework")
+    parser = argparse.ArgumentParser(
+        description="Rank options contracts using Momentum Framework",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # ENTRY mode: Find undervalued buying opportunities
+  python -m src.options_ranking_job --symbol AAPL --mode entry
+
+  # EXIT mode: Detect optimal selling points (requires entry price)
+  python -m src.options_ranking_job --symbol AAPL --mode exit --entry-price 2.50
+
+  # MONITOR mode: Balanced ranking for general monitoring
+  python -m src.options_ranking_job --symbol AAPL --mode monitor
+        """
+    )
     parser.add_argument(
         "--symbol",
         type=str,
@@ -763,11 +811,24 @@ def main() -> None:
     parser.add_argument(
         "--mode",
         type=str,
-        default="entry",
-        choices=["entry", "exit"],
-        help="Ranking mode: entry (default) or exit.",
+        default="monitor",
+        choices=["entry", "exit", "monitor"],
+        help="Ranking mode: entry (buy signals), exit (sell signals), or monitor (balanced).",
+    )
+    parser.add_argument(
+        "--entry-price",
+        type=float,
+        default=None,
+        help="Entry price for EXIT mode. Required for accurate profit/loss calculation in exit mode.",
     )
     args = parser.parse_args()
+
+    # Validate EXIT mode requirements
+    if args.mode == "exit" and args.entry_price is None:
+        logger.warning(
+            "EXIT mode works best with --entry-price specified. "
+            "Will use mark price as fallback, which may not reflect actual position."
+        )
 
     # Determine which symbols to process
     if args.symbol:
@@ -777,6 +838,9 @@ def main() -> None:
 
     logger.info("=" * 80)
     logger.info("Starting Options Ranking Job")
+    logger.info(f"Mode: {args.mode.upper()}")
+    if args.entry_price:
+        logger.info(f"Entry Price: ${args.entry_price:.2f}")
     logger.info(f"Processing {len(symbols_to_process)} symbol(s): {', '.join(symbols_to_process)}")
     logger.info("=" * 80)
 
@@ -785,7 +849,11 @@ def main() -> None:
 
     for symbol in symbols_to_process:
         try:
-            process_symbol_options(symbol, ranking_mode=args.mode)
+            process_symbol_options(
+                symbol, 
+                ranking_mode=args.mode,
+                entry_price=args.entry_price
+            )
             symbols_processed += 1
         except Exception as e:
             logger.error(f"Failed to process options for {symbol}: {e}")
@@ -793,6 +861,7 @@ def main() -> None:
 
     logger.info("=" * 80)
     logger.info("Options Ranking Job Complete")
+    logger.info(f"Mode: {args.mode.upper()}")
     logger.info(f"Processed: {symbols_processed}")
     logger.info(f"Failed: {symbols_failed}")
     logger.info("=" * 80)
