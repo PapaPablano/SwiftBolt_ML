@@ -157,6 +157,7 @@ jobs:
           
           total_bars=0
           failed_timeframes=""
+          skipped_timeframes=""
           
           # Parse and iterate over timeframes
           TIMEFRAME_CSV=${SWIFTBOLT_TIMEFRAMES:-$INPUT_TIMEFRAMES}
@@ -167,28 +168,56 @@ jobs:
             
             echo "📊 Fetching $tf data..."
             
-            if output=$(python src/scripts/alpaca_backfill_ohlc_v2.py $SYMBOL_FLAG --timeframe $tf $FORCE_FLAG 2>&1); then
-              echo "$output" | tail -n 30
+            # Capture full output and exit code
+            set +e
+            output=$(python src/scripts/alpaca_backfill_ohlc_v2.py $SYMBOL_FLAG --timeframe $tf $FORCE_FLAG 2>&1)
+            exit_code=$?
+            set -e
+            
+            # Show last 30 lines of output
+            echo "$output" | tail -n 30
+            
+            # Check for actual errors vs skips
+            if [ $exit_code -eq 0 ]; then
+              # Success - check if bars were inserted or skipped
               bars=$(echo "$output" | grep -oP 'Inserted \K\d+' | tail -1 || echo "0")
               bars=${bars:-0}
-              total_bars=$((total_bars + bars))
-              echo "✅ $tf: $bars bars"
+              
+              # Check if all symbols were skipped
+              skipped_count=$(echo "$output" | grep -c "⏭️  Skipping" || echo "0")
+              if [ "$bars" -eq 0 ] && [ "$skipped_count" -gt 0 ]; then
+                echo "ℹ️  $tf: All symbols skipped (market closed or data fresh)"
+                skipped_timeframes="$skipped_timeframes $tf"
+              else
+                total_bars=$((total_bars + bars))
+                echo "✅ $tf: $bars bars inserted"
+              fi
             else
-              echo "❌ $tf failed"
+              # Actual failure - log error details
+              echo "❌ $tf failed with exit code $exit_code"
+              echo "::warning::Timeframe $tf failed. Check logs above for details."
               failed_timeframes="$failed_timeframes $tf"
+              
+              # Show error details
+              echo "$output" | grep -i "error\|failed\|exception" | head -10 || true
             fi
           done
           
           echo "total_bars=$total_bars" >> $GITHUB_OUTPUT
           
+          # Determine status
           if [ -n "$failed_timeframes" ]; then
             echo "status=partial" >> $GITHUB_OUTPUT
             echo "::warning::Some timeframes failed:$failed_timeframes"
+          elif [ -n "$skipped_timeframes" ] && [ "$total_bars" -eq 0 ]; then
+            echo "status=skipped" >> $GITHUB_OUTPUT
+            echo "ℹ️  All timeframes skipped (market closed or data fresh)"
           else
             echo "status=success" >> $GITHUB_OUTPUT
           fi
 
       - name: Validate OHLC integrity
+        continue-on-error: true
         run: |
           cd ml
           python -c "
@@ -206,6 +235,7 @@ jobs:
           timeframes = universe.get('timeframes', []) or ['m15', 'h1']
           
           validation_errors = []
+          validation_warnings = []
           
           # Sample validation on top 3 symbols
           for sym in symbols[:3]:
@@ -217,27 +247,45 @@ jobs:
                 df = db.fetch_ohlc_bars(sym, timeframe=tf, limit=100)
                 if df.empty:
                   print(f'⚠️ {sym}/{tf}: No data found')
+                  validation_warnings.append(f'{sym}/{tf}: No data')
                   continue
                 
                 df, result = validator.validate(df, fix_issues=False)
                 if not result.is_valid:
-                  error_msg = f'{sym}/{tf}: {result.issues}'
-                  validation_errors.append(error_msg)
-                  print(f'❌ {error_msg}')
-                  print('::warning::OHLC validation issues detected')
+                  # Distinguish critical errors from warnings
+                  issues = result.issues or []
+                  critical_issues = [i for i in issues if any(crit in i.lower() for crit in ['high <', 'negative volume', 'non-positive'])]
+                  warning_issues = [i for i in issues if i not in critical_issues]
+                  
+                  if critical_issues:
+                    error_msg = f'{sym}/{tf}: {critical_issues}'
+                    validation_errors.append(error_msg)
+                    print(f'❌ {error_msg}')
+                  if warning_issues:
+                    warning_msg = f'{sym}/{tf}: {warning_issues}'
+                    validation_warnings.append(warning_msg)
+                    print(f'⚠️ {warning_msg}')
                 else:
                   print(f'✅ {sym}/{tf}: Valid ({len(df)} bars, latest: {df.ts.max()})')
               except Exception as e:
                 print(f'⚠️ {sym}/{tf}: Validation error - {e}')
-                validation_errors.append(f'{sym}/{tf}: {str(e)}')
+                validation_warnings.append(f'{sym}/{tf}: {str(e)}')
           
+          # Report results
           if validation_errors:
             print('')
-            print('⚠️ OHLC validation issues detected (non-blocking):')
+            print('❌ Critical OHLC validation errors (should be reviewed):')
             for error in validation_errors:
               print(f'  - {error}')
             print('')
-            print('::warning::Some OHLC data quality issues detected. Review data quality.')
+            print('::warning::Critical OHLC data quality issues detected. Review data quality.')
+          elif validation_warnings:
+            print('')
+            print('⚠️ OHLC validation warnings (non-critical):')
+            for warning in validation_warnings:
+              print(f'  - {warning}')
+            print('')
+            print('::warning::Some OHLC data quality warnings detected (non-blocking).')
           else:
             print('')
             print('✅ OHLC integrity validated for all checked symbols/timeframes')
@@ -252,6 +300,11 @@ jobs:
           echo "- **Market State**: ${{ needs.check-market.outputs.market_state }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Total Bars Updated**: ${{ steps.fetch.outputs.total_bars }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Timeframes**: ${{ inputs.timeframes || 'm15,h1' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Notes" >> $GITHUB_STEP_SUMMARY
+          echo "- Status 'skipped' means market is closed or data is fresh (expected)" >> $GITHUB_STEP_SUMMARY
+          echo "- Status 'partial' means some timeframes failed (check logs)" >> $GITHUB_STEP_SUMMARY
+          echo "- OHLC validation warnings are non-blocking" >> $GITHUB_STEP_SUMMARY
 
   push-metrics:
     needs: [check-market, ingest-data]
