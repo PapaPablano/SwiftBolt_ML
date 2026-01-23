@@ -1542,6 +1542,88 @@ final class APIClient {
         return try await performRequest(urlRequest)
     }
     
+    // MARK: - Greeks Surface
+    
+    /// Get 3D Greeks surface data for visualization
+    func fetchGreeksSurface(request: GreeksSurfaceRequest) async throws -> GreeksSurfaceResponse {
+        var urlRequest = URLRequest(url: functionURL("greeks-surface"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Build JSON request
+        var jsonDict: [String: Any] = [
+            "symbol": request.symbol,
+            "underlyingPrice": request.underlyingPrice,
+            "volatility": request.volatility
+        ]
+        
+        if let riskFreeRate = request.riskFreeRate {
+            jsonDict["riskFreeRate"] = riskFreeRate
+        }
+        if let optionType = request.optionType {
+            jsonDict["optionType"] = optionType
+        }
+        if let strikeRange = request.strikeRange {
+            jsonDict["strikeRange"] = strikeRange
+        }
+        if let timeRange = request.timeRange {
+            jsonDict["timeRange"] = timeRange
+        }
+        if let nStrikes = request.nStrikes {
+            jsonDict["nStrikes"] = nStrikes
+        }
+        if let nTimes = request.nTimes {
+            jsonDict["nTimes"] = nTimes
+        }
+        if let greek = request.greek {
+            jsonDict["greek"] = greek
+        }
+        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
+        
+        return try await performRequest(urlRequest)
+    }
+    
+    // MARK: - Volatility Surface
+    
+    /// Get 3D volatility surface data for visualization
+    func fetchVolatilitySurface(request: VolatilitySurfaceRequest) async throws -> VolatilitySurfaceResponse {
+        var urlRequest = URLRequest(url: functionURL("volatility-surface"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Build JSON request
+        var jsonDict: [String: Any] = [
+            "symbol": request.symbol,
+            "slices": request.slices.map { slice in
+                var sliceDict: [String: Any] = [
+                    "maturityDays": slice.maturityDays,
+                    "strikes": slice.strikes,
+                    "impliedVols": slice.impliedVols
+                ]
+                if let forwardPrice = slice.forwardPrice {
+                    sliceDict["forwardPrice"] = forwardPrice
+                }
+                return sliceDict
+            }
+        ]
+        
+        if let nStrikes = request.nStrikes {
+            jsonDict["nStrikes"] = nStrikes
+        }
+        if let nMaturities = request.nMaturities {
+            jsonDict["nMaturities"] = nMaturities
+        }
+        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
+        
+        return try await performRequest(urlRequest)
+    }
+    
     // MARK: - Portfolio Optimization
     
     /// Optimize portfolio allocation

@@ -34,11 +34,12 @@ final class ModelTrainingViewModel: ObservableObject {
     
     var symbol: String?
     
-    init(networkMonitor: NetworkMonitor = .shared) {
-        self.networkMonitor = networkMonitor
+    init(networkMonitor: NetworkMonitor? = nil) {
+        // Access NetworkMonitor.shared on main actor
+        self.networkMonitor = networkMonitor ?? NetworkMonitor.shared
         
         // Monitor network status
-        networkMonitor.$isConnected
+        self.networkMonitor.$isConnected
             .receive(on: DispatchQueue.main)
             .sink { [weak self] connected in
                 self?.isOffline = !connected

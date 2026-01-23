@@ -10,7 +10,7 @@ struct ForecastQualityRequest: Codable {
 
 // MARK: - Forecast Quality Response
 
-struct ForecastQualityResponse: Decodable {
+struct ForecastQualityResponse: Codable {
     let symbol: String
     let horizon: String
     let timeframe: String
@@ -21,7 +21,7 @@ struct ForecastQualityResponse: Decodable {
     let timestamp: String
 }
 
-struct QualityIssue: Decodable {
+struct QualityIssue: Codable {
     let level: String
     let type: String
     let message: String

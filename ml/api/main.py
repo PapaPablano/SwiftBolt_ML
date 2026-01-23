@@ -13,10 +13,12 @@ from fastapi.responses import JSONResponse
 from api.routers import (
     backtest,
     forecast_quality,
+    greeks_surface,
     model_training,
     portfolio,
     stress_test,
     technical_indicators,
+    volatility_surface,
     walk_forward,
 )
 
@@ -62,6 +64,8 @@ app.include_router(portfolio.router, prefix="/api/v1", tags=["Portfolio Optimiza
 app.include_router(stress_test.router, prefix="/api/v1", tags=["Stress Testing"])
 app.include_router(model_training.router, prefix="/api/v1", tags=["Model Training"])
 app.include_router(forecast_quality.router, prefix="/api/v1", tags=["Forecast Quality"])
+app.include_router(greeks_surface.router, prefix="/api/v1", tags=["Options Greeks"])
+app.include_router(volatility_surface.router, prefix="/api/v1", tags=["Volatility Surfaces"])
 
 
 @app.get("/")

@@ -41,7 +41,7 @@ actor RequestDeduplicator {
         let task = Task<T, Error> {
             let result = try await operation()
             // Remove from in-flight when complete
-            await removeRequest(key: key)
+            removeRequest(key: key)
             return result
         }
         
@@ -52,7 +52,7 @@ actor RequestDeduplicator {
             return result
         } catch {
             // Remove from in-flight on error
-            await removeRequest(key: key)
+            removeRequest(key: key)
             throw error
         }
     }

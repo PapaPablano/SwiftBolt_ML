@@ -126,6 +126,7 @@
 		MF0001012345678900000009 /* SecondaryDataSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000009 /* SecondaryDataSource.swift */; };
 		MF0001012345678900000010 /* SplitAdjustmentAlert.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000010 /* SplitAdjustmentAlert.swift */; };
 		MF0001012345678900014 /* SkeletonViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900014 /* SkeletonViews.swift */; };
+		MF0001012345678900015 /* StandardStateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900015 /* StandardStateViews.swift */; };
 		OHC10001233456780000001 /* OptionHistoryChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = OHC20001233456780000001 /* OptionHistoryChartView.swift */; };
 		SA0000012345678900000003 /* StrikeAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SA0000012345678900000004 /* StrikeAnalysisView.swift */; };
 		SR0000012345678900000001 /* SupportResistanceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000002 /* SupportResistanceModels.swift */; };
@@ -143,6 +144,12 @@
 		F63BBA282F22F047003EE3B0 /* ForecastQualityViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA2C2F22F047003EE3B0 /* ForecastQualityViewModel.swift */; };
 		F63BBA292F22F047003EE3B0 /* ModelTrainingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA2D2F22F047003EE3B0 /* ModelTrainingView.swift */; };
 		F63BBA2A2F22F047003EE3B0 /* ForecastQualityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA2E2F22F047003EE3B0 /* ForecastQualityView.swift */; };
+		GS0000012345678900000001 /* GreeksSurfaceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = GS0000012345678900000002 /* GreeksSurfaceModels.swift */; };
+		GS0000012345678900000003 /* VolatilitySurfaceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = GS0000012345678900000004 /* VolatilitySurfaceModels.swift */; };
+		GS0000012345678900000005 /* GreeksSurfaceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = GS0000012345678900000006 /* GreeksSurfaceViewModel.swift */; };
+		GS0000012345678900000007 /* VolatilitySurfaceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = GS0000012345678900000008 /* VolatilitySurfaceViewModel.swift */; };
+		GS0000012345678900000009 /* GreeksSurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GS0000012345678900000010 /* GreeksSurfaceView.swift */; };
+		GS0000012345678900000011 /* VolatilitySurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GS0000012345678900000012 /* VolatilitySurfaceView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -261,6 +268,7 @@
 		MF0002012345678900000009 /* SecondaryDataSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecondaryDataSource.swift; sourceTree = "<group>"; };
 		MF0002012345678900000010 /* SplitAdjustmentAlert.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplitAdjustmentAlert.swift; sourceTree = "<group>"; };
 		MF0002012345678900014 /* SkeletonViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonViews.swift; sourceTree = "<group>"; };
+		MF0002012345678900015 /* StandardStateViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StandardStateViews.swift; sourceTree = "<group>"; };
 		OHC20001233456780000001 /* OptionHistoryChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionHistoryChartView.swift; sourceTree = "<group>"; };
 		SA0000012345678900000004 /* StrikeAnalysisView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrikeAnalysisView.swift; sourceTree = "<group>"; };
 		SR0000012345678900000002 /* SupportResistanceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportResistanceModels.swift; sourceTree = "<group>"; };
@@ -278,6 +286,12 @@
 		F63BBA2C2F22F047003EE3B0 /* ForecastQualityViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastQualityViewModel.swift; sourceTree = "<group>"; };
 		F63BBA2D2F22F047003EE3B0 /* ModelTrainingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTrainingView.swift; sourceTree = "<group>"; };
 		F63BBA2E2F22F047003EE3B0 /* ForecastQualityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastQualityView.swift; sourceTree = "<group>"; };
+		GS0000012345678900000002 /* GreeksSurfaceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GreeksSurfaceModels.swift; sourceTree = "<group>"; };
+		GS0000012345678900000004 /* VolatilitySurfaceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolatilitySurfaceModels.swift; sourceTree = "<group>"; };
+		GS0000012345678900000006 /* GreeksSurfaceViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GreeksSurfaceViewModel.swift; sourceTree = "<group>"; };
+		GS0000012345678900000008 /* VolatilitySurfaceViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolatilitySurfaceViewModel.swift; sourceTree = "<group>"; };
+		GS0000012345678900000010 /* GreeksSurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GreeksSurfaceView.swift; sourceTree = "<group>"; };
+		GS0000012345678900000012 /* VolatilitySurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolatilitySurfaceView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -378,6 +392,8 @@
 				F63BBA1E2F22F047003EE3B1 /* StressTestingView.swift */,
 				F63BBA2D2F22F047003EE3B0 /* ModelTrainingView.swift */,
 				F63BBA2E2F22F047003EE3B0 /* ForecastQualityView.swift */,
+				GS0000012345678900000010 /* GreeksSurfaceView.swift */,
+				GS0000012345678900000012 /* VolatilitySurfaceView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -392,6 +408,8 @@
 				F63BBA1A2F22F047003EE3B0 /* WalkForwardViewModel.swift */,
 				F63BBA2B2F22F047003EE3B0 /* ModelTrainingViewModel.swift */,
 				F63BBA2C2F22F047003EE3B0 /* ForecastQualityViewModel.swift */,
+				GS0000012345678900000006 /* GreeksSurfaceViewModel.swift */,
+				GS0000012345678900000008 /* VolatilitySurfaceViewModel.swift */,
 				A2000016233456780000016 /* SymbolSearchViewModel.swift */,
 				A2000017233456780000017 /* ChartViewModel.swift */,
 				A2000018233456780000018 /* NewsViewModel.swift */,
@@ -419,6 +437,8 @@
 				F63BBA102F22EFF2003EE3B0 /* WalkForwardModels.swift */,
 				F63BBA112F22F047003EE3B0 /* ModelTrainingModels.swift */,
 				F63BBA122F22F047003EE3B0 /* ForecastQualityModels.swift */,
+				GS0000012345678900000002 /* GreeksSurfaceModels.swift */,
+				GS0000012345678900000004 /* VolatilitySurfaceModels.swift */,
 				F6FD04832F0D8B0C00AF337E /* Timeframe.swift */,
 				A2000008233456780000008 /* Symbol.swift */,
 				A2000009233456780000009 /* OHLCBar.swift */,
@@ -513,6 +533,7 @@
 				MF0002012345678900000007 /* MarketStatusBadge.swift */,
 				MF0002012345678900000010 /* SplitAdjustmentAlert.swift */,
 				MF0002012345678900014 /* SkeletonViews.swift */,
+				MF0002012345678900015 /* StandardStateViews.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -704,10 +725,16 @@
 				F63BBA242F22F047003EE3B0 /* StressTestingView.swift in Sources */,
 				F63BBA252F22F047003EE3B0 /* ModelTrainingModels.swift in Sources */,
 				F63BBA262F22F047003EE3B0 /* ForecastQualityModels.swift in Sources */,
+				GS0000012345678900000001 /* GreeksSurfaceModels.swift in Sources */,
+				GS0000012345678900000003 /* VolatilitySurfaceModels.swift in Sources */,
 				F63BBA272F22F047003EE3B0 /* ModelTrainingViewModel.swift in Sources */,
 				F63BBA282F22F047003EE3B0 /* ForecastQualityViewModel.swift in Sources */,
+				GS0000012345678900000005 /* GreeksSurfaceViewModel.swift in Sources */,
+				GS0000012345678900000007 /* VolatilitySurfaceViewModel.swift in Sources */,
 				F63BBA292F22F047003EE3B0 /* ModelTrainingView.swift in Sources */,
 				F63BBA2A2F22F047003EE3B0 /* ForecastQualityView.swift in Sources */,
+				GS0000012345678900000009 /* GreeksSurfaceView.swift in Sources */,
+				GS0000012345678900000011 /* VolatilitySurfaceView.swift in Sources */,
 				296D2C72648D45A18BC89C2B /* EnsureCoverageResponse.swift in Sources */,
 				56BCC553C667467C9F9DE1FA /* HydrationBanner.swift in Sources */,
 				F768A2A036F22E169CA9E8AC /* ReloadWatchlistResponse.swift in Sources */,
@@ -725,6 +752,7 @@
 				MF0001012345678900000009 /* SecondaryDataSource.swift in Sources */,
 				MF0001012345678900000010 /* SplitAdjustmentAlert.swift in Sources */,
 				MF0001012345678900014 /* SkeletonViews.swift in Sources */,
+				MF0001012345678900015 /* StandardStateViews.swift in Sources */,
 				58915B99544CE669C3BB6296 /* MultiLegModels.swift in Sources */,
 				4EAB66F38FF78FD33424EBD2 /* MultiLegViewModel.swift in Sources */,
 				E86094E11441AE6E464BA239 /* MultiLegStrategyListView.swift in Sources */,

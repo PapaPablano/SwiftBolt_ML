@@ -90,6 +90,21 @@ struct AnalysisView: View {
                         symbol: symbol,
                         timeframe: chartViewModel.timeframe.rawValue
                     )
+                    
+                    Divider()
+                    
+                    // Greeks Surface Section
+                    if let currentPrice = chartViewModel.liveQuote?.last ?? chartViewModel.bars.last?.close {
+                        GreeksSurfaceSection(
+                            symbol: symbol,
+                            underlyingPrice: currentPrice
+                        )
+                    }
+                    
+                    Divider()
+                    
+                    // Volatility Surface Section
+                    VolatilitySurfaceSection(symbol: symbol)
                 } else {
                     #if DEBUG
                     let _ = print("[AnalysisView] No symbol selected - ML sections hidden")
@@ -1005,6 +1020,176 @@ private struct ForecastQualitySectionAnalysis: View {
             }
             .frame(minWidth: 1000, minHeight: 700)
         }
+    }
+}
+
+// MARK: - Greeks Surface Section
+
+private struct GreeksSurfaceSection: View {
+    let symbol: String
+    let underlyingPrice: Double
+    @State private var showGreeksSurfaceView = false
+    @State private var volatility: Double = 0.25
+    @State private var riskFreeRate: Double = 0.05
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "chart.3d")
+                    .font(.title3)
+                    .foregroundStyle(.orange)
+                Text("Greeks Surface")
+                    .font(.title3.bold())
+                Spacer()
+            }
+            
+            Text("3D visualization of option Greeks (Delta, Gamma, Theta, Vega, Rho)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            VStack(spacing: 8) {
+                HStack {
+                    Text("Volatility:")
+                        .font(.caption)
+                    Slider(value: $volatility, in: 0.1...0.5, step: 0.01)
+                    Text("\(Int(volatility * 100))%")
+                        .font(.caption)
+                        .frame(width: 40)
+                }
+                
+                HStack {
+                    Text("Risk-Free Rate:")
+                        .font(.caption)
+                    Slider(value: $riskFreeRate, in: 0.0...0.1, step: 0.01)
+                    Text("\(Int(riskFreeRate * 100))%")
+                        .font(.caption)
+                        .frame(width: 40)
+                }
+            }
+            
+            Button(action: {
+                showGreeksSurfaceView = true
+            }) {
+                HStack {
+                    Text("Open Greeks Surface")
+                    Image(systemName: "arrow.right")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(16)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .sheet(isPresented: $showGreeksSurfaceView) {
+            NavigationStack {
+                GreeksSurfaceView(
+                    symbol: symbol,
+                    underlyingPrice: underlyingPrice,
+                    volatility: volatility,
+                    riskFreeRate: riskFreeRate
+                )
+            }
+            .frame(minWidth: 1200, minHeight: 800)
+        }
+    }
+}
+
+// MARK: - Volatility Surface Section
+
+private struct VolatilitySurfaceSection: View {
+    let symbol: String
+    @State private var showVolatilitySurfaceView = false
+    @State private var slices: [VolatilitySurfaceSlice] = []
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "waveform.path.ecg")
+                    .font(.title3)
+                    .foregroundStyle(.purple)
+                Text("Volatility Surface")
+                    .font(.title3.bold())
+                Spacer()
+            }
+            
+            Text("3D visualization of implied volatility surface across strikes and maturities")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            if slices.isEmpty {
+                Text("⚠️ No volatility slices available. Fetch options data first.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else {
+                Text("\(slices.count) volatility slices ready")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Button(action: {
+                // For now, create sample slices if none exist
+                if slices.isEmpty {
+                    slices = createSampleSlices()
+                }
+                showVolatilitySurfaceView = true
+            }) {
+                HStack {
+                    Text(slices.isEmpty ? "Generate Sample Surface" : "Open Volatility Surface")
+                    Image(systemName: "arrow.right")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(16)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .sheet(isPresented: $showVolatilitySurfaceView) {
+            NavigationStack {
+                VolatilitySurfaceView(
+                    symbol: symbol,
+                    slices: slices
+                )
+            }
+            .frame(minWidth: 1200, minHeight: 800)
+        }
+    }
+    
+    private func createSampleSlices() -> [VolatilitySurfaceSlice] {
+        // Create sample volatility slices for demonstration
+        let strikes = [140.0, 145.0, 150.0, 155.0, 160.0]
+        let baseVol = 0.25
+        
+        return [
+            VolatilitySurfaceSlice(
+                maturityDays: 30,
+                strikes: strikes,
+                impliedVols: strikes.map { strike in
+                    let moneyness = strike / 150.0
+                    return baseVol + 0.05 * pow(moneyness - 1.0, 2)
+                },
+                forwardPrice: 150.0
+            ),
+            VolatilitySurfaceSlice(
+                maturityDays: 60,
+                strikes: strikes,
+                impliedVols: strikes.map { strike in
+                    let moneyness = strike / 150.0
+                    return baseVol + 0.03 * pow(moneyness - 1.0, 2)
+                },
+                forwardPrice: 150.0
+            ),
+            VolatilitySurfaceSlice(
+                maturityDays: 90,
+                strikes: strikes,
+                impliedVols: strikes.map { strike in
+                    let moneyness = strike / 150.0
+                    return baseVol + 0.02 * pow(moneyness - 1.0, 2)
+                },
+                forwardPrice: 150.0
+            )
+        ]
     }
 }
 

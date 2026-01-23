@@ -10,7 +10,7 @@ struct ModelTrainingRequest: Codable {
 
 // MARK: - Model Training Response
 
-struct ModelTrainingResponse: Decodable {
+struct ModelTrainingResponse: Codable {
     let symbol: String
     let timeframe: String
     let lookbackDays: Int
@@ -21,7 +21,7 @@ struct ModelTrainingResponse: Decodable {
     let featureImportance: [String: Double]
 }
 
-struct TrainingMetrics: Decodable {
+struct TrainingMetrics: Codable {
     let trainAccuracy: Double
     let validationAccuracy: Double
     let testAccuracy: Double
@@ -30,7 +30,7 @@ struct TrainingMetrics: Decodable {
     let testSamples: Int
 }
 
-struct ModelInfo: Decodable {
+struct ModelInfo: Codable {
     let modelHash: String
     let featureCount: Int
     let trainedAt: String
