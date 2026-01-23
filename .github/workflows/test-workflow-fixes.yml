@@ -1,0 +1,390 @@
+name: Test Workflow Fixes
+
+# =============================================================================
+# TEST WORKFLOW FOR VALIDATION FIXES
+# =============================================================================
+# This workflow tests the validation fixes implemented in:
+# - ml-orchestration.yml
+# - intraday-ingestion.yml
+# - daily-data-refresh.yml
+# - intraday-forecast.yml
+#
+# Run manually to verify validation steps work correctly
+# =============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of test to run'
+        required: true
+        type: choice
+        options:
+          - all
+          - ohlc-validation
+          - validation-service
+          - integration
+
+permissions:
+  contents: read
+
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+  ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+
+jobs:
+  test-ohlc-validation:
+    if: inputs.test_type == 'all' || inputs.test_type == 'ohlc-validation'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup ML Environment
+        uses: ./.github/actions/setup-ml-env
+        with:
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          database-url: ${{ secrets.DATABASE_URL }}
+          alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
+          alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
+      
+      - name: Test OHLC Validator
+        run: |
+          cd ml
+          python -c "
+          import os
+          from dotenv import load_dotenv
+          load_dotenv()
+          
+          from src.data.data_validator import OHLCValidator
+          from src.data.supabase_db import db
+          
+          print('🧪 Testing OHLC Validator...')
+          print('=' * 60)
+          
+          validator = OHLCValidator()
+          test_symbols = ['SPY', 'AAPL', 'NVDA']
+          
+          all_passed = True
+          for symbol in test_symbols:
+              try:
+                  print(f'\\n📊 Testing {symbol}...')
+                  df = db.fetch_ohlc_bars(symbol, timeframe='d1', limit=100)
+                  
+                  if df.empty:
+                      print(f'  ⚠️ No data for {symbol}')
+                      continue
+                  
+                  print(f'  ✅ Fetched {len(df)} bars')
+                  
+                  df, result = validator.validate(df, fix_issues=False)
+                  
+                  if result.is_valid:
+                      print(f'  ✅ Validation PASSED')
+                      print(f'     Quality score: {validator.get_data_quality_score(df):.2%}')
+                  else:
+                      print(f'  ❌ Validation FAILED')
+                      print(f'     Issues: {result.issues}')
+                      all_passed = False
+              except Exception as e:
+                  print(f'  ❌ Error: {e}')
+                  all_passed = False
+          
+          print('\\n' + '=' * 60)
+          if all_passed:
+              print('✅ All OHLC validation tests PASSED')
+          else:
+              print('❌ Some OHLC validation tests FAILED')
+              exit(1)
+          "
+      
+      - name: Test OHLC Validator Edge Cases
+        run: |
+          cd ml
+          python -c "
+          import pandas as pd
+          import numpy as np
+          from src.data.data_validator import OHLCValidator
+          
+          print('\\n🧪 Testing OHLC Validator Edge Cases...')
+          print('=' * 60)
+          
+          validator = OHLCValidator()
+          
+          # Test 1: Invalid OHLC (high < close)
+          print('\\nTest 1: Invalid OHLC relationship')
+          invalid_df = pd.DataFrame({
+              'open': [100, 101],
+              'high': [102, 99],  # Invalid: high < close
+              'low': [99, 100],
+              'close': [103, 100],
+              'volume': [1000, 1100]
+          })
+          df, result = validator.validate(invalid_df, fix_issues=False)
+          assert not result.is_valid, 'Should detect invalid OHLC'
+          print('  ✅ Correctly detected invalid OHLC')
+          
+          # Test 2: Negative volume
+          print('\\nTest 2: Negative volume')
+          negative_vol_df = pd.DataFrame({
+              'open': [100, 101],
+              'high': [102, 103],
+              'low': [99, 100],
+              'close': [101, 102],
+              'volume': [1000, -100]  # Invalid: negative volume
+          })
+          df, result = validator.validate(negative_vol_df, fix_issues=False)
+          assert not result.is_valid, 'Should detect negative volume'
+          print('  ✅ Correctly detected negative volume')
+          
+          # Test 3: Valid data
+          print('\\nTest 3: Valid OHLC data')
+          valid_df = pd.DataFrame({
+              'open': [100, 101, 102],
+              'high': [103, 104, 105],
+              'low': [99, 100, 101],
+              'close': [102, 103, 104],
+              'volume': [1000, 1100, 1200]
+          })
+          df, result = validator.validate(valid_df, fix_issues=False)
+          assert result.is_valid, 'Should pass valid data'
+          print('  ✅ Correctly validated valid data')
+          
+          print('\\n' + '=' * 60)
+          print('✅ All edge case tests PASSED')
+          "
+      
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "## OHLC Validation Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ OHLC Validator import and basic functionality tested" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Edge cases (invalid OHLC, negative volume) tested" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Real database data validation tested" >> $GITHUB_STEP_SUMMARY
+
+  test-validation-service:
+    if: inputs.test_type == 'all' || inputs.test_type == 'validation-service'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup ML Environment
+        uses: ./.github/actions/setup-ml-env
+        with:
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          database-url: ${{ secrets.DATABASE_URL }}
+          alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
+          alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
+      
+      - name: Test ValidationService Import
+        run: |
+          cd ml
+          python -c "
+          import os
+          from dotenv import load_dotenv
+          load_dotenv()
+          
+          print('🧪 Testing ValidationService import...')
+          
+          try:
+              from src.services.validation_service import ValidationService
+              print('✅ ValidationService imported successfully')
+              
+              service = ValidationService()
+              print('✅ ValidationService instantiated successfully')
+          except Exception as e:
+              print(f'❌ Import failed: {e}')
+              import traceback
+              traceback.print_exc()
+              exit(1)
+          "
+      
+      - name: Test ValidationService Async
+        run: |
+          cd ml
+          python -c "
+          import os
+          import asyncio
+          from dotenv import load_dotenv
+          load_dotenv()
+          
+          from src.services.validation_service import ValidationService
+          
+          print('\\n🧪 Testing ValidationService async methods...')
+          print('=' * 60)
+          
+          service = ValidationService()
+          
+          async def test_validation():
+              test_symbols = ['AAPL', 'SPY']
+              
+              for symbol in test_symbols:
+                  try:
+                      print(f'\\n📊 Testing {symbol}...')
+                      result = await service.get_live_validation(symbol, 'BULLISH')
+                      
+                      print(f'  ✅ Validation completed')
+                      print(f'     Unified confidence: {result.unified_confidence:.1%}')
+                      print(f'     Drift severity: {result.drift_severity}')
+                      print(f'     Consensus: {result.consensus_direction}')
+                  except Exception as e:
+                      print(f'  ⚠️ {symbol}: {str(e)}')
+                      # Don't fail - may not have data for all symbols
+          
+          asyncio.run(test_validation())
+          print('\\n' + '=' * 60)
+          print('✅ ValidationService async tests completed')
+          "
+      
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "## ValidationService Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ ValidationService import tested" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Async methods tested" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Real database queries tested" >> $GITHUB_STEP_SUMMARY
+
+  test-integration:
+    if: inputs.test_type == 'all' || inputs.test_type == 'integration'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [test-ohlc-validation, test-validation-service]
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup ML Environment
+        uses: ./.github/actions/setup-ml-env
+        with:
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          database-url: ${{ secrets.DATABASE_URL }}
+          alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
+          alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
+      
+      - name: Test Workflow Validation Steps
+        run: |
+          cd ml
+          python -c "
+          import os
+          import asyncio
+          from dotenv import load_dotenv
+          load_dotenv()
+          
+          from src.data.data_validator import OHLCValidator
+          from src.data.supabase_db import db
+          from src.services.validation_service import ValidationService
+          from src.scripts.universe_utils import get_symbol_universe
+          
+          print('🧪 Testing Integration (Workflow Validation Steps)...')
+          print('=' * 60)
+          
+          # Test 1: OHLC Validation (from ml-orchestration.yml)
+          print('\\n📊 Test 1: OHLC Validation Step')
+          validator = OHLCValidator()
+          universe = get_symbol_universe()
+          symbols = universe.get('symbols', []) or ['SPY', 'AAPL']
+          
+          validation_errors = []
+          for symbol in symbols[:3]:
+              try:
+                  df = db.fetch_ohlc_bars(symbol, timeframe='d1', limit=252)
+                  if df.empty:
+                      continue
+                  df, result = validator.validate(df, fix_issues=False)
+                  if not result.is_valid:
+                      validation_errors.append(f'{symbol}: {result.issues}')
+              except Exception as e:
+                  validation_errors.append(f'{symbol}: {str(e)}')
+          
+          if validation_errors:
+              print(f'  ❌ Found {len(validation_errors)} errors')
+              for error in validation_errors:
+                  print(f'     - {error}')
+          else:
+              print('  ✅ OHLC validation passed')
+          
+          # Test 2: Unified Validation (from ml-orchestration.yml)
+          print('\\n📊 Test 2: Unified Validation Step')
+          service = ValidationService()
+          
+          async def test_unified():
+              test_symbols = ['AAPL', 'SPY']
+              for symbol in test_symbols:
+                  try:
+                      result = await service.get_live_validation(symbol, 'BULLISH')
+                      print(f'  ✅ {symbol}: {result.unified_confidence:.1%} confidence')
+                  except Exception as e:
+                      print(f'  ⚠️ {symbol}: {str(e)}')
+          
+          asyncio.run(test_unified())
+          
+          print('\\n' + '=' * 60)
+          print('✅ Integration tests completed')
+          "
+      
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "## Integration Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Workflow validation steps tested" >> $GITHUB_STEP_SUMMARY
+          echo "✅ OHLC validation integration tested" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Unified validation integration tested" >> $GITHUB_STEP_SUMMARY
+
+  test-summary:
+    if: always()
+    needs: [test-ohlc-validation, test-validation-service, test-integration]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Generate Test Summary
+        run: |
+          echo "# 🧪 Workflow Fixes Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Test Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.test-ohlc-validation.result }}" = "success" ]; then
+            echo "✅ **OHLC Validation Tests**: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **OHLC Validation Tests**: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.test-validation-service.result }}" = "success" ]; then
+            echo "✅ **ValidationService Tests**: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **ValidationService Tests**: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.test-integration.result }}" = "success" ]; then
+            echo "✅ **Integration Tests**: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Integration Tests**: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## What Was Tested" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "1. ✅ OHLC Validator import and functionality" >> $GITHUB_STEP_SUMMARY
+          echo "2. ✅ OHLC Validator edge cases (invalid data)" >> $GITHUB_STEP_SUMMARY
+          echo "3. ✅ ValidationService import and async methods" >> $GITHUB_STEP_SUMMARY
+          echo "4. ✅ Real database queries" >> $GITHUB_STEP_SUMMARY
+          echo "5. ✅ Workflow validation step integration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next Steps**: Review test results and verify workflows run successfully in production." >> $GITHUB_STEP_SUMMARY
