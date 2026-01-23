@@ -40,6 +40,10 @@ struct AnalysisView: View {
 
                 // Technical Indicators Section
                 if let symbol = appViewModel.selectedSymbol?.ticker {
+                    #if DEBUG
+                    let _ = print("[AnalysisView] Rendering ML sections for symbol: \(symbol)")
+                    #endif
+                    
                     TechnicalIndicatorsSection(
                         symbol: symbol,
                         timeframe: chartViewModel.timeframe.rawValue
@@ -70,6 +74,10 @@ struct AnalysisView: View {
                     
                     // Stress Testing Section
                     StressTestingSection()
+                } else {
+                    #if DEBUG
+                    let _ = print("[AnalysisView] No symbol selected - ML sections hidden")
+                    #endif
                 }
 
                 // Technical Summary Section
