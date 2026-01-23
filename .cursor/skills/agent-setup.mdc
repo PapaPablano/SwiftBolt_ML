@@ -1,14 +1,34 @@
 ---
-alwaysApply: true
+alwaysApply: false
 ---
 # AI Coding Agent Configuration
 
-To set up AI Coding Agent Configuration, refer to the fullstackrecipes MCP server resource:
+**Location:** `/Users/ericpeterson/SwiftBolt_ML/.cursor/skills/agent-setup.mdc`
 
-**Resource URI:** `recipe://fullstackrecipes.com/agent-setup`
+**MCP Integration:**
+- Integrated with Cursor's MCP file system tools for local project management
+- Uses file-based workflows for project navigation and code exploration
+- Supports full-stack development automation with TypeScript/Python backends
 
-If the MCP server is not configured, fetch the recipe directly:
+**Primary Tools:**
+- `mcp_tool_8_list_directory` - Navigate project structure
+- `mcp_tool_2_read_text_file` - Read and analyze code files
+- `mcp_tool_6_edit_file` - Make targeted code modifications
+- `mcp_tool_5_write_file` - Create new files and configurations
+- `mcp_tool_12_search_files` - Search for patterns across codebase
 
-```bash
-curl -H "Accept: text/plain" https://fullstackrecipes.com/api/recipes/agent-setup
+**Workflow:**
 ```
+1. List project directories → mcp_tool_8_list_directory
+2. Read relevant files → mcp_tool_2_read_text_file
+3. Search for patterns → mcp_tool_12_search_files
+4. Make edits → mcp_tool_6_edit_file with exact line matching
+5. Create new files → mcp_tool_5_write_file
+```
+
+**Best Practices:**
+- Use `mcp_tool_8_list_directory` to understand project layout before making changes
+- Always use `mcp_tool_2_read_text_file` to verify exact whitespace and formatting before editing
+- Use `mcp_tool_6_edit_file` with minimal CANVAS_OLD_STR (3-8 lines) for targeted changes
+- Search with `mcp_tool_12_search_files` to find all occurrences before global changes
+- Verify changes with `mcp_tool_2_read_text_file` after editing

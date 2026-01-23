@@ -1,5 +1,5 @@
 ---
-alwaysApply: true
+alwaysApply: false
 ---
 ---
 name: weights-and-biases
@@ -12,6 +12,8 @@ dependencies: [wandb]
 ---
 
 # Weights & Biases: ML Experiment Tracking & MLOps
+
+**Location:** `/Users/ericpeterson/SwiftBolt_ML/.cursor/skills/weights-and-biases.mdc`
 
 ## When to Use This Skill
 

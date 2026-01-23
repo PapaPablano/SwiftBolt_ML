@@ -1,380 +1,323 @@
-# SwiftBolt Validation Framework: Quick Reference
+# Quick Reference - Entry/Exit Ranking System
+## January 23, 2026
 
-**Status**: 📄 Documentation Complete | ✅ Code Ready | 🔄 Implementation Ready
+## 🚀 Quick Start (Copy & Paste)
 
----
+### 1. Apply Database Migration
 
-## 📀 What You Need to Know (30 seconds)
-
-**Problem**: Dashboard shows 3 conflicting metrics (98.8% backtesting, 40% live, -48% to +70% multi-TF)
-
-**Solution**: UnifiedValidator already exists! Just needs dashboard integration.
-
-**What to do**: 
-1. Read VALIDATION_IMPLEMENTATION_ROADMAP.md (executive summary at top)
-2. Follow IMPLEMENTATION_CHECKLIST.md (7 phases, start Phase 0)
-3. Deploy dashboard tab showing unified 58% confidence with explanation
-
-**Time**: 6-8 hours total (can do incrementally)
-
----
-
-## 📚 Document Map
-
-| Document | Purpose | For Whom | Reading Time |
-|----------|---------|----------|---------------|
-| **VALIDATION_FRAMEWORK_SUMMARY.md** | Executive overview | Everyone | 5 min |
-| **VALIDATION_IMPLEMENTATION_ROADMAP.md** | Architecture + integration plan | Developers | 15 min |
-| **DASHBOARD_INTEGRATION_GUIDE.md** | Step-by-step dashboard code | Frontend devs | 20 min |
-| **IMPLEMENTATION_CHECKLIST.md** | Task-level deployment plan | Project managers | 10 min |
-| **QUICK_REFERENCE.md** | This file - cheat sheet | Everyone | 2 min |
-
----
-
-## 📔 Key Concepts
-
-### The Three Metrics
-
-```python
-Backtesting Score:  0.988 (98.8%)   ✅ Historical 3-month accuracy
-Walk-forward Score: 0.780 (78%)     🟡 Recent quarterly validation
-Live Score:         0.400 (40%)     ❌ Current real-world performance
+**Via Supabase Dashboard** (Recommended):
+```
+1. Go to: https://supabase.com/dashboard/project/cygflaemtmwiwaviclks/sql
+2. Click: "New Query"
+3. Copy/paste: supabase/migrations/20260123_add_entry_exit_rankings.sql
+4. Click: "Run"
+5. Look for: "Migration successful: All 8 columns added"
 ```
 
-**Weighted Average**: `0.40 * 0.988 + 0.35 * 0.780 + 0.25 * 0.400 = 0.726`
-
-**Before adjustments**: 72.6%  
-**After drift penalty**: 62.9%  
-**After multi-TF conflict**: 53.5%  
-**After consensus bonus**: 57.8%  
-**Final**: **58%** (displayed as 🟡 MODERATE_CONFIDENCE)
-
-### The Drift Problem
-
-```
-Drift Magnitude = |Live - Backtesting| = |0.40 - 0.988| = 0.588 = 58.8%
-
-Severity Thresholds:
-  < 15% = MINOR
-  < 25% = MODERATE
-  < 50% = SEVERE
-  > 75% = CRITICAL (auto-retrain)
-
-58.8% is SEVERE ⚠️ (model degradation detected)
-```
-
-### Multi-Timeframe Conflict
-
-```
-Weights:     W1(35%) D1(25%) H4(20%) H1(15%) M15(5%)
-Signals:     +0.70   +0.60   -0.35   -0.40   -0.48
-Direction:   BULL    BULL    BEAR    BEAR    BEAR
-
-Bullish votes: 35% + 25% = 60%
-Bearish votes: 20% + 15% + 5% = 40%
-
-Consensus: BULLISH (by majority)
-Conflict: YES ⚠️ (40-60 is close, weak consensus)
-Explanation: "Intraday bearish, daily/weekly bullish - momentum divergence"
-```
-
----
-
-## 🗣️ Core Components
-
-### 1. UnifiedValidator (✅ Exists)
-**File**: `ml/src/validation/unified_framework.py`
-
-```python
-from src.validation import UnifiedValidator, ValidationScores
-
-validator = UnifiedValidator()
-scores = ValidationScores(
-    backtesting_score=0.988,
-    walkforward_score=0.780,
-    live_score=0.400,
-    multi_tf_scores={"M15": -0.48, "H1": -0.40, "D1": 0.60, "W1": 0.70}
-)
-result = validator.validate("AAPL", "BULLISH", scores)
-
-print(result.unified_confidence)   # 0.581 (58%)
-print(result.drift_severity)       # "severe"
-print(result.recommendation)       # "Moderate confidence - trade with normal risk"
-```
-
-### 2. ValidationService (🔄 Ready to Use)
-**File**: `ml/src/services/validation_service.py` (created for you)
-
-```python
-from src.services.validation_service import ValidationService
-import asyncio
-
-async def test():
-    service = ValidationService()
-    result = await service.get_live_validation("AAPL", "BULLISH")
-    print(result.to_dict())
-
-asyncio.run(test())
-```
-
-What it does:
-- Fetches backtesting scores from database
-- Fetches walk-forward scores from database
-- Fetches live prediction accuracy from database
-- Fetches multi-TF scores from database
-- Calls UnifiedValidator
-- Stores result in database
-- Returns UnifiedPrediction
-
-### 3. API Endpoints (🔄 Ready to Use)
-**File**: `ml/src/api/validation_api.py` (created for you)
+### 2. Run Python Jobs
 
 ```bash
-# Get unified validation
-GET /api/validation/unified/AAPL/BULLISH
+cd /Users/ericpeterson/SwiftBolt_ML/ml
 
-# Get 7-day history
-GET /api/validation/history/AAPL?days=7&limit=100
+# ENTRY mode - Find buying opportunities
+python -m src.options_ranking_job --symbol AAPL --mode entry
 
-# Get drift alerts
-GET /api/validation/drift-alerts?min_severity=moderate&limit=50
+# EXIT mode - Detect selling signals
+python -m src.options_ranking_job --symbol AAPL --mode exit --entry-price 2.50
+
+# MONITOR mode - Balanced ranking (default)
+python -m src.options_ranking_job --symbol AAPL --mode monitor
 ```
 
-### 4. Dashboard Tab (🔄 To Create)
-**File**: `ml/src/dashboard/validation_reconciliation.py` (template in guide)
+### 3. Verify Data
 
-Shows:
-- 🟡 Unified Confidence (hero metric)
-- 📊 Component Breakdown (chart: backtesting vs walk-forward vs live)
-- ⚠️ Drift Analysis (severity + explanation)
-- 📊 Multi-TF Consensus (breakdown by timeframe)
-- 🗣️ Recommendation (actionable text)
-- 📊 Historical Trend (7-day confidence chart)
+```sql
+-- Count records by mode
+SELECT ranking_mode, COUNT(*) 
+FROM options_ranks 
+WHERE underlying_symbol_id = (SELECT id FROM symbols WHERE ticker = 'AAPL')
+GROUP BY ranking_mode;
 
----
+-- View top entry opportunities
+SELECT contract_symbol, entry_rank, entry_value_score, catalyst_score
+FROM options_ranks
+WHERE ranking_mode = 'entry'
+ORDER BY entry_rank DESC
+LIMIT 5;
 
-## 📦 Deliverables
-
-### Provided (Created for You)
-
-- ✅ **VALIDATION_IMPLEMENTATION_ROADMAP.md** (10,000+ words)
-- ✅ **DASHBOARD_INTEGRATION_GUIDE.md** (5,000+ words)
-- ✅ **IMPLEMENTATION_CHECKLIST.md** (3,000+ words)
-- ✅ **VALIDATION_FRAMEWORK_SUMMARY.md** (8,000+ words)
-- ✅ **QUICK_REFERENCE.md** (this file)
-- ✅ **ml/src/services/validation_service.py** (350 lines, ready to use)
-- ✅ **ml/src/api/validation_api.py** (400 lines, ready to use)
-
-### You Need to Create
-
-- 🔄 **ml/src/dashboard/validation_reconciliation.py** (450 lines)
-  - Template provided in DASHBOARD_INTEGRATION_GUIDE.md
-  - ~3 hours to implement
-
-### You Need to Modify
-
-- 🔄 **ml/src/dashboard/forecast_dashboard.py** (~10 lines)
-  - Add import + tab selection + routing
-  - ~30 minutes
-
-- 🔄 **ml/src/intraday_forecast_job.py** (~30 lines)
-  - Call validator after forecast
-  - ~1 hour
-
-- 🔄 **ml/src/forecast_job.py** (~30 lines)
-  - Same as above
-  - ~1 hour
-
----
-
-## 🔧 Weights & Thresholds
-
-### Confidence Weighting
-```python
-Backtest Weight:    0.40  (40%)  - Historical accuracy
-Walkforward Weight: 0.35  (35%)  - Recent performance
-Live Weight:        0.25  (25%)  - Current reality
+-- View top exit signals
+SELECT contract_symbol, exit_rank, profit_protection_score, time_urgency_score
+FROM options_ranks
+WHERE ranking_mode = 'exit'
+ORDER BY exit_rank DESC
+LIMIT 5;
 ```
 
-### Drift Severity Levels
-```python
-DRIFT_MINOR_THRESHOLD = 0.15      # 15%   - Yellow flag
-DRIFT_MODERATE_THRESHOLD = 0.25   # 25%   - Orange flag
-DRIFT_SEVERE_THRESHOLD = 0.50     # 50%   - Red flag
-DRIFT_CRITICAL_THRESHOLD = 0.75   # 75%   - Auto-retrain
-```
+### 4. Test API
 
-### Multi-Timeframe Hierarchy
-```python
-W1:  35%  (Weekly)     - Highest weight (longest term trend)
-D1:  25%  (Daily)
-H4:  20%  (4-hour)
-H1:  15%  (1-hour)
-M15:  5%  (15-min)     - Lowest weight (most noise)
-```
-
-### Direction Thresholds
-```python
-BULLISH_THRESHOLD = 0.20    # Multi-TF score > 0.20 = bullish
-BEARISH_THRESHOLD = -0.20   # Multi-TF score < -0.20 = bearish
-# Otherwise neutral
-```
-
----
-
-## 🚁 Retraining Triggers
-
-Model auto-retrains when:
-
-1. **Critical Drift**: > 75% divergence (immediate)
-2. **Severe Persistent**: > 50% for 7+ days (flag for review)
-3. **Scheduled**: 30-day cycle (automatic)
-
-Output includes:
-- `retraining_trigger`: bool (should retrain?)
-- `retraining_reason`: str (why)
-- `next_retraining_date`: datetime (when to check next)
-
----
-
-## 🔌 Command Reference
+Replace `YOUR_ANON_KEY` with your actual Supabase anon key from `.env`:
 
 ```bash
-# Verify validator works
-python -m src.validation.unified_framework
+# Get your key from .env
+grep SUPABASE_ANON_KEY /Users/ericpeterson/SwiftBolt_ML/.env
 
-# Test validation service
-python ml/src/services/validation_service.py
+# Test ENTRY mode
+curl "https://cygflaemtmwiwaviclks.supabase.co/functions/v1/options-rankings?symbol=AAPL&mode=entry&limit=5" \
+  -H "Authorization: Bearer YOUR_ANON_KEY"
 
-# Run unit tests
-python -m pytest ml/src/services/test_validation_service.py -v
-
-# Start API server
-cd ml && python -m src.api.server
-
-# Test API
-curl http://localhost:8000/api/validation/unified/AAPL/BULLISH
-
-# Start dashboard
-cd ml && streamlit run src/dashboard/forecast_dashboard.py
-
-# View Swagger API docs
-http://localhost:8000/docs
+# Test EXIT mode
+curl "https://cygflaemtmwiwaviclks.supabase.co/functions/v1/options-rankings?symbol=AAPL&mode=exit&limit=5" \
+  -H "Authorization: Bearer YOUR_ANON_KEY"
 ```
 
 ---
 
-## 🔍 Debugging Quick Guide
+## 📚 Key Files
 
-### Issue: "Failed to fetch validation"
-**Cause**: API server not running or DB not connected
-**Fix**: Start API server, check database connection
+### Documentation
+- `COMPLETE_MIGRATION_AND_TESTING_GUIDE.md` - Full walkthrough (read this first!)
+- `MIGRATION_WALKTHROUGH.md` - Detailed migration steps
+- `PYTHON_JOB_UPDATED.md` - Python job usage
+- `DATABASE_MIGRATION_GUIDE.md` - Database schema details
+- `ENTRY_EXIT_TEST_RESULTS.md` - Test validation results
 
-### Issue: "Confidence seems wrong"
-**Debug**:
-```python
-from src.validation import UnifiedValidator, ValidationScores
-scores = ValidationScores(
-    backtesting_score=0.988,
-    walkforward_score=0.780,
-    live_score=0.400,
-    multi_tf_scores={"D1": 0.60, "W1": 0.70}
-)
-result = UnifiedValidator().validate("AAPL", "BULLISH", scores)
-print(f"Base: {result.unified_confidence}")
-print(f"Drift: {result.drift_magnitude}")
-print(f"Adjustments: {result.adjustments}")
+### Migration Files
+- `supabase/migrations/20260123_add_entry_exit_rankings.sql` - Apply migration
+- `supabase/migrations/20260123_add_entry_exit_rankings_rollback.sql` - Rollback (if needed)
+- `scripts/verify_ranking_migration.sql` - Verification queries
+
+### Code Files (Already Updated ✅)
+- `ml/src/options_ranking_job.py` - Python ranking job
+- `ml/src/models/options_momentum_ranker.py` - Ranking algorithms
+- `backend/supabase/functions/options-rankings/index.ts` - API endpoint
+- `client-macos/SwiftBoltML/Models/OptionsRankingResponse.swift` - Swift models
+
+---
+
+## 🎯 Common Commands
+
+### Run Rankings for Different Symbols
+
+```bash
+cd /Users/ericpeterson/SwiftBolt_ML/ml
+
+# Single symbol - ENTRY
+python -m src.options_ranking_job --symbol MSFT --mode entry
+
+# Single symbol - EXIT (with entry price)
+python -m src.options_ranking_job --symbol TSLA --mode exit --entry-price 3.25
+
+# All watchlist symbols (from settings.py)
+python -m src.options_ranking_job --mode entry
 ```
 
-### Issue: "Multi-TF consensus doesn't match"
-**Debug**:
-```python
-validator = UnifiedValidator()
-print(f"Hierarchy: {validator.TF_HIERARCHY}")
-print(f"Bullish threshold: {validator.BULLISH_THRESHOLD}")
-print(f"Bearish threshold: {validator.BEARISH_THRESHOLD}")
+### Query Database
+
+```sql
+-- Compare modes for same contract
+SELECT 
+    contract_symbol,
+    ranking_mode,
+    CASE ranking_mode
+        WHEN 'entry' THEN entry_rank
+        WHEN 'exit' THEN exit_rank
+        ELSE composite_rank
+    END as rank
+FROM options_ranks
+WHERE contract_symbol LIKE 'AAPL%C00180000%'
+ORDER BY ranking_mode;
+
+-- Find best entry opportunities across all symbols
+SELECT 
+    s.ticker,
+    r.contract_symbol,
+    r.strike,
+    r.entry_rank,
+    r.entry_value_score,
+    r.catalyst_score
+FROM options_ranks r
+JOIN symbols s ON r.underlying_symbol_id = s.id
+WHERE r.ranking_mode = 'entry'
+AND r.entry_rank > 70
+ORDER BY r.entry_rank DESC
+LIMIT 20;
+
+-- Find positions to exit
+SELECT 
+    s.ticker,
+    r.contract_symbol,
+    r.exit_rank,
+    r.profit_protection_score,
+    r.time_urgency_score
+FROM options_ranks r
+JOIN symbols s ON r.underlying_symbol_id = s.id
+WHERE r.ranking_mode = 'exit'
+AND r.exit_rank > 70
+ORDER BY r.exit_rank DESC;
+```
+
+### Rollback (If Needed)
+
+**Only if something goes wrong:**
+
+```bash
+# Via Supabase Dashboard
+# Copy/paste: supabase/migrations/20260123_add_entry_exit_rankings_rollback.sql
+# Click "Run"
 ```
 
 ---
 
-## 📄 Implementation Order
+## 🐛 Troubleshooting
 
-### 1. Today (Setup)
-- [ ] Verify validator exists: `python -m src.validation.unified_framework`
-- [ ] Read VALIDATION_IMPLEMENTATION_ROADMAP.md
-- [ ] Check database tables exist
+### Migration Issues
 
-### 2. Tomorrow (Phase 1-2, ~3 hours)
-- [ ] ValidationService already created ✅
-- [ ] validation_api already created ✅
-- [ ] Test both locally
+```sql
+-- Check if migration was applied
+SELECT column_name 
+FROM information_schema.columns 
+WHERE table_name = 'options_ranks' 
+AND column_name IN ('entry_rank', 'exit_rank');
+-- Should return 2 rows
 
-### 3. Next Day (Phase 3-5, ~4 hours)
-- [ ] Create validation_reconciliation.py
-- [ ] Integrate into forecast_dashboard.py
-- [ ] Modify forecast jobs
-
-### 4. Last Day (Phase 6-7, ~3 hours)
-- [ ] Run full test suite
-- [ ] Deploy to staging
-- [ ] Test in production environment
-- [ ] Document any customizations
-
----
-
-## 🌠 Real AAPL Example (TL;DR)
-
-```
-Input:
-  Backtesting:  98.8% ✅ (3 months, confident)
-  Walk-forward: 78%   🟡 (recent, decent)
-  Live:         40%   ❌ (now, degraded)
-  Multi-TF:     -48% to +70% (conflicting signals)
-
-Processing:
-  Weighted avg: 0.40*98.8% + 0.35*78% + 0.25*40% = 72.6%
-  Drift detected: 58.8% divergence = SEVERE ⚠️
-  Multi-TF: W1/D1 bullish (60%) vs M15/H1 bearish (40%) = CONFLICT
-  Adjustments: -13.4% drift, -15% conflict, +8% consensus = NET -20%
-  Final: 72.6% - 20% = 52.6% → rounds to 58% after adjustments
-
-Output: 🟡 58% confidence
-  Why: "Drift + conflict reduce confidence"
-  What to do: "Trade with normal risk"
-  Monitor: "Model degradation detected"
+-- Check indexes
+SELECT indexname 
+FROM pg_indexes 
+WHERE tablename = 'options_ranks' 
+AND indexname LIKE '%entry%';
+-- Should return 2 indexes
 ```
 
----
+### Python Job Issues
 
-## 🚀 Next Step
+```bash
+# Check Python environment
+python --version  # Should be 3.9+
 
-**Read**: VALIDATION_IMPLEMENTATION_ROADMAP.md (15 min)
+# Check dependencies
+pip list | grep pandas
+pip list | grep requests
 
-**Then**: Follow IMPLEMENTATION_CHECKLIST.md (start Phase 0)
+# Run with verbose output
+python -m src.options_ranking_job --symbol AAPL --mode entry 2>&1 | tee debug.log
 
----
-
-## 📁 Files Recap
-
+# Check for errors
+grep -i error debug.log
 ```
-/Users/ericpeterson/SwiftBolt_ML/
-├─ VALIDATION_FRAMEWORK_SUMMARY.md          ✅ READ FIRST
-├─ VALIDATION_IMPLEMENTATION_ROADMAP.md      ✅ ARCHITECTURE
-├─ DASHBOARD_INTEGRATION_GUIDE.md            ✅ CODE EXAMPLES
-├─ IMPLEMENTATION_CHECKLIST.md               ✅ TASK LIST
-├─ QUICK_REFERENCE.md                        ✅ THIS FILE
-├─ ml/src/services/
-│  └─ validation_service.py                   ✅ CREATED
-├─ ml/src/api/
-│  └─ validation_api.py                       ✅ CREATED
-├─ ml/src/dashboard/
-│  ├─ forecast_dashboard.py                   🔄 MODIFY
-│  └─ validation_reconciliation.py            🔄 CREATE
-└─ ml/src/
-   ├─ intraday_forecast_job.py                🔄 MODIFY
-   └─ forecast_job.py                         🔄 MODIFY
+
+### Database Issues
+
+```sql
+-- Check for NaN/Inf values
+SELECT COUNT(*) 
+FROM options_ranks 
+WHERE entry_rank::text IN ('NaN', 'Infinity', '-Infinity');
+-- Should return 0
+
+-- Check rank ranges
+SELECT 
+    ranking_mode,
+    MIN(CASE ranking_mode WHEN 'entry' THEN entry_rank WHEN 'exit' THEN exit_rank ELSE composite_rank END) as min_rank,
+    MAX(CASE ranking_mode WHEN 'entry' THEN entry_rank WHEN 'exit' THEN exit_rank ELSE composite_rank END) as max_rank
+FROM options_ranks
+GROUP BY ranking_mode;
+-- All ranks should be 0-100
 ```
 
 ---
 
-**Status**: Everything ready. Start reading VALIDATION_FRAMEWORK_SUMMARY.md.
+## 📊 Understanding the Modes
+
+### ENTRY Mode (Find Buys)
+**Formula**: Value 40% + Catalyst 35% + Greeks 25%  
+**Looks for**: Low IV, volume surge, favorable Greeks  
+**Best for**: Finding undervalued options with momentum
+
+### EXIT Mode (Detect Sells)
+**Formula**: Profit 50% + Deterioration 30% + Time 20%  
+**Looks for**: High P&L, momentum decay, time urgency  
+**Best for**: Protecting profits, avoiding decay
+
+### MONITOR Mode (Balanced)
+**Formula**: Momentum 40% + Value 35% + Greeks 25%  
+**Looks for**: Overall strong signals  
+**Best for**: General watchlist monitoring
+
+---
+
+## 🎓 Interpreting Results
+
+### Entry Rank Score
+
+| Score | Interpretation | Action |
+|-------|----------------|--------|
+| 80-100 | Excellent entry opportunity | Consider buying |
+| 60-79 | Good entry opportunity | Evaluate carefully |
+| 40-59 | Fair opportunity | Wait for better setup |
+| 0-39 | Poor entry opportunity | Avoid |
+
+### Exit Rank Score
+
+| Score | Interpretation | Action |
+|-------|----------------|--------|
+| 80-100 | Strong exit signal | Consider selling |
+| 60-79 | Moderate exit signal | Prepare to exit |
+| 40-59 | Neutral | Monitor closely |
+| 0-39 | Stay in position | Keep holding |
+
+### Combined Strategy
+
+**Buy Signal**: Entry rank > 70, Exit rank < 40  
+**Sell Signal**: Exit rank > 70, Entry rank < 40  
+**Hold**: Both moderate (40-60)  
+**Avoid**: Both low (< 40)
+
+---
+
+## ✅ Checklist
+
+### After Migration
+- [ ] Database migration applied (8 columns added)
+- [ ] Verification queries return expected results
+- [ ] No errors in Supabase logs
+
+### After Python Job
+- [ ] ENTRY mode job completes successfully
+- [ ] EXIT mode job completes successfully
+- [ ] MONITOR mode job completes successfully
+- [ ] Database records populated for all modes
+
+### Before Frontend Deploy
+- [ ] API returns data for all modes
+- [ ] Response times < 500ms
+- [ ] No 500 errors in Supabase function logs
+- [ ] Frontend models match API response
+
+---
+
+## 🔗 Useful Links
+
+- **Supabase Dashboard**: https://supabase.com/dashboard/project/cygflaemtmwiwaviclks
+- **SQL Editor**: https://supabase.com/dashboard/project/cygflaemtmwiwaviclks/sql
+- **Function Logs**: https://supabase.com/dashboard/project/cygflaemtmwiwaviclks/functions
+- **Database**: https://supabase.com/dashboard/project/cygflaemtmwiwaviclks/editor
+
+---
+
+## 📞 Need Help?
+
+1. **Check logs**: Supabase Dashboard → Functions → options-rankings → Logs
+2. **Review docs**: `COMPLETE_MIGRATION_AND_TESTING_GUIDE.md`
+3. **Verify migration**: Run verification queries above
+4. **Test with sample**: Use AAPL for quick testing
+
+---
+
+## 🎉 You're All Set!
+
+**Migration**: ✅ Ready to apply  
+**Python Job**: ✅ Ready to run  
+**API**: ✅ Ready to test  
+**Frontend**: ⏸️ Next step
+
+Use this quick reference anytime you need to run rankings or check the system status!

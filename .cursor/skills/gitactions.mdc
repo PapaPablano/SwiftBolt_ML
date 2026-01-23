@@ -3,6 +3,8 @@ alwaysApply: true
 ---
 # GitHub Actions Templates
 
+**Location:** `/Users/ericpeterson/SwiftBolt_ML/.cursor/skills/gitactions.mdc`
+
 Production-ready GitHub Actions workflow patterns for testing, building, and deploying applications.
 
 ## Purpose

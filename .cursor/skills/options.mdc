@@ -1,7 +1,9 @@
 ---
-alwaysApply: true
+alwaysApply: false
 ---
 # Expert Options Trading Strategies
+
+**Location:** `/Users/ericpeterson/SwiftBolt_ML/.cursor/skills/options.mdc`
 
 Systematic framework for designing, modeling, and executing advanced options strategies using Alpaca Markets infrastructure, with institutional-grade quantitative analysis and risk management.
 

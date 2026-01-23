@@ -101,7 +101,7 @@ struct DetailView: View {
 
     var body: some View {
         if appViewModel.selectedSymbol != nil {
-            // Horizontal split: Chart on left, News on right
+            // Horizontal split: Chart on left, News/Options/Analysis on right
             HSplitView {
                 ChartView()
                     .environmentObject(appViewModel)
@@ -128,20 +128,7 @@ struct DetailView: View {
                             .environmentObject(appViewModel)
                     }
                 }
-                .frame(minWidth: 300, idealWidth: 400, maxWidth: 500)
-            }
-            // Inspector at DetailView level for proper layout coordination
-            .inspector(isPresented: $appViewModel.selectedContractState.isWorkbenchPresented) {
-                if let rank = appViewModel.selectedContractState.selectedRank,
-                   let symbol = appViewModel.selectedSymbol?.ticker {
-                    ContractWorkbenchView(
-                        rank: rank,
-                        symbol: symbol,
-                        allRankings: appViewModel.optionsRankerViewModel.rankings
-                    )
-                    .environmentObject(appViewModel)
-                    .inspectorColumnWidth(min: 350, ideal: 450, max: 700)
-                }
+                .frame(minWidth: 300, idealWidth: 400, maxWidth: 600)
             }
         } else {
             EmptyStateView()

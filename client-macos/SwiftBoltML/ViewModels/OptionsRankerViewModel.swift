@@ -203,18 +203,23 @@ class OptionsRankerViewModel: ObservableObject {
                 return
             }
 
-            rankings = response.ranks
-            updateRankingStatus()
-            isLoading = false
-            activeSymbol = symbol
+            // Batch all state updates together to prevent cascading view updates
+            await MainActor.run {
+                self.rankings = response.ranks
+                self.updateRankingStatus()
+                self.isLoading = false
+                self.activeSymbol = symbol
+            }
 
             print("[OptionsRanker] Loaded \(rankings.count) ranked options for \(symbol)")
 
             await refreshQuotes(for: symbol)
         } catch {
-            errorMessage = error.localizedDescription
-            rankingStatus = .unavailable
-            isLoading = false
+            await MainActor.run {
+                self.errorMessage = error.localizedDescription
+                self.rankingStatus = .unavailable
+                self.isLoading = false
+            }
             print("[OptionsRanker] Error: \(error)")
         }
     }
@@ -224,6 +229,9 @@ class OptionsRankerViewModel: ObservableObject {
     }
 
     func clearData() {
+        stopAutoRefresh()
+        
+        // Batch all state changes together
         rankings = []
         liveQuotes = [:]
         lastQuoteRefresh = nil
@@ -236,7 +244,6 @@ class OptionsRankerViewModel: ObservableObject {
         isLoadingGA = false
         lastRankingRefresh = nil
         activeSymbol = nil
-        stopAutoRefresh()
     }
 
     func ensureLoaded(for symbol: String) async {
@@ -251,13 +258,13 @@ class OptionsRankerViewModel: ObservableObject {
     }
 
     func triggerRankingJob(for symbol: String) async {
-        isGeneratingRankings = true
-        errorMessage = nil
+        await MainActor.run {
+            self.isGeneratingRankings = true
+            self.errorMessage = nil
+            self.rankingStatus = .unknown
+        }
 
         print("[OptionsRanker] Triggering ranking job for \(symbol)...")
-
-        // Show user that job is running
-        rankingStatus = .unknown
 
         do {
             // Trigger the actual ranking job via Edge Function
@@ -273,11 +280,15 @@ class OptionsRankerViewModel: ObservableObject {
             await loadRankings(for: symbol)
             print("[OptionsRanker] Ranking job completed for \(symbol)")
         } catch {
-            errorMessage = "Failed to trigger ranking job: \(error.localizedDescription)"
+            await MainActor.run {
+                self.errorMessage = "Failed to trigger ranking job: \(error.localizedDescription)"
+            }
             print("[OptionsRanker] Error triggering job: \(error)")
         }
 
-        isGeneratingRankings = false
+        await MainActor.run {
+            self.isGeneratingRankings = false
+        }
     }
 
     func refreshQuotes(for symbol: String) async {
@@ -288,7 +299,9 @@ class OptionsRankerViewModel: ObservableObject {
         let contracts = rankings.map { $0.contractSymbol }
         guard !contracts.isEmpty else { return }
 
-        isRefreshingQuotes = true
+        await MainActor.run {
+            self.isRefreshingQuotes = true
+        }
 
         do {
             let response = try await APIClient.shared.fetchOptionsQuotes(
@@ -301,13 +314,17 @@ class OptionsRankerViewModel: ObservableObject {
                 quoteMap[quote.contractSymbol] = quote
             }
 
-            liveQuotes = quoteMap
-            lastQuoteRefresh = ISO8601DateFormatter().date(from: response.timestamp)
+            await MainActor.run {
+                self.liveQuotes = quoteMap
+                self.lastQuoteRefresh = ISO8601DateFormatter().date(from: response.timestamp)
+                self.isRefreshingQuotes = false
+            }
         } catch {
+            await MainActor.run {
+                self.isRefreshingQuotes = false
+            }
             print("[OptionsRanker] Failed to refresh quotes: \(error)")
         }
-
-        isRefreshingQuotes = false
     }
     
     /// Coordinated refresh: trigger inline ranking job which fetches fresh data and ranks
@@ -404,6 +421,7 @@ class OptionsRankerViewModel: ObservableObject {
             )
         }
 
+        // Batch all filter property changes to prevent cascading updates
         minScore = max(minScore, genes.minCompositeRank / 100)
 
         if let gaSignal = mapGASignalFilter(genes.signalFilter) {
@@ -438,15 +456,20 @@ class OptionsRankerViewModel: ObservableObject {
     // MARK: - GA Strategy
 
     func loadGAStrategy(for symbol: String) async {
-        isLoadingGA = true
+        await MainActor.run {
+            self.isLoadingGA = true
+        }
 
         do {
             let response = try await APIClient.shared.fetchGAStrategy(symbol: symbol)
-            gaStrategy = response.strategy
-            gaRecommendation = response.recommendation
+            
+            await MainActor.run {
+                self.gaStrategy = response.strategy
+                self.gaRecommendation = response.recommendation
 
-            if useGAFilter {
-                applyGAFilterState()
+                if self.useGAFilter {
+                    self.applyGAFilterState()
+                }
             }
 
             if response.hasStrategy {
@@ -459,12 +482,16 @@ class OptionsRankerViewModel: ObservableObject {
             // Don't show error to user, just use default
         }
 
-        isLoadingGA = false
+        await MainActor.run {
+            self.isLoadingGA = false
+        }
     }
 
     func triggerGAOptimization(for symbol: String) async {
-        isLoadingGA = true
-        errorMessage = nil
+        await MainActor.run {
+            self.isLoadingGA = true
+            self.errorMessage = nil
+        }
 
         print("[OptionsRanker] Triggering GA optimization for \(symbol)...")
 
@@ -475,18 +502,24 @@ class OptionsRankerViewModel: ObservableObject {
                 trainingDays: 30
             )
 
-            if response.success {
-                print("[OptionsRanker] GA optimization queued: \(response.runId ?? "unknown")")
-                print("[OptionsRanker] Estimated time: \(response.estimatedMinutes ?? 0) minutes")
-            } else {
-                errorMessage = response.message
+            await MainActor.run {
+                if response.success {
+                    print("[OptionsRanker] GA optimization queued: \(response.runId ?? "unknown")")
+                    print("[OptionsRanker] Estimated time: \(response.estimatedMinutes ?? 0) minutes")
+                } else {
+                    self.errorMessage = response.message
+                }
             }
         } catch {
-            errorMessage = "Failed to trigger GA optimization: \(error.localizedDescription)"
+            await MainActor.run {
+                self.errorMessage = "Failed to trigger GA optimization: \(error.localizedDescription)"
+            }
             print("[OptionsRanker] GA trigger error: \(error)")
         }
 
-        isLoadingGA = false
+        await MainActor.run {
+            self.isLoadingGA = false
+        }
     }
 
     /// Get GA confidence score for an option rank (if GA strategy is loaded)

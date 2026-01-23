@@ -1,0 +1,580 @@
+---
+description: Options pricing, Greeks calculation, multi-leg strategies, and portfolio Greeks aggregation for SwiftBolt_ML.
+globs: ml/src/**/*.py, ml/api/**/*.py
+---
+
+## Options Pricing and Greeks
+
+### Black-Scholes Implementation
+
+```python
+import numpy as np
+from scipy.stats import norm
+from datetime import datetime, timedelta
+import logging
+
+logger = logging.getLogger(__name__)
+
+class BlackScholesCalculator:
+    """Calculate option prices and Greeks using Black-Scholes model."""
+    
+    # Risk-free rate (approximate)
+    RISK_FREE_RATE = 0.05
+    
+    @staticmethod
+    def calculate_time_to_expiry(
+        expiration_date: str,
+        reference_date: datetime = None
+    ) -> float:
+        """Calculate time to expiry in years."""
+        if reference_date is None:
+            reference_date = datetime.now()
+        
+        exp_dt = datetime.strptime(expiration_date, "%Y-%m-%d")
+        days_to_expiry = (exp_dt.date() - reference_date.date()).days
+        
+        # Trading days (exclude weekends and holidays)
+        trading_days = max(days_to_expiry, 1)  # Minimum 1 day
+        time_to_expiry = trading_days / 365.0
+        
+        return time_to_expiry
+    
+    @staticmethod
+    def d1_d2(
+        spot_price: float,
+        strike_price: float,
+        time_to_expiry: float,
+        volatility: float,
+        risk_free_rate: float = 0.05
+    ) -> tuple[float, float]:
+        """Calculate d1 and d2 for Black-Scholes."""
+        
+        if time_to_expiry <= 0 or volatility <= 0:
+            return None, None
+        
+        d1 = (
+            np.log(spot_price / strike_price)
+            + (risk_free_rate + 0.5 * volatility ** 2) * time_to_expiry
+        ) / (volatility * np.sqrt(time_to_expiry))
+        
+        d2 = d1 - volatility * np.sqrt(time_to_expiry)
+        
+        return d1, d2
+    
+    @classmethod
+    def call_price(
+        cls,
+        spot_price: float,
+        strike_price: float,
+        time_to_expiry: float,
+        volatility: float,
+        risk_free_rate: float = None
+    ) -> float:
+        """Calculate call option price."""
+        if risk_free_rate is None:
+            risk_free_rate = cls.RISK_FREE_RATE
+        
+        d1, d2 = cls.d1_d2(
+            spot_price, strike_price, time_to_expiry, volatility, risk_free_rate
+        )
+        
+        if d1 is None:
+            return 0.0
+        
+        call = (
+            spot_price * norm.cdf(d1)
+            - strike_price * np.exp(-risk_free_rate * time_to_expiry) * norm.cdf(d2)
+        )
+        
+        return call
+    
+    @classmethod
+    def put_price(
+        cls,
+        spot_price: float,
+        strike_price: float,
+        time_to_expiry: float,
+        volatility: float,
+        risk_free_rate: float = None
+    ) -> float:
+        """Calculate put option price."""
+        if risk_free_rate is None:
+            risk_free_rate = cls.RISK_FREE_RATE
+        
+        d1, d2 = cls.d1_d2(
+            spot_price, strike_price, time_to_expiry, volatility, risk_free_rate
+        )
+        
+        if d1 is None:
+            return 0.0
+        
+        put = (
+            strike_price * np.exp(-risk_free_rate * time_to_expiry) * norm.cdf(-d2)
+            - spot_price * norm.cdf(-d1)
+        )
+        
+        return put
+```
+
+### Greeks Calculation
+
+```python
+class GreeksCalculator:
+    """Calculate Greeks (delta, gamma, theta, vega, rho) for options."""
+    
+    @staticmethod
+    def delta(
+        option_type: str,  # "call" or "put"
+        spot_price: float,
+        strike_price: float,
+        time_to_expiry: float,
+        volatility: float,
+        risk_free_rate: float = 0.05
+    ) -> float:
+        """Calculate option delta (price sensitivity).
+        
+        Call delta: 0 to 1 (positive)
+        Put delta: -1 to 0 (negative)
+        ATM delta ~ ±0.5
+        """
+        
+        d1, _ = BlackScholesCalculator.d1_d2(
+            spot_price, strike_price, time_to_expiry, volatility, risk_free_rate
+        )
+        
+        if d1 is None:
+            return 0.0
+        
+        if option_type.lower() == "call":
+            return norm.cdf(d1)
+        elif option_type.lower() == "put":
+            return norm.cdf(d1) - 1
+        else:
+            raise ValueError(f"Invalid option type: {option_type}")
+    
+    @staticmethod
+    def gamma(
+        spot_price: float,
+        strike_price: float,
+        time_to_expiry: float,
+        volatility: float,
+        risk_free_rate: float = 0.05
+    ) -> float:
+        """Calculate gamma (delta sensitivity).
+        
+        Same for calls and puts.
+        Highest at ATM, decreases far OTM/ITM.
+        Higher for shorter expirations.
+        """
+        
+        d1, _ = BlackScholesCalculator.d1_d2(
+            spot_price, strike_price, time_to_expiry, volatility, risk_free_rate
+        )
+        
+        if d1 is None or time_to_expiry <= 0:
+            return 0.0
+        
+        gamma = norm.pdf(d1) / (spot_price * volatility * np.sqrt(time_to_expiry))
+        
+        return gamma
+    
+    @staticmethod
+    def theta(
+        option_type: str,
+        spot_price: float,
+        strike_price: float,
+        time_to_expiry: float,
+        volatility: float,
+        risk_free_rate: float = 0.05
+    ) -> float:
+        """Calculate theta (time decay per day).
+        
+        Usually negative for long options.
+        Positive for short options.
+        Accelerates near expiration.
+        """
+        
+        if time_to_expiry <= 0:
+            return 0.0
+        
+        d1, d2 = BlackScholesCalculator.d1_d2(
+            spot_price, strike_price, time_to_expiry, volatility, risk_free_rate
+        )
+        
+        if d1 is None:
+            return 0.0
+        
+        if option_type.lower() == "call":
+            theta = (
+                -spot_price * norm.pdf(d1) * volatility / (2 * np.sqrt(time_to_expiry))
+                - risk_free_rate * strike_price * np.exp(-risk_free_rate * time_to_expiry) * norm.cdf(d2)
+            )
+        elif option_type.lower() == "put":
+            theta = (
+                -spot_price * norm.pdf(d1) * volatility / (2 * np.sqrt(time_to_expiry))
+                + risk_free_rate * strike_price * np.exp(-risk_free_rate * time_to_expiry) * norm.cdf(-d2)
+            )
+        else:
+            raise ValueError(f"Invalid option type: {option_type}")
+        
+        # Convert annual theta to daily theta
+        theta_daily = theta / 365
+        
+        return theta_daily
+    
+    @staticmethod
+    def vega(
+        spot_price: float,
+        strike_price: float,
+        time_to_expiry: float,
+        volatility: float,
+        risk_free_rate: float = 0.05
+    ) -> float:
+        """Calculate vega (volatility sensitivity).
+        
+        Same for calls and puts.
+        Per 1% change in IV (0.01).
+        Highest at ATM.
+        """
+        
+        if time_to_expiry <= 0:
+            return 0.0
+        
+        d1, _ = BlackScholesCalculator.d1_d2(
+            spot_price, strike_price, time_to_expiry, volatility, risk_free_rate
+        )
+        
+        if d1 is None:
+            return 0.0
+        
+        # Vega per 1% IV change (per 0.01)
+        vega = spot_price * norm.pdf(d1) * np.sqrt(time_to_expiry) / 100
+        
+        return vega
+    
+    @staticmethod
+    def rho(
+        option_type: str,
+        spot_price: float,
+        strike_price: float,
+        time_to_expiry: float,
+        volatility: float,
+        risk_free_rate: float = 0.05
+    ) -> float:
+        """Calculate rho (interest rate sensitivity).
+        
+        Per 1% change in interest rates (0.01).
+        Less important for equity options.
+        """
+        
+        if time_to_expiry <= 0:
+            return 0.0
+        
+        _, d2 = BlackScholesCalculator.d1_d2(
+            spot_price, strike_price, time_to_expiry, volatility, risk_free_rate
+        )
+        
+        if d2 is None:
+            return 0.0
+        
+        if option_type.lower() == "call":
+            rho = strike_price * time_to_expiry * np.exp(-risk_free_rate * time_to_expiry) * norm.cdf(d2) / 100
+        elif option_type.lower() == "put":
+            rho = -strike_price * time_to_expiry * np.exp(-risk_free_rate * time_to_expiry) * norm.cdf(-d2) / 100
+        else:
+            raise ValueError(f"Invalid option type: {option_type}")
+        
+        return rho
+```
+
+### Portfolio Greeks Aggregation
+
+```python
+from dataclasses import dataclass
+from typing import Dict, List
+
+@dataclass
+class GreeksSnapshot:
+    """Greeks snapshot for a position."""
+    delta: float
+    gamma: float
+    theta: float
+    vega: float
+    rho: float
+
+@dataclass
+class PortfolioGreeks:
+    """Aggregated Greeks for entire portfolio."""
+    total_delta: float
+    total_gamma: float
+    total_theta: float
+    total_vega: float
+    total_rho: float
+    position_count: int
+    timestamp: datetime
+
+class PortfolioGreeksMonitor:
+    """Monitor and aggregate Greeks across portfolio."""
+    
+    def __init__(self, db_connection):
+        self.db = db_connection
+        self.greeks_calc = GreeksCalculator()
+    
+    async def calculate_position_greeks(
+        self,
+        position_id: str,
+        symbol: str,
+        option_type: str,  # "call" or "put"
+        strike_price: float,
+        quantity: int,
+        expiration_date: str,
+        spot_price: float,
+        implied_volatility: float
+    ) -> GreeksSnapshot:
+        """Calculate Greeks for a single option position.
+        
+        Note: Greeks are multiplied by contract multiplier (100) and quantity.
+        """
+        
+        time_to_expiry = BlackScholesCalculator.calculate_time_to_expiry(
+            expiration_date
+        )
+        
+        # Calculate Greeks
+        delta = self.greeks_calc.delta(
+            option_type, spot_price, strike_price, time_to_expiry, implied_volatility
+        )
+        gamma = self.greeks_calc.gamma(
+            spot_price, strike_price, time_to_expiry, implied_volatility
+        )
+        theta = self.greeks_calc.theta(
+            option_type, spot_price, strike_price, time_to_expiry, implied_volatility
+        )
+        vega = self.greeks_calc.vega(
+            spot_price, strike_price, time_to_expiry, implied_volatility
+        )
+        rho = self.greeks_calc.rho(
+            option_type, spot_price, strike_price, time_to_expiry, implied_volatility
+        )
+        
+        # Adjust for contract multiplier (100) and quantity
+        contract_multiplier = 100
+        
+        snapshot = GreeksSnapshot(
+            delta=delta * contract_multiplier * quantity,
+            gamma=gamma * contract_multiplier * quantity,
+            theta=theta * contract_multiplier * quantity,
+            vega=vega * contract_multiplier * quantity,
+            rho=rho * contract_multiplier * quantity,
+        )
+        
+        logger.debug(
+            f"Greeks calculated for {position_id}",
+            extra={
+                "position_id": position_id,
+                "delta": snapshot.delta,
+                "theta": snapshot.theta,
+            }
+        )
+        
+        return snapshot
+    
+    async def aggregate_portfolio_greeks(
+        self,
+        positions: List[Dict]
+    ) -> PortfolioGreeks:
+        """Aggregate Greeks across all positions."""
+        
+        total_delta = 0.0
+        total_gamma = 0.0
+        total_theta = 0.0
+        total_vega = 0.0
+        total_rho = 0.0
+        
+        for position in positions:
+            greeks = await self.calculate_position_greeks(
+                position_id=position["id"],
+                symbol=position["symbol"],
+                option_type=position["option_type"],
+                strike_price=position["strike_price"],
+                quantity=position["quantity"],
+                expiration_date=position["expiration_date"],
+                spot_price=position["spot_price"],
+                implied_volatility=position["implied_volatility"],
+            )
+            
+            total_delta += greeks.delta
+            total_gamma += greeks.gamma
+            total_theta += greeks.theta
+            total_vega += greeks.vega
+            total_rho += greeks.rho
+        
+        portfolio_greeks = PortfolioGreeks(
+            total_delta=total_delta,
+            total_gamma=total_gamma,
+            total_theta=total_theta,
+            total_vega=total_vega,
+            total_rho=total_rho,
+            position_count=len(positions),
+            timestamp=datetime.now(),
+        )
+        
+        logger.info(
+            "Portfolio Greeks aggregated",
+            extra={
+                "position_count": len(positions),
+                "total_delta": total_delta,
+                "total_theta": total_theta,
+                "total_vega": total_vega,
+            }
+        )
+        
+        return portfolio_greeks
+    
+    async def check_greeks_limits(
+        self,
+        portfolio_greeks: PortfolioGreeks,
+        limits: Dict[str, float]
+    ) -> Dict[str, bool]:
+        """Check if portfolio Greeks exceed limits.
+        
+        Example limits:
+        {
+            "max_delta": 0.5,      # ±50 delta
+            "max_gamma": 0.1,      # ±10 gamma
+            "min_theta": -100,     # Max time decay
+            "max_vega": 500,       # Max volatility exposure
+        }
+        """
+        
+        violations = {}
+        
+        if abs(portfolio_greeks.total_delta) > limits.get("max_delta", 1.0):
+            violations["delta"] = True
+            logger.warning(
+                f"Delta limit exceeded: {portfolio_greeks.total_delta:.2f}"
+            )
+        
+        if abs(portfolio_greeks.total_gamma) > limits.get("max_gamma", 0.2):
+            violations["gamma"] = True
+            logger.warning(
+                f"Gamma limit exceeded: {portfolio_greeks.total_gamma:.2f}"
+            )
+        
+        if portfolio_greeks.total_theta < limits.get("min_theta", -500):
+            violations["theta"] = True
+            logger.warning(
+                f"Theta limit exceeded: {portfolio_greeks.total_theta:.2f}"
+            )
+        
+        if abs(portfolio_greeks.total_vega) > limits.get("max_vega", 1000):
+            violations["vega"] = True
+            logger.warning(
+                f"Vega limit exceeded: {portfolio_greeks.total_vega:.2f}"
+            )
+        
+        return violations
+```
+
+### Multi-Leg Strategy Builder
+
+```python
+class MultiLegStrategyBuilder:
+    """Build multi-leg options strategies."""
+    
+    @staticmethod
+    def iron_butterfly(
+        symbol: str,
+        middle_strike: float,
+        wing_width: float,
+        expiration_date: str,
+        quantity: int = 1
+    ) -> List[Dict]:
+        """Build Iron Butterfly strategy.
+        
+        - Sell middle strike call
+        - Sell middle strike put
+        - Buy OTM call (middle_strike + wing_width)
+        - Buy OTM put (middle_strike - wing_width)
+        """
+        
+        legs = [
+            {
+                "symbol": symbol,
+                "side": "sell",
+                "option_type": "call",
+                "strike": middle_strike,
+                "expiration": expiration_date,
+                "quantity": quantity,
+            },
+            {
+                "symbol": symbol,
+                "side": "sell",
+                "option_type": "put",
+                "strike": middle_strike,
+                "expiration": expiration_date,
+                "quantity": quantity,
+            },
+            {
+                "symbol": symbol,
+                "side": "buy",
+                "option_type": "call",
+                "strike": middle_strike + wing_width,
+                "expiration": expiration_date,
+                "quantity": quantity,
+            },
+            {
+                "symbol": symbol,
+                "side": "buy",
+                "option_type": "put",
+                "strike": middle_strike - wing_width,
+                "expiration": expiration_date,
+                "quantity": quantity,
+            },
+        ]
+        
+        return legs
+    
+    @staticmethod
+    def long_straddle(
+        symbol: str,
+        strike: float,
+        expiration_date: str,
+        quantity: int = 1
+    ) -> List[Dict]:
+        """Build Long Straddle strategy.
+        
+        - Buy call at strike
+        - Buy put at strike
+        """
+        
+        legs = [
+            {
+                "symbol": symbol,
+                "side": "buy",
+                "option_type": "call",
+                "strike": strike,
+                "expiration": expiration_date,
+                "quantity": quantity,
+            },
+            {
+                "symbol": symbol,
+                "side": "buy",
+                "option_type": "put",
+                "strike": strike,
+                "expiration": expiration_date,
+                "quantity": quantity,
+            },
+        ]
+        
+        return legs
+```
+
+## Key Concepts
+
+- **Delta**: Direct price exposure (±100 per contract)
+- **Gamma**: Curvature risk (increases near ATM)
+- **Theta**: Time decay benefit (short options positive, long negative)
+- **Vega**: Volatility exposure (higher expiration = higher vega)
+- **Portfolio Greeks**: Sum Greeks across all positions for total exposure
+- **Risk Limits**: Set max deltas/gammas to control position risk

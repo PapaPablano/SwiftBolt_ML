@@ -10,19 +10,25 @@ WEIGHTS STANDARDIZED (2026-01-23):
 - Value: 35% (entry quality via IV and spread)
 - Greeks: 25% (directional alignment and risk)
 
+SCORE CAPPING (2026-01-23):
+All component scores are clipped to [0, 100] BEFORE applying weights to prevent:
+- Component domination (one score overwhelming others)
+- Weight distortion (weights lose intended proportional effect)
+- Interpretability loss (scores >100 confuse "perfect" score meaning)
+
 SCORING FORMULAS (all normalized to 0-100):
 
 1. VALUE SCORE (35% of composite):
    - iv_value_score = 100 - iv_rank  (lower IV = better for buyer)
    - spread_penalty = min(spread_% × 2, 50)
    - spread_score = 100 - spread_penalty
-   - value_score = 0.60 × iv_value_score + 0.40 × spread_score
+   - value_score = clip(0.60 × iv_value_score + 0.40 × spread_score, 0, 100)
 
 2. MOMENTUM SCORE (40% of composite):
    - price_mom_score = clip(2 × r + 50, 0, 100)  where r = 5-day return %
    - vol_oi_score = min(vol/OI / 0.20 × 100, 100)
    - oi_growth_score = clip(growth + 50, 0, 100)  where growth = 5-day OI change %
-   - momentum_score = 0.50 × price_mom + 0.30 × vol_oi + 0.20 × oi_growth
+   - momentum_score = clip(0.50 × price_mom + 0.30 × vol_oi + 0.20 × oi_growth, 0, 100)
 
 3. GREEKS SCORE (25% of composite):
    - delta_score = 100 - 100 × |Δ - 0.55|  (target 0.55 calls, -0.55 puts)
@@ -33,7 +39,8 @@ SCORING FORMULAS (all normalized to 0-100):
    - greeks_score = clip(greeks_pre - theta_penalty, 0, 100)
 
 4. COMPOSITE RANK (final 0-100 score):
-   rank_score = 0.40 × momentum + 0.35 × value + 0.25 × greeks
+   rank_score = clip(0.40 × momentum + 0.35 × value + 0.25 × greeks, 0, 100)
+   Maximum possible: (100 × 0.40) + (100 × 0.35) + (100 × 0.25) = 100
 """
 
 import logging
@@ -418,7 +425,7 @@ class OptionsMomentumRanker:
             if iv_stats and iv_stats.is_stale:
                 staleness_penalty = iv_stats.staleness_penalty
                 logger.warning(f"IV data is stale, applying {staleness_penalty:.1%} penalty")
-                df["value_score"] *= (1 - staleness_penalty)
+                df["value_score"] = (df["value_score"] * (1 - staleness_penalty)).clip(0, 100)
             
             df["composite_rank"] = (
                 df["momentum_score"] * self.MOMENTUM_WEIGHT +
@@ -496,7 +503,7 @@ class OptionsMomentumRanker:
                     smoothed = prev_momentum + (
                         np.sign(smoothed - prev_momentum) * self.MOMENTUM_MAX_DAILY_CHANGE
                     )
-                current.at[idx, "momentum_score"] = smoothed
+                current.at[idx, "momentum_score"] = np.clip(smoothed, 0, 100)
 
                 # Recalculate composite with smoothed momentum
                 mode = str(row.get("ranking_mode", "entry") or "entry").lower()
@@ -708,7 +715,7 @@ class OptionsMomentumRanker:
         # Combined Value Score (0-100)
         df["value_score"] = (
             df["iv_rank_score"] * self.IV_RANK_WEIGHT + df["spread_score"] * self.SPREAD_WEIGHT
-        )
+        ).clip(0, 100)
 
         return df
 
@@ -966,7 +973,7 @@ class OptionsMomentumRanker:
         # Formula: score = 50 + (raw_score - 50) * confidence
         # Pulls extreme scores toward 50 for illiquid options
         liq_conf = df["liquidity_confidence"]
-        df["momentum_score"] = 50 + (raw_momentum - 50) * liq_conf
+        df["momentum_score"] = (50 + (raw_momentum - 50) * liq_conf).clip(0, 100)
 
         return df
 
@@ -1118,7 +1125,7 @@ class OptionsMomentumRanker:
         df["momentum_score"] = (
             df["momentum_score"] * (1 - underlying_weight)
             + underlying_score * underlying_weight
-        )
+        ).clip(0, 100)
 
         return df
 
@@ -1310,7 +1317,7 @@ class OptionsMomentumRanker:
             oi_build_score * 0.25
         )
         
-        return catalyst_score
+        return catalyst_score.clip(0, 100)
 
     # =========================================================================
     # GREEKS SCORING (25% of total)

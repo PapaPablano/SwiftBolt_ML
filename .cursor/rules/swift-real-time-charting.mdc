@@ -1,0 +1,505 @@
+---
+description: Swift development standards for real-time charting, data binding, API integration, and production app architecture.
+globs: client-macos/**/*.swift, client-macos/SwiftBoltML/**/*.swift
+---
+
+## Swift Development Standards
+
+### Modern Swift Concurrency
+
+```swift
+import Foundation
+import Combine
+
+// 1. Use async/await for async operations
+actor MarketDataFetcher {
+    private let apiClient: AlpacaAPIClient
+    private var priceCache: [String: (price: Double, timestamp: Date)] = [:]
+    
+    nonisolated init(apiClient: AlpacaAPIClient) {
+        self.apiClient = apiClient
+    }
+    
+    func fetchStockPrice(symbol: String) async throws -> Double {
+        // Check cache first
+        if let cached = priceCache[symbol],
+           Date().timeIntervalSince(cached.timestamp) < 60 {
+            return cached.price
+        }
+        
+        // Fetch fresh data
+        let price = try await apiClient.getLatestPrice(symbol: symbol)
+        
+        // Cache result
+        priceCache[symbol] = (price: price, timestamp: Date())
+        
+        return price
+    }
+    
+    func fetchOptionChain(
+        symbol: String,
+        expirationDate: String
+    ) async throws -> [OptionContract] {
+        do {
+            let chain = try await apiClient.getOptionChain(
+                symbol: symbol,
+                expiration: expirationDate
+            )
+            
+            // Calculate Greeks for each contract
+            let withGreeks = chain.map { contract in
+                var mutable = contract
+                mutable.greeks = GreeksCalculator.calculate(
+                    optionType: contract.optionType,
+                    spotPrice: contract.spotPrice,
+                    strikePrice: contract.strikePrice,
+                    timeToExpiry: contract.daysToExpiry,
+                    impliedVol: contract.impliedVolatility
+                )
+                return mutable
+            }
+            
+            return withGreeks
+        } catch let error as APIError {
+            logger.error("Failed to fetch option chain: \(error.message)")
+            throw TradingError.dataFetchFailed(error.message)
+        }
+    }
+}
+
+// 2. Use Combine for reactive data binding
+class PortfolioViewModel: ObservableObject {
+    @Published var positions: [Position] = []
+    @Published var portfolioGreeks: PortfolioGreeks?
+    @Published var isLoading = false
+    @Published var error: Error?
+    
+    private let dataManager: PortfolioDataManager
+    private var cancellables = Set<AnyCancellable>()
+    
+    init(dataManager: PortfolioDataManager) {
+        self.dataManager = dataManager
+        setupBindings()
+    }
+    
+    private func setupBindings() {
+        // Update Greeks whenever positions change
+        $positions
+            .debounce(for: 0.5, scheduler: DispatchQueue.main)
+            .asyncMap { [weak self] positions in
+                try? await self?.dataManager.calculatePortfolioGreeks(positions: positions)
+            }
+            .assign(to: &$portfolioGreeks)
+    }
+    
+    @MainActor
+    func loadPortfolio() async {
+        isLoading = true
+        defer { isLoading = false }
+        
+        do {
+            positions = try await dataManager.fetchPositions()
+        } catch {
+            self.error = error
+            logger.error("Failed to load portfolio: \(error)")
+        }
+    }
+}
+```
+
+### Real-Time Charting Architecture
+
+```swift
+import SwiftUI
+import Charts
+
+// 1. Chart data model with real-time updates
+struct ChartDataPoint: Identifiable {
+    let id = UUID()
+    let timestamp: Date
+    let open: Double
+    let high: Double
+    let low: Double
+    let close: Double
+    let volume: Double
+}
+
+class ChartDataManager: ObservableObject {
+    @Published var priceData: [ChartDataPoint] = []
+    @Published var isUpdating = false
+    
+    private let wsClient: WebSocketClient
+    private var subscriptions = Set<AnyCancellable>()
+    private let updateSubject = PassthroughSubject<ChartDataPoint, Never>()
+    
+    init(wsClient: WebSocketClient) {
+        self.wsClient = wsClient
+        setupRealTimeUpdates()
+    }
+    
+    private func setupRealTimeUpdates() {
+        // Buffer updates and apply them in batches
+        updateSubject
+            .buffer(size: 10, timeSpan: 1, scheduler: DispatchQueue.main)
+            .sink { [weak self] updates in
+                self?.applyBatchUpdate(updates)
+            }
+            .store(in: &subscriptions)
+    }
+    
+    func subscribe(to symbol: String, timeframe: String) async throws {
+        isUpdating = true
+        
+        try await wsClient.subscribeToBarUpdates(
+            symbol: symbol,
+            timeframe: timeframe
+        ) { [weak self] bar in
+            DispatchQueue.main.async {
+                let dataPoint = ChartDataPoint(
+                    timestamp: bar.timestamp,
+                    open: bar.open,
+                    high: bar.high,
+                    low: bar.low,
+                    close: bar.close,
+                    volume: bar.volume
+                )
+                self?.updateSubject.send(dataPoint)
+            }
+        }
+    }
+    
+    private func applyBatchUpdate(_ updates: [ChartDataPoint]) {
+        // Merge with existing data, keeping recent data points
+        let existingTimestamps = Set(priceData.map { $0.timestamp })
+        let newPoints = updates.filter { !existingTimestamps.contains($0.timestamp) }
+        
+        priceData.append(contentsOf: newPoints)
+        priceData.sort { $0.timestamp < $1.timestamp }
+        
+        // Keep last 500 candles in memory
+        if priceData.count > 500 {
+            priceData.removeFirst(priceData.count - 500)
+        }
+    }
+}
+
+// 2. SwiftUI Chart Component
+struct PriceChart: View {
+    @ObservedObject var dataManager: ChartDataManager
+    @State private var selectedDate: Date?
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            Chart(dataManager.priceData) { dataPoint in
+                BarMark(
+                    x: .value("Time", dataPoint.timestamp),
+                    yStart: .value("Low", dataPoint.low),
+                    yEnd: .value("High", dataPoint.high)
+                )
+                .foregroundStyle(
+                    dataPoint.close >= dataPoint.open ?
+                    Color.green : Color.red
+                )
+                .opacity(0.7)
+            }
+            .chartXAxisLabel("Time")
+            .chartYAxisLabel("Price ($)")
+            .frame(height: 300)
+            
+            // Summary statistics
+            if let last = dataManager.priceData.last {
+                HStack(spacing: 20) {
+                    StatView(label: "Close", value: last.close)
+                    StatView(label: "High", value: last.high)
+                    StatView(label: "Low", value: last.low)
+                    StatView(label: "Vol", value: Int(last.volume))
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(8)
+            }
+        }
+        .padding()
+    }
+}
+
+struct StatView: View {
+    let label: String
+    let value: Double
+    
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(label)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            Text(String(format: "%.2f", value))
+                .font(.headline)
+        }
+    }
+}
+```
+
+### API Integration with Error Handling
+
+```swift
+// 1. Error handling with specific types
+enum APIError: LocalizedError {
+    case networkError(String)
+    case invalidResponse
+    case decodingError(String)
+    case authenticationFailed
+    case rateLimited(retryAfter: Int)
+    case serverError(statusCode: Int, message: String)
+    
+    var errorDescription: String? {
+        switch self {
+        case .networkError(let message):
+            return "Network error: \(message)"
+        case .invalidResponse:
+            return "Invalid server response"
+        case .decodingError(let message):
+            return "Failed to decode response: \(message)"
+        case .authenticationFailed:
+            return "Authentication failed. Check API key."
+        case .rateLimited(let retryAfter):
+            return "Rate limited. Retry in \(retryAfter) seconds."
+        case .serverError(_, let message):
+            return "Server error: \(message)"
+        }
+    }
+}
+
+// 2. Retry logic with exponential backoff
+class APIClient {
+    private let session: URLSession
+    private let maxRetries = 3
+    
+    func request<T: Decodable>(
+        _ endpoint: APIEndpoint,
+        retryCount: Int = 0
+    ) async throws -> T {
+        do {
+            let (data, response) = try await session.data(from: endpoint.url)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.invalidResponse
+            }
+            
+            // Handle specific status codes
+            switch httpResponse.statusCode {
+            case 200...299:
+                break  // Success
+            case 401:
+                throw APIError.authenticationFailed
+            case 429:
+                // Rate limited - retry with backoff
+                if retryCount < maxRetries {
+                    let waitSeconds = Int(pow(2.0, Double(retryCount)))
+                    logger.warning("Rate limited. Waiting \(waitSeconds)s before retry.")
+                    
+                    try await Task.sleep(nanoseconds: UInt64(waitSeconds * 1_000_000_000))
+                    return try await request(endpoint, retryCount: retryCount + 1)
+                }
+                throw APIError.rateLimited(retryAfter: Int(pow(2.0, Double(maxRetries))))
+            case 500...599:
+                throw APIError.serverError(
+                    statusCode: httpResponse.statusCode,
+                    message: "Server error"
+                )
+            default:
+                throw APIError.serverError(
+                    statusCode: httpResponse.statusCode,
+                    message: "HTTP \(httpResponse.statusCode)"
+                )
+            }
+            
+            // Decode response
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            
+            do {
+                return try decoder.decode(T.self, from: data)
+            } catch {
+                throw APIError.decodingError(error.localizedDescription)
+            }
+            
+        } catch let error as APIError {
+            throw error
+        } catch {
+            throw APIError.networkError(error.localizedDescription)
+        }
+    }
+}
+```
+
+### Cache Management
+
+```swift
+// 1. Generic cache with TTL
+class CacheManager<Key: Hashable, Value> {
+    private struct CacheEntry {
+        let value: Value
+        let expiryDate: Date
+    }
+    
+    private var cache = [Key: CacheEntry]()
+    private let lock = NSLock()
+    private let defaultTTL: TimeInterval = 300  // 5 minutes
+    
+    func get(_ key: Key) -> Value? {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        guard let entry = cache[key] else { return nil }
+        
+        if Date() > entry.expiryDate {
+            cache.removeValue(forKey: key)
+            return nil
+        }
+        
+        return entry.value
+    }
+    
+    func set(_ value: Value, forKey key: Key, ttl: TimeInterval? = nil) {
+        lock.lock()
+        defer { lock.unlock() }
+        
+        let expiryDate = Date().addingTimeInterval(ttl ?? defaultTTL)
+        cache[key] = CacheEntry(value: value, expiryDate: expiryDate)
+    }
+    
+    func clear() {
+        lock.lock()
+        defer { lock.unlock() }
+        cache.removeAll()
+    }
+}
+
+// 2. Usage for API response caching
+class CachedAlpacaClient {
+    private let apiClient: APIClient
+    private let optionChainCache = CacheManager<String, [OptionContract]>()
+    
+    func getOptionChain(
+        symbol: String,
+        expiration: String
+    ) async throws -> [OptionContract] {
+        let cacheKey = "\(symbol):\(expiration)"
+        
+        // Check cache first
+        if let cached = optionChainCache.get(cacheKey) {
+            logger.debug("Option chain retrieved from cache")
+            return cached
+        }
+        
+        // Fetch from API
+        let chain: [OptionContract] = try await apiClient.request(
+            .optionChain(symbol: symbol, expiration: expiration)
+        )
+        
+        // Cache with 5-minute TTL
+        optionChainCache.set(chain, forKey: cacheKey, ttl: 300)
+        
+        return chain
+    }
+}
+```
+
+### Production App Architecture
+
+```swift
+// 1. Dependency Injection
+struct AppContainer {
+    let apiClient: APIClient
+    let dataManager: PortfolioDataManager
+    let chartDataManager: ChartDataManager
+    let wsClient: WebSocketClient
+    
+    static func makeDefault() -> AppContainer {
+        let urlSession = URLSession(
+            configuration: URLSessionConfiguration.default.apply {
+                $0.timeoutIntervalForRequest = 30
+                $0.timeoutIntervalForResource = 300
+                $0.waitsForConnectivity = true
+            }
+        )
+        
+        let apiClient = APIClient(session: urlSession)
+        let wsClient = WebSocketClient()
+        let dataManager = PortfolioDataManager(apiClient: apiClient)
+        let chartDataManager = ChartDataManager(wsClient: wsClient)
+        
+        return AppContainer(
+            apiClient: apiClient,
+            dataManager: dataManager,
+            chartDataManager: chartDataManager,
+            wsClient: wsClient
+        )
+    }
+}
+
+// 2. App lifecycle management
+@main
+struct SwiftBoltApp: App {
+    @StateObject private var appContainer = AppContainer.makeDefault()
+    @StateObject private var errorHandler = ErrorHandler()
+    
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                .environmentObject(appContainer.dataManager)
+                .environmentObject(appContainer.chartDataManager)
+                .environmentObject(errorHandler)
+                .onAppear {
+                    Task {
+                        await setupApplication()
+                    }
+                }
+        }
+    }
+    
+    private func setupApplication() async {
+        do {
+            // Initialize connections and subscriptions
+            try await appContainer.wsClient.connect()
+            
+            // Load initial data
+            let dataManager = appContainer.dataManager
+            try await dataManager.loadPortfolio()
+            
+            os_log("Application initialized successfully", log: .default, type: .info)
+        } catch {
+            errorHandler.handle(error)
+        }
+    }
+}
+
+// 3. Error handling
+class ErrorHandler: ObservableObject {
+    @Published var presentedError: Error?
+    @Published var showAlert = false
+    
+    func handle(_ error: Error) {
+        DispatchQueue.main.async {
+            self.presentedError = error
+            self.showAlert = true
+            
+            os_log("Error: %@", log: .default, type: .error, error.localizedDescription)
+        }
+    }
+}
+```
+
+## Swift Best Practices Summary
+
+1. **Use async/await** for all async operations (no callbacks)
+2. **Actors** for thread-safe concurrent access to shared state
+3. **Published** @ObservedObject for reactive UI updates
+4. **Combine** for complex data flow and transformations
+5. **Specific error types** with clear messages
+6. **Cache with TTL** for API responses (reduces API calls)
+7. **Batch updates** to avoid excessive UI redraws
+8. **Structured logging** with os_log for debugging
+9. **Dependency injection** for testability
+10. **Main thread dispatch** for all UI updates

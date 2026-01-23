@@ -168,8 +168,8 @@ function calculateValueScore(iv: number, ivMin: number, ivMax: number, spreadPct
   const spreadPenalty = Math.min(spreadPct * 2, 50);
   const spreadScore = 100 - spreadPenalty;
 
-  // Combined: 60% IV, 40% spread
-  const valueScore = ivValueScore * 0.60 + spreadScore * 0.40;
+  // Combined: 60% IV, 40% spread (cap to prevent domination)
+  const valueScore = Math.max(0, Math.min(100, ivValueScore * 0.60 + spreadScore * 0.40));
 
   return { valueScore, ivRank };
 }

@@ -143,7 +143,6 @@ struct AllContractsView: View {
                                 rank: rank,
                                 liveQuote: rankerViewModel.liveQuotes[rank.contractSymbol],
                                 symbol: symbol,
-                                gaGenes: rankerViewModel.gaStrategy?.genes,
                                 rankingMode: rankerViewModel.rankingMode
                             )
                                 .padding(.horizontal)
@@ -255,32 +254,6 @@ struct RankerHeader: View {
             }
             .padding(.horizontal)
             .padding(.top, 12)
-
-            // GA Strategy Summary Card (Fix C)
-            if let strategy = rankerViewModel.gaStrategy {
-                GAStrategySummaryCard(
-                    strategy: strategy,
-                    recommendation: rankerViewModel.gaRecommendation,
-                    useGAFilter: $rankerViewModel.useGAFilter,
-                    isLoading: rankerViewModel.isLoadingGA,
-                    onOptimize: {
-                        await rankerViewModel.triggerGAOptimization(for: symbol)
-                    }
-                )
-                .padding(.horizontal)
-            }
-
-            if let genes = rankerViewModel.gaStrategy?.genes {
-                HStack(spacing: 12) {
-                    Text("All: \(rankerViewModel.rankings.count)")
-                    Text("Filtered: \(rankerViewModel.filteredRankings.count)")
-                    Text("MinRank: \(Int(genes.minCompositeRank))")
-                    Text("Signal: \(genes.signalFilter.uppercased())")
-                }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal)
-            }
 
             // Filters
             VStack(spacing: 8) {
@@ -517,156 +490,10 @@ struct RankerHeader: View {
     }
 }
 
-// MARK: - GA Strategy Summary Card (Fix C)
-
-struct GAStrategySummaryCard: View {
-    let strategy: GAStrategy
-    let recommendation: GARecommendation?
-    @Binding var useGAFilter: Bool
-    let isLoading: Bool
-    let onOptimize: () async -> Void
-
-    @State private var isExpanded = false
-
-    var body: some View {
-        VStack(spacing: 8) {
-            // Header row
-            HStack {
-                Image(systemName: "brain.head.profile.fill")
-                    .foregroundStyle(.purple)
-                Text("GA Strategy")
-                    .font(.caption.bold())
-
-                // Quality badge
-                Text(strategy.fitness.qualityLabel.uppercased())
-                    .font(.caption2.bold())
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(strategy.fitness.qualityColor.opacity(0.2))
-                    .foregroundStyle(strategy.fitness.qualityColor)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-
-                Spacer()
-
-                // Expand/collapse
-                Button(action: { withAnimation { isExpanded.toggle() } }) {
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.borderless)
-            }
-
-            // Metrics row
-            HStack(spacing: 16) {
-                metricPill(label: "Win", value: strategy.fitness.winRateDisplay, color: .green)
-                metricPill(label: "PF", value: strategy.fitness.profitFactorDisplay, color: .blue)
-                metricPill(label: "Sharpe", value: strategy.fitness.sharpeDisplay, color: .purple)
-                metricPill(label: "DD", value: strategy.fitness.maxDrawdownDisplay, color: .orange)
-
-                Spacer()
-
-                Text(strategy.ageDescription)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            // GA Filter toggle
-            HStack {
-                Toggle("Use GA Filter", isOn: $useGAFilter)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-
-                Spacer()
-
-                // Optimize button
-                Button(action: {
-                    Task { await onOptimize() }
-                }) {
-                    HStack(spacing: 4) {
-                        if isLoading {
-                            ProgressView()
-                                .scaleEffect(0.6)
-                        } else {
-                            Image(systemName: "wand.and.stars")
-                                .font(.caption2)
-                        }
-                        Text("Optimize")
-                            .font(.caption2)
-                    }
-                }
-                .buttonStyle(.borderless)
-                .disabled(isLoading)
-            }
-
-            // Expanded details
-            if isExpanded, let rec = recommendation {
-                VStack(alignment: .leading, spacing: 8) {
-                    Divider()
-
-                    if !rec.entryConditions.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Entry Conditions")
-                                .font(.caption2.bold())
-                                .foregroundStyle(.secondary)
-                            ForEach(rec.entryConditions, id: \.self) { condition in
-                                Text("• \(condition)")
-                                    .font(.caption2)
-                                    .foregroundStyle(.primary)
-                            }
-                        }
-                    }
-
-                    if !rec.exitConditions.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Exit Conditions")
-                                .font(.caption2.bold())
-                                .foregroundStyle(.secondary)
-                            ForEach(rec.exitConditions, id: \.self) { condition in
-                                Text("• \(condition)")
-                                    .font(.caption2)
-                                    .foregroundStyle(.primary)
-                            }
-                        }
-                    }
-
-                    if !rec.riskManagement.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Risk Management")
-                                .font(.caption2.bold())
-                                .foregroundStyle(.secondary)
-                            ForEach(rec.riskManagement, id: \.self) { rule in
-                                Text("• \(rule)")
-                                    .font(.caption2)
-                                    .foregroundStyle(.primary)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .padding(10)
-        .background(Color.purple.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-
-    private func metricPill(label: String, value: String, color: Color) -> some View {
-        VStack(spacing: 2) {
-            Text(value)
-                .font(.caption.bold())
-                .foregroundStyle(color)
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
 struct RankedOptionRow: View {
     let rank: OptionRank
     let liveQuote: OptionContractQuote?
     let symbol: String
-    let gaGenes: StrategyGenes?
     let rankingMode: RankingMode
     var symbolId: String = ""
     @State private var isHovering = false
@@ -772,13 +599,6 @@ struct RankedOptionRow: View {
                     HStack(spacing: 12) {
                         if let dte = rank.daysToExpiry {
                             metricBlock(title: "DTE:", value: "\(dte)", systemImage: "calendar")
-                        }
-                        if let genes = gaGenes {
-                            metricBlock(
-                                title: "GA",
-                                value: String(format: "%.0f%%", rank.gaConfidence(genes) * 100),
-                                systemImage: "sparkles"
-                            )
                         }
                         if let ivRank = rank.ivRank {
                             metricBlock(title: "IV Rank", value: "\(Int(ivRank))%", systemImage: "chart.bar.fill")
