@@ -10,8 +10,10 @@ from fastapi import APIRouter, HTTPException
 from api.models.backtest import BacktestRequest, BacktestResponse
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+ml_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(ml_dir))
 
+# Import from scripts directory
 from scripts.run_backtest import run_backtest
 
 logger = logging.getLogger(__name__)

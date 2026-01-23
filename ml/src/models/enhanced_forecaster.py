@@ -12,7 +12,7 @@ Phase 3 implementation from technicals_and_ml_improvement.md
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -286,6 +286,7 @@ class EnhancedForecaster:
         X: pd.DataFrame,
         y: pd.Series,
         mode: str = "classification",
+        min_samples: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Train the forecaster model.
@@ -294,12 +295,15 @@ class EnhancedForecaster:
             X: Feature DataFrame
             y: Label series
             mode: 'classification' or 'regression'
+            min_samples: Minimum samples required (defaults to self.min_training_samples)
+                        Use lower value for walk-forward scenarios with smaller windows
 
         Returns:
             Dict with training metrics
         """
-        if len(X) < self.min_training_samples:
-            msg = f"Insufficient data: {len(X)} < {self.min_training_samples}"
+        min_required = min_samples if min_samples is not None else self.min_training_samples
+        if len(X) < min_required:
+            msg = f"Insufficient data: {len(X)} < {min_required}"
             raise ValueError(msg)
 
         # Scale features

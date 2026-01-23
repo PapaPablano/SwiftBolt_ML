@@ -104,6 +104,9 @@ class SupabaseDatabase:
                     continue
 
                 df["ts"] = pd.to_datetime(df["ts"])
+                # Normalize to timezone-naive for consistent comparison
+                if df["ts"].dt.tz is not None:
+                    df["ts"] = df["ts"].dt.tz_localize(None)
                 df = df.sort_values("ts").reset_index(drop=True)
                 df.attrs["provider"] = provider or "any"
                 logger.info(

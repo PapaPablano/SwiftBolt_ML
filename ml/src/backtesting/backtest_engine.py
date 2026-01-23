@@ -94,7 +94,7 @@ class BacktestEngine:
         
         logger.info(
             f"Initialized backtest engine: ${initial_capital:.2f} capital, "
-            f"${commission:.2f} commission, {slippage_pct:.1%} slippage"
+            f"${self.commission:.2f} commission, {slippage_pct:.1%} slippage"
         )
     
     def load_historical_data(
@@ -115,12 +115,22 @@ class BacktestEngine:
             raise ValueError(f"OHLC data must have columns: {required_cols}")
         
         self.ohlc_data = ohlc_data.copy()
-        self.ohlc_data['date'] = pd.to_datetime(self.ohlc_data['date'])
+        # Convert to datetime and normalize to timezone-naive
+        date_series = pd.to_datetime(self.ohlc_data['date'])
+        if date_series.dt.tz is not None:
+            self.ohlc_data['date'] = date_series.dt.tz_localize(None)
+        else:
+            self.ohlc_data['date'] = date_series
         self.ohlc_data = self.ohlc_data.sort_values('date').reset_index(drop=True)
         
         if options_data is not None:
             self.options_data = options_data.copy()
-            self.options_data['date'] = pd.to_datetime(self.options_data['date'])
+            # Convert to datetime and normalize to timezone-naive
+            options_date_series = pd.to_datetime(self.options_data['date'])
+            if options_date_series.dt.tz is not None:
+                self.options_data['date'] = options_date_series.dt.tz_localize(None)
+            else:
+                self.options_data['date'] = options_date_series
             self.options_data = self.options_data.sort_values('date').reset_index(drop=True)
         
         logger.info(
@@ -144,7 +154,12 @@ class BacktestEngine:
         
         # Get underlying price from OHLC
         if self.ohlc_data is not None:
-            ohlc_row = self.ohlc_data[self.ohlc_data['date'] == date]
+            # Normalize date for comparison
+            date_naive = date.tz_localize(None) if hasattr(date, 'tz') and date.tz is not None else date
+            ohlc_dates = pd.to_datetime(self.ohlc_data['date'])
+            if ohlc_dates.dt.tz is not None:
+                ohlc_dates = ohlc_dates.dt.tz_localize(None)
+            ohlc_row = self.ohlc_data[ohlc_dates == date_naive]
             if not ohlc_row.empty:
                 underlying_price = float(ohlc_row['close'].iloc[0])
             else:
@@ -320,17 +335,36 @@ class BacktestEngine:
         
         # Filter data by date range
         # Normalize date types for comparison (handle timezone-aware vs naive)
-        ohlc_dates = pd.to_datetime(self.ohlc_data['date']).dt.tz_localize(None)
+        # Ensure date column is timezone-naive
+        if 'date' in self.ohlc_data.columns:
+            date_series = pd.to_datetime(self.ohlc_data['date'])
+            if date_series.dt.tz is not None:
+                self.ohlc_data['date'] = date_series.dt.tz_localize(None)
+            else:
+                self.ohlc_data['date'] = date_series
+        
+        ohlc_dates = pd.to_datetime(self.ohlc_data['date'])
+        if ohlc_dates.dt.tz is not None:
+            ohlc_dates = ohlc_dates.dt.tz_localize(None)
+        
         if start_date:
-            start_naive = start_date.tz_localize(None) if hasattr(start_date, 'tz') and start_date.tz else start_date
+            # Convert to Timestamp if string, then normalize
+            if isinstance(start_date, str):
+                start_date = pd.Timestamp(start_date)
+            start_naive = start_date.tz_localize(None) if hasattr(start_date, 'tz') and start_date.tz is not None else start_date
             mask = ohlc_dates >= start_naive
             data = self.ohlc_data[mask].copy()
         else:
             data = self.ohlc_data.copy()
         
         if end_date:
-            end_naive = end_date.tz_localize(None) if hasattr(end_date, 'tz') and end_date.tz else end_date
-            ohlc_dates_filtered = pd.to_datetime(data['date']).dt.tz_localize(None)
+            # Convert to Timestamp if string, then normalize
+            if isinstance(end_date, str):
+                end_date = pd.Timestamp(end_date)
+            end_naive = end_date.tz_localize(None) if hasattr(end_date, 'tz') and end_date.tz is not None else end_date
+            ohlc_dates_filtered = pd.to_datetime(data['date'])
+            if ohlc_dates_filtered.dt.tz is not None:
+                ohlc_dates_filtered = ohlc_dates_filtered.dt.tz_localize(None)
             mask = ohlc_dates_filtered <= end_naive
             data = data[mask].copy()
         
@@ -342,6 +376,9 @@ class BacktestEngine:
         # Main backtest loop
         for idx, row in data.iterrows():
             date = row['date']
+            # Ensure date is timezone-naive
+            if hasattr(date, 'tz') and date.tz is not None:
+                date = date.tz_localize(None)
             
             # Calculate portfolio value
             portfolio_value = self.calculate_portfolio_value(date)
@@ -359,8 +396,15 @@ class BacktestEngine:
             
             if self.options_data is not None:
                 # Normalize date types for comparison
-                date_naive = date.tz_localize(None) if hasattr(date, 'tz') and date.tz else date
-                options_dates = pd.to_datetime(self.options_data['date']).dt.tz_localize(None)
+                # Ensure date is timezone-naive
+                if hasattr(date, 'tz') and date.tz is not None:
+                    date_naive = date.tz_localize(None)
+                else:
+                    date_naive = date
+                # Ensure options dates are timezone-naive
+                options_dates = pd.to_datetime(self.options_data['date'])
+                if options_dates.dt.tz is not None:
+                    options_dates = options_dates.dt.tz_localize(None)
                 strategy_data['options'] = self.options_data[options_dates == date_naive]
             
             # Run strategy

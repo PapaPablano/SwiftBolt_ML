@@ -84,13 +84,20 @@ class BaselineForecaster:
 
         return X, y
 
-    def train(self, X: pd.DataFrame, y: pd.Series) -> None:
+    def train(self, X: pd.DataFrame, y: pd.Series, min_samples: Optional[int] = None) -> None:
         """
         Train the forecaster model with enhanced metrics logging.
+        
+        Args:
+            X: Feature DataFrame
+            y: Label Series
+            min_samples: Minimum samples required (defaults to settings.min_bars_for_training)
+                        Use lower value for walk-forward scenarios with smaller windows
         """
-        if len(X) < settings.min_bars_for_training:
+        min_required = min_samples if min_samples is not None else settings.min_bars_for_training
+        if len(X) < min_required:
             raise ValueError(
-                f"Insufficient training data: {len(X)} " f"< {settings.min_bars_for_training}"
+                f"Insufficient training data: {len(X)} < {min_required}"
             )
 
         # Exclude non-numeric columns (e.g., timestamps)

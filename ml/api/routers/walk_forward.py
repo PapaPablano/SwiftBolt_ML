@@ -9,8 +9,10 @@ from fastapi import APIRouter, HTTPException
 from api.models.walk_forward import WalkForwardRequest, WalkForwardResponse
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+ml_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(ml_dir))
 
+# Import from scripts directory
 from scripts.run_walk_forward import run_walk_forward
 
 logger = logging.getLogger(__name__)

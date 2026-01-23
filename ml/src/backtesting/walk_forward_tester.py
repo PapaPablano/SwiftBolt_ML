@@ -168,11 +168,52 @@ class WalkForwardBacktester:
 
             # Train model
             try:
+                # Check minimum data requirements before attempting training
+                horizon_days = self._get_horizon_days(horizons[0])
+                # Need: 50 for feature engineering + horizon_days for forward return + some buffer
+                min_required = 50 + horizon_days + 10
+                if len(train_df) < min_required:
+                    training_failures += 1
+                    logger.debug(
+                        "Window %s: Insufficient data for training (%d < %d)",
+                        window_idx,
+                        len(train_df),
+                        min_required,
+                    )
+                    continue
+                
                 X_train, y_train = forecaster.prepare_training_data(
                     train_df,
-                    horizon_days=self._get_horizon_days(horizons[0]),
+                    horizon_days=horizon_days,
                 )
-                forecaster.train(X_train, y_train)
+                
+                # Check if we got any training samples
+                if len(X_train) == 0 or len(y_train) == 0:
+                    training_failures += 1
+                    logger.debug(
+                        "Window %s: No training samples generated (X: %d, y: %d, train_df: %d bars)",
+                        window_idx,
+                        len(X_train),
+                        len(y_train),
+                        len(train_df),
+                    )
+                    continue
+                
+                # Check if we have enough samples for training
+                # For walk-forward, we can use a lower threshold since windows are smaller
+                min_samples_for_walkforward = max(20, len(X_train) // 2)  # At least 20, or half of available
+                if len(X_train) < min_samples_for_walkforward:
+                    training_failures += 1
+                    logger.debug(
+                        "Window %s: Too few training samples (%d < %d)",
+                        window_idx,
+                        len(X_train),
+                        min_samples_for_walkforward,
+                    )
+                    continue
+                
+                # Train with relaxed minimum for walk-forward (use 20 as minimum instead of 100)
+                forecaster.train(X_train, y_train, min_samples=20)
             except Exception as exc:  # noqa: BLE001
                 training_failures += 1
                 logger.warning(

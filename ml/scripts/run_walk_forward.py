@@ -118,13 +118,19 @@ def run_walk_forward(
         try:
             metrics = backtester.backtest(df, forecaster, horizons=[horizon])
         except ValueError as e:
-            if "No valid predictions generated" in str(e):
-                # Provide more helpful error message
+            error_msg = str(e)
+            if "No valid predictions generated" in error_msg:
+                # Extract diagnostic info from error message if available
+                # The improved error message from walk_forward_tester includes details
                 return {
-                    "error": f"No valid predictions generated. This may be due to insufficient data, failed training windows, or prediction errors. Data: {len(df)} bars, train_window={backtester.train_window}, test_window={backtester.test_window}",
+                    "error": error_msg,  # Use the detailed error message from walk_forward_tester
                     "symbol": symbol,
                     "horizon": horizon,
-                    "forecaster": forecaster_type
+                    "forecaster": forecaster_type,
+                    "data_bars": len(df),
+                    "train_window": backtester.train_window,
+                    "test_window": backtester.test_window,
+                    "step_size": backtester.step_size
                 }
             raise
         
