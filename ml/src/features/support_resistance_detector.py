@@ -751,7 +751,7 @@ class SupportResistanceDetector:
         if "ts" in df.columns and len(df["ts"]):
             computed_at = pd.to_datetime(df["ts"].iloc[-1])
         else:
-            computed_at = pd.Timestamp.utcnow()
+            computed_at = pd.Timestamp.now('UTC')
 
         support_hold_prob = self._extract_hold_probability(
             logistic_result.get("support_levels", [])

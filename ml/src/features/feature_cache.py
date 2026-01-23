@@ -49,7 +49,7 @@ def fetch_or_build_features(
     tfs = timeframes or DEFAULT_TIMEFRAMES
     limit_map = limits or {}
     symbol_id = db.get_symbol_id(symbol)
-    since_ts = pd.Timestamp.utcnow() - _cache_window()
+    since_ts = pd.Timestamp.now('UTC') - _cache_window()
     results: dict[str, pd.DataFrame] = {}
 
     for timeframe in tfs:

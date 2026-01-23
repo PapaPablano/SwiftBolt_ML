@@ -322,7 +322,7 @@ class SupabaseDatabase:
             "adjustment_factor": adjustment_factor,
             "n_samples": n_samples,
             "is_calibrated": is_calibrated,
-            "updated_at": pd.Timestamp.utcnow().isoformat(),
+            "updated_at": pd.Timestamp.now('UTC').isoformat(),
         }
         try:
             self.client.table("ml_confidence_calibration").upsert(
@@ -491,7 +491,7 @@ class SupabaseDatabase:
             payload: dict[str, Any] = {
                 "symbol_id": symbol_id,
                 "horizon": horizon,
-                "last_updated": pd.Timestamp.utcnow().isoformat(),
+                "last_updated": pd.Timestamp.now('UTC').isoformat(),
             }
             if rf_weight is not None:
                 payload["rf_weight"] = float(rf_weight)
@@ -850,7 +850,7 @@ class SupabaseDatabase:
             return
 
         payload: list[dict[str, Any]] = []
-        now_iso = pd.Timestamp.utcnow().isoformat()
+        now_iso = pd.Timestamp.now('UTC').isoformat()
 
         for raw_forecast in forecasts:
             forecast = {**raw_forecast}
@@ -912,7 +912,7 @@ class SupabaseDatabase:
             return
 
         payload = []
-        now_iso = pd.Timestamp.utcnow().isoformat()
+        now_iso = pd.Timestamp.now('UTC').isoformat()
 
         for forecast in forecasts:
             payload.append(

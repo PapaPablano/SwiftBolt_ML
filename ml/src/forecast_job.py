@@ -302,7 +302,7 @@ def _should_skip_forecast(symbol_id: str, horizons: list[str]) -> bool:
         return False
 
     window = _get_forecast_cache_window()
-    since_ts = pd.Timestamp.utcnow() - window
+    since_ts = pd.Timestamp.now('UTC') - window
     recent = db.fetch_recent_forecast_horizons(symbol_id, since_ts)
     if not recent:
         return False

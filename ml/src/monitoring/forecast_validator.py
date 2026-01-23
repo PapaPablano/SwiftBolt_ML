@@ -298,7 +298,13 @@ class ForecastValidator:
             horizon_days = self._parse_horizon(horizon)
 
             try:
-                forecast_date = pd.to_datetime(forecast[date_col])
+                # Handle ISO8601 format with timezone info
+                forecast_date = pd.to_datetime(forecast[date_col], format='ISO8601', errors='coerce')
+                if pd.isna(forecast_date):
+                    # Fallback to mixed format if ISO8601 fails
+                    forecast_date = pd.to_datetime(forecast[date_col], format='mixed', errors='coerce')
+                if pd.isna(forecast_date):
+                    continue
             except Exception:
                 continue
 
@@ -310,8 +316,15 @@ class ForecastValidator:
             )
 
             if "date" in symbol_actuals.columns:
+                # Use ISO8601 format to handle various timestamp formats
+                try:
+                    actuals_dates = pd.to_datetime(symbol_actuals["date"], format='ISO8601', errors='coerce')
+                except Exception:
+                    # Fallback to mixed format if ISO8601 fails
+                    actuals_dates = pd.to_datetime(symbol_actuals["date"], format='mixed', errors='coerce')
+                
                 outcome = symbol_actuals[
-                    pd.to_datetime(symbol_actuals["date"]) >= outcome_date
+                    actuals_dates >= outcome_date
                 ].head(1)
             else:
                 continue
