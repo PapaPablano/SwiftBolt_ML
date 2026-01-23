@@ -27,6 +27,7 @@ final class AppViewModel: ObservableObject {
     @Published var optionsRankerViewModel: OptionsRankerViewModel
     @Published var predictionsViewModel: PredictionsViewModel
     @Published var validationViewModel: ValidationViewModel
+    @Published var selectedContractState: SelectedContractState
     @Published var selectedDetailTab: Int = 0
     @Published var selectedOptionsTab: Int = 0
     @Published var selectedPredictionsTab: Int = 0
@@ -45,6 +46,7 @@ final class AppViewModel: ObservableObject {
         self.optionsRankerViewModel = OptionsRankerViewModel()
         self.predictionsViewModel = PredictionsViewModel()
         self.validationViewModel = ValidationViewModel()
+        self.selectedContractState = SelectedContractState()
         self.searchViewModel = SymbolSearchViewModel()
         self.watchlistViewModel = WatchlistViewModel()
 
@@ -115,6 +117,20 @@ final class AppViewModel: ObservableObject {
                 self?.objectWillChange.send()
             }
         }.store(in: &cancellables)
+
+        // Relay selectedContractState changes to trigger AppViewModel updates
+        selectedContractState.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.objectWillChange.send()
+            }
+        }.store(in: &cancellables)
+
+        // Update GA strategy when options ranker changes
+        optionsRankerViewModel.$gaStrategy
+            .sink { [weak self] strategy in
+                self?.selectedContractState.updateGAStrategy(strategy)
+            }
+            .store(in: &cancellables)
 
     }
 

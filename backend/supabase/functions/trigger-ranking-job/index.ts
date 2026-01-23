@@ -125,9 +125,10 @@ interface RankedOption {
 }
 
 // Ranking weights (matching Python implementation)
-const MOMENTUM_WEIGHT = 0.30;
-const VALUE_WEIGHT = 0.35;
-const GREEKS_WEIGHT = 0.35;
+// Framework weights - standardized 2026-01-23
+const MOMENTUM_WEIGHT = 0.40; // 40% - price action and activity
+const VALUE_WEIGHT = 0.35;     // 35% - entry quality (IV + spread)
+const GREEKS_WEIGHT = 0.25;    // 25% - directional alignment
 
 // Forecast integration weights
 const FORECAST_DIRECTIONAL_BOOST = 15;  // Points to add/subtract based on direction alignment

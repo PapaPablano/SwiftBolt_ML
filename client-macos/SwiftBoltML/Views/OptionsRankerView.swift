@@ -89,7 +89,8 @@ struct RankedOptionsContent: View {
 struct AllContractsView: View {
     @ObservedObject var rankerViewModel: OptionsRankerViewModel
     let symbol: String
-    @State private var selectedRank: OptionRank?
+    @EnvironmentObject var appViewModel: AppViewModel
+    @State private var selectedModalRank: OptionRank?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -145,8 +146,17 @@ struct AllContractsView: View {
                                 gaGenes: rankerViewModel.gaStrategy?.genes
                             )
                                 .padding(.horizontal)
+                                .background(
+                                    appViewModel.selectedContractState.isSelected(rank) ?
+                                        Color.accentColor.opacity(0.1) : Color.clear
+                                )
                                 .onTapGesture {
-                                    selectedRank = rank
+                                    // Single click: Open inspector workbench
+                                    appViewModel.selectedContractState.select(rank: rank, openWorkbench: true)
+                                }
+                                .onTapGesture(count: 2) {
+                                    // Double click: Open full modal
+                                    selectedModalRank = rank
                                 }
                         }
                     }
@@ -154,7 +164,7 @@ struct AllContractsView: View {
                 }
             }
         }
-        .sheet(item: $selectedRank) { rank in
+        .sheet(item: $selectedModalRank) { rank in
             OptionRankDetailView(
                 rank: rank,
                 symbol: symbol,

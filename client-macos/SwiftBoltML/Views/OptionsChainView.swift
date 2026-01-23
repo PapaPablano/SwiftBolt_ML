@@ -30,6 +30,53 @@ struct OptionsChainView: View {
                     .environmentObject(appViewModel)
             }
         }
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    appViewModel.selectedContractState.isWorkbenchPresented.toggle()
+                } label: {
+                    Label(
+                        "Toggle Workbench",
+                        systemImage: appViewModel.selectedContractState.isWorkbenchPresented ? "sidebar.right" : "sidebar.trailing"
+                    )
+                }
+                .disabled(appViewModel.selectedContractState.selectedRank == nil)
+                .help("Toggle Contract Workbench (⌘⌥I)")
+                .keyboardShortcut("i", modifiers: [.command, .option])
+            }
+        }
+        .inspector(isPresented: $appViewModel.selectedContractState.isWorkbenchPresented) {
+            if let rank = appViewModel.selectedContractState.selectedRank,
+               let symbol = appViewModel.selectedSymbol?.ticker {
+                ContractWorkbenchView(
+                    rank: rank,
+                    symbol: symbol,
+                    allRankings: appViewModel.optionsRankerViewModel.rankings
+                )
+                .environmentObject(appViewModel)
+                .inspectorColumnWidth(
+                    min: 350,
+                    ideal: 450,
+                    max: 700
+                )
+            } else {
+                // Fallback when no contract is selected
+                VStack(spacing: 12) {
+                    Image(systemName: "sidebar.right")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.secondary)
+                    Text("No Contract Selected")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                    Text("Select a ranked option to view details")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding()
+            }
+        }
     }
 }
 

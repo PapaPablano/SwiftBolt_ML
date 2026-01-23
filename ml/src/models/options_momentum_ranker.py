@@ -5,6 +5,11 @@ Implements a rigorous quantitative methodology for ranking options by combining:
 2. Valuation Assessment (35%) - IV Rank, bid-ask spread tightness
 3. Greeks-Based Risk Scoring (25%) - Delta, Gamma, Vega, Theta alignment
 
+WEIGHTS STANDARDIZED (2026-01-23):
+- Momentum: 40% (captures price action and activity)
+- Value: 35% (entry quality via IV and spread)
+- Greeks: 25% (directional alignment and risk)
+
 SCORING FORMULAS (all normalized to 0-100):
 
 1. VALUE SCORE (35% of composite):
@@ -224,10 +229,12 @@ class OptionsMomentumRanker:
     VALUE_WEIGHT = 0.35
     GREEKS_WEIGHT = 0.25
 
+    # Legacy weight configurations (deprecated - use default weights above)
+    # Keeping for backward compatibility but not recommended for use
     ENTRY_WEIGHTS = {
-        "momentum": 0.30,
+        "momentum": 0.40,  # Updated to match default
         "value": 0.35,
-        "greeks": 0.35,
+        "greeks": 0.25,   # Updated to match default
     }
 
     EXIT_WEIGHTS = {
@@ -789,16 +796,35 @@ class OptionsMomentumRanker:
     def _calculate_spread_score(self, spread_pct: pd.Series) -> pd.Series:
         """Calculate spread score from spread percentage.
 
-        Formula:
-            spread_penalty = min(spread_% × 2, 50)
-            spread_score = 100 - spread_penalty
+        UPDATED 2026-01-23: Exponential penalty curve to more heavily penalize wide spreads
+        
+        Formula (exponential curve):
+            if spread ≤ 2%: penalty = spread × 2
+            elif spread ≤ 5%: penalty = 4 + (spread - 2) × 4
+            elif spread ≤ 10%: penalty = 16 + (spread - 5) × 5
+            else: penalty = min(41 + (spread - 10) × 2, 50)
+            
+            spread_score = 100 - penalty
 
         Examples:
             - 0% spread → penalty 0 → score 100
-            - 10% spread → penalty 20 → score 80
-            - 25%+ spread → penalty 50 → score 50
+            - 1% spread → penalty 2 → score 98  (no change)
+            - 3% spread → penalty 8 → score 92  (was 94 with linear)
+            - 5% spread → penalty 16 → score 84  (was 90 with linear)
+            - 10% spread → penalty 41 → score 59  (was 80 with linear)
+            - 15%+ spread → penalty 50 → score 50 (capped)
         """
-        spread_penalty = (spread_pct * 2).clip(upper=50)
+        def calculate_penalty(spread):
+            if spread <= 2.0:
+                return spread * 2
+            elif spread <= 5.0:
+                return 4.0 + (spread - 2.0) * 4.0
+            elif spread <= 10.0:
+                return 16.0 + (spread - 5.0) * 5.0
+            else:
+                return min(41.0 + (spread - 10.0) * 2.0, 50.0)
+        
+        spread_penalty = spread_pct.apply(calculate_penalty)
         return 100 - spread_penalty
 
     # =========================================================================
@@ -1198,18 +1224,21 @@ class OptionsMomentumRanker:
     def _score_delta(self, df: pd.DataFrame, trend: str) -> pd.Series:
         """Score delta based on distance from optimal target.
 
+        UPDATED 2026-01-23: Dynamic delta target based on DTE
+        
         Formula:
-            Calls (target band 0.4-0.8, sweet spot ~0.55):
-                delta_score = 100 - 100 × |Δ - 0.55|
+            Target delta varies by DTE:
+            - DTE > 45: target = 0.50 (longer-term, lower delta)
+            - DTE 21-45: target = 0.55 (sweet spot)
+            - DTE 7-21: target = 0.60 (near-term, higher delta)
+            - DTE < 7: target = 0.65 (very short-term, deeper ITM)
+            
+            delta_score = 100 - 100 × |Δ - target|
 
-            Puts: same idea with target -0.55
-                delta_score = 100 - 100 × |Δ - (-0.55)|
-
-        Examples for calls (target 0.55):
+        Examples for calls with 30 DTE (target 0.55):
             - Delta 0.55 → score = 100 - 0 = 100
             - Delta 0.45 → score = 100 - 10 = 90
             - Delta 0.70 → score = 100 - 15 = 85
-            - Delta 0.30 → score = 100 - 25 = 75
 
         Trend alignment provides additional multiplier.
         """
@@ -1218,12 +1247,25 @@ class OptionsMomentumRanker:
         for idx, row in df.iterrows():
             delta = row.get("delta", 0.5)
             side = row.get("side", "call")
+            
+            # Get DTE (days to expiration)
+            dte = row.get("dte", row.get("days_to_expiry", 30))
+            
+            # Dynamic target based on DTE
+            if dte > 45:
+                base_target = 0.50
+            elif dte > 21:
+                base_target = 0.55
+            elif dte > 7:
+                base_target = 0.60
+            else:
+                base_target = 0.65
 
             # Target delta based on side
             if side == "call":
-                target = self.OPTIMAL_DELTA_TARGET  # 0.55
+                target = base_target
             else:
-                target = -self.OPTIMAL_DELTA_TARGET  # -0.55
+                target = -base_target
 
             # Core formula: delta_score = 100 - 100 × |Δ - target|
             deviation = abs(delta - target)
@@ -1269,24 +1311,50 @@ class OptionsMomentumRanker:
     def _calculate_theta_penalty(self, df: pd.DataFrame) -> pd.Series:
         """Calculate theta decay penalty.
 
+        UPDATED 2026-01-23: Dynamic penalty cap based on DTE
+        
         Formula:
             θ% = (θ / mid) × 100 (daily decay as % of price)
-            theta_penalty = min(|θ%| × 10, 40)
+            theta_penalty = min(|θ%| × 10, cap)
+            
+            Cap varies by DTE:
+            - DTE > 45: cap = 25 (less sensitive for long-term)
+            - DTE 21-45: cap = 40 (standard)
+            - DTE < 21: cap = 50 (more sensitive near expiration)
 
-        Examples:
+        Examples with 30 DTE (cap = 40):
             - θ = -$0.02, mid = $2.00 → θ% = -1% → penalty = 10
             - θ = -$0.05, mid = $1.00 → θ% = -5% → penalty = 40 (capped)
-
-        Capped at 40 to not eliminate high-momentum options.
+            
+        Examples with 10 DTE (cap = 50):
+            - θ = -$0.05, mid = $1.00 → θ% = -5% → penalty = 50 (capped)
         """
         theta = df.get("theta", pd.Series(-0.10, index=df.index)).abs()
         mid_price = df.get("mid", df.get("mark", pd.Series(1.0, index=df.index)))
+        
+        # Get DTE (days to expiration)
+        dte = df.get("dte", df.get("days_to_expiry", pd.Series(30, index=df.index)))
+
+        # Dynamic cap based on DTE
+        def get_theta_cap(d):
+            if d > 45:
+                return 25.0
+            elif d > 21:
+                return 40.0
+            else:
+                return 50.0
+        
+        # Calculate cap per row
+        if isinstance(dte, pd.Series):
+            theta_cap = dte.apply(get_theta_cap)
+        else:
+            theta_cap = get_theta_cap(dte)
 
         # Avoid division by zero
         theta_pct = np.where(mid_price > 0, (theta / mid_price) * 100, 10)
 
-        # penalty = min(|θ%| × 10, 40)
-        penalty = (pd.Series(theta_pct, index=df.index).abs() * 10).clip(0, 40)
+        # penalty = min(|θ%| × 10, cap)
+        penalty = (pd.Series(theta_pct, index=df.index).abs() * 10).clip(0, theta_cap)
 
         return penalty
 

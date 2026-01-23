@@ -1,0 +1,14 @@
+---
+alwaysApply: true
+---
+# AI Coding Agent Configuration
+
+To set up AI Coding Agent Configuration, refer to the fullstackrecipes MCP server resource:
+
+**Resource URI:** `recipe://fullstackrecipes.com/agent-setup`
+
+If the MCP server is not configured, fetch the recipe directly:
+
+```bash
+curl -H "Accept: text/plain" https://fullstackrecipes.com/api/recipes/agent-setup
+```
