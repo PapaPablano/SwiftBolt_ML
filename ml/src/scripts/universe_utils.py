@@ -39,12 +39,33 @@ def fetch_watchlist_symbols() -> list[str]:
     """Fetch the current unique tickers from all watchlists."""
 
     try:
-        response = (
-            db.client.table("watchlist_items")
-            .select("symbol_id(ticker)")
-            .order("created_at", desc=True)
-            .execute()
-        )
+        # Try to fetch watchlist items - use added_at (correct column name)
+        try:
+            response = (
+                db.client.table("watchlist_items")
+                .select("symbol_id(ticker)")
+                .order("added_at", desc=True)
+                .execute()
+            )
+        except Exception as order_error:
+            # If added_at doesn't exist, try created_at, then fetch without ordering
+            try:
+                logger.debug("added_at column not available, trying created_at: %s", order_error)
+                response = (
+                    db.client.table("watchlist_items")
+                    .select("symbol_id(ticker)")
+                    .order("created_at", desc=True)
+                    .execute()
+                )
+            except Exception:
+                # If neither exists, fetch without ordering
+                logger.debug("No timestamp column available, fetching without order")
+                response = (
+                    db.client.table("watchlist_items")
+                    .select("symbol_id(ticker)")
+                    .execute()
+                )
+        
         rows = response.data or []
         if not rows:
             logger.info("No watchlist rows returned; falling back to defaults")
