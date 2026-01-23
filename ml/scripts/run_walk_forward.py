@@ -104,8 +104,29 @@ def run_walk_forward(
                 step_size=step_size
             )
         
+        # Validate data sufficiency before running backtest
+        min_data_required = backtester.train_window + backtester.test_window
+        if len(df) < min_data_required:
+            return {
+                "error": f"Insufficient data: {len(df)} bars (need at least {min_data_required} for train={backtester.train_window}, test={backtester.test_window})",
+                "symbol": symbol,
+                "horizon": horizon,
+                "forecaster": forecaster_type
+            }
+        
         # Run walk-forward backtest
-        metrics = backtester.backtest(df, forecaster, horizons=[horizon])
+        try:
+            metrics = backtester.backtest(df, forecaster, horizons=[horizon])
+        except ValueError as e:
+            if "No valid predictions generated" in str(e):
+                # Provide more helpful error message
+                return {
+                    "error": f"No valid predictions generated. This may be due to insufficient data, failed training windows, or prediction errors. Data: {len(df)} bars, train_window={backtester.train_window}, test_window={backtester.test_window}",
+                    "symbol": symbol,
+                    "horizon": horizon,
+                    "forecaster": forecaster_type
+                }
+            raise
         
         # Convert to JSON-serializable format
         return {

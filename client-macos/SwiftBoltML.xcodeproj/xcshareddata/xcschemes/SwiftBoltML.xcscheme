@@ -40,8 +40,11 @@
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES">
-      <BuildableProductRunnable
-         runnableDebuggingMode = "0">
+      <PathRunnable
+         runnableDebuggingMode = "0"
+         FilePath = "/Users/ericpeterson/Library/Developer/Xcode/DerivedData/SwiftBoltML-fvczbmwpxtcqewgbpaecwhupjwxf/Build/Products/Debug/SwiftBoltML.app">
+      </PathRunnable>
+      <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A6000001233456780000001"
@@ -49,7 +52,7 @@
             BlueprintName = "SwiftBoltML"
             ReferencedContainer = "container:SwiftBoltML.xcodeproj">
          </BuildableReference>
-      </BuildableProductRunnable>
+      </MacroExpansion>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

@@ -203,9 +203,19 @@ def run_backtest(
             }
         
         # Filter by date range
-        df['ts'] = pd.to_datetime(df['ts']).dt.tz_localize(None)  # Remove timezone for comparison
+        # Normalize timestamps: ensure all are timezone-naive for consistent comparison
+        df['ts'] = pd.to_datetime(df['ts'])
+        if df['ts'].dt.tz is not None:
+            df['ts'] = df['ts'].dt.tz_localize(None)  # Remove timezone if present
+        
+        # Create naive Timestamp objects for comparison
         start = pd.Timestamp(start_date)
+        if start.tz is not None:
+            start = start.tz_localize(None)
         end = pd.Timestamp(end_date)
+        if end.tz is not None:
+            end = end.tz_localize(None)
+        
         df = df[(df['ts'] >= start) & (df['ts'] <= end)].copy()
         
         if df.empty:
@@ -216,7 +226,10 @@ def run_backtest(
             }
         
         # Rename columns for backtest engine (expects 'date' not 'ts')
+        # Ensure 'date' column is timezone-naive Timestamp
         df = df.rename(columns={'ts': 'date'})
+        if df['date'].dt.tz is not None:
+            df['date'] = df['date'].dt.tz_localize(None)
         df = df.sort_values('date').reset_index(drop=True)
         
         # Create strategy function
@@ -239,10 +252,14 @@ def run_backtest(
         engine.load_historical_data(df)
         
         # Run backtest
+        # Ensure start_date and end_date are timezone-naive for BacktestEngine
+        start_naive = start.tz_localize(None) if start.tz is not None else start
+        end_naive = end.tz_localize(None) if end.tz is not None else end
+        
         results = engine.run(
             strategy=strategy_func,
-            start_date=start,
-            end_date=end
+            start_date=start_naive,
+            end_date=end_naive
         )
         
         # Convert results to JSON-serializable format

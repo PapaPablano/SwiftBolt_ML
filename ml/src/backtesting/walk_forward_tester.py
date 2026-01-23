@@ -142,6 +142,16 @@ class WalkForwardBacktester:
 
         # Walk forward through time
         n_windows = (len(df) - self.train_window) // self.step_size
+        
+        if n_windows < 1:
+            raise ValueError(
+                f"Insufficient data for walk-forward: {len(df)} bars, "
+                f"need at least {self.train_window + self.step_size} bars "
+                f"(train_window={self.train_window}, step_size={self.step_size})"
+            )
+
+        training_failures = 0
+        prediction_failures = 0
 
         for window_idx in range(n_windows):
             start_train = window_idx * self.step_size
@@ -164,6 +174,7 @@ class WalkForwardBacktester:
                 )
                 forecaster.train(X_train, y_train)
             except Exception as exc:  # noqa: BLE001
+                training_failures += 1
                 logger.warning(
                     "Training failed in window %s: %s",
                     window_idx,
@@ -172,6 +183,7 @@ class WalkForwardBacktester:
                 continue
 
             # Test on test window
+            window_predictions = 0
             for test_idx in range(len(test_df)):
                 combined_idx = len(train_df) + test_idx
                 if combined_idx < 50:
@@ -195,12 +207,22 @@ class WalkForwardBacktester:
                         all_predictions.append(label)
                         all_actuals.append(actual_label)
                         all_returns.append(actual_return)
+                        window_predictions += 1
                 except Exception as exc:  # noqa: BLE001
-                    logger.debug(f"Prediction failed: {exc}")
+                    prediction_failures += 1
+                    logger.debug(f"Prediction failed in window {window_idx}, test_idx {test_idx}: {exc}")
                     continue
 
         if not all_predictions:
-            raise ValueError("No valid predictions generated")
+            error_msg = (
+                f"No valid predictions generated. "
+                f"Windows processed: {n_windows}, "
+                f"Training failures: {training_failures}, "
+                f"Prediction failures: {prediction_failures}, "
+                f"Data: {len(df)} bars, "
+                f"train_window={self.train_window}, test_window={self.test_window}, step_size={self.step_size}"
+            )
+            raise ValueError(error_msg)
 
         # Get date column (could be 'ts' or 'date')
         date_col = "date" if "date" in df.columns else "ts"
