@@ -81,7 +81,7 @@ struct ContractWorkbenchView: View {
                 .padding(.bottom, 16)
             }
         }
-        .frame(minWidth: 350, idealWidth: 450, maxWidth: 700)
+        // Width is controlled by .inspectorColumnWidth() at parent level
         .frame(minHeight: 600)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {

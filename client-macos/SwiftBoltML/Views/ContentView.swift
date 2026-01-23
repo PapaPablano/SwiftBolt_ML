@@ -130,6 +130,19 @@ struct DetailView: View {
                 }
                 .frame(minWidth: 300, idealWidth: 400, maxWidth: 500)
             }
+            // Inspector at DetailView level for proper layout coordination
+            .inspector(isPresented: $appViewModel.selectedContractState.isWorkbenchPresented) {
+                if let rank = appViewModel.selectedContractState.selectedRank,
+                   let symbol = appViewModel.selectedSymbol?.ticker {
+                    ContractWorkbenchView(
+                        rank: rank,
+                        symbol: symbol,
+                        allRankings: appViewModel.optionsRankerViewModel.rankings
+                    )
+                    .environmentObject(appViewModel)
+                    .inspectorColumnWidth(min: 350, ideal: 450, max: 700)
+                }
+            }
         } else {
             EmptyStateView()
         }
