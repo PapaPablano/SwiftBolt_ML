@@ -1488,6 +1488,60 @@ final class APIClient {
         return try await performRequest(urlRequest)
     }
     
+    // MARK: - Model Training
+    
+    /// Train ML model for a symbol/timeframe
+    func trainModel(request: ModelTrainingRequest) async throws -> ModelTrainingResponse {
+        var urlRequest = URLRequest(url: functionURL("train-model"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Build JSON request
+        var jsonDict: [String: Any] = [
+            "symbol": request.symbol
+        ]
+        
+        if let timeframe = request.timeframe {
+            jsonDict["timeframe"] = timeframe
+        }
+        if let lookbackDays = request.lookbackDays {
+            jsonDict["lookbackDays"] = lookbackDays
+        }
+        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
+        
+        return try await performRequest(urlRequest)
+    }
+    
+    // MARK: - Forecast Quality
+    
+    /// Get forecast quality metrics for a symbol
+    func fetchForecastQuality(request: ForecastQualityRequest) async throws -> ForecastQualityResponse {
+        var urlRequest = URLRequest(url: functionURL("forecast-quality"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Build JSON request
+        var jsonDict: [String: Any] = [
+            "symbol": request.symbol
+        ]
+        
+        if let horizon = request.horizon {
+            jsonDict["horizon"] = horizon
+        }
+        if let timeframe = request.timeframe {
+            jsonDict["timeframe"] = timeframe
+        }
+        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
+        
+        return try await performRequest(urlRequest)
+    }
+    
     // MARK: - Portfolio Optimization
     
     /// Optimize portfolio allocation

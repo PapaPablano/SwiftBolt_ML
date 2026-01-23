@@ -251,6 +251,7 @@ class EnhancedForecaster:
         # Select feature columns
         exclude_cols = [
             "ts",
+            "date",  # Also exclude 'date' column used in walk-forward testing
             "open",
             "high",
             "low",
@@ -263,8 +264,13 @@ class EnhancedForecaster:
             col for col in df_clean.columns if col not in exclude_cols and not col.startswith("_")
         ]
 
-        # Filter to available features
+        # Filter to available features and ensure only numeric columns
         available_features = [col for col in feature_cols if col in df_clean.columns]
+        
+        # Exclude non-numeric columns (e.g., datetime columns that might slip through)
+        numeric_cols = df_clean[available_features].select_dtypes(include=["number"]).columns.tolist()
+        available_features = [col for col in available_features if col in numeric_cols]
+        
         self.feature_columns = available_features
 
         X = df_clean[available_features].copy()
@@ -362,12 +368,30 @@ class EnhancedForecaster:
         if not self.is_trained:
             raise ValueError("Model must be trained before prediction")
 
-        # Ensure features match training
-        X = X[self.feature_columns].copy()
-        X = X.ffill().fillna(0)
+        # Filter to numeric columns first, then ensure features match training
+        numeric_cols = X.select_dtypes(include=["number"]).columns.tolist()
+        available_cols = [col for col in self.feature_columns if col in numeric_cols and col in X.columns]
+        
+        if not available_cols:
+            raise ValueError(
+                f"No matching features found. Expected: {self.feature_columns[:5]}..., "
+                f"Got: {list(X.columns)[:5]}..."
+            )
+        
+        # Use only available features, fill missing with 0
+        X_filtered = X[available_cols].copy()
+        
+        # Add missing features as zeros
+        missing_features = [col for col in self.feature_columns if col not in available_cols]
+        for col in missing_features:
+            X_filtered[col] = 0
+        
+        # Reorder to match training order
+        X_filtered = X_filtered[self.feature_columns]
+        X_filtered = X_filtered.ffill().fillna(0)
 
         # Scale features
-        X_scaled = self.scaler.transform(X)
+        X_scaled = self.scaler.transform(X_filtered)
 
         if mode == "classification":
             predictions = self.classifier.predict(X_scaled)

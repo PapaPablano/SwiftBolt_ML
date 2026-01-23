@@ -74,6 +74,22 @@ struct AnalysisView: View {
                     
                     // Stress Testing Section
                     StressTestingSection()
+                    
+                    Divider()
+                    
+                    // Model Training Section
+                    ModelTrainingSection(
+                        symbol: symbol,
+                        timeframe: chartViewModel.timeframe.rawValue
+                    )
+                    
+                    Divider()
+                    
+                    // Forecast Quality Section
+                    ForecastQualitySectionAnalysis(
+                        symbol: symbol,
+                        timeframe: chartViewModel.timeframe.rawValue
+                    )
                 } else {
                     #if DEBUG
                     let _ = print("[AnalysisView] No symbol selected - ML sections hidden")
@@ -896,6 +912,96 @@ struct StressTestingSection: View {
         .sheet(isPresented: $showStressTestView) {
             NavigationStack {
                 StressTestingView()
+            }
+            .frame(minWidth: 1000, minHeight: 700)
+        }
+    }
+}
+
+// MARK: - Model Training Section
+
+private struct ModelTrainingSection: View {
+    let symbol: String
+    let timeframe: String
+    @State private var showModelTrainingView = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "brain.head.profile")
+                    .font(.title3)
+                    .foregroundStyle(.purple)
+                Text("Model Training")
+                    .font(.title3.bold())
+                Spacer()
+            }
+            
+            Text("Train ensemble models for improved forecast accuracy")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            Button(action: {
+                showModelTrainingView = true
+            }) {
+                HStack {
+                    Text("Open Model Training")
+                    Image(systemName: "arrow.right")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(16)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .sheet(isPresented: $showModelTrainingView) {
+            NavigationStack {
+                ModelTrainingView(symbol: symbol, timeframe: timeframe)
+            }
+            .frame(minWidth: 1000, minHeight: 700)
+        }
+    }
+}
+
+// MARK: - Forecast Quality Section
+
+private struct ForecastQualitySectionAnalysis: View {
+    let symbol: String
+    let timeframe: String
+    @State private var showForecastQualityView = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "chart.bar.doc.horizontal")
+                    .font(.title3)
+                    .foregroundStyle(.cyan)
+                Text("Forecast Quality")
+                    .font(.title3.bold())
+                Spacer()
+            }
+            
+            Text("Monitor forecast quality metrics and detect issues")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            Button(action: {
+                showForecastQualityView = true
+            }) {
+                HStack {
+                    Text("Open Forecast Quality")
+                    Image(systemName: "arrow.right")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(16)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .sheet(isPresented: $showForecastQualityView) {
+            NavigationStack {
+                ForecastQualityView(symbol: symbol, timeframe: timeframe)
             }
             .frame(minWidth: 1000, minHeight: 700)
         }

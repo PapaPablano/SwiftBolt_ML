@@ -133,6 +133,12 @@
 		F63BBA222F22F047003EE3B0 /* WalkForwardOptimizationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA1C2F22F047003EE3B1 /* WalkForwardOptimizationView.swift */; };
 		F63BBA232F22F047003EE3B0 /* PortfolioOptimizationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA1D2F22F047003EE3B1 /* PortfolioOptimizationView.swift */; };
 		F63BBA242F22F047003EE3B0 /* StressTestingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA1E2F22F047003EE3B1 /* StressTestingView.swift */; };
+		F63BBA252F22F047003EE3B0 /* ModelTrainingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA112F22F047003EE3B0 /* ModelTrainingModels.swift */; };
+		F63BBA262F22F047003EE3B0 /* ForecastQualityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA122F22F047003EE3B0 /* ForecastQualityModels.swift */; };
+		F63BBA272F22F047003EE3B0 /* ModelTrainingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA2B2F22F047003EE3B0 /* ModelTrainingViewModel.swift */; };
+		F63BBA282F22F047003EE3B0 /* ForecastQualityViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA2C2F22F047003EE3B0 /* ForecastQualityViewModel.swift */; };
+		F63BBA292F22F047003EE3B0 /* ModelTrainingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA2D2F22F047003EE3B0 /* ModelTrainingView.swift */; };
+		F63BBA2A2F22F047003EE3B0 /* ForecastQualityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA2E2F22F047003EE3B0 /* ForecastQualityView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -258,6 +264,12 @@
 		F63BBA1C2F22F047003EE3B1 /* WalkForwardOptimizationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkForwardOptimizationView.swift; sourceTree = "<group>"; };
 		F63BBA1D2F22F047003EE3B1 /* PortfolioOptimizationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortfolioOptimizationView.swift; sourceTree = "<group>"; };
 		F63BBA1E2F22F047003EE3B1 /* StressTestingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressTestingView.swift; sourceTree = "<group>"; };
+		F63BBA112F22F047003EE3B0 /* ModelTrainingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTrainingModels.swift; sourceTree = "<group>"; };
+		F63BBA122F22F047003EE3B0 /* ForecastQualityModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastQualityModels.swift; sourceTree = "<group>"; };
+		F63BBA2B2F22F047003EE3B0 /* ModelTrainingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTrainingViewModel.swift; sourceTree = "<group>"; };
+		F63BBA2C2F22F047003EE3B0 /* ForecastQualityViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastQualityViewModel.swift; sourceTree = "<group>"; };
+		F63BBA2D2F22F047003EE3B0 /* ModelTrainingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelTrainingView.swift; sourceTree = "<group>"; };
+		F63BBA2E2F22F047003EE3B0 /* ForecastQualityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastQualityView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -356,6 +368,8 @@
 				F63BBA1C2F22F047003EE3B1 /* WalkForwardOptimizationView.swift */,
 				F63BBA1D2F22F047003EE3B1 /* PortfolioOptimizationView.swift */,
 				F63BBA1E2F22F047003EE3B1 /* StressTestingView.swift */,
+				F63BBA2D2F22F047003EE3B0 /* ModelTrainingView.swift */,
+				F63BBA2E2F22F047003EE3B0 /* ForecastQualityView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -368,6 +382,8 @@
 				F63BBA182F22F047003EE3B0 /* StressTestingViewModel.swift */,
 				F63BBA192F22F047003EE3B0 /* TechnicalIndicatorsViewModel.swift */,
 				F63BBA1A2F22F047003EE3B0 /* WalkForwardViewModel.swift */,
+				F63BBA2B2F22F047003EE3B0 /* ModelTrainingViewModel.swift */,
+				F63BBA2C2F22F047003EE3B0 /* ForecastQualityViewModel.swift */,
 				A2000016233456780000016 /* SymbolSearchViewModel.swift */,
 				A2000017233456780000017 /* ChartViewModel.swift */,
 				A2000018233456780000018 /* NewsViewModel.swift */,
@@ -393,6 +409,8 @@
 				F63BBA0E2F22EFF2003EE3B0 /* StressTestingModels.swift */,
 				F63BBA0F2F22EFF2003EE3B0 /* TechnicalIndicatorsModels.swift */,
 				F63BBA102F22EFF2003EE3B0 /* WalkForwardModels.swift */,
+				F63BBA112F22F047003EE3B0 /* ModelTrainingModels.swift */,
+				F63BBA122F22F047003EE3B0 /* ForecastQualityModels.swift */,
 				F6FD04832F0D8B0C00AF337E /* Timeframe.swift */,
 				A2000008233456780000008 /* Symbol.swift */,
 				A2000009233456780000009 /* OHLCBar.swift */,
@@ -672,6 +690,12 @@
 				F63BBA222F22F047003EE3B0 /* WalkForwardOptimizationView.swift in Sources */,
 				F63BBA232F22F047003EE3B0 /* PortfolioOptimizationView.swift in Sources */,
 				F63BBA242F22F047003EE3B0 /* StressTestingView.swift in Sources */,
+				F63BBA252F22F047003EE3B0 /* ModelTrainingModels.swift in Sources */,
+				F63BBA262F22F047003EE3B0 /* ForecastQualityModels.swift in Sources */,
+				F63BBA272F22F047003EE3B0 /* ModelTrainingViewModel.swift in Sources */,
+				F63BBA282F22F047003EE3B0 /* ForecastQualityViewModel.swift in Sources */,
+				F63BBA292F22F047003EE3B0 /* ModelTrainingView.swift in Sources */,
+				F63BBA2A2F22F047003EE3B0 /* ForecastQualityView.swift in Sources */,
 				296D2C72648D45A18BC89C2B /* EnsureCoverageResponse.swift in Sources */,
 				56BCC553C667467C9F9DE1FA /* HydrationBanner.swift in Sources */,
 				F768A2A036F22E169CA9E8AC /* ReloadWatchlistResponse.swift in Sources */,

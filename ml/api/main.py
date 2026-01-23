@@ -12,6 +12,8 @@ from fastapi.responses import JSONResponse
 
 from api.routers import (
     backtest,
+    forecast_quality,
+    model_training,
     portfolio,
     stress_test,
     technical_indicators,
@@ -58,6 +60,8 @@ app.include_router(backtest.router, prefix="/api/v1", tags=["Backtesting"])
 app.include_router(walk_forward.router, prefix="/api/v1", tags=["Walk-Forward Optimization"])
 app.include_router(portfolio.router, prefix="/api/v1", tags=["Portfolio Optimization"])
 app.include_router(stress_test.router, prefix="/api/v1", tags=["Stress Testing"])
+app.include_router(model_training.router, prefix="/api/v1", tags=["Model Training"])
+app.include_router(forecast_quality.router, prefix="/api/v1", tags=["Forecast Quality"])
 
 
 @app.get("/")
