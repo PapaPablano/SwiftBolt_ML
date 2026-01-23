@@ -188,7 +188,7 @@ jobs:
             echo "status=success" >> $GITHUB_OUTPUT
           fi
 
-      - name: Quick validation
+      - name: Validate OHLC integrity
         run: |
           cd ml
           python -c "
@@ -196,23 +196,51 @@ jobs:
           from dotenv import load_dotenv
           load_dotenv()
           
+          from src.data.data_validator import OHLCValidator
           from src.data.supabase_db import db
           from src.scripts.universe_utils import get_symbol_universe
 
+          validator = OHLCValidator()
           universe = get_symbol_universe()
           symbols = universe.get('symbols', []) or ['SPY', 'AAPL']
           timeframes = universe.get('timeframes', []) or ['m15', 'h1']
           
+          validation_errors = []
+          
+          # Sample validation on top 3 symbols
           for sym in symbols[:3]:
             sym = sym.strip()
             if not sym:
               continue
             for tf in timeframes[:2]:
-              df = db.fetch_ohlc_bars(sym, timeframe=tf, limit=5)
-              if not df.empty:
-                print(f'✅ {sym}/{tf}: {len(df)} bars, latest: {df.ts.max()}')
-              else:
-                print(f'⚠️ {sym}/{tf}: No data')
+              try:
+                df = db.fetch_ohlc_bars(sym, timeframe=tf, limit=100)
+                if df.empty:
+                  print(f'⚠️ {sym}/{tf}: No data found')
+                  continue
+                
+                df, result = validator.validate(df, fix_issues=False)
+                if not result.is_valid:
+                  error_msg = f'{sym}/{tf}: {result.issues}'
+                  validation_errors.append(error_msg)
+                  print(f'❌ {error_msg}')
+                  print('::warning::OHLC validation issues detected')
+                else:
+                  print(f'✅ {sym}/{tf}: Valid ({len(df)} bars, latest: {df.ts.max()})')
+              except Exception as e:
+                print(f'⚠️ {sym}/{tf}: Validation error - {e}')
+                validation_errors.append(f'{sym}/{tf}: {str(e)}')
+          
+          if validation_errors:
+            print('')
+            print('⚠️ OHLC validation issues detected (non-blocking):')
+            for error in validation_errors:
+              print(f'  - {error}')
+            print('')
+            print('::warning::Some OHLC data quality issues detected. Review data quality.')
+          else:
+            print('')
+            print('✅ OHLC integrity validated for all checked symbols/timeframes')
           "
 
       - name: Job summary

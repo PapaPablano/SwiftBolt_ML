@@ -301,6 +301,8 @@ class ValidationService:
         
         Scores range from -1 (bearish) to +1 (bullish).
         
+        Fetches from live_predictions table which has per-timeframe signals.
+        
         Args:
             symbol: Trading symbol
         
@@ -309,26 +311,65 @@ class ValidationService:
             {"M15": -0.48, "H1": -0.40, "H4": -0.35, "D1": 0.60, "W1": 0.70}
         """
         try:
+            # Get symbol_id first
+            symbol_result = (
+                self.db.client.table("symbols")
+                .select("id")
+                .eq("ticker", symbol)
+                .execute()
+            )
+            
+            if not symbol_result.data:
+                logger.warning(f"Symbol {symbol} not found in database")
+                return {tf: 0.0 for tf in ["M15", "H1", "H4", "D1", "W1"]}
+            
+            symbol_id = symbol_result.data[0]["id"]
+            
+            # Map timeframes (ValidationService uses uppercase, database uses lowercase)
+            tf_map = {
+                "M15": "m15",
+                "H1": "h1",
+                "H4": "h4",
+                "D1": "d1",
+                "W1": "w1"
+            }
+            
+            # Map signal to score
+            signal_to_score = {
+                "BULLISH": 1.0,
+                "BEARISH": -1.0,
+                "NEUTRAL": 0.0
+            }
+            
             timeframes = ["M15", "H1", "H4", "D1", "W1"]
             multi_tf_scores = {}
             
             for tf in timeframes:
                 try:
-                    # Query most recent indicator value for this timeframe
+                    # Query live_predictions table (correct table for prediction scores)
+                    db_tf = tf_map[tf]
                     result = (
-                        self.db.client.table("indicator_values")
-                        .select("prediction_score")
-                        .eq("symbol", symbol)
-                        .eq("timeframe", tf)
-                        .order("calculated_at", desc=True)
+                        self.db.client.table("live_predictions")
+                        .select("signal, accuracy_score")
+                        .eq("symbol_id", symbol_id)
+                        .eq("timeframe", db_tf)
+                        .order("prediction_time", desc=True)
                         .limit(1)
                         .execute()
                     )
                     
-                    if result.data:
-                        score = result.data[0].get("prediction_score", 0.0)
+                    if result.data and len(result.data) > 0:
+                        signal = result.data[0].get("signal")
+                        accuracy = result.data[0].get("accuracy_score", 0.5)
+                        
+                        # Convert signal to base score (-1 to +1)
+                        base_score = signal_to_score.get(signal, 0.0)
+                        
+                        # Weight by accuracy (scale score by confidence)
+                        score = base_score * accuracy
+                        
                         multi_tf_scores[tf] = score
-                        logger.debug(f"{symbol} {tf} score: {score:.2f}")
+                        logger.debug(f"{symbol} {tf} score: {score:.2f} (signal={signal}, accuracy={accuracy:.2f})")
                     else:
                         # No data for this timeframe, use neutral
                         multi_tf_scores[tf] = 0.0

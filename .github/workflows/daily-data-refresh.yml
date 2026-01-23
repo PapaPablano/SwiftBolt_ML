@@ -85,6 +85,8 @@ jobs:
         run: |
           cd ml
           echo "📊 Refreshing ${{ matrix.timeframe }} timeframe..."
+          echo "ℹ️ Note: OHLC validation should be performed by alpaca_backfill_ohlc_v2.py before insertion"
+          echo "   If validation fails, data will not be inserted (see script implementation)"
           
           SYMBOL_FLAG=""
           if [ -n "${{ inputs.symbol }}" ]; then
@@ -164,12 +166,55 @@ jobs:
           alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
           alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
       
-      - name: Validate data quality
+      - name: Validate data quality and OHLC integrity
         run: |
           cd ml
-          echo "🔍 Validating data quality..."
+          echo "🔍 Validating data quality and OHLC integrity..."
+          
+          # Run gap detection
           python src/scripts/backfill_with_gap_detection.py --all > /tmp/validation_report.txt || true
           cat /tmp/validation_report.txt
+          
+          # Also validate OHLC consistency
+          echo ""
+          echo "🔍 Validating OHLC consistency..."
+          python -c "
+          import os
+          from dotenv import load_dotenv
+          load_dotenv()
+          
+          from src.data.data_validator import OHLCValidator
+          from src.data.supabase_db import db
+          
+          validator = OHLCValidator()
+          test_symbols = ['SPY', 'AAPL', 'NVDA', 'MSFT']
+          
+          ohlc_errors = []
+          for symbol in test_symbols:
+              for tf in ['d1', 'h4']:
+                  try:
+                      df = db.fetch_ohlc_bars(symbol, timeframe=tf, limit=100)
+                      if df.empty:
+                          continue
+                      df, result = validator.validate(df, fix_issues=False)
+                      if not result.is_valid:
+                          ohlc_errors.append(f'{symbol}/{tf}: {result.issues}')
+                          print(f'❌ {symbol}/{tf}: {result.issues}')
+                      else:
+                          print(f'✅ {symbol}/{tf}: OHLC valid')
+                  except Exception as e:
+                      print(f'⚠️ {symbol}/{tf}: Error - {e}')
+          
+          if ohlc_errors:
+              print('')
+              print('⚠️ OHLC validation issues detected:')
+              for error in ohlc_errors:
+                  print(f'  - {error}')
+              print('::warning::OHLC data quality issues detected')
+          else:
+              print('')
+              print('✅ OHLC consistency validated')
+          " || echo "⚠️ OHLC validation check completed with warnings"
       
       - name: Upload validation report
         if: always()
