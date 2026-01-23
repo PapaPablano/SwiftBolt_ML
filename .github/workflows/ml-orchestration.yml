@@ -592,16 +592,51 @@ jobs:
               -H "Content-Type: application/json" \
               -X POST \
               -d "$PAYLOAD" \
-              "${SUPABASE_URL}/functions/v1/chart-data-v2") || true;
+              "${SUPABASE_URL}/functions/v1/chart-data-v2" 2>&1) || RESPONSE="";
+            
+            # Check for errors in response
             if [ -z "$RESPONSE" ]; then
-              printf "| %s | %s | %s | %s | %s | %s |\n" "$SYMBOL" "$TF_TRIMMED" "error" "0" "error" "0" >> "$SUMMARY_FILE";
+              printf "| %s | %s | %s | %s | %s | %s |\n" "$SYMBOL" "$TF_TRIMMED" "no_response" "0" "no_response" "0" >> "$SUMMARY_FILE";
               echo "::warning::No response for $SYMBOL/$TF_TRIMMED";
               continue;
             fi;
-            HIST_PROVIDER=$(echo "$RESPONSE" | jq -r '.layers.historical.provider // "unknown"') || HIST_PROVIDER="unknown";
-            HIST_COUNT=$(echo "$RESPONSE" | jq -r '.layers.historical.count // 0' || echo "0");
-            INTRA_PROVIDER=$(echo "$RESPONSE" | jq -r '.layers.intraday.provider // "unknown"') || INTRA_PROVIDER="unknown";
-            INTRA_COUNT=$(echo "$RESPONSE" | jq -r '.layers.intraday.count // 0' || echo "0");
+            
+            # Check if response is an error
+            if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+              ERROR_MSG=$(echo "$RESPONSE" | jq -r '.error // "unknown error"');
+              printf "| %s | %s | %s | %s | %s | %s |\n" "$SYMBOL" "$TF_TRIMMED" "error" "0" "error" "0" >> "$SUMMARY_FILE";
+              echo "::warning::[$SYMBOL/$TF_TRIMMED] API error: $ERROR_MSG";
+              continue;
+            fi;
+            
+            # Parse response with better error handling
+            # Note: Edge function returns 'none' when no data, not 'unknown'
+            HIST_PROVIDER=$(echo "$RESPONSE" | jq -r '.layers.historical.provider // "unknown"' 2>/dev/null) || HIST_PROVIDER="parse_error";
+            HIST_COUNT=$(echo "$RESPONSE" | jq -r '.layers.historical.count // 0' 2>/dev/null) || HIST_COUNT="0";
+            INTRA_PROVIDER=$(echo "$RESPONSE" | jq -r '.layers.intraday.provider // "unknown"' 2>/dev/null) || INTRA_PROVIDER="parse_error";
+            INTRA_COUNT=$(echo "$RESPONSE" | jq -r '.layers.intraday.count // 0' 2>/dev/null) || INTRA_COUNT="0";
+            
+            # Normalize 'none' to 'no_data' for clarity
+            if [ "$HIST_PROVIDER" = "none" ]; then
+              HIST_PROVIDER="no_data";
+            fi;
+            if [ "$INTRA_PROVIDER" = "none" ]; then
+              INTRA_PROVIDER="no_data";
+            fi;
+            
+            # If parsing failed, try to get total bars as fallback
+            if [ "$HIST_PROVIDER" = "parse_error" ] || [ "$INTRA_PROVIDER" = "parse_error" ]; then
+              TOTAL_BARS=$(echo "$RESPONSE" | jq -r '.metadata.total_bars // 0' 2>/dev/null) || TOTAL_BARS="0";
+              if [ "$TOTAL_BARS" != "0" ] && [ -n "$TOTAL_BARS" ]; then
+                echo "::warning::[$SYMBOL/$TF_TRIMMED] Response structure unexpected, but found $TOTAL_BARS total bars";
+                HIST_COUNT="$TOTAL_BARS";
+                INTRA_COUNT="0";
+              else
+                # Debug: Show first 200 chars of response if parsing fails
+                echo "::warning::[$SYMBOL/$TF_TRIMMED] Failed to parse response. First 200 chars: ${RESPONSE:0:200}";
+              fi;
+            fi;
+            
             printf "| %s | %s | %s | %s | %s | %s |\n" \
               "$SYMBOL" "$TF_TRIMMED" "$HIST_PROVIDER" "$HIST_COUNT" "$INTRA_PROVIDER" "$INTRA_COUNT" >> "$SUMMARY_FILE";
             echo "::notice::[$SYMBOL/$TF_TRIMMED] historical=$HIST_PROVIDER($HIST_COUNT) intraday=$INTRA_PROVIDER($INTRA_COUNT)";
