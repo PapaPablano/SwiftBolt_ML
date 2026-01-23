@@ -106,7 +106,7 @@ final class TechnicalIndicatorsViewModel: ObservableObject {
     // MARK: - Helper Methods
     
     func getIndicatorValue(_ name: String) -> Double? {
-        indicators?.indicators[name]
+        indicators?.indicators[name] ?? nil
     }
     
     func getIndicatorInterpretation(_ name: String) -> IndicatorInterpretation {

@@ -173,7 +173,7 @@ struct OverviewTabView: View {
 
 // MARK: - Metric Card
 
-struct MetricCard: View {
+private struct MetricCard: View {
     let title: String
     let value: String
     let icon: String

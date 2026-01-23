@@ -6,8 +6,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { corsResponse, handlePreflight } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
-
-const PYTHON_SCRIPT_PATH = "/Users/ericpeterson/SwiftBolt_ML/ml/scripts/run_walk_forward.py";
+import { callFastApi } from "../_shared/fastapi-client.ts";
 
 interface WalkForwardRequest {
   symbol: string;
@@ -57,72 +56,25 @@ interface WalkForwardResponse {
 }
 
 /**
- * Get Python script path from environment or use default
- */
-function getPythonScriptPath(): string {
-  return (
-    Deno.env.get("WALK_FORWARD_SCRIPT_PATH") ||
-    PYTHON_SCRIPT_PATH
-  );
-}
-
-/**
- * Call Python script to run walk-forward optimization
+ * Call FastAPI to run walk-forward optimization
  */
 async function runWalkForward(request: WalkForwardRequest): Promise<WalkForwardResponse> {
-  const scriptPath = getPythonScriptPath();
-  
-  // Build command arguments
-  const args = [
-    scriptPath,
-    "--symbol",
-    request.symbol,
-    "--horizon",
-    request.horizon,
-    "--forecaster",
-    request.forecaster || "baseline",
-    "--timeframe",
-    request.timeframe || "d1",
-  ];
-  
-  // Add window parameters if provided
-  if (request.windows?.trainWindow) {
-    args.push("--train-window", String(request.windows.trainWindow));
-  }
-  if (request.windows?.testWindow) {
-    args.push("--test-window", String(request.windows.testWindow));
-  }
-  if (request.windows?.stepSize) {
-    args.push("--step-size", String(request.windows.stepSize));
-  }
-  
-  const pythonCmd = new Deno.Command("python3", {
-    args,
-    stdout: "piped",
-    stderr: "piped",
-  });
-
-  try {
-    const { code, stdout, stderr } = await pythonCmd.output();
-
-    if (code !== 0) {
-      const errorText = new TextDecoder().decode(stderr);
-      console.error(`Python script error: ${errorText}`);
-      throw new Error(`Python script failed: ${errorText}`);
-    }
-
-    const output = new TextDecoder().decode(stdout);
-    const result = JSON.parse(output) as WalkForwardResponse;
-
-    if (result.error) {
-      throw new Error(result.error);
-    }
-
-    return result;
-  } catch (error) {
-    console.error(`Error running Python script: ${error}`);
-    throw error;
-  }
+  return await callFastApi<WalkForwardResponse>(
+    "/api/v1/walk-forward-optimize",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        symbol: request.symbol,
+        horizon: request.horizon,
+        forecaster: request.forecaster || "baseline",
+        timeframe: request.timeframe,
+        trainWindow: request.windows?.trainWindow,
+        testWindow: request.windows?.testWindow,
+        stepSize: request.windows?.stepSize,
+      }),
+    },
+    120000 // 2 minute timeout for walk-forward optimization
+  );
 }
 
 serve(async (req: Request) => {

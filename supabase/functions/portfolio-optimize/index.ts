@@ -6,8 +6,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { corsResponse, handlePreflight } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
-
-const PYTHON_SCRIPT_PATH = "/Users/ericpeterson/SwiftBolt_ML/ml/scripts/optimize_portfolio.py";
+import { callFastApi } from "../_shared/fastapi-client.ts";
 
 interface PortfolioOptimizeRequest {
   symbols: string[];
@@ -41,72 +40,25 @@ interface PortfolioOptimizeResponse {
 }
 
 /**
- * Get Python script path from environment or use default
- */
-function getPythonScriptPath(): string {
-  return (
-    Deno.env.get("PORTFOLIO_OPTIMIZE_SCRIPT_PATH") ||
-    PYTHON_SCRIPT_PATH
-  );
-}
-
-/**
- * Call Python script to optimize portfolio
+ * Call FastAPI to optimize portfolio
  */
 async function optimizePortfolio(request: PortfolioOptimizeRequest): Promise<PortfolioOptimizeResponse> {
-  const scriptPath = getPythonScriptPath();
-  
-  // Build command arguments
-  const args = [
-    scriptPath,
-    "--symbols",
-    request.symbols.join(","),
-    "--method",
-    request.method,
-    "--timeframe",
-    request.timeframe || "d1",
-    "--lookback-days",
-    String(request.lookbackDays || 252),
-    "--risk-free-rate",
-    String(request.riskFreeRate || 0.02),
-    "--min-weight",
-    String(request.minWeight || 0.0),
-    "--max-weight",
-    String(request.maxWeight || 1.0),
-  ];
-  
-  // Add target return if provided (for efficient portfolio)
-  if (request.targetReturn !== undefined) {
-    args.push("--target-return", String(request.targetReturn));
-  }
-  
-  const pythonCmd = new Deno.Command("python3", {
-    args,
-    stdout: "piped",
-    stderr: "piped",
-  });
-
-  try {
-    const { code, stdout, stderr } = await pythonCmd.output();
-
-    if (code !== 0) {
-      const errorText = new TextDecoder().decode(stderr);
-      console.error(`Python script error: ${errorText}`);
-      throw new Error(`Python script failed: ${errorText}`);
-    }
-
-    const output = new TextDecoder().decode(stdout);
-    const result = JSON.parse(output) as PortfolioOptimizeResponse;
-
-    if (result.error) {
-      throw new Error(result.error);
-    }
-
-    return result;
-  } catch (error) {
-    console.error(`Error running Python script: ${error}`);
-    throw error;
-  }
+  return await callFastApi<PortfolioOptimizeResponse>(
+    "/api/v1/portfolio-optimize",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        symbols: request.symbols,
+        method: request.method,
+        lookbackDays: request.lookbackDays,
+        riskFreeRate: request.riskFreeRate,
+        targetReturn: request.targetReturn,
+        minWeight: request.minWeight,
+        maxWeight: request.maxWeight,
+      }),
+    },
+    60000 // 60 second timeout for portfolio optimization
+  );
 }
 
 serve(async (req: Request) => {

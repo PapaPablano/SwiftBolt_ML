@@ -402,7 +402,7 @@ struct BacktestingView: View {
             if let sharpe = result.metrics.sharpeRatio {
                 MetricCard(
                     title: "Sharpe Ratio",
-                    value: "\(sharpe, specifier: "%.2f")",
+                    value: String(format: "%.2f", sharpe),
                     icon: "chart.line.uptrend.xyaxis",
                     color: sharpe > 1.0 ? .green : sharpe > 0.5 ? .orange : .red
                 )
@@ -411,7 +411,7 @@ struct BacktestingView: View {
             if let drawdown = result.metrics.maxDrawdown {
                 MetricCard(
                     title: "Max Drawdown",
-                    value: "\(drawdown * 100, specifier: "%.2f")%",
+                    value: "\(String(format: "%.2f", drawdown * 100))%",
                     icon: "arrow.down",
                     color: abs(drawdown) < 0.1 ? .green : abs(drawdown) < 0.2 ? .orange : .red
                 )
@@ -420,7 +420,7 @@ struct BacktestingView: View {
             if let winRate = result.metrics.winRate {
                 MetricCard(
                     title: "Win Rate",
-                    value: "\(winRate * 100, specifier: "%.1f")%",
+                    value: "\(String(format: "%.1f", winRate * 100))%",
                     icon: "checkmark.circle",
                     color: winRate > 0.5 ? .green : winRate > 0.4 ? .orange : .red
                 )
@@ -491,7 +491,7 @@ struct BacktestingView: View {
 
 // MARK: - Metric Card
 
-struct MetricCard: View {
+private struct MetricCard: View {
     let title: String
     let value: String
     let icon: String

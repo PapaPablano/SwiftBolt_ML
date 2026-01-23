@@ -7,20 +7,10 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { corsResponse, handlePreflight } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
+import { callFastApi } from "../_shared/fastapi-client.ts";
 
 const CACHE_DURATION_INTRADAY = 5 * 60; // 5 minutes for intraday
 const CACHE_DURATION_DAILY = 60 * 60; // 1 hour for daily+
-
-/**
- * Get Python script path from environment or use default
- * In production, this should point to a deployed script or FastAPI endpoint
- */
-function getPythonScriptPath(): string {
-  return (
-    Deno.env.get("TECHNICAL_INDICATORS_SCRIPT_PATH") ||
-    "/Users/ericpeterson/SwiftBolt_ML/ml/scripts/get_technical_indicators.py"
-  );
-}
 
 interface TechnicalIndicatorsResponse {
   symbol: string;
@@ -54,48 +44,16 @@ function getCacheKey(symbol: string, timeframe: string): string {
 }
 
 /**
- * Call Python script to calculate indicators
+ * Call FastAPI to calculate indicators
  */
 async function calculateIndicators(
   symbol: string,
   timeframe: string
 ): Promise<TechnicalIndicatorsResponse> {
-  const scriptPath = getPythonScriptPath();
-  const pythonCmd = new Deno.Command("python3", {
-    args: [
-      scriptPath,
-      "--symbol",
-      symbol,
-      "--timeframe",
-      timeframe,
-      "--lookback",
-      "500",
-    ],
-    stdout: "piped",
-    stderr: "piped",
+  const endpoint = `/api/v1/technical-indicators?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&lookback=500`;
+  return await callFastApi<TechnicalIndicatorsResponse>(endpoint, {
+    method: "GET",
   });
-
-  try {
-    const { code, stdout, stderr } = await pythonCmd.output();
-
-    if (code !== 0) {
-      const errorText = new TextDecoder().decode(stderr);
-      console.error(`Python script error: ${errorText}`);
-      throw new Error(`Python script failed: ${errorText}`);
-    }
-
-    const output = new TextDecoder().decode(stdout);
-    const result = JSON.parse(output) as TechnicalIndicatorsResponse;
-
-    if (result.error) {
-      throw new Error(result.error);
-    }
-
-    return result;
-  } catch (error) {
-    console.error(`Error running Python script: ${error}`);
-    throw error;
-  }
 }
 
 /**

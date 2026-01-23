@@ -26,7 +26,7 @@ final class PortfolioOptimizationViewModel: ObservableObject {
     
     var formattedSharpeRatio: String {
         guard let result = optimizationResult else { return "—" }
-        return "\(result.allocation.sharpeRatio, specifier: "%.2f")"
+        return String(format: "%.2f", result.allocation.sharpeRatio)
     }
     
     var sharpeRatioColor: Color {
@@ -59,7 +59,7 @@ final class PortfolioOptimizationViewModel: ObservableObject {
             self.optimizationResult = response
             self.isLoading = false
             
-            print("[PortfolioOptimization] Complete: \(response.allocation.sharpeRatio, specifier: "%.2f") Sharpe, \(response.allocation.expectedReturn * 100, specifier: "%.2f")% return")
+            print("[PortfolioOptimization] Complete: \(String(format: "%.2f", response.allocation.sharpeRatio)) Sharpe, \(String(format: "%.2f", response.allocation.expectedReturn * 100))% return")
         } catch {
             self.error = error.localizedDescription
             self.isLoading = false

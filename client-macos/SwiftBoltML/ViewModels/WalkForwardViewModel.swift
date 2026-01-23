@@ -24,7 +24,7 @@ final class WalkForwardViewModel: ObservableObject {
     
     var formattedAccuracy: String {
         guard let result = walkForwardResult else { return "—" }
-        return "\(result.metrics.accuracy * 100, specifier: "%.2f")%"
+        return "\(String(format: "%.2f", result.metrics.accuracy * 100))%"
     }
     
     var accuracyColor: Color {
@@ -70,7 +70,7 @@ final class WalkForwardViewModel: ObservableObject {
             self.walkForwardResult = response
             self.isLoading = false
             
-            print("[WalkForward] Optimization complete: \(response.metrics.accuracy * 100, specifier: "%.2f")% accuracy, \(response.metrics.totalTrades) trades")
+            print("[WalkForward] Optimization complete: \(String(format: "%.2f", response.metrics.accuracy * 100))% accuracy, \(response.metrics.totalTrades) trades")
         } catch {
             self.error = error.localizedDescription
             self.isLoading = false

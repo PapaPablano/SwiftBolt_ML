@@ -396,37 +396,33 @@ struct StressTestingView: View {
                     .frame(maxWidth: .infinity)
                     .padding()
             } else {
-                Table(Array(result.positionChanges.keys.sorted()), id: \.self) { symbol in
-                    TableColumn("Symbol") { _ in
+                let sortedSymbols = Array(result.positionChanges.keys.sorted())
+                List(sortedSymbols, id: \.self) { symbol in
+                    HStack {
                         Text(symbol)
                             .font(.caption.bold())
-                    }
-                    .width(min: 100)
-                    
-                    TableColumn("Quantity") { _ in
+                            .frame(width: 100, alignment: .leading)
+                        
                         if let qty = result.positions[symbol] {
-                            Text("\(qty, specifier: "%.0f")")
+                            Text(String(format: "%.0f", qty))
                                 .font(.caption.monospacedDigit())
+                                .frame(width: 80, alignment: .trailing)
                         }
-                    }
-                    .width(min: 80)
-                    
-                    TableColumn("Price") { _ in
+                        
                         if let price = result.prices[symbol] {
-                            Text("$\(price, specifier: "%.2f")")
+                            Text("$\(String(format: "%.2f", price))")
                                 .font(.caption.monospacedDigit())
+                                .frame(width: 80, alignment: .trailing)
                         }
-                    }
-                    .width(min: 80)
-                    
-                    TableColumn("Change") { _ in
+                        
                         if let change = result.positionChanges[symbol] {
-                            Text("$\(change, specifier: "%.2f")")
+                            Text("$\(String(format: "%.2f", change))")
                                 .font(.caption.bold().monospacedDigit())
                                 .foregroundStyle(change >= 0 ? .green : .red)
+                                .frame(width: 100, alignment: .trailing)
                         }
                     }
-                    .width(min: 100)
+                    .padding(.vertical, 4)
                 }
                 .frame(height: 300)
             }

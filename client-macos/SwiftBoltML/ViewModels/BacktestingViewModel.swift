@@ -27,7 +27,7 @@ final class BacktestingViewModel: ObservableObject {
     var formattedReturn: String {
         guard let result = backtestResult else { return "—" }
         let sign = result.totalReturn >= 0 ? "+" : ""
-        return "\(sign)\(result.totalReturn * 100, specifier: "%.2f")%"
+        return "\(sign)\(String(format: "%.2f", result.totalReturn * 100))%"
     }
     
     var returnColor: Color {
@@ -73,7 +73,7 @@ final class BacktestingViewModel: ObservableObject {
             self.backtestResult = response
             self.isLoading = false
             
-            print("[Backtesting] Backtest complete: \(response.totalReturn * 100, specifier: "%.2f")% return, \(response.metrics.totalTrades) trades")
+            print("[Backtesting] Backtest complete: \(String(format: "%.2f", response.totalReturn * 100))% return, \(response.metrics.totalTrades) trades")
         } catch {
             self.error = error.localizedDescription
             self.isLoading = false

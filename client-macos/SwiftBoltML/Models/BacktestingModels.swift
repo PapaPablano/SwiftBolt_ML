@@ -91,7 +91,7 @@ struct BacktestResponse: Decodable {
         var formattedPnl: String {
             if let pnl = pnl {
                 let sign = pnl >= 0 ? "+" : ""
-                return "\(sign)\(pnl, specifier: "%.2f")"
+                return "\(sign)\(String(format: "%.2f", pnl))"
             }
             return "—"
         }

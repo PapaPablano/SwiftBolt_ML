@@ -6,8 +6,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { corsResponse, handlePreflight } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
-
-const PYTHON_SCRIPT_PATH = "/Users/ericpeterson/SwiftBolt_ML/ml/scripts/run_backtest.py";
+import { callFastApi } from "../_shared/fastapi-client.ts";
 
 interface BacktestRequest {
   symbol: string;
@@ -52,70 +51,25 @@ interface BacktestResponse {
 }
 
 /**
- * Get Python script path from environment or use default
- */
-function getPythonScriptPath(): string {
-  return (
-    Deno.env.get("BACKTEST_SCRIPT_PATH") ||
-    PYTHON_SCRIPT_PATH
-  );
-}
-
-/**
- * Call Python script to run backtest
+ * Call FastAPI to run backtest
  */
 async function runBacktest(request: BacktestRequest): Promise<BacktestResponse> {
-  const scriptPath = getPythonScriptPath();
-  
-  // Build command arguments
-  const args = [
-    scriptPath,
-    "--symbol",
-    request.symbol,
-    "--strategy",
-    request.strategy,
-    "--start",
-    request.startDate,
-    "--end",
-    request.endDate,
-    "--timeframe",
-    request.timeframe || "d1",
-    "--capital",
-    String(request.initialCapital || 10000),
-  ];
-  
-  // Add strategy parameters if provided
-  if (request.params && Object.keys(request.params).length > 0) {
-    args.push("--params", JSON.stringify(request.params));
-  }
-  
-  const pythonCmd = new Deno.Command("python3", {
-    args,
-    stdout: "piped",
-    stderr: "piped",
-  });
-
-  try {
-    const { code, stdout, stderr } = await pythonCmd.output();
-
-    if (code !== 0) {
-      const errorText = new TextDecoder().decode(stderr);
-      console.error(`Python script error: ${errorText}`);
-      throw new Error(`Python script failed: ${errorText}`);
-    }
-
-    const output = new TextDecoder().decode(stdout);
-    const result = JSON.parse(output) as BacktestResponse;
-
-    if (result.error) {
-      throw new Error(result.error);
-    }
-
-    return result;
-  } catch (error) {
-    console.error(`Error running Python script: ${error}`);
-    throw error;
-  }
+  return await callFastApi<BacktestResponse>(
+    "/api/v1/backtest-strategy",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        symbol: request.symbol,
+        strategy: request.strategy,
+        startDate: request.startDate,
+        endDate: request.endDate,
+        timeframe: request.timeframe,
+        initialCapital: request.initialCapital,
+        params: request.params,
+      }),
+    },
+    60000 // 60 second timeout for backtests
+  );
 }
 
 serve(async (req: Request) => {

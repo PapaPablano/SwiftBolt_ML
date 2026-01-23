@@ -261,7 +261,7 @@ struct WalkForwardOptimizationView: View {
                         Text("Accuracy")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("\(result.metrics.accuracy * 100, specifier: "%.2f")%")
+                        Text("\(String(format: "%.2f", result.metrics.accuracy * 100))%")
                             .font(.title2.bold())
                             .foregroundStyle(result.metrics.accuracy >= 0.6 ? .green : result.metrics.accuracy >= 0.5 ? .orange : .red)
                     }
@@ -270,7 +270,7 @@ struct WalkForwardOptimizationView: View {
                         Text("F1 Score")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("\(result.metrics.f1Score, specifier: "%.3f")")
+                        Text(String(format: "%.3f", result.metrics.f1Score))
                             .font(.title3.bold())
                     }
                     
@@ -278,7 +278,7 @@ struct WalkForwardOptimizationView: View {
                         Text("Sharpe Ratio")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("\(result.metrics.sharpeRatio, specifier: "%.2f")")
+                        Text(String(format: "%.2f", result.metrics.sharpeRatio))
                             .font(.title3.bold())
                             .foregroundStyle(result.metrics.sharpeRatio > 1.0 ? .green : result.metrics.sharpeRatio > 0.5 ? .orange : .red)
                     }
@@ -287,7 +287,7 @@ struct WalkForwardOptimizationView: View {
                         Text("Win Rate")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("\(result.metrics.winRate * 100, specifier: "%.1f")%")
+                        Text("\(String(format: "%.1f", result.metrics.winRate * 100))%")
                             .font(.title3.bold())
                             .foregroundStyle(result.metrics.winRate > 0.5 ? .green : result.metrics.winRate > 0.4 ? .orange : .red)
                     }
@@ -308,28 +308,28 @@ struct WalkForwardOptimizationView: View {
         ], spacing: 16) {
             MetricCard(
                 title: "Precision",
-                value: "\(result.metrics.precision * 100, specifier: "%.2f")%",
+                value: "\(String(format: "%.2f", result.metrics.precision * 100))%",
                 icon: "target",
-                color: result.metrics.precision > 0.6 ? .green : .orange
+                color: result.metrics.precision > 0.6 ? Color.green : Color.orange
             )
             
             MetricCard(
                 title: "Recall",
-                value: "\(result.metrics.recall * 100, specifier: "%.2f")%",
+                value: "\(String(format: "%.2f", result.metrics.recall * 100))%",
                 icon: "arrow.clockwise",
                 color: result.metrics.recall > 0.6 ? .green : .orange
             )
             
             MetricCard(
                 title: "Max Drawdown",
-                value: "\(result.metrics.maxDrawdown * 100, specifier: "%.2f")%",
+                value: "\(String(format: "%.2f", result.metrics.maxDrawdown * 100))%",
                 icon: "arrow.down",
                 color: abs(result.metrics.maxDrawdown) < 0.1 ? .green : abs(result.metrics.maxDrawdown) < 0.2 ? .orange : .red
             )
             
             MetricCard(
                 title: "Profit Factor",
-                value: "\(result.metrics.profitFactor, specifier: "%.2f")",
+                value: String(format: "%.2f", result.metrics.profitFactor),
                 icon: "dollarsign.circle",
                 color: result.metrics.profitFactor > 1.5 ? .green : result.metrics.profitFactor > 1.0 ? .orange : .red
             )
@@ -357,7 +357,7 @@ struct WalkForwardOptimizationView: View {
             
             MetricCard(
                 title: "Sortino Ratio",
-                value: "\(result.metrics.sortinoRatio, specifier: "%.2f")",
+                value: String(format: "%.2f", result.metrics.sortinoRatio),
                 icon: "chart.line.uptrend.xyaxis",
                 color: result.metrics.sortinoRatio > 1.0 ? .green : .orange
             )
@@ -426,6 +426,37 @@ struct WalkForwardOptimizationView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Metric Card
+
+private struct MetricCard: View {
+    let title: String
+    let value: String
+    let icon: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.title2)
+                    .foregroundStyle(color)
+                Spacer()
+            }
+            
+            Text(value)
+                .font(.title.bold())
+                .foregroundStyle(.primary)
+            
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
     }
 }
 

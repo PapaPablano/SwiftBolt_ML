@@ -31,7 +31,7 @@ final class StressTestingViewModel: ObservableObject {
     var formattedImpact: String {
         guard let result = stressTestResult else { return "—" }
         let sign = result.portfolio.change >= 0 ? "+" : ""
-        return "\(sign)\(result.portfolio.changePercent * 100, specifier: "%.2f")%"
+        return "\(sign)\(String(format: "%.2f", result.portfolio.changePercent * 100))%"
     }
     
     var impactColor: Color {
@@ -66,7 +66,7 @@ final class StressTestingViewModel: ObservableObject {
             self.stressTestResult = response
             self.isLoading = false
             
-            print("[StressTesting] Complete: \(response.portfolio.changePercent * 100, specifier: "%.2f")% impact, \(response.risk.severity) severity")
+            print("[StressTesting] Complete: \(String(format: "%.2f", response.portfolio.changePercent * 100))% impact, \(response.risk.severity) severity")
         } catch {
             self.error = error.localizedDescription
             self.isLoading = false

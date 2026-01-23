@@ -98,7 +98,7 @@ struct TechnicalIndicatorsView: View {
         }
     }
     
-    private func priceMetric(label: String, value: Double, isHighlighted: Bool = false, format: FloatingPointFormatStyle<Double> = .currency(code: "USD")) -> some View {
+    private func priceMetric(label: String, value: Double, isHighlighted: Bool = false, format: FloatingPointFormatStyle<Double> = .number) -> some View {
         VStack(spacing: 4) {
             Text(label)
                 .font(.caption)

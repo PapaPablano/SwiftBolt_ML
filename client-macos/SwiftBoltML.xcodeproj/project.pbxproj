@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-        893B3E6734F63C82006BBA70 /* AddToStrategySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 893B3E6634F63C82006BBA70 /* AddToStrategySheet.swift */; };
 		0B281429F99B764ACF20AE52 /* OptionsRankerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */; };
 		136FE9F67FA29A26AE074312 /* MultiTimeframeConsensusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144206D7859B6361AEFE13D9 /* MultiTimeframeConsensusView.swift */; };
 		1469ED89052E948868C57E9E /* PivotLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CE2E34EE4D81F3060BC9AF1 /* PivotLevel.swift */; };
@@ -30,6 +29,7 @@
 		75E6EC514BD3BA75308497C8 /* PredictionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9956271A37FA42982A5F0DDC /* PredictionsViewModel.swift */; };
 		7CA2B280BFC9ADD0E5544234 /* SupportResistanceOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F857540C973ADC971FC52E92 /* SupportResistanceOverlayView.swift */; };
 		80B1B38AB6AA986B4B10DD85 /* MLAccuracyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC81FDA448EE43BF7946EB61 /* MLAccuracyModels.swift */; };
+		893B3E6734F63C82006BBA70 /* AddToStrategySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 893B3E6634F63C82006BBA70 /* AddToStrategySheet.swift */; };
 		89DD292B67C2CFAB0A8731F5 /* WebChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F050475A57EE1E86842D9FB8 /* WebChartView.swift */; };
 		9A481B5659E62F5F2C7EC5EB /* MultiLegCreateStrategyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4B15838B1E6488AF66CA162 /* MultiLegCreateStrategyView.swift */; };
 		A1000001233456780000001 /* SwiftBoltMLApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001233456780000001 /* SwiftBoltMLApp.swift */; };
@@ -79,10 +79,6 @@
 		EAB197F7318F24B608BAA78D /* MLDashboardModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 495F16DC7FC5729654ADE6C7 /* MLDashboardModels.swift */; };
 		EBE85EE02C19C722FFEA64F4 /* lightweight-charts.standalone.production.js in Resources */ = {isa = PBXBuildFile; fileRef = F903565D8F0B0D702A53E8B0 /* lightweight-charts.standalone.production.js */; };
 		F60BB96C2EF036FA0044BE7E /* OptionContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96A2EF036FA0044BE7E /* OptionContract.swift */; };
-		FEAA00012F4444440000001 /* ValidationDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000001 /* ValidationDashboardView.swift */; };
-		FEAA00012F4444440000002 /* UnifiedValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000002 /* UnifiedValidator.swift */; };
-		FEAA00012F4444440000003 /* ValidationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000003 /* ValidationViewModel.swift */; };
-		FEAA00012F4444440000004 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000004 /* NetworkMonitor.swift */; };
 		F60BB96D2EF036FA0044BE7E /* OptionsChainResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96B2EF036FA0044BE7E /* OptionsChainResponse.swift */; };
 		F60BB96F2EF0371A0044BE7E /* OptionsChainViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB96E2EF036FA0044BE7E /* OptionsChainViewModel.swift */; };
 		F60BB9712EF037360044BE7E /* OptionsChainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F60BB9702EF037360044BE7E /* OptionsChainView.swift */; };
@@ -95,12 +91,26 @@
 		F6370B2A2F1374A700011F78 /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = F6370B292F1374A700011F78 /* Realtime */; };
 		F6370B2C2F1374A700011F78 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = F6370B2B2F1374A700011F78 /* Storage */; };
 		F6370B302F13761B00011F78 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = F6370B2F2F13761B00011F78 /* Supabase */; };
+		F63BBA112F22EFF2003EE3B0 /* WalkForwardModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA102F22EFF2003EE3B0 /* WalkForwardModels.swift */; };
+		F63BBA122F22EFF2003EE3B0 /* TechnicalIndicatorsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA0F2F22EFF2003EE3B0 /* TechnicalIndicatorsModels.swift */; };
+		F63BBA132F22EFF2003EE3B0 /* PortfolioOptimizationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA0D2F22EFF2003EE3B0 /* PortfolioOptimizationModels.swift */; };
+		F63BBA142F22EFF2003EE3B0 /* BacktestingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA0C2F22EFF2003EE3B0 /* BacktestingModels.swift */; };
+		F63BBA152F22EFF2003EE3B0 /* StressTestingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA0E2F22EFF2003EE3B0 /* StressTestingModels.swift */; };
+		F63BBA1B2F22F047003EE3B0 /* WalkForwardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA1A2F22F047003EE3B0 /* WalkForwardViewModel.swift */; };
+		F63BBA1C2F22F047003EE3B0 /* BacktestingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA162F22F047003EE3B0 /* BacktestingViewModel.swift */; };
+		F63BBA1D2F22F047003EE3B0 /* StressTestingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA182F22F047003EE3B0 /* StressTestingViewModel.swift */; };
+		F63BBA1E2F22F047003EE3B0 /* TechnicalIndicatorsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA192F22F047003EE3B0 /* TechnicalIndicatorsViewModel.swift */; };
+		F63BBA1F2F22F047003EE3B0 /* PortfolioOptimizationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA172F22F047003EE3B0 /* PortfolioOptimizationViewModel.swift */; };
 		F64681A92EF0E00900FBEF04 /* MLReportCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F64681A82EF0E00900FBEF04 /* MLReportCard.swift */; };
 		F670CAD92F1C882A00B4A7C2 /* MultiTimeframeForecastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F670CAD82F1C882A00B4A7C2 /* MultiTimeframeForecastView.swift */; };
 		F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */; };
 		F6F972F42F0F72670010C828 /* ChartCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F972F32F0F72670010C828 /* ChartCache.swift */; };
 		F6FD04842F0D8B0C00AF337E /* Timeframe.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6FD04832F0D8B0C00AF337E /* Timeframe.swift */; };
 		F768A2A036F22E169CA9E8AC /* ReloadWatchlistResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B11ECAF44D603B49B6D931 /* ReloadWatchlistResponse.swift */; };
+		FEAA00012F4444440000001 /* ValidationDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000001 /* ValidationDashboardView.swift */; };
+		FEAA00012F4444440000002 /* UnifiedValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000002 /* UnifiedValidator.swift */; };
+		FEAA00012F4444440000003 /* ValidationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000003 /* ValidationViewModel.swift */; };
+		FEAA00012F4444440000004 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEAA00002F4444440000004 /* NetworkMonitor.swift */; };
 		FF7F2A0E2FD7B4A0009F9712 /* QuoteResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */; };
 		MF0001012345678900000001 /* BackfillService.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000001 /* BackfillService.swift */; };
 		MF0001012345678900000002 /* BackfillStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000002 /* BackfillStatusView.swift */; };
@@ -118,10 +128,14 @@
 		SR0000012345678900000003 /* SupportResistanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000004 /* SupportResistanceView.swift */; };
 		TRGA0000123456789ABCDEF /* GAStrategyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */; };
 		WC734A8413BAD142EF9439139C /* WebChartControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */; };
+		F63BBA202F22F047003EE3B0 /* TechnicalIndicatorsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA1A2F22F047003EE3B1 /* TechnicalIndicatorsView.swift */; };
+		F63BBA212F22F047003EE3B0 /* BacktestingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA1B2F22F047003EE3B1 /* BacktestingView.swift */; };
+		F63BBA222F22F047003EE3B0 /* WalkForwardOptimizationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA1C2F22F047003EE3B1 /* WalkForwardOptimizationView.swift */; };
+		F63BBA232F22F047003EE3B0 /* PortfolioOptimizationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA1D2F22F047003EE3B1 /* PortfolioOptimizationView.swift */; };
+		F63BBA242F22F047003EE3B0 /* StressTestingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA1E2F22F047003EE3B1 /* StressTestingView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-        893B3E6634F63C82006BBA70 /* AddToStrategySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddToStrategySheet.swift; sourceTree = "<group>"; };
 		0128CA566A7D864E3938B3FA /* OptionsRankerViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerViewModel.swift; sourceTree = "<group>"; };
 		07743DD33F4E1C29DBE0DC09 /* OptionsRankerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankerView.swift; sourceTree = "<group>"; };
 		0A4D3D1FC85DBCBD8C45CCA5 /* WatchlistModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchlistModels.swift; sourceTree = "<group>"; };
@@ -140,6 +154,7 @@
 		78170FE468AE321CB9A91BD5 /* SuperTrendChartData.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SuperTrendChartData.swift; sourceTree = "<group>"; };
 		83A51D8136CB3AF96EBB360E /* EnhancedPredictionModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EnhancedPredictionModels.swift; sourceTree = "<group>"; };
 		848DB246B70C854F2FE0A63C /* ForecastExplainerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ForecastExplainerView.swift; sourceTree = "<group>"; };
+		893B3E6634F63C82006BBA70 /* AddToStrategySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddToStrategySheet.swift; sourceTree = "<group>"; };
 		91C341141BD25E1C4A72A109 /* OptionsRankingResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankingResponse.swift; sourceTree = "<group>"; };
 		9956271A37FA42982A5F0DDC /* PredictionsViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PredictionsViewModel.swift; sourceTree = "<group>"; };
 		9A702F82DACC8241B3B9A8BA /* PolynomialRegressionIndicator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PolynomialRegressionIndicator.swift; sourceTree = "<group>"; };
@@ -199,6 +214,16 @@
 		F6161BBE2EF2D49A0065ABA1 /* OptionRankDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionRankDetailView.swift; sourceTree = "<group>"; };
 		F6161BBF2EF2D49A0065ABA1 /* OptionsRankerExpiryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptionsRankerExpiryView.swift; sourceTree = "<group>"; };
 		F6370B202F13723F00011F78 /* DataQualityBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataQualityBadge.swift; sourceTree = "<group>"; };
+		F63BBA0C2F22EFF2003EE3B0 /* BacktestingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BacktestingModels.swift; sourceTree = "<group>"; };
+		F63BBA0D2F22EFF2003EE3B0 /* PortfolioOptimizationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortfolioOptimizationModels.swift; sourceTree = "<group>"; };
+		F63BBA0E2F22EFF2003EE3B0 /* StressTestingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressTestingModels.swift; sourceTree = "<group>"; };
+		F63BBA0F2F22EFF2003EE3B0 /* TechnicalIndicatorsModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TechnicalIndicatorsModels.swift; sourceTree = "<group>"; };
+		F63BBA102F22EFF2003EE3B0 /* WalkForwardModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkForwardModels.swift; sourceTree = "<group>"; };
+		F63BBA162F22F047003EE3B0 /* BacktestingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BacktestingViewModel.swift; sourceTree = "<group>"; };
+		F63BBA172F22F047003EE3B0 /* PortfolioOptimizationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortfolioOptimizationViewModel.swift; sourceTree = "<group>"; };
+		F63BBA182F22F047003EE3B0 /* StressTestingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressTestingViewModel.swift; sourceTree = "<group>"; };
+		F63BBA192F22F047003EE3B0 /* TechnicalIndicatorsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TechnicalIndicatorsViewModel.swift; sourceTree = "<group>"; };
+		F63BBA1A2F22F047003EE3B0 /* WalkForwardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkForwardViewModel.swift; sourceTree = "<group>"; };
 		F64681A82EF0E00900FBEF04 /* MLReportCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLReportCard.swift; sourceTree = "<group>"; };
 		F670CAD82F1C882A00B4A7C2 /* MultiTimeframeForecastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiTimeframeForecastView.swift; sourceTree = "<group>"; };
 		F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastHorizonsView.swift; sourceTree = "<group>"; };
@@ -207,6 +232,10 @@
 		F857540C973ADC971FC52E92 /* SupportResistanceOverlayView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SupportResistanceOverlayView.swift; sourceTree = "<group>"; };
 		F903565D8F0B0D702A53E8B0 /* lightweight-charts.standalone.production.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = "lightweight-charts.standalone.production.js"; sourceTree = "<group>"; };
 		F91ACF2F4CD1323E2B106D55 /* MultiLegModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MultiLegModels.swift; sourceTree = "<group>"; };
+		FEAA00002F4444440000001 /* ValidationDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValidationDashboardView.swift; sourceTree = "<group>"; };
+		FEAA00002F4444440000002 /* UnifiedValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedValidator.swift; sourceTree = "<group>"; };
+		FEAA00002F4444440000003 /* ValidationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValidationViewModel.swift; sourceTree = "<group>"; };
+		FEAA00002F4444440000004 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
 		FF7F2A0D2FD7B4A0009F9712 /* QuoteResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuoteResponse.swift; sourceTree = "<group>"; };
 		MF0002012345678900000001 /* BackfillService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackfillService.swift; sourceTree = "<group>"; };
 		MF0002012345678900000002 /* BackfillStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackfillStatusView.swift; sourceTree = "<group>"; };
@@ -224,10 +253,11 @@
 		SR0000012345678900000004 /* SupportResistanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportResistanceView.swift; sourceTree = "<group>"; };
 		TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GAStrategyModels.swift; sourceTree = "<group>"; };
 		WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebChartControlsView.swift; sourceTree = "<group>"; };
-		FEAA00002F4444440000001 /* ValidationDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValidationDashboardView.swift; sourceTree = "<group>"; };
-		FEAA00002F4444440000002 /* UnifiedValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedValidator.swift; sourceTree = "<group>"; };
-		FEAA00002F4444440000003 /* ValidationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValidationViewModel.swift; sourceTree = "<group>"; };
-		FEAA00002F4444440000004 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
+		F63BBA1A2F22F047003EE3B1 /* TechnicalIndicatorsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TechnicalIndicatorsView.swift; sourceTree = "<group>"; };
+		F63BBA1B2F22F047003EE3B1 /* BacktestingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BacktestingView.swift; sourceTree = "<group>"; };
+		F63BBA1C2F22F047003EE3B1 /* WalkForwardOptimizationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkForwardOptimizationView.swift; sourceTree = "<group>"; };
+		F63BBA1D2F22F047003EE3B1 /* PortfolioOptimizationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortfolioOptimizationView.swift; sourceTree = "<group>"; };
+		F63BBA1E2F22F047003EE3B1 /* StressTestingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressTestingView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -321,6 +351,11 @@
 				F670CAD82F1C882A00B4A7C2 /* MultiTimeframeForecastView.swift */,
 				E28D1955541C13B4BB03A52F /* MultiLeg */,
 				FEAA00002F4444440000001 /* ValidationDashboardView.swift */,
+				F63BBA1A2F22F047003EE3B1 /* TechnicalIndicatorsView.swift */,
+				F63BBA1B2F22F047003EE3B1 /* BacktestingView.swift */,
+				F63BBA1C2F22F047003EE3B1 /* WalkForwardOptimizationView.swift */,
+				F63BBA1D2F22F047003EE3B1 /* PortfolioOptimizationView.swift */,
+				F63BBA1E2F22F047003EE3B1 /* StressTestingView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -328,6 +363,11 @@
 		A5000005233456780000005 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
+				F63BBA162F22F047003EE3B0 /* BacktestingViewModel.swift */,
+				F63BBA172F22F047003EE3B0 /* PortfolioOptimizationViewModel.swift */,
+				F63BBA182F22F047003EE3B0 /* StressTestingViewModel.swift */,
+				F63BBA192F22F047003EE3B0 /* TechnicalIndicatorsViewModel.swift */,
+				F63BBA1A2F22F047003EE3B0 /* WalkForwardViewModel.swift */,
 				A2000016233456780000016 /* SymbolSearchViewModel.swift */,
 				A2000017233456780000017 /* ChartViewModel.swift */,
 				A2000018233456780000018 /* NewsViewModel.swift */,
@@ -348,6 +388,11 @@
 		A5000006233456780000006 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				F63BBA0C2F22EFF2003EE3B0 /* BacktestingModels.swift */,
+				F63BBA0D2F22EFF2003EE3B0 /* PortfolioOptimizationModels.swift */,
+				F63BBA0E2F22EFF2003EE3B0 /* StressTestingModels.swift */,
+				F63BBA0F2F22EFF2003EE3B0 /* TechnicalIndicatorsModels.swift */,
+				F63BBA102F22EFF2003EE3B0 /* WalkForwardModels.swift */,
 				F6FD04832F0D8B0C00AF337E /* Timeframe.swift */,
 				A2000008233456780000008 /* Symbol.swift */,
 				A2000009233456780000009 /* OHLCBar.swift */,
@@ -394,7 +439,6 @@
 				B73A321AD0316BC1B2434132 /* SuperTrendAIIndicator.swift */,
 				B29181F82545367180388B23 /* ChartBridge.swift */,
 				F6F972F32F0F72670010C828 /* ChartCache.swift */,
-				FEAA00002F4444440000004 /* NetworkMonitor.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -402,7 +446,6 @@
 		A5000010233456780000010 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A3000001233456780000001 /* SwiftBoltML.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -427,7 +470,6 @@
 				C4B15838B1E6488AF66CA162 /* MultiLegCreateStrategyView.swift */,
 				893B3E6634F63C82006BBA70 /* AddToStrategySheet.swift */,
 			);
-			name = MultiLeg;
 			path = MultiLeg;
 			sourceTree = "<group>";
 		};
@@ -476,7 +518,6 @@
 			);
 			name = SwiftBoltML;
 			productName = SwiftBoltML;
-			productReference = A3000001233456780000001 /* SwiftBoltML.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -561,6 +602,11 @@
 				F6FD04842F0D8B0C00AF337E /* Timeframe.swift in Sources */,
 				F60BB9712EF037360044BE7E /* OptionsChainView.swift in Sources */,
 				F64681A92EF0E00900FBEF04 /* MLReportCard.swift in Sources */,
+				F63BBA112F22EFF2003EE3B0 /* WalkForwardModels.swift in Sources */,
+				F63BBA122F22EFF2003EE3B0 /* TechnicalIndicatorsModels.swift in Sources */,
+				F63BBA132F22EFF2003EE3B0 /* PortfolioOptimizationModels.swift in Sources */,
+				F63BBA142F22EFF2003EE3B0 /* BacktestingModels.swift in Sources */,
+				F63BBA152F22EFF2003EE3B0 /* StressTestingModels.swift in Sources */,
 				A1000018233456780000018 /* NewsViewModel.swift in Sources */,
 				F60BB96F2EF0371A0044BE7E /* OptionsChainViewModel.swift in Sources */,
 				A1000019233456780000019 /* AppViewModel.swift in Sources */,
@@ -612,10 +658,20 @@
 				0B281429F99B764ACF20AE52 /* OptionsRankerView.swift in Sources */,
 				26A69A6B13674A40E8339202 /* OptionsRankerViewModel.swift in Sources */,
 				2FC800BC68800F807D6266D0 /* AnalysisViewModel.swift in Sources */,
+				F63BBA1B2F22F047003EE3B0 /* WalkForwardViewModel.swift in Sources */,
+				F63BBA1C2F22F047003EE3B0 /* BacktestingViewModel.swift in Sources */,
+				F63BBA1D2F22F047003EE3B0 /* StressTestingViewModel.swift in Sources */,
+				F63BBA1E2F22F047003EE3B0 /* TechnicalIndicatorsViewModel.swift in Sources */,
+				F63BBA1F2F22F047003EE3B0 /* PortfolioOptimizationViewModel.swift in Sources */,
 				A8052D8012DDF9B50B591DA6 /* AnalysisView.swift in Sources */,
 				4529AC756E5F22D03E743400 /* ChartBridge.swift in Sources */,
 				89DD292B67C2CFAB0A8731F5 /* WebChartView.swift in Sources */,
 				WC734A8413BAD142EF9439139C /* WebChartControlsView.swift in Sources */,
+				F63BBA202F22F047003EE3B0 /* TechnicalIndicatorsView.swift in Sources */,
+				F63BBA212F22F047003EE3B0 /* BacktestingView.swift in Sources */,
+				F63BBA222F22F047003EE3B0 /* WalkForwardOptimizationView.swift in Sources */,
+				F63BBA232F22F047003EE3B0 /* PortfolioOptimizationView.swift in Sources */,
+				F63BBA242F22F047003EE3B0 /* StressTestingView.swift in Sources */,
 				296D2C72648D45A18BC89C2B /* EnsureCoverageResponse.swift in Sources */,
 				56BCC553C667467C9F9DE1FA /* HydrationBanner.swift in Sources */,
 				F768A2A036F22E169CA9E8AC /* ReloadWatchlistResponse.swift in Sources */,

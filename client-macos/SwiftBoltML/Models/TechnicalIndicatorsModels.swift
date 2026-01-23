@@ -37,8 +37,12 @@ struct TechnicalIndicatorsResponse: Decodable {
         let indicatorsContainer = try container.nestedContainer(keyedBy: DynamicCodingKeys.self, forKey: .indicators)
         var indicatorsDict: [String: Double?] = [:]
         for key in indicatorsContainer.allKeys {
-            if indicatorsContainer.contains(key) && !indicatorsContainer.decodeNil(forKey: key) {
-                indicatorsDict[key.stringValue] = try? indicatorsContainer.decode(Double.self, forKey: key)
+            if indicatorsContainer.contains(key) {
+                if try indicatorsContainer.decodeNil(forKey: key) {
+                    indicatorsDict[key.stringValue] = nil
+                } else {
+                    indicatorsDict[key.stringValue] = try? indicatorsContainer.decode(Double.self, forKey: key)
+                }
             } else {
                 indicatorsDict[key.stringValue] = nil
             }
@@ -178,8 +182,6 @@ enum IndicatorCategory: String, CaseIterable {
     }
     
     static func formattedName(for indicatorName: String) -> String {
-        let lower = indicatorName.lowercased()
-        
         // Common replacements
         var formatted = indicatorName
             .replacingOccurrences(of: "_", with: " ")

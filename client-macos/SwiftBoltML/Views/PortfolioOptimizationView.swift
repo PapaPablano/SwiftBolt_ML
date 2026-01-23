@@ -329,27 +329,24 @@ struct PortfolioOptimizationView: View {
     
     private func allocationTable(_ result: PortfolioOptimizeResponse) -> some View {
         DashboardCard(title: "Allocation Details", icon: "list.bullet", iconColor: .green) {
-            Table(Array(result.allocation.weights.keys.sorted()), id: \.self) { symbol in
-                TableColumn("Symbol") { _ in
+            let sortedSymbols = Array(result.allocation.weights.keys.sorted())
+            List(sortedSymbols, id: \.self) { symbol in
+                HStack {
                     Text(symbol)
                         .font(.caption.bold())
-                }
-                .width(min: 100)
-                
-                TableColumn("Weight") { _ in
+                        .frame(width: 100, alignment: .leading)
+                    
                     if let weight = result.allocation.weights[symbol] {
-                        Text("\(weight * 100, specifier: "%.2f")%")
+                        Text("\(String(format: "%.2f", weight * 100))%")
                             .font(.caption.monospacedDigit())
-                    }
-                }
-                .width(min: 100)
-                
-                TableColumn("Allocation") { _ in
-                    if let weight = result.allocation.weights[symbol] {
+                            .frame(width: 100, alignment: .trailing)
+                        
                         ProgressView(value: weight)
                             .progressViewStyle(.linear)
+                            .frame(maxWidth: .infinity)
                     }
                 }
+                .padding(.vertical, 4)
             }
             .frame(height: 200)
         }

@@ -6,8 +6,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { corsResponse, handlePreflight } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
-
-const PYTHON_SCRIPT_PATH = "/Users/ericpeterson/SwiftBolt_ML/ml/scripts/run_stress_test.py";
+import { callFastApi } from "../_shared/fastapi-client.ts";
 
 interface StressTestRequest {
   positions: Record<string, number>;
@@ -36,66 +35,23 @@ interface StressTestResponse {
 }
 
 /**
- * Get Python script path from environment or use default
- */
-function getPythonScriptPath(): string {
-  return (
-    Deno.env.get("STRESS_TEST_SCRIPT_PATH") ||
-    PYTHON_SCRIPT_PATH
-  );
-}
-
-/**
- * Call Python script to run stress test
+ * Call FastAPI to run stress test
  */
 async function runStressTest(request: StressTestRequest): Promise<StressTestResponse> {
-  const scriptPath = getPythonScriptPath();
-  
-  // Build command arguments
-  const args = [
-    scriptPath,
-    "--positions",
-    JSON.stringify(request.positions),
-    "--prices",
-    JSON.stringify(request.prices),
-    "--var-level",
-    String(request.varLevel || 0.05),
-  ];
-  
-  // Add scenario or custom shocks
-  if (request.scenario) {
-    args.push("--scenario", request.scenario);
-  } else if (request.customShocks) {
-    args.push("--custom-shocks", JSON.stringify(request.customShocks));
-  }
-  
-  const pythonCmd = new Deno.Command("python3", {
-    args,
-    stdout: "piped",
-    stderr: "piped",
-  });
-
-  try {
-    const { code, stdout, stderr } = await pythonCmd.output();
-
-    if (code !== 0) {
-      const errorText = new TextDecoder().decode(stderr);
-      console.error(`Python script error: ${errorText}`);
-      throw new Error(`Python script failed: ${errorText}`);
-    }
-
-    const output = new TextDecoder().decode(stdout);
-    const result = JSON.parse(output) as StressTestResponse;
-
-    if (result.error) {
-      throw new Error(result.error);
-    }
-
-    return result;
-  } catch (error) {
-    console.error(`Error running Python script: ${error}`);
-    throw error;
-  }
+  return await callFastApi<StressTestResponse>(
+    "/api/v1/stress-test",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        positions: request.positions,
+        prices: request.prices,
+        scenario: request.scenario,
+        customShocks: request.customShocks,
+        varLevel: request.varLevel,
+      }),
+    },
+    30000 // 30 second timeout for stress tests
+  );
 }
 
 serve(async (req: Request) => {
