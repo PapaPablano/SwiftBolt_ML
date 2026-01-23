@@ -60,51 +60,83 @@ struct StandardErrorView: View {
     }
 }
 
-/// A reusable empty state view
+/// A reusable empty state view with enhanced guidance
 struct StandardEmptyView: View {
     let title: String
     let message: String?
     let icon: String
     let actionLabel: String?
     let action: (() -> Void)?
+    let tips: [String]?
 
     init(
         title: String,
         message: String? = nil,
         icon: String = "tray",
         actionLabel: String? = nil,
-        action: (() -> Void)? = nil
+        action: (() -> Void)? = nil,
+        tips: [String]? = nil
     ) {
         self.title = title
         self.message = message
         self.icon = icon
         self.actionLabel = actionLabel
         self.action = action
+        self.tips = tips
     }
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
             Image(systemName: icon)
-                .font(.system(size: 40))
-                .foregroundStyle(.secondary.opacity(0.5))
+                .font(.system(size: 48))
+                .foregroundStyle(.secondary.opacity(0.6))
+                .symbolEffect(.pulse, options: .repeating)
 
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(.secondary)
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.title3.bold())
+                    .foregroundStyle(.primary)
 
-            if let message = message {
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
+                if let message = message {
+                    Text(message)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                }
+            }
+
+            // Tips section
+            if let tips = tips, !tips.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Tips:")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    
+                    ForEach(Array(tips.enumerated()), id: \.offset) { _, tip in
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "lightbulb.fill")
+                                .font(.caption)
+                                .foregroundStyle(.yellow)
+                                .padding(.top, 2)
+                            Text(tip)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding()
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(8)
+                .padding(.horizontal, 32)
             }
 
             if let actionLabel = actionLabel, let action = action {
                 Button(action: action) {
-                    Text(actionLabel)
+                    Label(actionLabel, systemImage: "arrow.clockwise")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

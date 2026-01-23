@@ -53,7 +53,7 @@ final class TechnicalIndicatorsViewModel: ObservableObject {
     
     // MARK: - Data Loading
     
-    func loadIndicators(symbol: String, timeframe: String = "d1") async {
+    func loadIndicators(symbol: String, timeframe: String = "d1", forceRefresh: Bool = false) async {
         guard !isLoading else { return }
         
         self.symbol = symbol.uppercased()
@@ -62,10 +62,17 @@ final class TechnicalIndicatorsViewModel: ObservableObject {
         error = nil
         
         do {
-            let response = try await APIClient.shared.fetchTechnicalIndicators(
-                symbol: symbol,
-                timeframe: timeframe
-            )
+            // Use request deduplication to prevent duplicate calls
+            let deduplicationKey = "technical_indicators_\(symbol.uppercased())_\(timeframe)"
+            let response = try await RequestDeduplicator.shared.execute(key: deduplicationKey) {
+                // Use retry logic with exponential backoff
+                try await withRetry(policy: .default) {
+                    try await APIClient.shared.fetchTechnicalIndicators(
+                        symbol: symbol,
+                        timeframe: timeframe
+                    )
+                }
+            }
             
             self.indicators = response
             self.lastUpdated = Date()
@@ -75,7 +82,7 @@ final class TechnicalIndicatorsViewModel: ObservableObject {
         } catch {
             self.error = error.localizedDescription
             self.isLoading = false
-            print("[TechnicalIndicators] Error loading indicators: \(error)")
+            print("[TechnicalIndicators] Error loading indicators after retries: \(error)")
         }
     }
     

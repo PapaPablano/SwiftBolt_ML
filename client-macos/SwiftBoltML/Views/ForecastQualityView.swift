@@ -32,6 +32,9 @@ struct ForecastQualityView: View {
                 await viewModel.fetchQuality(symbol: symbol, horizon: viewModel.horizon, timeframe: timeframe)
             }
         }
+        .refreshable {
+            await viewModel.fetchQuality(symbol: symbol, horizon: viewModel.horizon, timeframe: timeframe, forceRefresh: true)
+        }
     }
     
     // MARK: - Configuration Panel
@@ -58,6 +61,11 @@ struct ForecastQualityView: View {
                         Text("1 Month").tag("1M")
                     }
                     .pickerStyle(.menu)
+                    .onChange(of: viewModel.horizon) { oldValue, newValue in
+                        Task {
+                            await viewModel.fetchQuality(symbol: symbol, horizon: newValue, timeframe: timeframe)
+                        }
+                    }
                 }
                 
                 Divider()
@@ -65,7 +73,7 @@ struct ForecastQualityView: View {
                 // Refresh Button
                 Button(action: {
                     Task {
-                        await viewModel.fetchQuality(symbol: symbol, horizon: viewModel.horizon, timeframe: timeframe)
+                        await viewModel.fetchQuality(symbol: symbol, horizon: viewModel.horizon, timeframe: timeframe, forceRefresh: true)
                     }
                 }) {
                     HStack {
@@ -92,56 +100,55 @@ struct ForecastQualityView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 if viewModel.isLoading {
-                    ProgressView("Loading quality metrics...")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    ForecastQualitySkeleton()
+                        .padding()
                 } else if let error = viewModel.error {
                     errorView(error)
                 } else if let result = viewModel.qualityResult {
                     resultsView(result)
+                        .fadeIn()
                 } else {
-                    emptyStateView
+                    StandardEmptyView(
+                        title: "No Quality Data",
+                        message: "Forecast quality metrics help you assess the reliability of ML predictions. Load metrics to see confidence scores, model agreement, and quality issues.",
+                        icon: "chart.bar.doc.horizontal",
+                        actionLabel: "Load Quality Metrics",
+                        action: {
+                            Task {
+                                await viewModel.fetchQuality(symbol: symbol, horizon: viewModel.horizon, timeframe: timeframe, forceRefresh: true)
+                            }
+                        },
+                        tips: [
+                            "Quality scores above 70% indicate high confidence",
+                            "Check for quality issues that may affect predictions",
+                            "Different forecast horizons may have different quality scores"
+                        ]
+                    )
                 }
             }
             .padding()
         }
+        .refreshable {
+            await viewModel.fetchQuality(symbol: symbol, horizon: viewModel.horizon, timeframe: timeframe, forceRefresh: true)
+        }
     }
     
-    private var emptyStateView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "chart.bar.doc.horizontal")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-            Text("No Quality Data")
-                .font(.title2.bold())
-            Text("Click 'Refresh' to load forecast quality metrics")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
     
     private func errorView(_ error: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 48))
-                .foregroundStyle(.orange)
-            Text("Error Loading Quality")
-                .font(.title2.bold())
-            Text(error)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            
-            Button("Retry") {
+        // Try to parse as Error to get user-friendly message
+        let apiError = APIError.serviceUnavailable(message: error)
+        let formatted = ErrorFormatter.userFriendlyMessage(from: apiError)
+        
+        return StandardErrorView(
+            title: formatted.title,
+            message: formatted.message,
+            icon: formatted.icon,
+            retryAction: {
                 Task {
-                    await viewModel.fetchQuality(symbol: symbol, horizon: viewModel.horizon, timeframe: timeframe)
+                    await viewModel.fetchQuality(symbol: symbol, horizon: viewModel.horizon, timeframe: timeframe, forceRefresh: true)
                 }
             }
-            .buttonStyle(.borderedProminent)
-        }
-        .frame(maxWidth: .infinity)
-        .padding()
+        )
     }
     
     private func resultsView(_ result: ForecastQualityResponse) -> some View {
@@ -151,8 +158,17 @@ struct ForecastQualityView: View {
                 Text("Quality Metrics")
                     .font(.title2.bold())
                 Spacer()
+                
+                // Offline indicator
+                if viewModel.isOffline {
+                    InlineStatusBadge(status: .warning, message: "Offline")
+                        .padding(.trailing, 8)
+                        .transition(.opacity)
+                }
+                
                 qualityScoreBadge(result.qualityScore)
             }
+            .slideIn()
             
             // Quality Score Card
             qualityScoreCard(result)
@@ -169,20 +185,44 @@ struct ForecastQualityView: View {
         }
     }
     
+    // MARK: - View Helpers (Optimized with computed properties)
+    
+    @ViewBuilder
     private func qualityScoreBadge(_ score: Double) -> some View {
+        let (icon, color) = qualityScoreIconAndColor(score)
+        let formattedScore = String(format: "%.0f", score * 100)
+        
         HStack(spacing: 4) {
-            Image(systemName: score >= 0.7 ? "checkmark.circle.fill" : score >= 0.5 ? "exclamationmark.triangle.fill" : "xmark.circle.fill")
-            Text("\(String(format: "%.0f", score * 100))%")
+            Image(systemName: icon)
+            Text("\(formattedScore)%")
                 .font(.headline)
         }
-        .foregroundStyle(score >= 0.7 ? .green : score >= 0.5 ? .orange : .red)
+        .foregroundStyle(color)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background((score >= 0.7 ? Color.green : score >= 0.5 ? Color.orange : Color.red).opacity(0.2))
+        .background(color.opacity(0.2))
         .cornerRadius(8)
     }
     
+    // Extract expensive computations to avoid repeated calculations
+    private func qualityScoreIconAndColor(_ score: Double) -> (icon: String, color: Color) {
+        if score >= 0.7 {
+            return ("checkmark.circle.fill", .green)
+        } else if score >= 0.5 {
+            return ("exclamationmark.triangle.fill", .orange)
+        } else {
+            return ("xmark.circle.fill", .red)
+        }
+    }
+    
+    @ViewBuilder
     private func qualityScoreCard(_ result: ForecastQualityResponse) -> some View {
+        // Pre-compute formatted values to avoid repeated String formatting
+        let qualityScoreText = String(format: "%.1f", result.qualityScore * 100)
+        let confidenceText = String(format: "%.1f", result.confidence * 100)
+        let agreementText = String(format: "%.1f", result.modelAgreement * 100)
+        let (_, qualityColor) = qualityScoreIconAndColor(result.qualityScore)
+        
         VStack(alignment: .leading, spacing: 12) {
             Text("Overall Quality Score")
                 .font(.headline)
@@ -192,16 +232,16 @@ struct ForecastQualityView: View {
                     Text("Quality Score")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("\(String(format: "%.1f", result.qualityScore * 100))%")
+                    Text("\(qualityScoreText)%")
                         .font(.title.bold())
-                        .foregroundStyle(result.qualityScore >= 0.7 ? .green : result.qualityScore >= 0.5 ? .orange : .red)
+                        .foregroundStyle(qualityColor)
                 }
                 
                 VStack(alignment: .leading) {
                     Text("Confidence")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("\(String(format: "%.1f", result.confidence * 100))%")
+                    Text("\(confidenceText)%")
                         .font(.title2.bold())
                 }
                 
@@ -209,7 +249,7 @@ struct ForecastQualityView: View {
                     Text("Model Agreement")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("\(String(format: "%.1f", result.modelAgreement * 100))%")
+                    Text("\(agreementText)%")
                         .font(.title2.bold())
                 }
             }

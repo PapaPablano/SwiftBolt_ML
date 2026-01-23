@@ -27,6 +27,14 @@ struct ModelTrainingView: View {
                 }
             }
         }
+        .onAppear {
+            Task {
+                await viewModel.trainModel(symbol: symbol, timeframe: viewModel.timeframe, lookbackDays: viewModel.lookbackDays)
+            }
+        }
+        .refreshable {
+            await viewModel.trainModel(symbol: symbol, timeframe: viewModel.timeframe, lookbackDays: viewModel.lookbackDays, forceRefresh: true)
+        }
     }
     
     // MARK: - Configuration Panel
@@ -103,56 +111,54 @@ struct ModelTrainingView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 if viewModel.isLoading {
-                    ProgressView("Training model...")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    ModelTrainingSkeleton()
+                        .padding()
                 } else if let error = viewModel.error {
                     errorView(error)
                 } else if let result = viewModel.trainingResult {
                     resultsView(result)
+                        .fadeIn()
                 } else {
-                    emptyStateView
+                    StandardEmptyView(
+                        title: "No Training Results",
+                        message: "Train ML models to improve forecast accuracy. Training analyzes historical data to optimize model parameters and ensemble weights.",
+                        icon: "brain.head.profile",
+                        actionLabel: "Train Model",
+                        action: {
+                            Task {
+                                await viewModel.trainModel(symbol: symbol, timeframe: viewModel.timeframe, lookbackDays: viewModel.lookbackDays)
+                            }
+                        },
+                        tips: [
+                            "Training uses \(viewModel.lookbackDays) days of historical data",
+                            "Longer lookback periods may improve accuracy but take longer",
+                            "Training results are cached for quick access"
+                        ]
+                    )
                 }
             }
             .padding()
         }
-    }
-    
-    private var emptyStateView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "brain.head.profile")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-            Text("No Training Results")
-                .font(.title2.bold())
-            Text("Configure settings and click 'Train Model' to start training")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+        .refreshable {
+            await viewModel.trainModel(symbol: symbol, timeframe: viewModel.timeframe, lookbackDays: viewModel.lookbackDays, forceRefresh: true)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     private func errorView(_ error: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 48))
-                .foregroundStyle(.orange)
-            Text("Training Failed")
-                .font(.title2.bold())
-            Text(error)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            
-            Button("Retry") {
+        // Try to parse as Error to get user-friendly message
+        let apiError = APIError.serviceUnavailable(message: error)
+        let formatted = ErrorFormatter.userFriendlyMessage(from: apiError)
+        
+        return StandardErrorView(
+            title: formatted.title,
+            message: formatted.message,
+            icon: formatted.icon,
+            retryAction: {
                 Task {
                     await viewModel.trainModel(symbol: symbol, timeframe: viewModel.timeframe, lookbackDays: viewModel.lookbackDays)
                 }
             }
-            .buttonStyle(.borderedProminent)
-        }
-        .frame(maxWidth: .infinity)
-        .padding()
+        )
     }
     
     private func resultsView(_ result: ModelTrainingResponse) -> some View {
@@ -162,6 +168,13 @@ struct ModelTrainingView: View {
                 Text("Training Results")
                     .font(.title2.bold())
                 Spacer()
+                
+                // Offline indicator
+                if viewModel.isOffline {
+                    InlineStatusBadge(status: .warning, message: "Offline")
+                        .padding(.trailing, 8)
+                }
+                
                 statusBadge(result.status)
             }
             
