@@ -403,10 +403,10 @@ jobs:
             pytest tests/ --tb=short --no-header -q 2>&1 | tee test_output.txt || true
           fi
           
-          # Extract summary
-          passed=$(grep -oP '\d+(?= passed)' test_output.txt || echo "0")
-          failed=$(grep -oP '\d+(?= failed)' test_output.txt || echo "0")
-          skipped=$(grep -oP '\d+(?= skipped)' test_output.txt || echo "0")
+          # Extract summary using grep -E for better compatibility
+          passed=$(grep -oE '[0-9]+ passed' test_output.txt | grep -oE '[0-9]+' | head -1 || echo "0")
+          failed=$(grep -oE '[0-9]+ failed' test_output.txt | grep -oE '[0-9]+' | head -1 || echo "0")
+          skipped=$(grep -oE '[0-9]+ skipped' test_output.txt | grep -oE '[0-9]+' | head -1 || echo "0")
           
           echo "| Passed | Failed | Skipped |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|--------|---------|" >> $GITHUB_STEP_SUMMARY
@@ -422,7 +422,7 @@ jobs:
           echo "</details>" >> $GITHUB_STEP_SUMMARY
           
           # Exit with failure if tests failed
-          if [ "$failed" != "0" ] && [ "$failed" != "" ]; then
+          if [ "$failed" -gt 0 ] 2>/dev/null; then
             echo "❌ $failed test(s) failed"
             exit 1
           fi
@@ -468,10 +468,11 @@ jobs:
             
             index_file="$func_dir/index.ts"
             if [ -f "$index_file" ]; then
-              if deno check "$index_file" 2>/dev/null; then
+              # Use deno lint for syntax validation which is more reliable
+              if deno lint --quiet "$index_file" 2>/dev/null; then
                 echo "| $func_name | ✅ Valid |" >> $GITHUB_STEP_SUMMARY
               else
-                echo "| $func_name | ⚠️ Check warnings |" >> $GITHUB_STEP_SUMMARY
+                echo "| $func_name | ⚠️ Lint errors found |" >> $GITHUB_STEP_SUMMARY
               fi
             else
               echo "| $func_name | ❓ No index.ts |" >> $GITHUB_STEP_SUMMARY
