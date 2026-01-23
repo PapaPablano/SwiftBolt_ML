@@ -38,7 +38,7 @@ struct WalkForwardResponse: Decodable {
         let trainWindow: Int
         let testWindow: Int
         let stepSize: Int
-        let testPeriods: Int
+        let testPeriods: [Period]  // Changed from Int to array of Period objects
     }
     
     struct WalkForwardMetrics: Decodable {

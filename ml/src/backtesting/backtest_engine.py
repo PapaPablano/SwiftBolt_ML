@@ -386,12 +386,21 @@ class BacktestEngine:
             self.dates.append(date)
             
             # Get data for strategy
+            # Convert positions DataFrame to list of dicts for strategy
+            positions_df = self.trade_logger.get_positions()
+            if not positions_df.empty:
+                positions_list = positions_df.to_dict('records')
+            else:
+                positions_list = []
+            
             strategy_data = {
                 'date': date,
                 'ohlc': row,
-                'positions': self.trade_logger.get_positions(),
+                'close': row.get('close', 0),  # Add direct close price access
+                'positions': positions_list,  # List of dicts, not DataFrame
                 'cash': self.cash,
-                'portfolio_value': portfolio_value
+                'portfolio_value': portfolio_value,
+                'symbol': row.get('symbol', 'STOCK')  # Add symbol if available
             }
             
             if self.options_data is not None:

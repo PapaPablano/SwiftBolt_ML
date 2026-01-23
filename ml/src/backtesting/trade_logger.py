@@ -78,10 +78,43 @@ class Trade:
             raise ValueError(f"Quantity must be positive: {self.quantity}")
     
     def total_cost(self) -> float:
-        """Calculate total cost including commission and slippage."""
-        contract_cost = self.price * self.quantity * 100  # Options contracts are 100 shares
-        total_commission = self.commission * self.quantity
-        total_slippage = self.slippage * self.quantity * 100
+        """Calculate total cost including commission and slippage.
+        
+        Supports both options (100 shares per contract) and stocks (1 share per unit).
+        Detects based on symbol format, price magnitude, or explicit indicator.
+        """
+        # Detect if this is an options contract or stock
+        # Simple heuristic: if symbol is short (<=6 chars) and matches common stock patterns, treat as stock
+        # Otherwise, if it has option-like characteristics, treat as option
+        symbol_upper = self.symbol.upper()
+        
+        # Explicit stock indicators
+        is_stock = (
+            symbol_upper == "STOCK" or
+            (len(self.symbol) <= 6 and self.symbol.isalpha()) or  # Short alphabetic symbols like "AAPL", "TSLA"
+            (hasattr(self, 'underlying_price') and self.underlying_price > 0 and 
+             abs(self.price - self.underlying_price) / self.underlying_price < 0.1)  # Price close to underlying (within 10%)
+        )
+        
+        is_option = not is_stock and (
+            len(self.symbol) > 10 or  # Options symbols are typically longer
+            (hasattr(self, 'underlying_price') and self.underlying_price > 0 and 
+             self.price < self.underlying_price * 0.3) or  # Options are much cheaper than underlying
+            '_' in self.symbol or  # Options often have underscores
+            ('C' in self.symbol[-15:] and any(c.isdigit() for c in self.symbol[-15:])) or  # Has Call indicator with digits
+            ('P' in self.symbol[-15:] and any(c.isdigit() for c in self.symbol[-15:]))  # Has Put indicator with digits
+        )
+        
+        if is_option:
+            # Options: 100 shares per contract
+            contract_cost = self.price * self.quantity * 100
+            total_commission = self.commission * self.quantity
+            total_slippage = self.slippage * self.quantity * 100
+        else:
+            # Stocks: 1 share per unit
+            contract_cost = self.price * self.quantity
+            total_commission = self.commission  # Per trade for stocks (flat fee)
+            total_slippage = self.slippage * self.quantity
         
         if self.action == 'BUY':
             return contract_cost + total_commission + total_slippage

@@ -401,7 +401,7 @@ struct WalkForwardOptimizationView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text("\(result.windows.testPeriods)")
+                    Text("\(result.windows.testPeriods.count)")
                         .font(.caption.bold())
                 }
                 

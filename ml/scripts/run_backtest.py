@@ -49,8 +49,12 @@ def create_supertrend_ai_strategy(df: pd.DataFrame, params: dict):
     )
     result_df, info = supertrend.calculate()
     
+    # Track strategy calls for debugging
+    strategy_call_count = [0]  # Use list to allow modification in nested function
+    
     # Create strategy function
     def strategy(data):
+        strategy_call_count[0] += 1
         signals = []
         date = data['date']
         
@@ -73,11 +77,24 @@ def create_supertrend_ai_strategy(df: pd.DataFrame, params: dict):
             result_dates = pd.to_datetime(result_df[date_col])
             if result_dates.dt.tz is not None:
                 result_dates = result_dates.dt.tz_localize(None)
+            # Use exact match first, then try nearest if no exact match
             matching = result_df[result_dates == date_naive]
+            if matching.empty:
+                # Try to find nearest date (within 1 day)
+                time_diffs = (result_dates - date_naive).abs()
+                if len(time_diffs) > 0 and time_diffs.min() < pd.Timedelta(days=1):
+                    nearest_idx = time_diffs.idxmin()
+                    matching = result_df.iloc[[nearest_idx]]
         else:
             # Fallback: try to match by index position if dates are in same order
-            # This is less reliable but may work if data is aligned
             matching = pd.DataFrame()
+        
+        # Debug logging for first few calls
+        if strategy_call_count[0] <= 5:
+            logger.debug(
+                f"Strategy call #{strategy_call_count[0]}: date={date_naive}, "
+                f"date_col={date_col}, matches={len(matching)}"
+            )
         
         if not matching.empty:
             row = matching.iloc[0]
@@ -88,13 +105,27 @@ def create_supertrend_ai_strategy(df: pd.DataFrame, params: dict):
             if signal == 1 and data.get('cash', 0) >= 1000:  # Buy signal
                 close_price = data['ohlc'].get('close', data.get('close', 0))
                 if close_price > 0:
-                    signals.append({
-                        'symbol': data.get('symbol', 'STOCK'),
-                        'action': 'BUY',
-                        'quantity': max(1, int(data['cash'] / close_price * 0.95)),  # Use 95% of cash, min 1 share
-                        'price': close_price,
-                        'strategy_name': 'SuperTrend AI'
-                    })
+                    # Calculate quantity: use 95% of cash for stocks (not options)
+                    # For stocks, quantity is in shares, not contracts
+                    available_cash = data['cash'] * 0.95
+                    quantity = max(1, int(available_cash / close_price))
+                    # Ensure we have enough cash (including commission)
+                    # For stocks: price per share, commission per trade (not per share)
+                    total_cost = (quantity * close_price) + 0.65  # Stock: commission per trade
+                    if total_cost <= data['cash']:
+                        # Debug logging for first few trades
+                        if strategy_call_count[0] <= 10:
+                            logger.debug(
+                                f"BUY signal: date={date_naive}, signal={signal}, "
+                                f"quantity={quantity}, price={close_price}, cost={total_cost:.2f}"
+                            )
+                        signals.append({
+                            'symbol': 'STOCK',  # Use 'STOCK' to ensure proper cost calculation
+                            'action': 'BUY',
+                            'quantity': quantity,
+                            'price': close_price,
+                            'strategy_name': 'SuperTrend AI'
+                        })
             elif signal == -1:  # Sell signal
                 # Close all positions
                 positions = data.get('positions', [])
@@ -102,7 +133,7 @@ def create_supertrend_ai_strategy(df: pd.DataFrame, params: dict):
                     close_price = data['ohlc'].get('close', data.get('close', 0))
                     if close_price > 0:
                         signals.append({
-                            'symbol': pos.get('symbol', 'STOCK'),
+                            'symbol': 'STOCK',  # Use 'STOCK' to ensure proper cost calculation
                             'action': 'SELL',
                             'quantity': pos.get('quantity', 0),
                             'price': close_price,

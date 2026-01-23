@@ -9,7 +9,8 @@ from fastapi import APIRouter, HTTPException
 from api.models.portfolio import PortfolioOptimizeRequest, PortfolioOptimizeResponse
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+ml_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(ml_dir))
 
 from scripts.optimize_portfolio import optimize_portfolio
 

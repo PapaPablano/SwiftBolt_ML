@@ -9,7 +9,8 @@ from fastapi import APIRouter, HTTPException
 from api.models.stress_test import StressTestRequest, StressTestResponse
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+ml_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(ml_dir))
 
 from scripts.run_stress_test import run_stress_test
 
@@ -42,7 +43,7 @@ async def run_stress_test_endpoint(request: StressTestRequest):
             current_prices=request.prices,
             scenario_name=request.scenario,
             custom_shocks=request.customShocks,
-            var_level=request.varLevel or 0.95,
+            var_level=request.varLevel if request.varLevel is not None else 0.05,
         )
         
         if "error" in result:

@@ -7,7 +7,7 @@ Implements proper time-series backtesting with no lookahead bias.
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -42,6 +42,7 @@ class BacktestMetrics:
     start_date: datetime
     end_date: datetime
     test_periods: int
+    test_periods_list: Optional[List[Dict[str, str]]] = None  # Optional list of actual test periods
 
     def __str__(self) -> str:
         return f"""
@@ -122,7 +123,7 @@ class WalkForwardBacktester:
 
         Args:
             df: DataFrame with OHLCV + technical indicators
-            forecaster: Trained forecaster with predict() method
+            forecaster: Forecaster class (will be instantiated per window) or instance
             horizons: Forecast horizons to test
 
         Returns:
@@ -141,17 +142,19 @@ class WalkForwardBacktester:
             raise ValueError(f"Insufficient data: {len(df)} bars " f"(need {min_data_required})")
 
         # Walk forward through time
-        n_windows = (len(df) - self.train_window) // self.step_size
+        # Fix: Should account for test_window in calculation
+        n_windows = (len(df) - self.train_window - self.test_window) // self.step_size + 1
         
         if n_windows < 1:
             raise ValueError(
                 f"Insufficient data for walk-forward: {len(df)} bars, "
-                f"need at least {self.train_window + self.step_size} bars "
-                f"(train_window={self.train_window}, step_size={self.step_size})"
+                f"need at least {self.train_window + self.test_window} bars "
+                f"(train_window={self.train_window}, test_window={self.test_window}, step_size={self.step_size})"
             )
 
         training_failures = 0
         prediction_failures = 0
+        test_periods_list = []  # Track actual test periods for API response
 
         for window_idx in range(n_windows):
             start_train = window_idx * self.step_size
@@ -165,6 +168,23 @@ class WalkForwardBacktester:
             test_df = df.iloc[end_train:end_test].copy()
             combined_df = pd.concat([train_df, test_df], ignore_index=True)
             feature_engineer = TemporalFeatureEngineer()
+            
+            # Track test period dates for API response
+            date_col = "date" if "date" in df.columns else "ts"
+            if len(test_df) > 0:
+                test_periods_list.append({
+                    "start": test_df[date_col].iloc[0].isoformat() if hasattr(test_df[date_col].iloc[0], 'isoformat') else str(test_df[date_col].iloc[0]),
+                    "end": test_df[date_col].iloc[-1].isoformat() if hasattr(test_df[date_col].iloc[-1], 'isoformat') else str(test_df[date_col].iloc[-1])
+                })
+
+            # Create a fresh forecaster instance for each window to avoid state issues
+            # This ensures scaler and model are reset for each training window
+            if isinstance(forecaster, type):
+                # Forecaster is a class, instantiate it
+                window_forecaster = forecaster()
+            else:
+                # Forecaster is an instance, create a new instance of the same class
+                window_forecaster = forecaster.__class__()
 
             # Train model
             try:
@@ -182,7 +202,7 @@ class WalkForwardBacktester:
                     )
                     continue
                 
-                X_train, y_train = forecaster.prepare_training_data(
+                X_train, y_train = window_forecaster.prepare_training_data(
                     train_df,
                     horizon_days=horizon_days,
                 )
@@ -214,14 +234,20 @@ class WalkForwardBacktester:
                     continue
                 
                 # Train with relaxed minimum for walk-forward (use 20 as minimum instead of 100)
-                forecaster.train(X_train, y_train, min_samples=20)
+                window_forecaster.train(X_train, y_train, min_samples=20)
             except Exception as exc:  # noqa: BLE001
                 training_failures += 1
                 logger.warning(
-                    "Training failed in window %s: %s",
+                    "Training failed in window %s: %s (X_train: %d samples, y_train: %d labels, train_df: %d bars)",
                     window_idx,
                     exc,
+                    len(X_train),
+                    len(y_train),
+                    len(train_df),
                 )
+                import traceback
+                if window_idx < 3:  # Only log full traceback for first few failures
+                    logger.debug("Full traceback for window %s: %s", window_idx, traceback.format_exc())
                 continue
 
             # Test on test window
@@ -237,7 +263,7 @@ class WalkForwardBacktester:
                         combined_idx,
                     )
                     feature_df = pd.DataFrame([features])
-                    label, confidence, proba = forecaster.predict(feature_df)
+                    label, confidence, proba = window_forecaster.predict(feature_df)
 
                     if test_idx + 1 < len(test_df):
                         current_price = combined_df["close"].iloc[combined_idx]
@@ -268,13 +294,35 @@ class WalkForwardBacktester:
 
         # Get date column (could be 'ts' or 'date')
         date_col = "date" if "date" in df.columns else "ts"
-        return self._compute_metrics(
+        metrics = self._compute_metrics(
             all_predictions,
             all_actuals,
             all_returns,
             df[date_col].iloc[0],
             df[date_col].iloc[-1],
             n_windows,
+        )
+        # Attach test periods list to metrics for API response
+        # Create a new instance with the test_periods_list
+        return BacktestMetrics(
+            total_trades=metrics.total_trades,
+            winning_trades=metrics.winning_trades,
+            losing_trades=metrics.losing_trades,
+            accuracy=metrics.accuracy,
+            precision=metrics.precision,
+            recall=metrics.recall,
+            f1_score=metrics.f1_score,
+            sharpe_ratio=metrics.sharpe_ratio,
+            sortino_ratio=metrics.sortino_ratio,
+            max_drawdown=metrics.max_drawdown,
+            win_rate=metrics.win_rate,
+            avg_win_size=metrics.avg_win_size,
+            avg_loss_size=metrics.avg_loss_size,
+            profit_factor=metrics.profit_factor,
+            start_date=metrics.start_date,
+            end_date=metrics.end_date,
+            test_periods=metrics.test_periods,
+            test_periods_list=test_periods_list,
         )
 
     def _get_horizon_days(self, horizon: str) -> int:
@@ -380,4 +428,5 @@ class WalkForwardBacktester:
             start_date=start_date,
             end_date=end_date,
             test_periods=n_windows,
+            test_periods_list=None,  # Will be set by caller after metrics are computed
         )
