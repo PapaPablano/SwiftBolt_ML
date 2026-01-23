@@ -54,41 +54,60 @@ def create_supertrend_ai_strategy(df: pd.DataFrame, params: dict):
         signals = []
         date = data['date']
         
-        # Find matching row in result_df
-        if 'ts' in result_df.columns:
-            matching = result_df[result_df['ts'] == date]
+        # Normalize date for comparison
+        if hasattr(date, 'tz') and date.tz is not None:
+            date_naive = date.tz_localize(None)
         else:
-            # Try to match by index if ts column doesn't exist
-            idx = df.index[df.index == date]
-            if len(idx) > 0:
-                matching = result_df.iloc[[idx[0]]] if idx[0] < len(result_df) else pd.DataFrame()
-            else:
-                matching = pd.DataFrame()
+            date_naive = pd.Timestamp(date)
+        
+        # Find matching row in result_df by date
+        # Try multiple date column names
+        date_col = None
+        for col in ['date', 'ts', 'timestamp']:
+            if col in result_df.columns:
+                date_col = col
+                break
+        
+        if date_col:
+            # Convert result_df date column to timezone-naive for comparison
+            result_dates = pd.to_datetime(result_df[date_col])
+            if result_dates.dt.tz is not None:
+                result_dates = result_dates.dt.tz_localize(None)
+            matching = result_df[result_dates == date_naive]
+        else:
+            # Fallback: try to match by index position if dates are in same order
+            # This is less reliable but may work if data is aligned
+            matching = pd.DataFrame()
         
         if not matching.empty:
             row = matching.iloc[0]
-            signal = row.get('signal', 0)
+            # SuperTrend AI uses 'supertrend_signal' column, not 'signal'
+            signal = row.get('supertrend_signal', row.get('signal', 0))
             
             # Generate buy/sell signals based on SuperTrend
-            if signal == 1 and data['cash'] >= 1000:  # Buy signal
-                signals.append({
-                    'symbol': 'STOCK',
-                    'action': 'BUY',
-                    'quantity': int(data['cash'] / data['ohlc']['close'] * 0.95),  # Use 95% of cash
-                    'price': data['ohlc']['close'],
-                    'strategy_name': 'SuperTrend AI'
-                })
-            elif signal == -1:  # Sell signal
-                # Close all positions
-                positions = data['positions']
-                for pos in positions:
+            if signal == 1 and data.get('cash', 0) >= 1000:  # Buy signal
+                close_price = data['ohlc'].get('close', data.get('close', 0))
+                if close_price > 0:
                     signals.append({
-                        'symbol': pos['symbol'],
-                        'action': 'SELL',
-                        'quantity': pos['quantity'],
-                        'price': data['ohlc']['close'],
+                        'symbol': data.get('symbol', 'STOCK'),
+                        'action': 'BUY',
+                        'quantity': max(1, int(data['cash'] / close_price * 0.95)),  # Use 95% of cash, min 1 share
+                        'price': close_price,
                         'strategy_name': 'SuperTrend AI'
                     })
+            elif signal == -1:  # Sell signal
+                # Close all positions
+                positions = data.get('positions', [])
+                for pos in positions:
+                    close_price = data['ohlc'].get('close', data.get('close', 0))
+                    if close_price > 0:
+                        signals.append({
+                            'symbol': pos.get('symbol', 'STOCK'),
+                            'action': 'SELL',
+                            'quantity': pos.get('quantity', 0),
+                            'price': close_price,
+                            'strategy_name': 'SuperTrend AI'
+                        })
         
         return signals
     

@@ -190,12 +190,13 @@ class WalkForwardBacktester:
                 # Check if we got any training samples
                 if len(X_train) == 0 or len(y_train) == 0:
                     training_failures += 1
-                    logger.debug(
-                        "Window %s: No training samples generated (X: %d, y: %d, train_df: %d bars)",
+                    logger.warning(
+                        "Window %s: No training samples generated (X: %d, y: %d, train_df: %d bars, horizon: %d days)",
                         window_idx,
                         len(X_train),
                         len(y_train),
                         len(train_df),
+                        horizon_days,
                     )
                     continue
                 

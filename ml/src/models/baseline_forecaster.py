@@ -62,7 +62,29 @@ class BaselineForecaster:
         X_list: list[dict[str, Any]] = []
         y_list: list[str] = []
 
-        for idx in range(50, len(df) - horizon_days):
+        valid_samples = 0
+        nan_returns = 0
+        
+        # Adaptive offset: use 50 if we have enough data, otherwise use minimum needed (26 for MACD)
+        # For very small windows, we can start even earlier (14 for RSI)
+        min_offset = 50  # For SMA_50
+        if len(df) < 100:
+            min_offset = 26  # For MACD
+        if len(df) < 60:
+            min_offset = 14  # For RSI_14
+        
+        start_idx = max(min_offset, 14)  # At least 14 for RSI
+        end_idx = len(df) - horizon_days
+        
+        logger.debug(
+            "Training data range: start_idx=%d, end_idx=%d, df_len=%d, horizon=%d",
+            start_idx,
+            end_idx,
+            len(df),
+            horizon_days,
+        )
+        
+        for idx in range(start_idx, end_idx):
             features = engineer.add_features_to_point(df, idx)
             actual_return = forward_returns.iloc[idx]
 
@@ -75,12 +97,26 @@ class BaselineForecaster:
                 else:
                     label = "neutral"
                 y_list.append(label)
+                valid_samples += 1
+            else:
+                nan_returns += 1
 
         X = pd.DataFrame(X_list)
         y = pd.Series(y_list)
 
-        logger.info("Training data prepared: %s samples", len(X))
-        logger.info("Label distribution: %s", y.value_counts().to_dict())
+        logger.info(
+            "Training data prepared: %s samples (valid: %s, NaN returns: %s, df_len: %s, range: %s-%s)",
+            len(X),
+            valid_samples,
+            nan_returns,
+            len(df),
+            start_idx,
+            end_idx,
+        )
+        if len(y) > 0:
+            logger.info("Label distribution: %s", y.value_counts().to_dict())
+        else:
+            logger.warning("No valid training samples generated!")
 
         return X, y
 

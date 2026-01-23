@@ -297,9 +297,13 @@ class PerformanceMetrics:
         cagr_val = PerformanceMetrics.cagr(equity_curve, periods_per_year)
         vol = PerformanceMetrics.volatility(returns, periods_per_year)
         
-        # Risk-adjusted metrics
-        sharpe = PerformanceMetrics.sharpe_ratio(returns, risk_free_rate, periods_per_year)
-        sortino = PerformanceMetrics.sortino_ratio(returns, risk_free_rate, periods_per_year)
+        # Risk-adjusted metrics - handle edge cases
+        if len(returns) == 0 or returns.std() == 0:
+            sharpe = 0.0
+            sortino = 0.0
+        else:
+            sharpe = PerformanceMetrics.sharpe_ratio(returns, risk_free_rate, periods_per_year)
+            sortino = PerformanceMetrics.sortino_ratio(returns, risk_free_rate, periods_per_year)
         calmar = PerformanceMetrics.calmar_ratio(equity_curve, periods_per_year)
         
         # Drawdown metrics

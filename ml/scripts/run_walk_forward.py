@@ -114,9 +114,20 @@ def run_walk_forward(
                 "forecaster": forecaster_type
             }
         
+        # Track test periods for API response
+        test_periods_list = []
+        
         # Run walk-forward backtest
         try:
             metrics = backtester.backtest(df, forecaster, horizons=[horizon])
+            
+            # Generate test period list (simplified - just count for now)
+            # TODO: Track actual start/end dates for each test period
+            for i in range(metrics.test_periods):
+                test_periods_list.append({
+                    "start": metrics.start_date.isoformat() if hasattr(metrics.start_date, 'isoformat') else str(metrics.start_date),
+                    "end": metrics.end_date.isoformat() if hasattr(metrics.end_date, 'isoformat') else str(metrics.end_date)
+                })
         except ValueError as e:
             error_msg = str(e)
             if "No valid predictions generated" in error_msg:
@@ -148,7 +159,7 @@ def run_walk_forward(
                 "trainWindow": backtester.train_window,
                 "testWindow": backtester.test_window,
                 "stepSize": backtester.step_size,
-                "testPeriods": metrics.test_periods
+                "testPeriods": test_periods_list
             },
             "metrics": {
                 "accuracy": float(metrics.accuracy),
