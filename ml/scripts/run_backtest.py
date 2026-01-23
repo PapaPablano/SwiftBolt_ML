@@ -203,7 +203,7 @@ def run_backtest(
             }
         
         # Filter by date range
-        df['ts'] = pd.to_datetime(df['ts'])
+        df['ts'] = pd.to_datetime(df['ts']).dt.tz_localize(None)  # Remove timezone for comparison
         start = pd.Timestamp(start_date)
         end = pd.Timestamp(end_date)
         df = df[(df['ts'] >= start) & (df['ts'] <= end)].copy()

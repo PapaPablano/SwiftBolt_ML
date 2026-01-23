@@ -202,12 +202,14 @@ class WalkForwardBacktester:
         if not all_predictions:
             raise ValueError("No valid predictions generated")
 
+        # Get date column (could be 'ts' or 'date')
+        date_col = "date" if "date" in df.columns else "ts"
         return self._compute_metrics(
             all_predictions,
             all_actuals,
             all_returns,
-            df["ts"].iloc[0],
-            df["ts"].iloc[-1],
+            df[date_col].iloc[0],
+            df[date_col].iloc[-1],
             n_windows,
         )
 

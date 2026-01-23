@@ -50,15 +50,6 @@
             ReferencedContainer = "container:SwiftBoltML.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      <MacroExpansion>
-         <BuildableReference
-            BuildableIdentifier = "primary"
-            BlueprintIdentifier = "A6000001233456780000001"
-            BuildableName = "SwiftBoltML"
-            BlueprintName = "SwiftBoltML"
-            ReferencedContainer = "container:SwiftBoltML.xcodeproj">
-         </BuildableReference>
-      </MacroExpansion>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

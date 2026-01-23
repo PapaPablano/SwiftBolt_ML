@@ -230,7 +230,13 @@ class BacktestEngine:
             True if trade executed successfully, False otherwise
         """
         # Get underlying price
-        ohlc_row = self.ohlc_data[self.ohlc_data['date'] == date]
+        # Normalize date types for comparison (handle timezone-aware vs naive)
+        if hasattr(date, 'tz_localize'):
+            date_naive = date.tz_localize(None) if date.tz else date
+        else:
+            date_naive = date
+        ohlc_dates = pd.to_datetime(self.ohlc_data['date']).dt.tz_localize(None)
+        ohlc_row = self.ohlc_data[ohlc_dates == date_naive]
         if ohlc_row.empty:
             logger.warning(f"No OHLC data for {date}")
             return False
@@ -313,14 +319,19 @@ class BacktestEngine:
         self.trade_logger.reset()
         
         # Filter data by date range
+        # Normalize date types for comparison (handle timezone-aware vs naive)
+        ohlc_dates = pd.to_datetime(self.ohlc_data['date']).dt.tz_localize(None)
         if start_date:
-            mask = self.ohlc_data['date'] >= start_date
+            start_naive = start_date.tz_localize(None) if hasattr(start_date, 'tz') and start_date.tz else start_date
+            mask = ohlc_dates >= start_naive
             data = self.ohlc_data[mask].copy()
         else:
             data = self.ohlc_data.copy()
         
         if end_date:
-            mask = data['date'] <= end_date
+            end_naive = end_date.tz_localize(None) if hasattr(end_date, 'tz') and end_date.tz else end_date
+            ohlc_dates_filtered = pd.to_datetime(data['date']).dt.tz_localize(None)
+            mask = ohlc_dates_filtered <= end_naive
             data = data[mask].copy()
         
         logger.info(
@@ -347,9 +358,10 @@ class BacktestEngine:
             }
             
             if self.options_data is not None:
-                strategy_data['options'] = self.options_data[
-                    self.options_data['date'] == date
-                ]
+                # Normalize date types for comparison
+                date_naive = date.tz_localize(None) if hasattr(date, 'tz') and date.tz else date
+                options_dates = pd.to_datetime(self.options_data['date']).dt.tz_localize(None)
+                strategy_data['options'] = self.options_data[options_dates == date_naive]
             
             # Run strategy
             try:
