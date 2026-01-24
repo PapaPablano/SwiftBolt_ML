@@ -301,7 +301,8 @@ class UnifiedForecastProcessor:
             # === STEP 5: Generate forecasts for each horizon ===
             for horizon in horizons:
                 try:
-                    logger.debug(f"Generating {horizon} forecast for {symbol}...")
+                    horizon_key = str(horizon).upper()
+                    logger.debug(f"Generating {horizon_key} forecast for {symbol}...")
                     
                     # Get horizon days
                     horizon_days = {
@@ -313,7 +314,7 @@ class UnifiedForecastProcessor:
                         '4M': 120,
                         '5M': 150,
                         '6M': 180,
-                    }.get(horizon, 1)
+                    }.get(horizon_key, 1)
                     
                     # Create and train baseline forecaster
                     baseline_forecaster = BaselineForecaster()
@@ -323,8 +324,8 @@ class UnifiedForecastProcessor:
                     ml_pred = baseline_forecaster.predict(df, horizon_days=horizon_days)
                     
                     # Get layer weights with explicit source tracking
-                    weights, weight_source = self._get_weight_source(symbol_id, horizon)
-                    result['weight_source'][horizon] = weight_source
+                    weights, weight_source = self._get_weight_source(symbol_id, horizon_key)
+                    result['weight_source'][horizon_key] = weight_source
                     
                     # Create synthesizer
                     synthesizer = ForecastSynthesizer(weights=weights)
@@ -343,7 +344,7 @@ class UnifiedForecastProcessor:
                     forecast = {
                         "label": synth_result.direction.lower(),
                         "confidence": synth_result.confidence,
-                        "horizon": horizon,
+                        "horizon": horizon_key,
                         "points": self._build_forecast_points(synth_result, df["ts"].iloc[-1], horizon_days),
                         "synthesis": synth_result.to_dict(),
                         "weight_source": weight_source,
@@ -378,16 +379,16 @@ class UnifiedForecastProcessor:
                     self.metrics['db_writes'] += 1
                     
                     logger.info(
-                        f"Saved {horizon} forecast for {symbol}: "
+                        f"Saved {horizon_key} forecast for {symbol}: "
                         f"{forecast['label'].upper()} "
                         f"({forecast['confidence']:.0%} conf, source={weight_source})"
                     )
                     
                 except Exception as e:
-                    logger.error(f"Error generating {horizon} forecast for {symbol}: {e}")
+                    logger.error(f"Error generating {horizon_key} forecast for {symbol}: {e}")
                     self.metrics['errors'].append({
                         'symbol': symbol,
-                        'horizon': horizon,
+                        'horizon': horizon_key,
                         'error': str(e),
                         'timestamp': datetime.now().isoformat(),
                     })
