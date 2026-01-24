@@ -269,17 +269,19 @@ struct WebChartView: NSViewRepresentable {
 
                 // Derive a label and color from overall prediction
                 let label = (ml.overallLabel ?? "neutral").lowercased()
-                let color: String
-                switch label {
-                case "bullish": color = "#4de680" // green
-                case "bearish": color = "#ff5959" // red
-                default: color = "#ffbf00" // amber
-                }
+                let color = forecastColorHex(for: label)
 
                 // Add a labeled price line as a badge at the last close
                 let price = lastBar.close
                 let title = "AI: \(label.uppercased()) \(Int((ml.confidence) * 100))%"
-                let options = PriceLineOptions(color: color, lineWidth: 2, lineStyle: 1, showLabel: true, title: title)
+                let options = PriceLineOptions(
+                    color: color,
+                    lineWidth: 2,
+                    lineStyle: 1,
+                    showLabel: true,
+                    title: title,
+                    category: "forecast-confidence"
+                )
                 bridge.send(.addPriceLine(seriesId: "candles", price: price, options: options))
             }
             
@@ -289,8 +291,13 @@ struct WebChartView: NSViewRepresentable {
             // Add forecast data if present
             if !forecastBars.isEmpty {
                 applyForecastOverlay(using: forecastBars)
+            } else {
+                applyForecastTargetLine(
+                    currentPrice: uniqueCandles.last?.close,
+                    label: data.mlSummary?.overallLabel
+                )
             }
-            
+
             // Push indicator configuration down to bridge (drives JS-side panel layout)
             let config = parent.viewModel.indicatorConfig
             bridge.setIndicatorConfig(config, timeframe: parent.viewModel.timeframe)
@@ -554,6 +561,10 @@ struct WebChartView: NSViewRepresentable {
             if parent.viewModel.timeframe.isIntraday {
                 parent.bridge.setForecastCandles(from: forecastBars)
             }
+            applyForecastTargetLine(
+                currentPrice: parent.viewModel.bars.last?.close,
+                label: parent.viewModel.chartDataV2?.mlSummary?.overallLabel
+            )
         }
 
         private func applyLegacyForecastOverlay(with data: ChartResponse) {
@@ -570,6 +581,12 @@ struct WebChartView: NSViewRepresentable {
                     resistance: srLevels.nearestResistance
                 )
             }
+
+            applyForecastTargetLine(
+                currentPrice: data.bars.last?.close,
+                label: mlSummary.overallLabel,
+                series: selectedSeries
+            )
         }
 
         private func updateChart(with data: ChartResponse) {
@@ -579,6 +596,8 @@ struct WebChartView: NSViewRepresentable {
 
             // Clear previous overlays/indicators (keeps candles)
             bridge.send(.clearIndicators)
+            bridge.send(.removePriceLines(category: "forecast-target"))
+            bridge.send(.removePriceLines(category: "forecast-confidence"))
 
             // Set candlestick data
             let candleSignature = (
@@ -816,6 +835,49 @@ struct WebChartView: NSViewRepresentable {
                     }
                 }
             }
+        }
+
+        private func forecastTargetValue(from series: ForecastSeries?) -> Double? {
+            guard let series else { return nil }
+            return series.points.max(by: { $0.ts < $1.ts })?.value
+        }
+
+        private func forecastColorHex(for label: String?) -> String {
+            switch (label ?? "neutral").lowercased() {
+            case "bullish": return "#4de680" // green
+            case "bearish": return "#ff5959" // red
+            default: return "#ffbf00" // amber
+            }
+        }
+
+        private func applyForecastTargetLine(
+            currentPrice: Double?,
+            label: String?,
+            series: ForecastSeries? = nil
+        ) {
+            parent.bridge.send(.removePriceLines(category: "forecast-target"))
+
+            let targetValue = forecastTargetValue(from: series ?? parent.viewModel.selectedForecastSeries)
+                ?? parent.viewModel.chartDataV2?.layers.forecast.data.max(by: { $0.ts < $1.ts })?.close
+
+            guard let target = targetValue, target > 0 else { return }
+
+            var title = String(format: "ML Target $%.2f", target)
+            if let current = currentPrice, current > 0 {
+                let pct = (target - current) / current * 100
+                title += String(format: " (%+.1f%%)", pct)
+            }
+
+            let options = PriceLineOptions(
+                color: forecastColorHex(for: label),
+                lineWidth: 2,
+                lineStyle: 2,
+                showLabel: true,
+                title: title,
+                category: "forecast-target"
+            )
+
+            parent.bridge.send(.addPriceLine(seriesId: "candles", price: target, options: options))
         }
 
         private func applyInitialZoomIfNeeded(bars: [OHLCBar]) {

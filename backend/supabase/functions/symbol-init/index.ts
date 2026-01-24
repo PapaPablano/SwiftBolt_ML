@@ -5,7 +5,7 @@
 // It ensures the symbol has sufficient OHLC data and generates ML forecasts.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -150,7 +150,7 @@ serve(async (req: Request): Promise<Response> => {
     const existingHorizons = new Set(
       existingForecasts?.map((f) => f.horizon) || []
     );
-    const requiredHorizons = ["1D", "1W"];
+    const requiredHorizons = ["1D", "1W", "1M", "2M", "3M", "4M", "5M", "6M"];
     const missingHorizons = requiredHorizons.filter(
       (h) => !existingHorizons.has(h)
     );

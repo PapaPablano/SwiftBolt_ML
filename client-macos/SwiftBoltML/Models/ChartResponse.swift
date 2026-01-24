@@ -207,7 +207,7 @@ struct ForecastPoint: Codable, Equatable {
     let upper: Double
 
     enum CodingKeys: String, CodingKey {
-        case ts, value, lower, upper
+        case ts, value, lower, upper, price
     }
 
     init(from decoder: Decoder) throws {
@@ -240,9 +240,16 @@ struct ForecastPoint: Codable, Equatable {
             throw DecodingError.dataCorruptedError(forKey: .ts, in: container, debugDescription: "ts must be Int or String")
         }
 
-        value = try container.decode(Double.self, forKey: .value)
-        lower = try container.decode(Double.self, forKey: .lower)
-        upper = try container.decode(Double.self, forKey: .upper)
+        if let decodedValue = try? container.decode(Double.self, forKey: .value) {
+            value = decodedValue
+        } else if let decodedPrice = try? container.decode(Double.self, forKey: .price) {
+            value = decodedPrice
+        } else {
+            throw DecodingError.dataCorruptedError(forKey: .value, in: container, debugDescription: "Missing value/price for forecast point")
+        }
+
+        lower = (try? container.decode(Double.self, forKey: .lower)) ?? value
+        upper = (try? container.decode(Double.self, forKey: .upper)) ?? value
     }
 
     init(ts: Int, value: Double, lower: Double, upper: Double) {
@@ -250,5 +257,13 @@ struct ForecastPoint: Codable, Equatable {
         self.value = value
         self.lower = lower
         self.upper = upper
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(ts, forKey: .ts)
+        try container.encode(value, forKey: .value)
+        try container.encode(lower, forKey: .lower)
+        try container.encode(upper, forKey: .upper)
     }
 }

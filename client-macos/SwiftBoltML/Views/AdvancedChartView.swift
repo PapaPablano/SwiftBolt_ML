@@ -90,6 +90,7 @@ struct AdvancedChartView: View {
     let bollingerMiddle: [IndicatorDataPoint]
     let bollingerLower: [IndicatorDataPoint]
     let atr: [IndicatorDataPoint]
+    let selectedForecastHorizon: String?
 
     // Support & Resistance Indicators
     var pivotIndicator: PivotLevelsIndicator?
@@ -144,6 +145,7 @@ struct AdvancedChartView: View {
         bollingerMiddle: [IndicatorDataPoint] = [],
         bollingerLower: [IndicatorDataPoint] = [],
         atr: [IndicatorDataPoint] = [],
+        selectedForecastHorizon: String? = nil,
         pivotIndicator: PivotLevelsIndicator? = nil,
         polyIndicator: PolynomialRegressionIndicator? = nil,
         logisticIndicator: LogisticRegressionIndicator? = nil,
@@ -176,6 +178,7 @@ struct AdvancedChartView: View {
         self.bollingerMiddle = bollingerMiddle
         self.bollingerLower = bollingerLower
         self.atr = atr
+        self.selectedForecastHorizon = selectedForecastHorizon
         self.pivotIndicator = pivotIndicator
         self.polyIndicator = polyIndicator
         self.logisticIndicator = logisticIndicator
@@ -2343,6 +2346,10 @@ struct AdvancedChartView: View {
             }
         }()
 
+        let targetSeries = mlSummary.horizons.first(where: { $0.horizon == selectedForecastHorizon })
+            ?? mlSummary.horizons.first
+        let targetPoint = targetSeries?.points.max(by: { $0.ts < $1.ts })
+
         // Get the last bar's close price as the starting point for the forecast
         let lastClose = bars.last?.close ?? 0
 
@@ -2408,6 +2415,19 @@ struct AdvancedChartView: View {
                     yEnd: .value("Upper", point.upper)
                 )
                 .foregroundStyle(forecastColor.opacity(0.15))
+            }
+        }
+
+        if let target = targetPoint, target.value > 0 {
+            RuleMark(
+                y: .value("Target", target.value)
+            )
+            .foregroundStyle(forecastColor.opacity(0.9))
+            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+            .annotation(position: .trailing, alignment: .leading) {
+                Text(String(format: "Target $%.2f", target.value))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(forecastColor)
             }
         }
 

@@ -12,7 +12,7 @@
 // SPEC-8 COMPLIANT: Uses job queue pattern to avoid timeouts
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { corsHeaders } from "../_shared/cors.ts";
 
 interface UserRefreshRequest {
@@ -238,7 +238,7 @@ serve(async (req: Request): Promise<Response> => {
         priority: 1, // High priority for user-triggered
         payload: {
           symbol_id: symbolId,
-          horizons: ["1D", "1W"],
+          horizons: ["1D", "1W", "1M", "2M", "3M", "4M", "5M", "6M"],
           triggered_by: "user-refresh",
         },
       });

@@ -247,6 +247,7 @@ struct PriceLineOptions: Encodable {
     var lineStyle: Int?
     var showLabel: Bool?
     var title: String?
+    var category: String?
 }
 
 /// Technical indicator overlay for chart display

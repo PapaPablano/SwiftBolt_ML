@@ -177,28 +177,31 @@ struct ContractWorkbenchHeader: View {
     }
 }
 
-// MARK: - Preview
+#if DEBUG
+struct ContractWorkbenchHeader_Previews: PreviewProvider {
+    static var previews: some View {
+        let rank = OptionRank.example
+        return VStack {
+            ContractWorkbenchHeader(
+                rank: rank,
+                symbol: "AAPL",
+                onClose: {},
+                onAddToStrategy: {}
+            )
+            .padding()
 
-#Preview {
-    VStack {
-        ContractWorkbenchHeader(
-            rank: OptionRank.example,
-            symbol: "AAPL",
-            onClose: {},
-            onAddToStrategy: {}
-        )
-        .padding()
-        
-        Divider()
-        
-        // Example with different signal
-        ContractWorkbenchHeader(
-            rank: OptionRank.example,
-            symbol: "TSLA",
-            onClose: {},
-            onAddToStrategy: {}
-        )
-        .padding()
+            Divider()
+
+            // Example with different signal
+            ContractWorkbenchHeader(
+                rank: rank,
+                symbol: "TSLA",
+                onClose: {},
+                onAddToStrategy: {}
+            )
+            .padding()
+        }
+        .frame(width: 450)
     }
-    .frame(width: 450)
 }
+#endif

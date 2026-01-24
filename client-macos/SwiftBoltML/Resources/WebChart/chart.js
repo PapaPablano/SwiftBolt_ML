@@ -2029,7 +2029,9 @@
             this.setLine('forecast-mid', midData, {
                 color: color,
                 lineWidth: 2,
-                lineStyle: LightweightCharts.LineStyle.Dashed,
+                lineStyle: LightweightCharts.LineStyle.Solid,
+                pointMarkersVisible: true,
+                pointMarkersRadius: 3,
                 name: 'Forecast',
                 autoscaleInfoProvider: () => null
             });

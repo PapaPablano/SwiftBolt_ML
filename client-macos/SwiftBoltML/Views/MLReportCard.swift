@@ -75,7 +75,7 @@ struct CompactMLHeader: View {
     }
 
     private func calculateChange(for series: ForecastSeries) -> String {
-        guard let point = series.points.first else { return "N/A" }
+        guard let point = series.points.max(by: { $0.ts < $1.ts }) else { return "N/A" }
         // This is a placeholder - in real implementation, compare to current price
         return String(format: "%+.1f%%", (point.value - point.lower) / point.value * 100)
     }
@@ -400,15 +400,19 @@ struct HorizonDetailRow: View {
     let series: ForecastSeries
     let labelColor: Color
 
+    private var targetPoint: ForecastPoint? {
+        series.points.max(by: { $0.ts < $1.ts })
+    }
+
     private var targetPrice: Double? {
-        series.points.first?.value
+        targetPoint?.value
     }
 
     private var priceRange: String {
-        guard let first = series.points.first else {
+        guard let point = targetPoint else {
             return "N/A"
         }
-        return "$\(String(format: "%.2f", first.lower))-$\(String(format: "%.2f", first.upper))"
+        return "$\(String(format: "%.2f", point.lower))-$\(String(format: "%.2f", point.upper))"
     }
 
     var body: some View {

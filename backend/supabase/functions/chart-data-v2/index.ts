@@ -16,14 +16,22 @@
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import type { PostgrestError } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import type { PostgrestError } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 declare const Deno: {
   env: {
     get(key: string): string | undefined;
   };
 };
+
+addEventListener('error', (event) => {
+  console.error('[chart-data-v2] Unhandled error:', event?.error?.stack ?? event?.error ?? event?.message);
+});
+
+addEventListener('unhandledrejection', (event) => {
+  console.error('[chart-data-v2] Unhandled rejection:', event?.reason?.stack ?? event?.reason);
+});
 
 interface ChartRequest {
   symbol: string;
@@ -277,6 +285,7 @@ function buildIntradayForecastPoints(params: {
 
 const DAILY_FORECAST_MAX_POINTS = 6;
 const INTRADAY_FORECAST_MAX_POINTS = 6;
+const DAILY_FORECAST_HORIZONS = ['1D', '1W', '1M', '2M', '3M', '4M', '5M', '6M'];
 
 const INTRADAY_FORECAST_EXPIRY_GRACE_SECONDS = 2 * 60 * 60;
 
@@ -304,9 +313,9 @@ function normalizeForecastPoint(point: Record<string, unknown>): { ts: number; v
   return {
     ...point,
     ts: toUnixSeconds(point['ts'] ?? point['time']),
-    value: Number(point['value'] ?? point['mid'] ?? point['midpoint'] ?? 0),
-    lower: Number(point['lower'] ?? point['min'] ?? point['lower_bound'] ?? point['value'] ?? 0),
-    upper: Number(point['upper'] ?? point['max'] ?? point['upper_bound'] ?? point['value'] ?? 0),
+    value: Number(point['value'] ?? point['price'] ?? point['mid'] ?? point['midpoint'] ?? 0),
+    lower: Number(point['lower'] ?? point['lower_band'] ?? point['min'] ?? point['lower_bound'] ?? point['value'] ?? point['price'] ?? 0),
+    upper: Number(point['upper'] ?? point['upper_band'] ?? point['max'] ?? point['upper_bound'] ?? point['value'] ?? point['price'] ?? 0),
   };
 }
 
@@ -357,6 +366,46 @@ function buildForecastBarsFromSummary(summary: unknown): ChartBar[] {
   const confidence = clampNumber(summary['confidence'], 0.5);
   const todayStr = new Date().toISOString().split('T')[0];
   const bars: ChartBar[] = [];
+
+  const horizonLabels = horizons
+    .map((horizon) => String(horizon?.['horizon'] ?? '').toUpperCase())
+    .filter((label) => label.length > 0);
+  const isDailyMultiHorizon = horizonLabels.length > 1
+    && horizonLabels.every((label) => DAILY_FORECAST_HORIZONS.includes(label));
+
+  if (isDailyMultiHorizon) {
+    for (const horizon of horizons) {
+      const points = normalizeForecastPoints(horizon?.['points']);
+      if (points.length === 0) {
+        continue;
+      }
+      const targetPoint = points.reduce((latest, current) => (current.ts > latest.ts ? current : latest), points[0]);
+      if (!Number.isFinite(targetPoint.ts)) {
+        continue;
+      }
+      const tsIso = new Date(targetPoint.ts * 1000).toISOString();
+      if (tsIso.split('T')[0] <= todayStr) {
+        continue;
+      }
+      bars.push({
+        ts: tsIso,
+        open: targetPoint.value,
+        high: targetPoint.upper,
+        low: targetPoint.lower,
+        close: targetPoint.value,
+        volume: null,
+        provider: 'ml_forecast',
+        is_intraday: false,
+        is_forecast: true,
+        data_status: 'forecast',
+        confidence_score: confidence,
+        upper_band: targetPoint.upper,
+        lower_band: targetPoint.lower,
+      });
+    }
+
+    return bars.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  }
 
   for (const horizon of horizons) {
     const points = normalizeForecastPoints(horizon?.['points']);
@@ -852,42 +901,79 @@ serve(async (req: Request): Promise<Response> => {
             }
           }
         } else {
-          // Fetch daily forecast for daily/weekly timeframes
-          const { data: dailyForecast } = await supabase
+          // Fetch daily forecast for daily/weekly timeframes (latest per horizon)
+          const { data: dailyForecasts } = await supabase
             .from('ml_forecasts')
             .select('*')
             .eq('symbol_id', symbolId)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
+            .in('horizon', DAILY_FORECAST_HORIZONS)
+            .order('created_at', { ascending: false });
 
-          if (dailyForecast && dailyForecast.points) {
-            const normalizedPoints = normalizeForecastPoints(dailyForecast.points);
-            const sampledPoints = sampleForecastPoints(normalizedPoints, DAILY_FORECAST_MAX_POINTS);
+          const latestByHorizon = new Map<string, Record<string, unknown>>();
+          if (Array.isArray(dailyForecasts)) {
+            for (const row of dailyForecasts) {
+              const horizon = typeof row?.horizon === 'string' ? row.horizon : null;
+              if (!horizon || latestByHorizon.has(horizon)) {
+                continue;
+              }
+              latestByHorizon.set(horizon, row);
+            }
+          }
+
+          const horizonSeries = DAILY_FORECAST_HORIZONS
+            .map((horizon) => {
+              const row = latestByHorizon.get(horizon);
+              if (!row || !row.points) {
+                return null;
+              }
+              const normalizedPoints = normalizeForecastPoints(row.points);
+              const sampledPoints = sampleForecastPoints(normalizedPoints, DAILY_FORECAST_MAX_POINTS);
+              if (sampledPoints.length === 0) {
+                return null;
+              }
+              return {
+                horizon,
+                points: sampledPoints,
+                row,
+              };
+            })
+            .filter((item): item is { horizon: string; points: Array<{ ts: number; value: number; lower: number; upper: number }>; row: Record<string, unknown> } => item !== null);
+
+          if (horizonSeries.length > 0) {
+            const bestForecast = horizonSeries
+              .map((item) => item.row)
+              .reduce<Record<string, unknown>>((best, current) => {
+                const bestConf = clampNumber(best?.confidence, -1);
+                const currentConf = clampNumber(current?.confidence, -1);
+                if (currentConf > bestConf) {
+                  return current;
+                }
+                return best;
+              }, horizonSeries[0].row);
 
             mlSummary = {
-              overallLabel: dailyForecast.overall_label,
-              confidence: dailyForecast.confidence,
-              horizons: [{
-                horizon: dailyForecast.horizon,
-                points: sampledPoints,
-              }],
-              srLevels: dailyForecast.sr_levels || null,
-              srDensity: dailyForecast.sr_density || null,
+              overallLabel: typeof bestForecast?.overall_label === 'string' ? bestForecast.overall_label : null,
+              confidence: clampNumber(bestForecast?.confidence, 0.5),
+              horizons: horizonSeries.map((item) => ({
+                horizon: item.horizon,
+                points: item.points,
+              })),
+              srLevels: (bestForecast?.sr_levels as Record<string, unknown>) || null,
+              srDensity: typeof bestForecast?.sr_density === 'number' ? bestForecast.sr_density : null,
             };
 
             indicators = {
-              supertrendFactor: dailyForecast.supertrend_factor,
-              supertrendPerformance: dailyForecast.supertrend_performance,
-              supertrendSignal: dailyForecast.supertrend_signal,
-              trendLabel: dailyForecast.trend_label,
-              trendConfidence: dailyForecast.trend_confidence,
-              stopLevel: dailyForecast.stop_level,
-              trendDurationBars: dailyForecast.trend_duration_bars,
-              rsi: dailyForecast.rsi,
-              adx: dailyForecast.adx,
-              macdHistogram: dailyForecast.macd_histogram,
-              kdjJ: dailyForecast.kdj_j,
+              supertrendFactor: typeof bestForecast?.supertrend_factor === 'number' ? bestForecast.supertrend_factor : null,
+              supertrendPerformance: typeof bestForecast?.supertrend_performance === 'number' ? bestForecast.supertrend_performance : null,
+              supertrendSignal: typeof bestForecast?.supertrend_signal === 'number' ? bestForecast.supertrend_signal : null,
+              trendLabel: typeof bestForecast?.trend_label === 'string' ? bestForecast.trend_label : null,
+              trendConfidence: typeof bestForecast?.trend_confidence === 'number' ? bestForecast.trend_confidence : null,
+              stopLevel: typeof bestForecast?.stop_level === 'number' ? bestForecast.stop_level : null,
+              trendDurationBars: typeof bestForecast?.trend_duration_bars === 'number' ? bestForecast.trend_duration_bars : null,
+              rsi: typeof bestForecast?.rsi === 'number' ? bestForecast.rsi : null,
+              adx: typeof bestForecast?.adx === 'number' ? bestForecast.adx : null,
+              macdHistogram: typeof bestForecast?.macd_histogram === 'number' ? bestForecast.macd_histogram : null,
+              kdjJ: typeof bestForecast?.kdj_j === 'number' ? bestForecast.kdj_j : null,
             };
           }
         }

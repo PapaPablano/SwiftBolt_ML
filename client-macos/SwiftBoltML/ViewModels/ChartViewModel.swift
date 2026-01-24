@@ -425,24 +425,62 @@ final class ChartViewModel: ObservableObject {
     }
 
     private func buildSelectedForecastBars() -> [OHLCBar] {
+        guard let summary = chartDataV2?.mlSummary ?? chartData?.mlSummary else { return [] }
+
+        let horizons = summary.horizons
+        guard !horizons.isEmpty else { return [] }
+
+        let dailyHorizonSet: Set<String> = ["1D", "1W", "1M", "2M", "3M", "4M", "5M", "6M"]
+        let isDailyMultiHorizon = horizons.count > 1
+            && horizons.allSatisfy { dailyHorizonSet.contains($0.horizon.uppercased()) }
+
+        if isDailyMultiHorizon {
+            var bars: [OHLCBar] = []
+            bars.reserveCapacity(horizons.count)
+
+            for series in horizons {
+                guard let targetPoint = series.points.max(by: { $0.ts < $1.ts }) else { continue }
+                let date = Date(timeIntervalSince1970: TimeInterval(targetPoint.ts))
+                let clampedLower = min(targetPoint.lower, targetPoint.upper)
+                let clampedUpper = max(targetPoint.lower, targetPoint.upper)
+                let value = targetPoint.value
+                bars.append(OHLCBar(
+                    ts: date,
+                    open: value,
+                    high: clampedUpper,
+                    low: clampedLower,
+                    close: value,
+                    volume: 0,
+                    upperBand: clampedUpper,
+                    lowerBand: clampedLower,
+                    confidenceScore: summary.confidence
+                ))
+            }
+
+            return bars.sorted { $0.ts < $1.ts }
+        }
+
         guard let series = selectedForecastSeries else { return [] }
 
-        return series.points.map { point in
-            let date = Date(timeIntervalSince1970: TimeInterval(point.ts))
-            let clampedLower = min(point.lower, point.upper)
-            let clampedUpper = max(point.lower, point.upper)
-            return OHLCBar(
-                ts: date,
-                open: clampedUpper,
-                high: clampedUpper,
-                low: clampedLower,
-                close: clampedLower,
-                volume: 0,
-                upperBand: clampedUpper,
-                lowerBand: clampedLower,
-                confidenceScore: chartDataV2?.mlSummary?.confidence
-            )
-        }
+        return series.points
+            .map { point in
+                let date = Date(timeIntervalSince1970: TimeInterval(point.ts))
+                let clampedLower = min(point.lower, point.upper)
+                let clampedUpper = max(point.lower, point.upper)
+                let value = point.value
+                return OHLCBar(
+                    ts: date,
+                    open: value,
+                    high: clampedUpper,
+                    low: clampedLower,
+                    close: value,
+                    volume: 0,
+                    upperBand: clampedUpper,
+                    lowerBand: clampedLower,
+                    confidenceScore: summary.confidence
+                )
+            }
+            .sorted { $0.ts < $1.ts }
     }
 
     private func rebuildSelectedForecastBars() {

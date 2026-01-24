@@ -304,7 +304,16 @@ class UnifiedForecastProcessor:
                     logger.debug(f"Generating {horizon} forecast for {symbol}...")
                     
                     # Get horizon days
-                    horizon_days = {'1D': 1, '1W': 7, '1M': 30}.get(horizon, 1)
+                    horizon_days = {
+                        '1D': 1,
+                        '1W': 7,
+                        '1M': 30,
+                        '2M': 60,
+                        '3M': 90,
+                        '4M': 120,
+                        '5M': 150,
+                        '6M': 180,
+                    }.get(horizon, 1)
                     
                     # Create and train baseline forecaster
                     baseline_forecaster = BaselineForecaster()
@@ -404,15 +413,25 @@ class UnifiedForecastProcessor:
     def _build_forecast_points(self, synth_result, current_ts, horizon_days):
         """Build forecast points from synthesis result."""
         target_ts = current_ts + timedelta(days=horizon_days)
+        current_price = float(synth_result.current_price or synth_result.target)
+        target_price = float(synth_result.target)
+        lower_band = float(synth_result.lower_band)
+        upper_band = float(synth_result.upper_band)
         return [
             {
                 "ts": current_ts.isoformat(),
-                "price": synth_result.current_price,
+                "value": current_price,
+                "lower": current_price,
+                "upper": current_price,
+                "price": current_price,
                 "type": "current",
             },
             {
                 "ts": target_ts.isoformat(),
-                "price": synth_result.target,
+                "value": target_price,
+                "lower": lower_band,
+                "upper": upper_band,
+                "price": target_price,
                 "type": "target",
             },
         ]

@@ -672,6 +672,128 @@ WHERE ...
 
 ---
 
+### 3.3 Database Constraint Fixes (RESOLVED - 2026-01-24)
+
+#### Issue: ML Forecasts Unique Constraint Mismatch
+
+**Problem Discovered:**
+- **Date**: 2026-01-24
+- **Symptom**: All ML forecasts (40/40) failing to save with PostgreSQL error `42P10`
+- **Error Message**: `'there is no unique or exclusion constraint matching the ON CONFLICT specification'`
+- **Impact**: 🔴 **CRITICAL** - Zero forecasts persisted to database despite successful Python processing
+
+**Root Cause Analysis:**
+
+The Python code was attempting to upsert forecasts using:
+```python
+# ml/src/data/supabase_db.py (line 818-821)
+upsert(
+    table="ml_forecasts",
+    data=forecast_data,
+    on_conflict="symbol_id,timeframe,horizon"  # ← Expects 3-column constraint
+)
+```
+
+However, the database only had:
+```sql
+-- Old constraint (from earlier migration)
+UNIQUE(symbol_id, horizon)  -- ← Missing 'timeframe'!
+```
+
+**Why This Happened:**
+1. Migration `20260121000000` added `timeframe` column to support multi-timeframe forecasting
+2. The unique constraint was never updated to include `timeframe`
+3. Python code was updated to use `timeframe` in upsert operations
+4. Database schema lagged behind code expectations
+
+**Solution Implemented:**
+
+**Migration**: `20260124000000_fix_ml_forecasts_unique_constraint.sql`
+
+```sql
+-- Step 1: Drop old constraint
+ALTER TABLE ml_forecasts 
+DROP CONSTRAINT IF EXISTS ml_forecasts_symbol_id_horizon_key;
+
+DROP INDEX IF EXISTS ux_ml_forecasts_symbol_horizon;
+
+-- Step 2: Ensure timeframe column exists and is NOT NULL
+ALTER TABLE ml_forecasts
+ADD COLUMN IF NOT EXISTS timeframe TEXT;
+
+UPDATE ml_forecasts
+SET timeframe = 'd1'
+WHERE timeframe IS NULL;
+
+ALTER TABLE ml_forecasts
+ALTER COLUMN timeframe SET NOT NULL;
+
+-- Step 3: Create new unique constraint
+CREATE UNIQUE INDEX ux_ml_forecasts_symbol_timeframe_horizon
+ON ml_forecasts(symbol_id, timeframe, horizon);
+```
+
+**Verification Results:**
+
+✅ **Migration Applied**: Successfully executed on Supabase project `cygflaemtmwiwaviclks`
+
+✅ **Database Status**:
+```sql
+-- Index verification
+SELECT indexname, indexdef 
+FROM pg_indexes 
+WHERE tablename = 'ml_forecasts' 
+AND indexname = 'ux_ml_forecasts_symbol_timeframe_horizon';
+-- Result: Index created successfully
+```
+
+✅ **Production Test Results** (GitHub Actions run #21306769498):
+- **5/5 symbols** processed successfully (AAPL, SPY, TSLA, NVDA, MSFT)
+- **40/40 forecasts** saved to database (5 symbols × 8 horizons)
+- **0 errors** - No more `42P10` constraint violations
+- **Processing time**: 58.1s (11.6s avg per symbol)
+
+✅ **Database Verification**:
+```sql
+-- Recent forecasts query
+SELECT COUNT(*) as total_forecasts, 
+       COUNT(DISTINCT symbol_id) as unique_symbols,
+       COUNT(DISTINCT horizon) as unique_horizons,
+       COUNT(DISTINCT timeframe) as unique_timeframes
+FROM ml_forecasts 
+WHERE created_at > NOW() - INTERVAL '1 hour';
+
+-- Result:
+-- total_forecasts: 40
+-- unique_symbols: 5
+-- unique_horizons: 8 (1D, 1W, 1M, 2M, 3M, 4M, 5M, 6M)
+-- unique_timeframes: 1 (legacy)
+```
+
+**Impact on Audit Findings:**
+
+This fix resolves a **critical data persistence issue** that was preventing the ML forecasting pipeline from functioning end-to-end. The issue was not identified in the original audit because:
+
+1. The Python code was executing successfully (no Python errors)
+2. The database error was only visible in GitHub Actions logs
+3. The constraint mismatch was a schema evolution issue (timeframe column added but constraint not updated)
+
+**Status**: ✅ **RESOLVED** - Migration applied and verified in production
+
+**Related Files**:
+- Migration: `supabase/migrations/20260124000000_fix_ml_forecasts_unique_constraint.sql`
+- Python Code: `ml/src/data/supabase_db.py` (upsert logic)
+- Documentation: `ML_FORECAST_DATABASE_FIX.md`
+- Commits: `23b5ba5`, `6dbfa54`
+
+**Remaining Issues** (from original audit):
+- ⚠️ Multi-write conflicts still exist (forecast_job.py vs. multi_horizon_forecast_job.py)
+- ⚠️ Feature rebuilding waste (9-14x per cycle) still present
+- ⚠️ Evaluation table mixing (daily + intraday) still unresolved
+- ⚠️ Weight calibration race conditions still present
+
+---
+
 ## 4. PROPOSED UNIFIED ARCHITECTURE
 
 ### 4.1 Consolidated Processing Pipeline
@@ -957,6 +1079,7 @@ CREATE INDEX ON model_weights(version_id, source);
 
 ### 6.1 Statistical Validation Issues
 
+- [x] **Database Constraint Mismatch**: ✅ RESOLVED (2026-01-24) - ml_forecasts unique constraint updated to include timeframe
 - [ ] **Feature Cache**: Using in-memory only cache (0% hit rate across workers)
 - [ ] **Redundant Forecasting**: 3+ forecast scripts writing to same table
 - [ ] **Evaluation Mixing**: forecast_evaluations contains both 1D and 15m data

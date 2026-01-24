@@ -199,18 +199,21 @@ private struct MetricChip: View {
     }
 }
 
-// MARK: - Preview
+#if DEBUG
+struct KeyMetricsStrip_Previews: PreviewProvider {
+    static var previews: some View {
+        let rank = OptionRank.example
+        return VStack(spacing: 20) {
+            KeyMetricsStrip(rank: rank)
+                .padding()
 
-#Preview {
-    VStack(spacing: 20) {
-        KeyMetricsStrip(rank: OptionRank.example)
-            .padding()
-        
-        Divider()
-        
-        // Example with missing data
-        KeyMetricsStrip(rank: OptionRank.example)
-        .padding()
+            Divider()
+
+            // Example with missing data
+            KeyMetricsStrip(rank: rank)
+                .padding()
+        }
+        .frame(width: 450)
     }
-    .frame(width: 450)
 }
+#endif

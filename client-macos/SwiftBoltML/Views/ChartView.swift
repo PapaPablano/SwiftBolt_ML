@@ -218,6 +218,7 @@ struct ChartView: View {
                                 bollingerMiddle: chartViewModel.bollingerMiddle,
                                 bollingerLower: chartViewModel.bollingerLower,
                                 atr: chartViewModel.atr,
+                                selectedForecastHorizon: chartViewModel.selectedForecastHorizon,
                                 pivotIndicator: chartViewModel.pivotLevelsIndicator,
                                 polyIndicator: chartViewModel.polynomialSRIndicator,
                                 logisticIndicator: chartViewModel.logisticSRIndicator,
