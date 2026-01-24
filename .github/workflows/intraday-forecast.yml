@@ -247,17 +247,17 @@ jobs:
             generate_forecast "15m"
             echo "📊 Generating 1h forecasts..."
             generate_forecast "1h"
-      
+          else
+            echo "📊 Generating $HORIZON forecasts..."
+            generate_forecast "$HORIZON"
+          fi
+
       - name: Evaluate intraday forecasts
         continue-on-error: true
         run: |
           cd ml
           echo "📊 Evaluating intraday forecasts (15m, 1h)..."
           python -m src.evaluation_job_intraday || echo "⚠️ Intraday evaluation completed with warnings"
-          else
-            echo "📊 Generating $HORIZON forecasts..."
-            generate_forecast "$HORIZON"
-          fi
 
       - name: Job summary
         if: always()
