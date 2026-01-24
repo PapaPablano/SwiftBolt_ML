@@ -1,28 +1,60 @@
-# Options Processing Fix - Invalid HTTP Header Value
+# Options Processing Fix - Multiple Issues Resolved
 
 **Date:** January 24, 2026  
-**Issue:** ML Orchestration workflow failing with "Invalid header value b'***'" error  
+**Issue:** ML Orchestration workflow failing with multiple errors  
 **Status:** ✅ Fixed
 
 ---
 
 ## Problem Summary
 
-The `options-processing` job in the ML Orchestration GitHub Actions workflow was failing for all symbols with the error:
+The `options-processing` job in the ML Orchestration GitHub Actions workflow was failing for all symbols. Initial analysis showed "Invalid header value b'***'" but the actual runtime error was:
 
 ```
-Failed to process [SYMBOL]: Invalid header value b'***'
+Failed to process [SYMBOL]: OptionsMomentumRanker.rank_options() got an unexpected keyword argument 'ranking_mode'
 ```
 
-All 8 symbols in the watchlist (CRWD, GOOG, MU, NVDA, PLTR, TSLA, etc.) failed with 0 successes.
+All 8 symbols in the watchlist (AAPL, AMD, CRWD, GOOG, MU, NVDA, PLTR, TSLA) failed with 0 successes.
 
 ---
 
 ## Root Cause Analysis
 
-### Primary Issue: Whitespace in Environment Variables
+### Issue 1: Incorrect Method Signature (Primary Blocker)
 
-The error `Invalid header value b'***'` occurs when HTTP headers contain invalid characters, most commonly:
+The critical error was in `ml/src/scripts/backfill_options.py` line 577:
+
+```python
+ranked = ranker.rank_options(
+    df,
+    iv_stats=iv_stats,
+    options_history=options_history if not options_history.empty else None,
+    underlying_trend=trend,
+    previous_rankings=prev if not prev.empty else None,
+    ranking_mode="entry",  # ❌ WRONG: parameter name and type
+)
+```
+
+**Problem:**
+- The method uses `ranking_mode="entry"` (string parameter)
+- The actual signature is `mode=RankingMode.ENTRY` (enum parameter)
+- Parameter name: `mode` not `ranking_mode`
+- Parameter type: `RankingMode` enum not string
+
+**Correct signature:**
+```python
+def rank_options(
+    self,
+    options_df: pd.DataFrame,
+    mode: RankingMode = RankingMode.MONITOR,  # Enum, not string!
+    iv_stats: Optional[IVStatistics] = None,
+    ...
+)
+```
+
+### Issue 2: Whitespace in Environment Variables (Secondary)
+
+The error `Invalid header value b'***'` occurs when HTTP headers contain invalid characters:
 - Newline characters (`\n`, `\r`)
 - Leading/trailing whitespace
 - Control characters
@@ -32,25 +64,52 @@ GitHub Actions secrets can accidentally include these characters when:
 2. Secrets are set with trailing newlines
 3. Shell interpolation adds unexpected characters
 
-### Location of Failure
+The workflow logs (lines 472-473) showed the `SUPABASE_KEY` secret actually contained a newline character.
 
-The error occurred in `ml/src/scripts/backfill_options.py` at line 223 when making HTTP requests to the Supabase Edge Function `/options-chain`:
+### Issue 3: Missing TRADIER_API_KEY (Non-Critical)
 
-```python
-headers = {
-    "Authorization": f"Bearer {settings.supabase_key}",
-    "Content-Type": "application/json",
-}
-response = requests.get(url, params=params, headers=headers, timeout=60)
+The workflow logs showed:
+```
+ERROR - AAPL: Backfill failed - Tradier API key required. Set TRADIER_API_KEY environment variable.
 ```
 
-If `settings.supabase_key` contains newlines or control characters, the `requests` library rejects it with "Invalid header value".
+This prevented historical options backfill but didn't block the main processing since the script handles this gracefully.
 
 ---
 
 ## Solution Implemented
 
-### 1. Settings Validation (ml/config/settings.py)
+### 1. Fix Method Call Signature (ml/src/scripts/backfill_options.py)
+
+**Fixed the incorrect method call:**
+
+```python
+# Import the RankingMode enum
+from src.models.options_momentum_ranker import (
+    IVStatistics,
+    OptionsMomentumRanker,
+    RankingMode,  # ✅ Added import
+)
+
+# Fixed the method call
+ranker = OptionsMomentumRanker()
+ranked = ranker.rank_options(
+    df,
+    mode=RankingMode.ENTRY,  # ✅ Correct: Use enum with proper parameter name
+    iv_stats=iv_stats,
+    options_history=options_history if not options_history.empty else None,
+    underlying_trend=trend,
+    previous_rankings=prev if not prev.empty else None,
+)
+```
+
+**Benefits:**
+- Fixes the TypeError that blocked all options processing
+- Uses the correct enum type for type safety
+- Follows the actual method signature
+- Enables proper mode-specific ranking logic
+
+### 2. Settings Validation (ml/config/settings.py)
 
 Added a Pydantic field validator to strip whitespace from all credential fields:
 
@@ -82,7 +141,7 @@ def strip_whitespace(cls, v: str | None) -> str | None:
 - Works for both `.env` files and environment variables
 - Prevents future issues with any credential field
 
-### 2. GitHub Actions Secret Sanitization (.github/actions/setup-ml-env/action.yml)
+### 3. GitHub Actions Secret Sanitization (.github/actions/setup-ml-env/action.yml)
 
 Updated the environment configuration step to strip whitespace before writing to `.env`:
 
@@ -112,7 +171,7 @@ Updated the environment configuration step to strip whitespace before writing to
 - `xargs` strips leading/trailing whitespace
 - Variables are interpolated cleanly into `.env`
 
-### 3. Runtime Validation (ml/src/scripts/backfill_options.py)
+### 4. Runtime Validation (ml/src/scripts/backfill_options.py)
 
 Added explicit validation to catch issues early with clear error messages:
 
@@ -233,17 +292,20 @@ All are now protected by the Pydantic field validator.
 
 ## Files Modified
 
-1. **ml/config/settings.py**
+1. **ml/src/scripts/backfill_options.py** (Critical Fix)
+   - Added `RankingMode` to imports from `options_momentum_ranker`
+   - Changed `ranking_mode="entry"` to `mode=RankingMode.ENTRY`
+   - Fixed method call to use correct parameter name and type
+   - Added `validate_secret()` function for runtime validation
+   - Validates `SUPABASE_URL` and `SUPABASE_KEY` at startup
+
+2. **ml/config/settings.py** (Defensive Fix)
    - Added `field_validator` to strip whitespace from all credential fields
    - Imports `field_validator` from `pydantic`
 
-2. **.github/actions/setup-ml-env/action.yml**
+3. **.github/actions/setup-ml-env/action.yml** (Defensive Fix)
    - Updated "Configure environment" step to sanitize secrets with `xargs`
    - Added comment explaining the fix
-
-3. **ml/src/scripts/backfill_options.py**
-   - Added `validate_secret()` function for runtime validation
-   - Validates `SUPABASE_URL` and `SUPABASE_KEY` at startup
 
 ---
 

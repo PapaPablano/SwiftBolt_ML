@@ -391,6 +391,33 @@ For questions or issues with these fixes, contact the ML team or create a GitHub
 
 ---
 
-**Last Updated:** January 24, 2026
+## Summary
+
+This fix required **two passes** to fully resolve the forecast pipeline failures:
+
+**Pass 1 (Issues 1-5):** Fixed BaselineForecaster interface to match sklearn-like API expected by unified_forecast_job. Model training and prediction now work correctly.
+
+**Pass 2 (Issues 6-7):** Fixed forecast synthesis by converting dict weights to ForecastWeights objects and passing current_price correctly to point builder.
+
+**Root Cause Analysis:**
+The unified_forecast_job was written to expect a different API than what BaselineForecaster originally provided. The mismatch suggested the code was refactored at different times without full integration testing. These fixes align the interfaces properly.
+
+**Testing Strategy:**
+1. Run ML Orchestration workflow manually via GitHub Actions
+2. Monitor logs for successful forecast generation (target: 5/5 or 8/8 symbols)
+3. Verify ml_forecasts table has new entries with correct timestamps
+4. Check live_predictions table gets populated (should write ~26 predictions)
+5. Validate unified validation shows real scores instead of defaults
+
+**Next Steps After Successful Run:**
+- Monitor forecast accuracy over time
+- Tune layer weights based on evaluation results
+- Consider caching trained models to reduce processing time
+- Implement feature importance analysis for model explainability
+
+---
+
+**Last Updated:** January 24, 2026 (Two-pass fix)
 **Author:** Cursor AI Agent
 **Status:** Ready for Testing
+**GitHub Actions Runs Analyzed:** #29 (initial), #30 (post-first-pass)

@@ -43,6 +43,7 @@ from src.data.supabase_db import db  # noqa: E402
 from src.models.options_momentum_ranker import (  # noqa: E402
     IVStatistics,
     OptionsMomentumRanker,
+    RankingMode,
 )
 from src.options_historical_backfill import ensure_options_history  # noqa: E402
 
@@ -570,11 +571,11 @@ def update_options_ranks(underlying: str, calls: List[Dict], puts: List[Dict]) -
     ranker = OptionsMomentumRanker()
     ranked = ranker.rank_options(
         df,
+        mode=RankingMode.ENTRY,
         iv_stats=iv_stats,
         options_history=options_history if not options_history.empty else None,
         underlying_trend=trend,
         previous_rankings=prev if not prev.empty else None,
-        ranking_mode="entry",
     )
 
     batch: list[dict[str, Any]] = []
