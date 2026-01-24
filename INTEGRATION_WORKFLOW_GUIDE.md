@@ -30,7 +30,7 @@ The STOCK_FORECASTING_FRAMEWORK implementations are **already integrated** into 
 3. **Database Schema** (Supabase PostgreSQL)
    - `ml_forecasts` - Stores all predictions
    - `ml_forecast_evaluations` - Tracks prediction accuracy
-   - `ml_layer_weights` - Stores layer weights for feedback
+   - `symbol_model_weights` - Stores layer weights for feedback (in synth_weights JSONB)
 
 ---
 
@@ -83,7 +83,7 @@ forecast["consensus_strength"]       # "strong", "moderate", etc.
 
 **File:** `ml/src/intraday_daily_feedback.py`
 
-**Called from:** `intraday_forecast_job.py` (proposed)
+**Called from:** `unified_forecast_job.py:132-194` (integrated)
 
 ```python
 # Get optimized weights from feedback loop
@@ -91,12 +91,13 @@ feedback_loop = IntradayDailyFeedback()
 weights, source = feedback_loop.get_best_weights(symbol, horizon)
 
 # Weights automatically prioritized:
-# 1. Intraday-calibrated weights (if fresh)
-# 2. Symbol-specific weights
-# 3. Default weights
+# 1. Fresh intraday-calibrated weights (< staleness threshold)
+# 2. Stale intraday-calibrated weights (with warning)
+# 3. Symbol-specific weights from database
+# 4. Default weights
 ```
 
-**In Database:** Stored in `ml_layer_weights` table
+**In Database:** Stored in `symbol_model_weights` table (synth_weights JSONB field)
 
 ### 4. Market Correlation Features
 
@@ -223,36 +224,53 @@ CREATE TABLE ml_forecasts (
 );
 ```
 
-### 2. ml_layer_weights Table
+### 2. symbol_model_weights Table
 
 ```sql
 -- Stores calibrated weights from feedback loop
-CREATE TABLE ml_layer_weights (
+-- Note: Layer weights are stored in synth_weights JSONB field
+CREATE TABLE symbol_model_weights (
     id uuid PRIMARY KEY,
     symbol_id uuid REFERENCES symbols(id),
-    timeframe TEXT,
-    st_weight FLOAT,           -- SuperTrend AI weight
-    sr_weight FLOAT,           -- Support/Resistance weight
-    ensemble_weight FLOAT,     -- ML Ensemble weight
-    source TEXT,               -- "intraday_calibrated", "symbol_specific"
-    staleness_hours FLOAT,     -- Age of calibration
+    horizon TEXT,
+    synth_weights JSONB,       -- Contains layer_weights: {supertrend_component, sr_component, ensemble_component}
+    calibration_source TEXT,  -- "intraday_calibrated", "symbol_specific"
+    intraday_sample_count INT,
+    intraday_accuracy FLOAT,
+    last_updated TIMESTAMP,
     created_at TIMESTAMP,
-    updated_at TIMESTAMP,
-    UNIQUE(symbol_id, timeframe, source)
+    UNIQUE(symbol_id, horizon)
 );
+```
+
+**Layer Weights Structure (in synth_weights JSONB):**
+```json
+{
+  "layer_weights": {
+    "supertrend_component": 0.35,
+    "sr_component": 0.30,
+    "ensemble_component": 0.35
+  }
+}
 ```
 
 ### 3. Example Query - Get Best Weights
 
 ```sql
 -- Automatically used by IntradayDailyFeedback.get_best_weights()
-SELECT st_weight, sr_weight, ensemble_weight, source
-FROM ml_layer_weights
+-- The class handles priority logic internally
+SELECT 
+    synth_weights->'layer_weights' as layer_weights,
+    calibration_source,
+    intraday_sample_count,
+    intraday_accuracy,
+    last_updated
+FROM symbol_model_weights
 WHERE symbol_id = $1
-  AND timeframe = $2
-  AND source = 'intraday_calibrated'  -- Priority 1
-  AND (NOW() - updated_at) < interval '24 hours'  -- Fresh
-ORDER BY updated_at DESC
+  AND horizon = $2
+  AND calibration_source = 'intraday_calibrated'  -- Priority 1
+  AND (NOW() - last_updated) < interval '24 hours'  -- Fresh
+ORDER BY last_updated DESC
 LIMIT 1;
 
 -- Falls back to symbol_specific if intraday_calibrated not fresh
@@ -293,10 +311,16 @@ FROM ml_forecasts
 WHERE created_at > NOW() - interval '1 hour'
 LIMIT 5;
 
-# Check ml_layer_weights for feedback loop
-SELECT symbol_id, timeframe, source, staleness_hours
-FROM ml_layer_weights
-WHERE updated_at > NOW() - interval '24 hours';
+# Check symbol_model_weights for feedback loop
+SELECT 
+    symbol_id, 
+    horizon, 
+    calibration_source, 
+    intraday_sample_count,
+    intraday_accuracy,
+    EXTRACT(EPOCH FROM (NOW() - last_updated))/3600 as staleness_hours
+FROM symbol_model_weights
+WHERE last_updated > NOW() - interval '24 hours';
 ```
 
 ### Phase 4: Enable in CI/CD
@@ -323,14 +347,14 @@ git push origin master
 │ 1. Fetch OHLC data from Supabase                               │
 │ 2. Calculate technical features (50+)                          │
 │ 3. ADD: Calculate market correlation features (15 SPY)         │
-│ 4. Get layer weights from ml_layer_weights                     │
+│ 4. Get layer weights from symbol_model_weights (via IntradayDailyFeedback) │
 │ 5. Train/predict with 6-model ensemble                         │
 │    └─ NEW: Includes Transformer model ← TRANSFORMER            │
 │ 6. Synthesize forecast with 3 layers                           │
 │ 7. ADD: Calculate timeframe consensus                          │
 │    └─ Boost/penalty confidence based on m15/h1/h4/d1 agreement │
 │ 8. Write to ml_forecasts with consensus fields                 │
-│ 9. Write weights to ml_layer_weights                           │
+│ 9. Write weights to symbol_model_weights                        │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
@@ -342,7 +366,7 @@ git push origin master
 │ 2. Compare to actual closes (evaluate)                         │
 │ 3. ADD: Check if weights stale (>24h) or low evaluations       │
 │ 4. ADD: Calibrate weights from intraday outcomes               │
-│ 5. Store calibrated weights in ml_layer_weights                │
+│ 5. Store calibrated weights in symbol_model_weights            │
 │ 6. Priority system: Intraday > Symbol > Default                │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -351,14 +375,14 @@ git push origin master
 │ Supabase Tables (PostgreSQL)                                   │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│ ml_forecasts                ml_layer_weights                   │
+│ ml_forecasts                symbol_model_weights                │
 │ ├─ symbol                   ├─ symbol_id                       │
-│ ├─ label                    ├─ st_weight                       │
-│ ├─ confidence               ├─ sr_weight                       │
-│ ├─ consensus_direction ←────┤─ ensemble_weight                 │
-│ ├─ alignment_score ←────────┤─ source (priority)               │
-│ ├─ adjusted_confidence ←────┤─ staleness_hours                 │
-│ └─ layer_weights ←──────────┴─ created_at                      │
+│ ├─ label                    ├─ horizon                          │
+│ ├─ confidence               ├─ synth_weights (JSONB)           │
+│ ├─ consensus_direction ←────┤  └─ layer_weights                │
+│ ├─ alignment_score ←────────┤─ calibration_source               │
+│ ├─ adjusted_confidence ←────┤─ intraday_sample_count            │
+│ └─ layer_weights ←──────────┴─ last_updated                    │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -450,9 +474,14 @@ SELECT consensus_direction, alignment_score FROM ml_forecasts LIMIT 5;
 ### 3. Check Feedback Loop
 
 ```python
-# In ml_layer_weights, verify:
-SELECT source, staleness_hours FROM ml_layer_weights LIMIT 5;
-# Should show: "intraday_calibrated", 2.5 hours (fresh)
+# In symbol_model_weights, verify:
+SELECT 
+    calibration_source, 
+    EXTRACT(EPOCH FROM (NOW() - last_updated))/3600 as staleness_hours,
+    synth_weights->'layer_weights' as layer_weights
+FROM symbol_model_weights 
+LIMIT 5;
+# Should show: "intraday_calibrated", 2.5 hours (fresh), layer weights JSON
 ```
 
 ### 4. Check Performance Improvement
@@ -486,14 +515,14 @@ LIMIT 30;
 
 1. **Set environment variable** → `export ENABLE_TRANSFORMER=true`
 2. **Run forecast job** → `python ml/src/unified_forecast_job.py`
-3. **Monitor Supabase** → Check ml_forecasts and ml_layer_weights
+3. **Monitor Supabase** → Check ml_forecasts and symbol_model_weights
 4. **Enable in CI/CD** → Add env var to GitHub Actions
 5. **Monitor performance** → Track consensus alignment and accuracy improvements
 
 ### 📊 Expected Results
 
 - Consensus fields auto-populated in ml_forecasts
-- Weight source tracking in ml_layer_weights
+- Weight source tracking in symbol_model_weights
 - Transformer predictions flowing through ensemble
 - 22.9% accuracy improvement (Transformer vs Ensemble)
 - 43.5% accuracy improvement (Ensemble vs LSTM)

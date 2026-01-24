@@ -228,6 +228,8 @@ jobs:
           USE_ENSEMBLE_FORECASTER: "true"
           MIN_BARS_FOR_TRAINING: "50"
           REDIS_FEATURE_CACHE: "false"  # Enable when Redis is available
+          ENABLE_TRANSFORMER: ${{ vars.ENABLE_TRANSFORMER || 'false' }}  # Enable Transformer model (set in repo vars)
+          ENABLE_ADVANCED_ENSEMBLE: ${{ vars.ENABLE_ADVANCED_ENSEMBLE || 'true' }}  # Enable 6-model ensemble
         run: |
           cd ml
           

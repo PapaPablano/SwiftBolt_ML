@@ -33,8 +33,10 @@ from src.data.data_validator import OHLCValidator
 from src.data.supabase_db import db
 from src.features.feature_cache import fetch_or_build_features
 from src.features.support_resistance_detector import SupportResistanceDetector
+from src.features.timeframe_consensus import add_consensus_to_forecast
 from src.forecast_synthesizer import ForecastSynthesizer
 from src.forecast_weights import get_default_weights
+from src.intraday_daily_feedback import IntradayDailyFeedback
 from src.models.baseline_forecaster import BaselineForecaster
 from src.models.enhanced_ensemble_integration import get_production_ensemble
 from src.monitoring.confidence_calibrator import ConfidenceCalibrator
@@ -128,69 +130,42 @@ class UnifiedForecastProcessor:
             logger.warning(f"Could not load validation metrics: {e}")
             return None
     
-    def _get_weight_source(self, symbol_id: str, horizon: str) -> tuple:
+    def _get_weight_source(self, symbol: str, symbol_id: str, horizon: str) -> tuple:
         """
-        Get forecast layer weights with explicit precedence.
+        Get forecast layer weights with explicit precedence using IntradayDailyFeedback.
         
-        Priority order:
-        1. Intraday-calibrated weights (if available and fresh)
-        2. Symbol-specific daily weights (if enabled)
-        3. Default weights (hardcoded fallback)
+        Priority order (handled by IntradayDailyFeedback):
+        1. Fresh intraday-calibrated weights (< staleness threshold)
+        2. Stale intraday-calibrated weights (with warning)
+        3. Symbol-specific weights from database
+        4. Default weights
         
         Returns:
-            (weights_dict, source_name)
+            (ForecastWeights object, source_name)
         """
-        # Priority 1: Intraday-calibrated weights
-        if settings.enable_intraday_calibration:
-            try:
-                intraday_min = getattr(settings, 'intraday_calibration_min_samples', 50)
-                calibrated = db.get_calibrated_weights(
-                    symbol_id=symbol_id,
-                    horizon=horizon,
-                    min_samples=intraday_min,
-                )
-                if calibrated is not None:
-                    weights_dict = {
-                        k: float(calibrated.get(k, 0))
-                        for k in ('supertrend_component', 'sr_component', 'ensemble_component')
-                    }
-                    if sum(weights_dict.values()) > 0:
-                        normalized = {k: v / sum(weights_dict.values()) for k, v in weights_dict.items()}
-                        # Convert dict to ForecastWeights object
-                        weights_obj = get_default_weights()
-                        weights_obj.layer_weights.update(normalized)
-                        logger.debug(f"Using intraday-calibrated weights for {symbol_id} {horizon}")
-                        self.metrics['weight_sources']['intraday'] = self.metrics['weight_sources'].get('intraday', 0) + 1
-                        return weights_obj, 'intraday_calibrated'
-            except Exception as e:
-                logger.debug(f"Intraday weights failed: {e}")
-        
-        # Priority 2: Symbol-specific daily weights
-        if os.getenv('ENABLE_SYMBOL_WEIGHTS', 'false').lower() == 'true':
-            try:
-                row = db.fetch_symbol_model_weights(symbol_id=symbol_id, horizon=horizon)
-                if row is not None:
-                    synth_weights = row.get('synth_weights', {})
-                    layer_weights = synth_weights.get('layer_weights', {})
-                    weights_dict = {
-                        k: float(layer_weights.get(k, 0))
-                        for k in ('supertrend_component', 'sr_component', 'ensemble_component')
-                    }
-                    if sum(weights_dict.values()) > 0:
-                        normalized = {k: v / sum(weights_dict.values()) for k, v in weights_dict.items()}
-                        # Convert dict to ForecastWeights object
-                        weights_obj = get_default_weights()
-                        weights_obj.layer_weights.update(normalized)
-                        logger.debug(f"Using symbol weights for {symbol_id} {horizon}")
-                        self.metrics['weight_sources']['daily_symbol'] = self.metrics['weight_sources'].get('daily_symbol', 0) + 1
-                        return weights_obj, 'daily_symbol'
-            except Exception as e:
-                logger.debug(f"Symbol weights failed: {e}")
-        
-        # Priority 3: Default weights
-        defaults = get_default_weights()
-        self.metrics['weight_sources']['default'] = self.metrics['weight_sources'].get('default', 0) + 1
-        return defaults, 'default'
+        try:
+            # Use IntradayDailyFeedback abstraction layer (as per INTEGRATION_WORKFLOW_GUIDE.md)
+            feedback_loop = IntradayDailyFeedback()
+            weights_obj, source = feedback_loop.get_best_weights(symbol, horizon)
+            
+            # Track weight source in metrics
+            source_key = source.split()[0].lower() if source else 'default'
+            if 'intraday' in source_key or 'calibrated' in source_key:
+                self.metrics['weight_sources']['intraday'] = self.metrics['weight_sources'].get('intraday', 0) + 1
+            elif 'symbol' in source_key:
+                self.metrics['weight_sources']['daily_symbol'] = self.metrics['weight_sources'].get('daily_symbol', 0) + 1
+            else:
+                self.metrics['weight_sources']['default'] = self.metrics['weight_sources'].get('default', 0) + 1
+            
+            logger.debug(f"Using weights from {source} for {symbol} {horizon}")
+            return weights_obj, source
+            
+        except Exception as e:
+            logger.warning(f"IntradayDailyFeedback failed for {symbol} {horizon}: {e}. Using default weights.")
+            # Fallback to default weights
+            defaults = get_default_weights()
+            self.metrics['weight_sources']['default'] = self.metrics['weight_sources'].get('default', 0) + 1
+            return defaults, 'default (fallback)'
     
     def process_symbol(
         self,
@@ -323,15 +298,67 @@ class UnifiedForecastProcessor:
                         '6M': 180,
                     }.get(horizon_key, 1)
                     
-                    # Create and train baseline forecaster
-                    baseline_forecaster = BaselineForecaster()
-                    baseline_forecaster.fit(df, horizon_days=horizon_days)
+                    # Use production ensemble (includes Transformer if ENABLE_TRANSFORMER=true)
+                    # Fallback to BaselineForecaster if ensemble training fails
+                    ml_pred = None
+                    try:
+                        # Get production ensemble (reads ENABLE_TRANSFORMER env var)
+                        ensemble = get_production_ensemble(
+                            horizon=horizon_key,
+                            symbol_id=symbol_id,
+                        )
+                        
+                        # Prepare training data using BaselineForecaster's method
+                        baseline_prep = BaselineForecaster()
+                        X_train, y_train = baseline_prep.prepare_training_data(df, horizon_days=horizon_days)
+                        
+                        if len(X_train) >= settings.min_bars_for_training and len(y_train) > 0:
+                            # Calculate training data range (features correspond to indices after min_offset)
+                            min_offset = 50 if len(df) >= 100 else (26 if len(df) >= 60 else 14)
+                            start_idx = max(min_offset, 14)
+                            end_idx = len(df) - horizon_days
+                            
+                            # Align OHLC data with training features
+                            # Features are created for indices [start_idx, end_idx)
+                            ohlc_train = df.iloc[start_idx:end_idx].copy()
+                            
+                            # Train ensemble
+                            ensemble.train(
+                                features_df=X_train,
+                                labels_series=y_train,
+                                ohlc_df=ohlc_train,
+                            )
+                            
+                            # Get prediction using last row of features and corresponding OHLC
+                            ml_pred = ensemble.predict(
+                                features_df=X_train.tail(1),
+                                ohlc_df=df.tail(1),
+                            )
+                            
+                            logger.info(
+                                f"Ensemble prediction for {symbol} {horizon_key}: "
+                                f"{ml_pred.get('label', 'unknown').upper()} "
+                                f"({ml_pred.get('confidence', 0):.0%} conf, "
+                                f"n_models={ml_pred.get('n_models', 0)})"
+                            )
+                        else:
+                            logger.warning(
+                                f"Insufficient training data for ensemble: "
+                                f"{len(X_train)} samples (need {settings.min_bars_for_training})"
+                            )
+                            raise ValueError("Insufficient training data")
+                    except Exception as e:
+                        logger.warning(
+                            f"Ensemble training/prediction failed for {symbol} {horizon_key}: {e}. "
+                            f"Falling back to BaselineForecaster."
+                        )
+                        # Fallback to BaselineForecaster
+                        baseline_forecaster = BaselineForecaster()
+                        baseline_forecaster.fit(df, horizon_days=horizon_days)
+                        ml_pred = baseline_forecaster.predict(df, horizon_days=horizon_days)
                     
-                    # Get predictions
-                    ml_pred = baseline_forecaster.predict(df, horizon_days=horizon_days)
-                    
-                    # Get layer weights with explicit source tracking
-                    weights, weight_source = self._get_weight_source(symbol_id, horizon_key)
+                    # Get layer weights with explicit source tracking (using IntradayDailyFeedback)
+                    weights, weight_source = self._get_weight_source(symbol, symbol_id, horizon_key)
                     result['weight_source'][horizon_key] = weight_source
                     
                     # Create synthesizer
@@ -382,6 +409,17 @@ class UnifiedForecastProcessor:
                     
                     forecast["confidence"] = adjusted_confidence
                     forecast["raw_confidence"] = raw_confidence
+
+                    # Add consensus scoring (cross-timeframe alignment)
+                    try:
+                        forecast = add_consensus_to_forecast(forecast, symbol_id)
+                        logger.debug(
+                            f"Consensus for {symbol} {horizon_key}: "
+                            f"{forecast.get('consensus_direction', 'unknown')} "
+                            f"(alignment={forecast.get('alignment_score', 0):.2f})"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Consensus scoring failed for {symbol} {horizon_key}: {e}")
 
                     # Quality gating + issue tracking
                     quality_context = {
