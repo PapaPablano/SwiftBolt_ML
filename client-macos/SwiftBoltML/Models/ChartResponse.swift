@@ -198,6 +198,25 @@ struct TrainingStats: Codable, Equatable {
 struct ForecastSeries: Codable, Equatable {
     let horizon: String
     let points: [ForecastPoint]
+    let targets: ForecastTargets?
+}
+
+struct ForecastTargets: Codable, Equatable {
+    let tp1: Double?
+    let tp2: Double?
+    let tp3: Double?
+    let stopLoss: Double?
+    let qualityScore: Double?
+    let confluenceScore: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case tp1
+        case tp2
+        case tp3
+        case stopLoss = "stop_loss"
+        case qualityScore = "quality_score"
+        case confluenceScore = "confluence_score"
+    }
 }
 
 struct ForecastPoint: Codable, Equatable {

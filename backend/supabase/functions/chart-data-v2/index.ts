@@ -285,7 +285,7 @@ function buildIntradayForecastPoints(params: {
 
 const DAILY_FORECAST_MAX_POINTS = 6;
 const INTRADAY_FORECAST_MAX_POINTS = 6;
-const DAILY_FORECAST_HORIZONS = ['1D', '1W', '1M', '2M', '3M', '4M', '5M', '6M'];
+const DAILY_FORECAST_HORIZONS = ['1D', '1W', '1M'];
 
 const INTRADAY_FORECAST_EXPIRY_GRACE_SECONDS = 2 * 60 * 60;
 
@@ -324,6 +324,66 @@ function normalizeForecastPoints(points: unknown): Array<{ ts: number; value: nu
     return [];
   }
   return points.map((point) => normalizeForecastPoint(isRecord(point) ? point : {}));
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function parseRecord(value: unknown): Record<string, unknown> | null {
+  if (isRecord(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (isRecord(parsed)) {
+        return parsed;
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function buildForecastTargets(
+  row: Record<string, unknown>,
+  points: Array<{ ts: number; value: number; lower: number; upper: number }>,
+): Record<string, number | null> | null {
+  const synthesis = parseRecord(row['synthesis_data']) ?? {};
+  const tp1 = toNumber(synthesis['tp1'] ?? synthesis['target'] ?? row['target_price']);
+  const tp2 = toNumber(synthesis['tp2']);
+  const tp3 = toNumber(synthesis['tp3']);
+  const stopLoss = toNumber(synthesis['stop_loss'] ?? synthesis['stop'] ?? synthesis['sl']);
+  const qualityScore = toNumber(synthesis['quality_score'] ?? row['quality_score']);
+  const confluenceScore = toNumber(synthesis['confluence_score']);
+
+  const fallbackTp1 = tp1 ?? (points.length > 0 ? points[points.length - 1].value : null);
+  const hasAny = [fallbackTp1, tp2, tp3, stopLoss, qualityScore, confluenceScore]
+    .some((value) => typeof value === 'number' && Number.isFinite(value));
+
+  if (!hasAny) {
+    return null;
+  }
+
+  return {
+    tp1: fallbackTp1,
+    tp2,
+    tp3,
+    stop_loss: stopLoss,
+    quality_score: qualityScore,
+    confluence_score: confluenceScore,
+  };
 }
 
 function sampleForecastPoints<T extends { ts: number }>(points: T[], maxPoints: number): T[] {
@@ -900,6 +960,97 @@ serve(async (req: Request): Promise<Response> => {
               };
             }
           }
+
+          // Attach daily horizon targets so they can render on intraday charts
+          const { data: dailyForecasts } = await supabase
+            .from('ml_forecasts')
+            .select('*')
+            .eq('symbol_id', symbolId)
+            .in('horizon', DAILY_FORECAST_HORIZONS)
+            .order('created_at', { ascending: false });
+
+          const latestByHorizon = new Map<string, Record<string, unknown>>();
+          if (Array.isArray(dailyForecasts)) {
+            for (const row of dailyForecasts) {
+              const horizon = typeof row?.horizon === 'string' ? row.horizon : null;
+              if (!horizon || latestByHorizon.has(horizon)) {
+                continue;
+              }
+              latestByHorizon.set(horizon, row);
+            }
+          }
+
+          const dailySeries = DAILY_FORECAST_HORIZONS
+            .map((horizon) => {
+              const row = latestByHorizon.get(horizon);
+              if (!row || !row.points) {
+                return null;
+              }
+              const normalizedPoints = normalizeForecastPoints(row.points);
+              const sampledPoints = sampleForecastPoints(normalizedPoints, DAILY_FORECAST_MAX_POINTS);
+              if (sampledPoints.length === 0) {
+                return null;
+              }
+              return {
+                horizon,
+                points: sampledPoints,
+                targets: buildForecastTargets(row, sampledPoints),
+                row,
+              };
+            })
+            .filter((item): item is {
+              horizon: string;
+              points: Array<{ ts: number; value: number; lower: number; upper: number }>;
+              targets: Record<string, number | null> | null;
+              row: Record<string, unknown>;
+            } => item !== null);
+
+          if (dailySeries.length > 0) {
+            const bestForecast = dailySeries
+              .map((item) => item.row)
+              .reduce<Record<string, unknown>>((best, current) => {
+                const bestConf = clampNumber(best?.confidence, -1);
+                const currentConf = clampNumber(current?.confidence, -1);
+                if (currentConf > bestConf) {
+                  return current;
+                }
+                return best;
+              }, dailySeries[0].row);
+
+            const dailySummary = {
+              overallLabel: typeof bestForecast?.overall_label === 'string' ? bestForecast.overall_label : null,
+              confidence: clampNumber(bestForecast?.confidence, 0.5),
+              horizons: dailySeries.map((item) => ({
+                horizon: item.horizon,
+                points: item.points,
+                targets: item.targets ?? undefined,
+              })),
+              srLevels: (bestForecast?.sr_levels as Record<string, unknown>) || null,
+              srDensity: typeof bestForecast?.sr_density === 'number' ? bestForecast.sr_density : null,
+            };
+
+            if (mlSummary) {
+              const existing = new Set(
+                (mlSummary.horizons || []).map((h: { horizon: string }) => h.horizon.toUpperCase()),
+              );
+              const mergedHorizons = [...(mlSummary.horizons || [])];
+              for (const horizon of dailySummary.horizons) {
+                if (!existing.has(horizon.horizon.toUpperCase())) {
+                  mergedHorizons.push(horizon);
+                }
+              }
+              mlSummary = {
+                ...mlSummary,
+                horizons: mergedHorizons,
+                overallLabel: mlSummary.overallLabel ?? dailySummary.overallLabel,
+                confidence: mlSummary.confidence ?? dailySummary.confidence,
+                srLevels: mlSummary.srLevels ?? dailySummary.srLevels,
+                srDensity: mlSummary.srDensity ?? dailySummary.srDensity,
+              };
+            } else {
+              mlSummary = dailySummary;
+            }
+          }
         } else {
           // Fetch daily forecast for daily/weekly timeframes (latest per horizon)
           const { data: dailyForecasts } = await supabase
@@ -928,16 +1079,23 @@ serve(async (req: Request): Promise<Response> => {
               }
               const normalizedPoints = normalizeForecastPoints(row.points);
               const sampledPoints = sampleForecastPoints(normalizedPoints, DAILY_FORECAST_MAX_POINTS);
-              if (sampledPoints.length === 0) {
-                return null;
-              }
-              return {
-                horizon,
-                points: sampledPoints,
-                row,
-              };
-            })
-            .filter((item): item is { horizon: string; points: Array<{ ts: number; value: number; lower: number; upper: number }>; row: Record<string, unknown> } => item !== null);
+          if (sampledPoints.length === 0) {
+            return null;
+          }
+          const targets = buildForecastTargets(row, sampledPoints);
+          return {
+            horizon,
+            points: sampledPoints,
+            targets,
+            row,
+          };
+        })
+            .filter((item): item is {
+              horizon: string;
+              points: Array<{ ts: number; value: number; lower: number; upper: number }>;
+              targets: Record<string, number | null> | null;
+              row: Record<string, unknown>;
+            } => item !== null);
 
           if (horizonSeries.length > 0) {
             const bestForecast = horizonSeries
@@ -957,6 +1115,7 @@ serve(async (req: Request): Promise<Response> => {
               horizons: horizonSeries.map((item) => ({
                 horizon: item.horizon,
                 points: item.points,
+                targets: item.targets ?? undefined,
               })),
               srLevels: (bestForecast?.sr_levels as Record<string, unknown>) || null,
               srDensity: typeof bestForecast?.sr_density === 'number' ? bestForecast.sr_density : null,

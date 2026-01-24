@@ -1,13 +1,14 @@
 """
-Multi-Model Ensemble Forecaster: RF + GB + ARIMA-GARCH + Prophet + LSTM
-========================================================================
+Multi-Model Ensemble Forecaster: RF + GB + ARIMA-GARCH + Prophet + LSTM + Transformer
+=====================================================================================
 
-Flexible ensemble combining up to 5 model types:
+Flexible ensemble combining up to 6 model types:
 - Random Forest (ML - captures non-linear patterns)
 - Gradient Boosting (ML - captures complex interactions)
 - ARIMA-GARCH (Statistical - mean reversion + volatility)
 - Prophet (Statistical - seasonality + trend)
 - LSTM (Deep Learning - temporal sequences with MC Dropout uncertainty)
+- Transformer (Deep Learning - multi-head attention for multi-timeframe patterns)
 
 Key Features:
 - Configurable model inclusion/exclusion
@@ -15,6 +16,7 @@ Key Features:
 - Graceful degradation on model failures
 - Agreement scoring across all models
 - Comprehensive uncertainty quantification
+- Multi-timeframe alignment scoring (via Transformer)
 """
 
 import logging
@@ -40,12 +42,13 @@ class MultiModelEnsemble:
     """
     Multi-model ensemble combining ML, statistical, and deep learning approaches.
 
-    Default weights (when all models enabled):
-    - RF: 20%
-    - GB: 20%
-    - ARIMA-GARCH: 20%
-    - Prophet: 20%
-    - LSTM: 20%
+    Default weights (when all 6 models enabled):
+    - RF: ~17%
+    - GB: ~17%
+    - ARIMA-GARCH: ~17%
+    - Prophet: ~17%
+    - LSTM: ~17%
+    - Transformer: ~17%
 
     Weights are automatically redistributed when models are disabled
     or fail during training.
@@ -57,6 +60,7 @@ class MultiModelEnsemble:
     MODEL_AG = "arima_garch"
     MODEL_PROPHET = "prophet"
     MODEL_LSTM = "lstm"
+    MODEL_TRANSFORMER = "transformer"
 
     def __init__(
         self,
@@ -67,12 +71,17 @@ class MultiModelEnsemble:
         enable_arima_garch: bool = True,
         enable_prophet: bool = True,
         enable_lstm: bool = True,
+        enable_transformer: bool = False,
         weights: Optional[Dict[str, float]] = None,
         arima_order: Tuple[int, int, int] = (1, 0, 1),
         auto_select_arima_order: bool = False,
         lstm_lookback: int = 60,
         lstm_units: int = 64,
         lstm_epochs: int = 50,
+        transformer_d_model: int = 64,
+        transformer_num_heads: int = 4,
+        transformer_num_layers: int = 2,
+        transformer_epochs: int = 50,
     ) -> None:
         """
         Initialize Multi-Model Ensemble.
@@ -85,12 +94,17 @@ class MultiModelEnsemble:
             enable_arima_garch: Enable ARIMA-GARCH model
             enable_prophet: Enable Prophet model
             enable_lstm: Enable LSTM model
+            enable_transformer: Enable Transformer model (multi-timeframe attention)
             weights: Optional custom weights {model_type: weight}
             arima_order: ARIMA(p, d, q) order tuple
             auto_select_arima_order: Auto-select optimal ARIMA order
             lstm_lookback: LSTM lookback window
             lstm_units: LSTM hidden units
             lstm_epochs: LSTM training epochs
+            transformer_d_model: Transformer embedding dimension
+            transformer_num_heads: Number of attention heads
+            transformer_num_layers: Number of transformer blocks
+            transformer_epochs: Transformer training epochs
         """
         self.horizon = horizon
         self.symbol_id = symbol_id
@@ -101,11 +115,18 @@ class MultiModelEnsemble:
         self.enable_arima_garch = enable_arima_garch
         self.enable_prophet = enable_prophet
         self.enable_lstm = enable_lstm
+        self.enable_transformer = enable_transformer
 
         # LSTM config
         self.lstm_lookback = lstm_lookback
         self.lstm_units = lstm_units
         self.lstm_epochs = lstm_epochs
+
+        # Transformer config
+        self.transformer_d_model = transformer_d_model
+        self.transformer_num_heads = transformer_num_heads
+        self.transformer_num_layers = transformer_num_layers
+        self.transformer_epochs = transformer_epochs
 
         # Initialize models
         self.models: Dict[str, object] = {}
@@ -207,6 +228,24 @@ class MultiModelEnsemble:
                 logger.warning("Could not initialize LSTM: %s", e)
                 self.enable_lstm = False
 
+        # Transformer (multi-head attention for multi-timeframe patterns)
+        if self.enable_transformer:
+            try:
+                from src.models.transformer_forecaster import TransformerForecaster
+
+                self.models[self.MODEL_TRANSFORMER] = TransformerForecaster(
+                    lookback=self.lstm_lookback,  # Use same lookback as LSTM
+                    d_model=self.transformer_d_model,
+                    num_heads=self.transformer_num_heads,
+                    num_layers=self.transformer_num_layers,
+                    epochs=self.transformer_epochs,
+                    horizon=self.horizon,
+                )
+                self.model_trained[self.MODEL_TRANSFORMER] = False
+            except Exception as e:
+                logger.warning("Could not initialize Transformer: %s", e)
+                self.enable_transformer = False
+
     def _calculate_default_weights(self) -> Dict[str, float]:
         """Calculate default equal weights for enabled models."""
         enabled_models = []
@@ -220,6 +259,8 @@ class MultiModelEnsemble:
             enabled_models.append(self.MODEL_PROPHET)
         if self.enable_lstm:
             enabled_models.append(self.MODEL_LSTM)
+        if self.enable_transformer:
+            enabled_models.append(self.MODEL_TRANSFORMER)
 
         if not enabled_models:
             return {}
@@ -347,6 +388,16 @@ class MultiModelEnsemble:
                 logger.warning("LSTM training failed: %s", e)
                 self._redistribute_weights(self.MODEL_LSTM)
 
+        # Train Transformer
+        if self.enable_transformer and self.MODEL_TRANSFORMER in self.models:
+            try:
+                self.models[self.MODEL_TRANSFORMER].train(ohlc_df)
+                self.model_trained[self.MODEL_TRANSFORMER] = True
+                logger.info("Transformer trained successfully")
+            except Exception as e:
+                logger.warning("Transformer training failed: %s", e)
+                self._redistribute_weights(self.MODEL_TRANSFORMER)
+
         # Check if at least one model trained
         trained_count = sum(self.model_trained.values())
         if trained_count == 0:
@@ -399,6 +450,18 @@ class MultiModelEnsemble:
             lstm_model = self.models[self.MODEL_LSTM]
             self.training_stats["lstm_accuracy"] = lstm_model.training_stats.get("accuracy", 0)
             self.training_stats["lstm_loss"] = lstm_model.training_stats.get("final_loss", 0)
+
+        if self.model_trained.get(self.MODEL_TRANSFORMER):
+            transformer_model = self.models[self.MODEL_TRANSFORMER]
+            self.training_stats["transformer_accuracy"] = transformer_model.training_stats.get(
+                "accuracy", 0
+            )
+            self.training_stats["transformer_directional"] = transformer_model.training_stats.get(
+                "directional_accuracy", 0
+            )
+            self.training_stats["transformer_loss"] = transformer_model.training_stats.get(
+                "final_loss", 0
+            )
 
     def predict(
         self,
@@ -505,6 +568,23 @@ class MultiModelEnsemble:
             except Exception as e:
                 logger.warning("LSTM prediction failed: %s", e)
 
+        # Get Transformer prediction (with multi-timeframe alignment)
+        timeframe_agreement = None
+        if self.model_trained.get(self.MODEL_TRANSFORMER):
+            try:
+                tf_pred = self.models[self.MODEL_TRANSFORMER].predict(df=ohlc_df)
+                predictions[self.MODEL_TRANSFORMER] = {
+                    "label": tf_pred["label"],
+                    "confidence": tf_pred["confidence"],
+                    "forecast_return": tf_pred.get("forecast_return", 0),
+                    "uncertainty": tf_pred.get("mc_std", 0),
+                    "multi_horizon_predictions": tf_pred.get("multi_horizon_predictions", {}),
+                }
+                probabilities[self.MODEL_TRANSFORMER] = tf_pred["probabilities"]
+                timeframe_agreement = tf_pred.get("timeframe_agreement")
+            except Exception as e:
+                logger.warning("Transformer prediction failed: %s", e)
+
         # Aggregate probabilities
         ensemble_probs = self._aggregate_probabilities(probabilities)
 
@@ -530,6 +610,7 @@ class MultiModelEnsemble:
             "n_models_total": len(self.model_trained),
             "weights": self.weights.copy(),
             "forecast_volatility": volatility,
+            "timeframe_agreement": timeframe_agreement,
         }
 
     def _aggregate_probabilities(

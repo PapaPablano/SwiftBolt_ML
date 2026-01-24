@@ -1608,9 +1608,19 @@ struct AdvancedChartView: View {
         // Extend domain to include forecast points
         if let mlSummary = mlSummary {
             let lastBarIndex = bars.count - 1
+            let lastTs = bars.last?.ts.timeIntervalSince1970 ?? 0
+            let interval = max(1, estimatedBarIntervalSeconds())
             for horizon in mlSummary.horizons {
                 let forecastEndIndex = lastBarIndex + horizon.points.count
-                maxIndex = max(maxIndex, forecastEndIndex)
+                var timeOffset = 0
+                if let target = horizon.points.max(by: { $0.ts < $1.ts }) {
+                    let delta = Double(target.ts) - lastTs
+                    if delta > 0 {
+                        timeOffset = max(1, Int(round(delta / interval)))
+                    }
+                }
+                let extendedIndex = lastBarIndex + max(forecastEndIndex - lastBarIndex, timeOffset)
+                maxIndex = max(maxIndex, extendedIndex)
             }
         }
 
@@ -2333,6 +2343,31 @@ struct AdvancedChartView: View {
 
     // MARK: - ML Forecast Overlay
 
+    private func estimatedBarIntervalSeconds() -> Double {
+        guard bars.count >= 2 else { return 60 }
+        let recent = bars.suffix(30)
+        var diffs: [Double] = []
+        diffs.reserveCapacity(max(0, recent.count - 1))
+        for pair in zip(recent, recent.dropFirst()) {
+            let diff = pair.1.ts.timeIntervalSince(pair.0.ts)
+            if diff > 0 {
+                diffs.append(diff)
+            }
+        }
+        guard !diffs.isEmpty else { return 60 }
+        return diffs.reduce(0, +) / Double(diffs.count)
+    }
+
+    private func forecastIndexOffset(for targetTimestamp: Int) -> Int {
+        let lastTs = bars.last?.ts.timeIntervalSince1970 ?? 0
+        let interval = max(1, estimatedBarIntervalSeconds())
+        let delta = Double(targetTimestamp) - lastTs
+        if delta <= 0 {
+            return 1
+        }
+        return max(1, Int(round(delta / interval)))
+    }
+
     @ChartContentBuilder
     private func forecastOverlay(_ mlSummary: MLSummary) -> some ChartContent {
         // Get the forecast color based on overall label - using ChartColors
@@ -2346,9 +2381,14 @@ struct AdvancedChartView: View {
             }
         }()
 
+        let dailySet: Set<String> = ["1D", "1W", "1M"]
+        let dailyTargets = mlSummary.horizons.filter { dailySet.contains($0.horizon.uppercased()) }
+
         let targetSeries = mlSummary.horizons.first(where: { $0.horizon == selectedForecastHorizon })
             ?? mlSummary.horizons.first
         let targetPoint = targetSeries?.points.max(by: { $0.ts < $1.ts })
+        let targetLadder = targetSeries?.targets
+        let primaryTargetValue = targetLadder?.tp1 ?? targetPoint?.value
 
         // Get the last bar's close price as the starting point for the forecast
         let lastClose = bars.last?.close ?? 0
@@ -2356,91 +2396,129 @@ struct AdvancedChartView: View {
         // Calculate the starting index (after the last bar)
         let lastBarIndex = bars.count - 1
 
-        // Draw a connection line from last bar to first forecast point
-        if let firstHorizon = mlSummary.horizons.first,
-           let firstPoint = firstHorizon.points.first {
-            // Connection from last bar to forecast start
-            LineMark(
-                x: .value("Index", lastBarIndex),
-                y: .value("Price", lastClose)
-            )
-            .foregroundStyle(forecastColor)
-            .lineStyle(StrokeStyle(lineWidth: 2.5, dash: [6, 4]))
-            .opacity(0.9)
+        if !dailyTargets.isEmpty {
+            ForEach(dailyTargets, id: \.horizon) { series in
+                if let target = series.points.max(by: { $0.ts < $1.ts }) {
+                    let targetValue = series.targets?.tp1 ?? target.value
+                    let offset = forecastIndexOffset(for: target.ts)
+                    let targetIndex = lastBarIndex + offset
 
-            LineMark(
-                x: .value("Index", lastBarIndex + 1),
-                y: .value("Price", firstPoint.value)
-            )
-            .foregroundStyle(forecastColor)
-            .lineStyle(StrokeStyle(lineWidth: 2.5, dash: [6, 4]))
-            .opacity(0.9)
-        }
+                    let linePoints = [
+                        (index: lastBarIndex, value: lastClose),
+                        (index: targetIndex, value: targetValue),
+                    ]
 
-        // Render forecast for each horizon
-        ForEach(mlSummary.horizons, id: \.horizon) { series in
-            // Convert forecast points to chart-compatible data
-            ForEach(Array(series.points.enumerated()), id: \.offset) { offset, point in
-                let forecastIndex = lastBarIndex + offset + 1
+                    ForEach(linePoints.indices, id: \.self) { idx in
+                        LineMark(
+                            x: .value("Index", linePoints[idx].index),
+                            y: .value("Target", linePoints[idx].value),
+                            series: .value("Horizon", series.horizon)
+                        )
+                        .foregroundStyle(forecastColor)
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                        .opacity(0.9)
+                    }
 
-                // Forecast line (main prediction) - thicker and more visible
+                    PointMark(
+                        x: .value("Index", targetIndex),
+                        y: .value("Target", targetValue)
+                    )
+                    .foregroundStyle(forecastColor)
+                    .symbolSize(40)
+                    .annotation(position: .trailing, alignment: .leading) {
+                        Text("\(series.horizon.uppercased()) $\(String(format: "%.2f", targetValue))")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(forecastColor)
+                    }
+                }
+            }
+        } else {
+            // Draw a connection line from last bar to first forecast point
+            if let firstHorizon = mlSummary.horizons.first,
+               let firstPoint = firstHorizon.points.first {
+                // Connection from last bar to forecast start
                 LineMark(
-                    x: .value("Index", forecastIndex),
-                    y: .value("Forecast", point.value)
+                    x: .value("Index", lastBarIndex),
+                    y: .value("Price", lastClose)
                 )
                 .foregroundStyle(forecastColor)
                 .lineStyle(StrokeStyle(lineWidth: 2.5, dash: [6, 4]))
                 .opacity(0.9)
 
-                // Upper confidence band
                 LineMark(
-                    x: .value("Index", forecastIndex),
-                    y: .value("Upper", point.upper)
+                    x: .value("Index", lastBarIndex + 1),
+                    y: .value("Price", firstPoint.value)
                 )
-                .foregroundStyle(forecastColor.opacity(0.4))
-                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
-
-                // Lower confidence band
-                LineMark(
-                    x: .value("Index", forecastIndex),
-                    y: .value("Lower", point.lower)
-                )
-                .foregroundStyle(forecastColor.opacity(0.4))
-                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
-
-                // Shaded area between confidence bands
-                AreaMark(
-                    x: .value("Index", forecastIndex),
-                    yStart: .value("Lower", point.lower),
-                    yEnd: .value("Upper", point.upper)
-                )
-                .foregroundStyle(forecastColor.opacity(0.15))
+                .foregroundStyle(forecastColor)
+                .lineStyle(StrokeStyle(lineWidth: 2.5, dash: [6, 4]))
+                .opacity(0.9)
             }
-        }
 
-        if let target = targetPoint, target.value > 0 {
-            RuleMark(
-                y: .value("Target", target.value)
-            )
-            .foregroundStyle(forecastColor.opacity(0.9))
-            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
-            .annotation(position: .trailing, alignment: .leading) {
-                Text(String(format: "Target $%.2f", target.value))
-                    .font(.caption2.monospacedDigit())
+            // Render forecast for each horizon
+            ForEach(mlSummary.horizons, id: \.horizon) { series in
+                // Convert forecast points to chart-compatible data
+                ForEach(Array(series.points.enumerated()), id: \.offset) { offset, point in
+                    let forecastIndex = lastBarIndex + offset + 1
+
+                    // Forecast line (main prediction) - thicker and more visible
+                    LineMark(
+                        x: .value("Index", forecastIndex),
+                        y: .value("Forecast", point.value)
+                    )
                     .foregroundStyle(forecastColor)
-            }
-        }
+                    .lineStyle(StrokeStyle(lineWidth: 2.5, dash: [6, 4]))
+                    .opacity(0.9)
 
-        // Add forecast endpoint marker
-        if let lastHorizon = mlSummary.horizons.last,
-           let lastPoint = lastHorizon.points.last {
-            let endIndex = lastBarIndex + lastHorizon.points.count
-            PointMark(
-                x: .value("Index", endIndex),
-                y: .value("Forecast", lastPoint.value)
-            )
-            .foregroundStyle(forecastColor)
-            .symbolSize(60)
+                    // Upper confidence band
+                    LineMark(
+                        x: .value("Index", forecastIndex),
+                        y: .value("Upper", point.upper)
+                    )
+                    .foregroundStyle(forecastColor.opacity(0.4))
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+
+                    // Lower confidence band
+                    LineMark(
+                        x: .value("Index", forecastIndex),
+                        y: .value("Lower", point.lower)
+                    )
+                    .foregroundStyle(forecastColor.opacity(0.4))
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+
+                    // Shaded area between confidence bands
+                    AreaMark(
+                        x: .value("Index", forecastIndex),
+                        yStart: .value("Lower", point.lower),
+                        yEnd: .value("Upper", point.upper)
+                    )
+                    .foregroundStyle(forecastColor.opacity(0.15))
+                }
+            }
+
+            if let targetValue = primaryTargetValue, targetValue > 0 {
+                RuleMark(
+                    y: .value("Target", targetValue)
+                )
+                .foregroundStyle(forecastColor.opacity(0.9))
+                .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                .annotation(position: .trailing, alignment: .leading) {
+                    Text(String(format: "TP1 $%.2f", targetValue))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(forecastColor)
+                }
+            }
+
+            // Add forecast endpoint marker
+            if let lastHorizon = mlSummary.horizons.last,
+               let lastPoint = lastHorizon.points.last {
+                let endIndex = lastBarIndex + lastHorizon.points.count
+                PointMark(
+                    x: .value("Index", endIndex),
+                    y: .value("Forecast", lastPoint.value)
+                )
+                .foregroundStyle(forecastColor)
+                .symbolSize(60)
+            }
         }
     }
 }

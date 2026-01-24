@@ -54,10 +54,15 @@ def _bool_env(name: str, default: bool = False) -> bool:
 
 class EnhancedEnsembleForecaster:
     """
-    Enhanced ensemble forecaster with 5-model support.
+    Enhanced ensemble forecaster with 6-model support.
 
     Wraps the new EnsembleManager and provides backward-compatible
     interface with the existing EnsembleForecaster used in forecast_job.py.
+
+    Supports:
+    - RF, GB (ML models)
+    - ARIMA-GARCH, Prophet (Statistical models)
+    - LSTM, Transformer (Deep Learning models)
     """
 
     def __init__(
@@ -67,6 +72,7 @@ class EnhancedEnsembleForecaster:
         enable_arima_garch: bool = True,
         enable_prophet: bool = True,
         enable_lstm: bool = False,
+        enable_transformer: bool = False,
         confidence_level: float = 0.95,
         optimization_method: str = "ridge",
         enable_monitoring: bool = True,
@@ -80,6 +86,7 @@ class EnhancedEnsembleForecaster:
             enable_arima_garch: Enable ARIMA-GARCH model
             enable_prophet: Enable Prophet model
             enable_lstm: Enable LSTM model (slower)
+            enable_transformer: Enable Transformer model (multi-timeframe attention)
             confidence_level: Confidence level for intervals
             optimization_method: Weight optimization method
             enable_monitoring: Enable performance monitoring
@@ -91,6 +98,7 @@ class EnhancedEnsembleForecaster:
         self.enable_arima_garch = enable_arima_garch
         self.enable_prophet = enable_prophet
         self.enable_lstm = enable_lstm
+        self.enable_transformer = enable_transformer
 
         # Import and initialize components
         from src.models.ensemble_manager import EnsembleManager
@@ -103,6 +111,7 @@ class EnhancedEnsembleForecaster:
             enable_arima_garch=enable_arima_garch,
             enable_prophet=enable_prophet,
             enable_lstm=enable_lstm,
+            enable_transformer=enable_transformer,
             confidence_level=confidence_level,
             optimization_method=optimization_method,
         )
@@ -124,6 +133,7 @@ class EnhancedEnsembleForecaster:
                 enable_arima_garch,
                 enable_prophet,
                 enable_lstm,
+                enable_transformer,
             ]
         )
 
@@ -421,10 +431,11 @@ def get_production_ensemble(
     Factory function to create production ensemble with env-based config.
 
     Reads environment variables:
-    - ENABLE_ADVANCED_ENSEMBLE: Enable 5-model ensemble (default: True)
+    - ENABLE_ADVANCED_ENSEMBLE: Enable 6-model ensemble (default: True)
     - ENABLE_ARIMA_GARCH: Enable ARIMA-GARCH (default: True)
     - ENABLE_PROPHET: Enable Prophet (default: True)
     - ENABLE_LSTM: Enable LSTM (default: False, slower)
+    - ENABLE_TRANSFORMER: Enable Transformer (default: False, multi-timeframe attention)
     - ENSEMBLE_OPTIMIZATION_METHOD: Weight optimization method (default: ridge)
 
     Args:
@@ -449,6 +460,7 @@ def get_production_ensemble(
             enable_arima_garch=False,
             enable_prophet=False,
             enable_lstm=False,
+            enable_transformer=False,
             enable_monitoring=False,
         )
 
@@ -459,6 +471,7 @@ def get_production_ensemble(
         enable_arima_garch=_bool_env("ENABLE_ARIMA_GARCH", default=True),
         enable_prophet=_bool_env("ENABLE_PROPHET", default=True),
         enable_lstm=_bool_env("ENABLE_LSTM", default=False),
+        enable_transformer=_bool_env("ENABLE_TRANSFORMER", default=False),
         optimization_method=os.getenv("ENSEMBLE_OPTIMIZATION_METHOD", "ridge"),
         enable_monitoring=_bool_env("ENABLE_MONITORING", default=True),
     )

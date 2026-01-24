@@ -150,7 +150,7 @@ serve(async (req: Request): Promise<Response> => {
     const existingHorizons = new Set(
       existingForecasts?.map((f) => f.horizon) || []
     );
-    const requiredHorizons = ["1D", "1W", "1M", "2M", "3M", "4M", "5M", "6M"];
+    const requiredHorizons = ["1D", "1W", "1M"];
     const missingHorizons = requiredHorizons.filter(
       (h) => !existingHorizons.has(h)
     );

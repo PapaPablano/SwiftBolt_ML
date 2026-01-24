@@ -31,6 +31,7 @@ class SupabaseDatabase:
         timeframe: str = "d1",
         limit: int | None = None,
         providers: list[str] | tuple[str, ...] | None = None,
+        end_ts: datetime | str | pd.Timestamp | None = None,
     ) -> pd.DataFrame:
         """
         Fetch OHLC bars for a symbol from the database.
@@ -39,6 +40,8 @@ class SupabaseDatabase:
             symbol: Stock ticker symbol
             timeframe: Timeframe (d1, h1, etc.)
             limit: Maximum number of bars to fetch (most recent)
+            end_ts: Optional cutoff timestamp (exclusive). Bars at or after this
+                timestamp are excluded.
 
         Returns:
             DataFrame with columns: ts, open, high, low, close, volume
@@ -79,6 +82,10 @@ class SupabaseDatabase:
                     .eq("is_forecast", False)
                     .order("ts", desc=True)
                 )
+
+                if end_ts is not None:
+                    ts_iso = pd.to_datetime(end_ts).isoformat()
+                    query = query.lt("ts", ts_iso)
 
                 if provider:
                     query = query.eq("provider", provider)

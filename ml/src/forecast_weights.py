@@ -33,11 +33,11 @@ class ForecastWeights:
     sr_weights: Dict[str, float] = field(
         default_factory=lambda: {
             "anchor_zones": 0.25,  # High-volume anchor zones
-            "pivot_levels": 0.20,  # Multi-timeframe structure
+            "pivot_levels": 0.20,  # Day-session pivots
             "polynomial": 0.20,  # Trend direction of S/R
-            "moving_averages": 0.15,  # MA intersections
+            "moving_averages": 0.15,  # EMA/SMA intersections
             "fibonacci": 0.10,  # Retracement levels
-            "logistic": 0.10,  # ML probability
+            "ichimoku": 0.10,  # Cloud structure
         }
     )
 

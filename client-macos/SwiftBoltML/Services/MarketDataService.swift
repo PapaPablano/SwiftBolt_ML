@@ -54,7 +54,7 @@ final class MarketDataService {
             mlSummary = MLSummary(
                 overallLabel: forecast.label,
                 confidence: forecast.confidence,
-                horizons: [ForecastSeries(horizon: forecast.horizon, points: points)],
+                horizons: [ForecastSeries(horizon: forecast.horizon, points: points, targets: nil)],
                 srLevels: nil,
                 srDensity: nil,
                 ensembleType: nil,

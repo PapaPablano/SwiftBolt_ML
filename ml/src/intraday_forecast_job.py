@@ -281,6 +281,7 @@ def convert_sr_to_synthesizer_format(
         "anchorZones": sr_levels.get("anchor_zones", {}),
         "movingAverages": (sr_levels.get("moving_averages") or {}).get("levels", []),
         "fibonacci": sr_levels.get("fibonacci", {}),
+        "ichimoku": sr_levels.get("ichimoku", {}),
     }
 
 

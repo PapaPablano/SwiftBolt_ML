@@ -181,6 +181,8 @@ def fetch_or_build_features(
     timeframes: list[str] | None = None,
     limits: dict[str, int] | None = None,
     redis_cache: Optional = None,
+    cutoff_ts: pd.Timestamp | None = None,
+    force_refresh: bool = False,
 ) -> dict[str, pd.DataFrame]:
     """
     Fetch cached features or compute and store for requested timeframes.
@@ -196,6 +198,9 @@ def fetch_or_build_features(
         timeframes: List of timeframes to fetch (default: DEFAULT_TIMEFRAMES)
         limits: Optional dict of per-timeframe row limits
         redis_cache: Optional Redis client for distributed caching
+        cutoff_ts: Optional cutoff timestamp (exclusive) used to prevent
+            lookahead in training windows. If set, caches are bypassed.
+        force_refresh: Skip caches and rebuild features from OHLC data.
     
     Returns:
         Dict mapping timeframe to DataFrame of features
@@ -205,6 +210,7 @@ def fetch_or_build_features(
     symbol_id = db.get_symbol_id(symbol)
     since_ts = pd.Timestamp.now('UTC') - _cache_window()
     results: dict[str, pd.DataFrame] = {}
+    use_cache = (not force_refresh) and (cutoff_ts is None)
     
     # Initialize Redis cache wrapper if provided
     redis_enabled = redis_cache is not None and _bool_env("REDIS_FEATURE_CACHE", default=True)
@@ -214,7 +220,7 @@ def fetch_or_build_features(
         limit = limit_map.get(timeframe)
         
         # === Priority 1: Check Redis cache (fastest) ===
-        if distributed_cache:
+        if use_cache and distributed_cache:
             redis_cached = distributed_cache.get(symbol, timeframe)
             if redis_cached is not None and not redis_cached.empty:
                 # Apply limit if specified
@@ -224,21 +230,29 @@ def fetch_or_build_features(
                 continue
         
         # === Priority 2: Check DB indicator_values cache ===
-        cached = db.fetch_indicator_values(symbol_id, timeframe, limit=limit)
-        if _bool_env("ENABLE_FEATURE_CACHE", default=True) and _is_cache_fresh(
-            cached,
-            since_ts,
-        ):
-            results[timeframe] = cached
-            
-            # Store in Redis for next worker
-            if distributed_cache:
-                distributed_cache.set(symbol, timeframe, cached)
-            
-            continue
+        if use_cache:
+            cached = db.fetch_indicator_values(symbol_id, timeframe, limit=limit)
+            if _bool_env("ENABLE_FEATURE_CACHE", default=True) and _is_cache_fresh(
+                cached,
+                since_ts,
+            ):
+                results[timeframe] = cached
+                
+                # Store in Redis for next worker
+                if distributed_cache:
+                    distributed_cache.set(symbol, timeframe, cached)
+                
+                continue
 
         # === Priority 3: Rebuild from OHLC data ===
-        ohlc = db.fetch_ohlc_bars(symbol, timeframe=timeframe, limit=limit)
+        ohlc = db.fetch_ohlc_bars(
+            symbol,
+            timeframe=timeframe,
+            limit=limit,
+            end_ts=cutoff_ts,
+        )
+        if cutoff_ts is not None and not ohlc.empty and "ts" in ohlc.columns:
+            ohlc = ohlc[ohlc["ts"] < cutoff_ts].copy()
         if ohlc.empty:
             results[timeframe] = ohlc
             continue
@@ -246,10 +260,10 @@ def fetch_or_build_features(
         features = add_technical_features(ohlc)
         
         # Store in both caches
-        if _bool_env("ENABLE_FEATURE_CACHE", default=True):
+        if use_cache and _bool_env("ENABLE_FEATURE_CACHE", default=True):
             db.upsert_indicator_values(symbol_id, timeframe, features)
         
-        if distributed_cache:
+        if use_cache and distributed_cache:
             distributed_cache.set(symbol, timeframe, features)
         
         results[timeframe] = features

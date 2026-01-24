@@ -15,6 +15,7 @@ struct ForecastHorizonsView: View {
         horizons.compactMap { series in
             guard let lastPoint = series.points.last else { return nil }
             let confidence = ForecastDisplayData.confidenceScore(for: lastPoint)
+            let qualityScore = series.targets?.qualityScore
             let color = ForecastDisplayData.directionColor(
                 target: lastPoint.value,
                 currentPrice: currentPrice
@@ -26,6 +27,7 @@ struct ForecastHorizonsView: View {
                 lower: lastPoint.lower,
                 upper: lastPoint.upper,
                 confidence: confidence,
+                qualityScore: qualityScore,
                 points: series.points,
                 color: color,
                 deltaPct: ForecastDisplayData.deltaPct(
@@ -396,6 +398,14 @@ private struct ForecastHorizonCard: View {
                     percent: series.confidence,
                     color: series.color
                 )
+
+                if let qualityPercent = series.qualityPercent {
+                    HorizonConfidenceBadge(
+                        label: "Quality",
+                        percent: qualityPercent,
+                        color: series.color.opacity(0.8)
+                    )
+                }
             }
 
             if let delta = series.deltaPct {
@@ -449,6 +459,10 @@ private struct ForecastHorizonCard: View {
         var lines: [String] = []
         lines.append("\(series.horizon.uppercased()) Forecast")
         lines.append("Confidence: \(Int(series.confidence * 100))%")
+
+        if let qualityPercent = series.qualityPercent {
+            lines.append("Quality: \(qualityPercent)%")
+        }
 
         if let target = series.target {
             lines.append("Target: $\(String(format: "%.2f", target))")
@@ -703,6 +717,7 @@ private struct ForecastDisplayData: Identifiable {
     let lower: Double?
     let upper: Double?
     let confidence: Int
+    let qualityScore: Double?
     let points: [ForecastPoint]
     let color: Color
     let deltaPct: Double?
@@ -717,6 +732,12 @@ private struct ForecastDisplayData: Identifiable {
     var shortDeltaDescription: String {
         guard let deltaPct else { return "N/A" }
         return deltaPct.asPercentString
+    }
+
+    var qualityPercent: Int? {
+        guard let qualityScore else { return nil }
+        let normalized = qualityScore <= 1 ? qualityScore * 100 : qualityScore
+        return Int(normalized.rounded())
     }
 
     var spreadDescription: String? {

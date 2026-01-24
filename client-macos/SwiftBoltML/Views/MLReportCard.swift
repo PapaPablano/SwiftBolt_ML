@@ -458,10 +458,10 @@ struct HorizonBadge: View {
         horizons: [
             ForecastSeries(horizon: "1D", points: [
                 ForecastPoint(ts: 1734186600, value: 248.13, lower: 247.43, upper: 248.83)
-            ]),
+            ], targets: nil),
             ForecastSeries(horizon: "1W", points: [
                 ForecastPoint(ts: 1734186600, value: 249.29, lower: 246.54, upper: 252.04)
-            ])
+            ], targets: nil)
         ],
         srLevels: nil,
         srDensity: nil,
@@ -494,10 +494,10 @@ struct HorizonBadge: View {
         horizons: [
             ForecastSeries(horizon: "1D", points: [
                 ForecastPoint(ts: 1734186600, value: 248.13, lower: 247.43, upper: 248.83)
-            ]),
+            ], targets: nil),
             ForecastSeries(horizon: "1W", points: [
                 ForecastPoint(ts: 1734186600, value: 249.29, lower: 246.54, upper: 252.04)
-            ])
+            ], targets: nil)
         ],
         srLevels: nil,
         srDensity: nil,

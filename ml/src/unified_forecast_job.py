@@ -214,6 +214,10 @@ class UnifiedForecastProcessor:
         """
         if horizons is None:
             horizons = settings.forecast_horizons
+
+        # Focus on near-term horizons until 1D/1W/1M are stable
+        focus_horizons = {"1D", "1W", "1M"}
+        horizons = [h for h in horizons if str(h).upper() in focus_horizons]
         
         start_time = time.time()
         result = {
@@ -231,10 +235,13 @@ class UnifiedForecastProcessor:
             
             # === STEP 1: Get features (with Redis cache if available) ===
             feature_start = time.time()
+            cutoff_ts = pd.Timestamp.utcnow().normalize()
             features_by_tf = fetch_or_build_features(
                 db=db,
                 symbol=symbol,
                 limits={"d1": 252},
+                cutoff_ts=cutoff_ts,
+                force_refresh=force_refresh,
             )
             feature_time = time.time() - feature_start
             df = features_by_tf.get("d1", pd.DataFrame())
@@ -331,14 +338,26 @@ class UnifiedForecastProcessor:
                     synthesizer = ForecastSynthesizer(weights=weights)
                     
                     # Generate synthesis
-                    synth_result = synthesizer.generate_1d_forecast(
-                        current_price=current_price,
-                        df=df,
-                        supertrend_info=st_info_raw,
-                        sr_response=sr_levels,
-                        ensemble_result=ml_pred,
-                        symbol=symbol,
-                    )
+                    if horizon_days == 1:
+                        synth_result = synthesizer.generate_1d_forecast(
+                            current_price=current_price,
+                            df=df,
+                            supertrend_info=st_info_raw,
+                            sr_response=sr_levels,
+                            ensemble_result=ml_pred,
+                            symbol=symbol,
+                        )
+                    else:
+                        synth_result = synthesizer.generate_forecast(
+                            current_price=current_price,
+                            df=df,
+                            supertrend_info=st_info_raw,
+                            sr_response=sr_levels,
+                            ensemble_result=ml_pred,
+                            horizon_days=horizon_days,
+                            symbol=symbol,
+                            timeframe="d1",
+                        )
                     
                     # Build forecast dict
                     forecast = {
@@ -363,6 +382,39 @@ class UnifiedForecastProcessor:
                     
                     forecast["confidence"] = adjusted_confidence
                     forecast["raw_confidence"] = raw_confidence
+
+                    # Quality gating + issue tracking
+                    quality_context = {
+                        "confidence": adjusted_confidence,
+                        "model_agreement": forecast.get("model_agreement", 0.75),
+                        "created_at": datetime.now(),
+                        "conflicting_signals": 0,
+                    }
+                    quality_issues = ForecastQualityMonitor.check_quality_issues(quality_context)
+                    quality_score = None
+                    if isinstance(forecast.get("synthesis"), dict):
+                        quality_score = forecast["synthesis"].get("quality_score")
+
+                    confidence_gate_passed = adjusted_confidence >= settings.confidence_threshold
+                    if not confidence_gate_passed:
+                        quality_issues.append(
+                            {
+                                "level": "warning",
+                                "type": "below_threshold",
+                                "message": (
+                                    f"Confidence {adjusted_confidence:.0%} below "
+                                    f"threshold {settings.confidence_threshold:.0%}"
+                                ),
+                                "action": "review",
+                            }
+                        )
+                        forecast["label"] = "neutral"
+
+                    if isinstance(forecast.get("synthesis"), dict):
+                        forecast["synthesis"]["confidence_gate"] = {
+                            "passed": confidence_gate_passed,
+                            "threshold": settings.confidence_threshold,
+                        }
                     
                     result['forecasts'][horizon] = forecast
                     
@@ -374,6 +426,8 @@ class UnifiedForecastProcessor:
                         confidence=forecast["confidence"],
                         points=forecast["points"],
                         supertrend_data=supertrend_data,
+                        quality_score=quality_score,
+                        quality_issues=quality_issues,
                         synthesis_data=forecast.get("synthesis"),
                     )
                     self.metrics['db_writes'] += 1

@@ -557,6 +557,17 @@ struct WebChartView: NSViewRepresentable {
         private func applyForecastOverlay(using bars: [OHLCBar]? = nil) {
             let forecastBars = bars ?? parent.viewModel.chartDataV2?.layers.forecast.data ?? []
             guard !forecastBars.isEmpty else { return }
+            let summary = parent.viewModel.chartDataV2?.mlSummary ?? parent.viewModel.chartData?.mlSummary
+            if let summary,
+               let lastBar = parent.viewModel.bars.last,
+               applyHorizonTargetLines(summary: summary, currentBar: lastBar) {
+                // Skip standard forecast bands for daily multi-horizon targets
+                return
+            }
+
+            parent.bridge.send(.removeSeries(id: "forecast-1d"))
+            parent.bridge.send(.removeSeries(id: "forecast-1w"))
+            parent.bridge.send(.removeSeries(id: "forecast-1m"))
             parent.bridge.setForecastLayer(from: forecastBars)
             if parent.viewModel.timeframe.isIntraday {
                 parent.bridge.setForecastCandles(from: forecastBars)
@@ -573,6 +584,14 @@ struct WebChartView: NSViewRepresentable {
                 return
             }
 
+            if let lastBar = parent.viewModel.bars.last,
+               applyHorizonTargetLines(summary: mlSummary, currentBar: lastBar) {
+                return
+            }
+
+            parent.bridge.send(.removeSeries(id: "forecast-1d"))
+            parent.bridge.send(.removeSeries(id: "forecast-1w"))
+            parent.bridge.send(.removeSeries(id: "forecast-1m"))
             parent.bridge.setForecast(from: selectedSeries, direction: mlSummary.overallLabel ?? "neutral")
 
             if let srLevels = mlSummary.srLevels {
@@ -597,6 +616,7 @@ struct WebChartView: NSViewRepresentable {
             // Clear previous overlays/indicators (keeps candles)
             bridge.send(.clearIndicators)
             bridge.send(.removePriceLines(category: "forecast-target"))
+            bridge.send(.removePriceLines(category: "forecast-targets"))
             bridge.send(.removePriceLines(category: "forecast-confidence"))
 
             // Set candlestick data
@@ -837,11 +857,6 @@ struct WebChartView: NSViewRepresentable {
             }
         }
 
-        private func forecastTargetValue(from series: ForecastSeries?) -> Double? {
-            guard let series else { return nil }
-            return series.points.max(by: { $0.ts < $1.ts })?.value
-        }
-
         private func forecastColorHex(for label: String?) -> String {
             switch (label ?? "neutral").lowercased() {
             case "bullish": return "#4de680" // green
@@ -850,34 +865,78 @@ struct WebChartView: NSViewRepresentable {
             }
         }
 
+        private func rgbaColor(hex: String, alpha: Double) -> String {
+            let cleaned = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+            guard cleaned.count == 6, let intVal = Int(cleaned, radix: 16) else {
+                return hex
+            }
+            let r = (intVal >> 16) & 0xff
+            let g = (intVal >> 8) & 0xff
+            let b = intVal & 0xff
+            let clamped = max(0.0, min(1.0, alpha))
+            return String(format: "rgba(%d,%d,%d,%.2f)", r, g, b, clamped)
+        }
+
+        private func isDailyMultiHorizon(_ summary: MLSummary) -> Bool {
+            let dailySet: Set<String> = ["1D", "1W", "1M"]
+            let labels = summary.horizons.map { $0.horizon.uppercased() }
+            return labels.count >= 2 && labels.allSatisfy { dailySet.contains($0) }
+        }
+
+        private func applyHorizonTargetLines(summary: MLSummary, currentBar: OHLCBar) -> Bool {
+            let dailySet: Set<String> = ["1D", "1W", "1M"]
+            let horizons = summary.horizons.filter { dailySet.contains($0.horizon.uppercased()) }
+            guard !horizons.isEmpty else { return false }
+
+            let lastTime = Int(currentBar.ts.timeIntervalSince1970)
+            let currentPrice = currentBar.close
+            let baseColor = forecastColorHex(for: summary.overallLabel)
+
+            let lineSpecs: [(String, String, String, Int)] = [
+                ("1D", "forecast-1d", "1D Target", 0),
+                ("1W", "forecast-1w", "1W Target", 1),
+                ("1M", "forecast-1m", "1M Target", 2),
+            ]
+
+            for (_, seriesId, _, _) in lineSpecs {
+                parent.bridge.send(.removeSeries(id: seriesId))
+            }
+            parent.bridge.send(.removeSeries(id: "forecast-mid"))
+            parent.bridge.send(.removeSeries(id: "forecast-upper"))
+            parent.bridge.send(.removeSeries(id: "forecast-lower"))
+            parent.bridge.send(.removeSeries(id: "forecast-band"))
+
+            for (label, seriesId, title, style) in lineSpecs {
+                guard let series = horizons.first(where: { $0.horizon.uppercased() == label }) else { continue }
+                guard let targetPoint = series.points.max(by: { $0.ts < $1.ts }) else { continue }
+                let targetValue = series.targets?.tp1 ?? targetPoint.value
+                let targetTime = targetPoint.ts
+                guard targetTime > 0 else { continue }
+
+                let lineData = [
+                    LightweightDataPoint(time: lastTime, value: currentPrice),
+                    LightweightDataPoint(time: targetTime, value: targetValue),
+                ]
+
+                let options = LineOptions(
+                    color: rgbaColor(hex: baseColor, alpha: style == 0 ? 0.95 : style == 1 ? 0.7 : 0.5),
+                    lineWidth: style == 0 ? 2 : 1,
+                    lineStyle: style == 0 ? 2 : 1,
+                    name: title
+                )
+                parent.bridge.send(.setLine(id: seriesId, data: lineData, options: options))
+            }
+
+            return true
+        }
+
         private func applyForecastTargetLine(
             currentPrice: Double?,
             label: String?,
             series: ForecastSeries? = nil
         ) {
             parent.bridge.send(.removePriceLines(category: "forecast-target"))
-
-            let targetValue = forecastTargetValue(from: series ?? parent.viewModel.selectedForecastSeries)
-                ?? parent.viewModel.chartDataV2?.layers.forecast.data.max(by: { $0.ts < $1.ts })?.close
-
-            guard let target = targetValue, target > 0 else { return }
-
-            var title = String(format: "ML Target $%.2f", target)
-            if let current = currentPrice, current > 0 {
-                let pct = (target - current) / current * 100
-                title += String(format: " (%+.1f%%)", pct)
-            }
-
-            let options = PriceLineOptions(
-                color: forecastColorHex(for: label),
-                lineWidth: 2,
-                lineStyle: 2,
-                showLabel: true,
-                title: title,
-                category: "forecast-target"
-            )
-
-            parent.bridge.send(.addPriceLine(seriesId: "candles", price: target, options: options))
+            parent.bridge.send(.removePriceLines(category: "forecast-targets"))
         }
 
         private func applyInitialZoomIfNeeded(bars: [OHLCBar]) {

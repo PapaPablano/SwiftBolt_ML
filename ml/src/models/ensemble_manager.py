@@ -80,6 +80,7 @@ class EnsembleManager:
         enable_arima_garch: bool = True,
         enable_prophet: bool = True,
         enable_lstm: bool = False,
+        enable_transformer: bool = False,
         confidence_level: float = 0.95,
         optimization_method: str = "ridge",
         adaptive_weights: bool = False,
@@ -94,6 +95,7 @@ class EnsembleManager:
             enable_arima_garch: Enable ARIMA-GARCH
             enable_prophet: Enable Prophet
             enable_lstm: Enable LSTM
+            enable_transformer: Enable Transformer (multi-timeframe attention)
             confidence_level: Confidence level for intervals
             optimization_method: Weight optimization method
             adaptive_weights: Use regime-adaptive weight optimization
@@ -110,6 +112,7 @@ class EnsembleManager:
             enable_arima_garch=enable_arima_garch,
             enable_prophet=enable_prophet,
             enable_lstm=enable_lstm,
+            enable_transformer=enable_transformer,
         )
 
         # Initialize weight optimizer

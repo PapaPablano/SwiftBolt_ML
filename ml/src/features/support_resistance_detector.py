@@ -255,6 +255,51 @@ class SupportResistanceDetector:
 
         return {"levels": levels}
 
+    def calculate_ichimoku_levels(
+        self,
+        df: pd.DataFrame,
+        current_price: float,
+    ) -> Dict[str, Any]:
+        """Compute Ichimoku line levels (Tenkan, Kijun, Senkou A/B)."""
+        if df.empty or "high" not in df.columns or "low" not in df.columns:
+            return {"levels": []}
+
+        high = df["high"].astype(float)
+        low = df["low"].astype(float)
+
+        def _mid(high_window: int, low_window: int) -> Optional[float]:
+            if len(high) < max(high_window, low_window):
+                return None
+            hh = high.rolling(window=high_window, min_periods=1).max().iloc[-1]
+            ll = low.rolling(window=low_window, min_periods=1).min().iloc[-1]
+            return float((hh + ll) / 2)
+
+        tenkan = _mid(9, 9)
+        kijun = _mid(26, 26)
+        senkou_a = None
+        if tenkan is not None and kijun is not None:
+            senkou_a = float((tenkan + kijun) / 2)
+        senkou_b = _mid(52, 52)
+
+        levels: List[Dict[str, Any]] = []
+        for name, value in [
+            ("Tenkan", tenkan),
+            ("Kijun", kijun),
+            ("SenkouA", senkou_a),
+            ("SenkouB", senkou_b),
+        ]:
+            if value is None:
+                continue
+            levels.append(
+                {
+                    "name": name,
+                    "level": round(value, 2),
+                    "role": "support" if value < current_price else "resistance",
+                }
+            )
+
+        return {"levels": levels}
+
     # =========================================================================
     # METHOD 1: ZIGZAG INDICATOR
     # =========================================================================
@@ -735,7 +780,7 @@ class SupportResistanceDetector:
         current_price = float(df["close"].iloc[-1])
 
         if use_new_indicators:
-            return self._find_levels_with_new_indicators(df, current_price)
+            return self._find_levels_with_new_indicators(df, current_price, fib_lookback=fib_lookback)
         else:
             # Legacy mode for backwards compatibility
             warnings.warn(
@@ -764,6 +809,7 @@ class SupportResistanceDetector:
         self,
         df: pd.DataFrame,
         current_price: float,
+        fib_lookback: int = 50,
     ) -> Dict[str, Any]:
         """
         Find S/R levels using the 3 modern indicators.
@@ -782,6 +828,7 @@ class SupportResistanceDetector:
         anchor_zones = self.calculate_anchor_zones(df, current_price)
         ma_levels = self.calculate_moving_average_levels(df, current_price)
         fib = self.fibonacci_retracement(df, fib_lookback)
+        ichimoku = self.calculate_ichimoku_levels(df, current_price)
 
         # Collect all support candidates
         all_supports = []
@@ -853,6 +900,16 @@ class SupportResistanceDetector:
                 all_supports.append(fib_level)
             elif fib_level > current_price:
                 all_resistances.append(fib_level)
+
+        # From Ichimoku
+        for level in ichimoku.get("levels", []):
+            value = level.get("level")
+            if value is None:
+                continue
+            if value < current_price:
+                all_supports.append(value)
+            elif value > current_price:
+                all_resistances.append(value)
 
         # Filter and sort (remove duplicates)
         supports_below = sorted(
@@ -964,6 +1021,7 @@ class SupportResistanceDetector:
             "anchor_zones": anchor_zones,
             "moving_averages": ma_levels,
             "fibonacci": fib,
+            "ichimoku": ichimoku,
             "indicators": {
                 "pivot_levels": pivot_result,
                 "polynomial": poly_result,
@@ -971,6 +1029,7 @@ class SupportResistanceDetector:
                 "anchor_zones": anchor_zones,
                 "moving_averages": ma_levels,
                 "fibonacci": fib,
+                "ichimoku": ichimoku,
             },
             # Legacy key for backwards compatibility
             "methods": {
@@ -1002,6 +1061,7 @@ class SupportResistanceDetector:
                 "anchor_zones": anchor_zones,
                 "moving_averages": ma_levels,
                 "fibonacci": fib,
+                "ichimoku": ichimoku,
             },
         }
 

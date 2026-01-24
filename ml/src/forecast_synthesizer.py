@@ -45,6 +45,12 @@ class ForecastResult:
     quality_score: Optional[float] = None
     confluence_score: Optional[float] = None
 
+    # Cross-timeframe consensus (from STOCK_FORECASTING_FRAMEWORK.md)
+    consensus_direction: Optional[str] = None
+    alignment_score: Optional[float] = None
+    consensus_strength: Optional[str] = None
+    agreeing_timeframes: Optional[List[str]] = None
+
     # Metadata
     current_price: float = 0.0  # Current price (for forecast points)
     symbol: Optional[str] = None
@@ -70,6 +76,10 @@ class ForecastResult:
             "stop_loss": self.stop_loss,
             "quality_score": self.quality_score,
             "confluence_score": self.confluence_score,
+            "consensus_direction": self.consensus_direction,
+            "alignment_score": self.alignment_score,
+            "consensus_strength": self.consensus_strength,
+            "agreeing_timeframes": self.agreeing_timeframes,
             "current_price": self.current_price,
             "symbol": self.symbol,
             "horizon": self.horizon,
@@ -528,20 +538,6 @@ class ForecastSynthesizer:
         if poly is None:
             poly = pivot
 
-        # Get logistic level (highest probability)
-        logistic = sr_response.get("logistic", {})
-        if is_support:
-            logistic_levels = logistic.get("supportLevels", [])
-        else:
-            logistic_levels = logistic.get("resistanceLevels", [])
-
-        if logistic_levels:
-            # Sort by probability, take highest
-            logistic_level = max(logistic_levels, key=lambda x: x.get("probability", 0))
-            logistic_val = logistic_level.get("level", poly)
-        else:
-            logistic_val = poly
-
         # Anchor zones
         anchor_zones = sr_response.get("anchorZones", {})
         if is_support:
@@ -569,13 +565,23 @@ class ForecastSynthesizer:
             fib_candidates = [lvl for lvl in fib_levels if lvl > current_price]
             fib_val = min(fib_candidates) if fib_candidates else None
 
+        # Ichimoku
+        ichimoku_levels = [lvl.get("level") for lvl in sr_response.get("ichimoku", {}).get("levels", [])]
+        ichimoku_levels = [lvl for lvl in ichimoku_levels if isinstance(lvl, (int, float))]
+        if is_support:
+            ichimoku_candidates = [lvl for lvl in ichimoku_levels if lvl < current_price]
+            ichimoku_val = max(ichimoku_candidates) if ichimoku_candidates else None
+        else:
+            ichimoku_candidates = [lvl for lvl in ichimoku_levels if lvl > current_price]
+            ichimoku_val = min(ichimoku_candidates) if ichimoku_candidates else None
+
         method_values = {
             "anchor_zones": anchor_val,
             "pivot_levels": pivot,
             "polynomial": poly,
             "moving_averages": ma_val,
             "fibonacci": fib_val,
-            "logistic": logistic_val,
+            "ichimoku": ichimoku_val,
         }
 
         active_weights = {
@@ -657,11 +663,13 @@ class ForecastSynthesizer:
                 else sr_response.get("moving_averages")
                 or indicators.get("moving_averages", {}).get("levels", []),
                 "fibonacci": sr_response.get("fibonacci", indicators.get("fibonacci", {})),
+                "ichimoku": sr_response.get("ichimoku", indicators.get("ichimoku", {})),
             }
 
         normalized.setdefault("anchorZones", {"support_zones": [], "resistance_zones": [], "zones": []})
         normalized.setdefault("movingAverages", [])
         normalized.setdefault("fibonacci", {"levels": {}})
+        normalized.setdefault("ichimoku", {"levels": []})
         return normalized
 
     def _calculate_bullish_target(
@@ -790,16 +798,6 @@ class ForecastSynthesizer:
         if poly_resistance and poly_resistance > current_price:
             resistances.append(float(poly_resistance))
 
-        logistic = sr_response.get("logistic", {})
-        for lvl in logistic.get("supportLevels", []):
-            level = lvl.get("level")
-            if level and level < current_price:
-                supports.append(float(level))
-        for lvl in logistic.get("resistanceLevels", []):
-            level = lvl.get("level")
-            if level and level > current_price:
-                resistances.append(float(level))
-
         anchor_zones = sr_response.get("anchorZones", {})
         for zone in anchor_zones.get("support_zones", []):
             level = zone.get("price")
@@ -822,6 +820,15 @@ class ForecastSynthesizer:
 
         fib_levels = list((sr_response.get("fibonacci", {}) or {}).get("levels", {}).values())
         for level in fib_levels:
+            if level < current_price:
+                supports.append(float(level))
+            elif level > current_price:
+                resistances.append(float(level))
+
+        ichimoku_levels = [lvl.get("level") for lvl in sr_response.get("ichimoku", {}).get("levels", [])]
+        for level in ichimoku_levels:
+            if level is None:
+                continue
             if level < current_price:
                 supports.append(float(level))
             elif level > current_price:
@@ -871,15 +878,6 @@ class ForecastSynthesizer:
             if _hit(poly_values):
                 method_hits += 1
 
-        # Logistic
-        logistic = sr_response.get("logistic", {})
-        log_values = [lvl.get("level") for lvl in logistic.get("supportLevels", []) + logistic.get("resistanceLevels", [])]
-        log_values = [v for v in log_values if isinstance(v, (int, float))]
-        if log_values:
-            method_total += 1
-            if _hit(log_values):
-                method_hits += 1
-
         # Anchor zones
         anchor_zones = sr_response.get("anchorZones", {})
         anchor_values = [z.get("price") for z in anchor_zones.get("support_zones", []) + anchor_zones.get("resistance_zones", [])]
@@ -902,6 +900,14 @@ class ForecastSynthesizer:
         if fib_values:
             method_total += 1
             if _hit(fib_values):
+                method_hits += 1
+
+        # Ichimoku
+        ichimoku_values = [lvl.get("level") for lvl in sr_response.get("ichimoku", {}).get("levels", [])]
+        ichimoku_values = [v for v in ichimoku_values if isinstance(v, (int, float))]
+        if ichimoku_values:
+            method_total += 1
+            if _hit(ichimoku_values):
                 method_hits += 1
 
         confluence = method_hits / max(method_total, 1)

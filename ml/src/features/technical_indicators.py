@@ -14,6 +14,7 @@ import logging
 import numpy as np
 import pandas as pd
 
+from src.features.market_correlation import MarketCorrelationFeatures, fetch_spy_data
 from src.features.market_regime import add_market_regime_features
 from src.features.regime_indicators import add_regime_features_to_technical
 from src.features.support_resistance_detector import add_support_resistance_features
@@ -143,8 +144,30 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     except Exception as exc:  # noqa: BLE001
         logger.warning("S/R features failed: %s", exc)
 
+    # =========================================================================
+    # SPY CORRELATION FEATURES (from STOCK_FORECASTING_FRAMEWORK.md)
+    # =========================================================================
+
+    # Add SPY correlation, beta, and relative strength features
+    try:
+        spy_data = fetch_spy_data(
+            start_date=str(df["ts"].min()),
+            end_date=str(df["ts"].max()),
+        )
+        if spy_data is not None and len(spy_data) > 0:
+            correlation_calc = MarketCorrelationFeatures(spy_data=spy_data)
+            df = correlation_calc.calculate_features(df)
+            logger.info("Added SPY correlation features (15 features)")
+        else:
+            # Add placeholder features if SPY data not available
+            correlation_calc = MarketCorrelationFeatures()
+            df = correlation_calc.calculate_features(df)
+            logger.warning("Using placeholder SPY correlation features")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("SPY correlation features failed: %s", exc)
+
     logger.info(
-        "Added %s technical indicators (CORRECTED implementations + S/R)",
+        "Added %s technical indicators (CORRECTED implementations + S/R + SPY correlation)",
         len(df.columns) - 6,
     )
 
