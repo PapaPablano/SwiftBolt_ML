@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +27,25 @@ class Settings(BaseSettings):
     supabase_service_role_key: str | None = None
     # Direct Postgres connection string (optional for backfill)
     database_url: str | None = None
+
+    @field_validator(
+        "supabase_url",
+        "supabase_key",
+        "supabase_service_role_key",
+        "database_url",
+        "tradier_api_key",
+        "alpaca_api_key",
+        "alpaca_api_secret",
+        mode="before",
+    )
+    @classmethod
+    def strip_whitespace(cls, v: str | None) -> str | None:
+        """Strip whitespace and newlines from string fields to prevent HTTP header errors."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return v.strip()
+        return v
 
     def model_post_init(self, __context) -> None:
         """Set service_role_key alias after init."""

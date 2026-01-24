@@ -38,6 +38,7 @@ class BaselineForecaster:
         )
         self.feature_columns: list[str] = []
         self.is_trained = False
+        self._last_df: Optional[pd.DataFrame] = None  # Cache for predict method
 
     def prepare_training_data(
         self,
@@ -210,24 +211,74 @@ class BaselineForecaster:
 
         self.is_trained = True
 
-    def predict(self, X: pd.DataFrame) -> tuple[str, float, np.ndarray]:
+    def fit(self, df: pd.DataFrame, horizon_days: int = 1) -> "BaselineForecaster":
+        """
+        Fit the model on OHLC dataframe (compatible with ensemble interface).
+        
+        This method provides compatibility with EnsembleForecaster interface.
+        It prepares features and trains the model in one step.
+        
+        Args:
+            df: DataFrame with OHLC + technical indicators
+            horizon_days: Forecast horizon in days (1, 5, 20, etc.)
+        
+        Returns:
+            self (for method chaining)
+        """
+        # Store df for later predict calls
+        self._last_df = df.copy()
+        
+        # Prepare training data
+        X, y = self.prepare_training_data(df, horizon_days=horizon_days)
+        
+        # Train model
+        if len(X) >= settings.min_bars_for_training:
+            self.train(X, y)
+        else:
+            logger.warning(
+                f"Insufficient data for training: {len(X)} < {settings.min_bars_for_training}"
+            )
+        
+        return self
+
+    def predict(self, X: pd.DataFrame | None = None, horizon_days: int = 1) -> dict[str, Any]:
         """
         Make a prediction on new data.
 
+        This method has dual interfaces:
+        1. Called with X (features DataFrame) - original interface for internal use
+        2. Called with df (OHLC DataFrame) - ensemble-compatible interface
+        
         Args:
-            X: Feature DataFrame (single row or multiple rows)
+            X: Feature DataFrame (single row or multiple rows) OR OHLC DataFrame
+            horizon_days: Forecast horizon (used if X is OHLC data)
 
         Returns:
-            Tuple of (label, confidence, probabilities)
+            Dict with label, confidence, probabilities (ensemble-compatible)
+            OR Tuple (label, confidence, probabilities) for internal use
         """
         if not self.is_trained:
             raise ValueError("Model must be trained before prediction")
 
+        # Check if X is OHLC data (has 'close' column) or features
+        if X is not None and 'close' in X.columns:
+            # OHLC data - prepare features first
+            df = X
+            engineer = TemporalFeatureEngineer()
+            last_idx = len(df) - 1
+            features = engineer.add_features_to_point(df, last_idx)
+            X_features = pd.DataFrame([features])
+        else:
+            # Already feature data
+            X_features = X if X is not None else self._last_df
+            if X_features is None:
+                raise ValueError("No features provided and no cached dataframe available")
+
         # Ensure features match training
-        X = X[self.feature_columns]
+        X_features = X_features[self.feature_columns]
 
         # Scale features
-        X_scaled = self.scaler.transform(X)
+        X_scaled = self.scaler.transform(X_features)
 
         # Predict
         predictions = self.model.predict(X_scaled)
@@ -241,7 +292,14 @@ class BaselineForecaster:
         logger.info(f"Prediction: {label} (confidence: {confidence:.3f})")
         logger.info(f"Probabilities: {dict(zip(self.model.classes_, proba))}")
 
-        return label, confidence, probabilities
+        # Return ensemble-compatible dict format
+        proba_dict = dict(zip(self.model.classes_, proba))
+        return {
+            "label": label,
+            "confidence": confidence,
+            "probabilities": proba_dict,
+            "raw_probabilities": probabilities,
+        }
 
     def generate_forecast(
         self,
@@ -296,7 +354,11 @@ class BaselineForecaster:
         last_ts = pd.to_datetime(df["ts"].iloc[-1]).to_pydatetime()
 
         # Predict
-        label, raw_confidence, probabilities = self.predict(last_features)
+        pred_result = self.predict(last_features)
+        label = pred_result["label"]
+        raw_confidence = pred_result["confidence"]
+        probabilities = pred_result["raw_probabilities"]
+        proba_dict = pred_result["probabilities"]
 
         # Apply confidence adjustments
         adjusted_confidence = raw_confidence
@@ -321,9 +383,6 @@ class BaselineForecaster:
                 f"(data_qual={data_quality_multiplier:.2f}, "
                 f"sample_size={sample_size_multiplier:.2f})"
             )
-
-        # Convert probabilities array to dict for _generate_forecast_points
-        proba_dict = dict(zip(self.model.classes_, probabilities[-1]))
 
         # Generate forecast points with probability-based directional estimates
         points = self._generate_forecast_points(

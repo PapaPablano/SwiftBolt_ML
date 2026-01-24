@@ -66,6 +66,21 @@ if not settings.supabase_url or not settings.supabase_key:
     logger.error("Missing required Supabase credentials!")
     sys.exit(1)
 
+# Validate secrets don't contain invalid characters that would cause HTTP header errors
+def validate_secret(name: str, value: str | None) -> None:
+    """Validate that a secret value is suitable for use in HTTP headers."""
+    if value is None:
+        return
+    if "\n" in value or "\r" in value:
+        logger.error(f"{name} contains newline characters - this will cause HTTP header errors!")
+        sys.exit(1)
+    if not value.strip():
+        logger.error(f"{name} is empty or whitespace-only!")
+        sys.exit(1)
+
+validate_secret("SUPABASE_URL", settings.supabase_url)
+validate_secret("SUPABASE_KEY", settings.supabase_key)
+
 # Fallback symbols if database watchlist is empty
 DEFAULT_SYMBOLS = [
     "AAPL",

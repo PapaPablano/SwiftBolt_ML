@@ -29,14 +29,19 @@ logger = logging.getLogger(__name__)
 
 
 # Map horizons to timeframes
-# Note: timeframe enum only supports: m15, h1, h4, d1, w1
+# Note: timeframe enum supports: m15, h1, h4, d1, w1, m1
 HORIZON_TO_TIMEFRAME = {
     '1D': 'd1',      # Daily
     '1W': 'w1',      # Weekly
+    '1M': 'w1',      # Monthly -> use weekly as closest match
+    '2M': 'w1',      # 2 months -> use weekly
+    '3M': 'w1',      # 3 months -> use weekly
+    '4M': 'w1',      # 4 months -> use weekly
+    '5M': 'w1',      # 5 months -> use weekly
+    '6M': 'w1',      # 6 months -> use weekly
     '15m': 'm15',    # 15-minute (intraday)
     '1h': 'h1',      # 1-hour (intraday)
     '4h': 'h4',      # 4-hour (intraday)
-    # Note: 1M (monthly) not supported in timeframe enum, will be skipped
 }
 
 # Map labels to signals

@@ -297,12 +297,14 @@ class UnifiedForecastProcessor:
                 try:
                     logger.debug(f"Generating {horizon} forecast for {symbol}...")
                     
-                    # Create baseline forecaster
+                    # Get horizon days
+                    horizon_days = {'1D': 1, '1W': 7, '1M': 30}.get(horizon, 1)
+                    
+                    # Create and train baseline forecaster
                     baseline_forecaster = BaselineForecaster()
-                    baseline_forecaster.fit(df)
+                    baseline_forecaster.fit(df, horizon_days=horizon_days)
                     
                     # Get predictions
-                    horizon_days = {'1D': 1, '1W': 7, '1M': 30}.get(horizon, 1)
                     ml_pred = baseline_forecaster.predict(df, horizon_days=horizon_days)
                     
                     # Get layer weights with explicit source tracking
