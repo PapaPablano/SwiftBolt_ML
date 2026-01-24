@@ -25,6 +25,9 @@ inputs:
   alpaca-api-secret:
     description: 'Alpaca API secret'
     required: false
+  tradier-api-key:
+    description: 'Tradier API key for options data'
+    required: false
 
 runs:
   using: 'composite'
@@ -59,6 +62,7 @@ runs:
         DATABASE_URL=$(echo -n "${{ inputs.database-url }}" | xargs)
         ALPACA_API_KEY=$(echo -n "${{ inputs.alpaca-api-key }}" | xargs)
         ALPACA_API_SECRET=$(echo -n "${{ inputs.alpaca-api-secret }}" | xargs)
+        TRADIER_API_KEY=$(echo -n "${{ inputs.tradier-api-key }}" | xargs)
         
         cat > .env << EOF
         SUPABASE_URL=${SUPABASE_URL}
@@ -66,4 +70,5 @@ runs:
         DATABASE_URL=${DATABASE_URL}
         ALPACA_API_KEY=${ALPACA_API_KEY}
         ALPACA_API_SECRET=${ALPACA_API_SECRET}
+        TRADIER_API_KEY=${TRADIER_API_KEY}
         EOF

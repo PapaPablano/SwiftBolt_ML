@@ -271,6 +271,7 @@ jobs:
           database-url: ${{ secrets.DATABASE_URL }}
           alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
           alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
+          tradier-api-key: ${{ secrets.TRADIER_API_KEY }}
 
       - name: Resolve processing universe
         env:

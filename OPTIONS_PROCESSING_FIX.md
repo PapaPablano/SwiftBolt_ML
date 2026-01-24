@@ -66,7 +66,7 @@ GitHub Actions secrets can accidentally include these characters when:
 
 The workflow logs (lines 472-473) showed the `SUPABASE_KEY` secret actually contained a newline character.
 
-### Issue 3: Missing TRADIER_API_KEY (Non-Critical)
+### Issue 3: Missing TRADIER_API_KEY (Now Resolved)
 
 The workflow logs showed:
 ```
@@ -74,6 +74,15 @@ ERROR - AAPL: Backfill failed - Tradier API key required. Set TRADIER_API_KEY en
 ```
 
 This prevented historical options backfill but didn't block the main processing since the script handles this gracefully.
+
+**Resolution:** Added `TRADIER_API_KEY` configuration to:
+1. `.github/actions/setup-ml-env/action.yml` - Added input parameter
+2. `.github/workflows/ml-orchestration.yml` - Pass secret to options-processing job
+
+Once the `TRADIER_API_KEY` secret is added to GitHub (Settings → Secrets), the historical backfill will work, enabling:
+- Better momentum calculations (5+ days of history)
+- More accurate IV trends
+- Historical open interest analysis
 
 ---
 
@@ -261,6 +270,7 @@ If you need to update any secrets in the repository:
 - `DATABASE_URL` - Direct PostgreSQL connection string (optional)
 - `ALPACA_API_KEY` - Alpaca API key for market data
 - `ALPACA_API_SECRET` - Alpaca API secret
+- `TRADIER_API_KEY` - Tradier API key for options data and historical backfill
 
 ---
 
