@@ -1,9 +1,11 @@
 """Main ML forecasting job that generates predictions for all symbols."""
 
 import argparse
+import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -59,6 +61,95 @@ from src.strategies.supertrend_ai import SuperTrendAI  # noqa: E402
 # Global calibrator instance (loaded once, reused across symbols)
 _calibrator: ConfidenceCalibrator | None = None
 _validation_metrics: dict | None = None
+
+# Global metrics instance for baseline measurement
+_metrics: dict | None = None
+
+
+class ProcessingMetrics:
+    """Metrics collector for baseline performance measurement."""
+    
+    def __init__(self):
+        self.metrics = {
+            'start_time': datetime.now().isoformat(),
+            'symbols_processed': 0,
+            'feature_cache_hits': 0,
+            'feature_cache_misses': 0,
+            'feature_rebuild_times': [],
+            'forecast_times': [],
+            'weight_source': [],
+            'db_writes': 0,
+            'errors': []
+        }
+    
+    def log_feature_access(self, symbol: str, cache_hit: bool, rebuild_time: float | None = None):
+        """Log feature cache access."""
+        if cache_hit:
+            self.metrics['feature_cache_hits'] += 1
+        else:
+            self.metrics['feature_cache_misses'] += 1
+            if rebuild_time is not None:
+                self.metrics['feature_rebuild_times'].append({
+                    'symbol': symbol,
+                    'time_seconds': rebuild_time,
+                    'timestamp': datetime.now().isoformat()
+                })
+    
+    def log_weight_source(self, symbol: str, horizon: str, source: str):
+        """Log which weight source was used."""
+        self.metrics['weight_source'].append({
+            'symbol': symbol,
+            'horizon': horizon,
+            'source': source,
+            'timestamp': datetime.now().isoformat()
+        })
+    
+    def log_db_write(self, symbol: str, table: str):
+        """Log database write operation."""
+        self.metrics['db_writes'] += 1
+    
+    def log_error(self, symbol: str, error: str):
+        """Log processing error."""
+        self.metrics['errors'].append({
+            'symbol': symbol,
+            'error': error,
+            'timestamp': datetime.now().isoformat()
+        })
+    
+    def log_forecast_time(self, symbol: str, horizon: str, time_seconds: float):
+        """Log forecast generation time."""
+        self.metrics['forecast_times'].append({
+            'symbol': symbol,
+            'horizon': horizon,
+            'time_seconds': time_seconds,
+            'timestamp': datetime.now().isoformat()
+        })
+    
+    def save_to_file(self, filename: str | None = None):
+        """Save metrics to JSON file."""
+        if filename is None:
+            filename = f'forecast_job_metrics_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+        
+        # Ensure metrics directory exists
+        metrics_dir = Path(__file__).parent.parent.parent / 'metrics' / 'baseline'
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+        
+        filepath = metrics_dir / filename
+        self.metrics['end_time'] = datetime.now().isoformat()
+        
+        with open(filepath, 'w') as f:
+            json.dump(self.metrics, f, indent=2, default=str)
+        
+        logger.info(f"Metrics saved to {filepath}")
+        return filepath
+
+
+def get_metrics() -> ProcessingMetrics:
+    """Get or create global metrics instance."""
+    global _metrics
+    if _metrics is None:
+        _metrics = ProcessingMetrics()
+    return _metrics
 
 
 def get_calibrator() -> ConfidenceCalibrator:
@@ -337,7 +428,8 @@ def _should_run_forecast(
 def _get_symbol_layer_weights(
     symbol_id: str,
     horizon: str,
-) -> dict[str, float] | None:
+    return_source: bool = False,
+) -> dict[str, float] | None | tuple[dict[str, float] | None, str]:
     """
     Get layer weights for forecast synthesis.
 
@@ -1028,15 +1120,25 @@ def process_symbol(symbol: str) -> None:
         symbol: Stock ticker symbol
     """
     logger.info(f"Processing {symbol}...")
+    
+    metrics = get_metrics()
+    symbol_start_time = time.time()
 
     try:
         # Fetch/cache features across all timeframes, then use d1 for training
+        feature_start = time.time()
         features_by_tf = fetch_or_build_features(
             db=db,
             symbol=symbol,
             limits={"d1": 252},
         )
+        feature_time = time.time() - feature_start
         df = features_by_tf.get("d1", pd.DataFrame())
+        
+        # Estimate cache hit: if feature fetch was very fast (< 0.5s), likely cache hit
+        # This is approximate - we'll improve in Phase 2 with Redis
+        cache_hit = feature_time < 0.5
+        metrics.log_feature_access(symbol, cache_hit, rebuild_time=feature_time if not cache_hit else None)
 
         if len(df) < settings.min_bars_for_training:
             logger.warning(
@@ -1372,7 +1474,41 @@ def process_symbol(symbol: str) -> None:
                     symbol=symbol,
                 )
 
+                # Get weights and log source
+                weight_start = time.time()
                 lw = _get_symbol_layer_weights(symbol_id=symbol_id, horizon=horizon)
+                weight_time = time.time() - weight_start
+                
+                # Determine weight source based on priority order
+                # Priority 1: Intraday-calibrated
+                # Priority 2: Symbol-specific daily
+                # Priority 3: Default
+                weight_source = "default"
+                if lw is not None:
+                    # Check if intraday calibration is enabled and would have been used
+                    if settings.enable_intraday_calibration:
+                        try:
+                            intraday_min = settings.intraday_calibration_min_samples
+                        except Exception:
+                            intraday_min = 50
+                        calibrated = db.get_calibrated_weights(
+                            symbol_id=symbol_id,
+                            horizon=horizon,
+                            min_samples=intraday_min,
+                        )
+                        if calibrated is not None:
+                            weight_source = "intraday_calibrated"
+                        elif _bool_env("ENABLE_SYMBOL_WEIGHTS", default=False):
+                            row = db.fetch_symbol_model_weights(symbol_id=symbol_id, horizon=horizon)
+                            if row is not None:
+                                weight_source = "daily_symbol"
+                    elif _bool_env("ENABLE_SYMBOL_WEIGHTS", default=False):
+                        row = db.fetch_symbol_model_weights(symbol_id=symbol_id, horizon=horizon)
+                        if row is not None:
+                            weight_source = "daily_symbol"
+                
+                metrics.log_weight_source(symbol, horizon, weight_source)
+                
                 if lw is not None:
                     try:
                         old_target = float(synth_result.target)
@@ -1669,6 +1805,11 @@ def process_symbol(symbol: str) -> None:
                 ensemble_weights=forecast.get("ensemble_weights"),
                 confidence_source=forecast.get("confidence_source"),
             )
+            metrics.log_db_write(symbol, "ml_forecasts")
+            
+            # Log forecast generation time
+            forecast_time = time.time() - symbol_start_time
+            metrics.log_forecast_time(symbol, forecast["horizon"], forecast_time)
 
             if existing_forecast:
                 forecast_id = existing_forecast.get("id")
@@ -1720,6 +1861,8 @@ def process_symbol(symbol: str) -> None:
 
     except Exception as e:
         logger.error(f"Error processing {symbol}: {e}", exc_info=True)
+        metrics = get_metrics()
+        metrics.log_error(symbol, str(e))
 
 
 def main() -> None:
@@ -1755,6 +1898,12 @@ def main() -> None:
     logger.info(f"Processed: {symbols_processed}")
     logger.info(f"Failed: {symbols_failed}")
     logger.info("=" * 80)
+    
+    # Save metrics
+    metrics = get_metrics()
+    metrics.metrics['symbols_processed'] = symbols_processed
+    metrics.metrics['symbols_failed'] = symbols_failed
+    metrics.save_to_file()
 
     # Export monitoring metrics if enhanced ensemble was used
     if _bool_env("ENABLE_ENHANCED_ENSEMBLE", default=False):

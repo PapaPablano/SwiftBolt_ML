@@ -68,14 +68,43 @@ source .venv/bin/activate
 pip install -e .
 ```
 
+**Recent Updates (Jan 2026)**: The ML forecasting pipeline has been consolidated and optimized:
+- Unified forecast processor (`unified_forecast_job.py`) replaces multiple legacy scripts
+- Split evaluation jobs (daily/intraday) for better data quality
+- Redis feature caching for 4-6x performance improvement
+- See `CONSOLIDATION_COMPLETE_SUMMARY.md` for details
+
+**Running Forecasts**:
+```bash
+# Generate daily forecasts (1D, 1W, 1M)
+python ml/src/unified_forecast_job.py
+
+# Generate intraday forecasts (15m, 1h)
+python ml/src/intraday_forecast_job.py
+
+# Evaluate daily forecasts
+python ml/src/evaluation_job_daily.py
+
+# Evaluate intraday forecasts
+python ml/src/evaluation_job_intraday.py
+```
+
 ### macOS Client
 
 Open `client-macos/SwiftBolt.xcodeproj` in Xcode and run.
 
 ## Documentation
 
+### Architecture & Design
 - [Master Blueprint](docs/master_blueprint.md) - Full architecture
 - [Implementation Checklist](docs/blueprint_checklist.md) - Progress tracker
+
+### ML Pipeline Consolidation (Jan 2026)
+- [Consolidation Summary](CONSOLIDATION_COMPLETE_SUMMARY.md) - Complete overview of Phases 1-4
+- [Implementation Plan](CONSOLIDATION_IMPLEMENTATION_PLAN.md) - Detailed consolidation roadmap
+- [Dependency Analysis](DEPENDENCY_ANALYSIS.md) - Original dependency mapping
+- [Test Suite](tests/audit_tests/README_PHASE3.md) - Testing documentation
+- [Legacy Scripts](ml/src/_legacy/README.md) - Archived code reference
 
 ## License
 

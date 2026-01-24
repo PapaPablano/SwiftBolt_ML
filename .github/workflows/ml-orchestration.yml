@@ -223,19 +223,20 @@ jobs:
           print('✅ OHLC validation passed for all checked symbols (critical checks only)')
           "
 
-      - name: Generate ML forecasts
+      - name: Generate ML forecasts (Unified)
         env:
           USE_ENSEMBLE_FORECASTER: "true"
           MIN_BARS_FOR_TRAINING: "50"
+          REDIS_FEATURE_CACHE: "false"  # Enable when Redis is available
         run: |
           cd ml
           
           if [ -n "${{ inputs.symbol }}" ]; then
             echo "📊 Forecasting single symbol: ${{ inputs.symbol }}"
-            python -m src.forecast_job --symbol "${{ inputs.symbol }}"
+            python -m src.unified_forecast_job --symbol "${{ inputs.symbol }}"
           else
             echo "📊 Forecasting all watchlist symbols"
-            python -m src.forecast_job
+            python -m src.unified_forecast_job
           fi
 
       - name: Job summary
@@ -344,11 +345,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
-      - name: Run ML evaluation (feedback loop)
+      - name: Run Daily ML evaluation (feedback loop)
         run: |
           cd ml
-          echo "📊 Running ML evaluation..."
-          python -m src.evaluation_job || echo "⚠️ Evaluation completed with warnings"
+          echo "📊 Running daily ML evaluation (1D, 1W, 1M)..."
+          python -m src.evaluation_job_daily || echo "⚠️ Evaluation completed with warnings"
+
+      - name: Populate live_predictions from evaluations
+        run: |
+          cd ml
+          echo "📊 Populating live_predictions table from recent evaluations..."
+          python -m src.scripts.populate_live_predictions --days-back 30 || echo "⚠️ Live predictions population completed with warnings"
 
       - name: Run unified validation
         run: |
