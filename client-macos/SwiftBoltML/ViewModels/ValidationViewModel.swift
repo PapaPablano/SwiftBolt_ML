@@ -19,6 +19,7 @@ final class ValidationViewModel: ObservableObject {
     private let pollInterval: TimeInterval = 300
     private let cacheDuration: TimeInterval = 300
     private var pollTask: Task<Void, Never>?
+    private var refreshTask: Task<Void, Never>?
     private var networkCancellable: AnyCancellable?
     private let networkMonitor: NetworkMonitor
     private let userDefaults: UserDefaults
@@ -58,20 +59,27 @@ final class ValidationViewModel: ObservableObject {
         stopMonitoring()
         self.symbol = normalized
         loadFromCache()
-        Task { await refresh(force: true) }
+        
+        // Cancel any existing refresh task and start new one
+        refreshTask?.cancel()
+        refreshTask = Task { await refresh(force: true) }
         startPolling()
     }
 
     func stopMonitoring() {
         pollTask?.cancel()
         pollTask = nil
+        refreshTask?.cancel()
+        refreshTask = nil
         symbol = nil
         isLoading = false
         error = nil
     }
 
     func manualRefresh() {
-        Task { await refresh(force: true) }
+        // Cancel any existing refresh and start new one
+        refreshTask?.cancel()
+        refreshTask = Task { await refresh(force: true) }
     }
 
     private func startPolling() {
@@ -156,6 +164,12 @@ final class ValidationViewModel: ObservableObject {
 
     func refresh(force: Bool) async {
         guard let symbol else { return }
+        
+        // Check if already refreshing (unless forced)
+        guard force || !isLoading else {
+            print("[ValidationViewModel] Already refreshing, skipping duplicate call")
+            return
+        }
 
         if isOffline {
             if force {
@@ -171,7 +185,12 @@ final class ValidationViewModel: ObservableObject {
 
         do {
             let latest = try await APIClient.shared.fetchUnifiedValidation(symbol: symbol)
+            // Check if task was cancelled before updating state
+            guard !Task.isCancelled else { return }
             updateState(with: latest)
+            isLoading = false
+        } catch is CancellationError {
+            // Swallow cancellation errors
             isLoading = false
         } catch {
             self.error = error.localizedDescription

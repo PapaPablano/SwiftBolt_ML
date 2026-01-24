@@ -53,6 +53,10 @@ final class APIClient {
     private let baseURL: URL
     private let functionsBase: URL
     private let session: URLSession
+    
+    // Request deduplication: track in-flight requests by URL
+    private var inFlightRequests: [String: Task<Data, Error>] = [:]
+    private let requestLock = NSLock()
 
     private init() {
         self.baseURL = Config.supabaseURL
@@ -121,20 +125,121 @@ final class APIClient {
     }
 
     func performRequest<T: Decodable>(_ request: URLRequest) async throws -> T {
-        print("[DEBUG] API Request: \(request.url?.absoluteString ?? "nil")")
+        guard let url = request.url else {
+            throw APIError.invalidURL
+        }
+        
+        let requestKey = url.absoluteString
+        
+        // Check for duplicate in-flight request
+        requestLock.lock()
+        if let existingTask = inFlightRequests[requestKey] {
+            requestLock.unlock()
+            print("[DEBUG] 🔄 Deduplicating API request: \(requestKey)")
+            // Return existing request result
+            let data = try await existingTask.value
+            let decoder = JSONDecoder()
+            return try decoder.decode(T.self, from: data)
+        }
+        requestLock.unlock()
+        
+        print("[DEBUG] API Request: \(requestKey)")
 
-        let data: Data
-        let response: URLResponse
+        // Create new request task
+        let task = Task<Data, Error> {
+            defer {
+                requestLock.lock()
+                inFlightRequests.removeValue(forKey: requestKey)
+                requestLock.unlock()
+            }
+            
+            let data: Data
+            let response: URLResponse
+
+            do {
+                (data, response) = try await session.data(for: request)
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                print("[DEBUG] Network request cancelled")
+                throw CancellationError()
+            } catch {
+                print("[DEBUG] Network error: \(error)")
+                throw APIError.networkError(error)
+            }
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.invalidResponse
+            }
+            
+            print("[DEBUG] API Response status: \(httpResponse.statusCode)")
+            
+            guard (200...299).contains(httpResponse.statusCode) else {
+                let message = String(data: data, encoding: .utf8)
+                print("[DEBUG] API Error response: \(message ?? "nil")")
+                
+                // Parse specific error types from backend
+                switch httpResponse.statusCode {
+                case 401, 403:
+                    throw APIError.authenticationError(message: message ?? "Authentication failed")
+                case 404:
+                    // Try to extract symbol from error message
+                    if let msg = message, msg.contains("Symbol") {
+                        let symbol = msg.components(separatedBy: " ").first(where: { $0.uppercased() == $0 && $0.count <= 5 }) ?? "unknown"
+                        throw APIError.invalidSymbol(symbol: symbol)
+                    }
+                    throw APIError.httpError(statusCode: httpResponse.statusCode, message: message)
+                case 429:
+                    // Parse Retry-After header if present
+                    let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init)
+                    throw APIError.rateLimitExceeded(retryAfter: retryAfter)
+                case 500...599:
+                    throw APIError.serviceUnavailable(message: message ?? "Server error")
+                default:
+                    throw APIError.httpError(statusCode: httpResponse.statusCode, message: message)
+                }
+            }
+            
+            return data
+        }
+        
+        // Store task for deduplication
+        requestLock.lock()
+        inFlightRequests[requestKey] = task
+        requestLock.unlock()
+        
+        let data = try await task.value
+        
+        // Debug: print raw response
+        if let jsonString = String(data: data, encoding: .utf8) {
+            print("[DEBUG] API Response body: \(jsonString.prefix(500))")
+            #if DEBUG
+            if let urlString = request.url?.absoluteString, urlString.contains("/ml-dashboard") {
+                do {
+                    if let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        let hasValidation = obj["validationMetrics"] != nil
+                        print("[DEBUG] ml-dashboard has validationMetrics: \(hasValidation)")
+                        if let vm = obj["validationMetrics"] as? [String: Any] {
+                            let sharpe = vm["sharpe_ratio"] ?? "nil"
+                            let kendall = vm["kendall_tau"] ?? "nil"
+                            let ttest = vm["t_test_p_value"] ?? "nil"
+                            let mc = vm["monte_carlo_luck"] ?? "nil"
+                            print("[DEBUG] validationMetrics(sharpe_ratio=\(sharpe), kendall_tau=\(kendall), monte_carlo_luck=\(mc), t_test_p_value=\(ttest))")
+                        }
+                    }
+                } catch {
+                    print("[DEBUG] ml-dashboard JSON parse error: \(error)")
+                }
+            }
+            #endif
+        }
 
         do {
-            (data, response) = try await session.data(for: request)
-        } catch let urlError as URLError where urlError.code == .cancelled {
-            print("[DEBUG] Network request cancelled")
-            throw CancellationError()
+            let decoder = JSONDecoder()
+            return try decoder.decode(T.self, from: data)
         } catch {
-            print("[DEBUG] Network error: \(error)")
-            throw APIError.networkError(error)
+            print("[DEBUG] Decoding error: \(error)")
+            throw APIError.decodingError(error)
         }
+    }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.invalidResponse
@@ -233,55 +338,92 @@ final class APIClient {
 
     /// Enhanced performRequest with response header logging for chart data debugging
     func performRequestWithHeaderLogging<T: Decodable>(_ request: URLRequest, symbol: String, timeframe: String) async throws -> T {
-        print("[DEBUG] API Request: \(request.url?.absoluteString ?? "nil")")
-
-        let data: Data
-        let response: URLResponse
-
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch let urlError as URLError where urlError.code == .cancelled {
-            print("[DEBUG] Network request cancelled")
-            throw CancellationError()
-        } catch {
-            print("[DEBUG] Network error: \(error)")
-            throw APIError.networkError(error)
+        // Use the same deduplication logic as performRequest
+        guard let url = request.url else {
+            throw APIError.invalidURL
         }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
+        
+        let requestKey = url.absoluteString
+        
+        // Check for duplicate in-flight request
+        requestLock.lock()
+        if let existingTask = inFlightRequests[requestKey] {
+            requestLock.unlock()
+            print("[DEBUG] 🔄 Deduplicating API request (with header logging): \(requestKey)")
+            // Return existing request result
+            let data = try await existingTask.value
+            let decoder = JSONDecoder()
+            return try decoder.decode(T.self, from: data)
         }
+        requestLock.unlock()
+        
+        print("[DEBUG] API Request: \(requestKey)")
 
-        // Log response headers for cache debugging
-        logResponseHeaders(httpResponse, symbol: symbol, timeframe: timeframe)
-
-        print("[DEBUG] API Response status: \(httpResponse.statusCode)")
-
-        guard (200...299).contains(httpResponse.statusCode) else {
-            let message = String(data: data, encoding: .utf8)
-            print("[DEBUG] API Error response: \(message ?? "nil")")
-            
-            // Parse specific error types from backend
-            switch httpResponse.statusCode {
-            case 401, 403:
-                throw APIError.authenticationError(message: message ?? "Authentication failed")
-            case 404:
-                // Try to extract symbol from error message
-                if let msg = message, msg.contains("Symbol") {
-                    let symbol = msg.components(separatedBy: " ").first(where: { $0.uppercased() == $0 && $0.count <= 5 }) ?? "unknown"
-                    throw APIError.invalidSymbol(symbol: symbol)
-                }
-                throw APIError.httpError(statusCode: httpResponse.statusCode, message: message)
-            case 429:
-                // Parse Retry-After header if present
-                let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init)
-                throw APIError.rateLimitExceeded(retryAfter: retryAfter)
-            case 500...599:
-                throw APIError.serviceUnavailable(message: message ?? "Server error")
-            default:
-                throw APIError.httpError(statusCode: httpResponse.statusCode, message: message)
+        // Create new request task
+        let task = Task<Data, Error> {
+            defer {
+                requestLock.lock()
+                inFlightRequests.removeValue(forKey: requestKey)
+                requestLock.unlock()
             }
+            
+            let data: Data
+            let response: URLResponse
+
+            do {
+                (data, response) = try await session.data(for: request)
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                print("[DEBUG] Network request cancelled")
+                throw CancellationError()
+            } catch {
+                print("[DEBUG] Network error: \(error)")
+                throw APIError.networkError(error)
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.invalidResponse
+            }
+
+            // Log response headers for cache debugging
+            logResponseHeaders(httpResponse, symbol: symbol, timeframe: timeframe)
+
+            print("[DEBUG] API Response status: \(httpResponse.statusCode)")
+
+            guard (200...299).contains(httpResponse.statusCode) else {
+                let message = String(data: data, encoding: .utf8)
+                print("[DEBUG] API Error response: \(message ?? "nil")")
+                
+                // Parse specific error types from backend
+                switch httpResponse.statusCode {
+                case 401, 403:
+                    throw APIError.authenticationError(message: message ?? "Authentication failed")
+                case 404:
+                    // Try to extract symbol from error message
+                    if let msg = message, msg.contains("Symbol") {
+                        let symbol = msg.components(separatedBy: " ").first(where: { $0.uppercased() == $0 && $0.count <= 5 }) ?? "unknown"
+                        throw APIError.invalidSymbol(symbol: symbol)
+                    }
+                    throw APIError.httpError(statusCode: httpResponse.statusCode, message: message)
+                case 429:
+                    // Parse Retry-After header if present
+                    let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init)
+                    throw APIError.rateLimitExceeded(retryAfter: retryAfter)
+                case 500...599:
+                    throw APIError.serviceUnavailable(message: message ?? "Server error")
+                default:
+                    throw APIError.httpError(statusCode: httpResponse.statusCode, message: message)
+                }
+            }
+            
+            return data
         }
+        
+        // Store task for deduplication
+        requestLock.lock()
+        inFlightRequests[requestKey] = task
+        requestLock.unlock()
+        
+        let data = try await task.value
 
         // Debug: print raw response
         if let jsonString = String(data: data, encoding: .utf8) {

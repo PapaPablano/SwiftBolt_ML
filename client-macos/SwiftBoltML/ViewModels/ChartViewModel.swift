@@ -20,8 +20,18 @@ final class ChartViewModel: ObservableObject {
                 stopHydrationPoller()
                 stopCoverageCheck()
                 hydrationBanner = nil
-                // Trigger chart load on symbol change
-                Task { await loadChart() }
+                
+                // Cancel any pending load task
+                loadTask?.cancel()
+                
+                // Defer to next run loop and add debounce to prevent duplicate loads
+                loadTask = Task { @MainActor in
+                    // Small debounce to prevent rapid successive calls
+                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
+                    if !Task.isCancelled {
+                        await loadChart()
+                    }
+                }
             }
         }
     }
@@ -32,7 +42,17 @@ final class ChartViewModel: ObservableObject {
             stopCoverageCheck()
             stopChartAutoRefresh()  // Restart refresh timer with new timeframe interval
             print("[DEBUG] 🕒 timeframe changed to \(timeframe.rawValue) (apiToken=\(timeframe.apiToken))")
-            Task { await loadChart() }
+            
+            // Cancel any pending load task
+            loadTask?.cancel()
+            
+            // Defer to next run loop to avoid publishing changes during view updates
+            loadTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s debounce
+                if !Task.isCancelled {
+                    await loadChart()
+                }
+            }
         }
     }
     @Published private(set) var chartData: ChartResponse? {
@@ -1598,7 +1618,14 @@ final class ChartViewModel: ObservableObject {
             
             if shouldRefresh {
                 // Check if enough time has passed since last refresh
-                let timeSinceLastRefresh = Date().timeIntervalSince(lastChartRefreshTime)
+                // Only calculate if lastChartRefreshTime has been set (not .distantPast)
+                let timeSinceLastRefresh: TimeInterval
+                if lastChartRefreshTime == .distantPast {
+                    // First refresh - allow it immediately
+                    timeSinceLastRefresh = currentTimeframe.minRefreshSeconds
+                } else {
+                    timeSinceLastRefresh = Date().timeIntervalSince(lastChartRefreshTime)
+                }
                 
                 if timeSinceLastRefresh >= currentTimeframe.minRefreshSeconds {
                     // Update timestamp BEFORE calling loadChart to prevent concurrent refresh calls

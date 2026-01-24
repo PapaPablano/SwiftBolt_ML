@@ -15,7 +15,10 @@ final class AppViewModel: ObservableObject {
                 let stack = Thread.callStackSymbols.prefix(12).joined(separator: "\n")
                 print("[DEBUG] 🔴 selectedSymbol cleared to nil. Call stack:\n\(stack)")
             }
-            handleSymbolChange()
+            // Defer to next run loop to avoid publishing changes during view updates
+            Task { @MainActor in
+                await handleSymbolChange()
+            }
         }
     }
 
@@ -134,7 +137,7 @@ final class AppViewModel: ObservableObject {
 
     }
 
-    private func handleSymbolChange() {
+    private func handleSymbolChange() async {
         print("[DEBUG] ========================================")
         print("[DEBUG] AppViewModel.handleSymbolChange() triggered")
         print("[DEBUG] - New symbol: \(selectedSymbol?.ticker ?? "nil")")

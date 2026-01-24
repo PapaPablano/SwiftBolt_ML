@@ -211,30 +211,54 @@ class MultiLegViewModel: ObservableObject {
     }
 
     // MARK: - Strategy Detail
+    
+    private var detailLoadTask: Task<Void, Never>?
+    private var currentLoadingStrategyId: String?
 
     func loadStrategyDetail(strategyId: String) async {
+        // Prevent duplicate calls for the same strategy
+        guard currentLoadingStrategyId != strategyId else {
+            print("[MultiLeg] Already loading detail for strategy: \(strategyId), skipping duplicate call")
+            return
+        }
+        
+        // Cancel any existing load task
+        detailLoadTask?.cancel()
+        
+        currentLoadingStrategyId = strategyId
         isLoadingDetail = true
         errorMessage = nil
 
-        do {
-            let response = try await APIClient.shared.getMultiLegStrategyDetail(strategyId: strategyId)
-            strategyDetail = response
+        detailLoadTask = Task {
+            do {
+                let response = try await APIClient.shared.getMultiLegStrategyDetail(strategyId: strategyId)
+                
+                // Check if task was cancelled
+                guard !Task.isCancelled else { return }
+                
+                strategyDetail = response
 
-            // Update the strategy in the list if it exists
-            if let index = strategies.firstIndex(where: { $0.id == strategyId }) {
-                var updated = response.strategy
-                updated.legs = response.legs
-                updated.alerts = response.alerts
-                strategies[index] = updated
+                // Update the strategy in the list if it exists
+                if let index = strategies.firstIndex(where: { $0.id == strategyId }) {
+                    var updated = response.strategy
+                    updated.legs = response.legs
+                    updated.alerts = response.alerts
+                    strategies[index] = updated
+                }
+
+                print("[MultiLeg] Loaded detail for strategy: \(response.strategy.name)")
+            } catch is CancellationError {
+                // Swallow cancellation errors
+            } catch {
+                errorMessage = error.localizedDescription
+                print("[MultiLeg] Error loading strategy detail: \(error)")
             }
-
-            print("[MultiLeg] Loaded detail for strategy: \(response.strategy.name)")
-        } catch {
-            errorMessage = error.localizedDescription
-            print("[MultiLeg] Error loading strategy detail: \(error)")
+            
+            currentLoadingStrategyId = nil
+            isLoadingDetail = false
         }
-
-        isLoadingDetail = false
+        
+        await detailLoadTask?.value
     }
 
     func selectStrategy(_ strategy: MultiLegStrategy) {
@@ -245,6 +269,9 @@ class MultiLegViewModel: ObservableObject {
     }
 
     func clearSelection() {
+        detailLoadTask?.cancel()
+        detailLoadTask = nil
+        currentLoadingStrategyId = nil
         selectedStrategy = nil
         strategyDetail = nil
     }
