@@ -141,6 +141,120 @@ class SupportResistanceDetector:
         """
         return self.logistic_indicator.calculate(df)
 
+    def calculate_anchor_zones(
+        self,
+        df: pd.DataFrame,
+        current_price: float,
+        lookback: int = 120,
+        min_z: float = 1.2,
+        max_zones: int = 3,
+    ) -> Dict[str, Any]:
+        """
+        Identify anchor zones where volume and range spike together.
+
+        Anchor zones are high-volume, wide-range bars that often mark
+        price exhaustion and act as strong support/resistance zones.
+        """
+        if df.empty or "high" not in df.columns or "low" not in df.columns:
+            return {"support_zones": [], "resistance_zones": [], "zones": []}
+
+        window = df.tail(max(20, lookback)).copy()
+        window["range"] = (window["high"].astype(float) - window["low"].astype(float)).abs()
+
+        if "volume" in window.columns:
+            volume = window["volume"].astype(float)
+        else:
+            volume = pd.Series(np.zeros(len(window)), index=window.index)
+
+        range_mean = window["range"].mean()
+        range_std = window["range"].std() or 1.0
+        vol_mean = volume.mean()
+        vol_std = volume.std() or 1.0
+
+        window["range_z"] = (window["range"] - range_mean) / range_std
+        window["vol_z"] = (volume - vol_mean) / vol_std
+        window["strength"] = window["range_z"] + window["vol_z"]
+
+        anchors = window[(window["range_z"] >= min_z) & (window["vol_z"] >= min_z)]
+        if anchors.empty:
+            return {"support_zones": [], "resistance_zones": [], "zones": []}
+
+        bin_size = max(current_price * 0.005, 0.01)
+        buckets: Dict[float, List[Dict[str, Any]]] = {}
+
+        for _, row in anchors.iterrows():
+            low = float(row["low"])
+            high = float(row["high"])
+            mid = (low + high) / 2
+            strength = float(row["strength"])
+            bucket_key = round(mid / bin_size) * bin_size
+            buckets.setdefault(bucket_key, []).append(
+                {
+                    "low": low,
+                    "high": high,
+                    "price": mid,
+                    "strength": strength,
+                }
+            )
+
+        zones: List[Dict[str, Any]] = []
+        for bucket_key, items in buckets.items():
+            total_strength = sum(item["strength"] for item in items)
+            if total_strength <= 0:
+                continue
+            weighted_mid = sum(item["price"] * item["strength"] for item in items) / total_strength
+            zones.append(
+                {
+                    "price": round(weighted_mid, 2),
+                    "low": round(min(item["low"] for item in items), 2),
+                    "high": round(max(item["high"] for item in items), 2),
+                    "strength": round(total_strength, 2),
+                }
+            )
+
+        support_zones = [z for z in zones if z["price"] < current_price]
+        resistance_zones = [z for z in zones if z["price"] > current_price]
+
+        support_zones = sorted(support_zones, key=lambda z: z["strength"], reverse=True)[:max_zones]
+        resistance_zones = sorted(resistance_zones, key=lambda z: z["strength"], reverse=True)[:max_zones]
+
+        return {
+            "support_zones": support_zones,
+            "resistance_zones": resistance_zones,
+            "zones": zones,
+        }
+
+    def calculate_moving_average_levels(
+        self,
+        df: pd.DataFrame,
+        current_price: float,
+    ) -> Dict[str, Any]:
+        """Extract key moving average levels for S/R context."""
+        if df.empty or "close" not in df.columns:
+            return {"levels": []}
+
+        close = df["close"].astype(float)
+        levels: List[Dict[str, Any]] = []
+
+        def _ma(name: str, window: int) -> Optional[float]:
+            if len(close) < window:
+                return None
+            return float(close.rolling(window=window, min_periods=1).mean().iloc[-1])
+
+        for name, window in [("SMA20", 20), ("SMA50", 50), ("SMA200", 200)]:
+            value = _ma(name, window)
+            if value is None:
+                continue
+            levels.append(
+                {
+                    "name": name,
+                    "level": round(value, 2),
+                    "role": "support" if value < current_price else "resistance",
+                }
+            )
+
+        return {"levels": levels}
+
     # =========================================================================
     # METHOD 1: ZIGZAG INDICATOR
     # =========================================================================
@@ -665,6 +779,9 @@ class SupportResistanceDetector:
         pivot_result = self.calculate_pivot_levels(df)
         poly_result = self.calculate_polynomial_sr(df)
         logistic_result = self.calculate_logistic_sr(df)
+        anchor_zones = self.calculate_anchor_zones(df, current_price)
+        ma_levels = self.calculate_moving_average_levels(df, current_price)
+        fib = self.fibonacci_retracement(df, fib_lookback)
 
         # Collect all support candidates
         all_supports = []
@@ -709,6 +826,33 @@ class SupportResistanceDetector:
         for level in logistic_result.get("resistance_levels", []):
             if level.get("level") and level["level"] > current_price:
                 all_resistances.append(level["level"])
+
+        # From Anchor Zones
+        for zone in anchor_zones.get("support_zones", []):
+            level = zone.get("price")
+            if level and level < current_price:
+                all_supports.append(level)
+        for zone in anchor_zones.get("resistance_zones", []):
+            level = zone.get("price")
+            if level and level > current_price:
+                all_resistances.append(level)
+
+        # From Moving Averages
+        for level in ma_levels.get("levels", []):
+            value = level.get("level")
+            if value is None:
+                continue
+            if value < current_price:
+                all_supports.append(value)
+            elif value > current_price:
+                all_resistances.append(value)
+
+        # From Fibonacci Retracement
+        for fib_level in fib.get("levels", {}).values():
+            if fib_level < current_price:
+                all_supports.append(fib_level)
+            elif fib_level > current_price:
+                all_resistances.append(fib_level)
 
         # Filter and sort (remove duplicates)
         supports_below = sorted(
@@ -817,10 +961,16 @@ class SupportResistanceDetector:
             "period_high": period_high,
             "period_low": period_low,
             "computed_at": computed_at,
+            "anchor_zones": anchor_zones,
+            "moving_averages": ma_levels,
+            "fibonacci": fib,
             "indicators": {
                 "pivot_levels": pivot_result,
                 "polynomial": poly_result,
                 "logistic": logistic_result,
+                "anchor_zones": anchor_zones,
+                "moving_averages": ma_levels,
+                "fibonacci": fib,
             },
             # Legacy key for backwards compatibility
             "methods": {
@@ -849,7 +999,9 @@ class SupportResistanceDetector:
                     "resistance_zones": [],
                     "cluster_labels": [],
                 },
-                "fibonacci": {"levels": {}},
+                "anchor_zones": anchor_zones,
+                "moving_averages": ma_levels,
+                "fibonacci": fib,
             },
         }
 

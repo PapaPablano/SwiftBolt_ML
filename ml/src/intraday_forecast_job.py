@@ -278,6 +278,9 @@ def convert_sr_to_synthesizer_format(
         "logistic": logistic,
         "nearestSupport": sr_levels.get("nearest_support", current_price * 0.95),
         "nearestResistance": sr_levels.get("nearest_resistance", current_price * 1.05),
+        "anchorZones": sr_levels.get("anchor_zones", {}),
+        "movingAverages": (sr_levels.get("moving_averages") or {}).get("levels", []),
+        "fibonacci": sr_levels.get("fibonacci", {}),
     }
 
 

@@ -37,6 +37,14 @@ class ForecastResult:
     ml_component: float
     sr_constraint_range: str
 
+    # Target ladder + quality
+    tp1: Optional[float] = None
+    tp2: Optional[float] = None
+    tp3: Optional[float] = None
+    stop_loss: Optional[float] = None
+    quality_score: Optional[float] = None
+    confluence_score: Optional[float] = None
+
     # Metadata
     current_price: float = 0.0  # Current price (for forecast points)
     symbol: Optional[str] = None
@@ -56,6 +64,12 @@ class ForecastResult:
             "polynomial_component": self.polynomial_component,
             "ml_component": self.ml_component,
             "sr_constraint_range": self.sr_constraint_range,
+            "tp1": self.tp1,
+            "tp2": self.tp2,
+            "tp3": self.tp3,
+            "stop_loss": self.stop_loss,
+            "quality_score": self.quality_score,
+            "confluence_score": self.confluence_score,
             "current_price": self.current_price,
             "symbol": self.symbol,
             "horizon": self.horizon,
@@ -150,6 +164,9 @@ class ForecastSynthesizer:
         Returns:
             ForecastResult with target, bands, confidence
         """
+        # Normalize S/R structure
+        sr_response = self._normalize_sr_response(sr_response, current_price)
+
         # ===== LAYER 1: SuperTrend Bias =====
         trend_direction = supertrend_info.get("current_trend", "NEUTRAL")
         signal_strength = supertrend_info.get("signal_strength", 5) / 10.0  # Normalize to 0-1
@@ -343,6 +360,28 @@ class ForecastSynthesizer:
             atr=atr,
         )
 
+        # 6. Build price target ladder + quality score
+        target_ladder = self._build_price_targets(
+            direction=direction,
+            confidence=confidence,
+            current_price=current_price,
+            sr_response=sr_response,
+            atr=atr,
+        )
+        tp1 = target_ladder.get("tp1")
+        tp2 = target_ladder.get("tp2")
+        tp3 = target_ladder.get("tp3")
+        stop_loss = target_ladder.get("stop_loss")
+
+        if tp1 is not None:
+            primary_target = float(tp1)
+
+        quality_score, confluence_score = self._score_target_confluence(
+            target=primary_target,
+            sr_response=sr_response,
+            current_price=current_price,
+        )
+
         return ForecastResult(
             target=round(primary_target, 2),
             upper_band=round(upper_band, 2),
@@ -360,6 +399,12 @@ class ForecastSynthesizer:
                 else round(current_price, 2)
             ),
             sr_constraint_range=f"{round(lower_band, 2)} - {round(upper_band, 2)}",
+            tp1=tp1,
+            tp2=tp2,
+            tp3=tp3,
+            stop_loss=stop_loss,
+            quality_score=quality_score,
+            confluence_score=confluence_score,
             current_price=round(current_price, 2),
             symbol=symbol,
             horizon="1D",
@@ -454,6 +499,8 @@ class ForecastSynthesizer:
         """Calculate weighted S/R level from all 3 indicators."""
         weights = self.weights.sr_weights
 
+        sr_response = self._normalize_sr_response(sr_response, current_price)
+
         # Get pivot level (use 100-bar as strongest structure)
         pivot_levels = sr_response.get("pivotLevels", {})
         if is_support:
@@ -495,14 +542,127 @@ class ForecastSynthesizer:
         else:
             logistic_val = poly
 
-        # Weighted combination
-        weighted = (
-            pivot * weights["pivot_levels"]
-            + poly * weights["polynomial"]
-            + logistic_val * weights["logistic"]
-        )
+        # Anchor zones
+        anchor_zones = sr_response.get("anchorZones", {})
+        if is_support:
+            anchor_candidates = anchor_zones.get("support_zones", [])
+            anchor_val = anchor_candidates[0]["price"] if anchor_candidates else None
+        else:
+            anchor_candidates = anchor_zones.get("resistance_zones", [])
+            anchor_val = anchor_candidates[0]["price"] if anchor_candidates else None
 
-        return weighted
+        # Moving averages
+        ma_levels = sr_response.get("movingAverages", [])
+        if is_support:
+            ma_candidates = [lvl["level"] for lvl in ma_levels if lvl.get("level") and lvl["level"] < current_price]
+            ma_val = max(ma_candidates) if ma_candidates else None
+        else:
+            ma_candidates = [lvl["level"] for lvl in ma_levels if lvl.get("level") and lvl["level"] > current_price]
+            ma_val = min(ma_candidates) if ma_candidates else None
+
+        # Fibonacci
+        fib_levels = list((sr_response.get("fibonacci", {}) or {}).get("levels", {}).values())
+        if is_support:
+            fib_candidates = [lvl for lvl in fib_levels if lvl < current_price]
+            fib_val = max(fib_candidates) if fib_candidates else None
+        else:
+            fib_candidates = [lvl for lvl in fib_levels if lvl > current_price]
+            fib_val = min(fib_candidates) if fib_candidates else None
+
+        method_values = {
+            "anchor_zones": anchor_val,
+            "pivot_levels": pivot,
+            "polynomial": poly,
+            "moving_averages": ma_val,
+            "fibonacci": fib_val,
+            "logistic": logistic_val,
+        }
+
+        active_weights = {
+            key: weight for key, weight in weights.items() if method_values.get(key) is not None
+        }
+        total_weight = sum(active_weights.values())
+        if total_weight <= 0:
+            return pivot
+
+        weighted = sum(method_values[key] * weight for key, weight in active_weights.items()) / total_weight
+        return float(weighted)
+
+    def _normalize_sr_response(self, sr_response: Dict, current_price: float) -> Dict:
+        """Normalize S/R response into synthesizer-friendly structure."""
+        if "pivotLevels" in sr_response:
+            normalized = dict(sr_response)
+        else:
+            indicators = sr_response.get("indicators", {}) if isinstance(sr_response, dict) else {}
+
+            poly_in = indicators.get("polynomial", {})
+            polynomial = {
+                "support": poly_in.get("current_support", current_price * 0.95),
+                "resistance": poly_in.get("current_resistance", current_price * 1.05),
+                "supportSlope": poly_in.get("support_slope", 0),
+                "resistanceSlope": poly_in.get("resistance_slope", 0),
+                "supportTrend": "rising" if poly_in.get("support_slope", 0) > 0 else "falling",
+                "resistanceTrend": "rising" if poly_in.get("resistance_slope", 0) > 0 else "falling",
+                "forecastSupport": poly_in.get("forecast_support", []),
+                "forecastResistance": poly_in.get("forecast_resistance", []),
+                "isDiverging": poly_in.get("is_diverging", False),
+                "isConverging": poly_in.get("is_converging", False),
+            }
+
+            logistic_in = indicators.get("logistic", {})
+            logistic = {
+                "supportLevels": [
+                    {"level": lvl.get("level", 0), "probability": lvl.get("probability", 0.5)}
+                    for lvl in logistic_in.get("support_levels", [])
+                ],
+                "resistanceLevels": [
+                    {"level": lvl.get("level", 0), "probability": lvl.get("probability", 0.5)}
+                    for lvl in logistic_in.get("resistance_levels", [])
+                ],
+                "signals": logistic_in.get("signals", []),
+            }
+
+            pivot_in = indicators.get("pivot_levels", {})
+            pivot_levels_list = pivot_in.get("pivot_levels", [])
+            pivot_levels = {}
+            for pl in pivot_levels_list:
+                period = pl.get("period", 5)
+                key = f"period{period}"
+                pivot_levels[key] = {
+                    "high": pl.get("high"),
+                    "low": pl.get("low"),
+                    "highStatus": pl.get("high_status", "active"),
+                    "lowStatus": pl.get("low_status", "active"),
+                }
+
+            for period in [5, 25, 50, 100]:
+                key = f"period{period}"
+                if key not in pivot_levels:
+                    pivot_levels[key] = {
+                        "high": current_price * 1.02,
+                        "low": current_price * 0.98,
+                        "highStatus": "active",
+                        "lowStatus": "active",
+                    }
+
+            normalized = {
+                "pivotLevels": pivot_levels,
+                "polynomial": polynomial,
+                "logistic": logistic,
+                "nearestSupport": sr_response.get("nearest_support", current_price * 0.95),
+                "nearestResistance": sr_response.get("nearest_resistance", current_price * 1.05),
+                "anchorZones": sr_response.get("anchor_zones", indicators.get("anchor_zones", {})),
+                "movingAverages": (sr_response.get("moving_averages") or {}).get("levels")
+                if isinstance(sr_response.get("moving_averages"), dict)
+                else sr_response.get("moving_averages")
+                or indicators.get("moving_averages", {}).get("levels", []),
+                "fibonacci": sr_response.get("fibonacci", indicators.get("fibonacci", {})),
+            }
+
+        normalized.setdefault("anchorZones", {"support_zones": [], "resistance_zones": [], "zones": []})
+        normalized.setdefault("movingAverages", [])
+        normalized.setdefault("fibonacci", {"levels": {}})
+        return normalized
 
     def _calculate_bullish_target(
         self,
@@ -601,6 +761,191 @@ class ForecastSynthesizer:
         lower_band = support_cap
 
         return primary_target, upper_band, lower_band
+
+    def _collect_sr_levels(
+        self,
+        sr_response: Dict,
+        current_price: float,
+    ) -> Tuple[List[float], List[float]]:
+        """Collect support/resistance level candidates across methods."""
+        sr_response = self._normalize_sr_response(sr_response, current_price)
+
+        supports: List[float] = []
+        resistances: List[float] = []
+
+        pivot_levels = sr_response.get("pivotLevels", {})
+        for period in pivot_levels.values():
+            low = period.get("low")
+            high = period.get("high")
+            if low and low < current_price:
+                supports.append(float(low))
+            if high and high > current_price:
+                resistances.append(float(high))
+
+        polynomial = sr_response.get("polynomial", {})
+        poly_support = polynomial.get("support")
+        poly_resistance = polynomial.get("resistance")
+        if poly_support and poly_support < current_price:
+            supports.append(float(poly_support))
+        if poly_resistance and poly_resistance > current_price:
+            resistances.append(float(poly_resistance))
+
+        logistic = sr_response.get("logistic", {})
+        for lvl in logistic.get("supportLevels", []):
+            level = lvl.get("level")
+            if level and level < current_price:
+                supports.append(float(level))
+        for lvl in logistic.get("resistanceLevels", []):
+            level = lvl.get("level")
+            if level and level > current_price:
+                resistances.append(float(level))
+
+        anchor_zones = sr_response.get("anchorZones", {})
+        for zone in anchor_zones.get("support_zones", []):
+            level = zone.get("price")
+            if level and level < current_price:
+                supports.append(float(level))
+        for zone in anchor_zones.get("resistance_zones", []):
+            level = zone.get("price")
+            if level and level > current_price:
+                resistances.append(float(level))
+
+        ma_levels = sr_response.get("movingAverages", [])
+        for level in ma_levels:
+            value = level.get("level")
+            if value is None:
+                continue
+            if value < current_price:
+                supports.append(float(value))
+            elif value > current_price:
+                resistances.append(float(value))
+
+        fib_levels = list((sr_response.get("fibonacci", {}) or {}).get("levels", {}).values())
+        for level in fib_levels:
+            if level < current_price:
+                supports.append(float(level))
+            elif level > current_price:
+                resistances.append(float(level))
+
+        supports = sorted(set(supports), reverse=True)
+        resistances = sorted(set(resistances))
+        return supports, resistances
+
+    def _score_target_confluence(
+        self,
+        target: float,
+        sr_response: Dict,
+        current_price: float,
+        tolerance_pct: float = 0.0075,
+    ) -> Tuple[float, float]:
+        """Score how many S/R methods align with the target."""
+        sr_response = self._normalize_sr_response(sr_response, current_price)
+        tolerance = max(current_price * tolerance_pct, 0.01)
+
+        method_hits = 0
+        method_total = 0
+
+        def _hit(levels: List[float]) -> bool:
+            return any(abs(level - target) <= tolerance for level in levels)
+
+        supports, resistances = self._collect_sr_levels(sr_response, current_price)
+        combined = supports + resistances
+
+        # Pivot
+        pivot_levels = sr_response.get("pivotLevels", {})
+        pivot_values = []
+        for period in pivot_levels.values():
+            pivot_values.extend([period.get("low"), period.get("high")])
+        pivot_values = [v for v in pivot_values if isinstance(v, (int, float))]
+        if pivot_values:
+            method_total += 1
+            if _hit(pivot_values):
+                method_hits += 1
+
+        # Polynomial
+        polynomial = sr_response.get("polynomial", {})
+        poly_values = [polynomial.get("support"), polynomial.get("resistance")]
+        poly_values = [v for v in poly_values if isinstance(v, (int, float))]
+        if poly_values:
+            method_total += 1
+            if _hit(poly_values):
+                method_hits += 1
+
+        # Logistic
+        logistic = sr_response.get("logistic", {})
+        log_values = [lvl.get("level") for lvl in logistic.get("supportLevels", []) + logistic.get("resistanceLevels", [])]
+        log_values = [v for v in log_values if isinstance(v, (int, float))]
+        if log_values:
+            method_total += 1
+            if _hit(log_values):
+                method_hits += 1
+
+        # Anchor zones
+        anchor_zones = sr_response.get("anchorZones", {})
+        anchor_values = [z.get("price") for z in anchor_zones.get("support_zones", []) + anchor_zones.get("resistance_zones", [])]
+        anchor_values = [v for v in anchor_values if isinstance(v, (int, float))]
+        if anchor_values:
+            method_total += 1
+            if _hit(anchor_values):
+                method_hits += 1
+
+        # Moving averages
+        ma_values = [lvl.get("level") for lvl in sr_response.get("movingAverages", [])]
+        ma_values = [v for v in ma_values if isinstance(v, (int, float))]
+        if ma_values:
+            method_total += 1
+            if _hit(ma_values):
+                method_hits += 1
+
+        # Fibonacci
+        fib_values = list((sr_response.get("fibonacci", {}) or {}).get("levels", {}).values())
+        if fib_values:
+            method_total += 1
+            if _hit(fib_values):
+                method_hits += 1
+
+        confluence = method_hits / max(method_total, 1)
+        quality = min(100.0, 40.0 + confluence * 60.0)
+        return round(quality, 1), round(confluence * 100.0, 1)
+
+    def _build_price_targets(
+        self,
+        direction: str,
+        confidence: float,
+        current_price: float,
+        sr_response: Dict,
+        atr: float,
+    ) -> Dict[str, float]:
+        """Generate directional price targets + stop based on S/R structure."""
+        supports, resistances = self._collect_sr_levels(sr_response, current_price)
+        bonus_pct = min(0.02, max(0.0025, confidence * 0.01))
+
+        if direction == "BULLISH":
+            base_res = resistances[0] if resistances else current_price + atr
+            next_res = resistances[1] if len(resistances) > 1 else base_res + atr
+            tp1 = base_res * (1 + bonus_pct)
+            tp2 = (tp1 + next_res) / 2
+            tp3 = next_res
+            stop = (supports[0] if supports else current_price - atr) * 0.995
+        elif direction == "BEARISH":
+            base_sup = supports[0] if supports else current_price - atr
+            next_sup = supports[1] if len(supports) > 1 else base_sup - atr
+            tp1 = base_sup * (1 - bonus_pct)
+            tp2 = (tp1 + next_sup) / 2
+            tp3 = next_sup
+            stop = (resistances[0] if resistances else current_price + atr) * 1.005
+        else:
+            tp1 = current_price
+            tp2 = current_price
+            tp3 = current_price
+            stop = current_price - atr
+
+        return {
+            "tp1": round(tp1, 2),
+            "tp2": round(tp2, 2),
+            "tp3": round(tp3, 2),
+            "stop_loss": round(stop, 2),
+        }
 
     def _calculate_confidence(
         self,
@@ -772,6 +1117,8 @@ class ForecastSynthesizer:
         This is the core forecast logic extracted from generate_1d_forecast
         with horizon_scale applied to ATR-based moves.
         """
+        sr_response = self._normalize_sr_response(sr_response, current_price)
+
         # ===== LAYER 1: SuperTrend Bias =====
         trend_direction = supertrend_info.get("current_trend", "NEUTRAL")
         signal_strength = supertrend_info.get("signal_strength", 5) / 10.0
@@ -960,6 +1307,27 @@ class ForecastSynthesizer:
             atr=scaled_atr,
         )
 
+        target_ladder = self._build_price_targets(
+            direction=direction,
+            confidence=confidence,
+            current_price=current_price,
+            sr_response=sr_response,
+            atr=scaled_atr,
+        )
+        tp1 = target_ladder.get("tp1")
+        tp2 = target_ladder.get("tp2")
+        tp3 = target_ladder.get("tp3")
+        stop_loss = target_ladder.get("stop_loss")
+
+        if tp1 is not None:
+            primary_target = float(tp1)
+
+        quality_score, confluence_score = self._score_target_confluence(
+            target=primary_target,
+            sr_response=sr_response,
+            current_price=current_price,
+        )
+
         return ForecastResult(
             target=round(primary_target, 2),
             upper_band=round(upper_band, 2),
@@ -977,6 +1345,12 @@ class ForecastSynthesizer:
                 else round(current_price, 2)
             ),
             sr_constraint_range=f"{round(lower_band, 2)} - {round(upper_band, 2)}",
+            tp1=tp1,
+            tp2=tp2,
+            tp3=tp3,
+            stop_loss=stop_loss,
+            quality_score=quality_score,
+            confluence_score=confluence_score,
             current_price=round(current_price, 2),
             symbol=symbol,
             horizon="1D",

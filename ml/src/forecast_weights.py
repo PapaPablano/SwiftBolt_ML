@@ -32,9 +32,12 @@ class ForecastWeights:
     # Layer 2: S/R Indicator weights
     sr_weights: Dict[str, float] = field(
         default_factory=lambda: {
-            "pivot_levels": 0.30,  # Multi-timeframe structure
-            "polynomial": 0.35,  # Trend direction of S/R
-            "logistic": 0.35,  # ML probability
+            "anchor_zones": 0.25,  # High-volume anchor zones
+            "pivot_levels": 0.20,  # Multi-timeframe structure
+            "polynomial": 0.20,  # Trend direction of S/R
+            "moving_averages": 0.15,  # MA intersections
+            "fibonacci": 0.10,  # Retracement levels
+            "logistic": 0.10,  # ML probability
         }
     )
 
