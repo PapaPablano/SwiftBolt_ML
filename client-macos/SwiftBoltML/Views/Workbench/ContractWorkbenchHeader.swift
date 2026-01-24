@@ -193,10 +193,7 @@ struct ContractWorkbenchHeader: View {
         
         // Example with different signal
         ContractWorkbenchHeader(
-            rank: {
-                var rank = OptionRank.example
-                return rank
-            }(),
+            rank: OptionRank.example,
             symbol: "TSLA",
             onClose: {},
             onAddToStrategy: {}

@@ -209,10 +209,7 @@ private struct MetricChip: View {
         Divider()
         
         // Example with missing data
-        KeyMetricsStrip(rank: {
-            var rank = OptionRank.example
-            return rank
-        }())
+        KeyMetricsStrip(rank: OptionRank.example)
         .padding()
     }
     .frame(width: 450)

@@ -42,14 +42,14 @@ struct GreeksSurfaceView: View {
                 )
             }
         }
-        .onChange(of: optionType) { newValue in
+        .onChange(of: optionType) {
             Task {
                 await viewModel.fetchSurface(
                     symbol: symbol,
                     underlyingPrice: underlyingPrice,
                     volatility: volatility,
                     riskFreeRate: riskFreeRate,
-                    optionType: newValue
+                    optionType: optionType
                 )
             }
         }
@@ -231,7 +231,6 @@ struct GreeksSurfaceWebView: NSViewRepresentable {
     
     private func generatePlotlyHTML() -> String {
         let greekGrid = getGreekGrid()
-        let greekName = selectedGreek.rawValue.lowercased()
         
         // Convert Swift arrays to JavaScript arrays
         let strikesJS = surfaceData.strikes.map { String($0) }.joined(separator: ",")

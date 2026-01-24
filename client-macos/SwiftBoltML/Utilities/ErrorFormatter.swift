@@ -86,7 +86,7 @@ enum ErrorFormatter {
                 icon: "exclamationmark.triangle.fill"
             )
             
-        case .decodingError(let error):
+        case .decodingError:
             return (
                 title: "Data Error",
                 message: "The server returned data in an unexpected format. Please try again.",

@@ -518,7 +518,6 @@ struct WhyRankedTabView: View {
     }
     
     private var rankingExplanation: String {
-        let composite = rank.effectiveCompositeRank
         var explanation = "This contract ranks \(rank.compositeScoreDisplay)/100"
         
         // Add momentum context

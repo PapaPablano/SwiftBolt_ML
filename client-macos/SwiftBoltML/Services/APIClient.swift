@@ -55,8 +55,24 @@ final class APIClient {
     private let session: URLSession
     
     // Request deduplication: track in-flight requests by URL
-    private var inFlightRequests: [String: Task<Data, Error>] = [:]
-    private let requestLock = NSLock()
+    // Use actor for thread-safe access in async contexts (Swift 6 compatible)
+    private actor RequestDeduplicator {
+        private var inFlightRequests: [String: Task<Data, Error>] = [:]
+        
+        func getExistingTask(for key: String) -> Task<Data, Error>? {
+            return inFlightRequests[key]
+        }
+        
+        func storeTask(_ task: Task<Data, Error>, for key: String) {
+            inFlightRequests[key] = task
+        }
+        
+        func removeTask(for key: String) {
+            inFlightRequests.removeValue(forKey: key)
+        }
+    }
+    
+    private let requestDeduplicator = RequestDeduplicator()
 
     private init() {
         self.baseURL = Config.supabaseURL
@@ -132,25 +148,23 @@ final class APIClient {
         let requestKey = url.absoluteString
         
         // Check for duplicate in-flight request
-        requestLock.lock()
-        if let existingTask = inFlightRequests[requestKey] {
-            requestLock.unlock()
+        if let existingTask = await requestDeduplicator.getExistingTask(for: requestKey) {
             print("[DEBUG] 🔄 Deduplicating API request: \(requestKey)")
             // Return existing request result
             let data = try await existingTask.value
             let decoder = JSONDecoder()
             return try decoder.decode(T.self, from: data)
         }
-        requestLock.unlock()
         
         print("[DEBUG] API Request: \(requestKey)")
 
         // Create new request task
-        let task = Task<Data, Error> {
+        let task = Task<Data, Error> { [requestDeduplicator] in
             defer {
-                requestLock.lock()
-                inFlightRequests.removeValue(forKey: requestKey)
-                requestLock.unlock()
+                // Cleanup in background - don't await in defer
+                Task.detached {
+                    await requestDeduplicator.removeTask(for: requestKey)
+                }
             }
             
             let data: Data
@@ -202,77 +216,10 @@ final class APIClient {
         }
         
         // Store task for deduplication
-        requestLock.lock()
-        inFlightRequests[requestKey] = task
-        requestLock.unlock()
+        await requestDeduplicator.storeTask(task, for: requestKey)
         
         let data = try await task.value
         
-        // Debug: print raw response
-        if let jsonString = String(data: data, encoding: .utf8) {
-            print("[DEBUG] API Response body: \(jsonString.prefix(500))")
-            #if DEBUG
-            if let urlString = request.url?.absoluteString, urlString.contains("/ml-dashboard") {
-                do {
-                    if let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                        let hasValidation = obj["validationMetrics"] != nil
-                        print("[DEBUG] ml-dashboard has validationMetrics: \(hasValidation)")
-                        if let vm = obj["validationMetrics"] as? [String: Any] {
-                            let sharpe = vm["sharpe_ratio"] ?? "nil"
-                            let kendall = vm["kendall_tau"] ?? "nil"
-                            let ttest = vm["t_test_p_value"] ?? "nil"
-                            let mc = vm["monte_carlo_luck"] ?? "nil"
-                            print("[DEBUG] validationMetrics(sharpe_ratio=\(sharpe), kendall_tau=\(kendall), monte_carlo_luck=\(mc), t_test_p_value=\(ttest))")
-                        }
-                    }
-                } catch {
-                    print("[DEBUG] ml-dashboard JSON parse error: \(error)")
-                }
-            }
-            #endif
-        }
-
-        do {
-            let decoder = JSONDecoder()
-            return try decoder.decode(T.self, from: data)
-        } catch {
-            print("[DEBUG] Decoding error: \(error)")
-            throw APIError.decodingError(error)
-        }
-    }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
-        }
-
-        print("[DEBUG] API Response status: \(httpResponse.statusCode)")
-
-        guard (200...299).contains(httpResponse.statusCode) else {
-            let message = String(data: data, encoding: .utf8)
-            print("[DEBUG] API Error response: \(message ?? "nil")")
-
-            // Parse specific error types from backend
-            switch httpResponse.statusCode {
-            case 401, 403:
-                throw APIError.authenticationError(message: message ?? "Authentication failed")
-            case 404:
-                // Try to extract symbol from error message
-                if let msg = message, msg.contains("Symbol") {
-                    let symbol = msg.components(separatedBy: " ").first(where: { $0.uppercased() == $0 && $0.count <= 5 }) ?? "unknown"
-                    throw APIError.invalidSymbol(symbol: symbol)
-                }
-                throw APIError.httpError(statusCode: httpResponse.statusCode, message: message)
-            case 429:
-                // Parse Retry-After header if present
-                let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init)
-                throw APIError.rateLimitExceeded(retryAfter: retryAfter)
-            case 500...599:
-                throw APIError.serviceUnavailable(message: message ?? "Server error")
-            default:
-                throw APIError.httpError(statusCode: httpResponse.statusCode, message: message)
-            }
-        }
-
         // Debug: print raw response
         if let jsonString = String(data: data, encoding: .utf8) {
             print("[DEBUG] API Response body: \(jsonString.prefix(500))")
@@ -346,25 +293,23 @@ final class APIClient {
         let requestKey = url.absoluteString
         
         // Check for duplicate in-flight request
-        requestLock.lock()
-        if let existingTask = inFlightRequests[requestKey] {
-            requestLock.unlock()
+        if let existingTask = await requestDeduplicator.getExistingTask(for: requestKey) {
             print("[DEBUG] 🔄 Deduplicating API request (with header logging): \(requestKey)")
             // Return existing request result
             let data = try await existingTask.value
             let decoder = JSONDecoder()
             return try decoder.decode(T.self, from: data)
         }
-        requestLock.unlock()
         
         print("[DEBUG] API Request: \(requestKey)")
 
         // Create new request task
-        let task = Task<Data, Error> {
+        let task = Task<Data, Error> { [requestDeduplicator] in
             defer {
-                requestLock.lock()
-                inFlightRequests.removeValue(forKey: requestKey)
-                requestLock.unlock()
+                // Cleanup in background - don't await in defer
+                Task.detached {
+                    await requestDeduplicator.removeTask(for: requestKey)
+                }
             }
             
             let data: Data
@@ -419,9 +364,7 @@ final class APIClient {
         }
         
         // Store task for deduplication
-        requestLock.lock()
-        inFlightRequests[requestKey] = task
-        requestLock.unlock()
+        await requestDeduplicator.storeTask(task, for: requestKey)
         
         let data = try await task.value
 
