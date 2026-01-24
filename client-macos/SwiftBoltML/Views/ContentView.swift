@@ -3,6 +3,7 @@ import SwiftUI
 enum SidebarSection: Hashable {
     case stocks
     case portfolio
+    case multileg
     case predictions
     case devtools
 }
@@ -19,8 +20,12 @@ struct ContentView: View {
             switch activeSection {
             case .predictions:
                 PredictionsView()
+                    .environmentObject(appViewModel)
             case .portfolio:
                 Text("Portfolio")
+            case .multileg:
+                MultiLegStrategyListView()
+                    .environmentObject(appViewModel)
             default:
                 DetailView()
                     .environmentObject(appViewModel)
@@ -69,6 +74,9 @@ struct SidebarView: View {
                     NavigationLink(value: SidebarSection.portfolio) {
                         Label("Portfolio", systemImage: "chart.pie.fill")
                     }
+                    NavigationLink(value: SidebarSection.multileg) {
+                        Label("Multi-Leg", systemImage: "square.stack.3d.up")
+                    }
                     NavigationLink(value: SidebarSection.predictions) {
                         Label("Predictions", systemImage: "waveform.path.ecg")
                     }
@@ -90,18 +98,17 @@ struct SidebarView: View {
 
 struct DetailView: View {
     @EnvironmentObject var appViewModel: AppViewModel
-    @State private var selectedTab = 0
 
     var body: some View {
         if appViewModel.selectedSymbol != nil {
-            // Horizontal split: Chart on left, News on right
+            // Horizontal split: Chart on left, News/Options/Analysis on right
             HSplitView {
                 ChartView()
                     .environmentObject(appViewModel)
                     .frame(minWidth: 600)
 
                 VStack(spacing: 0) {
-                    Picker("", selection: $selectedTab) {
+                    Picker("", selection: $appViewModel.selectedDetailTab) {
                         Text("News").tag(0)
                         Text("Options").tag(1)
                         Text("Analysis").tag(2)
@@ -110,10 +117,10 @@ struct DetailView: View {
                     .padding()
                     .frame(maxWidth: 300)
 
-                    if selectedTab == 0 {
+                    if appViewModel.selectedDetailTab == 0 {
                         NewsListView()
                             .environmentObject(appViewModel)
-                    } else if selectedTab == 1 {
+                    } else if appViewModel.selectedDetailTab == 1 {
                         OptionsChainView()
                             .environmentObject(appViewModel)
                     } else {
@@ -121,7 +128,7 @@ struct DetailView: View {
                             .environmentObject(appViewModel)
                     }
                 }
-                .frame(minWidth: 300, idealWidth: 400, maxWidth: 500)
+                .frame(minWidth: 300, idealWidth: 400, maxWidth: 600)
             }
         } else {
             EmptyStateView()

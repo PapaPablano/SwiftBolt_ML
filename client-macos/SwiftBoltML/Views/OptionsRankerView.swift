@@ -2,7 +2,10 @@ import SwiftUI
 
 struct OptionsRankerView: View {
     @EnvironmentObject var appViewModel: AppViewModel
-    @StateObject private var rankerViewModel = OptionsRankerViewModel()
+
+    private var rankerViewModel: OptionsRankerViewModel {
+        appViewModel.optionsRankerViewModel
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,19 +31,17 @@ struct OptionsRankerView: View {
                 )
             }
         }
-        .onChange(of: appViewModel.selectedSymbol) { oldValue, newValue in
+        .onChange(of: appViewModel.selectedSymbol) { _, newValue in
             if let symbol = newValue?.ticker {
                 Task {
-                    await rankerViewModel.loadRankings(for: symbol)
-                    rankerViewModel.startAutoRefresh(for: symbol)
+                    await rankerViewModel.ensureLoaded(for: symbol)
                 }
             }
         }
         .onAppear {
             if let symbol = appViewModel.selectedSymbol?.ticker {
                 Task {
-                    await rankerViewModel.loadRankings(for: symbol)
-                    rankerViewModel.startAutoRefresh(for: symbol)
+                    await rankerViewModel.ensureLoaded(for: symbol)
                 }
             }
         }
@@ -88,7 +89,8 @@ struct RankedOptionsContent: View {
 struct AllContractsView: View {
     @ObservedObject var rankerViewModel: OptionsRankerViewModel
     let symbol: String
-    @State private var selectedRank: OptionRank?
+    @EnvironmentObject var appViewModel: AppViewModel
+    @State private var selectedModalRank: OptionRank?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -101,24 +103,68 @@ struct AllContractsView: View {
             Divider()
 
             // Ranked options list
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(rankerViewModel.filteredRankings) { rank in
-                        RankedOptionRow(
-                            rank: rank,
-                            liveQuote: rankerViewModel.liveQuotes[rank.contractSymbol],
-                            symbol: symbol
-                        )
-                            .padding(.horizontal)
-                            .onTapGesture {
-                                selectedRank = rank
+            if rankerViewModel.filteredRankings.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "line.3.horizontal.decrease.circle")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.purple)
+                    Text("No contracts match the current filters")
+                        .font(.headline)
+                    Text("Try relaxing the filters or disabling the GA filter.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+
+                    HStack(spacing: 12) {
+                        if rankerViewModel.useGAFilter {
+                            Button("Disable GA Filter") {
+                                rankerViewModel.useGAFilter = false
                             }
+                            .buttonStyle(.borderedProminent)
+                        }
+
+                        Button("Reset Filters") {
+                            rankerViewModel.minScore = 0
+                            rankerViewModel.setSignalFilter(.all)
+                            rankerViewModel.setSortOption(.composite)
+                            rankerViewModel.clearPriceFilters()
+                        }
+                        .buttonStyle(.bordered)
                     }
                 }
-                .padding(.vertical, 8)
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(rankerViewModel.filteredRankings) { rank in
+                            RankedOptionRow(
+                                rank: rank,
+                                liveQuote: rankerViewModel.liveQuotes[rank.contractSymbol],
+                                symbol: symbol,
+                                rankingMode: rankerViewModel.rankingMode
+                            )
+                                .padding(.horizontal)
+                                .background(
+                                    appViewModel.selectedContractState.isSelected(rank) ?
+                                        Color.accentColor.opacity(0.1) : Color.clear
+                                )
+                                .onTapGesture {
+                                    // Single click: Open inspector workbench
+                                    appViewModel.selectedContractState.select(rank: rank, openWorkbench: true)
+                                }
+                                .onTapGesture(count: 2) {
+                                    // Double click: Open full modal
+                                    selectedModalRank = rank
+                                }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
             }
         }
-        .sheet(item: $selectedRank) { rank in
+        .sheet(item: $selectedModalRank) { rank in
             OptionRankDetailView(
                 rank: rank,
                 symbol: symbol,
@@ -211,25 +257,25 @@ struct RankerHeader: View {
 
             // Filters
             VStack(spacing: 8) {
-                // Row 0: Entry/Exit Mode Toggle
+                // Row 0: Entry/Exit/Monitor Mode Toggle
                 HStack {
                     Text("Ranking Mode")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
 
                     Picker("", selection: $rankerViewModel.rankingMode) {
-                        Text("Entry").tag(RankingMode.entry)
-                        Text("Exit").tag(RankingMode.exit)
+                        ForEach(RankingMode.allCases) { mode in
+                            Label(mode.displayName, systemImage: mode.icon)
+                                .tag(mode)
+                        }
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 140)
+                    .frame(width: 220)
 
                     Spacer()
 
                     // Mode description
-                    Text(rankerViewModel.rankingMode == .entry
-                        ? "Find undervalued contracts to buy"
-                        : "Find contracts with momentum to sell")
+                    Text(rankerViewModel.rankingMode.description)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -370,26 +416,53 @@ struct RankerHeader: View {
     private var statusBadge: some View {
         switch rankerViewModel.rankingStatus {
         case .fresh:
-            Text("FRESH")
-                .font(.caption2.bold())
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.green.opacity(0.2))
-                .foregroundStyle(.green)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+            HStack(spacing: 4) {
+                Text("FRESH")
+                    .font(.caption2.bold())
+                // Fix D: Show relative timestamp if available
+                if let lastRefresh = rankerViewModel.lastRankingRefresh {
+                    Text("(\(relativeTimeString(from: lastRefresh)))")
+                        .font(.caption2)
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.green.opacity(0.2))
+            .foregroundStyle(.green)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
         case .stale:
-            Text("STALE")
-                .font(.caption2.bold())
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.orange.opacity(0.2))
-                .foregroundStyle(.orange)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+            HStack(spacing: 4) {
+                Text("STALE")
+                    .font(.caption2.bold())
+                // Fix D: Show relative timestamp if available
+                if let lastRefresh = rankerViewModel.lastRankingRefresh {
+                    Text("(\(relativeTimeString(from: lastRefresh)))")
+                        .font(.caption2)
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.orange.opacity(0.2))
+            .foregroundStyle(.orange)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
         case .unavailable:
             EmptyView()
         case .unknown:
-            EmptyView()
+            // Fix D: Show unknown badge instead of hiding it completely
+            Text("UNKNOWN")
+                .font(.caption2.bold())
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.gray.opacity(0.2))
+                .foregroundStyle(.gray)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
         }
+    }
+
+    private func relativeTimeString(from date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 
     private func formatExpiry(_ expiry: String) -> String {
@@ -421,24 +494,59 @@ struct RankedOptionRow: View {
     let rank: OptionRank
     let liveQuote: OptionContractQuote?
     let symbol: String
+    let rankingMode: RankingMode
+    var symbolId: String = ""
     @State private var isHovering = false
     @State private var showStrikeAnalysis = false
     @State private var showHistoryChart = false
+    @State private var showAddToStrategy = false
+    
+    // Mode-specific rank display
+    private var displayRank: Int {
+        switch rankingMode {
+        case .entry:
+            return Int(rank.entryRank ?? rank.effectiveCompositeRank)
+        case .exit:
+            return Int(rank.exitRank ?? rank.effectiveCompositeRank)
+        case .monitor:
+            return rank.compositeScoreDisplay
+        }
+    }
+    
+    private var rankColor: Color {
+        switch rankingMode {
+        case .entry:
+            let r = rank.entryRank ?? rank.effectiveCompositeRank
+            return rankScoreColor(r)
+        case .exit:
+            let r = rank.exitRank ?? rank.effectiveCompositeRank
+            return rankScoreColor(r)
+        case .monitor:
+            return rank.compositeColor
+        }
+    }
+    
+    private func rankScoreColor(_ score: Double) -> Color {
+        if score >= 75 { return .green }
+        if score >= 60 { return .blue }
+        if score >= 45 { return .orange }
+        return .red
+    }
 
     var body: some View {
         HStack(spacing: 12) {
-            // Composite Score badge (Momentum Framework 0-100)
+            // Mode-specific Score badge
             VStack(spacing: 2) {
-                Text("\(rank.compositeScoreDisplay)")
+                Text("\(displayRank)")
                     .font(.title3.bold())
-                    .foregroundStyle(rank.compositeColor)
-                Text("RANK")
-                    .font(.caption2)
+                    .foregroundStyle(rankColor)
+                Text(rankingMode.displayName.uppercased())
+                    .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(.secondary)
             }
             .frame(width: 50)
             .padding(.vertical, 8)
-            .background(rank.compositeColor.opacity(0.1))
+            .background(rankColor.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
             Divider()
@@ -518,16 +626,30 @@ struct RankedOptionRow: View {
 
             Divider()
 
-            // Historical price chart button
-            Button {
-                showHistoryChart = true
-            } label: {
-                Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.caption)
-                    .foregroundStyle(.blue)
+            // Action buttons
+            VStack(spacing: 8) {
+                // Add to Strategy button
+                Button {
+                    showAddToStrategy = true
+                } label: {
+                    Image(systemName: "plus.rectangle.on.folder")
+                        .font(.caption)
+                        .foregroundStyle(.purple)
+                }
+                .buttonStyle(.borderless)
+                .help("Add to Strategy")
+
+                // Historical price chart button
+                Button {
+                    showHistoryChart = true
+                } label: {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+                }
+                .buttonStyle(.borderless)
+                .help("View historical mark price chart")
             }
-            .buttonStyle(.borderless)
-            .help("View historical mark price chart")
         }
         .padding(12)
         .background(isHovering ? Color(nsColor: .controlBackgroundColor).opacity(0.8) : Color(nsColor: .controlBackgroundColor))
@@ -558,13 +680,21 @@ struct RankedOptionRow: View {
                 contractSymbol: rank.contractSymbol
             )
         }
+        .sheet(isPresented: $showAddToStrategy) {
+            AddToStrategySheet(
+                optionRank: rank,
+                symbol: symbol,
+                symbolId: symbolId
+            )
+        }
     }
 
     @ViewBuilder
     private var quoteStack: some View {
-        let displayBid = liveQuote?.bid ?? rank.bid
-        let displayAsk = liveQuote?.ask ?? rank.ask
-        let displayMark = liveQuote?.mark ?? rank.derivedMark
+        let resolved = resolvedQuote
+        let displayBid = resolved.bid
+        let displayAsk = resolved.ask
+        let displayMark = resolved.mark
 
         if let bid = displayBid, let ask = displayAsk {
             VStack(alignment: .trailing, spacing: 2) {
@@ -590,7 +720,7 @@ struct RankedOptionRow: View {
             }
         } else if let mark = displayMark {
             VStack(alignment: .trailing, spacing: 2) {
-                Text("Mid (cached)")
+                Text(resolved.isLive ? "Mid (live)" : "Mid (snapshot)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Text("$\(String(format: "%.2f", mark))")
@@ -609,16 +739,59 @@ struct RankedOptionRow: View {
     }
 
     private var quoteAgeLabel: String? {
-        guard let _ = rank.markAgeSeconds else { return nil }
-        if let secs = rank.markAgeSeconds, secs > 900 {
-            return "Stale \(rank.markAgeLabel)"
+        let resolved = resolvedQuote
+        guard let secs = resolved.ageSeconds, let label = resolved.ageLabel else { return nil }
+        if secs > 900 {
+            return "Stale \(label)"
         }
-        return "Cached \(rank.markAgeLabel)"
+        return "\(resolved.isLive ? "Live" : "Snapshot") \(label)"
     }
 
     private var quoteAgeColor: Color {
-        guard let secs = rank.markAgeSeconds else { return .secondary }
+        let ageSeconds = resolvedQuote.ageSeconds
+        guard let secs = ageSeconds else { return .secondary }
         return secs > 900 ? .orange : .secondary
+    }
+
+    private struct ResolvedQuote {
+        let bid: Double?
+        let ask: Double?
+        let mark: Double?
+        let ageLabel: String?
+        let ageSeconds: TimeInterval?
+        let isLive: Bool
+    }
+
+    private var resolvedQuote: ResolvedQuote {
+        let liveDate = liveQuote?.updatedAtDate
+        let rankDate = rank.runAtDate
+        let shouldUseLive: Bool
+
+        if let liveDate, let rankDate {
+            shouldUseLive = liveDate >= rankDate
+        } else {
+            shouldUseLive = liveDate != nil
+        }
+
+        if shouldUseLive, let liveQuote {
+            return ResolvedQuote(
+                bid: liveQuote.bid,
+                ask: liveQuote.ask,
+                mark: liveQuote.mark ?? liveQuote.last,
+                ageLabel: liveQuote.ageLabel,
+                ageSeconds: liveQuote.ageSeconds,
+                isLive: true
+            )
+        }
+
+        return ResolvedQuote(
+            bid: rank.bid,
+            ask: rank.ask,
+            mark: rank.derivedMark,
+            ageLabel: rank.markAgeLabel,
+            ageSeconds: rank.markAgeSeconds,
+            isLive: false
+        )
     }
 
     @ViewBuilder

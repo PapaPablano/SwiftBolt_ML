@@ -51,21 +51,31 @@ def capture_snapshot(symbol: str = None) -> int:
             return rows_captured
 
         else:
-            # Get all symbols with options rankings
-            result = db.client.from_("options_ranks").select("underlying_symbol_id").execute()
+            # ✅ FIX: Fetch symbol IDs AND tickers in single query (avoiding N+1)
+            # Join with symbols table to get tickers immediately
+            result = (
+                db.client.from_("options_ranks")
+                .select("underlying_symbol_id, symbols(ticker)")
+                .execute()
+            )
 
             if not result.data:
                 logger.warning("No options rankings found in database")
                 return 0
 
-            # Get unique symbol IDs
-            symbol_ids = list(set(row["underlying_symbol_id"] for row in result.data))
+            # Build unique map of symbol_id -> ticker
+            symbol_map = {}
+            for row in result.data:
+                symbol_id = row["underlying_symbol_id"]
+                ticker = row["symbols"]["ticker"] if row.get("symbols") else "UNKNOWN"
+                symbol_map[symbol_id] = ticker
 
-            logger.info(f"Found {len(symbol_ids)} symbols with rankings to snapshot")
+            logger.info(f"Found {len(symbol_map)} symbols with rankings to snapshot")
 
             total_captured = 0
 
-            for symbol_id in symbol_ids:
+            # ✅ Process snapshots with symbol info already in memory
+            for symbol_id, ticker in symbol_map.items():
                 try:
                     snapshot_result = db.client.rpc(
                         "capture_options_snapshot", {"p_symbol_id": symbol_id}
@@ -74,21 +84,10 @@ def capture_snapshot(symbol: str = None) -> int:
                     rows = snapshot_result.data if snapshot_result.data else 0
                     total_captured += rows
 
-                    # Get symbol ticker for logging
-                    symbol_result = (
-                        db.client.from_("symbols")
-                        .select("ticker")
-                        .eq("id", symbol_id)
-                        .single()
-                        .execute()
-                    )
-
-                    ticker = symbol_result.data["ticker"] if symbol_result.data else symbol_id
-
                     logger.info(f"  ✓ {ticker}: {rows} records")
 
                 except Exception as e:
-                    logger.error(f"  ✗ Error capturing snapshot for {symbol_id}: {e}")
+                    logger.error(f"  ✗ Error capturing snapshot for {symbol_id} ({ticker}): {e}")
 
             logger.info(f"✅ Total: Captured {total_captured} price records across all symbols")
 

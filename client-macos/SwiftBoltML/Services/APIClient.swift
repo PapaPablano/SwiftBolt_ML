@@ -36,7 +36,7 @@ enum APIError: LocalizedError {
             return "Service temporarily unavailable: \(message)"
         }
     }
-    
+
     var isRetryable: Bool {
         switch self {
         case .rateLimitExceeded, .serviceUnavailable, .networkError:
@@ -68,6 +68,30 @@ final class APIClient {
     /// Helper to build Edge Function URLs without duplicating paths
     private func functionURL(_ name: String) -> URL {
         Config.functionURL(name)
+    }
+
+    private struct OptionsChainPersistResponse: Decodable {
+        let underlying: String
+    }
+
+    private struct ValidationAuditPayload: Encodable {
+        let symbol: String
+        let confidence: Double
+        let weights: ValidationWeights
+        let timestamp: Int
+        let clientState: [String: String]?
+
+        enum CodingKeys: String, CodingKey {
+            case symbol
+            case confidence
+            case weights
+            case timestamp
+            case clientState = "client_state"
+        }
+    }
+
+    private struct ValidationAuditResponse: Decodable {
+        let success: Bool
     }
 
     private func makeRequest(endpoint: String, queryItems: [URLQueryItem]? = nil, method: String = "GET", body: [String: Any]? = nil) throws -> URLRequest {
@@ -175,6 +199,36 @@ final class APIClient {
             print("[DEBUG] Decoding error: \(error)")
             throw APIError.decodingError(error)
         }
+    }
+
+    func persistOptionsChainSnapshot(symbol: String) async throws {
+        let functionURL = functionURL("options-chain")
+        guard var components = URLComponents(
+            url: functionURL,
+            resolvingAgainstBaseURL: false
+        ) else {
+            throw APIError.invalidURL
+        }
+
+        components.queryItems = [
+            URLQueryItem(name: "underlying", value: symbol),
+            URLQueryItem(name: "persist", value: "1"),
+        ]
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(
+            "Bearer \(Config.supabaseAnonKey)",
+            forHTTPHeaderField: "Authorization"
+        )
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let _: OptionsChainPersistResponse = try await performRequest(request)
     }
 
     /// Enhanced performRequest with response header logging for chart data debugging
@@ -887,7 +941,64 @@ final class APIClient {
         
         return try await performRequest(request)
     }
-    
+
+    /// Fetch unified validation data
+    func fetchUnifiedValidation(symbol: String) async throws -> UnifiedValidator {
+        guard var components = URLComponents(
+            url: functionURL("get-unified-validation"),
+            resolvingAgainstBaseURL: false
+        ) else {
+            throw APIError.invalidURL
+        }
+
+        components.queryItems = [URLQueryItem(name: "symbol", value: symbol.uppercased())]
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
+        return try await performRequest(request)
+    }
+
+    /// Log validation audit
+    func logValidationAudit(
+        symbol: String,
+        validator: UnifiedValidator,
+        weights: ValidationWeights,
+        clientState: [String: String]? = nil
+    ) async {
+        let payload = ValidationAuditPayload(
+            symbol: symbol.uppercased(),
+            confidence: validator.confidence,
+            weights: weights,
+            timestamp: Int(Date().timeIntervalSince1970),
+            clientState: clientState
+        )
+
+        var request = URLRequest(url: functionURL("log-validation-audit"))
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        do {
+            let encoder = JSONEncoder()
+            request.httpBody = try encoder.encode(payload)
+            let _: ValidationAuditResponse = try await performRequest(request)
+        } catch {
+            #if DEBUG
+            print("[ValidationAudit] Failed to log audit: \(error)")
+            #endif
+        }
+    }
+
     /// Fetch Support & Resistance levels for a symbol (default 252 bars = 1 year of trading days)
     func fetchSupportResistance(symbol: String, lookback: Int = 252) async throws -> SupportResistanceResponse {
         guard var components = URLComponents(url: functionURL("support-resistance"), resolvingAgainstBaseURL: false) else {
@@ -1099,6 +1210,489 @@ final class APIClient {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         return try await performRequest(request)
+    }
+
+    // MARK: - Multi-Leg Options Strategy API
+
+    /// List multi-leg strategies with optional filters
+    func listMultiLegStrategies(
+        status: StrategyStatus? = nil,
+        underlyingSymbolId: String? = nil,
+        strategyType: StrategyType? = nil,
+        limit: Int = 50,
+        offset: Int = 0
+    ) async throws -> ListStrategiesResponse {
+        guard var components = URLComponents(url: functionURL("multi-leg-list"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "offset", value: String(offset))
+        ]
+
+        if let status = status {
+            queryItems.append(URLQueryItem(name: "status", value: status.rawValue))
+        }
+        if let symbolId = underlyingSymbolId {
+            queryItems.append(URLQueryItem(name: "underlyingSymbolId", value: symbolId))
+        }
+        if let type = strategyType {
+            queryItems.append(URLQueryItem(name: "strategyType", value: type.rawValue))
+        }
+
+        components.queryItems = queryItems
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        return try await performRequest(request)
+    }
+
+    /// Get detailed info for a single strategy including legs and alerts
+    func getMultiLegStrategyDetail(strategyId: String) async throws -> StrategyDetailResponse {
+        guard var components = URLComponents(url: functionURL("multi-leg-detail"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+
+        components.queryItems = [URLQueryItem(name: "strategyId", value: strategyId)]
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        return try await performRequest(request)
+    }
+
+    /// Create a new multi-leg strategy with legs
+    func createMultiLegStrategy(_ request: CreateStrategyRequest) async throws -> CreateStrategyResponse {
+        var urlRequest = URLRequest(url: functionURL("multi-leg-create"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let encoder = JSONEncoder()
+        urlRequest.httpBody = try encoder.encode(request)
+
+        return try await performRequest(urlRequest)
+    }
+
+    /// Update strategy metadata
+    func updateMultiLegStrategy(strategyId: String, update: UpdateStrategyRequest) async throws -> MultiLegStrategy {
+        guard var components = URLComponents(url: functionURL("multi-leg-update"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+
+        components.queryItems = [URLQueryItem(name: "strategyId", value: strategyId)]
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let encoder = JSONEncoder()
+        request.httpBody = try encoder.encode(update)
+
+        return try await performRequest(request)
+    }
+
+    /// Close a single leg of a strategy
+    func closeMultiLegLeg(strategyId: String, request: CloseLegRequest) async throws -> CloseLegResponse {
+        guard var components = URLComponents(url: functionURL("multi-leg-close-leg"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+
+        components.queryItems = [URLQueryItem(name: "strategyId", value: strategyId)]
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let encoder = JSONEncoder()
+        urlRequest.httpBody = try encoder.encode(request)
+
+        return try await performRequest(urlRequest)
+    }
+
+    /// Close an entire strategy (all legs at once)
+    func closeMultiLegStrategy(_ request: CloseStrategyRequest) async throws -> CloseStrategyResponse {
+        var urlRequest = URLRequest(url: functionURL("multi-leg-close-strategy"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let encoder = JSONEncoder()
+        urlRequest.httpBody = try encoder.encode(request)
+
+        return try await performRequest(urlRequest)
+    }
+
+    /// Fetch strategy templates
+    func fetchStrategyTemplates() async throws -> TemplatesResponse {
+        var request = URLRequest(url: functionURL("multi-leg-templates"))
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        return try await performRequest(request)
+    }
+
+    /// Delete a multi-leg strategy permanently
+    func deleteMultiLegStrategy(strategyId: String) async throws -> DeleteStrategyResponse {
+        guard var components = URLComponents(url: functionURL("multi-leg-delete"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+
+        components.queryItems = [URLQueryItem(name: "strategyId", value: strategyId)]
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        return try await performRequest(request)
+    }
+    
+    // MARK: - Technical Indicators
+    
+    /// Fetch technical indicators for a symbol/timeframe
+    func fetchTechnicalIndicators(symbol: String, timeframe: String = "d1") async throws -> TechnicalIndicatorsResponse {
+        guard var components = URLComponents(url: functionURL("technical-indicators"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        
+        components.queryItems = [
+            URLQueryItem(name: "symbol", value: symbol.uppercased()),
+            URLQueryItem(name: "timeframe", value: timeframe)
+        ]
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        
+        return try await performRequest(request)
+    }
+    
+    // MARK: - Backtesting
+    
+    /// Run backtest for a trading strategy
+    func runBacktest(request: BacktestRequest) async throws -> BacktestResponse {
+        var urlRequest = URLRequest(url: functionURL("backtest-strategy"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Manually build JSON to handle [String: Any] params
+        var jsonDict: [String: Any] = [
+            "symbol": request.symbol,
+            "strategy": request.strategy,
+            "startDate": request.startDate,
+            "endDate": request.endDate
+        ]
+        
+        if let timeframe = request.timeframe {
+            jsonDict["timeframe"] = timeframe
+        }
+        if let capital = request.initialCapital {
+            jsonDict["initialCapital"] = capital
+        }
+        if let params = request.params {
+            jsonDict["params"] = params
+        }
+        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
+        
+        return try await performRequest(urlRequest)
+    }
+    
+    // MARK: - Walk-Forward Optimization
+    
+    /// Run walk-forward optimization for ML forecasters
+    func runWalkForward(request: WalkForwardRequest) async throws -> WalkForwardResponse {
+        var urlRequest = URLRequest(url: functionURL("walk-forward-optimize"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Build JSON request
+        var jsonDict: [String: Any] = [
+            "symbol": request.symbol,
+            "horizon": request.horizon
+        ]
+        
+        if let forecaster = request.forecaster {
+            jsonDict["forecaster"] = forecaster
+        }
+        if let timeframe = request.timeframe {
+            jsonDict["timeframe"] = timeframe
+        }
+        if let windows = request.windows {
+            var windowsDict: [String: Any] = [:]
+            if let trainWindow = windows.trainWindow {
+                windowsDict["trainWindow"] = trainWindow
+            }
+            if let testWindow = windows.testWindow {
+                windowsDict["testWindow"] = testWindow
+            }
+            if let stepSize = windows.stepSize {
+                windowsDict["stepSize"] = stepSize
+            }
+            if !windowsDict.isEmpty {
+                jsonDict["windows"] = windowsDict
+            }
+        }
+        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
+        
+        return try await performRequest(urlRequest)
+    }
+    
+    // MARK: - Model Training
+    
+    /// Train ML model for a symbol/timeframe
+    func trainModel(request: ModelTrainingRequest) async throws -> ModelTrainingResponse {
+        var urlRequest = URLRequest(url: functionURL("train-model"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Build JSON request
+        var jsonDict: [String: Any] = [
+            "symbol": request.symbol
+        ]
+        
+        if let timeframe = request.timeframe {
+            jsonDict["timeframe"] = timeframe
+        }
+        if let lookbackDays = request.lookbackDays {
+            jsonDict["lookbackDays"] = lookbackDays
+        }
+        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
+        
+        return try await performRequest(urlRequest)
+    }
+    
+    // MARK: - Forecast Quality
+    
+    /// Get forecast quality metrics for a symbol
+    func fetchForecastQuality(request: ForecastQualityRequest) async throws -> ForecastQualityResponse {
+        var urlRequest = URLRequest(url: functionURL("forecast-quality"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Build JSON request
+        var jsonDict: [String: Any] = [
+            "symbol": request.symbol
+        ]
+        
+        if let horizon = request.horizon {
+            jsonDict["horizon"] = horizon
+        }
+        if let timeframe = request.timeframe {
+            jsonDict["timeframe"] = timeframe
+        }
+        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
+        
+        return try await performRequest(urlRequest)
+    }
+    
+    // MARK: - Greeks Surface
+    
+    /// Get 3D Greeks surface data for visualization
+    func fetchGreeksSurface(request: GreeksSurfaceRequest) async throws -> GreeksSurfaceResponse {
+        var urlRequest = URLRequest(url: functionURL("greeks-surface"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Build JSON request
+        var jsonDict: [String: Any] = [
+            "symbol": request.symbol,
+            "underlyingPrice": request.underlyingPrice,
+            "volatility": request.volatility
+        ]
+        
+        if let riskFreeRate = request.riskFreeRate {
+            jsonDict["riskFreeRate"] = riskFreeRate
+        }
+        if let optionType = request.optionType {
+            jsonDict["optionType"] = optionType
+        }
+        if let strikeRange = request.strikeRange {
+            jsonDict["strikeRange"] = strikeRange
+        }
+        if let timeRange = request.timeRange {
+            jsonDict["timeRange"] = timeRange
+        }
+        if let nStrikes = request.nStrikes {
+            jsonDict["nStrikes"] = nStrikes
+        }
+        if let nTimes = request.nTimes {
+            jsonDict["nTimes"] = nTimes
+        }
+        if let greek = request.greek {
+            jsonDict["greek"] = greek
+        }
+        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
+        
+        return try await performRequest(urlRequest)
+    }
+    
+    // MARK: - Volatility Surface
+    
+    /// Get 3D volatility surface data for visualization
+    func fetchVolatilitySurface(request: VolatilitySurfaceRequest) async throws -> VolatilitySurfaceResponse {
+        var urlRequest = URLRequest(url: functionURL("volatility-surface"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Build JSON request
+        var jsonDict: [String: Any] = [
+            "symbol": request.symbol,
+            "slices": request.slices.map { slice in
+                var sliceDict: [String: Any] = [
+                    "maturityDays": slice.maturityDays,
+                    "strikes": slice.strikes,
+                    "impliedVols": slice.impliedVols
+                ]
+                if let forwardPrice = slice.forwardPrice {
+                    sliceDict["forwardPrice"] = forwardPrice
+                }
+                return sliceDict
+            }
+        ]
+        
+        if let nStrikes = request.nStrikes {
+            jsonDict["nStrikes"] = nStrikes
+        }
+        if let nMaturities = request.nMaturities {
+            jsonDict["nMaturities"] = nMaturities
+        }
+        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
+        
+        return try await performRequest(urlRequest)
+    }
+    
+    // MARK: - Portfolio Optimization
+    
+    /// Optimize portfolio allocation
+    func optimizePortfolio(request: PortfolioOptimizeRequest) async throws -> PortfolioOptimizeResponse {
+        var urlRequest = URLRequest(url: functionURL("portfolio-optimize"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Build JSON request
+        var jsonDict: [String: Any] = [
+            "symbols": request.symbols,
+            "method": request.method.rawValue
+        ]
+        
+        if let timeframe = request.timeframe {
+            jsonDict["timeframe"] = timeframe
+        }
+        if let lookbackDays = request.lookbackDays {
+            jsonDict["lookbackDays"] = lookbackDays
+        }
+        if let riskFreeRate = request.riskFreeRate {
+            jsonDict["riskFreeRate"] = riskFreeRate
+        }
+        if let targetReturn = request.targetReturn {
+            jsonDict["targetReturn"] = targetReturn
+        }
+        if let minWeight = request.minWeight {
+            jsonDict["minWeight"] = minWeight
+        }
+        if let maxWeight = request.maxWeight {
+            jsonDict["maxWeight"] = maxWeight
+        }
+        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
+        
+        return try await performRequest(urlRequest)
+    }
+    
+    // MARK: - Stress Testing
+    
+    /// Run stress test on portfolio
+    func runStressTest(request: StressTestRequest) async throws -> StressTestResponse {
+        var urlRequest = URLRequest(url: functionURL("stress-test"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // Build JSON request
+        var jsonDict: [String: Any] = [
+            "positions": request.positions,
+            "prices": request.prices
+        ]
+        
+        if let scenario = request.scenario {
+            jsonDict["scenario"] = scenario.rawValue
+        }
+        if let customShocks = request.customShocks {
+            jsonDict["customShocks"] = customShocks
+        }
+        if let varLevel = request.varLevel {
+            jsonDict["varLevel"] = varLevel
+        }
+        
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
+        
+        return try await performRequest(urlRequest)
     }
 }
 

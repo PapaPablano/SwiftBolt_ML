@@ -49,6 +49,50 @@ interface OptionContract {
   rho: number;
 }
 
+type RawOptionContract = Record<string, unknown>;
+
+function toNumber(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  return fallback;
+}
+
+function toString(value: unknown, fallback = ""): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  return fallback;
+}
+
+function normalizeContract(raw: RawOptionContract, type: "call" | "put"): OptionContract {
+  const bid = toNumber(raw.bid, 0);
+  const ask = toNumber(raw.ask, 0);
+  const mark = toNumber(raw.mark, (bid + ask) / 2);
+  return {
+    symbol: toString(raw.symbol, ""),
+    strike: toNumber(raw.strike, 0),
+    expiration: toNumber(raw.expiration, 0),
+    type,
+    bid,
+    ask,
+    mark,
+    last: toNumber(raw.last, 0),
+    volume: toNumber(raw.volume, 0),
+    openInterest: toNumber(raw.openInterest, 0),
+    impliedVolatility: toNumber(raw.impliedVolatility, 0),
+    delta: toNumber(raw.delta, 0),
+    gamma: toNumber(raw.gamma, 0),
+    theta: toNumber(raw.theta, 0),
+    vega: toNumber(raw.vega, 0),
+    rho: toNumber(raw.rho, 0),
+  };
+}
+
 interface RankedOption {
   contract_symbol: string;
   strike: number;
@@ -81,9 +125,10 @@ interface RankedOption {
 }
 
 // Ranking weights (matching Python implementation)
-const MOMENTUM_WEIGHT = 0.30;
-const VALUE_WEIGHT = 0.35;
-const GREEKS_WEIGHT = 0.35;
+// Framework weights - standardized 2026-01-23
+const MOMENTUM_WEIGHT = 0.40; // 40% - price action and activity
+const VALUE_WEIGHT = 0.35;     // 35% - entry quality (IV + spread)
+const GREEKS_WEIGHT = 0.25;    // 25% - directional alignment
 
 // Forecast integration weights
 const FORECAST_DIRECTIONAL_BOOST = 15;  // Points to add/subtract based on direction alignment
@@ -123,8 +168,8 @@ function calculateValueScore(iv: number, ivMin: number, ivMax: number, spreadPct
   const spreadPenalty = Math.min(spreadPct * 2, 50);
   const spreadScore = 100 - spreadPenalty;
 
-  // Combined: 60% IV, 40% spread
-  const valueScore = ivValueScore * 0.60 + spreadScore * 0.40;
+  // Combined: 60% IV, 40% spread (cap to prevent domination)
+  const valueScore = Math.max(0, Math.min(100, ivValueScore * 0.60 + spreadScore * 0.40));
 
   return { valueScore, ivRank };
 }
@@ -230,7 +275,7 @@ function rankOptions(calls: OptionContract[], puts: OptionContract[], forecast: 
     const { valueScore, ivRank } = calculateValueScore(
       contract.impliedVolatility, ivMin, ivMax, spreadPct
     );
-    const { momentumScore, volOiRatio, liquidityConfidence } = calculateMomentumScore(
+    const { momentumScore, volOiRatio, liquidityConfidence: _liquidityConfidence } = calculateMomentumScore(
       contract.volume, contract.openInterest, contract.mark
     );
     const greeksScore = calculateGreeksScore(
@@ -352,6 +397,26 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const symbolId = symbolData.id;
+    let jobId: string | null = null;
+
+    const { data: jobInsert, error: jobInsertError } = await supabase
+      .from("ranking_jobs")
+      .insert({
+        symbol,
+        status: "running",
+        started_at: new Date().toISOString(),
+        requested_by: "edge_function",
+        priority: 1,
+        symbol_id: symbolId,
+      })
+      .select("id")
+      .single();
+
+    if (jobInsertError) {
+      console.warn(`[Ranking Job] Failed to log ranking_jobs row: ${jobInsertError.message}`);
+    } else {
+      jobId = jobInsert?.id ?? null;
+    }
 
     // Fetch options chain directly via ProviderRouter
     console.log(`[Ranking Job] Fetching options chain for ${symbol} via ProviderRouter`);
@@ -362,50 +427,41 @@ serve(async (req: Request): Promise<Response> => {
       optionsData = await router.getOptionsChain({ underlying: symbol });
     } catch (err) {
       console.error(`[Ranking Job] Failed to fetch options chain:`, err);
+      if (jobId) {
+        await supabase
+          .from("ranking_jobs")
+          .update({
+            status: "failed",
+            completed_at: new Date().toISOString(),
+            error_message: err instanceof Error ? err.message : String(err),
+          })
+          .eq("id", jobId);
+      }
       return errorResponse(`Failed to fetch options chain: ${err instanceof Error ? err.message : String(err)}`, 500);
     }
 
-    const calls: OptionContract[] = (optionsData.calls || []).map((c: any) => ({
-      symbol: c.symbol,
-      strike: c.strike,
-      expiration: c.expiration,
-      type: "call" as const,
-      bid: c.bid || 0,
-      ask: c.ask || 0,
-      mark: c.mark || ((c.bid || 0) + (c.ask || 0)) / 2,
-      last: c.last || 0,
-      volume: c.volume || 0,
-      openInterest: c.openInterest || 0,
-      impliedVolatility: c.impliedVolatility || 0,
-      delta: c.delta || 0,
-      gamma: c.gamma || 0,
-      theta: c.theta || 0,
-      vega: c.vega || 0,
-      rho: c.rho || 0,
-    }));
-
-    const puts: OptionContract[] = (optionsData.puts || []).map((p: any) => ({
-      symbol: p.symbol,
-      strike: p.strike,
-      expiration: p.expiration,
-      type: "put" as const,
-      bid: p.bid || 0,
-      ask: p.ask || 0,
-      mark: p.mark || ((p.bid || 0) + (p.ask || 0)) / 2,
-      last: p.last || 0,
-      volume: p.volume || 0,
-      openInterest: p.openInterest || 0,
-      impliedVolatility: p.impliedVolatility || 0,
-      delta: p.delta || 0,
-      gamma: p.gamma || 0,
-      theta: p.theta || 0,
-      vega: p.vega || 0,
-      rho: p.rho || 0,
-    }));
+    const rawCalls: RawOptionContract[] = Array.isArray(optionsData.calls)
+      ? (optionsData.calls as unknown as RawOptionContract[])
+      : [];
+    const rawPuts: RawOptionContract[] = Array.isArray(optionsData.puts)
+      ? (optionsData.puts as unknown as RawOptionContract[])
+      : [];
+    const calls: OptionContract[] = rawCalls.map((c: RawOptionContract) => normalizeContract(c, "call"));
+    const puts: OptionContract[] = rawPuts.map((p: RawOptionContract) => normalizeContract(p, "put"));
 
     console.log(`[Ranking Job] Fetched ${calls.length} calls, ${puts.length} puts for ${symbol}`);
 
     if (calls.length === 0 && puts.length === 0) {
+      if (jobId) {
+        await supabase
+          .from("ranking_jobs")
+          .update({
+            status: "failed",
+            completed_at: new Date().toISOString(),
+            error_message: `No options data found for ${symbol}`,
+          })
+          .eq("id", jobId);
+      }
       return errorResponse(`No options data found for ${symbol}`, 404);
     }
 
@@ -482,6 +538,15 @@ serve(async (req: Request): Promise<Response> => {
     console.log(`[Ranking Job] Ranked ${rankedOptions.length} options for ${symbol}`);
 
     if (rankedOptions.length === 0) {
+      if (jobId) {
+        await supabase
+          .from("ranking_jobs")
+          .update({
+            status: "completed",
+            completed_at: new Date().toISOString(),
+          })
+          .eq("id", jobId);
+      }
       return jsonResponse({
         message: `No rankable options for ${symbol}`,
         symbol,
@@ -494,7 +559,7 @@ serve(async (req: Request): Promise<Response> => {
     const runAt = new Date().toISOString();
     const records = rankedOptions.map(opt => ({
       underlying_symbol_id: symbolId,
-      ranking_mode: "entry",
+      ranking_mode: "monitor",  // Legacy inline ranking uses monitor mode
       contract_symbol: opt.contract_symbol,
       expiry: opt.expiry,
       strike: opt.strike,
@@ -540,6 +605,16 @@ serve(async (req: Request): Promise<Response> => {
 
     if (upsertError) {
       console.error(`[Ranking Job] Upsert error:`, upsertError);
+      if (jobId) {
+        await supabase
+          .from("ranking_jobs")
+          .update({
+            status: "failed",
+            completed_at: new Date().toISOString(),
+            error_message: upsertError.message,
+          })
+          .eq("id", jobId);
+      }
       return errorResponse(`Failed to save rankings: ${upsertError.message}`, 500);
     }
 
@@ -550,6 +625,16 @@ serve(async (req: Request): Promise<Response> => {
     const top3 = rankedOptions.slice(0, 3);
     for (const opt of top3) {
       console.log(`  ${opt.contract_symbol}: rank=${opt.composite_rank.toFixed(1)}, signals=[${opt.signals}]`);
+    }
+
+    if (jobId) {
+      await supabase
+        .from("ranking_jobs")
+        .update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", jobId);
     }
 
     // Return response matching iOS TriggerRankingResponse struct

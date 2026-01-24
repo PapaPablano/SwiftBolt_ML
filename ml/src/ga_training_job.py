@@ -20,6 +20,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
+import pandas as pd
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings  # noqa: E402
@@ -180,10 +182,24 @@ def run_ga_optimization(
 
     logger.info(f"Loaded {len(training_data)} training samples")
 
-    # Split for validation
+    # FIX: Enforce time ordering before split to prevent data leakage
+    # The split must be time-based: train on older data, validate on newer data
+    time_col = "run_at" if "run_at" in training_data.columns else "datetime"
+    if time_col in training_data.columns:
+        training_data[time_col] = pd.to_datetime(training_data[time_col])
+        training_data = training_data.sort_values(time_col).reset_index(drop=True)
+        logger.info(f"Sorted training data by {time_col} to prevent leakage")
+
+    # Split for validation (oldest 80% for training, newest 20% for validation)
     split_idx = int(len(training_data) * 0.8)
     train_df = training_data.iloc[:split_idx]
     valid_df = training_data.iloc[split_idx:]
+
+    # Log time ranges to verify proper split
+    if time_col in training_data.columns:
+        train_end = train_df[time_col].max() if not train_df.empty else "N/A"
+        valid_start = valid_df[time_col].min() if not valid_df.empty else "N/A"
+        logger.info(f"Train period ends: {train_end}, Validation starts: {valid_start}")
 
     logger.info(f"Training: {len(train_df)} samples, Validation: {len(valid_df)} samples")
 
@@ -216,10 +232,11 @@ def run_ga_optimization(
             save_ga_parameters(symbol, best.genes, fitness)
 
             # Update run status
+            # FIX: Use best_fitness_score to match schema column name
             _update_run_status(
                 run_id,
                 "completed",
-                best_fitness=fitness.score(),
+                best_fitness_score=fitness.score(),
                 best_win_rate=fitness.win_rate,
                 best_profit_factor=fitness.profit_factor,
                 best_sharpe=fitness.sharpe_ratio,

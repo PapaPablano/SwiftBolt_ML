@@ -6,6 +6,7 @@ from typing import Any, Generator
 
 import pandas as pd
 import psycopg2
+import psycopg2.pool
 from psycopg2.extras import RealDictCursor
 
 from config.settings import settings
@@ -160,5 +161,21 @@ class Database:
             logger.info("Database connection pool closed")
 
 
-# Singleton database instance
-db = Database()
+# Singleton database instance (lazy-loaded)
+_db_instance = None
+
+
+def get_db() -> Database:
+    """Get the singleton database instance, creating it if needed."""
+    global _db_instance
+    if _db_instance is None:
+        _db_instance = Database()
+    return _db_instance
+
+
+# For backward compatibility
+def __getattr__(name):
+    """Provide lazy access to db singleton."""
+    if name == "db":
+        return get_db()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

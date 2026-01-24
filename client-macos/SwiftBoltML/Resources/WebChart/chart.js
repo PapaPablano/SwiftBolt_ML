@@ -989,11 +989,17 @@
             if (t !== last) {
                 const isBuy = t > last;
                 const f = (typeof factor === 'number' && isFinite(factor)) ? factor : null;
-                const label = f != null ? `${isBuy ? 'BUY' : 'SELL'} ${f.toFixed(1)}x` : (isBuy ? 'BUY' : 'SELL');
+                const anchorIndex = isBuy ? i : Math.min(i + 1, n - 1);
+                const anchorBar = bars[anchorIndex] || bars[i];
+                const label = (() => {
+                    if (f == null) return isBuy ? 'BUY' : 'SELL';
+                    if (isBuy) return `BUY ${f.toFixed(1)}x`;
+                    return `S ${f.toFixed(0)}x`;
+                })();
                 markers.push({
-                    time: bars[i].time,
+                    time: anchorBar.time,
                     type: isBuy ? 'buy' : 'sell',
-                    position: 'inBar',
+                    position: isBuy ? 'belowBar' : 'aboveBar',
                     color: isBuy ? colors.superTrendBull : colors.superTrendBear,
                     shape: isBuy ? 'arrowUp' : 'arrowDown',
                     text: label,
@@ -1050,7 +1056,7 @@
                             markers.push({
                                 time: bars[i].time,
                                 type: 'buy',
-                                position: 'inBar',
+                                position: 'belowBar',
                                 color: colors.superTrendBull,
                                 shape: 'arrowUp',
                                 text: `${Math.floor(p * 10)}`,
@@ -1058,10 +1064,11 @@
                             });
                         } else if (ai.os[i] < ai.os[i - 1]) {
                             const p = Math.max(0, Math.min(1, ai.perfIdx[i] ?? 0));
+                            const anchorIndex = Math.min(i + 1, bars.length - 1);
                             markers.push({
-                                time: bars[i].time,
+                                time: bars[anchorIndex].time,
                                 type: 'sell',
-                                position: 'inBar',
+                                position: 'aboveBar',
                                 color: colors.superTrendBear,
                                 shape: 'arrowDown',
                                 text: `${Math.floor(p * 10)}`,
@@ -2049,7 +2056,7 @@
         /**
          * Set forecast as overlay candlestick series (intraday-specific)
          */
-        setForecastCandles: function(data) {
+        setForecastCandles: function(data, direction) {
             if (!state.chart) {
                 console.error('[ChartJS] Chart not initialized');
                 return;
@@ -2070,11 +2077,44 @@
                 });
             }
 
-            // Sort data by time and apply
             const sortedData = [...data].sort((a, b) => a.time - b.time);
-            state.series.forecast_candles.setData(sortedData);
+            const forecastDirection = (direction || '').toLowerCase();
+            const derivedDirection = sortedData.length
+                ? (sortedData[sortedData.length - 1].close >= sortedData[0].close ? 'bullish' : 'bearish')
+                : '';
+            const resolvedDirection = forecastDirection || derivedDirection;
+            const isBullish = resolvedDirection === 'bullish';
+            const isBearish = resolvedDirection === 'bearish';
 
-            console.log('[ChartJS] Forecast candles set:', sortedData.length);
+            const currentPrice = state.originalBars?.length
+                ? state.originalBars[state.originalBars.length - 1].close
+                : (sortedData.length ? sortedData[0].close : null);
+
+            // Apply transparency based on trend direction + current price
+            const styledData = sortedData.map(candle => {
+                if (!Number.isFinite(currentPrice) || (!isBullish && !isBearish)) {
+                    return candle;
+                }
+
+                const hide = isBullish
+                    ? candle.low < currentPrice
+                    : candle.high > currentPrice;
+
+                if (!hide) {
+                    return candle;
+                }
+
+                return {
+                    ...candle,
+                    color: 'rgba(0,0,0,0)',
+                    borderColor: 'rgba(0,0,0,0)',
+                    wickColor: 'rgba(0,0,0,0)'
+                };
+            });
+
+            state.series.forecast_candles.setData(styledData);
+
+            console.log('[ChartJS] Forecast candles set:', styledData.length);
         },
 
         /**
@@ -2770,7 +2810,7 @@
                         this.setForecast(cmd.midData, cmd.upperData, cmd.lowerData, cmd.options || {});
                         break;
                     case 'setForecastCandles':
-                        this.setForecastCandles(cmd.data);
+                        this.setForecastCandles(cmd.data, cmd.direction);
                         break;
                     case 'setMarkers':
                         this.setMarkers(cmd.seriesId, cmd.markers);

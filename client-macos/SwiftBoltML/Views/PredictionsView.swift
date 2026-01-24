@@ -1,8 +1,11 @@
 import SwiftUI
 
 struct PredictionsView: View {
-    @StateObject private var viewModel = PredictionsViewModel()
-    @State private var selectedTab = 0
+    @EnvironmentObject var appViewModel: AppViewModel
+
+    private var viewModel: PredictionsViewModel {
+        appViewModel.predictionsViewModel
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -10,7 +13,7 @@ struct PredictionsView: View {
             headerSection
 
             // Tab selector
-            Picker("", selection: $selectedTab) {
+            Picker("", selection: $appViewModel.selectedPredictionsTab) {
                 Text("Overview").tag(0)
                 Text("Model Performance").tag(1)
                 Text("Statistical Validation").tag(2)
@@ -33,15 +36,15 @@ struct PredictionsView: View {
             } else {
                 ScrollView {
                     VStack(spacing: 20) {
-                        switch selectedTab {
+                        switch appViewModel.selectedPredictionsTab {
                         case 0:
-                            OverviewTabView(viewModel: viewModel)
+                            PredictionsOverviewTabView(viewModel: viewModel)
                         case 1:
                             ModelPerformanceTabView(viewModel: viewModel)
                         case 2:
-                            StatisticalValidationTabView(viewModel: viewModel)
+                            ValidationDashboardView(viewModel: appViewModel.validationViewModel)
                         case 3:
-                            FeatureImportanceTabView()
+                            FeatureImportanceTabView(viewModel: viewModel)
                         case 4:
                             ForecastAccuracyTabView()
                         default:
@@ -118,8 +121,10 @@ struct PredictionsView: View {
 
 // MARK: - Overview Tab
 
-struct OverviewTabView: View {
+struct PredictionsOverviewTabView: View {
     @ObservedObject var viewModel: PredictionsViewModel
+    @EnvironmentObject var appViewModel: AppViewModel
+    @StateObject private var qualityViewModel = ForecastQualityViewModel()
 
     var body: some View {
         VStack(spacing: 20) {
@@ -149,6 +154,16 @@ struct OverviewTabView: View {
                 }
                 .frame(height: 120)
             }
+            
+            // Forecast Quality Section (if symbol is selected)
+            if let symbol = appViewModel.selectedSymbol {
+                ForecastQualitySection(viewModel: qualityViewModel, symbol: symbol.ticker)
+                    .onAppear {
+                        Task {
+                            await qualityViewModel.fetchQuality(symbol: symbol.ticker, horizon: "1D", timeframe: "d1")
+                        }
+                    }
+            }
 
             // Signal & Confidence Distribution side by side
             HStack(spacing: 20) {
@@ -168,9 +183,125 @@ struct OverviewTabView: View {
     }
 }
 
+// MARK: - Forecast Quality Section
+
+private struct ForecastQualitySection: View {
+    @ObservedObject var viewModel: ForecastQualityViewModel
+    let symbol: String
+    
+    var body: some View {
+        DashboardCard(title: "Forecast Quality", icon: "chart.bar.doc.horizontal", iconColor: .cyan) {
+            if viewModel.isLoading {
+                ProgressView("Loading quality metrics...")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
+            } else if let result = viewModel.qualityResult {
+                VStack(spacing: 16) {
+                    // Quality Score
+                    HStack(spacing: 30) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Quality Score")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            HStack(spacing: 8) {
+                                Text("\(String(format: "%.1f", result.qualityScore * 100))%")
+                                    .font(.title2.bold())
+                                    .foregroundStyle(result.qualityScore >= 0.7 ? .green : result.qualityScore >= 0.5 ? .orange : .red)
+                                Image(systemName: result.qualityScore >= 0.7 ? "checkmark.circle.fill" : result.qualityScore >= 0.5 ? "exclamationmark.triangle.fill" : "xmark.circle.fill")
+                                    .foregroundStyle(result.qualityScore >= 0.7 ? .green : result.qualityScore >= 0.5 ? .orange : .red)
+                            }
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Confidence")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("\(String(format: "%.1f", result.confidence * 100))%")
+                                .font(.title3.bold())
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Model Agreement")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("\(String(format: "%.1f", result.modelAgreement * 100))%")
+                                .font(.title3.bold())
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Issues")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("\(result.issues.count)")
+                                .font(.title3.bold())
+                                .foregroundStyle(result.issues.isEmpty ? .green : .orange)
+                        }
+                    }
+                    
+                    // Issues List
+                    if !result.issues.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Quality Issues")
+                                .font(.subheadline.bold())
+                                .foregroundStyle(.orange)
+                            
+                            ForEach(Array(result.issues.enumerated()), id: \.offset) { index, issue in
+                                HStack(alignment: .top, spacing: 8) {
+                                    Image(systemName: issue.level == "warning" ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                                        .foregroundStyle(issue.level == "warning" ? .orange : .blue)
+                                        .font(.caption)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(issue.type.replacingOccurrences(of: "_", with: " ").capitalized)
+                                            .font(.caption.bold())
+                                        Text(issue.message)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    
+                                    Spacer()
+                                }
+                                .padding(.vertical, 4)
+                                
+                                if index < result.issues.count - 1 {
+                                    Divider()
+                                }
+                            }
+                        }
+                        .padding(.top, 8)
+                    } else {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Text("No quality issues detected")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 8)
+                    }
+                }
+                .padding(.top, 8)
+            } else if let error = viewModel.error {
+                Text("Error: \(error)")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 20)
+            } else {
+                Text("No quality data available")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 20)
+            }
+        }
+    }
+}
+
 // MARK: - Metric Card
 
-struct MetricCard: View {
+private struct MetricCard: View {
     let title: String
     let value: String
     let icon: String
@@ -935,6 +1066,7 @@ struct ImplementationLevelCard: View {
 // MARK: - Feature Importance Tab
 
 struct FeatureImportanceTabView: View {
+    @ObservedObject var viewModel: PredictionsViewModel
     // Static feature importance data from the ML model
     private let modelFeatures: [(name: String, importance: Double, category: String)] = [
         ("SuperTrend Signal", 0.18, "trend"),
@@ -1117,5 +1249,6 @@ struct DashboardCard<Content: View>: View {
 
 #Preview {
     PredictionsView()
+        .environmentObject(AppViewModel())
         .frame(width: 900, height: 800)
 }

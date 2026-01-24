@@ -1,0 +1,133 @@
+name: ML Job Worker
+
+on:
+  # Run every 15 minutes during market hours to process pending jobs
+  schedule:
+    - cron: '*/15 13-22 * * 1-5'
+  
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      job_type:
+        description: 'Job type to process (leave empty for all)'
+        required: false
+        type: choice
+        options:
+          - all
+          - forecast
+          - backfill
+          - ranking
+
+concurrency:
+  group: job-worker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  process-jobs:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check market window (Mon–Fri 13:30–22:00 UTC)
+        id: market_window
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Manual trigger override"
+            exit 0
+          fi
+          dow=$(date -u +%u)
+          hour=$(date -u +%H)
+          minute=$(date -u +%M)
+          if [ "$dow" -gt 5 ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$hour" -lt 13 ] || [ "$hour" -gt 22 ] || { [ "$hour" -eq 13 ] && [ "$minute" -lt 30 ]; }; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # If there are no pending jobs, skip expensive Python setup entirely.
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
+            echo "Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY secrets; cannot preflight job queue. Proceeding." 
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          pending_job_queue=$(curl -sSf \
+            "${SUPABASE_URL}/rest/v1/job_queue?select=count&status=eq.pending" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" \
+            -H "Prefer: count=exact" \
+            -o /dev/null \
+            -D - | awk -F': ' 'tolower($1)=="content-range"{print $2}' | awk -F'/' '{print $2}' | tr -d '\r')
+
+          pending_ranking=$(curl -sSf \
+            "${SUPABASE_URL}/rest/v1/ranking_jobs?select=count&status=eq.pending" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" \
+            -H "Prefer: count=exact" \
+            -o /dev/null \
+            -D - | awk -F': ' 'tolower($1)=="content-range"{print $2}' | awk -F'/' '{print $2}' | tr -d '\r')
+
+          pending_job_queue=${pending_job_queue:-0}
+          pending_ranking=${pending_ranking:-0}
+
+          if [ "${pending_job_queue}" -eq 0 ] && [ "${pending_ranking}" -eq 0 ]; then
+            echo "No pending jobs (job_queue=0, ranking_jobs=0) - skipping run"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Pending jobs detected (job_queue=${pending_job_queue}, ranking_jobs=${pending_ranking})"
+          echo "run=true" >> "$GITHUB_OUTPUT"
+          echo "Within market window"
+
+      - name: Checkout repository
+        if: steps.market_window.outputs.run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: steps.market_window.outputs.run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: ml/requirements.txt
+
+      - name: Install dependencies
+        if: steps.market_window.outputs.run == 'true'
+        working-directory: ml
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run forecast job worker
+        if: steps.market_window.outputs.run == 'true'
+        working-directory: ml
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MIN_BARS_FOR_TRAINING: 50
+        run: |
+          JOB_TYPE="${{ github.event.inputs.job_type }}"
+          if [ "$JOB_TYPE" = "forecast" ] || [ "$JOB_TYPE" = "all" ] || [ -z "$JOB_TYPE" ]; then
+            echo "Processing forecast jobs..."
+            python -m src.job_worker --job-type forecast
+          fi
+
+      - name: Run ranking job worker
+        if: steps.market_window.outputs.run == 'true'
+        working-directory: ml
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          JOB_TYPE="${{ github.event.inputs.job_type }}"
+          if [ "$JOB_TYPE" = "ranking" ] || [ "$JOB_TYPE" = "all" ] || [ -z "$JOB_TYPE" ]; then
+            echo "Processing ranking jobs..."
+            python -m src.job_worker --job-type ranking
+          fi

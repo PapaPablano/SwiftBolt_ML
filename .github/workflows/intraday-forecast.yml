@@ -142,6 +142,88 @@ jobs:
         run: |
           pip install "imbalanced-learn>=0.12.0"
 
+      - name: Validate OHLC data quality before forecasting
+        continue-on-error: true
+        run: |
+          cd ml
+          python -c "
+          import os
+          from dotenv import load_dotenv
+          load_dotenv()
+          
+          from src.data.data_validator import OHLCValidator
+          from src.data.supabase_db import db
+          from src.scripts.universe_utils import get_symbol_universe
+          
+          validator = OHLCValidator()
+          universe = get_symbol_universe()
+          symbols = universe.get('symbols', []) or ['SPY', 'AAPL']
+          
+          # Check intraday timeframes used for forecasting
+          timeframes = ['m15', 'h1']
+          validation_errors = []
+          validation_warnings = []
+          
+          # Sample validation on top 5 symbols
+          for symbol in symbols[:5]:
+              symbol = symbol.strip()
+              if not symbol:
+                  continue
+              for tf in timeframes:
+                  try:
+                      df = db.fetch_ohlc_bars(symbol, timeframe=tf, limit=100)
+                      if df.empty:
+                          print(f'⚠️ {symbol}/{tf}: No data found')
+                          validation_warnings.append(f'{symbol}/{tf}: No data')
+                          continue
+                      
+                      df, result = validator.validate(df, fix_issues=False)
+                      if not result.is_valid:
+                          # Distinguish critical errors from warnings
+                          issues = result.issues or []
+                          critical_issues = [i for i in issues if any(crit in i.lower() for crit in ['high <', 'negative volume', 'non-positive'])]
+                          warning_issues = [i for i in issues if i not in critical_issues]
+                          
+                          if critical_issues:
+                              error_msg = f'{symbol}/{tf}: {critical_issues}'
+                              validation_errors.append(error_msg)
+                              print(f'❌ {error_msg}')
+                          # Only log warnings if there are multiple or they're significant
+                          # Single outliers/gaps are common in market data
+                          if warning_issues and len(warning_issues) > 1:
+                              warning_msg = f'{symbol}/{tf}: {warning_issues}'
+                              validation_warnings.append(warning_msg)
+                              print(f'⚠️ {warning_msg}')
+                          elif warning_issues:
+                              # Single warning - log at debug level only
+                              pass
+                      else:
+                          print(f'✅ {symbol}/{tf}: Valid ({len(df)} bars)')
+                  except Exception as e:
+                      print(f'⚠️ {symbol}/{tf}: Validation error - {e}')
+                      validation_warnings.append(f'{symbol}/{tf}: {str(e)}')
+          
+          # Report results
+          if validation_errors:
+              print('')
+              print('❌ Critical OHLC validation errors (should be reviewed):')
+              for error in validation_errors:
+                  print(f'  - {error}')
+              print('')
+              print('::warning::Critical OHLC data quality issues detected. Forecasts may be unreliable.')
+          elif validation_warnings:
+              print('')
+              print('⚠️ OHLC validation warnings (non-critical, common in market data):')
+              for warning in validation_warnings:
+                  print(f'  - {warning}')
+              print('')
+              print('Note: Single outliers or gaps are normal in market data and do not affect forecast reliability.')
+              # Don't create GitHub warning for minor validation issues
+          else:
+              print('')
+              print('✅ OHLC validation passed for all checked symbols/timeframes')
+          "
+
       - name: Generate intraday forecasts
         env:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -165,6 +247,13 @@ jobs:
             generate_forecast "15m"
             echo "📊 Generating 1h forecasts..."
             generate_forecast "1h"
+      
+      - name: Evaluate intraday forecasts
+        continue-on-error: true
+        run: |
+          cd ml
+          echo "📊 Evaluating intraday forecasts (15m, 1h)..."
+          python -m src.evaluation_job_intraday || echo "⚠️ Intraday evaluation completed with warnings"
           else
             echo "📊 Generating $HORIZON forecasts..."
             generate_forecast "$HORIZON"
@@ -186,3 +275,7 @@ jobs:
           echo "### Data Updated" >> $GITHUB_STEP_SUMMARY
           echo "- \`indicator_values\` - Intraday indicator snapshots" >> $GITHUB_STEP_SUMMARY
           echo "- \`ml_forecasts\` - Intraday forecast paths" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Notes" >> $GITHUB_STEP_SUMMARY
+          echo "- OHLC validation warnings (outliers, gaps) are normal in market data" >> $GITHUB_STEP_SUMMARY
+          echo "- Only critical errors (data integrity issues) affect forecast reliability" >> $GITHUB_STEP_SUMMARY

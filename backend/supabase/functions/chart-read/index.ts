@@ -824,14 +824,14 @@ serve(async (req: Request): Promise<Response> => {
           const horizonMap: Record<string, string> = {
             m15: "15m",
             h1: "1h",
-            h4: "1h",
+            h4: "4h",
           };
 
           const horizon = horizonMap[timeframe] ?? "1h";
           const expiryCutoffIso = new Date(Date.now() - INTRADAY_FORECAST_EXPIRY_GRACE_SECONDS * 1000).toISOString();
 
           const pathHorizon = "7d";
-          const { data: intradayPath } = await supabase
+          const { data: intradayPathFresh } = await supabase
             .from("ml_forecast_paths_intraday")
             .select("*")
             .eq("symbol_id", symbolId)
@@ -842,18 +842,40 @@ serve(async (req: Request): Promise<Response> => {
             .limit(1)
             .single();
 
-          const { data: intradayForecast } = await supabase
+          const { data: intradayForecastFresh } = await supabase
             .from("ml_forecasts_intraday")
             .select("*")
             .eq("symbol_id", symbolId)
+            .eq("timeframe", timeframe)
             .eq("horizon", horizon)
             .gte("expires_at", expiryCutoffIso)
             .order("created_at", { ascending: false })
             .limit(1)
             .single();
 
-          if (intradayForecast) {
-            const conf = clampNumber(intradayForecast.confidence, 0.5);
+          const intradayPath = intradayPathFresh ?? (await supabase
+            .from("ml_forecast_paths_intraday")
+            .select("*")
+            .eq("symbol_id", symbolId)
+            .eq("timeframe", timeframe)
+            .eq("horizon", pathHorizon)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single()).data;
+
+          const intradayForecast = intradayForecastFresh ?? (await supabase
+            .from("ml_forecasts_intraday")
+            .select("*")
+            .eq("symbol_id", symbolId)
+            .eq("timeframe", timeframe)
+            .eq("horizon", horizon)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single()).data;
+
+          if (intradayForecast || intradayPath) {
+            const confidenceBase = intradayForecast?.confidence ?? intradayPath?.confidence ?? 0.5;
+            const conf = clampNumber(confidenceBase, 0.5);
 
             const horizons: Array<{ horizon: string; points: Array<{ ts: number; value: number; lower: number; upper: number }> }> = [];
 
@@ -868,7 +890,7 @@ serve(async (req: Request): Promise<Response> => {
               }
             }
 
-            if (Array.isArray(intradayForecast.points) && intradayForecast.points.length > 0) {
+            if (intradayForecast && Array.isArray(intradayForecast.points) && intradayForecast.points.length > 0) {
               const normalizedForecastPoints = normalizeForecastPoints(intradayForecast.points);
               const sampledForecastPoints = sampleForecastPoints(normalizedForecastPoints, INTRADAY_FORECAST_MAX_POINTS);
               if (sampledForecastPoints.length > 0) {
@@ -880,7 +902,7 @@ serve(async (req: Request): Promise<Response> => {
             }
 
             mlSummary = {
-              overallLabel: intradayForecast.overall_label,
+              overallLabel: intradayForecast?.overall_label ?? intradayPath?.overall_label ?? null,
               confidence: conf,
               horizons,
               srLevels: null,
@@ -892,7 +914,7 @@ serve(async (req: Request): Promise<Response> => {
               supertrendPerformance: null,
               supertrendSignal: intradayForecast?.supertrend_direction === "BULLISH" ? 1 :
                 intradayForecast?.supertrend_direction === "BEARISH" ? -1 : 0,
-              trendLabel: intradayPath?.overall_label ?? intradayForecast.overall_label,
+              trendLabel: intradayPath?.overall_label ?? intradayForecast?.overall_label ?? null,
               trendConfidence: Math.round(conf * 10),
               stopLevel: null,
               trendDurationBars: null,

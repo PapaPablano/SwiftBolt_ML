@@ -92,16 +92,85 @@ class IntradayWeightCalibrator:
             lookback_hours=self.lookback_hours,
         )
 
-        if not evals:
-            return pd.DataFrame()
+        if evals is None:
+            df = pd.DataFrame()
+        elif isinstance(evals, pd.DataFrame):
+            df = evals.copy()
+        else:
+            df = pd.DataFrame(evals)
 
-        df = pd.DataFrame(evals)
+        if df.empty:
+            df = self._build_fallback_evaluations(symbol_id)
+        elif len(df) < self.min_samples:
+            fallback_df = self._build_fallback_evaluations(symbol_id)
+            if not fallback_df.empty:
+                df = pd.concat([df, fallback_df], ignore_index=True)
 
         # Filter by horizon if specified
         if horizon and "horizon" in df.columns:
             df = df[df["horizon"] == horizon]
 
         return df
+
+    def _build_fallback_evaluations(self, symbol_id: str) -> pd.DataFrame:
+        """
+        Build evaluation dataset from intraday forecasts and multi-timeframe bars.
+
+        Uses all available timeframes (m15, h1, h4, d1, w1) for consistency.
+        """
+        forecasts = db.get_intraday_forecasts_for_calibration(
+            symbol_id=symbol_id,
+            lookback_hours=self.lookback_hours,
+        )
+        if forecasts.empty:
+            return pd.DataFrame()
+
+        start_ts = forecasts["created_at"].min().isoformat()
+        end_ts = forecasts["expires_at"].max().isoformat()
+        bars = db.fetch_ohlc_bars_multi_timeframe(symbol_id, start_ts, end_ts)
+        if bars.empty:
+            return pd.DataFrame()
+
+        eval_rows = []
+        for _, row in forecasts.iterrows():
+            timeframe = row.get("timeframe")
+            if timeframe not in {"m15", "h1", "h4", "d1", "w1"}:
+                continue
+
+            expiry = row.get("expires_at")
+            if pd.isna(expiry):
+                continue
+
+            tf_bars = bars[bars["timeframe"] == timeframe]
+            outcome = tf_bars[tf_bars["ts"] <= expiry].tail(1)
+            if outcome.empty:
+                continue
+
+            realized_price = float(outcome.iloc[0]["close"])
+            predicted_price = float(row.get("target_price") or 0)
+            if realized_price <= 0 or predicted_price <= 0:
+                continue
+
+            price_error_pct = abs(predicted_price - realized_price) / realized_price
+            eval_rows.append(
+                {
+                    "forecast_id": row.get("id"),
+                    "horizon": row.get("horizon"),
+                    "predicted_price": predicted_price,
+                    "realized_price": realized_price,
+                    "price_error_pct": price_error_pct,
+                    "direction_correct": None,
+                    "supertrend_component": row.get("supertrend_component"),
+                    "sr_component": row.get("sr_component"),
+                    "ensemble_component": row.get("ensemble_component"),
+                    "evaluated_at": expiry,
+                }
+            )
+
+        if not eval_rows:
+            return pd.DataFrame()
+
+        return pd.DataFrame(eval_rows)
 
     def _compute_weighted_prediction(
         self,

@@ -1,0 +1,51 @@
+---
+description: Limit markdown documentation to ONE file per chat session
+alwaysApply: true
+---
+
+# One Markdown File Per Session
+
+**CRITICAL CONSTRAINT**: Create only ONE `.md` documentation file per chat agent session.
+
+## Rules
+
+1. **Maximum ONE `.md` file** per session
+   - If documentation is needed, create a single comprehensive file
+   - Consolidate all information into that one file
+   - Do NOT create multiple separate markdown files
+
+2. **Consolidate documentation**
+   - Combine related content into sections within the single file
+   - Use clear headings and table of contents
+   - Make the single file comprehensive rather than splitting into multiple files
+
+3. **Exceptions**
+   - Modifying existing `.md` files is allowed
+   - README.md updates are allowed
+   - This rule applies only to NEW markdown documentation files
+
+## Examples
+
+### ❌ BAD - Multiple files in one session
+```
+# Session creates:
+PHASE_1_SUMMARY.md
+PHASE_2_SUMMARY.md  
+PHASE_3_SUMMARY.md
+```
+
+### ✅ GOOD - Single consolidated file
+```
+# Session creates:
+CONSOLIDATION_PHASES_1_2_3_SUMMARY.md
+  - Phase 1 section
+  - Phase 2 section  
+  - Phase 3 section
+```
+
+## Rationale
+
+- Reduces file clutter
+- Easier to find information in one place
+- Better for version control
+- More maintainable documentation structure

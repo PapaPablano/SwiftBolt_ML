@@ -72,8 +72,8 @@ def validate_and_report(symbol: str, timeframe: str) -> dict:
     # Get coverage stats
     stats = get_coverage_stats(symbol, timeframe)
 
-    # Detect gaps (24 hours for intraday, 7 days for daily+)
-    max_gap_hours = 24 if timeframe in ["m15", "h1", "h4"] else 168  # 7 days
+    # Detect gaps: 72 hours for intraday (weekends/holidays), 7 days for daily+
+    max_gap_hours = 72 if timeframe in ["m15", "h1", "h4"] else 168  # 7 days
     gaps = detect_gaps(symbol, timeframe, max_gap_hours)
 
     # Calculate expected bars vs actual

@@ -262,8 +262,8 @@ struct WebChartView: NSViewRepresentable {
 
             bridge.setCandles(from: uniqueCandles)
 
-            // Intraday-specific forecast confidence badge/overlay
-            if parent.viewModel.timeframe.isIntraday, let ml = data.mlSummary, let lastBar = uniqueCandles.last {
+            // Forecast confidence badge/overlay for all timeframes (Fix E: removed intraday-only constraint)
+            if let ml = data.mlSummary, let lastBar = uniqueCandles.last {
                 // Remove previous confidence lines to avoid duplicates
                 bridge.send(.removePriceLines(category: "forecast-confidence"))
 

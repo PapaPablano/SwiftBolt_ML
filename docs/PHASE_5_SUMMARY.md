@@ -32,6 +32,19 @@ mlSummary = {
 };
 ```
 
+**New Response Optimization Parameters:**
+
+```http
+GET /chart?symbol=AAPL&timeframe=d1&fields=bars,forecast&bars_limit=500&bars_offset=0&options_limit=10&options_offset=0
+```
+
+- `fields`: Comma-separated response sections (`bars`, `forecast`, `options`, `meta`, `freshness`).
+- `bars_limit` / `bars_offset`: Paginate bar payloads.
+- `options_limit` / `options_offset`: Paginate options ranks.
+
+**Compression:**
+- Responses gzip-compress when `Accept-Encoding: gzip` is sent by the client.
+
 **API Response Structure:**
 ```json
 {

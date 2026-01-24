@@ -1,0 +1,82 @@
+{
+  "timestamp": "2026-01-18T20:46:26.560281",
+  "settings": {
+    "min_bars_for_training": 20,
+    "min_bars_for_high_confidence": 504,
+    "forecast_horizons": [
+      "1D",
+      "1W"
+    ]
+  },
+  "data_info": {
+    "n_bars": 600,
+    "start_date": "2023-01-02T00:00:00",
+    "end_date": "2025-04-18T00:00:00"
+  },
+  "data_validation": {
+    "is_valid": true,
+    "issues": [],
+    "rows_flagged": 0,
+    "quality_score": 1.0,
+    "total_rows": 600
+  },
+  "forecaster": {
+    "1D": {
+      "error": "No valid predictions generated"
+    },
+    "1W": {
+      "error": "No valid predictions generated"
+    },
+    "1M": {
+      "error": "No valid predictions generated"
+    }
+  },
+  "calibration": {
+    "total_samples": 500,
+    "buckets": {
+      "40-50%": {
+        "predicted_confidence": 0.4465842135182745,
+        "actual_accuracy": 0.30097087378640774,
+        "n_samples": 103,
+        "is_calibrated": false,
+        "adjustment_factor": 0.6739397960695981
+      },
+      "50-60%": {
+        "predicted_confidence": 0.5535056982521384,
+        "actual_accuracy": 0.36904761904761907,
+        "n_samples": 84,
+        "is_calibrated": false,
+        "adjustment_factor": 0.6667458351612251
+      },
+      "60-70%": {
+        "predicted_confidence": 0.651197592873213,
+        "actual_accuracy": 0.4,
+        "n_samples": 80,
+        "is_calibrated": false,
+        "adjustment_factor": 0.6142528848043197
+      },
+      "70-80%": {
+        "predicted_confidence": 0.7491046850835469,
+        "actual_accuracy": 0.44086021505376344,
+        "n_samples": 93,
+        "is_calibrated": false,
+        "adjustment_factor": 0.5885161631375924
+      },
+      "80-90%": {
+        "predicted_confidence": 0.8530165703904058,
+        "actual_accuracy": 0.6344086021505376,
+        "n_samples": 93,
+        "is_calibrated": false,
+        "adjustment_factor": 0.7437236557552259
+      },
+      "90-100%": {
+        "predicted_confidence": 0.9259305112735586,
+        "actual_accuracy": 0.723404255319149,
+        "n_samples": 47,
+        "is_calibrated": false,
+        "adjustment_factor": 0.781272726745069
+      }
+    },
+    "report": "Confidence Calibration Report\n========================================\n40-50%: x0.67 [ADJUST]\n50-60%: x0.67 [ADJUST]\n60-70%: x0.61 [ADJUST]\n70-80%: x0.59 [ADJUST]\n80-90%: x0.74 [ADJUST]\n90-100%: x0.78 [ADJUST]"
+  }
+}

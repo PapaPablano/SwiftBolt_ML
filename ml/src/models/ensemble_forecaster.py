@@ -11,6 +11,7 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 from imblearn.over_sampling import SMOTE
+from sklearn.preprocessing import RobustScaler
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,8 @@ class EnsembleForecaster:
 
         self.rf_model = BaselineForecaster()
         self.gb_model = GradientBoostingForecaster(horizon=horizon)
+        self.scaler = RobustScaler()
+        self.rf_model.scaler = self.scaler
 
         self.is_trained = False
         self.training_stats: Dict = {}
@@ -182,6 +185,11 @@ class EnsembleForecaster:
             dropped = set(features_df.columns) - set(numeric_features.columns)
             logger.info("Dropped non-numeric columns for training: %s", dropped)
 
+        if numeric_features.empty or labels_series.empty:
+            raise ValueError(
+                "Insufficient numeric training data for ensemble training"
+            )
+
         # Dynamically set k_neighbors based on smallest class size
         min_class_count = labels_series.value_counts().min()
         k_neighbors = min(5, min_class_count - 1) if min_class_count > 1 else 0
@@ -206,8 +214,8 @@ class EnsembleForecaster:
             rf_labels = rf_labels.map(label_map)
 
         self.rf_model.feature_columns = numeric_features.columns.tolist()
-        self.rf_model.scaler.fit(X_balanced)
-        X_scaled = self.rf_model.scaler.transform(X_balanced)
+        self.scaler.fit(X_balanced)
+        X_scaled = self.scaler.transform(X_balanced)
         self.rf_model.model.fit(X_scaled, rf_labels)
         self.rf_model.is_trained = True
         rf_accuracy = self.rf_model.model.score(X_scaled, rf_labels)
@@ -338,7 +346,7 @@ class EnsembleForecaster:
             raise RuntimeError("Ensemble not trained.")
 
         # Get RF batch predictions
-        X_scaled = self.rf_model.scaler.transform(features_df[self.rf_model.feature_columns])
+        X_scaled = self.scaler.transform(features_df[self.rf_model.feature_columns])
         rf_predictions = self.rf_model.model.predict(X_scaled)
         rf_probabilities = self.rf_model.model.predict_proba(X_scaled)
         rf_classes = self.rf_model.model.classes_
@@ -454,7 +462,7 @@ class EnsembleForecaster:
             pickle.dump(
                 {
                     "model": self.rf_model.model,
-                    "scaler": self.rf_model.scaler,
+                    "scaler": self.scaler,
                     "feature_columns": self.rf_model.feature_columns,
                 },
                 f,
@@ -469,7 +477,8 @@ class EnsembleForecaster:
         with open(filepath_rf, "rb") as f:
             rf_data = pickle.load(f)
             self.rf_model.model = rf_data["model"]
-            self.rf_model.scaler = rf_data["scaler"]
+            self.scaler = rf_data["scaler"]
+            self.rf_model.scaler = self.scaler
             self.rf_model.feature_columns = rf_data["feature_columns"]
             self.rf_model.is_trained = True
 

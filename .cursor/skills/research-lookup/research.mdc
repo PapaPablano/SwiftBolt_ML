@@ -1,0 +1,749 @@
+---
+alwaysApply: false
+---
+# Research Information Lookup
+
+**Location:** `/Users/ericpeterson/SwiftBolt_ML/.cursor/skills/research-lookup/research.mdc`
+
+## Overview
+
+This skill enables real-time research information lookup using **Perplexity MCP tools** for internet-scale information discovery and deep document analysis. Rather than relying on static training data, this skill orchestrates live research queries and synthesizes results with proper source attribution.
+
+### Core Perplexity MCP Tools
+
+**Primary Tools:**
+- **`search_web`** – Keyword-based internet search (1–3 focused queries per call)
+  - Best for: current facts, recent publications, rankings, product/API comparisons, statistics, tutorials
+  - Returns: snippets + URLs from relevant sources
+  - Citation format: `[web:1]`, `[web:2]`, etc.
+
+- **`get_url_content`** – Deep read/summarize specific URLs, PDFs, documentation
+  - Best for: extracting data from long articles, technical specs, academic papers, regulatory docs
+  - Input: direct URL or attached file path
+  - Returns: full content summary with key sections extracted
+  - Citation format: `[page:1]`, `[page:2]`, etc.
+
+**Specialized Tool:**
+- **`search_pplx_support`** – Perplexity help center lookup
+  - Best for: Perplexity-specific questions (subscriptions, Labs, Comet, Spaces, account issues, billing)
+  - Returns: help articles + documentation from Perplexity's support center
+  - Citation format: `[support:1]`, `[support:2]`, etc.
+
+### Citation Discipline
+
+**MANDATORY: Every externally-derived sentence must include an inline citation.**
+
+- Facts from `search_web` → `[web:1]`
+- Information from `get_url_content` → `[page:1]`
+- Perplexity feature info → `[support:1]`
+- Multiple sources → `[web:1][page:2][support:3]`
+
+Example:
+```
+Alpaca's latest API supports multi-leg options orders[web:1]. 
+The Paper Trading account allows risk-free strategy testing[page:2].
+```
+
+NEVER cite without source. If you don't have a source, say "based on my training knowledge" or "I don't have current info, let me search."
+
+---
+
+## When to Use This Skill
+
+Use this skill when you need:
+
+### Current Information
+- Latest studies, papers, and findings (2024–2026)
+- Recent API changes or feature releases
+- Current pricing, availability, or product status
+- Breaking news or emerging developments
+- Recent benchmark results or performance data
+
+### Specific Reference Material
+- Technical documentation (specs, protocols, methodologies)
+- Academic papers with full citations
+- Code examples from open-source repositories
+- Industry reports and whitepapers
+- Regulatory or compliance guidance
+
+### Comparative Analysis
+- Product/tool comparisons (features, pricing, performance)
+- Library/framework benchmarks
+- Provider evaluations (Alpaca vs Polygon, etc.)
+- Alternative recommendations
+
+### Verification & Fact-Checking
+- Verify statistics and claims against current sources
+- Check if information is outdated
+- Find authoritative sources for citations
+- Validate technical claims
+
+### Perplexity-Specific Questions
+- Feature availability and capabilities (Labs, Comet, Spaces)
+- Subscription tiers and pricing
+- Account issues and support articles
+- API documentation
+- Troubleshooting guides
+
+---
+
+## Research Modes
+
+Choose the right research strategy based on your needs:
+
+### Mode 1: Snapshot (Quick Lookup)
+
+**Use when:** You need basic facts fast
+
+**Process:**
+1. Call `search_web` with 1 focused query
+2. Synthesize top 2–3 results
+3. Add inline citations
+
+**Example query:**
+```
+"Alpaca API trading hours limitations 2026"
+```
+
+**Expected time:** ~10 seconds
+
+### Mode 2: Deep Dive (Comprehensive Research)
+
+**Use when:** You need authoritative sources, detailed info, or multiple perspectives
+
+**Process:**
+1. Call `search_web` with 2–3 complementary queries:
+   - **Breadth**: overview / general info
+   - **Depth**: specifics / technical details / benchmarks
+   - **Implementation**: best practices / how-to / tutorials
+2. Identify 1–3 most relevant URLs from results
+3. Call `get_url_content` on those URLs to extract key sections
+
+---
+
+## Trading & ML Research Playbook
+
+Our domain expertise areas that frequently require research validation:
+
+### Quantitative Finance & Options Trading
+
+**Research Topics:**
+- Options Greeks sensitivity models (Delta, Gamma, Vega, Theta, Rho)
+- Black-Scholes-Merton vs Binomial pricing models
+- Implied Volatility surface construction and interpretation
+- Greeks heatmap visualization best practices
+- Options spread strategies (call spreads, iron condors, butterflies, ratio spreads)
+- Multi-leg order execution on modern APIs (Alpaca, TD Ameritrade)
+- Volatility smile/skew trading strategies
+- Real-time Greeks calculation optimization
+- Options assignment risk in overnight positions
+- Dividend impact on options pricing
+
+**Typical Search Queries:**
+```
+"Black-Scholes Greeks calculation implementation"
+"Alpaca multi-leg options orders API 2026"
+"implied volatility surface construction Python"
+"options assignment risk management strategies"
+```
+
+### Technical Analysis & Indicators
+
+**Research Topics:**
+- KDJ (Stochastic) indicator variants and signal generation
+- Bollinger Bands width and volatility correlation
+- RSI oversold/overbought thresholds by market regime
+- MACD histogram divergence patterns
+- SuperTrend indicator logic and parameter tuning
+- Volume profile analysis and support/resistance levels
+- Multi-timeframe confluence detection
+- Moving average crossover optimization
+- Ichimoku cloud interpretation
+- Market microstructure and order flow dynamics
+
+**Typical Search Queries:**
+```
+"KDJ stochastic indicator optimization"
+"Bollinger Bands volatility trading strategy"
+"MACD divergence detection algorithm"
+"multi-timeframe technical analysis confluence"
+```
+
+### Machine Learning for Forecasting
+
+**Research Topics:**
+- ARIMA-GARCH hybrid models for time-series volatility
+- XGBoost hyperparameter tuning for financial data
+- Transformer architectures for multi-step prediction
+- Walk-forward analysis for time-series validation (preventing lookahead bias)
+- Feature engineering for financial time-series
+- Label construction for supervised learning (price targets, direction, volatility)
+- Class imbalance handling in market prediction
+- Attention mechanisms for multi-timeframe fusion
+- Backtesting with proper train/validation/test splits
+- Model calibration and confidence intervals
+
+**Typical Search Queries:**
+```
+"walk-forward analysis time series machine learning"
+"transformer attention mechanism stock price prediction"
+"ARIMA-GARCH volatility forecasting Python implementation"
+"XGBoost feature importance financial markets"
+```
+
+### Real-Time Data Integration
+
+**Research Topics:**
+- Alpaca API v2 WebSocket streaming endpoints
+- Finnhub real-time price/options data latency
+- Polygon.io minute/second aggregates reliability
+- Yahoo Finance historical data completeness
+- Alpha Vantage rate limiting and technical indicators
+- Data quality issues (gaps, duplicate ticks, corporate actions)
+- Intraday vs daily data for different strategies
+- Live vs paper trading data consistency
+- Market hours and trading halts handling
+
+**Typical Search Queries:**
+```
+"Alpaca WebSocket latency vs REST API 2026"
+"Polygon.io options Greeks real-time calculation"
+"handling stock splits dividends historical data"
+"comparing financial data providers benchmark"
+```
+
+### Financial Charting & Visualization
+
+**Research Topics:**
+- TradingView Lightweight Charts real-time performance
+- Plotly 3D Greeks surface visualization
+- Candlestick vs OHLC rendering optimization
+- Volume profile rendering best practices
+- Greeks heatmap color scaling and interpretation
+- Responsive charting on mobile (iOS/macOS)
+- WebSocket streaming chart updates
+- Legend/indicator overlay management
+- Touch interaction (pinch-zoom, pan) implementation
+
+**Typical Search Queries:**
+```
+"TradingView Lightweight Charts performance optimization"
+"Plotly 3D surface plot Greeks visualization"
+"WebSocket real-time candlestick chart updates JavaScript"
+"mobile trading app chart responsiveness best practices"
+```
+
+### Production ML Systems
+
+**Research Topics:**
+- Model versioning and A/B testing in trading systems
+- Feature store implementation for time-series
+- Monitoring model drift and performance degradation
+- Handling market regime changes in models
+- Edge function scaling for real-time inference
+- Model serving latency requirements (sub-100ms target)
+- Containerized model deployment with Docker
+- Database optimization for timeseries queries (TimescaleDB)
+- Caching strategies for real-time predictions
+- Fallback strategies when model prediction fails
+
+**Typical Search Queries:**
+```
+"machine learning model drift detection"
+"TimescaleDB hypertables performance tuning"
+"serverless model inference latency optimization"
+"feature store time-series machine learning"
+```
+
+### Swift Development (App-Side)
+
+**Research Topics:**
+- Swift Charts framework for real-time candlesticks
+- Xcode performance profiling for data-intensive operations
+- WebSocket connections in Swift (URLSessionWebSocketTask)
+- SwiftUI animation performance for live price tickers
+- Core Data vs SQLite for local caching
+- Background task scheduling for portfolio monitoring
+- iOS charts library alternatives to TradingView
+- macOS app development best practices
+- Unit testing ML models in Swift
+
+**Typical Search Queries:**
+```
+"Swift Charts real-time candlestick animation performance"
+"URLSessionWebSocketTask market data streaming"
+"SwiftUI chart animation optimization tips"
+"macOS app native chart library options"
+```
+
+---
+
+## Research Execution Flow for SwiftBolt_ML
+
+When working on SwiftBolt_ML features, follow this workflow:
+
+1. **Identify the research need** – Which category above does it fit?
+2. **Choose research depth** – Snapshot for quick facts, Deep Dive for architecture decisions
+3. **Formulate queries** – Use the "Typical Search Queries" examples as templates
+4. **Execute search** – Call `search_web` with 1–3 focused queries
+5. **Evaluate sources** – Look for recent dates, authoritative sources, code examples
+6. **Deep read if needed** – Use `get_url_content` for technical specifications
+7. **Synthesize findings** – Combine multiple sources with proper citations
+8. **Apply to project** – Implement findings with inline references to sources
+
+**Citation discipline:** Every implementation decision backed by research should reference its source.
+
+### Example: Adding Greeks Calculation
+
+```
+"I need to implement live Greeks calculation. The current
+model uses Black-Scholes, but I need to validate if it's
+still optimal for 2026 markets and find implementation details."
+
+Research execution:
+1. Search: "Black-Scholes vs Binomial options pricing 2026"
+2. Search: "Greeks calculation library Python efficient"
+3. Search: "real-time options Greeks edge function latency"
+4. Read: Links from search results discussing implementation
+5. Synthesize: Create Greeks module with citations to sources
+6. Integrate: Add to SwiftBolt_ML with reference comments
+```
+4. Synthesize findings across all sources
+5. Add comprehensive citations
+
+**Example query set:**
+```
+Query 1: "transformer attention mechanisms 2024 recent papers"
+Query 2: "attention mechanism performance benchmarks multi-head"
+Query 3: "efficient attention implementation best practices PyTorch"
+```
+
+**Expected time:** ~30 seconds
+
+### Mode 3: Audit (Fact-Checking)
+
+**Use when:** Verifying claims, checking if info is stale, or validating assumptions
+
+**Process:**
+1. Start with specific claim or assumption
+2. Call `search_web` to find current authoritative sources
+3. Compare against your knowledge
+4. Flag if information conflicts or is outdated
+5. Cite the current source as ground truth
+
+**Example:**
+```
+Claim: "ARIMA models are the best for stock forecasting"
+→ Search: "ARIMA vs machine learning stock forecasting 2024"
+→ Find: Recent papers favoring transformer/ML approaches
+→ Audit result: Claim is partially outdated
+```
+
+---
+
+## MCP Tool Decision Tree
+
+```
+Research Question
+    ↓
+    Is it time-sensitive (2024+, "latest", "current")?
+    ├─ YES → Use search_web
+    └─ NO → Is it about a 3rd-party API/tool that changes?
+            ├─ YES → Use search_web
+            └─ NO → Is it about Perplexity itself?
+                    ├─ YES → Use search_pplx_support
+                    └─ NO → Can I answer from training? If unsure → search_web
+    
+    Do I need deep content extraction (PDF, long doc, full spec)?
+    ├─ YES → Use get_url_content after search_web
+    └─ NO → Use search_web snippets directly
+
+    Are citations required?
+    ├─ YES (external data) → Every sentence gets [web:x], [page:x], or [support:x]
+    └─ NO (pure reasoning) → Can answer without citations
+```
+
+---
+
+## Trading & ML Research Playbook
+
+This section provides concrete research workflows tailored to your SwiftBolt_ML stack (algorithmic trading, quantitative ML, options pricing, technical analysis).
+
+### 1. Alpaca API & Market Data Integration
+
+**Research Use Case:** "What's the latest on Alpaca's options API?"
+
+**Deep Dive Workflow:**
+```
+Query 1: "Alpaca API options trading latest updates 2026"
+Query 2: "Alpaca API rate limits options data streaming"
+Query 3: "Alpaca paper trading options Greeks real-time"
+```
+
+**Follow-up:** `get_url_content` on official Alpaca docs URL to extract current specs.
+
+**Citation Pattern:**
+```
+Alpaca's options API supports [web:1]... 
+Current rate limits are [page:1]...
+```
+
+**Key Resources:**
+- Alpaca official API docs
+- GitHub alpaca-trade-api-python repo
+- Alpaca community forums / Discord
+- Recent blog posts on feature releases
+
+---
+
+### 2. Machine Learning Models for Stock Prediction
+
+**Research Use Case:** "What are the latest transformer architectures for time-series forecasting?"
+
+**Deep Dive Workflow:**
+```
+Query 1: "transformer attention mechanisms time-series forecasting 2024 2025"
+Query 2: "multivariate LSTM vs transformer stock price prediction benchmarks"
+Query 3: "multi-timeframe attention architecture financial forecasting"
+```
+
+**Follow-up:** `get_url_content` on arXiv papers or tech blogs to extract architecture details.
+
+**Citation Pattern:**
+```
+Recent papers show transformers outperform LSTM on long sequences[web:1].
+The attention mechanism enables multi-timeframe learning[page:1].
+Benchmarks from [page:2] show X% improvement on S&P 500 data.
+```
+
+**Key Resources:**
+- arXiv.org (cs.LG, q-fin.ST sections)
+- Papers With Code (time-series benchmarks)
+- GitHub (open-source implementations: PyTorch, TensorFlow)
+- KDnuggets and Towards Data Science
+
+---
+
+### 3. Options Pricing & Greeks Calculation
+
+**Research Use Case:** "What's the state-of-the-art for calculating Greeks in high-frequency options trading?"
+
+**Deep Dive Workflow:**
+```
+Query 1: "Black-Scholes Greeks calculation numerical stability 2024"
+Query 2: "options Greeks derivatives automatic differentiation JAX PyTorch"
+Query 3: "Greeks calculation for exotic options IV surface interpolation"
+```
+
+**Follow-up:** `get_url_content` on academic papers or quant finance blogs for implementation details.
+
+**Citation Pattern:**
+```
+Numerical stability challenges in Greeks calculation are addressed by [web:1].
+Automatic differentiation libraries like JAX provide [page:1]...
+For exotic options, IV surface interpolation methods from [page:2]...
+```
+
+**Key Resources:**
+- Wilmott forums (quantitative finance community)
+- Academic papers (Journal of Computational Finance, etc.)
+- Open-source quant libraries (QuantLib, py-vollib)
+- GitHub repositories (options pricing implementations)
+
+---
+
+### 4. Volatility Modeling & IV Rank/Percentile
+
+**Research Use Case:** "Latest methods for forecasting implied volatility?"
+
+**Deep Dive Workflow:**
+```
+Query 1: "implied volatility forecasting GARCH stochastic volatility 2024"
+Query 2: "IV rank IV percentile calculation methodology options trading"
+Query 3: "volatility surface dynamics machine learning prediction"
+```
+
+**Follow-up:** `get_url_content` on whitepapers or technical blogs.
+
+**Citation Pattern:**
+```
+GARCH models remain foundational for volatility[web:1].
+Recent ML approaches using neural networks show [page:1]...
+IV percentile calculation follows [page:2] methodology.
+```
+
+**Key Resources:**
+- Volatility Options Institute (VOI) resources
+- CBOE education center
+- Academic research (Journal of Risk, Financial Analysts Journal)
+- Quant trading blogs and newsletters
+
+---
+
+### 5. Technical Analysis Indicators & Backtesting
+
+**Research Use Case:** "Are there new ML-enhanced technical indicators? How to validate them?"
+
+**Deep Dive Workflow:**
+```
+Query 1: "machine learning technical indicators RSI MACD KDJ 2024"
+Query 2: "backtesting framework walk-forward validation overfitting detection"
+Query 3: "technical indicator validation statistical significance testing"
+```
+
+**Follow-up:** `get_url_content` on best-practices articles or GitHub repos with implementations.
+
+**Citation Pattern:**
+```
+ML enhancements to KDJ indicators are described in [web:1].
+Walk-forward validation prevents overfitting[page:1].
+The framework from [page:2] implements proper cross-validation.
+```
+
+**Key Resources:**
+- TA-Lib documentation and GitHub
+- Backtrader and Zipline backtesting frameworks
+- Medium articles on technical analysis ML
+- GitHub repositories (ta-lib, pandas-ta, Technical Analysis Library)
+
+---
+
+### 6. Data Quality & Feature Engineering for ML
+
+**Research Use Case:** "Best practices for preparing financial time-series data for ML models?"
+
+**Deep Dive Workflow:**
+```
+Query 1: "financial time-series data preprocessing outlier detection 2024"
+Query 2: "feature engineering stock market data feature scaling normalization"
+Query 3: "handling missing data gaps financial datasets resampling interpolation"
+```
+
+**Follow-up:** `get_url_content` on data science blogs or papers.
+
+**Citation Pattern:**
+```
+Outlier detection methods for financial data include [web:1].
+Robust normalization for trading systems is discussed in [page:1].
+Gap handling strategies from [page:2] recommend...
+```
+
+**Key Resources:**
+- Pandas documentation (time-series / resample / interpolate)
+- Scikit-learn preprocessing guides
+- Academic papers on data quality for finance
+- GitHub (financial data preprocessing libraries)
+
+---
+
+### 7. Regulatory & Compliance (Broker APIs, Trading Rules)
+
+**Research Use Case:** "What are the latest SEC/FINRA rules on algorithmic trading?"
+
+**Deep Dive Workflow:**
+```
+Query 1: "SEC rules algorithmic trading 2026"
+Query 2: "FINRA requirements high-frequency trading risk controls"
+Query 3: "Regulation SHO short selling constraints real-time"
+```
+
+**Follow-up:** `get_url_content` on SEC/FINRA official docs.
+
+**Citation Pattern:**
+```
+SEC Rule [XYZ] requires[page:1]...
+FINRA compliance for [system type] mandates[page:2]...
+```
+
+**Key Resources:**
+- SEC.gov official rules and guidance
+- FINRA regulatory notices
+- SEC/FINRA press releases and announcements
+- Compliance law firm blog posts
+
+---
+
+### 8. Libraries & Tools Comparison
+
+**Research Use Case:** "Latest time-series ML libraries (LSTM, Transformer)? Alpaca vs Polygon vs Finnhub data?"
+
+**Snapshot Workflow (Quick):**
+```
+Query 1: "best Python time-series deep learning library 2026 PyTorch TensorFlow"
+Query 2: "Alpaca vs Polygon vs Finnhub API comparison stock options data"
+```
+
+**Deep Dive Workflow (Comprehensive):**
+```
+Query 1: "PyTorch vs TensorFlow time-series forecasting LSTM transformer 2024"
+Query 2: "PyTorch Lightning vs Keras vs TensorFlow Keras for production"
+Query 3: "Alpaca API vs Polygon API vs Finnhub comparison features pricing latency"
+```
+
+**Follow-up:** `get_url_content` on GitHub benchmarks or official docs.
+
+**Citation Pattern:**
+```
+PyTorch is preferred for research[web:1]; Keras for rapid prototyping[web:2].
+Alpaca provides [page:1]; Polygon specializes in [page:2]; Finnhub focuses on [page:3].
+```
+
+**Key Resources:**
+- GitHub (star counts, recent activity)
+- Framework official documentation
+- Benchmarks (Papers With Code, GitHub repos)
+- Reviews and comparison articles
+- Provider official feature matrices
+
+---
+
+### 9. Query Template Library
+
+Copy-paste ready queries for your common research needs:
+
+#### Alpaca & Trading Infrastructure
+```
+"Alpaca API [feature] latest update 2026"
+"Alpaca vs [competitor] trading API comparison"
+"Alpaca paper trading options Greeks real-time"
+"Alpaca API rate limits and best practices"
+```
+
+#### ML & Forecasting
+```
+"transformer time-series forecasting stock price 2024"
+"LSTM vs transformer financial data benchmark"
+"multi-timeframe attention mechanism implementation"
+"XGBoost LightGBM stock prediction comparison"
+```
+
+#### Options & Greeks
+```
+"Black-Scholes Greeks calculation numerical stability"
+"IV surface interpolation options pricing"
+"exotic options Greeks computation"
+```
+
+#### Technical Analysis
+```
+"machine learning [indicator name] enhancement 2024"
+"[indicator] backtesting walk-forward validation"
+"technical analysis overfitting detection methods"
+```
+
+#### Data & Features
+```
+"financial time-series preprocessing outlier detection"
+"feature engineering stock market data best practices"
+"handling gaps missing data financial datasets"
+```
+
+---
+
+## Advanced Patterns
+
+### Pattern: Multi-Step Research
+
+For complex questions, chain multiple searches:
+
+```
+Step 1: Broad search → understand landscape
+Step 2: Narrow search → find specific implementation
+Step 3: Deep read → extract technical details from top URL
+Step 4: Synthesize → combine findings with citations
+```
+
+Example: "How to implement attention-based volatility forecasting?"
+```
+Search 1: "attention mechanisms volatility forecasting 2024" → landscape
+Search 2: "volatility GARCH attention transformer implementation" → specifics
+Search 3: "PyTorch attention layer volatility prediction" → how-to
+→ get_url_content on GitHub repo → working code
+```
+
+### Pattern: Comparative Deep Dive
+
+For comparisons, search each option separately:
+
+```
+Search: "option 1 comparison metrics"
+→ get_url_content on top 2 results
+
+Search: "option 2 comparison metrics"
+→ get_url_content on top 2 results
+
+Synthesize: side-by-side comparison with citations
+```
+
+### Pattern: Validation Check
+
+When given a claim, verify it:
+
+```
+Claim: "Algorithm X is the best for Y"
+→ Search: "Algorithm X vs alternatives Y benchmark 2024"
+→ Result: If conflict found, cite latest sources
+```
+
+---
+
+## Error Handling & Fallbacks
+
+**If `search_web` returns no results:**
+- Try rephrasing with different keywords
+- Broaden the query (remove year, specifics)
+- Break multi-part question into separate searches
+
+**If URL content is unavailable:**
+- Try another URL from search results
+- Use search snippet directly instead
+- Note in response: "URL unavailable; information from search snippet"
+
+**If Perplexity-specific question fails `search_pplx_support`:**
+- Fall back to `search_web` with "Perplexity [feature] [question]"
+- Link to perplexity.com help center manually
+
+**If you lack current info after searching:**
+- Always say "I searched and didn't find [X]"
+- Don't hallucinate sources
+- Offer to search with different keywords
+
+---
+
+## Citation Best Practices
+
+✅ **DO:**
+- Add inline citations immediately after facts: "fact here[web:1]"
+- Use sequential numbering: `[web:1]`, `[web:2]`, etc.
+- Mix sources: `[web:1][page:2][support:3]`
+- Include URLs when relevant for user follow-up
+
+❌ **DON'T:**
+- Omit citations for external facts
+- Use vague citations: "according to the internet"
+- Cite training data without searching if time-sensitive
+- Claim certainty when info is speculative
+
+---
+
+## Integration with Other Skills
+
+This research skill pairs naturally with:
+
+- **options.mdc** – Research latest Greeks, volatility models, strategy updates
+- **ml-pipeline-workflow.mdc** – Research data pipelines, feature engineering, backtesting frameworks
+- **dataset-engineering.mdc** – Research data formats, cleaning methods, augmentation techniques
+- **weights-and-biases.mdc** – Research W&B features, best practices for experiment tracking
+
+---
+
+## Quick Reference
+
+| Need | Tool | Time | Mode |
+|------|------|------|------|
+| Quick fact | `search_web` (1 query) | ~5s | Snapshot |
+| Current API status | `search_web` + `get_url_content` | ~15s | Snapshot |
+| Comprehensive research | `search_web` (3 queries) + `get_url_content` (2+ URLs) | ~30s | Deep Dive |
+| Fact-checking | `search_web` | ~10s | Audit |
+| Perplexity-specific | `search_pplx_support` | ~10s | Snapshot |
+| Complex synthesis | Multi-step + consolidation | ~60s | Deep Dive |

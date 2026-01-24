@@ -211,7 +211,7 @@ def train_symbol_weights(
         .eq("horizon", horizon)
         .gte(
             "evaluation_date",
-            (pd.Timestamp.utcnow() - pd.Timedelta(days=lookback_days)).isoformat(),
+            (pd.Timestamp.now('UTC') - pd.Timedelta(days=lookback_days)).isoformat(),
         )
         .order("evaluation_date", desc=True)
         .limit(500)

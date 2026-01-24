@@ -1,0 +1,119 @@
+{
+  "timestamp": "2026-01-18T22:34:41.567193",
+  "settings": {
+    "min_bars_for_training": 20,
+    "min_bars_for_high_confidence": 504,
+    "forecast_horizons": [
+      "1D",
+      "1W"
+    ]
+  },
+  "data_info": {
+    "n_bars": 600,
+    "start_date": "2023-01-02T00:00:00",
+    "end_date": "2025-04-18T00:00:00"
+  },
+  "data_validation": {
+    "is_valid": true,
+    "issues": [],
+    "rows_flagged": 0,
+    "quality_score": 1.0,
+    "total_rows": 600
+  },
+  "forecaster": {
+    "1D": {
+      "accuracy": 0.5522953147184099,
+      "precision": 0.5514233220822823,
+      "recall": 0.5522953147184099,
+      "f1_score": 0.5516425300102271,
+      "sharpe_ratio": 0.9262011367409293,
+      "sortino_ratio": 1.6944491672392934,
+      "max_drawdown": -20.40600808250518,
+      "win_rate": 0.5309985802177,
+      "profit_factor": 1.1571149586621807,
+      "total_trades": 2113,
+      "test_periods": 237
+    },
+    "1W": {
+      "accuracy": 0.3034610630407911,
+      "precision": 0.5822140372431462,
+      "recall": 0.3034610630407911,
+      "f1_score": 0.35389191734636394,
+      "sharpe_ratio": 0.8078102149110599,
+      "sortino_ratio": 1.4252480531594764,
+      "max_drawdown": -6.805097306994819,
+      "win_rate": 0.5259579728059333,
+      "profit_factor": 1.1360416913292306,
+      "total_trades": 1618,
+      "test_periods": 69
+    },
+    "1M": {
+      "accuracy": 0.1201923076923077,
+      "precision": 0.7818838499808649,
+      "recall": 0.1201923076923077,
+      "f1_score": 0.04170111331569664,
+      "sharpe_ratio": -0.405052148061427,
+      "sortino_ratio": -0.6324876337462199,
+      "max_drawdown": -0.25789833278075924,
+      "win_rate": 0.5048076923076923,
+      "profit_factor": 0.937149230055869,
+      "total_trades": 208,
+      "test_periods": 4
+    }
+  },
+  "calibration": {
+    "total_samples": 500,
+    "buckets": {
+      "40-50%": {
+        "predicted_confidence": 0.4465842135182745,
+        "actual_accuracy": 0.30097087378640774,
+        "n_samples": 103,
+        "is_calibrated": false,
+        "adjustment_factor": 0.6739397960695981
+      },
+      "50-60%": {
+        "predicted_confidence": 0.5535056982521384,
+        "actual_accuracy": 0.36904761904761907,
+        "n_samples": 84,
+        "is_calibrated": false,
+        "adjustment_factor": 0.6667458351612251
+      },
+      "60-70%": {
+        "predicted_confidence": 0.651197592873213,
+        "actual_accuracy": 0.4,
+        "n_samples": 80,
+        "is_calibrated": false,
+        "adjustment_factor": 0.6142528848043197
+      },
+      "70-80%": {
+        "predicted_confidence": 0.7491046850835469,
+        "actual_accuracy": 0.44086021505376344,
+        "n_samples": 93,
+        "is_calibrated": false,
+        "adjustment_factor": 0.5885161631375924
+      },
+      "80-90%": {
+        "predicted_confidence": 0.8530165703904058,
+        "actual_accuracy": 0.6344086021505376,
+        "n_samples": 93,
+        "is_calibrated": false,
+        "adjustment_factor": 0.7437236557552259
+      },
+      "90-100%": {
+        "predicted_confidence": 0.9259305112735586,
+        "actual_accuracy": 0.723404255319149,
+        "n_samples": 47,
+        "is_calibrated": false,
+        "adjustment_factor": 0.781272726745069
+      }
+    },
+    "report": "Confidence Calibration Report\n========================================\n40-50%: x0.67 [ADJUST]\n50-60%: x0.67 [ADJUST]\n60-70%: x0.61 [ADJUST]\n70-80%: x0.59 [ADJUST]\n80-90%: x0.74 [ADJUST]\n90-100%: x0.78 [ADJUST]"
+  },
+  "summary": {
+    "avg_accuracy": 0.32531622848383623,
+    "avg_sharpe_ratio": 0.442986401196854,
+    "avg_f1_score": 0.31574518689076253,
+    "horizons_tested": 3,
+    "horizons_failed": 0
+  }
+}

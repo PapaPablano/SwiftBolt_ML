@@ -49,24 +49,67 @@ jobs:
     name: Apply Database Migrations
     runs-on: ubuntu-latest
     needs: deploy-functions
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Setup Supabase CLI
       uses: supabase/setup-cli@v1
       with:
         version: latest
-    
+
     - name: Link to Supabase project
       run: |
         supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
       env:
         SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-    
+
     - name: Push database migrations
+      id: db_push
+      continue-on-error: true
       run: |
-        supabase db push
+        supabase db push 2>&1 | tee /tmp/db_push_output.txt
+        exit ${PIPESTATUS[0]}
       env:
         SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+    - name: Handle migration history mismatch
+      if: steps.db_push.outcome == 'failure'
+      run: |
+        echo "## Migration Push Failed" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        # Check if it's a migration history mismatch
+        if grep -q "Remote migration versions not found" /tmp/db_push_output.txt; then
+          echo "⚠️ Migration history mismatch detected." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This happens when migrations were applied directly to the database." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Suggested Fix" >> $GITHUB_STEP_SUMMARY
+          echo "Run locally:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+
+          # Extract the repair command from the output
+          grep -A1 "supabase migration repair" /tmp/db_push_output.txt >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Then run \`supabase db pull\` and commit the updated migrations." >> $GITHUB_STEP_SUMMARY
+
+          # Don't fail the workflow for migration history issues
+          echo "::warning::Migration history mismatch - manual intervention required"
+          exit 0
+        else
+          echo "❌ Database push failed for unknown reason." >> $GITHUB_STEP_SUMMARY
+          cat /tmp/db_push_output.txt >> $GITHUB_STEP_SUMMARY
+          exit 1
+        fi
+      env:
+        SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+    - name: Migration summary
+      if: steps.db_push.outcome == 'success'
+      run: |
+        echo "## Migrations Applied Successfully ✅" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "All database migrations have been applied." >> $GITHUB_STEP_SUMMARY

@@ -9,10 +9,15 @@ final class WatchlistViewModel: ObservableObject {
 
     private let apiClient: APIClient
     private let storageKey = "watchlist_symbols"
+    private let optionsPersistInterval: TimeInterval = 60 * 60
+    private var lastOptionsPersistAt: [String: Date] = [:]
 
     init(apiClient: APIClient = .shared) {
         self.apiClient = apiClient
         loadWatchlist()
+        Task { [weak self] in
+            await self?.persistOptionsChainsForWatchlist()
+        }
     }
 
     // MARK: - Public Methods
@@ -60,6 +65,8 @@ final class WatchlistViewModel: ObservableObject {
 
                 // Sync symbol to backend for multi-timeframe backfill
                 SymbolSyncService.shared.syncSymbolInBackground(symbol.ticker, source: .watchlist)
+
+                await persistOptionsChainSnapshot(for: symbol.ticker)
 
                 print("[WatchlistViewModel] ✅ Added \(symbol.ticker) to watchlist, jobs queued")
             } else {
@@ -120,6 +127,28 @@ final class WatchlistViewModel: ObservableObject {
         }
     }
 
+    private func persistOptionsChainSnapshot(for symbol: String) async {
+        if let lastPersist = lastOptionsPersistAt[symbol] {
+            let elapsed = Date().timeIntervalSince(lastPersist)
+            if elapsed < optionsPersistInterval {
+                return
+            }
+        }
+        do {
+            try await apiClient.persistOptionsChainSnapshot(symbol: symbol)
+            lastOptionsPersistAt[symbol] = Date()
+        } catch {
+            print("[WatchlistViewModel] Options chain persist failed for \(symbol): \(error)")
+        }
+    }
+
+    private func persistOptionsChainsForWatchlist() async {
+        guard !watchedSymbols.isEmpty else { return }
+        for symbol in watchedSymbols {
+            await persistOptionsChainSnapshot(for: symbol.ticker)
+        }
+    }
+
     func refreshWatchlist() async {
         isLoading = true
         errorMessage = nil
@@ -160,6 +189,7 @@ final class WatchlistViewModel: ObservableObject {
 
                 saveWatchlist()
                 print("[WatchlistViewModel] ✅ Refreshed watchlist: \(watchedSymbols.count) symbols")
+                await persistOptionsChainsForWatchlist()
             } else {
                 errorMessage = response.message ?? "Failed to refresh watchlist"
             }

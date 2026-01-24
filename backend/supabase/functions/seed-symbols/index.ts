@@ -7,6 +7,7 @@ const corsHeaders = {
 };
 
 const SEED_SYMBOLS = [
+  // Core trading symbols
   { ticker: "AAPL", asset_type: "stock", description: "Apple Inc. - Consumer electronics, software, and services", primary_source: "finnhub" },
   { ticker: "MSFT", asset_type: "stock", description: "Microsoft Corporation - Software, cloud computing, and hardware", primary_source: "finnhub" },
   { ticker: "GOOGL", asset_type: "stock", description: "Alphabet Inc. Class A - Search, advertising, and cloud services", primary_source: "finnhub" },
@@ -14,6 +15,9 @@ const SEED_SYMBOLS = [
   { ticker: "TSLA", asset_type: "stock", description: "Tesla Inc. - Electric vehicles and clean energy", primary_source: "finnhub" },
   { ticker: "NVDA", asset_type: "stock", description: "NVIDIA Corporation - Graphics processing and AI computing", primary_source: "finnhub" },
   { ticker: "META", asset_type: "stock", description: "Meta Platforms Inc. - Social media and virtual reality", primary_source: "finnhub" },
+  { ticker: "AMD", asset_type: "stock", description: "Advanced Micro Devices, Inc. - Semiconductors and processors", primary_source: "finnhub" },
+  { ticker: "CRWD", asset_type: "stock", description: "CrowdStrike Holdings, Inc. - Cybersecurity technology", primary_source: "finnhub" },
+  // ETFs
   { ticker: "SPY", asset_type: "stock", description: "SPDR S&P 500 ETF Trust - Tracks the S&P 500 index", primary_source: "finnhub" },
   { ticker: "QQQ", asset_type: "stock", description: "Invesco QQQ Trust - Tracks the NASDAQ-100 index", primary_source: "finnhub" },
 ];

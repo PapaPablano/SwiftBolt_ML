@@ -8,7 +8,9 @@ produces composite_rank (0-100) based on:
 """
 
 import argparse
+import json
 import logging
+import math
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +27,7 @@ from src.models.options_momentum_ranker import (  # noqa: E402
     CalibratedMomentumRanker,
     IVStatistics,
     OptionsMomentumRanker,
+    RankingMode,
 )
 from src.options_historical_backfill import ensure_options_history  # noqa: E402
 
@@ -192,9 +195,11 @@ def select_balanced_expiry_contracts(
         result = pd.DataFrame()
 
     if len(result) < total_contracts:
-        # Get remaining contracts from overall top-ranked
+        # FIX: Use contract_symbol for exclusion instead of index to avoid
+        # inconsistencies if indexes were reset earlier
         remaining_count = total_contracts - len(result)
-        excluded = ranked_df[~ranked_df.index.isin(result.index)]
+        selected_symbols = set(result["contract_symbol"].tolist()) if not result.empty else set()
+        excluded = ranked_df[~ranked_df["contract_symbol"].isin(selected_symbols)]
         if not excluded.empty:
             backfill = excluded.nlargest(remaining_count, "composite_rank")
             result = pd.concat([result, backfill], ignore_index=True)
@@ -216,8 +221,112 @@ def select_balanced_expiry_contracts(
     return result
 
 
-def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
-    """Save ranked options to database with momentum framework scores."""
+def build_contract_symbol(
+    underlying: str,
+    expiry: str,
+    strike: float,
+    side: str,
+) -> str:
+    """
+    Build OCC-format contract symbol from components.
+
+    Format: SYMBOL + YYMMDD + C/P + Strike*1000 (8 digits, zero-padded)
+    Example: AAPL240119C00150000 = AAPL, 2024-01-19, Call, $150
+
+    Args:
+        underlying: Stock ticker symbol
+        expiry: Expiration date in 'YYYY-MM-DD' format
+        strike: Strike price
+        side: Option type ('call' or 'put')
+
+    Returns:
+        OCC-format contract symbol
+    """
+    exp_date = datetime.strptime(expiry, "%Y-%m-%d")
+    exp_str = exp_date.strftime("%y%m%d")
+    opt_char = "C" if side.lower() == "call" else "P"
+    strike_int = int(strike * 1000)
+    strike_str = f"{strike_int:08d}"
+    return f"{underlying.upper()}{exp_str}{opt_char}{strike_str}"
+
+
+def fetch_specific_option_quotes(
+    symbol: str,
+    contracts: list[str],
+) -> dict[str, dict]:
+    """
+    Fetch live quotes for specific option contracts via options-quotes Edge Function.
+
+    Args:
+        symbol: Underlying ticker symbol
+        contracts: List of OCC-format contract symbols to fetch
+
+    Returns:
+        Dict mapping contract_symbol -> quote data (bid, ask, mark, Greeks)
+    """
+    if not contracts:
+        return {}
+
+    url = f"{settings.supabase_url}/functions/v1/options-quotes"
+    headers = {
+        "Authorization": f"Bearer {settings.supabase_service_role_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "symbol": symbol,
+        "contracts": contracts,
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+
+        result = {}
+        for quote in data.get("quotes", []):
+            symbol_key = quote.get("contract_symbol")
+            if symbol_key:
+                result[symbol_key] = {
+                    "bid": quote.get("bid") or 0,
+                    "ask": quote.get("ask") or 0,
+                    "mark": quote.get("mark") or (
+                        ((quote.get("bid") or 0) + (quote.get("ask") or 0)) / 2
+                    ),
+                    "last": quote.get("last") or 0,
+                    "volume": quote.get("volume") or 0,
+                    "open_interest": quote.get("open_interest") or 0,
+                    "implied_vol": quote.get("implied_vol") or 0,
+                    "delta": quote.get("delta") or 0,
+                    "gamma": quote.get("gamma") or 0,
+                    "theta": quote.get("theta") or 0,
+                    "vega": quote.get("vega") or 0,
+                    "rho": quote.get("rho") or 0,
+                }
+
+        logger.info(
+            f"Fetched quotes for {len(result)}/{len(contracts)} strategy contracts"
+        )
+        return result
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to fetch strategy option quotes: {e}")
+        return {}
+
+
+def _sanitize_number(value: float | int | None, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(num):
+        return default
+    return num
+
+
+def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame, ranking_mode: str = "monitor") -> int:
+    """Save ranked options to database with momentum framework scores and entry/exit rankings."""
     saved_count = 0
     run_at = datetime.utcnow().isoformat()
 
@@ -227,7 +336,7 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
             expiry_date = datetime.fromtimestamp(row["expiration"]).strftime("%Y-%m-%d")
 
             # Get composite_rank (primary score from Momentum Framework)
-            composite_rank = float(row.get("composite_rank", 0))
+            composite_rank = _sanitize_number(row.get("composite_rank", 0))
 
             # Build record with all columns
             # ml_score is derived from composite_rank for backwards compatibility
@@ -235,47 +344,79 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame) -> int:
                 "underlying_symbol_id": symbol_id,
                 "contract_symbol": row["contract_symbol"],
                 "expiry": expiry_date,
-                "strike": float(row["strike"]),
+                "strike": _sanitize_number(row["strike"]),
                 "side": row["side"],
                 "ml_score": composite_rank / 100.0,  # Normalize to 0-1 for legacy field
-                "implied_vol": float(row.get("impliedVolatility", row.get("iv", 0))),
-                "delta": float(row.get("delta", 0)),
-                "gamma": float(row.get("gamma", 0)),
-                "theta": float(row.get("theta", 0)),
-                "vega": float(row.get("vega", 0)),
-                "rho": float(row.get("rho", 0)),
-                "bid": float(row.get("bid", 0)),
-                "ask": float(row.get("ask", 0)),
-                "mark": float(row.get("mark", 0)),
-                "last_price": float(row.get("last_price", 0)),
-                "volume": int(row.get("volume", 0)),
-                "open_interest": int(row.get("openInterest", row.get("open_interest", 0))),
+                "implied_vol": _sanitize_number(
+                    row.get("impliedVolatility", row.get("iv", 0))
+                ),
+                "delta": _sanitize_number(row.get("delta", 0)),
+                "gamma": _sanitize_number(row.get("gamma", 0)),
+                "theta": _sanitize_number(row.get("theta", 0)),
+                "vega": _sanitize_number(row.get("vega", 0)),
+                "rho": _sanitize_number(row.get("rho", 0)),
+                "bid": _sanitize_number(row.get("bid", 0)),
+                "ask": _sanitize_number(row.get("ask", 0)),
+                "mark": _sanitize_number(row.get("mark", 0)),
+                "last_price": _sanitize_number(row.get("last_price", 0)),
+                "volume": int(_sanitize_number(row.get("volume", 0))),
+                "open_interest": int(
+                    _sanitize_number(row.get("openInterest", row.get("open_interest", 0)))
+                ),
                 "run_at": run_at,
-                # Momentum Framework scores
-                "composite_rank": float(row.get("composite_rank", 0)),
-                "momentum_score": float(row.get("momentum_score", 0)),
-                "value_score": float(row.get("value_score", 0)),
-                "greeks_score": float(row.get("greeks_score", 0)),
-                "iv_rank": float(row.get("iv_rank", 0)),
-                "spread_pct": float(row.get("spread_pct", 0)),
-                "vol_oi_ratio": float(row.get("vol_oi_ratio", 0)),
-                "liquidity_confidence": float(row.get("liquidity_confidence", 1.0)),
-                "ranking_mode": str(row.get("ranking_mode", "entry")),
-                "relative_value_score": float(row.get("relative_value_score", 0)),
-                "entry_difficulty_score": float(row.get("entry_difficulty_score", 0)),
-                "ranking_stability_score": float(row.get("ranking_stability_score", 0)),
+                # Mode tracking
+                "ranking_mode": ranking_mode,
+                # Momentum Framework scores (always populated)
+                "composite_rank": composite_rank,
+                "momentum_score": _sanitize_number(row.get("momentum_score", 0)),
+                "value_score": _sanitize_number(row.get("value_score", 0)),
+                "greeks_score": _sanitize_number(row.get("greeks_score", 0)),
+                # Entry/Exit mode-specific ranks
+                "entry_rank": _sanitize_number(row.get("entry_rank")) if "entry_rank" in row else None,
+                "exit_rank": _sanitize_number(row.get("exit_rank")) if "exit_rank" in row else None,
+                # Entry mode component scores
+                "entry_value_score": _sanitize_number(row.get("entry_value_score")) if "entry_value_score" in row else None,
+                "catalyst_score": _sanitize_number(row.get("catalyst_score")) if "catalyst_score" in row else None,
+                "iv_percentile": _sanitize_number(row.get("iv_percentile")) if "iv_percentile" in row else None,
+                "iv_discount_score": _sanitize_number(row.get("iv_discount_score")) if "iv_discount_score" in row else None,
+                # Exit mode component scores
+                "profit_protection_score": _sanitize_number(row.get("profit_protection_score")) if "profit_protection_score" in row else None,
+                "deterioration_score": _sanitize_number(row.get("deterioration_score")) if "deterioration_score" in row else None,
+                "time_urgency_score": _sanitize_number(row.get("time_urgency_score")) if "time_urgency_score" in row else None,
+                # Other scores
+                "iv_rank": _sanitize_number(row.get("iv_rank", 0)),
+                "spread_pct": _sanitize_number(row.get("spread_pct", 0)),
+                "vol_oi_ratio": _sanitize_number(row.get("vol_oi_ratio", 0)),
+                "liquidity_confidence": _sanitize_number(row.get("liquidity_confidence", 1.0)),
+                "relative_value_score": _sanitize_number(row.get("relative_value_score", 0)),
+                "entry_difficulty_score": _sanitize_number(
+                    row.get("entry_difficulty_score", 0)
+                ),
+                "ranking_stability_score": _sanitize_number(
+                    row.get("ranking_stability_score", 0)
+                ),
+                "iv_curve_ok": bool(row.get("iv_curve_ok", True)),
+                "iv_data_quality_score": _sanitize_number(
+                    row.get("iv_data_quality_score", 1.0)
+                ),
                 # Signals
                 "signal_discount": bool(row.get("signal_discount", False)),
                 "signal_runner": bool(row.get("signal_runner", False)),
                 "signal_greeks": bool(row.get("signal_greeks", False)),
                 "signal_buy": bool(row.get("signal_buy", False)),
-                "signals": str(row.get("signals", "")),
+                # FIX: Store signals as JSON array for consistent parsing
+                "signals": json.dumps(
+                    row.get("signals", "").split(",")
+                    if row.get("signals")
+                    else []
+                ),
             }
 
             db.upsert_option_rank_extended(**record)
             saved_count += 1
         except Exception as e:
             logger.error(f"Error saving rank for {row.get('contract_symbol')}: {e}")
+            logger.error(f"Row data: {row.to_dict()}")
 
     return saved_count
 
@@ -366,6 +507,7 @@ def determine_trend(df_ohlc: pd.DataFrame) -> str:
 def process_symbol_options(
     symbol: str,
     ranking_mode: str = "entry",
+    entry_price: float | None = None,
     use_calibration: bool = True,
     use_regime_conditioning: bool = True,
 ) -> None:
@@ -379,7 +521,8 @@ def process_symbol_options(
 
     Args:
         symbol: Stock ticker symbol
-        ranking_mode: 'entry' or 'exit'
+        ranking_mode: 'entry', 'exit', or 'monitor'
+        entry_price: Entry price for exit mode (optional, required for exit mode)
         use_calibration: Apply isotonic calibration
         use_regime_conditioning: Adjust weights by market regime
     """
@@ -478,6 +621,21 @@ def process_symbol_options(
 
         previous_rankings = fetch_previous_rankings(symbol_id, ranking_mode)
 
+        # Convert ranking_mode string to RankingMode enum
+        mode_enum = RankingMode[ranking_mode.upper()]
+        
+        # Prepare entry_data for EXIT mode
+        entry_data = None
+        if mode_enum == RankingMode.EXIT:
+            if entry_price is None:
+                logger.warning(
+                    f"EXIT mode requires --entry-price parameter, using mark price as fallback"
+                )
+            entry_data = {"entry_price": entry_price} if entry_price else None
+
+        logger.info(f"Ranking in {mode_enum.value.upper()} mode" + 
+                   (f" with entry_price=${entry_price}" if entry_price else ""))
+
         # Use calibrated ranking with regime conditioning and underlying metrics
         ranked_df = ranker.rank_options_calibrated(
             options_df,
@@ -486,8 +644,9 @@ def process_symbol_options(
             underlying_df=df_ohlc if use_regime_conditioning else None,
             underlying_trend=underlying_trend,
             previous_rankings=(previous_rankings if not previous_rankings.empty else None),
-            ranking_mode=ranking_mode,
             underlying_metrics=underlying_metrics,
+            mode=mode_enum,
+            entry_data=entry_data,
         )
 
         # Log regime info if available
@@ -523,9 +682,105 @@ def process_symbol_options(
 
         # Save top contracts with balanced expiry distribution
         top_ranked = select_balanced_expiry_contracts(ranked_df)
-        saved_count = save_rankings_to_db(symbol_id, top_ranked)
+        saved_count = save_rankings_to_db(symbol_id, top_ranked, ranking_mode)
 
-        logger.info(f"Saved {saved_count} ranked contracts for {symbol}")
+        logger.info(f"Saved {saved_count} {ranking_mode.upper()} ranked contracts for {symbol}")
+
+        # Include options from active multi-leg strategies
+        active_strategy_options = db.get_active_strategy_options(symbol_id)
+
+        if active_strategy_options:
+            logger.info(
+                f"Found {len(active_strategy_options)} active strategy options for {symbol}"
+            )
+
+            # Build set of (expiry, strike, side) from top_ranked for deduplication
+            top_ranked_keys: set[tuple[str, float, str]] = set()
+            for _, row in top_ranked.iterrows():
+                exp_date = datetime.fromtimestamp(row["expiration"]).strftime("%Y-%m-%d")
+                top_ranked_keys.add((exp_date, row["strike"], row["side"]))
+
+            # Identify strategy options NOT in top-ranked
+            missing_options = []
+            for opt in active_strategy_options:
+                key = (opt["expiry"], opt["strike"], opt["side"])
+                if key not in top_ranked_keys:
+                    missing_options.append(opt)
+
+            if missing_options:
+                logger.info(
+                    f"Adding {len(missing_options)} strategy options not in top-ranked"
+                )
+
+                # Build contract symbols for missing options
+                missing_symbols = []
+                for opt in missing_options:
+                    contract_sym = build_contract_symbol(
+                        symbol, opt["expiry"], opt["strike"], opt["side"]
+                    )
+                    missing_symbols.append(contract_sym)
+                    opt["contract_symbol"] = contract_sym
+
+                # Fetch live quotes for missing options
+                quotes = fetch_specific_option_quotes(symbol, missing_symbols)
+
+                # Save strategy options to options_ranks
+                run_at = datetime.utcnow().isoformat()
+                strategy_saved = 0
+
+                for opt in missing_options:
+                    contract_sym = opt["contract_symbol"]
+                    quote = quotes.get(contract_sym, {})
+
+                    record = {
+                        "underlying_symbol_id": symbol_id,
+                        "contract_symbol": contract_sym,
+                        "expiry": opt["expiry"],
+                        "strike": _sanitize_number(opt["strike"]),
+                        "side": opt["side"],
+                        "ml_score": 0.0,
+                        "implied_vol": _sanitize_number(quote.get("implied_vol", 0)),
+                        "delta": _sanitize_number(quote.get("delta", 0)),
+                        "gamma": _sanitize_number(quote.get("gamma", 0)),
+                        "theta": _sanitize_number(quote.get("theta", 0)),
+                        "vega": _sanitize_number(quote.get("vega", 0)),
+                        "rho": _sanitize_number(quote.get("rho", 0)),
+                        "bid": _sanitize_number(quote.get("bid", 0)),
+                        "ask": _sanitize_number(quote.get("ask", 0)),
+                        "mark": _sanitize_number(quote.get("mark", 0)),
+                        "last_price": _sanitize_number(quote.get("last", 0)),
+                        "volume": int(_sanitize_number(quote.get("volume", 0))),
+                        "open_interest": int(
+                            _sanitize_number(quote.get("open_interest", 0))
+                        ),
+                        "run_at": run_at,
+                        "composite_rank": 0.0,
+                        "momentum_score": 0.0,
+                        "value_score": 0.0,
+                        "greeks_score": 0.0,
+                        "iv_rank": 0.0,
+                        "spread_pct": 0.0,
+                        "vol_oi_ratio": 0.0,
+                        "liquidity_confidence": 0.0,
+                        "ranking_mode": "strategy",
+                        "signal_discount": False,
+                        "signal_runner": False,
+                        "signal_greeks": False,
+                        "signal_buy": False,
+                        "signals": "[]",
+                    }
+
+                    try:
+                        db.upsert_option_rank_extended(**record)
+                        strategy_saved += 1
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to save strategy option {contract_sym}: {e}"
+                        )
+
+                logger.info(
+                    f"Saved {strategy_saved} strategy options for {symbol}"
+                )
 
     except Exception as e:
         logger.error(f"Error processing options for {symbol}: {e}", exc_info=True)
@@ -533,7 +788,21 @@ def process_symbol_options(
 
 def main() -> None:
     """Main options ranking job entry point."""
-    parser = argparse.ArgumentParser(description="Rank options contracts using Momentum Framework")
+    parser = argparse.ArgumentParser(
+        description="Rank options contracts using Momentum Framework",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # ENTRY mode: Find undervalued buying opportunities
+  python -m src.options_ranking_job --symbol AAPL --mode entry
+
+  # EXIT mode: Detect optimal selling points (requires entry price)
+  python -m src.options_ranking_job --symbol AAPL --mode exit --entry-price 2.50
+
+  # MONITOR mode: Balanced ranking for general monitoring
+  python -m src.options_ranking_job --symbol AAPL --mode monitor
+        """
+    )
     parser.add_argument(
         "--symbol",
         type=str,
@@ -542,11 +811,24 @@ def main() -> None:
     parser.add_argument(
         "--mode",
         type=str,
-        default="entry",
-        choices=["entry", "exit"],
-        help="Ranking mode: entry (default) or exit.",
+        default="monitor",
+        choices=["entry", "exit", "monitor"],
+        help="Ranking mode: entry (buy signals), exit (sell signals), or monitor (balanced).",
+    )
+    parser.add_argument(
+        "--entry-price",
+        type=float,
+        default=None,
+        help="Entry price for EXIT mode. Required for accurate profit/loss calculation in exit mode.",
     )
     args = parser.parse_args()
+
+    # Validate EXIT mode requirements
+    if args.mode == "exit" and args.entry_price is None:
+        logger.warning(
+            "EXIT mode works best with --entry-price specified. "
+            "Will use mark price as fallback, which may not reflect actual position."
+        )
 
     # Determine which symbols to process
     if args.symbol:
@@ -556,6 +838,9 @@ def main() -> None:
 
     logger.info("=" * 80)
     logger.info("Starting Options Ranking Job")
+    logger.info(f"Mode: {args.mode.upper()}")
+    if args.entry_price:
+        logger.info(f"Entry Price: ${args.entry_price:.2f}")
     logger.info(f"Processing {len(symbols_to_process)} symbol(s): {', '.join(symbols_to_process)}")
     logger.info("=" * 80)
 
@@ -564,7 +849,11 @@ def main() -> None:
 
     for symbol in symbols_to_process:
         try:
-            process_symbol_options(symbol, ranking_mode=args.mode)
+            process_symbol_options(
+                symbol, 
+                ranking_mode=args.mode,
+                entry_price=args.entry_price
+            )
             symbols_processed += 1
         except Exception as e:
             logger.error(f"Failed to process options for {symbol}: {e}")
@@ -572,6 +861,7 @@ def main() -> None:
 
     logger.info("=" * 80)
     logger.info("Options Ranking Job Complete")
+    logger.info(f"Mode: {args.mode.upper()}")
     logger.info(f"Processed: {symbols_processed}")
     logger.info(f"Failed: {symbols_failed}")
     logger.info("=" * 80)

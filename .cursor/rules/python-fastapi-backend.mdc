@@ -1,0 +1,364 @@
+---
+description: Python backend architecture, FastAPI endpoints, async patterns, and database integration for SwiftBolt_ML trading API.
+globs: ml/**/*.py, ml/src/**/*.py, ml/api/**/*.py
+---
+
+## Python Backend Standards
+
+### General Principles
+
+- Use async/await for all I/O-bound operations (API calls, database queries, file operations)
+- Use type hints for all function signatures
+- Prefer functional programming; avoid unnecessary classes
+- Use early returns (guard clauses) to reduce nesting
+- Implement comprehensive error handling and logging
+- Follow PEP 8 with 88-character line limit (Black formatter)
+- Use descriptive variable names (is_bullish, has_confluence, implied_vol)
+
+### FastAPI Endpoint Patterns
+
+```python
+from fastapi import FastAPI, HTTPException, Query, Path
+from pydantic import BaseModel, Field
+from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+# 1. Use Pydantic models for request/response validation
+class OptionChainRequest(BaseModel):
+    symbol: str = Field(..., description="Ticker symbol")
+    expiration_date: str = Field(..., description="YYYY-MM-DD format")
+    max_results: int = Query(default=50, le=500)
+
+class GreeksResponse(BaseModel):
+    delta: float
+    gamma: float
+    theta: float
+    vega: float
+    rho: float
+
+# 2. Use async def for all I/O operations
+@app.get("/api/v1/options/{symbol}/chain")
+async def get_option_chain(
+    symbol: str = Path(..., description="Ticker symbol"),
+    expiration_date: str = Query(..., description="YYYY-MM-DD"),
+    db = Depends(get_db_connection)
+) -> list[GreeksResponse]:
+    """Fetch option chain with Greeks calculation."""
+    # Guard clauses first
+    if not symbol or len(symbol) > 10:
+        raise HTTPException(status_code=400, detail="Invalid symbol")
+    
+    try:
+        # Fetch data from Alpaca API
+        chain = await fetch_option_chain_async(symbol, expiration_date)
+        if not chain:
+            raise HTTPException(status_code=404, detail="No options found")
+        
+        # Calculate Greeks
+        results = [
+            calculate_greeks_for_contract(contract)
+            for contract in chain
+        ]
+        
+        # Cache in database
+        await db.cache_option_chain(symbol, expiration_date, results)
+        
+        logger.info(f"Retrieved {len(results)} contracts for {symbol}")
+        return results
+        
+    except ApiError as e:
+        logger.error(f"Alpaca API error: {e}", exc_info=True)
+        raise HTTPException(status_code=503, detail="Market data unavailable")
+
+# 3. Error handling: early returns, specific exceptions
+async def validate_market_hours() -> bool:
+    """Check if market is open."""
+    market_status = await get_market_status()
+    
+    if not market_status.is_open:
+        logger.warning("Market is closed")
+        return False
+    
+    if market_status.is_halted:
+        logger.warning("Trading halted")
+        return False
+    
+    return True
+
+# 4. Use context managers for resource cleanup
+async def submit_multi_leg_order(legs: list[OrderLeg]) -> OrderResult:
+    """Submit multi-leg bracket order."""
+    async with get_alpaca_client() as client:
+        try:
+            # Validate before submission
+            is_market_open = await validate_market_hours()
+            if not is_market_open:
+                raise TradingError("Market closed")
+            
+            # Submit order
+            order = await client.submit_order_async(
+                order_class="bracket",
+                legs=legs,
+                time_in_force="day"
+            )
+            
+            logger.info(f"Order submitted: {order.id}")
+            return order
+            
+        except TradingError as e:
+            logger.error(f"Trading error: {e}")
+            raise
+```
+
+### Database Integration (Supabase)
+
+```python
+from supabase import create_client, Client
+from sqlalchemy import select, insert, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# 1. Connection pooling
+async def get_db_connection() -> AsyncSession:
+    """Get database connection from pool."""
+    async with get_db_engine().begin() as connection:
+        async with AsyncSession(connection) as session:
+            yield session
+
+# 2. Parameterized queries (prevent SQL injection)
+async def fetch_strategy_by_id(
+    strategy_id: int,
+    db: AsyncSession
+) -> StrategyModel:
+    """Fetch strategy by ID with safe query."""
+    stmt = select(StrategyModel).where(
+        StrategyModel.id == strategy_id
+    )
+    result = await db.execute(stmt)
+    strategy = result.scalar_one_or_none()
+    
+    if not strategy:
+        raise ValueError(f"Strategy {strategy_id} not found")
+    
+    return strategy
+
+# 3. Bulk operations
+async def insert_daily_metrics(
+    metrics: list[DailyMetric],
+    db: AsyncSession
+) -> int:
+    """Batch insert daily metrics."""
+    stmt = insert(DailyMetricModel).values(
+        [
+            {
+                "portfolio_value": m.portfolio_value,
+                "pnl": m.pnl,
+                "greeks_delta": m.greeks_delta,
+                "timestamp": m.timestamp,
+            }
+            for m in metrics
+        ]
+    )
+    result = await db.execute(stmt)
+    await db.commit()
+    return result.rowcount
+```
+
+### Async Patterns for API Calls
+
+```python
+import aiohttp
+from typing import AsyncIterator
+import asyncio
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+# 1. Retry logic with exponential backoff
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    reraise=True
+)
+async def fetch_with_retry(url: str) -> dict:
+    """Fetch URL with automatic retry."""
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, timeout=10) as response:
+            if response.status != 200:
+                raise ApiError(f"HTTP {response.status}")
+            return await response.json()
+
+# 2. Concurrent requests
+async def fetch_multiple_chains(
+    symbols: list[str],
+    expiration: str
+) -> dict[str, list]:
+    """Fetch option chains for multiple symbols concurrently."""
+    tasks = [
+        fetch_option_chain_async(symbol, expiration)
+        for symbol in symbols
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    return {
+        symbol: result
+        for symbol, result in zip(symbols, results)
+        if not isinstance(result, Exception)
+    }
+
+# 3. Rate-limited API calls
+class RateLimitedClient:
+    """Client with automatic rate limiting."""
+    
+    def __init__(self, max_requests_per_second: int = 5):
+        self.semaphore = asyncio.Semaphore(max_requests_per_second)
+        self.session: Optional[aiohttp.ClientSession] = None
+    
+    async def get(self, url: str) -> dict:
+        """Rate-limited GET request."""
+        async with self.semaphore:
+            async with self.session.get(url) as response:
+                return await response.json()
+```
+
+### Logging and Monitoring
+
+```python
+import structlog
+
+# Configure structured logging
+structlog.configure(
+    processors=[
+        structlog.stdlib.filter_by_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer()
+    ],
+    logger_factory=structlog.AsyncioThreadLocalLoggerFactory(),
+)
+
+logger = structlog.get_logger()
+
+# Log at decision points
+async def execute_strategy(
+    strategy_id: int,
+    market_ dict
+) -> ExecutionResult:
+    """Execute trading strategy with detailed logging."""
+    logger.info(
+        "strategy_execution_start",
+        strategy_id=strategy_id,
+        price=market_data["price"],
+        iv=market_data["implied_vol"]
+    )
+    
+    try:
+        # Strategy logic
+        signal = await generate_signal(strategy_id, market_data)
+        
+        logger.debug(
+            "signal_generated",
+            strategy_id=strategy_id,
+            signal=signal,
+            confidence=signal.confidence
+        )
+        
+        if signal.confidence < 0.7:
+            logger.warning(
+                "low_confidence_signal",
+                strategy_id=strategy_id,
+                confidence=signal.confidence
+            )
+            return ExecutionResult(executed=False, reason="Low confidence")
+        
+        result = await submit_order(signal)
+        
+        logger.info(
+            "strategy_execution_complete",
+            strategy_id=strategy_id,
+            order_id=result.order_id,
+            profit_target=result.profit_target
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(
+            "strategy_execution_failed",
+            strategy_id=strategy_id,
+            error=str(e),
+            exc_info=True
+        )
+        raise
+```
+
+### Configuration Management
+
+```python
+from pydantic_settings import BaseSettings
+from functools import lru_cache
+
+class Settings(BaseSettings):
+    """Application settings from environment variables."""
+    
+    # API Keys
+    alpaca_api_key: str
+    alpaca_secret_key: str
+    supabase_url: str
+    supabase_key: str
+    
+    # Trading Configuration
+    max_position_loss: float = 1000.0  # dollars
+    max_portfolio_delta: float = 0.5
+    max_portfolio_gamma: float = 0.1
+    
+    # Feature Flags
+    enable_paper_trading: bool = True
+    enable_live_trading: bool = False
+    
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+
+@lru_cache()
+def get_settings() -> Settings:
+    """Get cached settings instance."""
+    return Settings()
+
+# Usage
+settings = get_settings()
+if settings.enable_live_trading:
+    logger.critical("Live trading enabled - real money at risk")
+```
+
+### Testing
+
+```python
+import pytest
+from unittest.mock import AsyncMock, patch
+
+@pytest.mark.asyncio
+async def test_get_option_chain_success():
+    """Test successful option chain retrieval."""
+    with patch("backend.api.fetch_option_chain_async") as mock_fetch:
+        mock_fetch.return_value = [
+            {"symbol": "AAPL 2024-01-19 C 150", "delta": 0.65},
+        ]
+        
+        result = await get_option_chain(
+            symbol="AAPL",
+            expiration_date="2024-01-19"
+        )
+        
+        assert len(result) == 1
+        assert result[0].delta == 0.65
+
+@pytest.mark.asyncio
+async def test_get_option_chain_invalid_symbol():
+    """Test error handling for invalid symbol."""
+    with pytest.raises(HTTPException) as exc_info:
+        await get_option_chain(
+            symbol="" * 100,  # Too long
+            expiration_date="2024-01-19"
+        )
+    
+    assert exc_info.value.status_code == 400
+```

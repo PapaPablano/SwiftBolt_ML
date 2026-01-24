@@ -105,8 +105,11 @@ class TemporalFeatureEngineer:
 
         sma_20 = TemporalFeatureEngineer.compute_sma(close_prices, 20, idx)
 
+        # Handle both 'ts' and 'date' column names
+        ts_col = point.get("ts") if "ts" in point else point.get("date")
+        
         features = {
-            "ts": point["ts"],
+            "ts": ts_col,
             "close": point["close"],
             "volume": point["volume"],
             "high": point["high"],

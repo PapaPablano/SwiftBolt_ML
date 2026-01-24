@@ -35,6 +35,7 @@ class WeightOptimizer:
     - 'ridge': Ridge regression to minimize MSE
     - 'sharpe': Allocate based on Sharpe ratios
     - 'directional': Allocate based on directional accuracy
+    - 'mae': Inverse-MAE weighting (lower error = higher weight)
     - 'equal': Equal weights (baseline)
     """
 
@@ -50,7 +51,7 @@ class WeightOptimizer:
         Initialize Weight Optimizer.
 
         Args:
-            optimization_method: 'ridge', 'sharpe', 'directional', 'equal'
+            optimization_method: 'ridge', 'sharpe', 'directional', 'mae', 'equal'
             alpha: Regularization strength for ridge regression
             min_weight: Minimum weight per model
             max_weight: Maximum weight per model
@@ -101,9 +102,10 @@ class WeightOptimizer:
 
         # Limit to lookback window
         if len(actuals) > self.lookback_window:
-            actuals = actuals[-self.lookback_window :]
+            actuals = actuals[-self.lookback_window:]
             predictions_dict = {
-                name: preds[-self.lookback_window :] for name, preds in predictions_dict.items()
+                name: preds[-self.lookback_window:]
+                for name, preds in predictions_dict.items()
             }
 
         try:
@@ -113,6 +115,8 @@ class WeightOptimizer:
                 weights = self._sharpe_ratio_weights(predictions_dict, actuals, model_names)
             elif method == "directional":
                 weights = self._directional_accuracy_weights(predictions_dict, actuals, model_names)
+            elif method == "mae":
+                weights = self._mae_weights(predictions_dict, actuals, model_names)
             elif method == "scipy":
                 weights = self._scipy_optimize_weights(predictions_dict, actuals, model_names)
             else:
@@ -143,6 +147,36 @@ class WeightOptimizer:
         except Exception as e:
             logger.warning("Weight optimization failed: %s. Using equal.", e)
             return {name: 1.0 / n_models for name in model_names}
+
+    def _mae_weights(
+        self,
+        predictions_dict: Dict[str, np.ndarray],
+        actuals: np.ndarray,
+        model_names: List[str],
+    ) -> Dict[str, float]:
+        """Allocate based on inverse MAE (lower error gets higher weight)."""
+        errors: Dict[str, float] = {}
+        for name in model_names:
+            preds = predictions_dict[name]
+            if len(preds) == 0:
+                errors[name] = float("inf")
+                continue
+            mae = float(np.mean(np.abs(actuals - preds)))
+            errors[name] = mae
+
+        logger.info(
+            "MAE weights input: %s",
+            {name: f"{err:.6f}" for name, err in errors.items()},
+        )
+        inv_errors = {name: (1.0 / max(err, 1e-6)) for name, err in errors.items()}
+        total = sum(inv_errors.values())
+        if total == 0:
+            n_models = len(model_names)
+            return {name: 1.0 / n_models for name in model_names}
+
+        weights = {name: float(inv_errors[name] / total) for name in model_names}
+        weights = self._clip_weights(weights)
+        return weights
 
     def _ridge_regression_weights(
         self,

@@ -1080,6 +1080,11 @@ class PriceMonitor:
 
 **Expected Impact**: Fresher forecasts during volatile periods
 
+**Runtime Configuration (env vars)**:
+- `ENABLE_EVENT_REFRESH` (default: `true`) — toggle event-driven refresh on/off
+- `REFRESH_MOVE_ATR` (default: `2.0`) — ATR move threshold to trigger refresh
+- `REFRESH_MOVE_PCT` (default: `5.0`) — percent move threshold to trigger refresh
+
 ---
 
 ### 3.3 Add Model Change Audit Trail
@@ -1193,6 +1198,30 @@ Each improvement should be validated by:
 
 ---
 
+## Rollout & Monitoring (Feature Flags)
+
+Use these environment flags to safely roll out new behavior and monitor drift:
+
+**Core toggles**
+- `ENABLE_FORECAST_VALIDATION` (default: `true`) — toggles validation metrics logging
+- `ENABLE_EVENT_REFRESH` (default: `true`) — event-driven refresh triggers
+- `ENABLE_FORECAST_CACHE` (default: `true`) — forecast cache guardrail
+- `ENABLE_SYMBOL_WEIGHTS` (default: `false`) — per-symbol layer weights
+- `ENABLE_RESIDUAL_CORRECTOR` (default: `false`) — residual correction post-processing
+- `ENABLE_CONFORMAL_INTERVALS` (default: `false`) — conformal interval adjustment
+- `ENABLE_ENHANCED_ENSEMBLE` (default: `false`) — enhanced ensemble path
+
+**Alert thresholds**
+- `ALERT_DIRECTION_ACCURACY_MIN` (default: `0.55`) — alert when validation accuracy dips
+- `ALERT_EDGE_GAP_MAX` (default: `0.05`) — alert when edge gap exceeds threshold
+
+**Rollout sequence**
+1. Enable validation + logging on a subset of symbols.
+2. Turn on event refresh and confirm alerting behavior.
+3. Enable symbol weights / enhanced ensemble once monitoring is stable.
+
+---
+
 ## Success Metrics
 
 | Metric | Current (Est.) | Week 1 Target | Week 2 Target |
@@ -1222,3 +1251,10 @@ python -m src.backtesting.run_baseline_benchmark
 ```
 
 This creates a snapshot to compare against after improvements.
+
+**Latest baseline run (2026-01-18, Alpaca-only)**:
+- Output: `ml/data/benchmarks/baseline_benchmark_20260118_215530.json`
+- Data validation: `is_valid=true`, `quality_score=1.0`, `rows_flagged=0`
+- Forecaster: `1D` accuracy **55.2%**, `1W` accuracy **30.3%**, `1M` accuracy **12.0%**
+- Summary: avg accuracy **32.5%**, avg Sharpe **0.44**, avg F1 **0.32**
+- Calibration report: adjustment factors ranged from **0.59–0.78** across buckets

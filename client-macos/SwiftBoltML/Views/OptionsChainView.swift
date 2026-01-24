@@ -2,7 +2,6 @@ import SwiftUI
 
 struct OptionsChainView: View {
     @EnvironmentObject var appViewModel: AppViewModel
-    @State private var selectedTab = 0
 
     private var viewModel: OptionsChainViewModel {
         appViewModel.optionsChainViewModel
@@ -10,25 +9,53 @@ struct OptionsChainView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Tab selector
-            Picker("", selection: $selectedTab) {
-                Label("ML Ranker", systemImage: "brain.head.profile").tag(0)
-                Label("Full Chain", systemImage: "chart.bar.doc.horizontal").tag(1)
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-            .background(Color(nsColor: .windowBackgroundColor))
-
-            Divider()
-
-            // Tab content
-            if selectedTab == 0 {
-                OptionsRankerView()
-                    .environmentObject(appViewModel)
+            // Show workbench if contract is selected, otherwise show ranker/chain
+            if appViewModel.selectedContractState.isWorkbenchPresented,
+               let rank = appViewModel.selectedContractState.selectedRank,
+               let symbol = appViewModel.selectedSymbol?.ticker {
+                // Contract Workbench (replaces ranker list)
+                ContractWorkbenchView(
+                    rank: rank,
+                    symbol: symbol,
+                    allRankings: appViewModel.optionsRankerViewModel.rankings
+                )
+                .environmentObject(appViewModel)
             } else {
-                OptionsChainContent()
-                    .environmentObject(appViewModel)
+                // Tab selector
+                Picker("", selection: $appViewModel.selectedOptionsTab) {
+                    Label("ML Ranker", systemImage: "brain.head.profile").tag(0)
+                    Label("Full Chain", systemImage: "chart.bar.doc.horizontal").tag(1)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(Color(nsColor: .windowBackgroundColor))
+
+                Divider()
+
+                // Tab content
+                if appViewModel.selectedOptionsTab == 0 {
+                    OptionsRankerView()
+                        .environmentObject(appViewModel)
+                } else {
+                    OptionsChainContent()
+                        .environmentObject(appViewModel)
+                }
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    appViewModel.selectedContractState.isWorkbenchPresented.toggle()
+                } label: {
+                    Label(
+                        appViewModel.selectedContractState.isWorkbenchPresented ? "Back to List" : "Show Details",
+                        systemImage: appViewModel.selectedContractState.isWorkbenchPresented ? "arrow.left" : "arrow.right"
+                    )
+                }
+                .disabled(appViewModel.selectedContractState.selectedRank == nil)
+                .help(appViewModel.selectedContractState.isWorkbenchPresented ? "Back to rankings (⌘⌥I)" : "Show contract details (⌘⌥I)")
+                .keyboardShortcut("i", modifiers: [.command, .option])
             }
         }
     }

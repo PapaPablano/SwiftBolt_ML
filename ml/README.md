@@ -97,6 +97,101 @@ Edit `config/settings.py` or set environment variables:
 - `MIN_BARS_FOR_TRAINING`: Minimum historical bars required (default: 100)
 - `CONFIDENCE_THRESHOLD`: Minimum confidence to consider prediction valid (default: 0.6)
 
+### XGBoost Performance (optional)
+
+Set these to enable GPU acceleration when available:
+
+```bash
+export XGBOOST_TREE_METHOD=gpu_hist
+export XGBOOST_PREDICTOR=gpu_predictor
+export XGBOOST_N_JOBS=-1
+```
+
+### Model Quantization (optional, no new deps)
+
+Quantization can reduce model size and speed up inference without adding
+new dependencies. Keep changes low-risk by using existing libraries and
+opt-in env flags.
+
+**XGBoost (no new deps):**
+- Prefer histogram-based training/inference for faster CPU execution.
+- Lower `max_bin` to shrink the histogram (minor accuracy risk).
+
+```bash
+export XGBOOST_TREE_METHOD=hist
+export XGBOOST_PREDICTOR=cpu_predictor
+export XGBOOST_N_JOBS=-1
+export XGBOOST_MAX_BIN=256
+```
+
+**Manual weight-only quantization (NN / LSTM):**
+- Use TensorFlow built-ins if TF is already installed.
+- Convert weights to float16 for inference-only runs (no retraining).
+
+```python
+# Manual float16 weight cast (post-training, inference only)
+for w in model.weights:
+    w.assign(w.value().astype("float16"))
+```
+
+**Manual calibration steps (PTQ, no new deps):**
+1. Collect a small calibration batch (typical inputs).
+2. Record per-tensor min/max ranges.
+3. Quantize weights (round-to-nearest) with scale + zero-point.
+4. Validate accuracy on a holdout set (<1% drop target).
+
+Helper script (no deps) for min/max calibration:
+
+```bash
+python src/scripts/quantization_calibration.py \
+  --input path/to/features.npy \
+  --output path/to/calibration_stats.npz
+```
+
+XGBoost inference benchmark (baseline vs max_bin):
+
+```bash
+python src/scripts/xgboost_inference_benchmark.py \
+  --rows 5000 --features 40
+```
+
+PTQ accuracy check (baseline vs quantized inputs):
+
+```bash
+python src/scripts/ptq_accuracy_check.py \
+  --rows 5000 --features 40
+```
+
+Interpretation targets (rough guidance):
+- `prediction_change_rate` < 0.01
+- `mean_abs_prob_delta` < 0.005
+
+Auto-disable thresholds:
+
+```bash
+python src/scripts/ptq_accuracy_check.py \
+  --rows 5000 --features 40 \
+  --max-change 0.01 \
+  --max-prob-delta 0.005
+```
+
+PTQ policy file (defaults):
+
+```bash
+cat ml/config/ptq_policy.json
+```
+
+Override the policy path if needed:
+
+```bash
+python src/scripts/ptq_accuracy_check.py \
+  --rows 5000 --features 40 \
+  --policy path/to/ptq_policy.json
+```
+
+If you need ONNX Runtime or TFLite, install them explicitly and follow
+their quantization guides (higher speedup, more tooling).
+
 ## Data Flow
 
 1. **Input**: OHLC bars from `ohlc_bars` table

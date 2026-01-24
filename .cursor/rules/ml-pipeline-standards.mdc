@@ -1,0 +1,486 @@
+---
+description: ML pipeline standards for time-series forecasting, data validation, walk-forward analysis, and model deployment.
+globs: ml/src/**/*.py, ml/api/**/*.py, ml/tests/**/*.py
+alwaysApply: false
+---
+## ML Pipeline Architecture
+
+### Data Processing Pipeline
+
+```python
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import logging
+
+logger = logging.getLogger(__name__)
+
+# 1. Data Ingestion with Validation
+async def ingest_market_data(
+    symbol: str,
+    data_source: str = "alpaca",
+    lookback_days: int = 252
+) -> pd.DataFrame:
+    """Ingest OHLCV data with quality validation."""
+    
+    # Fetch data
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=lookback_days)
+    
+    raw_data = await fetch_price_data(
+        symbol=symbol,
+        start_date=start_date,
+        end_date=end_date,
+        timeframe="1day"
+    )
+    
+    if raw_data.empty:
+        raise ValueError(f"No data found for {symbol}")
+    
+    # Validation checks
+    errors = validate_ohlcv_data(raw_data)
+    if errors:
+        logger.error(f"Data validation failed: {errors}")
+        raise ValueError(f"Invalid OHLCV  {errors}")
+    
+    # Clean and prepare
+    df = clean_price_data(raw_data)
+    
+    logger.info(
+        f"Ingested {len(df)} candles for {symbol}",
+        extra={"symbol": symbol, "shape": df.shape}
+    )
+    
+    return df
+
+# 2. Data Validation
+def validate_ohlcv_data(df: pd.DataFrame) -> list[str]:
+    """Validate OHLCV data quality."""
+    errors = []
+    
+    # Check required columns
+    required = {"open", "high", "low", "close", "volume"}
+    if not required.issubset(df.columns):
+        errors.append(f"Missing columns: {required - set(df.columns)}")
+    
+    # Check for NaN values
+    if df[required].isna().any().any():
+        errors.append("NaN values detected in OHLCV")
+    
+    # Check price logic: high >= open,close >= low
+    invalid_high = (df["high"] < df[["open", "close"]].max(axis=1)).sum()
+    if invalid_high > 0:
+        errors.append(f"{invalid_high} rows with invalid high price")
+    
+    invalid_low = (df["low"] > df[["open", "close"]].min(axis=1)).sum()
+    if invalid_low > 0:
+        errors.append(f"{invalid_low} rows with invalid low price")
+    
+    # Check volume
+    if (df["volume"] < 0).any():
+        errors.append("Negative volume detected")
+    
+    return errors
+
+def clean_price_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Clean and prepare price data."""
+    df = df.copy()
+    
+    # Fill small gaps (up to 5 days)
+    df["close"] = df["close"].fillna(method="ffill", limit=5)
+    
+    # Remove outliers (> 5 standard deviations)
+    returns = df["close"].pct_change()
+    std = returns.std()
+    outlier_threshold = 5 * std
+    
+    valid_idx = abs(returns) < outlier_threshold
+    if not valid_idx.all():
+        logger.warning(f"Removed {(~valid_idx).sum()} outlier candles")
+        df = df[valid_idx].reset_index(drop=True)
+    
+    return df
+```
+
+### Feature Engineering
+
+```python
+# 3. Feature Engineering
+def create_feature_set(
+    df: pd.DataFrame,
+    window_sizes: list[int] = [5, 20, 50]
+) -> pd.DataFrame:
+    """Create comprehensive feature set for ML models."""
+    
+    features = df.copy()
+    
+    # Price-based features
+    features["returns"] = features["close"].pct_change()
+    features["log_returns"] = np.log(features["close"] / features["close"].shift(1))
+    features["high_low_ratio"] = features["high"] / features["low"]
+    
+    # Moving averages
+    for window in window_sizes:
+        features[f"sma_{window}"] = features["close"].rolling(window).mean()
+        features[f"ema_{window}"] = features["close"].ewm(span=window).mean()
+    
+    # Volatility
+    for window in window_sizes:
+        features[f"volatility_{window}"] = (
+            features["returns"].rolling(window).std()
+        )
+    
+    # Momentum
+    features["rsi_14"] = calculate_rsi(features["close"], period=14)
+    features["macd"], features["macd_signal"] = calculate_macd(features["close"])
+    
+    # Volume features
+    features["volume_sma"] = features["volume"].rolling(20).mean()
+    features["volume_ratio"] = features["volume"] / features["volume_sma"]
+    
+    # Drop NaN rows created by rolling windows
+    features = features.dropna()
+    
+    logger.info(
+        f"Created {features.shape[1]} features",
+        extra={"feature_count": features.shape[1]}
+    )
+    
+    return features
+
+def calculate_rsi(prices: pd.Series, period: int = 14) -> pd.Series:
+    """Calculate Relative Strength Index."""
+    delta = prices.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    
+    return rsi
+```
+
+### Walk-Forward Analysis
+
+```python
+from sklearn.model_selection import TimeSeriesSplit
+
+class WalkForwardValidator:
+    """Walk-forward validation for time-series ML models."""
+    
+    def __init__(
+        self,
+        train_size: int = 252,  # ~1 trading year
+        test_size: int = 21,    # ~1 trading month
+        step_size: int = 21
+    ):
+        self.train_size = train_size
+        self.test_size = test_size
+        self.step_size = step_size
+    
+    def split(
+        self,
+        X: pd.DataFrame,
+        y: pd.Series
+    ) -> list[tuple]:
+        """Generate walk-forward train/test splits."""
+        splits = []
+        
+        for i in range(0, len(X) - self.train_size - self.test_size, self.step_size):
+            train_idx = slice(i, i + self.train_size)
+            test_idx = slice(
+                i + self.train_size,
+                i + self.train_size + self.test_size
+            )
+            
+            splits.append((train_idx, test_idx))
+        
+        return splits
+    
+    async def backtest_model(
+        self,
+        model,
+        X: pd.DataFrame,
+        y: pd.Series
+    ) -> dict:
+        """Backtest model using walk-forward analysis."""
+        
+        splits = self.split(X, y)
+        results = {
+            "train_scores": [],
+            "test_scores": [],
+            "predictions": [],
+            "actual": []
+        }
+        
+        for fold_idx, (train_idx, test_idx) in enumerate(splits):
+            logger.info(f"Processing fold {fold_idx + 1}/{len(splits)}")
+            
+            X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+            y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+            
+            # Train model
+            model.fit(X_train, y_train)
+            
+            # Evaluate
+            train_score = model.score(X_train, y_train)
+            test_score = model.score(X_test, y_test)
+            predictions = model.predict(X_test)
+            
+            results["train_scores"].append(train_score)
+            results["test_scores"].append(test_score)
+            results["predictions"].extend(predictions)
+            results["actual"].extend(y_test.values)
+            
+            logger.debug(
+                f"Fold {fold_idx + 1}: train={train_score:.4f}, test={test_score:.4f}"
+            )
+        
+        # Aggregate results
+        avg_test_score = np.mean(results["test_scores"])
+        logger.info(
+            f"Average test score: {avg_test_score:.4f}",
+            extra={"metric": "walk_forward_score"}
+        )
+        
+        return results
+```
+
+### Model Training and Optimization
+
+```python
+from xgboost import XGBRegressor
+from sklearn.preprocessing import StandardScaler
+from optuna import create_study, Trial
+
+class ModelTrainer:
+    """Train and optimize ML models for price prediction."""
+    
+    def __init__(self, model_type: str = "xgboost"):
+        self.model_type = model_type
+        self.scaler = StandardScaler()
+        self.model = None
+    
+    def train_xgboost(
+        self,
+        X_train: pd.DataFrame,
+        y_train: pd.Series,
+        hyperparams: dict = None
+    ) -> XGBRegressor:
+        """Train XGBoost model for price prediction."""
+        
+        # Default hyperparameters (optimized for trading)
+        if hyperparams is None:
+            hyperparams = {
+                "n_estimators": 200,
+                "max_depth": 6,
+                "learning_rate": 0.05,
+                "subsample": 0.8,
+                "colsample_bytree": 0.8,
+                "reg_alpha": 0.1,
+                "reg_lambda": 1.0,
+                "objective": "reg:squarederror",
+                "random_state": 42,
+            }
+        
+        # Scale features
+        X_scaled = self.scaler.fit_transform(X_train)
+        
+        # Train model
+        model = XGBRegressor(**hyperparams)
+        model.fit(
+            X_scaled,
+            y_train,
+            eval_set=[(X_scaled, y_train)],
+            verbose=False
+        )
+        
+        logger.info(
+            "XGBoost model trained",
+            extra={"n_features": X_train.shape[1]}
+        )
+        
+        self.model = model
+        return model
+    
+    def optimize_hyperparameters(
+        self,
+        X_train: pd.DataFrame,
+        y_train: pd.Series,
+        n_trials: int = 50
+    ) -> dict:
+        """Optimize hyperparameters using Optuna."""
+        
+        def objective(trial: Trial) -> float:
+            params = {
+                "n_estimators": trial.suggest_int("n_estimators", 50, 300),
+                "max_depth": trial.suggest_int("max_depth", 3, 10),
+                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.5),
+                "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
+            }
+            
+            model = self.train_xgboost(X_train, y_train, params)
+            
+            X_scaled = self.scaler.transform(X_train)
+            score = model.score(X_scaled, y_train)
+            
+            return score
+        
+        study = create_study(direction="maximize")
+        study.optimize(objective, n_trials=n_trials, show_progress_bar=True)
+        
+        best_params = study.best_params
+        logger.info(
+            f"Best hyperparameters found (score: {study.best_value:.4f})",
+            extra={"params": best_params}
+        )
+        
+        return best_params
+    
+    def predict(
+        self,
+        X: pd.DataFrame
+    ) -> np.ndarray:
+        """Generate predictions on new data."""
+        if self.model is None:
+            raise ValueError("Model not trained")
+        
+        X_scaled = self.scaler.transform(X)
+        predictions = self.model.predict(X_scaled)
+        
+        return predictions
+```
+
+### Model Monitoring and Retraining
+
+```python
+class ModelMonitor:
+    """Monitor model performance and trigger retraining."""
+    
+    def __init__(
+        self,
+        performance_threshold: float = 0.60,
+        drift_threshold: float = 0.05
+    ):
+        self.performance_threshold = performance_threshold
+        self.drift_threshold = drift_threshold
+    
+    async def check_model_performance(
+        self,
+        model_id: str,
+        recent_predictions: list[float],
+        actual_values: list[float]
+    ) -> dict:
+        """Check if model performance has degraded."""
+        
+        from sklearn.metrics import mean_absolute_percentage_error, r2_score
+        
+        r2 = r2_score(actual_values, recent_predictions)
+        mape = mean_absolute_percentage_error(actual_values, recent_predictions)
+        
+        needs_retraining = r2 < self.performance_threshold
+        
+        logger.info(
+            f"Model {model_id} performance check",
+            extra={
+                "model_id": model_id,
+                "r2_score": r2,
+                "mape": mape,
+                "needs_retraining": needs_retraining
+            }
+        )
+        
+        return {
+            "model_id": model_id,
+            "r2_score": r2,
+            "mape": mape,
+            "needs_retraining": needs_retraining
+        }
+    
+    async def detect_data_drift(
+        self,
+        historical_ pd.DataFrame,
+        recent_ pd.DataFrame
+    ) -> bool:
+        """Detect statistical drift in feature distributions."""
+        
+        from scipy import stats
+        
+        drifted_features = []
+        
+        for col in historical_data.columns:
+            if historical_data[col].dtype in [np.float64, np.int64]:
+                # Kolmogorov-Smirnov test
+                ks_stat, p_value = stats.ks_2samp(
+                    historical_data[col],
+                    recent_data[col]
+                )
+                
+                if p_value < self.drift_threshold:
+                    drifted_features.append(col)
+        
+        if drifted_features:
+            logger.warning(
+                f"Data drift detected in {len(drifted_features)} features",
+                extra={"features": drifted_features}
+            )
+            return True
+        
+        return False
+```
+
+### Experiment Tracking
+
+```python
+import json
+from datetime import datetime
+
+class ExperimentTracker:
+    """Track ML experiments and results."""
+    
+    def __init__(self, db_connection):
+        self.db = db_connection
+    
+    async def log_experiment(
+        self,
+        experiment_name: str,
+        model_type: str,
+        hyperparameters: dict,
+        metrics: dict,
+        features_used: list[str],
+        notes: str = ""
+    ) -> str:
+        """Log experiment to database."""
+        
+        experiment_id = f"{experiment_name}_{datetime.now().isoformat()}"
+        
+        await self.db.insert("experiments", {
+            "experiment_id": experiment_id,
+            "experiment_name": experiment_name,
+            "model_type": model_type,
+            "hyperparameters": json.dumps(hyperparameters),
+            "metrics": json.dumps(metrics),
+            "features_used": json.dumps(features_used),
+            "notes": notes,
+            "timestamp": datetime.now().isoformat(),
+        })
+        
+        logger.info(
+            f"Experiment logged: {experiment_id}",
+            extra={"experiment_id": experiment_id, "r2_score": metrics.get("r2_score")}
+        )
+        
+        return experiment_id
+```
+
+## Best Practices Summary
+
+1. **Data Quality**: Validate at ingestion, log quality metrics
+2. **Walk-Forward**: Always use time-series cross-validation
+3. **Feature Engineering**: Document features, track importance
+4. **Hyperparameter Tuning**: Use Optuna, save best params
+5. **Monitoring**: Track R², MAPE, and data drift continuously
+6. **Retraining**: Automate on schedule or performance triggers
+7. **Experiment Tracking**: Log all experiments for reproducibility
+8. **Error Handling**: Graceful degradation when models underperform

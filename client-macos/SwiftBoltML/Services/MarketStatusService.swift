@@ -58,18 +58,23 @@ class MarketStatusService: ObservableObject {
     }
     
     func fetchMarketStatus(for symbol: String? = nil) async {
-        var urlString = "\(supabaseURL)/functions/v1/market-status"
-        if let symbol = symbol {
-            urlString += "?symbol=\(symbol)"
+        guard var components = URLComponents(string: "\(supabaseURL)/functions/v1/market-status") else {
+            print("[MarketStatusService] Invalid URL")
+            return
         }
-        
-        guard let url = URL(string: urlString) else {
+
+        if let symbol = symbol {
+            components.queryItems = [URLQueryItem(name: "symbol", value: symbol)]
+        }
+
+        guard let url = components.url else {
             print("[MarketStatusService] Invalid URL")
             return
         }
         
         var request = URLRequest(url: url)
         request.setValue("Bearer \(supabaseKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(supabaseKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         do {

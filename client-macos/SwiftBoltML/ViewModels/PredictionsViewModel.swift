@@ -66,4 +66,5 @@ class PredictionsViewModel: ObservableObject {
     func refresh() async {
         await loadDashboard()
     }
+
 }

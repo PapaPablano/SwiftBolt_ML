@@ -35,6 +35,88 @@ interface ChartRequest {
   includeMLData?: boolean;
 }
 
+type DailyBarRow = {
+  ts: string;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  volume: number | null;
+};
+
+type WeeklyBarRow = DailyBarRow;
+
+function normalizeBarTimestamp(ts: string): Date | null {
+  if (!ts) return null;
+  const normalized = ts.includes('T') ? ts : ts.replace(' ', 'T');
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function weekStartKey(date: Date): string {
+  const day = date.getUTCDay();
+  const offset = (day + 6) % 7; // Monday-based
+  const monday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  monday.setUTCDate(monday.getUTCDate() - offset);
+  return monday.toISOString().split('T')[0];
+}
+
+function aggregateWeeklyBars(dailyBars: DailyBarRow[]): WeeklyBarRow[] {
+  if (!dailyBars.length) return [];
+  const buckets = new Map<string, DailyBarRow[]>();
+
+  for (const bar of dailyBars) {
+    const date = normalizeBarTimestamp(bar.ts);
+    if (!date) continue;
+    const key = weekStartKey(date);
+    const existing = buckets.get(key);
+    if (existing) {
+      existing.push(bar);
+    } else {
+      buckets.set(key, [bar]);
+    }
+  }
+
+  const weeklyBars: WeeklyBarRow[] = [];
+  for (const [_key, bars] of buckets) {
+    bars.sort((a, b) => {
+      const aDate = normalizeBarTimestamp(a.ts) ?? new Date(0);
+      const bDate = normalizeBarTimestamp(b.ts) ?? new Date(0);
+      return aDate.getTime() - bDate.getTime();
+    });
+    const first = bars[0];
+    const last = bars[bars.length - 1];
+    const firstDate = normalizeBarTimestamp(first.ts);
+    const timeSuffix = firstDate
+      ? `T${String(firstDate.getUTCHours()).padStart(2, '0')}:${String(firstDate.getUTCMinutes()).padStart(2, '0')}:00Z`
+      : 'T05:00:00Z';
+    const ts = `${weekStartKey(firstDate ?? new Date())}${timeSuffix}`;
+    const highs = bars.map((b) => b.high ?? Number.NEGATIVE_INFINITY);
+    const lows = bars.map((b) => b.low ?? Number.POSITIVE_INFINITY);
+    weeklyBars.push({
+      ts,
+      open: first.open,
+      high: Math.max(...highs),
+      low: Math.min(...lows),
+      close: last.close,
+      volume: bars.reduce((sum, b) => sum + (b.volume ?? 0), 0),
+    });
+  }
+
+  weeklyBars.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  return weeklyBars;
+}
+
+function isWeeklyBarCurrent(latestIso: string | null): boolean {
+  if (!latestIso) return false;
+  const latest = normalizeBarTimestamp(latestIso);
+  if (!latest) return false;
+  const now = new Date();
+  const currentWeekStart = weekStartKey(now);
+  const latestWeekStart = weekStartKey(latest);
+  return latestWeekStart >= currentWeekStart;
+}
+
 interface ChartBar {
   ts: string;
   open: number | null;
@@ -58,6 +140,7 @@ const MAX_BARS_BY_TIMEFRAME: Record<string, number> = {
   d1: 2000,
   w1: 2000,
 };
+const ALL_TIMEFRAMES: Array<'m15' | 'h1' | 'h4' | 'd1' | 'w1'> = ['m15', 'h1', 'h4', 'd1', 'w1'];
 const DEFAULT_MAX_BARS = 950;
 const POSTGREST_MAX_ROWS = 1000;
 const SOFT_MAX_ROWS = 950;
@@ -70,12 +153,16 @@ function alpacaTimeframe(timeframe: string): string | null {
       return '1Hour';
     case 'h4':
       return '4Hour';
+    case 'd1':
+      return '1Day';
+    case 'w1':
+      return '1Week';
     default:
       return null;
   }
 }
 
-function intradayMaxAgeSeconds(timeframe: string): number {
+function timeframeMaxAgeSeconds(timeframe: string): number {
   switch (timeframe) {
     case 'm15':
       return 25 * 60;
@@ -83,6 +170,10 @@ function intradayMaxAgeSeconds(timeframe: string): number {
       return 2 * 60 * 60;
     case 'h4':
       return 5 * 60 * 60;
+    case 'd1':
+      return 72 * 60 * 60;
+    case 'w1':
+      return 10 * 24 * 60 * 60;
     default:
       return 60 * 60;
   }
@@ -257,6 +348,47 @@ function sampleForecastPoints<T extends { ts: number }>(points: T[], maxPoints: 
     .map((idx) => ({ ...points[idx] }));
 }
 
+function buildForecastBarsFromSummary(summary: unknown): ChartBar[] {
+  if (!isRecord(summary) || !Array.isArray(summary['horizons'])) {
+    return [];
+  }
+
+  const horizons = summary['horizons'] as Array<Record<string, unknown>>;
+  const confidence = clampNumber(summary['confidence'], 0.5);
+  const todayStr = new Date().toISOString().split('T')[0];
+  const bars: ChartBar[] = [];
+
+  for (const horizon of horizons) {
+    const points = normalizeForecastPoints(horizon?.['points']);
+    for (const point of points) {
+      if (!Number.isFinite(point.ts)) {
+        continue;
+      }
+      const tsIso = new Date(point.ts * 1000).toISOString();
+      if (tsIso.split('T')[0] <= todayStr) {
+        continue;
+      }
+      bars.push({
+        ts: tsIso,
+        open: point.value,
+        high: point.upper,
+        low: point.lower,
+        close: point.value,
+        volume: null,
+        provider: 'ml_forecast',
+        is_intraday: false,
+        is_forecast: true,
+        data_status: 'forecast',
+        confidence_score: confidence,
+        upper_band: point.upper,
+        lower_band: point.lower,
+      });
+    }
+  }
+
+  return bars;
+}
+
 function isValidChartBarArray(data: unknown): data is ChartBar[] {
   if (!Array.isArray(data)) return false;
   if (data.length === 0) return true;
@@ -329,45 +461,57 @@ serve(async (req: Request): Promise<Response> => {
 
     const symbolId = symbolData.id;
 
-    // Intraday refresh: if today's Alpaca bars are missing/stale, fetch from Alpaca and upsert.
-    if (['m15', 'h1', 'h4'].includes(timeframe)) {
-      const alpacaApiKey = Deno.env.get('ALPACA_API_KEY');
-      const alpacaApiSecret = Deno.env.get('ALPACA_API_SECRET');
+    // Alpaca refresh: keep all timeframes current when bars are stale.
+    const alpacaApiKey = Deno.env.get('ALPACA_API_KEY');
+    const alpacaApiSecret = Deno.env.get('ALPACA_API_SECRET');
 
-      if (alpacaApiKey && alpacaApiSecret) {
-        const todayStartIso = new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString();
-        const { data: latestToday } = await supabase
+    if (alpacaApiKey && alpacaApiSecret) {
+      const nowIso = new Date().toISOString();
+      for (const tf of ALL_TIMEFRAMES) {
+        const intervalSec = timeframeToIntervalSeconds(tf) ?? 0;
+        const { data: latestBar } = await supabase
           .from('ohlc_bars_v2')
           .select('ts')
           .eq('symbol_id', symbolId)
-          .eq('timeframe', timeframe)
+          .eq('timeframe', tf)
           .eq('provider', 'alpaca')
           .eq('is_forecast', false)
-          .gte('ts', todayStartIso)
           .order('ts', { ascending: false })
           .limit(1)
           .maybeSingle();
 
-        const latestIso = latestToday?.ts ? new Date(latestToday.ts).toISOString() : null;
+        const latestIso = latestBar?.ts ? new Date(latestBar.ts).toISOString() : null;
         const latestAgeSec = latestIso ? (Date.now() - new Date(latestIso).getTime()) / 1000 : Number.POSITIVE_INFINITY;
-        const maxAgeSec = intradayMaxAgeSeconds(timeframe);
+        const maxAgeSec = timeframeMaxAgeSeconds(tf);
+        const weeklyStale = tf === 'w1' && !isWeeklyBarCurrent(latestIso);
 
-        if (!Number.isFinite(latestAgeSec) || latestAgeSec > maxAgeSec) {
+        if (!Number.isFinite(latestAgeSec) || latestAgeSec > maxAgeSec || weeklyStale) {
           try {
-            const nowIso = new Date().toISOString();
+            const startIso = latestIso
+              ? new Date(new Date(latestIso).getTime() - intervalSec * 1000 * 2).toISOString()
+              : new Date(new Date().setUTCFullYear(new Date().getUTCFullYear() - 2)).toISOString();
+
             const alpacaBars = await fetchAlpacaBars({
               symbol: symbol.toUpperCase(),
-              timeframe,
-              startIso: todayStartIso,
+              timeframe: tf,
+              startIso,
               endIso: nowIso,
               apiKey: alpacaApiKey,
               apiSecret: alpacaApiSecret,
             });
 
-            if (alpacaBars.length > 0) {
+            const newestAlpacaIso = alpacaBars.length > 0
+              ? new Date(alpacaBars[alpacaBars.length - 1].t).toISOString()
+              : null;
+            const isWeeklyStale = tf === 'w1'
+              && latestIso
+              && (!newestAlpacaIso || new Date(newestAlpacaIso).getTime() <= new Date(latestIso).getTime());
+
+            if (alpacaBars.length > 0 && !isWeeklyStale) {
+              const isIntraday = ['m15', 'h1', 'h4'].includes(tf);
               const rows = alpacaBars.map((bar) => ({
                 symbol_id: symbolId,
-                timeframe,
+                timeframe: tf,
                 ts: bar.t,
                 open: bar.o,
                 high: bar.h,
@@ -375,9 +519,9 @@ serve(async (req: Request): Promise<Response> => {
                 close: bar.c,
                 volume: bar.v,
                 provider: 'alpaca',
-                is_intraday: true,
+                is_intraday: isIntraday,
                 is_forecast: false,
-                data_status: 'live',
+                data_status: isIntraday ? 'live' : 'verified',
                 fetched_at: nowIso,
               }));
 
@@ -388,9 +532,48 @@ serve(async (req: Request): Promise<Response> => {
               if (upsertError) {
                 throw upsertError;
               }
+            } else if (tf === 'w1') {
+              const weeklyStartIso = latestIso ?? new Date(new Date().setUTCFullYear(new Date().getUTCFullYear() - 2)).toISOString();
+              const { data: dailyBars } = await supabase
+                .from('ohlc_bars_v2')
+                .select('ts, open, high, low, close, volume')
+                .eq('symbol_id', symbolId)
+                .eq('timeframe', 'd1')
+                .eq('provider', 'alpaca')
+                .eq('is_forecast', false)
+                .gte('ts', weeklyStartIso)
+                .order('ts', { ascending: true })
+                .limit(2000);
+
+              const weeklyBars = aggregateWeeklyBars((dailyBars ?? []) as DailyBarRow[]);
+              if (weeklyBars.length > 0) {
+                const rows = weeklyBars.map((bar) => ({
+                  symbol_id: symbolId,
+                  timeframe: tf,
+                  ts: bar.ts,
+                  open: bar.open,
+                  high: bar.high,
+                  low: bar.low,
+                  close: bar.close,
+                  volume: bar.volume,
+                  provider: 'alpaca',
+                  is_intraday: false,
+                  is_forecast: false,
+                  data_status: 'verified',
+                  fetched_at: nowIso,
+                }));
+
+                const { error: weeklyUpsertError } = await supabase.from('ohlc_bars_v2').upsert(rows, {
+                  onConflict: 'symbol_id,timeframe,ts,provider,is_forecast',
+                });
+
+                if (weeklyUpsertError) {
+                  throw weeklyUpsertError;
+                }
+              }
             }
           } catch (alpacaErr) {
-            console.error('[chart-data-v2] Intraday Alpaca refresh failed:', alpacaErr);
+            console.error(`[chart-data-v2] Alpaca refresh failed for ${tf}:`, alpacaErr);
           }
         }
       }
@@ -711,6 +894,19 @@ serve(async (req: Request): Promise<Response> => {
       } catch (mlError) {
         console.error('[chart-data-v2] ML enrichment error:', mlError);
         // Continue without ML data
+      }
+    }
+
+    if (includeForecast && mlSummary) {
+      const synthesizedForecast = buildForecastBarsFromSummary(mlSummary);
+      if (synthesizedForecast.length > 0) {
+        const existingTs = new Set(forecast.map((bar) => bar.ts));
+        for (const bar of synthesizedForecast) {
+          if (!existingTs.has(bar.ts)) {
+            forecast.push(bar);
+          }
+        }
+        forecast.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
       }
     }
 

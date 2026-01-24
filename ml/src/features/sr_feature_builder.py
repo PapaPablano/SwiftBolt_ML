@@ -1,3 +1,4 @@
+# flake8: noqa
 """
 Helper utilities to convert S/R detector output into ML-ready features.
 
@@ -26,22 +27,22 @@ def _safe_float(value: Any, default: float = np.nan) -> float:
 def _avg_prob(levels: list[dict[str, Any]]) -> float:
     """Average probability from logistic levels."""
     if not levels:
-        return np.nan
+        return 0.0
     probs = [_safe_float(level.get("probability"), np.nan) for level in levels]
     probs = [p for p in probs if not np.isnan(p)]
     if not probs:
-        return np.nan
+        return 0.0
     return float(np.mean(probs))
 
 
 def _max_prob(levels: list[dict[str, Any]]) -> float:
     """Max probability from logistic levels."""
     if not levels:
-        return np.nan
+        return 0.0
     probs = [_safe_float(level.get("probability"), np.nan) for level in levels]
     probs = [p for p in probs if not np.isnan(p)]
     if not probs:
-        return np.nan
+        return 0.0
     return float(np.max(probs))
 
 

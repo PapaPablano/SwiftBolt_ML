@@ -25,11 +25,11 @@ class BackfillService: ObservableObject {
     /// Request backfill for a specific symbol (manual UI trigger)
     /// - Parameters:
     ///   - ticker: Stock ticker symbol (e.g., "AAPL")
-    ///   - timeframes: Array of timeframes to backfill (default: ["h1"])
+    ///   - timeframes: Array of timeframes to backfill (default: ["m15", "h1", "h4", "d1", "w1"])
     /// - Returns: Result with job details or error
     func requestBackfill(
         for ticker: String,
-        timeframes: [String] = ["h1"]
+        timeframes: [String] = ["m15", "h1", "h4", "d1", "w1"]
     ) async throws -> BackfillResult {
         isLoading = true
         defer { isLoading = false }

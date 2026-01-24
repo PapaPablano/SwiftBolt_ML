@@ -150,6 +150,11 @@ struct ChartView: View {
                     EmptyChartView(message: message)
                 } else {
                     VStack(spacing: 0) {
+                        // Multi-timeframe control strip (Fix F & G)
+                        MultiTimeframeControlStrip(chartViewModel: chartViewModel)
+                            .padding(.horizontal)
+                            .padding(.top, 8)
+
                         if let mlSummary = chartData.mlSummary {
                             let referencePrice = chartViewModel.liveQuote?.last ?? chartData.bars.last?.close
                             ForecastHorizonsView(
@@ -160,6 +165,16 @@ struct ChartView: View {
                                     get: { chartViewModel.selectedForecastHorizon },
                                     set: { chartViewModel.selectedForecastHorizon = $0 }
                                 )
+                            )
+                            .padding(.horizontal)
+                            .padding(.top, 8)
+                        }
+
+                        // Multi-timeframe forecast grid (Improvements 6-7)
+                        if chartViewModel.isMultiTimeframeMode {
+                            MultiTimeframeForecastGridView(
+                                chartViewModel: chartViewModel,
+                                currentPrice: chartViewModel.liveQuote?.last ?? chartViewModel.bars.last?.close
                             )
                             .padding(.horizontal)
                             .padding(.top, 8)
@@ -574,6 +589,91 @@ struct IndicatorToggleMenu: View {
         }
         .menuStyle(.borderlessButton)
         .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+}
+
+// MARK: - Multi-Timeframe Control Strip (Fix F & G)
+
+struct MultiTimeframeControlStrip: View {
+    @ObservedObject var chartViewModel: ChartViewModel
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Multi-TF toggle
+            Button(action: {
+                Task { await chartViewModel.toggleMultiTimeframeMode() }
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: chartViewModel.isMultiTimeframeMode ? "square.grid.2x2.fill" : "square.grid.2x2")
+                        .font(.caption)
+                    Text("Multi-TF")
+                        .font(.caption2)
+                }
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(chartViewModel.isMultiTimeframeMode ? .purple : .secondary)
+            .help("Toggle multi-timeframe forecast view")
+
+            // Loading indicator
+            if chartViewModel.isLoadingMultiTimeframe {
+                ProgressView()
+                    .scaleEffect(0.6)
+            }
+
+            // Trend alignment badge (Fix G)
+            if let alignment = chartViewModel.trendAlignment {
+                TrendAlignmentBadge(alignment: alignment)
+            }
+
+            Spacer()
+        }
+    }
+}
+
+// MARK: - Trend Alignment Badge (Fix G)
+
+struct TrendAlignmentBadge: View {
+    let alignment: ChartViewModel.TrendAlignment
+
+    var body: some View {
+        HStack(spacing: 6) {
+            // Direction icon
+            Image(systemName: directionIcon)
+                .font(.caption)
+                .foregroundStyle(alignment.status.color)
+
+            // Status label
+            Text(alignment.status.label)
+                .font(.caption2.bold())
+
+            // Summary
+            Text(alignment.summaryText)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(alignment.status.color.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .help(tooltipText)
+    }
+
+    private var directionIcon: String {
+        switch alignment.dominantDirection {
+        case "bullish": return "arrow.up.right"
+        case "bearish": return "arrow.down.right"
+        default: return "arrow.left.and.right"
+        }
+    }
+
+    private var tooltipText: String {
+        let breakdown = [
+            alignment.bullishCount > 0 ? "\(alignment.bullishCount) bullish" : nil,
+            alignment.bearishCount > 0 ? "\(alignment.bearishCount) bearish" : nil,
+            alignment.neutralCount > 0 ? "\(alignment.neutralCount) neutral" : nil
+        ].compactMap { $0 }.joined(separator: ", ")
+
+        return "Cross-timeframe alignment: \(breakdown)\nTimeframes: \(alignment.contributingTimeframes.joined(separator: ", "))"
     }
 }
 

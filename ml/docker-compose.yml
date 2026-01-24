@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: swiftbolt-ml-api
+    ports:
+      - "8000:8000"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - FASTAPI_ENV=${FASTAPI_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    env_file:
+      - .env
+    volumes:
+      # Mount source code for development (comment out for production)
+      - ./api:/app/api
+      - ./scripts:/app/scripts
+      - ./src:/app/src
+      - ./config:/app/config
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - swiftbolt-network
+
+networks:
+  swiftbolt-network:
+    driver: bridge

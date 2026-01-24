@@ -11,7 +11,7 @@
 // The frontend should call this single endpoint to render charts without extra round trips.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { corsHeaders, handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
 // Market hours constants (UTC)
@@ -32,12 +32,30 @@ interface ChartBar {
   dataStatus: string;
 }
 
+type ChartBarRow = {
+  ts: string;
+  open: string | number;
+  high: string | number;
+  low: string | number;
+  close: string | number;
+  volume: string | number | null;
+  provider?: string | null;
+  data_status?: string | null;
+};
+
 interface ForecastPoint {
   ts: string;
   value: number;
   lower: number;
   upper: number;
 }
+
+type ForecastPointRow = {
+  ts: string;
+  value: number;
+  lower?: number | null;
+  upper?: number | null;
+};
 
 interface ForecastData {
   label: string;
@@ -61,6 +79,29 @@ interface OptionsRank {
   volume: number;
   runAt: string;
 }
+
+type OptionsRankRow = {
+  expiry: string;
+  strike: number;
+  side: string;
+  ml_score?: number | null;
+  implied_vol?: number | null;
+  delta?: number | null;
+  gamma?: number | null;
+  theta?: number | null;
+  vega?: number | null;
+  open_interest?: number | null;
+  volume?: number | null;
+  run_at?: string | null;
+};
+
+type ForecastRow = {
+  overall_label?: string | null;
+  confidence?: number | null;
+  horizon?: string | null;
+  run_at?: string | null;
+  points?: ForecastPointRow[] | null;
+};
 
 interface ChartResponse {
   symbol: string;
@@ -98,12 +139,14 @@ const FRESHNESS_SLA_MINUTES: Record<string, number> = {
 };
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("origin");
+  
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   if (req.method !== "GET") {
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, req.headers);
   }
 
   const startTime = Date.now();
@@ -116,9 +159,14 @@ serve(async (req: Request): Promise<Response> => {
     const endParam = url.searchParams.get("end");
     const includeOptions = url.searchParams.get("include_options") !== "false";
     const includeForecast = url.searchParams.get("include_forecast") !== "false";
+    const fieldsParam = url.searchParams.get("fields");
+    const barLimitParam = url.searchParams.get("bars_limit");
+    const barOffsetParam = url.searchParams.get("bars_offset");
+    const optionsLimitParam = url.searchParams.get("options_limit");
+    const optionsOffsetParam = url.searchParams.get("options_offset");
 
     if (!symbol) {
-      return errorResponse("Symbol parameter is required", 400);
+      return errorResponse("Symbol parameter is required", 400, req.headers);
     }
 
     const supabase = getSupabaseClient();
@@ -139,13 +187,13 @@ serve(async (req: Request): Promise<Response> => {
       .single();
 
     if (symbolError || !symbolRecord) {
-      return errorResponse(`Symbol not found: ${symbol}`, 404);
+      return errorResponse(`Symbol not found: ${symbol}`, 404, req.headers);
     }
 
     const symbolId = symbolRecord.id;
 
     // 2. Fetch bars using get_chart_data_v2 RPC (provider-aware)
-    let barsData: any[] | null = null;
+    let barsData: ChartBarRow[] | null = null;
     const { data: rpcData, error: barsError } = await supabase.rpc("get_chart_data_v2", {
       p_symbol_id: symbolId,
       p_timeframe: timeframe,
@@ -171,7 +219,7 @@ serve(async (req: Request): Promise<Response> => {
       barsData = rpcData;
     }
 
-    const bars: ChartBar[] = (barsData || []).map((bar: any) => ({
+    const allBars: ChartBar[] = (barsData || []).map((bar: ChartBarRow) => ({
       ts: bar.ts,
       open: Number(bar.open),
       high: Number(bar.high),
@@ -182,6 +230,13 @@ serve(async (req: Request): Promise<Response> => {
       dataStatus: bar.data_status || "unknown",
     }));
 
+    const barOffset = barOffsetParam ? Number(barOffsetParam) : 0;
+    const barLimit = barLimitParam ? Number(barLimitParam) : allBars.length;
+    const bars = allBars.slice(
+      Math.max(0, barOffset),
+      Math.max(0, barOffset) + Math.max(0, barLimit)
+    );
+
     // Get last bar timestamp
     const lastBarTs = bars.length > 0 ? bars[bars.length - 1].ts : null;
 
@@ -189,20 +244,21 @@ serve(async (req: Request): Promise<Response> => {
     let forecastData: ForecastData | null = null;
     if (includeForecast) {
       const { data: forecast } = await supabase
-        .from("ml_forecasts")
+        .from("latest_forecast_summary")
         .select("overall_label, confidence, horizon, run_at, points")
         .eq("symbol_id", symbolId)
-        .order("run_at", { ascending: false })
         .limit(1)
         .single();
 
-      if (forecast) {
+      const forecastRow = forecast as ForecastRow | null;
+
+      if (forecastRow) {
         forecastData = {
-          label: forecast.overall_label || "neutral",
-          confidence: Number(forecast.confidence) || 0,
-          horizon: forecast.horizon || "1D",
-          runAt: forecast.run_at,
-          points: (forecast.points || []).map((p: any) => ({
+          label: forecastRow.overall_label || "neutral",
+          confidence: Number(forecastRow.confidence) || 0,
+          horizon: forecastRow.horizon || "1D",
+          runAt: forecastRow.run_at || "",
+          points: (forecastRow.points || []).map((p: ForecastPointRow) => ({
             ts: p.ts,
             value: Number(p.value),
             lower: Number(p.lower || p.value * 0.95),
@@ -220,10 +276,14 @@ serve(async (req: Request): Promise<Response> => {
         .select("expiry, strike, side, ml_score, implied_vol, delta, gamma, theta, vega, open_interest, volume, run_at")
         .eq("underlying_symbol_id", symbolId)
         .order("ml_score", { ascending: false })
-        .limit(10);
+        .range(
+          Math.max(0, Number(optionsOffsetParam || 0)),
+          Math.max(0, Number(optionsOffsetParam || 0)) +
+            Math.max(1, Number(optionsLimitParam || 10)) - 1
+        );
 
       if (options) {
-        optionsRanks = options.map((opt: any) => ({
+        optionsRanks = (options as OptionsRankRow[]).map((opt) => ({
           expiry: opt.expiry,
           strike: Number(opt.strike),
           side: opt.side,
@@ -235,7 +295,7 @@ serve(async (req: Request): Promise<Response> => {
           vega: Number(opt.vega) || 0,
           openInterest: Number(opt.open_interest) || 0,
           volume: Number(opt.volume) || 0,
-          runAt: opt.run_at,
+          runAt: opt.run_at || "",
         }));
       }
     }
@@ -302,12 +362,16 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     // Build response
+    const responseFields = fieldsParam
+      ? new Set(fieldsParam.split(",").map((field) => field.trim()))
+      : null;
+
     const response: ChartResponse = {
       symbol,
       timeframe,
-      bars,
-      forecast: forecastData,
-      optionsRanks,
+      bars: responseFields && !responseFields.has("bars") ? [] : bars,
+      forecast: responseFields && !responseFields.has("forecast") ? null : forecastData,
+      optionsRanks: responseFields && !responseFields.has("options") ? [] : optionsRanks,
       meta: {
         lastBarTs,
         dataStatus,
@@ -328,16 +392,43 @@ serve(async (req: Request): Promise<Response> => {
       },
     };
 
+    if (responseFields) {
+      if (!responseFields.has("meta")) {
+        response.meta = {
+          lastBarTs: null,
+          dataStatus: "fresh",
+          isMarketOpen: false,
+          latestForecastRunAt: null,
+          hasPendingSplits: false,
+          pendingSplitInfo: null,
+          totalBars: bars.length,
+          requestedRange: {
+            start: startDate.toISOString(),
+            end: endDate.toISOString(),
+          },
+        };
+      }
+
+      if (!responseFields.has("freshness")) {
+        response.freshness = {
+          ageMinutes: null,
+          slaMinutes,
+          isWithinSla: true,
+        };
+      }
+    }
+
     const duration = Date.now() - startTime;
     console.log(`[chart] ${symbol}/${timeframe}: ${bars.length} bars, ${duration}ms`);
 
-    return jsonResponse(response);
+    return jsonResponse(response, 200, req.headers);
 
   } catch (error) {
     console.error("[chart] Error:", error);
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
-      500
+      500,
+      req.headers
     );
   }
 });

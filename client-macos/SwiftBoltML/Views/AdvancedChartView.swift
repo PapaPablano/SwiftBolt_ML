@@ -1839,7 +1839,13 @@ struct AdvancedChartView: View {
                     .frame(width: 1, height: 1)
             }
             .annotation(position: flip.isBullish ? .bottom : .top, spacing: 4) {
-                factorTag(value: flip.factor, color: flip.isBullish ? ChartColors.superTrendBull : ChartColors.superTrendBear, pointingUp: flip.isBullish)
+                factorTag(
+                    value: flip.factor,
+                    color: flip.isBullish ? ChartColors.superTrendBull : ChartColors.superTrendBear,
+                    pointingUp: flip.isBullish,
+                    horizontalOffset: flip.isBullish ? 0 : 18,
+                    verticalOffset: flip.isBullish ? 0 : -4
+                )
             }
         }
     }
@@ -1897,7 +1903,13 @@ struct AdvancedChartView: View {
         return flips
     }
     
-    private func factorTag(value: Double, color: Color, pointingUp: Bool) -> some View {
+    private func factorTag(
+        value: Double,
+        color: Color,
+        pointingUp: Bool,
+        horizontalOffset: CGFloat = 0,
+        verticalOffset: CGFloat = 0
+    ) -> some View {
         Text(String(format: "%.0f", value))
             .font(.system(size: 10, weight: .bold))
             .foregroundStyle(.white)
@@ -1933,7 +1945,7 @@ struct AdvancedChartView: View {
                     .fill(color)
                 }
             )
-            .offset(y: pointingUp ? 5 : -5)
+            .offset(x: horizontalOffset, y: (pointingUp ? 5 : -5) + verticalOffset)
     }
 
     // MARK: - SuperTrend AI Signal Markers

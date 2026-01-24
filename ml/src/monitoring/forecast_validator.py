@@ -166,7 +166,15 @@ class ForecastValidator:
         logger.info(f"Validating {len(matched)} matched forecasts")
 
         # Direction accuracy
-        direction_correct = matched["predicted_direction"] == matched["actual_direction"]
+        if (
+            "direction_correct" in matched.columns
+            and matched["direction_correct"].notna().any()
+        ):
+            direction_correct = matched["direction_correct"].fillna(False)
+        else:
+            direction_correct = (
+                matched["predicted_direction"] == matched["actual_direction"]
+            )
         direction_accuracy = direction_correct.mean()
 
         # Target precision
@@ -290,7 +298,13 @@ class ForecastValidator:
             horizon_days = self._parse_horizon(horizon)
 
             try:
-                forecast_date = pd.to_datetime(forecast[date_col])
+                # Handle ISO8601 format with timezone info
+                forecast_date = pd.to_datetime(forecast[date_col], format='ISO8601', errors='coerce')
+                if pd.isna(forecast_date):
+                    # Fallback to mixed format if ISO8601 fails
+                    forecast_date = pd.to_datetime(forecast[date_col], format='mixed', errors='coerce')
+                if pd.isna(forecast_date):
+                    continue
             except Exception:
                 continue
 
@@ -302,8 +316,15 @@ class ForecastValidator:
             )
 
             if "date" in symbol_actuals.columns:
+                # Use ISO8601 format to handle various timestamp formats
+                try:
+                    actuals_dates = pd.to_datetime(symbol_actuals["date"], format='ISO8601', errors='coerce')
+                except Exception:
+                    # Fallback to mixed format if ISO8601 fails
+                    actuals_dates = pd.to_datetime(symbol_actuals["date"], format='mixed', errors='coerce')
+                
                 outcome = symbol_actuals[
-                    pd.to_datetime(symbol_actuals["date"]) >= outcome_date
+                    actuals_dates >= outcome_date
                 ].head(1)
             else:
                 continue
@@ -312,6 +333,8 @@ class ForecastValidator:
                 continue
 
             actual_close = outcome.iloc[0]["close"]
+            realized_label = outcome.iloc[0].get("realized_label")
+            direction_correct = outcome.iloc[0].get("direction_correct")
 
             # Get entry price
             entry_price = forecast.get("entry_price") or forecast.get("current_price")
@@ -344,9 +367,13 @@ class ForecastValidator:
             # Determine directions
             predicted_label = str(forecast.get("label", "neutral")).lower()
             actual_direction = (
-                "bullish"
-                if actual_return > 0.005
-                else ("bearish" if actual_return < -0.005 else "neutral")
+                str(realized_label).lower()
+                if realized_label is not None
+                else (
+                    "bullish"
+                    if actual_return > 0.005
+                    else ("bearish" if actual_return < -0.005 else "neutral")
+                )
             )
 
             row = {
@@ -361,6 +388,7 @@ class ForecastValidator:
                 "actual_return": actual_return,
                 "predicted_direction": predicted_label,
                 "actual_direction": actual_direction,
+                "direction_correct": direction_correct,
                 "confidence": forecast.get("confidence", 0.5),
             }
 

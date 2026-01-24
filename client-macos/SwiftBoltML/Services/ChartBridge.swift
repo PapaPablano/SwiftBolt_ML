@@ -10,7 +10,7 @@ enum ChartCommand: Encodable {
     case setCandles(data: [LightweightCandle])
     case updateCandle(candle: LightweightCandle)
     case setLine(id: String, data: [LightweightDataPoint], options: LineOptions?)
-    case setForecastCandles(data: [LightweightCandle])
+    case setForecastCandles(data: [LightweightCandle], direction: String?)
     case setForecast(midData: [LightweightDataPoint], upperData: [LightweightDataPoint], lowerData: [LightweightDataPoint], options: ForecastOptions?)
     case setMarkers(seriesId: String, markers: [ChartMarker])
     case addPriceLine(seriesId: String, price: Double, options: PriceLineOptions?)
@@ -37,14 +37,16 @@ enum ChartCommand: Encodable {
     case hidePanel(panel: String)
     case removeVolumeProfile
     case removePriceLines(category: String)
+    case setTechnicalIndicatorsOverlay(indicators: [TechnicalIndicatorOverlay])
 
     // Custom encoding to match JS API
     private enum CodingKeys: String, CodingKey {
         case type, options, data, candle, id, midData, upperData, lowerData
+        case direction
         case seriesId, markers, price, from, to
         case line, signal, histogram, kData, dData, jData, adxData, plusDI, minusDI, panel
         case trendData, strengthData, resistance, support, levels, category
-        case config
+        case config, indicators
     }
 
     func encode(to encoder: Encoder) throws {
@@ -65,9 +67,10 @@ enum ChartCommand: Encodable {
             try container.encode(id, forKey: .id)
             try container.encode(data, forKey: .data)
             try container.encodeIfPresent(options, forKey: .options)
-        case .setForecastCandles(let data):
+        case .setForecastCandles(let data, let direction):
             try container.encode("setForecastCandles", forKey: .type)
             try container.encode(data, forKey: .data)
+            try container.encodeIfPresent(direction, forKey: .direction)
         case .setForecast(let midData, let upperData, let lowerData, let options):
             try container.encode("setForecast", forKey: .type)
             try container.encode(midData, forKey: .midData)
@@ -152,6 +155,9 @@ enum ChartCommand: Encodable {
         case .removePriceLines(let category):
             try container.encode("removePriceLines", forKey: .type)
             try container.encode(category, forKey: .category)
+        case .setTechnicalIndicatorsOverlay(let indicators):
+            try container.encode("setTechnicalIndicatorsOverlay", forKey: .type)
+            try container.encode(indicators, forKey: .indicators)
         }
     }
 }
@@ -241,6 +247,16 @@ struct PriceLineOptions: Encodable {
     var lineStyle: Int?
     var showLabel: Bool?
     var title: String?
+}
+
+/// Technical indicator overlay for chart display
+struct TechnicalIndicatorOverlay: Encodable {
+    let name: String
+    let value: Double?
+    let category: String
+    let color: String?
+    let position: String?  // "top", "bottom", "overlay"
+    let format: String?    // "price", "percent", "ratio"
 }
 
 private extension String {
@@ -793,7 +809,10 @@ final class ChartBridge: NSObject, ObservableObject {
             )
         }
         
-        send(.setForecastCandles(data: candles))
+        let firstClose = sortedBars.first?.close ?? 0
+        let lastClose = sortedBars.last?.close ?? 0
+        let direction = lastClose >= firstClose ? "bullish" : "bearish"
+        send(.setForecastCandles(data: candles, direction: direction))
     }
     
     /// Set forecast layer (dashed line with confidence bands)
@@ -943,6 +962,59 @@ final class ChartBridge: NSObject, ObservableObject {
         
         print("[ChartBridge] SuperTrend: \(stPoints.count) aligned points")
         send(.setSuperTrend(data: stPoints, trendData: trendPoints, strengthData: strengthPoints))
+    }
+    
+    /// Set technical indicators overlay from API response
+    func setTechnicalIndicatorsOverlay(from response: TechnicalIndicatorsResponse) {
+        var overlays: [TechnicalIndicatorOverlay] = []
+        
+        // Helper to get category color
+        func categoryColor(_ category: IndicatorCategory) -> String {
+            switch category {
+            case .momentum: return "#4de680"
+            case .trend: return "#5b9bd5"
+            case .volatility: return "#ff9800"
+            case .volume: return "#9c27b0"
+            case .price: return "#2196f3"
+            case .other: return "#757575"
+            }
+        }
+        
+        // Helper to determine format
+        func indicatorFormat(_ name: String) -> String {
+            let lower = name.lowercased()
+            if lower.contains("ratio") || lower.contains("rsi") || lower.contains("stochastic") {
+                return "ratio"
+            } else if lower.contains("percent") || lower.contains("pct") || lower.contains("change") {
+                return "percent"
+            } else {
+                return "price"
+            }
+        }
+        
+        // Convert indicators to overlays
+        for (name, value) in response.indicators {
+            guard let value = value else { continue }
+            
+            // Determine category
+            let category = IndicatorCategory.category(for: name) ?? .other
+            
+            // Create overlay
+            let overlay = TechnicalIndicatorOverlay(
+                name: name,
+                value: value,
+                category: category.rawValue,
+                color: categoryColor(category),
+                position: (category == .momentum || category == .volume) ? "bottom" : "overlay",
+                format: indicatorFormat(name)
+            )
+            overlays.append(overlay)
+        }
+        
+        if !overlays.isEmpty {
+            send(.setTechnicalIndicatorsOverlay(indicators: overlays))
+            print("[ChartBridge] Technical indicators overlay: \(overlays.count) indicators")
+        }
     }
 
     // MARK: - Private Helpers

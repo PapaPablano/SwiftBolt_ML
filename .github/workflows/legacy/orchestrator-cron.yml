@@ -1,0 +1,25 @@
+name: Orchestrator Cron
+
+on:
+  schedule:
+    # Run every 5 minutes (GitHub Actions minimum interval)
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  orchestrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Call Orchestrator
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json" \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/orchestrator?action=tick"
+        continue-on-error: true
+        
+      - name: Log Result
+        if: always()
+        run: echo "Orchestrator tick completed at $(date)"

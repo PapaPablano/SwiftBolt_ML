@@ -16,15 +16,26 @@ interface OptionRank {
   strike: number;
   side: "call" | "put";
   ml_score: number;
-  // Momentum Framework Scores (0-100)
-  composite_rank?: number;
+  ranking_mode?: string;
+  // Ranking scores (0-100)
+  composite_rank?: number;         // MONITOR mode
+  entry_rank?: number;             // ENTRY mode
+  exit_rank?: number;              // EXIT mode
+  // MONITOR mode component scores
   momentum_score?: number;
   value_score?: number;
   greeks_score?: number;
+  // ENTRY mode component scores
+  entry_value_score?: number;
+  catalyst_score?: number;
+  // EXIT mode component scores
+  profit_protection_score?: number;
+  deterioration_score?: number;
+  time_urgency_score?: number;
+  // Additional scores
   relative_value_score?: number;
   entry_difficulty_score?: number;
   ranking_stability_score?: number;
-  ranking_mode?: string;
   // IV Metrics
   implied_vol?: number;
   iv_rank?: number;
@@ -70,6 +81,7 @@ interface OptionsRankingsResponse {
   symbol: string;
   totalRanks: number;
   ranks: OptionRank[];
+  mode?: string;
   filters: {
     expiry?: string;
     side?: "call" | "put";
@@ -88,14 +100,21 @@ type OptionRankRow = {
   strike: number;
   side: "call" | "put";
   ml_score: number;
+  ranking_mode: string | null;
   composite_rank: number | null;
+  entry_rank: number | null;
+  exit_rank: number | null;
   momentum_score: number | null;
   value_score: number | null;
   greeks_score: number | null;
+  entry_value_score: number | null;
+  catalyst_score: number | null;
+  profit_protection_score: number | null;
+  deterioration_score: number | null;
+  time_urgency_score: number | null;
   relative_value_score: number | null;
   entry_difficulty_score: number | null;
   ranking_stability_score: number | null;
-  ranking_mode: string | null;
   implied_vol: number | null;
   iv_rank: number | null;
   spread_pct: number | null;
@@ -161,9 +180,12 @@ serve(async (req: Request): Promise<Response> => {
       return errorResponse("Invalid side parameter (must be 'call' or 'put')", 400);
     }
 
-    // Validate mode parameter
-    if (modeParam && modeParam !== "entry" && modeParam !== "exit") {
-      return errorResponse("Invalid mode parameter (must be 'entry' or 'exit')", 400);
+    // Validate mode parameter (default to "monitor" for backward compatibility)
+    const mode = modeParam || "monitor";
+    console.log(`[Options Rankings] Processing request: symbol=${symbol}, mode=${mode}, sortBy=${sortBy}, limit=${limit}`);
+    
+    if (mode !== "entry" && mode !== "exit" && mode !== "monitor") {
+      return errorResponse("Invalid mode parameter (must be 'entry', 'exit', or 'monitor')", 400);
     }
 
     // Validate signal parameter
@@ -172,40 +194,90 @@ serve(async (req: Request): Promise<Response> => {
       return errorResponse(`Invalid signal parameter (must be one of: ${validSignals.join(", ")})`, 400);
     }
 
+    console.log(`[Options Rankings] Creating Supabase client...`);
     const supabase = getSupabaseClient();
 
     // Look up symbol to get symbol_id
-    const { data: symbolData, error: symbolError } = await supabase
+    console.log(`[Options Rankings] Looking up symbol: ${symbol}`);
+    const { data: symbolData, error: symbolError} = await supabase
       .from("symbols")
       .select("id")
       .eq("ticker", symbol)
       .single();
+    
+    console.log(`[Options Rankings] Symbol lookup result:`, { symbolData, symbolError });
 
     if (symbolError || !symbolData) {
       return errorResponse(`Symbol not found: ${symbol}`, 404);
     }
 
     const symbolId = symbolData.id;
+    console.log(`[Options Rankings] Symbol ID: ${symbolId}`);
+
+    console.log(`[Options Rankings] Fetching latest run_at for mode=${mode}...`);
+    const { data: latestRunRows, error: latestRunError } = await supabase
+      .from("options_ranks")
+      .select("run_at")
+      .eq("underlying_symbol_id", symbolId)
+      .eq("ranking_mode", mode)
+      .order("run_at", { ascending: false })
+      .limit(1)
+      .returns<{ run_at: string }[]>();
+
+    if (latestRunError) {
+      console.error("[Options Rankings] Failed to fetch latest run_at:", latestRunError);
+      return errorResponse(`Database error fetching run_at: ${latestRunError.message}`, 500);
+    }
+    
+    console.log(`[Options Rankings] Latest run_at:`, latestRunRows?.[0]);
+
+    const latestRunAt = latestRunRows?.[0]?.run_at;
+    const runWindowHours = 72;
+    const runWindowStart = latestRunAt
+      ? new Date(new Date(latestRunAt).getTime() - runWindowHours * 60 * 60 * 1000).toISOString()
+      : undefined;
 
     // Get today's date in YYYY-MM-DD format for filtering expired options
     const today = new Date().toISOString().split('T')[0];
 
-    // Determine sort column based on sortBy parameter
-    const sortColumnMap: Record<string, string> = {
-      composite: "composite_rank",
-      ml: "ml_score",
-      momentum: "momentum_score",
-      value: "value_score",
-      greeks: "greeks_score",
-    };
-    const sortColumn = sortColumnMap[sortBy] || "composite_rank";
+    // Determine sort column based on sortBy parameter and mode
+    let sortColumn: string;
+    if (sortBy === "composite" || !sortBy) {
+      // Default sorting based on mode
+      switch (mode) {
+        case "entry":
+          sortColumn = "entry_rank";
+          break;
+        case "exit":
+          sortColumn = "exit_rank";
+          break;
+        default:
+          sortColumn = "composite_rank";
+      }
+    } else {
+      // Explicit sort parameter
+      const sortColumnMap: Record<string, string> = {
+        composite: "composite_rank",
+        entry: "entry_rank",
+        exit: "exit_rank",
+        ml: "ml_score",
+        momentum: "momentum_score",
+        value: "value_score",
+        greeks: "greeks_score",
+        catalyst: "catalyst_score",
+        profit: "profit_protection_score",
+      };
+      sortColumn = sortColumnMap[sortBy] || "composite_rank";
+    }
 
     // Build query for options_ranks
+    console.log(`[Options Rankings] Building query with sortColumn=${sortColumn}, today=${today}, runWindowStart=${runWindowStart}`);
+    
     let query = supabase
       .from("options_ranks")
       .select("*")
       .eq("underlying_symbol_id", symbolId)
-      .eq("ranking_mode", modeParam || "entry")
+      .eq("ranking_mode", mode)
       .gte("expiry", today)  // Filter out expired options
       .order(sortColumn, { ascending: false, nullsFirst: false })
       .order("ml_score", { ascending: false, nullsFirst: false })
@@ -214,6 +286,10 @@ serve(async (req: Request): Promise<Response> => {
     // Avoid returning legacy rows with NULL sort values when sorting by framework columns
     if (sortColumn !== "ml_score") {
       query = query.not(sortColumn, "is", null);
+    }
+
+    if (runWindowStart) {
+      query = query.gte("run_at", runWindowStart);
     }
 
     // Apply filters
@@ -239,12 +315,15 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
+    console.log(`[Options Rankings] Executing main query...`);
     const { data: ranksData, error: ranksError } = await query.returns<OptionRankRow[]>();
 
     if (ranksError) {
       console.error("[Options Rankings] Database error:", ranksError);
-      return errorResponse("Failed to fetch options rankings", 500);
+      return errorResponse(`Database error: ${ranksError.message}`, 500);
     }
+    
+    console.log(`[Options Rankings] Query returned ${ranksData?.length || 0} rows`);
 
     // Build history lookup map for average mark over recent window
     const historyMap = new Map<string, { count: number; sum: number }>();
@@ -350,6 +429,7 @@ serve(async (req: Request): Promise<Response> => {
       symbol,
       totalRanks: ranks.length,
       ranks,
+      mode,
       filters: {
         ...(expiryParam && { expiry: expiryParam }),
         ...(sideParam && { side: sideParam as "call" | "put" }),
@@ -358,6 +438,7 @@ serve(async (req: Request): Promise<Response> => {
 
     console.log(
       `[Options Rankings] Returned ${ranks.length} ranked contracts for ${symbol}` +
+        ` (mode: ${mode})` +
         (expiryParam ? ` (expiry: ${expiryParam})` : "") +
         (sideParam ? ` (side: ${sideParam})` : "")
     );

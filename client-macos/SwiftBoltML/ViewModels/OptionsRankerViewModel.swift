@@ -19,10 +19,7 @@ enum RankingSortOption: String, CaseIterable {
     case gaConfidence = "GA Confidence"
 }
 
-enum RankingMode: String, CaseIterable {
-    case entry
-    case exit
-}
+// Note: RankingMode is defined in OptionsRankingResponse.swift to avoid duplication
 
 @MainActor
 class OptionsRankerViewModel: ObservableObject {
@@ -37,7 +34,7 @@ class OptionsRankerViewModel: ObservableObject {
     @Published var selectedSignal: SignalFilter = .all
     @Published var sortOption: RankingSortOption = .composite
     @Published var minScore: Double = 0.0
-    @Published var rankingMode: RankingMode = .entry
+    @Published var rankingMode: RankingMode = .monitor
     @Published var liveQuotes: [String: OptionContractQuote] = [:]
     @Published var lastQuoteRefresh: Date?
     @Published var isRefreshingQuotes: Bool = false
@@ -47,14 +44,31 @@ class OptionsRankerViewModel: ObservableObject {
     // GA Strategy
     @Published var gaStrategy: GAStrategy?
     @Published var gaRecommendation: GARecommendation?
-    @Published var useGAFilter: Bool = false
+    @Published var useGAFilter: Bool = false {
+        didSet {
+            DispatchQueue.main.async { [weak self] in
+                self?.applyGAFilterState()
+            }
+        }
+    }
     @Published var isLoadingGA: Bool = false
+
+    // Ranking freshness tracking (Fix D)
+    @Published var lastRankingRefresh: Date?
 
     @Published var isAutoRefreshing: Bool = false
     @Published var autoRefreshInterval: TimeInterval?
 
     private var cancellables = Set<AnyCancellable>()
     private var quoteTimerCancellable: AnyCancellable?
+    private var activeSymbol: String?
+    private var gaFilterSnapshot: GAFilterSnapshot?
+
+    private struct GAFilterSnapshot {
+        let minScore: Double
+        let selectedSignal: SignalFilter
+        let sortOption: RankingSortOption
+    }
 
     enum RankingStatus {
         case unknown
@@ -78,8 +92,18 @@ class OptionsRankerViewModel: ObservableObject {
 
         return rankings
             .filter { rank in
-                // Score filter using effective composite rank (0-100)
-                let score = rank.effectiveCompositeRank / 100
+                // Score filter using mode-specific rank (0-100)
+                // Use the appropriate rank based on current mode
+                let modeRank: Double
+                switch rankingMode {
+                case .entry:
+                    modeRank = rank.entryRank ?? rank.effectiveCompositeRank
+                case .exit:
+                    modeRank = rank.exitRank ?? rank.effectiveCompositeRank
+                case .monitor:
+                    modeRank = rank.effectiveCompositeRank
+                }
+                let score = modeRank / 100
                 guard score >= minScore else { return false }
 
                 // GA filter (if enabled and strategy exists)
@@ -123,7 +147,21 @@ class OptionsRankerViewModel: ObservableObject {
             .sorted { lhs, rhs in
                 switch sortOption {
                 case .composite:
-                    return lhs.effectiveCompositeRank > rhs.effectiveCompositeRank
+                    // Sort by mode-specific rank
+                    let lhsRank: Double
+                    let rhsRank: Double
+                    switch rankingMode {
+                    case .entry:
+                        lhsRank = lhs.entryRank ?? lhs.effectiveCompositeRank
+                        rhsRank = rhs.entryRank ?? rhs.effectiveCompositeRank
+                    case .exit:
+                        lhsRank = lhs.exitRank ?? lhs.effectiveCompositeRank
+                        rhsRank = rhs.exitRank ?? rhs.effectiveCompositeRank
+                    case .monitor:
+                        lhsRank = lhs.effectiveCompositeRank
+                        rhsRank = rhs.effectiveCompositeRank
+                    }
+                    return lhsRank > rhsRank
                 case .momentum:
                     return (lhs.momentumScore ?? 0) > (rhs.momentumScore ?? 0)
                 case .value:
@@ -144,7 +182,7 @@ class OptionsRankerViewModel: ObservableObject {
         return Array(expiries).sorted()
     }
 
-    func loadRankings(for symbol: String) async {
+    func loadRankings(for symbol: String, allowExitFallback: Bool = true) async {
         isLoading = true
         errorMessage = nil
 
@@ -157,17 +195,31 @@ class OptionsRankerViewModel: ObservableObject {
                 limit: 100
             )
 
-            rankings = response.ranks
-            updateRankingStatus()
-            isLoading = false
+            if response.ranks.isEmpty, rankingMode == .exit, allowExitFallback {
+                await MainActor.run {
+                    self.rankingMode = .entry
+                }
+                await loadRankings(for: symbol, allowExitFallback: false)
+                return
+            }
+
+            // Batch all state updates together to prevent cascading view updates
+            await MainActor.run {
+                self.rankings = response.ranks
+                self.updateRankingStatus()
+                self.isLoading = false
+                self.activeSymbol = symbol
+            }
 
             print("[OptionsRanker] Loaded \(rankings.count) ranked options for \(symbol)")
 
             await refreshQuotes(for: symbol)
         } catch {
-            errorMessage = error.localizedDescription
-            rankingStatus = .unavailable
-            isLoading = false
+            await MainActor.run {
+                self.errorMessage = error.localizedDescription
+                self.rankingStatus = .unavailable
+                self.isLoading = false
+            }
             print("[OptionsRanker] Error: \(error)")
         }
     }
@@ -176,14 +228,43 @@ class OptionsRankerViewModel: ObservableObject {
         await loadRankings(for: symbol)
     }
 
-    func triggerRankingJob(for symbol: String) async {
-        isGeneratingRankings = true
+    func clearData() {
+        stopAutoRefresh()
+        
+        // Batch all state changes together
+        rankings = []
+        liveQuotes = [:]
+        lastQuoteRefresh = nil
         errorMessage = nil
+        isLoading = false
+        isGeneratingRankings = false
+        rankingStatus = .unknown
+        gaStrategy = nil
+        gaRecommendation = nil
+        isLoadingGA = false
+        lastRankingRefresh = nil
+        activeSymbol = nil
+    }
+
+    func ensureLoaded(for symbol: String) async {
+        if activeSymbol == symbol, !rankings.isEmpty {
+            startAutoRefresh(for: symbol)
+            return
+        }
+
+        await loadRankings(for: symbol)
+        await loadGAStrategy(for: symbol)
+        startAutoRefresh(for: symbol)
+    }
+
+    func triggerRankingJob(for symbol: String) async {
+        await MainActor.run {
+            self.isGeneratingRankings = true
+            self.errorMessage = nil
+            self.rankingStatus = .unknown
+        }
 
         print("[OptionsRanker] Triggering ranking job for \(symbol)...")
-
-        // Show user that job is running
-        rankingStatus = .unknown
 
         do {
             // Trigger the actual ranking job via Edge Function
@@ -199,11 +280,15 @@ class OptionsRankerViewModel: ObservableObject {
             await loadRankings(for: symbol)
             print("[OptionsRanker] Ranking job completed for \(symbol)")
         } catch {
-            errorMessage = "Failed to trigger ranking job: \(error.localizedDescription)"
+            await MainActor.run {
+                self.errorMessage = "Failed to trigger ranking job: \(error.localizedDescription)"
+            }
             print("[OptionsRanker] Error triggering job: \(error)")
         }
 
-        isGeneratingRankings = false
+        await MainActor.run {
+            self.isGeneratingRankings = false
+        }
     }
 
     func refreshQuotes(for symbol: String) async {
@@ -214,7 +299,9 @@ class OptionsRankerViewModel: ObservableObject {
         let contracts = rankings.map { $0.contractSymbol }
         guard !contracts.isEmpty else { return }
 
-        isRefreshingQuotes = true
+        await MainActor.run {
+            self.isRefreshingQuotes = true
+        }
 
         do {
             let response = try await APIClient.shared.fetchOptionsQuotes(
@@ -227,13 +314,17 @@ class OptionsRankerViewModel: ObservableObject {
                 quoteMap[quote.contractSymbol] = quote
             }
 
-            liveQuotes = quoteMap
-            lastQuoteRefresh = ISO8601DateFormatter().date(from: response.timestamp)
+            await MainActor.run {
+                self.liveQuotes = quoteMap
+                self.lastQuoteRefresh = ISO8601DateFormatter().date(from: response.timestamp)
+                self.isRefreshingQuotes = false
+            }
         } catch {
+            await MainActor.run {
+                self.isRefreshingQuotes = false
+            }
             print("[OptionsRanker] Failed to refresh quotes: \(error)")
         }
-
-        isRefreshingQuotes = false
     }
     
     /// Coordinated refresh: trigger inline ranking job which fetches fresh data and ranks
@@ -245,17 +336,48 @@ class OptionsRankerViewModel: ObservableObject {
     private func updateRankingStatus() {
         guard let firstRank = rankings.first else {
             rankingStatus = .unavailable
+            lastRankingRefresh = nil
             return
         }
 
-        // Parse the run_at timestamp
-        let dateFormatter = ISO8601DateFormatter()
-        if let runAt = dateFormatter.date(from: firstRank.runAt) {
+        // Fix D: Try multiple ISO8601 formats with fallbacks
+        let runAtDate = parseISO8601Date(firstRank.runAt)
+
+        if let runAt = runAtDate {
+            lastRankingRefresh = runAt
             let hourAgo = Date().addingTimeInterval(-3600)
             rankingStatus = runAt > hourAgo ? .fresh : .stale
         } else {
+            // Fallback: use current time as "unknown freshness" but still show the badge
+            lastRankingRefresh = nil
             rankingStatus = .unknown
         }
+    }
+
+    /// Helper to parse ISO8601 dates with multiple format fallbacks (Fix D)
+    private func parseISO8601Date(_ dateString: String) -> Date? {
+        // Try with fractional seconds first
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = isoFormatter.date(from: dateString) {
+            return date
+        }
+
+        // Try without fractional seconds
+        isoFormatter.formatOptions = [.withInternetDateTime]
+        if let date = isoFormatter.date(from: dateString) {
+            return date
+        }
+
+        // Try basic date formatter as last resort
+        let basicFormatter = DateFormatter()
+        basicFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+        if let date = basicFormatter.date(from: dateString) {
+            return date
+        }
+
+        basicFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+        return basicFormatter.date(from: dateString)
     }
 
     func setExpiry(_ expiry: String?) {
@@ -278,6 +400,54 @@ class OptionsRankerViewModel: ObservableObject {
         useGAFilter = enabled
     }
 
+    private func applyGAFilterState() {
+        guard useGAFilter else {
+            if let snapshot = gaFilterSnapshot {
+                minScore = snapshot.minScore
+                selectedSignal = snapshot.selectedSignal
+                sortOption = snapshot.sortOption
+                gaFilterSnapshot = nil
+            }
+            return
+        }
+
+        guard let genes = gaStrategy?.genes else { return }
+
+        if gaFilterSnapshot == nil {
+            gaFilterSnapshot = GAFilterSnapshot(
+                minScore: minScore,
+                selectedSignal: selectedSignal,
+                sortOption: sortOption
+            )
+        }
+
+        // Batch all filter property changes to prevent cascading updates
+        minScore = max(minScore, genes.minCompositeRank / 100)
+
+        if let gaSignal = mapGASignalFilter(genes.signalFilter) {
+            selectedSignal = gaSignal
+        }
+
+        sortOption = .gaConfidence
+    }
+
+    private func mapGASignalFilter(_ raw: String) -> SignalFilter? {
+        switch raw.lowercased() {
+        case "buy":
+            return .buy
+        case "discount":
+            return .discount
+        case "runner":
+            return .runner
+        case "greeks":
+            return .greeks
+        case "any", "all", "":
+            return nil
+        default:
+            return nil
+        }
+    }
+
     func clearPriceFilters() {
         minPriceInput = ""
         maxPriceInput = ""
@@ -286,12 +456,21 @@ class OptionsRankerViewModel: ObservableObject {
     // MARK: - GA Strategy
 
     func loadGAStrategy(for symbol: String) async {
-        isLoadingGA = true
+        await MainActor.run {
+            self.isLoadingGA = true
+        }
 
         do {
             let response = try await APIClient.shared.fetchGAStrategy(symbol: symbol)
-            gaStrategy = response.strategy
-            gaRecommendation = response.recommendation
+            
+            await MainActor.run {
+                self.gaStrategy = response.strategy
+                self.gaRecommendation = response.recommendation
+
+                if self.useGAFilter {
+                    self.applyGAFilterState()
+                }
+            }
 
             if response.hasStrategy {
                 print("[OptionsRanker] Loaded GA strategy for \(symbol)")
@@ -303,12 +482,16 @@ class OptionsRankerViewModel: ObservableObject {
             // Don't show error to user, just use default
         }
 
-        isLoadingGA = false
+        await MainActor.run {
+            self.isLoadingGA = false
+        }
     }
 
     func triggerGAOptimization(for symbol: String) async {
-        isLoadingGA = true
-        errorMessage = nil
+        await MainActor.run {
+            self.isLoadingGA = true
+            self.errorMessage = nil
+        }
 
         print("[OptionsRanker] Triggering GA optimization for \(symbol)...")
 
@@ -319,18 +502,24 @@ class OptionsRankerViewModel: ObservableObject {
                 trainingDays: 30
             )
 
-            if response.success {
-                print("[OptionsRanker] GA optimization queued: \(response.runId ?? "unknown")")
-                print("[OptionsRanker] Estimated time: \(response.estimatedMinutes ?? 0) minutes")
-            } else {
-                errorMessage = response.message
+            await MainActor.run {
+                if response.success {
+                    print("[OptionsRanker] GA optimization queued: \(response.runId ?? "unknown")")
+                    print("[OptionsRanker] Estimated time: \(response.estimatedMinutes ?? 0) minutes")
+                } else {
+                    self.errorMessage = response.message
+                }
             }
         } catch {
-            errorMessage = "Failed to trigger GA optimization: \(error.localizedDescription)"
+            await MainActor.run {
+                self.errorMessage = "Failed to trigger GA optimization: \(error.localizedDescription)"
+            }
             print("[OptionsRanker] GA trigger error: \(error)")
         }
 
-        isLoadingGA = false
+        await MainActor.run {
+            self.isLoadingGA = false
+        }
     }
 
     /// Get GA confidence score for an option rank (if GA strategy is loaded)

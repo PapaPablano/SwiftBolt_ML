@@ -1,6 +1,5 @@
-"""Trading strategies and signal generation modules."""
+"""Options trading strategy builders and analyzers."""
 
-from .multi_indicator_signals import MultiIndicatorSignalGenerator
-from .supertrend_ai import SuperTrendAI
+from .strategy_builder import StrategyBuilder, Strategy
 
-__all__ = ["SuperTrendAI", "MultiIndicatorSignalGenerator"]
+__all__ = ['StrategyBuilder', 'Strategy']

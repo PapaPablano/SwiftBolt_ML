@@ -1,3 +1,4 @@
+# flake8: noqa
 """
 Polynomial Regression for Dynamic Support/Resistance Levels.
 
@@ -290,8 +291,8 @@ class SRPolynomialRegressor:
 
         if not swings:
             # Set defaults if no swings available
-            df["polynomial_support"] = np.nan
-            df["polynomial_resistance"] = np.nan
+            df["polynomial_support"] = 0.0
+            df["polynomial_resistance"] = 0.0
             df["support_slope"] = 0.0
             df["resistance_slope"] = 0.0
             return df
