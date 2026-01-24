@@ -38,6 +38,7 @@ class ForecastResult:
     sr_constraint_range: str
 
     # Metadata
+    current_price: float = 0.0  # Current price (for forecast points)
     symbol: Optional[str] = None
     horizon: str = "1D"
 
@@ -55,6 +56,7 @@ class ForecastResult:
             "polynomial_component": self.polynomial_component,
             "ml_component": self.ml_component,
             "sr_constraint_range": self.sr_constraint_range,
+            "current_price": self.current_price,
             "symbol": self.symbol,
             "horizon": self.horizon,
         }
@@ -358,6 +360,7 @@ class ForecastSynthesizer:
                 else round(current_price, 2)
             ),
             sr_constraint_range=f"{round(lower_band, 2)} - {round(upper_band, 2)}",
+            current_price=round(current_price, 2),
             symbol=symbol,
             horizon="1D",
         )
@@ -440,6 +443,7 @@ class ForecastSynthesizer:
             polynomial_component=daily_forecast.polynomial_component,
             ml_component=daily_forecast.ml_component,
             sr_constraint_range=f"{round(lower_band, 2)} - {round(upper_band, 2)}",
+            current_price=round(current_price, 2),
             symbol=symbol,
             horizon="1W",
         )
@@ -973,6 +977,7 @@ class ForecastSynthesizer:
                 else round(current_price, 2)
             ),
             sr_constraint_range=f"{round(lower_band, 2)} - {round(upper_band, 2)}",
+            current_price=round(current_price, 2),
             symbol=symbol,
             horizon="1D",
         )

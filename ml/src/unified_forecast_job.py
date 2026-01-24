@@ -150,15 +150,18 @@ class UnifiedForecastProcessor:
                     min_samples=intraday_min,
                 )
                 if calibrated is not None:
-                    weights = {
+                    weights_dict = {
                         k: float(calibrated.get(k, 0))
                         for k in ('supertrend_component', 'sr_component', 'ensemble_component')
                     }
-                    if sum(weights.values()) > 0:
-                        normalized = {k: v / sum(weights.values()) for k, v in weights.items()}
+                    if sum(weights_dict.values()) > 0:
+                        normalized = {k: v / sum(weights_dict.values()) for k, v in weights_dict.items()}
+                        # Convert dict to ForecastWeights object
+                        weights_obj = get_default_weights()
+                        weights_obj.layer_weights.update(normalized)
                         logger.debug(f"Using intraday-calibrated weights for {symbol_id} {horizon}")
                         self.metrics['weight_sources']['intraday'] = self.metrics['weight_sources'].get('intraday', 0) + 1
-                        return normalized, 'intraday_calibrated'
+                        return weights_obj, 'intraday_calibrated'
             except Exception as e:
                 logger.debug(f"Intraday weights failed: {e}")
         
@@ -169,15 +172,18 @@ class UnifiedForecastProcessor:
                 if row is not None:
                     synth_weights = row.get('synth_weights', {})
                     layer_weights = synth_weights.get('layer_weights', {})
-                    weights = {
+                    weights_dict = {
                         k: float(layer_weights.get(k, 0))
                         for k in ('supertrend_component', 'sr_component', 'ensemble_component')
                     }
-                    if sum(weights.values()) > 0:
-                        normalized = {k: v / sum(weights.values()) for k, v in weights.items()}
+                    if sum(weights_dict.values()) > 0:
+                        normalized = {k: v / sum(weights_dict.values()) for k, v in weights_dict.items()}
+                        # Convert dict to ForecastWeights object
+                        weights_obj = get_default_weights()
+                        weights_obj.layer_weights.update(normalized)
                         logger.debug(f"Using symbol weights for {symbol_id} {horizon}")
                         self.metrics['weight_sources']['daily_symbol'] = self.metrics['weight_sources'].get('daily_symbol', 0) + 1
-                        return normalized, 'daily_symbol'
+                        return weights_obj, 'daily_symbol'
             except Exception as e:
                 logger.debug(f"Symbol weights failed: {e}")
         
