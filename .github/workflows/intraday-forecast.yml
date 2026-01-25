@@ -33,6 +33,9 @@ on:
           - 'all'
           - '15m'
           - '1h'
+          - '4h'
+          - '8h'
+          - '1D'
         default: 'all'
 
 concurrency:
@@ -45,6 +48,12 @@ permissions:
 env:
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  # Ensemble configuration (default to 4 models for intraday)
+  ENABLE_ADVANCED_ENSEMBLE: ${{ vars.ENABLE_ADVANCED_ENSEMBLE || 'true' }}
+  ENABLE_ARIMA_GARCH: ${{ vars.ENABLE_ARIMA_GARCH || 'true' }}
+  ENABLE_PROPHET: ${{ vars.ENABLE_PROPHET || 'true' }}
+  ENABLE_LSTM: ${{ vars.ENABLE_INTRADAY_LSTM || 'false' }}  # Disabled by default (slow)
+  ENABLE_TRANSFORMER: ${{ vars.ENABLE_INTRADAY_TRANSFORMER || 'false' }}  # Disabled by default
 
 jobs:
   # Skip if triggered by failed workflow_run
@@ -247,6 +256,12 @@ jobs:
             generate_forecast "15m"
             echo "📊 Generating 1h forecasts..."
             generate_forecast "1h"
+            echo "📊 Generating 4h forecasts..."
+            generate_forecast "4h"
+            echo "📊 Generating 8h forecasts..."
+            generate_forecast "8h"
+            echo "📊 Generating 1D forecasts..."
+            generate_forecast "1D"
           else
             echo "📊 Generating $HORIZON forecasts..."
             generate_forecast "$HORIZON"

@@ -33,6 +33,9 @@ from src.services.forecast_bar_writer import (  # noqa: E402
     upsert_forecast_bars,
 )
 from src.strategies.supertrend_ai import SuperTrendAI  # noqa: E402
+from src.models.enhanced_ensemble_integration import get_production_ensemble  # noqa: E402
+from src.intraday_daily_feedback import IntradayDailyFeedback  # noqa: E402
+from src.features.timeframe_consensus import add_consensus_to_forecast  # noqa: E402
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -43,12 +46,14 @@ logger = logging.getLogger(__name__)
 
 # Mapping from horizon to timeframe and bars
 HORIZON_CONFIG = {
+    # Existing short-term horizons (use basic ensemble for speed)
     "15m": {
         "timeframe": "m15",
         "bars_per_hour": 4,
         "forecast_bars": 1,  # 1 bar ahead = 15 minutes
         "min_training_bars": 100,
         "indicator_scale": 0.25,  # Scale down indicator periods
+        "use_advanced_ensemble": False,  # Keep basic for speed
     },
     "1h": {
         "timeframe": "h1",
@@ -56,6 +61,34 @@ HORIZON_CONFIG = {
         "forecast_bars": 1,  # 1 bar ahead = 1 hour
         "min_training_bars": 100,
         "indicator_scale": 0.5,
+        "use_advanced_ensemble": False,  # Keep basic for speed
+    },
+    # NEW: Medium-term horizons with advanced 4-model ensemble
+    "4h": {
+        "timeframe": "h4",
+        "bars_per_hour": 0.25,
+        "forecast_bars": 1,  # 1 bar ahead = 4 hours
+        "min_training_bars": 200,
+        "indicator_scale": 1.0,
+        "use_advanced_ensemble": True,  # Use advanced ensemble
+        "horizon_days": 0.167,  # 4/24 hours
+    },
+    "8h": {
+        "timeframe": "h8",
+        "bars_per_hour": 0.125,
+        "forecast_bars": 1,  # 1 bar ahead = 8 hours
+        "min_training_bars": 250,
+        "indicator_scale": 1.5,
+        "use_advanced_ensemble": True,  # Use advanced ensemble
+        "horizon_days": 0.333,  # 8/24 hours
+    },
+    "1D": {
+        "timeframe": "d1",
+        "forecast_bars": 1,  # 1 bar ahead = 1 day
+        "min_training_bars": 500,
+        "indicator_scale": 2.0,
+        "use_advanced_ensemble": True,  # Use advanced ensemble
+        "horizon_days": 1.0,  # 1 day
     },
 }
 
@@ -67,7 +100,39 @@ def timeframe_interval_seconds(timeframe: str) -> int:
         return 60 * 60
     if timeframe == "h4":
         return 4 * 60 * 60
+    if timeframe == "h8":
+        return 8 * 60 * 60
+    if timeframe == "d1":
+        return 24 * 60 * 60
     raise ValueError(f"Unknown timeframe: {timeframe}")
+
+
+def get_weight_source_for_intraday(symbol: str, symbol_id: str, horizon: str, use_feedback: bool) -> tuple:
+    """
+    Get forecast layer weights with optional feedback loop integration.
+
+    Args:
+        symbol: Symbol ticker
+        symbol_id: Symbol UUID
+        horizon: Forecast horizon (4h, 8h, 1D)
+        use_feedback: Whether to use IntradayDailyFeedback (True for 4h/8h/1D)
+
+    Returns:
+        (ForecastWeights object, source_name)
+    """
+    if not use_feedback:
+        # For 15m/1h: always use defaults (they're for calibration)
+        return get_default_weights(), 'default'
+
+    try:
+        # For 4h/8h/1D: use IntradayDailyFeedback priority system
+        feedback_loop = IntradayDailyFeedback()
+        weights_obj, source = feedback_loop.get_best_weights(symbol, horizon)
+        logger.debug(f"Using weights from {source} for {symbol} {horizon}")
+        return weights_obj, source
+    except Exception as e:
+        logger.warning(f"IntradayDailyFeedback failed for {symbol} {horizon}: {e}. Using defaults.")
+        return get_default_weights(), 'default (fallback)'
 
 
 def build_intraday_short_points(
@@ -209,6 +274,12 @@ def get_expiry_time(horizon: str) -> datetime:
         expiry = now + timedelta(minutes=30)
     elif horizon == "1h":
         expiry = now + timedelta(hours=2)
+    elif horizon == "4h":
+        expiry = now + timedelta(hours=6)
+    elif horizon == "8h":
+        expiry = now + timedelta(hours=12)
+    elif horizon == "1D":
+        expiry = now + timedelta(hours=24)
     else:
         expiry = now + timedelta(hours=1)
 
@@ -421,24 +492,72 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                 "Failed to save intraday indicator snapshot for %s: %s", symbol, e
             )
 
-        # Train simplified ensemble for intraday
+        # Determine if we use advanced ensemble based on horizon config
+        use_advanced = config.get("use_advanced_ensemble", False)
+        horizon_days = config.get("horizon_days", 1.0)
+
+        # Get layer weights (feedback-based for 4h/8h/1D, defaults for 15m/1h)
+        weights, weight_source = get_weight_source_for_intraday(
+            symbol=symbol,
+            symbol_id=symbol_id,
+            horizon=horizon,
+            use_feedback=use_advanced,
+        )
+
+        # Prepare training data
         baseline = BaselineForecaster()
         try:
-            X, y = baseline.prepare_training_data(df, horizon_days=1)
+            X, y = baseline.prepare_training_data(df, horizon_days=horizon_days)
         except Exception as e:
             logger.warning("Training data prep failed for %s: %s", symbol, e)
             X = pd.DataFrame()
             y = pd.Series(dtype=str)
 
         ensemble_pred = None
-        if len(X) >= 50:
+        min_bars = config.get("min_training_bars", 50)
+        if len(X) >= min_bars:
             unique_labels = y.unique() if hasattr(y, "unique") else np.unique(y)
             if len(unique_labels) > 1:
                 try:
-                    forecaster = EnsembleForecaster(horizon="1D", symbol_id=symbol_id)
-                    forecaster.train(X, y)
-                    last_features = X.tail(1)
-                    ensemble_pred = forecaster.predict(last_features)
+                    if use_advanced:
+                        # ADVANCED ENSEMBLE: 4-6 model ensemble with OHLC data
+                        ensemble = get_production_ensemble(
+                            horizon=horizon,
+                            symbol_id=symbol_id,
+                        )
+
+                        # Align OHLC data with features (pattern from unified_forecast_job.py)
+                        min_offset = 50 if len(df) >= 100 else (26 if len(df) >= 60 else 14)
+                        start_idx = max(min_offset, 14)
+                        end_idx = len(df) - max(1, int(horizon_days))
+                        ohlc_train = df.iloc[start_idx:end_idx].copy()
+
+                        # Train with OHLC data (required for ARIMA-GARCH, Prophet)
+                        ensemble.train(
+                            features_df=X,
+                            labels_series=y,
+                            ohlc_df=ohlc_train,
+                        )
+
+                        # Predict with OHLC data
+                        ensemble_pred = ensemble.predict(
+                            features_df=X.tail(1),
+                            ohlc_df=df.tail(1),
+                        )
+
+                        logger.info(
+                            f"Advanced ensemble for {symbol} {horizon}: "
+                            f"{ensemble_pred.get('label', 'unknown').upper()} "
+                            f"({ensemble_pred.get('confidence', 0):.0%}, "
+                            f"n_models={ensemble_pred.get('n_models', 0)})"
+                        )
+                    else:
+                        # BASIC ENSEMBLE: Existing 5-model for 15m/1h (fast)
+                        forecaster = EnsembleForecaster(horizon="1D", symbol_id=symbol_id)
+                        forecaster.train(X, y)
+                        last_features = X.tail(1)
+                        ensemble_pred = forecaster.predict(last_features)
+
                 except Exception as e:
                     logger.warning("Ensemble training failed for %s: %s", symbol, e)
         else:
@@ -446,7 +565,7 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                 "Insufficient training samples for %s: %d (need %d). Using fallback.",
                 symbol,
                 len(X),
-                50,
+                min_bars,
             )
 
         # Fallback: use technical indicator based prediction
@@ -477,18 +596,21 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                 confidence * 100,
             )
 
-        # Use ForecastSynthesizer
-        synthesizer = ForecastSynthesizer(weights=get_default_weights())
+        # Use ForecastSynthesizer with weights from feedback loop or defaults
+        synthesizer = ForecastSynthesizer(weights=weights)
         sr_response = convert_sr_to_synthesizer_format(sr_levels, current_price)
         supertrend_for_synth = convert_supertrend_to_synthesizer_format(st_info_raw)
 
-        synth_result = synthesizer.generate_1d_forecast(
+        # Use generate_forecast() with horizon_days parameter (scales ATR moves)
+        synth_result = synthesizer.generate_forecast(
             current_price=current_price,
             df=df,
             supertrend_info=supertrend_for_synth,
             sr_response=sr_response,
             ensemble_result=ensemble_pred,
             symbol=symbol,
+            horizon_days=horizon_days,  # NEW: scales volatility by sqrt(time)
+            timeframe=timeframe,
         )
 
         try:
@@ -500,6 +622,9 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
         horizon_seconds_map = {
             "15m": 15 * 60,
             "1h": 60 * 60,
+            "4h": 4 * 60 * 60,
+            "8h": 8 * 60 * 60,
+            "1D": 24 * 60 * 60,
         }
         horizon_seconds = int(
             horizon_seconds_map.get(horizon, timeframe_interval_seconds(timeframe))
@@ -508,6 +633,9 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
         short_steps_by_horizon = {
             "15m": 8,
             "1h": 12,
+            "4h": 16,
+            "8h": 24,
+            "1D": 24,
         }
         short_steps = int(short_steps_by_horizon.get(horizon, 8))
         short_interval_sec = max(1, int(round(horizon_seconds / max(1, short_steps))))
@@ -523,14 +651,43 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
         # Calculate expiry time
         expires_at = get_expiry_time(horizon)
 
+        # Build initial forecast dict for consensus scoring
+        forecast_dict = {
+            "label": synth_result.direction.lower(),
+            "confidence": synth_result.confidence,
+            "horizon": horizon,
+            "timeframe": timeframe,
+            "target_price": synth_result.target,
+            "current_price": current_price,
+            "weight_source": weight_source,
+        }
+
+        # Add consensus scoring for advanced ensemble horizons (4h, 8h, 1D)
+        consensus_direction = synth_result.direction.lower()
+        alignment_score = 0.0
+        adjusted_confidence = synth_result.confidence
+        if use_advanced:
+            try:
+                forecast_dict = add_consensus_to_forecast(forecast_dict, symbol_id)
+                consensus_direction = forecast_dict.get('consensus_direction', synth_result.direction.lower())
+                alignment_score = forecast_dict.get('alignment_score', 0.0)
+                adjusted_confidence = forecast_dict.get('adjusted_confidence', synth_result.confidence)
+                logger.debug(
+                    f"Consensus for {symbol} {horizon}: "
+                    f"{consensus_direction} "
+                    f"(alignment={alignment_score:.2f})"
+                )
+            except Exception as e:
+                logger.warning(f"Consensus scoring failed for {symbol} {horizon}: {e}")
+
         # Save intraday forecast (single-target)
         forecast_id = db.upsert_intraday_forecast(
             symbol_id=symbol_id,
             symbol=symbol,
             horizon=horizon,
             timeframe=timeframe,
-            overall_label=synth_result.direction.lower(),
-            confidence=synth_result.confidence,
+            overall_label=consensus_direction,
+            confidence=adjusted_confidence,
             points=short_points,
             target_price=synth_result.target,
             current_price=current_price,
