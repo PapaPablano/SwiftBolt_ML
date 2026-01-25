@@ -51,7 +51,7 @@ HORIZON_CONFIG = {
         "timeframe": "m15",
         "bars_per_hour": 4,
         "forecast_bars": 1,  # 1 bar ahead = 15 minutes
-        "min_training_bars": 100,
+        "min_training_bars": 60,  # ~1 trading day (reduced from 100)
         "indicator_scale": 0.25,  # Scale down indicator periods
         "use_advanced_ensemble": False,  # Keep basic for speed
     },
@@ -59,7 +59,7 @@ HORIZON_CONFIG = {
         "timeframe": "h1",
         "bars_per_hour": 1,
         "forecast_bars": 1,  # 1 bar ahead = 1 hour
-        "min_training_bars": 100,
+        "min_training_bars": 60,  # ~1.5 trading weeks (reduced from 100)
         "indicator_scale": 0.5,
         "use_advanced_ensemble": False,  # Keep basic for speed
     },
@@ -68,7 +68,7 @@ HORIZON_CONFIG = {
         "timeframe": "h4",
         "bars_per_hour": 0.25,
         "forecast_bars": 1,  # 1 bar ahead = 4 hours
-        "min_training_bars": 200,
+        "min_training_bars": 100,  # ~2 months (reduced from 200)
         "indicator_scale": 1.0,
         "use_advanced_ensemble": True,  # Use advanced ensemble
         "horizon_days": 0.167,  # 4/24 hours
@@ -77,7 +77,7 @@ HORIZON_CONFIG = {
         "timeframe": "h8",
         "bars_per_hour": 0.125,
         "forecast_bars": 1,  # 1 bar ahead = 8 hours
-        "min_training_bars": 250,
+        "min_training_bars": 120,  # ~2.5 months (reduced from 250)
         "indicator_scale": 1.5,
         "use_advanced_ensemble": True,  # Use advanced ensemble
         "horizon_days": 0.333,  # 8/24 hours
@@ -85,7 +85,7 @@ HORIZON_CONFIG = {
     "1D": {
         "timeframe": "d1",
         "forecast_bars": 1,  # 1 bar ahead = 1 day
-        "min_training_bars": 500,
+        "min_training_bars": 200,  # ~10 months (reduced from 500)
         "indicator_scale": 2.0,
         "use_advanced_ensemble": True,  # Use advanced ensemble
         "horizon_days": 1.0,  # 1 day
