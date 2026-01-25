@@ -1,128 +1,35 @@
-name: ML Tests & Linting
+name: ML Tests - Legacy (Deprecated, use ml-validation.yml instead)
+
+# DEPRECATED: This workflow is kept for reference only.
+# Please use ml-validation.yml for comprehensive ML testing.
+#
+# This workflow has been superseded by ml-validation.yml which provides:
+# - Unit tests with coverage enforcement
+# - Code quality & security scanning
+# - Integration tests
+# - Weekly schedule + manual trigger + dependency change triggers
+# - Better artifact management
 
 on:
-  push:
-    branches: [ master, develop ]
-    paths:
-      - 'ml/**'
-      - '.github/workflows/test-ml.yml'
-  pull_request:
-    branches: [ master, develop ]
-    paths:
-      - 'ml/**'
+  workflow_dispatch:  # Manual trigger only - not recommended
 
 jobs:
-  test:
-    name: Python ${{ matrix.python-version }} Tests
+  deprecation-notice:
+    name: ⚠️ Workflow Deprecated
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.10', '3.11']
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-    
-    - name: Install dependencies
+    - name: Show deprecation notice
       run: |
-        cd ml
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install -r requirements-dev.txt
-
-    - name: Run tests with coverage
-      run: |
-        cd ml
-        pytest tests/ --cov=src --cov-report=xml --cov-report=term-missing
-
-    - name: Enforce diff coverage (>=90%)
-      run: |
-        cd ml
-        diff-cover coverage.xml --compare-branch origin/${{ github.base_ref || 'master' }} --fail-under 90
-
-    
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./ml/coverage.xml
-        flags: ml-tests
-        name: ml-coverage
-        fail_ci_if_error: false
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-  lint:
-    name: Code Quality Checks
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-        cache: 'pip'
-    
-    - name: Install dependencies
-      run: |
-        cd ml
-        python -m pip install --upgrade pip
-        pip install black mypy flake8 isort
-    
-    - name: Check formatting with Black
-      run: |
-        cd ml
-        black --check src tests
-    
-    - name: Check import sorting with isort
-      run: |
-        cd ml
-        isort --check-only src tests
-    
-    - name: Lint with flake8
-      run: |
-        cd ml
-        flake8 src tests --max-line-length=120 --extend-ignore=E203,W503
-    
-    - name: Type check with mypy
-      run: |
-        cd ml
-        mypy src --ignore-missing-imports
-      continue-on-error: true  # Don't fail CI on type errors initially
-
-  security:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-    
-    - name: Install dependencies
-      run: |
-        cd ml
-        python -m pip install --upgrade pip
-        pip install safety bandit
-    
-    - name: Check for security vulnerabilities
-      run: |
-        cd ml
-        safety check --json || true
-    
-    - name: Run Bandit security linter
-      run: |
-        cd ml
-        bandit -r src -f json -o bandit-report.json || true
+        echo "⚠️ WARNING: test-ml.yml is deprecated and should not be used"
+        echo ""
+        echo "This workflow has been superseded by ml-validation.yml"
+        echo ""
+        echo "Please use ml-validation.yml for comprehensive ML testing instead."
+        echo "It provides:"
+        echo "  ✅ Unit tests with coverage enforcement"
+        echo "  ✅ Code quality & security scanning"
+        echo "  ✅ Integration tests"
+        echo "  ✅ Weekly schedule + manual trigger"
+        echo "  ✅ Automatic trigger on requirements.txt changes"
+        exit 1

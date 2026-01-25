@@ -3,20 +3,14 @@ name: Intraday Forecast
 # =============================================================================
 # INTRADAY FORECAST WORKFLOW
 # =============================================================================
-# Generates intraday forecasts after fresh data is ingested.
-# Triggers automatically from intraday-ingestion.yml via workflow_run.
+# Generates intraday forecasts on schedule or manual trigger.
 #
 # Data Flow:
-#   Intraday Ingestion (success) → Intraday Forecast → Evaluation → Weight Calibration
+#   Intraday Forecast → Evaluation → Weight Calibration
 #   Updates: indicator_values, ml_forecasts, symbol_weight_overrides
 # =============================================================================
 
 on:
-  # Trigger after intraday ingestion completes successfully
-  workflow_run:
-    workflows: ["Intraday Ingestion"]
-    types:
-      - completed
   # Backup schedule (offset from ingestion to ensure data freshness)
   schedule:
     - cron: '5,20,35,50 13-22 * * 1-5'  # 5 minutes after each ingestion run
@@ -57,7 +51,7 @@ env:
   ENABLE_TRANSFORMER: ${{ vars.ENABLE_INTRADAY_TRANSFORMER || 'false' }}  # Disabled by default
 
 jobs:
-  # Skip if triggered by failed workflow_run
+  # Always run for schedule/manual triggers
   check-trigger:
     runs-on: ubuntu-latest
     outputs:
@@ -66,13 +60,6 @@ jobs:
       - name: Check trigger status
         id: check
         run: |
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
-              echo "Ingestion workflow did not succeed - skipping"
-              echo "should_run=false" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-          fi
           echo "should_run=true" >> $GITHUB_OUTPUT
 
   check-market:
@@ -86,8 +73,8 @@ jobs:
       - name: Check Market Hours
         id: market
         run: |
-          # Manual dispatch and workflow_run always proceed
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_run" ]; then
+          # Manual dispatch always proceeds
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "market_state=triggered" >> $GITHUB_OUTPUT
             exit 0

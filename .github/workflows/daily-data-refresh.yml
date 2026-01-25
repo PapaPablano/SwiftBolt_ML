@@ -303,7 +303,3 @@ jobs:
           echo "- Gap detection may report expected gaps (weekends, holidays)" >> $GITHUB_STEP_SUMMARY
           echo "- OHLC validation warnings (outliers, gaps) are normal in market data" >> $GITHUB_STEP_SUMMARY
           echo "- Only critical errors (data integrity issues) require attention" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Next Workflows" >> $GITHUB_STEP_SUMMARY
-          echo "- ML Orchestration will trigger automatically on success" >> $GITHUB_STEP_SUMMARY
-          echo "- Check \`intraday-ingestion.yml\` for real-time updates during market hours" >> $GITHUB_STEP_SUMMARY

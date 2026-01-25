@@ -4,8 +4,7 @@ name: ML Orchestration
 # CONSOLIDATED ML PIPELINE
 # =============================================================================
 # Runs the nightly ML suite including forecasts, options processing, model
-# health checks, and evaluation. Triggers automatically after Daily Data Refresh
-# or on a nightly schedule.
+# health checks, and evaluation. Runs on schedule or manual trigger.
 #
 # Consolidates:
 #   - ml-forecast.yml (nightly forecasts)
@@ -18,19 +17,14 @@ name: ML Orchestration
 # real-time options data and is NOT consolidated into this workflow.
 #
 # Data Flow:
-#   Daily Data Refresh (success) → ML Orchestration
-#                                    ├── ml-forecast
-#                                    ├── options-processing
-#                                    ├── model-health
-#                                    └── smoke-tests
+#   ML Orchestration
+#     ├── ml-forecast
+#     ├── options-processing
+#     ├── model-health
+#     └── smoke-tests
 # =============================================================================
 
 on:
-  # Trigger after daily data refresh completes
-  workflow_run:
-    workflows: ["Daily Data Refresh"]
-    types:
-      - completed
   # Nightly schedule for post-market processing
   schedule:
     - cron: "0 4 * * 1-5"  # 4:00 UTC = 22:00 CST (after market close)
@@ -75,17 +69,10 @@ jobs:
       should_run: ${{ steps.check.outputs.should_run }}
       trigger_source: ${{ steps.check.outputs.trigger_source }}
     steps:
-      - name: Check workflow_run status
+      - name: Check trigger status
         id: check
         run: |
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
-              echo "Daily Data Refresh did not succeed - skipping ML orchestration"
-              echo "should_run=false" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-            echo "trigger_source=workflow_run" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" = "schedule" ]; then
+          if [ "${{ github.event_name }}" = "schedule" ]; then
             echo "trigger_source=schedule" >> $GITHUB_OUTPUT
           else
             echo "trigger_source=manual" >> $GITHUB_OUTPUT

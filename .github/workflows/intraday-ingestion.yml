@@ -12,7 +12,7 @@ name: Intraday Ingestion
 #   - intraday-update-v2.yml (deprecated, Tradier)
 #
 # Data Flow:
-#   Intraday Ingestion → Intraday Forecast (workflow_run trigger)
+#   Intraday Ingestion only (forecasting runs separately)
 # =============================================================================
 
 on:
@@ -325,10 +325,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Market State**: ${{ needs.check-market.outputs.market_state }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
-          echo "- Intraday Forecast workflow will trigger automatically" >> $GITHUB_STEP_SUMMARY
-          echo "- Check \`intraday-forecast.yml\` for forecast generation" >> $GITHUB_STEP_SUMMARY
 
   # =============================================================================
   # UNDERLYING HISTORY REFRESH (After Hours)

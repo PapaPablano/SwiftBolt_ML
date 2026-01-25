@@ -5,14 +5,11 @@ This document describes the consolidated GitHub Actions workflow architecture fo
 ## Architecture Overview
 
 ```
-Daily Data Refresh ──▶ ML Orchestration
-        │                    │
-        │                    ├── ML Forecast
-        │                    ├── Options Processing
-        │                    ├── Model Health
-        │                    └── Smoke Tests
-        │
-Intraday Ingestion ──▶ Intraday Forecast
+Daily Data Refresh (data ingestion only)
+Intraday Ingestion (data ingestion only)
+
+ML Orchestration (schedule/manual)
+Intraday Forecast (schedule/manual)
 ```
 
 ## Primary Workflows
@@ -24,7 +21,7 @@ Intraday Ingestion ──▶ Intraday Forecast
 | Property | Value |
 |----------|-------|
 | Schedule | `0 6 * * *` (6:00 AM UTC daily) |
-| Trigger | `workflow_run` triggers ML Orchestration |
+| Trigger | `schedule` + `workflow_dispatch` |
 
 #### Inputs
 
@@ -56,7 +53,7 @@ gh workflow run daily-data-refresh.yml -f timeframe=d1
 | Property | Value |
 |----------|-------|
 | Schedule | `*/15 13-22 * * 1-5` (every 15 min, market hours) |
-| Trigger | `workflow_run` triggers Intraday Forecast |
+| Trigger | `schedule` + `workflow_dispatch` |
 
 #### Inputs
 
@@ -70,12 +67,12 @@ gh workflow run daily-data-refresh.yml -f timeframe=d1
 
 ### 3. Intraday Forecast (`intraday-forecast.yml`)
 
-**Generates intraday forecasts after fresh data is ingested.**
+**Generates intraday forecasts on schedule or manual trigger.**
 
 | Property | Value |
 |----------|-------|
-| Schedule | Triggered by Intraday Ingestion |
-| Backup | `5,20,35,50 13-22 * * 1-5` (5 min offset) |
+| Schedule | `5,20,35,50 13-22 * * 1-5` (5 min offset) |
+| Trigger | `schedule` + `workflow_dispatch` |
 
 ---
 
@@ -86,7 +83,7 @@ gh workflow run daily-data-refresh.yml -f timeframe=d1
 | Property | Value |
 |----------|-------|
 | Schedule | `0 4 * * 1-5` (4:00 AM UTC weekdays) |
-| Trigger | `workflow_run` from Daily Data Refresh |
+| Trigger | `schedule` + `workflow_dispatch` |
 
 #### Jobs
 
@@ -199,9 +196,9 @@ Shared setup for ML Python environment with caching.
 
 ### Data Flow
 
-1. **Daily**: `Daily Data Refresh` → `ML Orchestration` → Fresh forecasts
-2. **Intraday**: `Intraday Ingestion` → `Intraday Forecast` → Real-time signals
-3. **On Demand**: Manual `workflow_dispatch` for targeted operations
+1. **Daily data**: `Daily Data Refresh` (ingestion only)
+2. **Intraday data**: `Intraday Ingestion` (ingestion only)
+3. **ML**: `ML Orchestration` + `Intraday Forecast` run on schedule/manual as separate pipelines
 
 ---
 
@@ -218,8 +215,8 @@ Shared setup for ML Python environment with caching.
 - Check Alpaca API rate limits
 
 **ML Orchestration not triggering:**
-- Verify Daily Data Refresh completed successfully
-- Check `workflow_run` trigger configuration
+- Verify the schedule is enabled in GitHub Actions
+- Run manually via `workflow_dispatch`
 
 ### Logs and Artifacts
 
