@@ -30,7 +30,7 @@ settings_stub = types.SimpleNamespace(
 )
 sys.modules["config.settings"] = types.SimpleNamespace(settings=settings_stub)
 
-from src import forecast_job  # noqa: E402
+from src._legacy import forecast_job  # noqa: E402
 
 
 def test_forecast_validator_generate_report():

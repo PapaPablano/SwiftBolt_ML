@@ -15,10 +15,11 @@ from datetime import datetime, timedelta
 import sys
 from pathlib import Path
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# Add ml directory to path for proper package imports
+ml_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(ml_dir))
 
-from validation.unified_framework import (
+from src.validation.unified_framework import (
     UnifiedValidator,
     ValidationScores,
     UnifiedPrediction,
