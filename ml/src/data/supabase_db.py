@@ -2143,6 +2143,7 @@ class SupabaseDatabase:
                 self.client.table("ohlc_bars_v2")
                 .select("timeframe, ts, close, high, low")
                 .eq("symbol_id", symbol_id)
+                .eq("is_forecast", False)  # CRITICAL: Exclude forecast bars to prevent data leakage
                 .gte("ts", start_ts)
                 .lte("ts", end_ts)
                 .in_("timeframe", ["m15", "h1", "h4", "d1", "w1"])
