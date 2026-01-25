@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import List
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 import requests
 from dotenv import load_dotenv
 
@@ -37,6 +38,7 @@ load_dotenv(root_dir / ".env")
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from src.data.data_validator import OHLCValidator  # noqa: E402
 from src.data.supabase_db import db  # noqa: E402
 
 logging.basicConfig(
@@ -52,6 +54,9 @@ ALPACA_API_SECRET = os.getenv("ALPACA_API_SECRET")
 
 # Rate limiting: Alpaca allows 200 requests/minute
 RATE_LIMIT_DELAY = 0.3  # 60/200 = 0.3 seconds between requests
+
+# OHLC data validator for pre-insertion validation
+_ohlc_validator = OHLCValidator()
 
 # How long we consider existing data "fresh" while markets are closed (hours)
 MAX_STALE_HOURS_WHEN_CLOSED = 72
@@ -204,9 +209,7 @@ def fetch_alpaca_bars(
 
             # Transform to our format
             for bar in bars_data:
-                bar_ts = datetime.fromisoformat(
-                    bar["t"].replace("Z", "+00:00")
-                )
+                bar_ts = datetime.fromisoformat(bar["t"].replace("Z", "+00:00"))
 
                 all_bars.append(
                     {
@@ -246,9 +249,7 @@ def fetch_alpaca_bars(
         if e.response.status_code == 429:
             logger.error("Rate limit exceeded! Wait before retrying.")
         elif e.response.status_code == 401:
-            logger.error(
-                "Authentication failed! Verify Alpaca API credentials."
-            )
+            logger.error("Authentication failed! Verify Alpaca API credentials.")
         else:
             logger.error(f"HTTP error fetching {symbol}: {e}")
         return []
@@ -261,9 +262,32 @@ def persist_bars_v2(symbol: str, timeframe: str, bars: List[dict]) -> int:
     """
     Persist bars to ohlc_bars_v2 with provider='alpaca'.
 
+    Validates OHLC data before insertion to prevent contaminated data
+    from reaching Supabase.
+
     Returns count of inserted bars.
     """
     if not bars:
+        return 0
+
+    # Convert to DataFrame for validation
+    df = pd.DataFrame(bars)
+
+    # Validate OHLC data before insertion
+    df, validation_result = _ohlc_validator.validate(df, fix_issues=True)
+
+    if validation_result.rows_removed > 0:
+        logger.warning(
+            f"Removed {validation_result.rows_removed} invalid rows for {symbol} {timeframe}"
+        )
+
+    if validation_result.issues:
+        for issue in validation_result.issues:
+            logger.warning(f"{symbol} {timeframe}: {issue}")
+
+    # If all rows were removed, don't proceed
+    if df.empty:
+        logger.error(f"All data removed during validation for {symbol} {timeframe}")
         return 0
 
     symbol_id = db.get_symbol_id(symbol)
@@ -277,8 +301,8 @@ def persist_bars_v2(symbol: str, timeframe: str, bars: List[dict]) -> int:
         microsecond=0,
     )
 
-    for bar in bars:
-        bar_ts = datetime.fromisoformat(bar["ts"].replace("Z", "+00:00"))
+    for _, row in df.iterrows():
+        bar_ts = datetime.fromisoformat(row["ts"].replace("Z", "+00:00"))
         bar_date = bar_ts.replace(hour=0, minute=0, second=0, microsecond=0)
 
         # Determine if this is intraday data (today's data only)
@@ -288,12 +312,12 @@ def persist_bars_v2(symbol: str, timeframe: str, bars: List[dict]) -> int:
             {
                 "symbol_id": symbol_id,
                 "timeframe": timeframe,
-                "ts": bar["ts"],
-                "open": bar["open"],
-                "high": bar["high"],
-                "low": bar["low"],
-                "close": bar["close"],
-                "volume": bar["volume"],
+                "ts": row["ts"],
+                "open": row["open"],
+                "high": row["high"],
+                "low": row["low"],
+                "close": row["close"],
+                "volume": row["volume"],
                 "provider": "alpaca",
                 "is_intraday": is_intraday,
                 "is_forecast": False,
@@ -308,7 +332,7 @@ def persist_bars_v2(symbol: str, timeframe: str, bars: List[dict]) -> int:
         batch_size = 1000
 
         for i in range(0, len(batch), batch_size):
-            chunk = batch[i:i + batch_size]
+            chunk = batch[i : i + batch_size]
             db.client.table("ohlc_bars_v2").upsert(
                 chunk,
                 on_conflict="symbol_id,timeframe,ts,provider,is_forecast",
@@ -342,9 +366,7 @@ def get_data_coverage_v2(symbol: str, timeframe: str) -> dict:
 
         earliest = None
         if response.data:
-            earliest = datetime.fromisoformat(
-                response.data[0]["ts"].replace("Z", "+00:00")
-            )
+            earliest = datetime.fromisoformat(response.data[0]["ts"].replace("Z", "+00:00"))
 
         response = (
             db.client.table("ohlc_bars_v2")
@@ -359,9 +381,7 @@ def get_data_coverage_v2(symbol: str, timeframe: str) -> dict:
 
         latest = None
         if response.data:
-            latest = datetime.fromisoformat(
-                response.data[0]["ts"].replace("Z", "+00:00")
-            )
+            latest = datetime.fromisoformat(response.data[0]["ts"].replace("Z", "+00:00"))
 
         # Get count
         response = (
@@ -444,10 +464,7 @@ def backfill_symbol(
         and (hours_since_update < MAX_STALE_HOURS_WHEN_CLOSED)
     ):
         logger.info(
-            (
-                "⏭️  Skipping %s - market closed and data is fresh "
-                "(%.1f hours old)"
-            ),
+            ("⏭️  Skipping %s - market closed and data is fresh " "(%.1f hours old)"),
             symbol,
             hours_since_update,
         )
@@ -494,9 +511,7 @@ def backfill_symbol(
 
 def main():
     parser = argparse.ArgumentParser(
-        description=(
-            "Backfill historical OHLC data to ohlc_bars_v2 using Alpaca"
-        )
+        description=("Backfill historical OHLC data to ohlc_bars_v2 using Alpaca")
     )
     parser.add_argument(
         "--symbol",

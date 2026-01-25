@@ -1,6 +1,7 @@
 # Legacy Workflows
 
-**Archived**: 2026-01-21
+**Archived**: 2026-01-21  
+**Updated**: 2026-01-25 (moved test-ml.yml to legacy)
 
 This directory contains legacy GitHub Actions workflows that have been superseded by the consolidated canonical workflows.
 
@@ -11,23 +12,27 @@ These workflows were created during development and have been consolidated to re
 - Potential race conditions from overlapping triggers
 - Unclear ownership and responsibility
 - CI/CD complexity
+- Duplicate CI runs (test-ml.yml duplicated functionality already in ci.yml)
 
 ## Canonical Workflows (Active)
 
-The following 8 workflows are **active** in the parent directory:
+The following workflows are **active** in the parent directory:
 
-| Workflow | Purpose | Schedule |
+| Workflow | Purpose | Schedule/Trigger |
 |----------|---------|----------|
+| `ci.yml` | Comprehensive CI with change detection (includes ML tests, linting) | On push/PR to main branches |
 | `daily-data-refresh.yml` | Daily OHLC data ingestion | 6 AM UTC (Mon-Fri) |
 | `intraday-ingestion.yml` | Intraday price updates | Every 15 min (market hours) |
 | `intraday-forecast.yml` | Intraday ML predictions | Every hour (market hours) |
 | `ml-orchestration.yml` | Nightly ML suite (forecasts, options, health) | 4 AM UTC (Mon-Fri) |
 | `deploy-supabase.yml` | Edge function deployment | On push to main |
 | `deploy-ml-dashboard.yml` | Dashboard deployment | On push to main |
-| `test-ml.yml` | ML test suite | On PR/push |
 | `api-contract-tests.yml` | API contract validation | On PR/push |
 
 ## Archived Workflows
+
+### Consolidated into `ci.yml`
+- `test-ml.yml` - ML tests and linting (now handled by ci.yml with path-based change detection)
 
 ### Consolidated into `ml-orchestration.yml`
 - `ml-forecast.yml` - Nightly forecasts
@@ -91,9 +96,15 @@ The following 8 workflows are **active** in the parent directory:
 ┌─────────────────────────────────────────────────────────────┐
 │                    ON DEMAND                                │
 ├─────────────────────────────────────────────────────────────┤
+│  ci.yml                      On push/PR to main branches    │
+│  ├── detect-changes (uses dorny/paths-filter)               │
+│  ├── test-ml (only if ml/** changed)                        │
+│  ├── lint-ml (only if ml/** changed)                        │
+│  ├── test-edge-functions (only if functions/** changed)     │
+│  └── validate-migrations (only if migrations/** changed)    │
+│                                                             │
 │  deploy-supabase.yml        On push to main                 │
 │  deploy-ml-dashboard.yml    On push to main                 │
-│  test-ml.yml                On PR/push                      │
 │  api-contract-tests.yml     On PR/push                      │
 └─────────────────────────────────────────────────────────────┘
 ```

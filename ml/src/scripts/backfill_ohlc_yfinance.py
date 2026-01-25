@@ -8,17 +8,22 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pandas as pd
 import yfinance as yf
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from src.data.data_validator import OHLCValidator  # noqa: E402
 from src.data.supabase_db import db  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# OHLC data validator for pre-insertion validation
+_ohlc_validator = OHLCValidator()
 
 
 def get_symbols(limit: int = None) -> list[str]:
@@ -38,6 +43,9 @@ def get_symbols(limit: int = None) -> list[str]:
 def backfill_symbol(symbol: str, days: int = 730, timeframe: str = "d1") -> int:
     """
     Backfill historical data for a symbol using Yahoo Finance.
+
+    Validates OHLC data before insertion to prevent contaminated data
+    from reaching Supabase.
 
     Args:
         symbol: Stock ticker
@@ -69,32 +77,48 @@ def backfill_symbol(symbol: str, days: int = 730, timeframe: str = "d1") -> int:
 
         logger.info(f"✅ Fetched {len(df)} bars for {symbol}")
 
+        # Convert to DataFrame format for validation
+        validation_df = pd.DataFrame(
+            {
+                "ts": [idx.isoformat() for idx in df.index],
+                "open": df["Open"].values,
+                "high": df["High"].values,
+                "low": df["Low"].values,
+                "close": df["Close"].values,
+                "volume": df["Volume"].values,
+            }
+        )
+
+        # Validate OHLC data before insertion
+        validation_df, validation_result = _ohlc_validator.validate(validation_df, fix_issues=True)
+
+        if validation_result.rows_removed > 0:
+            logger.warning(
+                f"Removed {validation_result.rows_removed} invalid rows for {symbol} {timeframe}"
+            )
+
+        if validation_result.issues:
+            for issue in validation_result.issues:
+                logger.warning(f"{symbol} {timeframe}: {issue}")
+
+        # If all rows were removed, don't proceed
+        if validation_df.empty:
+            logger.error(f"All data removed during validation for {symbol} {timeframe}")
+            return 0
+
         # Convert to database format
         bars = []
-        for idx, row in df.iterrows():
-            # Skip bars with extreme intraday ranges (>25%) - likely data errors
-            intraday_range_pct = ((row["High"] - row["Low"]) / row["Close"]) * 100
-            if intraday_range_pct > 25:
-                logger.warning(
-                    f"⚠️  Skipping {symbol} {idx.date()}: extreme range {intraday_range_pct:.1f}%"
-                )
-                continue
-
-            # Skip bars with zero range (placeholder data)
-            if row["High"] == row["Low"] == row["Open"] == row["Close"]:
-                logger.warning(f"⚠️  Skipping {symbol} {idx.date()}: zero range bar")
-                continue
-
+        for _, row in validation_df.iterrows():
             bars.append(
                 {
                     "symbol_id": symbol_id,
                     "timeframe": timeframe,
-                    "ts": idx.isoformat(),
-                    "open": round(float(row["Open"]), 4),
-                    "high": round(float(row["High"]), 4),
-                    "low": round(float(row["Low"]), 4),
-                    "close": round(float(row["Close"]), 4),
-                    "volume": int(row["Volume"]),
+                    "ts": row["ts"],
+                    "open": round(float(row["open"]), 4),
+                    "high": round(float(row["high"]), 4),
+                    "low": round(float(row["low"]), 4),
+                    "close": round(float(row["close"]), 4),
+                    "volume": int(row["volume"]),
                     "provider": "yfinance",
                     "is_intraday": False,
                     "is_forecast": False,

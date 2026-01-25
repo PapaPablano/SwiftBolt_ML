@@ -18,8 +18,10 @@ from typing import Optional
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+import pandas as pd  # noqa: E402
 import requests  # noqa: E402
 
+from src.data.data_validator import OHLCValidator  # noqa: E402
 from src.data.supabase_db import db  # noqa: E402
 
 logging.basicConfig(
@@ -35,6 +37,9 @@ ALPACA_API_SECRET = os.getenv("ALPACA_API_SECRET")
 
 # Rate limiting: Alpaca allows 200 requests/minute
 RATE_LIMIT_DELAY = 0.3  # 60/200 = 0.3 seconds between requests
+
+# OHLC data validator for pre-insertion validation
+_ohlc_validator = OHLCValidator()
 
 # Timeframe configurations (Alpaca format)
 TIMEFRAME_CONFIG = {
@@ -158,22 +163,47 @@ def fetch_alpaca_bars(
 
 
 def persist_bars(symbol_id: str, timeframe: str, bars: list[dict]) -> int:
-    """Persist bars to ohlc_bars_v2 with provider='alpaca'. Returns count of inserted bars."""
+    """
+    Persist bars to ohlc_bars_v2 with provider='alpaca'.
+
+    Validates OHLC data before insertion to prevent contaminated data
+    from reaching Supabase.
+
+    Returns count of inserted bars.
+    """
     if not bars:
         return 0
 
+    # Convert to DataFrame for validation
+    df = pd.DataFrame(bars)
+
+    # Validate OHLC data before insertion
+    df, validation_result = _ohlc_validator.validate(df, fix_issues=True)
+
+    if validation_result.rows_removed > 0:
+        logger.warning(f"Removed {validation_result.rows_removed} invalid rows for {timeframe}")
+
+    if validation_result.issues:
+        for issue in validation_result.issues:
+            logger.warning(f"{timeframe}: {issue}")
+
+    # If all rows were removed, don't proceed
+    if df.empty:
+        logger.error(f"All data removed during validation for {timeframe}")
+        return 0
+
     batch = []
-    for bar in bars:
+    for _, row in df.iterrows():
         batch.append(
             {
                 "symbol_id": symbol_id,
                 "timeframe": timeframe,
-                "ts": bar["ts"],
-                "open": bar["open"],
-                "high": bar["high"],
-                "low": bar["low"],
-                "close": bar["close"],
-                "volume": bar["volume"],
+                "ts": row["ts"],
+                "open": row["open"],
+                "high": row["high"],
+                "low": row["low"],
+                "close": row["close"],
+                "volume": row["volume"],
                 "provider": "alpaca",
                 "is_forecast": False,
                 "data_status": "verified",

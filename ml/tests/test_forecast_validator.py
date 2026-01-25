@@ -9,6 +9,7 @@ from src.forecast_validator import (
     evaluate_single_forecast,
     summarize_forecast_accuracy,
 )
+
 if "imblearn" not in sys.modules:
     imblearn_module = types.ModuleType("imblearn")
     over_sampling_module = types.ModuleType("imblearn.over_sampling")
@@ -30,7 +31,7 @@ settings_stub = types.SimpleNamespace(
 )
 sys.modules["config.settings"] = types.SimpleNamespace(settings=settings_stub)
 
-from src import forecast_job  # noqa: E402
+from src._legacy import forecast_job  # noqa: E402
 
 
 def test_forecast_validator_generate_report():
