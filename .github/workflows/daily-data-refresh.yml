@@ -213,7 +213,7 @@ jobs:
           for symbol in test_symbols:
               for tf in ['d1', 'h4']:
                   try:
-                      df = db.fetch_ohlc_bars(symbol, timeframe=tf, limit=100)
+                      df = db.fetch_ohlc_bars(symbol, timeframe=tf, limit=200)
                       if df.empty:
                           print(f'⚠️ {symbol}/{tf}: No data found')
                           ohlc_warnings.append(f'{symbol}/{tf}: No data')

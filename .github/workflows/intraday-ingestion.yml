@@ -244,7 +244,7 @@ jobs:
               continue
             for tf in timeframes[:2]:
               try:
-                df = db.fetch_ohlc_bars(sym, timeframe=tf, limit=100)
+                df = db.fetch_ohlc_bars(sym, timeframe=tf, limit=200)
                 if df.empty:
                   print(f'⚠️ {sym}/{tf}: No data found')
                   validation_warnings.append(f'{sym}/{tf}: No data')
