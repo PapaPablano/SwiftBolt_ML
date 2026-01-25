@@ -7,7 +7,8 @@ name: Intraday Forecast
 # Triggers automatically from intraday-ingestion.yml via workflow_run.
 #
 # Data Flow:
-#   Intraday Ingestion (success) → Intraday Forecast → indicator_values
+#   Intraday Ingestion (success) → Intraday Forecast → Evaluation → Weight Calibration
+#   Updates: indicator_values, ml_forecasts, symbol_weight_overrides
 # =============================================================================
 
 on:
@@ -274,6 +275,18 @@ jobs:
           echo "📊 Evaluating intraday forecasts (15m, 1h)..."
           python -m src.evaluation_job_intraday || echo "⚠️ Intraday evaluation completed with warnings"
 
+      - name: Calibrate intraday weights
+        continue-on-error: true
+        run: |
+          cd ml
+          echo "📊 Calibrating layer weights from intraday evaluations..."
+          SYMBOL="${{ inputs.symbol }}"
+          if [ -n "$SYMBOL" ]; then
+            python -m src.intraday_weight_calibrator --symbol "$SYMBOL" || echo "⚠️ Weight calibration completed with warnings"
+          else
+            python -m src.intraday_weight_calibrator || echo "⚠️ Weight calibration completed with warnings"
+          fi
+
       - name: Job summary
         if: always()
         run: |
@@ -290,7 +303,10 @@ jobs:
           echo "### Data Updated" >> $GITHUB_STEP_SUMMARY
           echo "- \`indicator_values\` - Intraday indicator snapshots" >> $GITHUB_STEP_SUMMARY
           echo "- \`ml_forecasts\` - Intraday forecast paths" >> $GITHUB_STEP_SUMMARY
+          echo "- \`ml_forecast_evaluations_intraday\` - Forecast accuracy metrics" >> $GITHUB_STEP_SUMMARY
+          echo "- \`symbol_weight_overrides\` - Calibrated layer weights" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Notes" >> $GITHUB_STEP_SUMMARY
           echo "- OHLC validation warnings (outliers, gaps) are normal in market data" >> $GITHUB_STEP_SUMMARY
           echo "- Only critical errors (data integrity issues) affect forecast reliability" >> $GITHUB_STEP_SUMMARY
+          echo "- Weight calibration runs after evaluation to learn optimal layer weights" >> $GITHUB_STEP_SUMMARY
