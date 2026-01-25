@@ -107,6 +107,55 @@ def timeframe_interval_seconds(timeframe: str) -> int:
     raise ValueError(f"Unknown timeframe: {timeframe}")
 
 
+def _aggregate_h4_to_h8(h4_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Aggregate 4-hour bars into 8-hour bars.
+    
+    Groups every 2 consecutive h4 bars into 1 h8 bar:
+    - open: first bar's open
+    - high: max of both bars' highs
+    - low: min of both bars' lows
+    - close: last bar's close
+    - volume: sum of both bars' volumes
+    - ts: first bar's timestamp
+    
+    Args:
+        h4_df: DataFrame with h4 OHLC bars (must have ts, open, high, low, close, volume)
+    
+    Returns:
+        DataFrame with h8 OHLC bars
+    """
+    if len(h4_df) < 2:
+        return pd.DataFrame()
+    
+    # Ensure ts is datetime
+    if "ts" in h4_df.columns:
+        h4_df = h4_df.copy()
+        if not pd.api.types.is_datetime64_any_dtype(h4_df["ts"]):
+            h4_df["ts"] = pd.to_datetime(h4_df["ts"])
+        h4_df = h4_df.sort_values("ts").reset_index(drop=True)
+    
+    h8_rows = []
+    for i in range(0, len(h4_df) - 1, 2):  # Process pairs
+        bar1 = h4_df.iloc[i]
+        bar2 = h4_df.iloc[i + 1]
+        
+        h8_rows.append({
+            "ts": bar1["ts"],
+            "open": float(bar1["open"]),
+            "high": max(float(bar1["high"]), float(bar2["high"])),
+            "low": min(float(bar1["low"]), float(bar2["low"])),
+            "close": float(bar2["close"]),
+            "volume": float(bar1.get("volume", 0) or 0) + float(bar2.get("volume", 0) or 0),
+        })
+    
+    if not h8_rows:
+        return pd.DataFrame()
+    
+    h8_df = pd.DataFrame(h8_rows)
+    return h8_df
+
+
 def get_weight_source_for_intraday(symbol: str, symbol_id: str, horizon: str, use_feedback: bool) -> tuple:
     """
     Get forecast layer weights with optional feedback loop integration.
@@ -390,6 +439,17 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
     try:
         # Fetch intraday bars
         df = db.fetch_ohlc_bars(symbol, timeframe=timeframe, limit=min_bars)
+
+        # Fallback: For h8 timeframe, try aggregating from h4 if no h8 data available
+        if len(df) == 0 and timeframe == "h8":
+            logger.info("No h8 data for %s, attempting to aggregate from h4...", symbol)
+            h4_df = db.fetch_ohlc_bars(symbol, timeframe="h4", limit=min_bars * 2)
+            if len(h4_df) >= 2:
+                # Aggregate 2 h4 bars into 1 h8 bar
+                df = _aggregate_h4_to_h8(h4_df)
+                logger.info("Aggregated %d h4 bars to %d h8 bars for %s", len(h4_df), len(df), symbol)
+            else:
+                logger.warning("Insufficient h4 data to aggregate h8 for %s: %d bars", symbol, len(h4_df))
 
         if len(df) < min_bars:
             logger.warning(

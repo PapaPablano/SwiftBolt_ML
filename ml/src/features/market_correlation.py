@@ -353,10 +353,9 @@ def fetch_spy_data(
         DataFrame with SPY OHLC data or None if not available
     """
     try:
-        from src.data.supabase_db import SupabaseDB
+        from src.data.supabase_db import db
 
-        db = SupabaseDB()
-        spy_data = db.get_ohlc_data("SPY", timeframe="d1", limit=500)
+        spy_data = db.fetch_ohlc_bars("SPY", timeframe="d1", limit=500)
 
         if spy_data is not None and len(spy_data) > 0:
             logger.info("Fetched SPY data: %d rows", len(spy_data))

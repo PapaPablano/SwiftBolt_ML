@@ -75,14 +75,17 @@ class BaselineForecaster:
             min_offset = 14  # For RSI_14
         
         start_idx = max(min_offset, 14)  # At least 14 for RSI
-        end_idx = len(df) - horizon_days
+        # Convert horizon_days to int (round up to ensure we have enough lookahead)
+        horizon_days_int = max(1, int(np.ceil(horizon_days)))
+        end_idx = len(df) - horizon_days_int
         
         logger.debug(
-            "Training data range: start_idx=%d, end_idx=%d, df_len=%d, horizon=%d",
+            "Training data range: start_idx=%d, end_idx=%d, df_len=%d, horizon=%.3f (int=%d)",
             start_idx,
             end_idx,
             len(df),
             horizon_days,
+            horizon_days_int,
         )
         
         for idx in range(start_idx, end_idx):
