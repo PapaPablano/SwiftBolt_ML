@@ -142,9 +142,11 @@ def prepare_training_data_temporal(
     X_list: list[dict] = []
     y_list: list[str] = []
 
-    forward_returns = df["close"].pct_change(periods=horizon_days).shift(-horizon_days)
+    # Convert horizon_days to int for pandas operations
+    horizon_days_int = max(1, int(np.ceil(horizon_days)))
+    forward_returns = df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int)
 
-    for idx in range(50, len(df) - horizon_days):
+    for idx in range(50, len(df) - horizon_days_int):
         features = engineer.add_features_to_point(df, idx, lookback=50)
         actual_return = forward_returns.iloc[idx]
 

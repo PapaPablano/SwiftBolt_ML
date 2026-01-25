@@ -114,12 +114,12 @@ class IntradayForecastEvaluator:
                 logger.warning(f"Unknown intraday horizon: {horizon}")
                 return None
 
-            # Get symbol ticker
-            symbol_result = db.client.table("symbols").select("symbol").eq("id", symbol_id).single().execute()
+            # Get symbol ticker (column is 'ticker', not 'symbol')
+            symbol_result = db.client.table("symbols").select("ticker").eq("id", symbol_id).single().execute()
             if not symbol_result.data:
                 logger.warning(f"Symbol not found: {symbol_id}")
                 return None
-            symbol = symbol_result.data["symbol"]
+            symbol = symbol_result.data["ticker"]
 
             # Get realized price (next bar close)
             realized = db.get_nth_future_close_after(

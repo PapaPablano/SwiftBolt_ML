@@ -57,7 +57,9 @@ class BaselineForecaster:
             bullish_thresh,
         )
 
-        forward_returns = df["close"].pct_change(periods=horizon_days).shift(-horizon_days)
+        # Convert horizon_days to int for pandas operations (pct_change and shift require integers)
+        horizon_days_int = max(1, int(np.ceil(horizon_days)))
+        forward_returns = df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int)
 
         engineer = TemporalFeatureEngineer()
         X_list: list[dict[str, Any]] = []

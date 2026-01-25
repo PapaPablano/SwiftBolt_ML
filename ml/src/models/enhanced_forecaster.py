@@ -230,9 +230,10 @@ class EnhancedForecaster:
         """
         df = df.copy()
 
-        # Calculate forward returns
-        fwd_ret = df["close"].pct_change(periods=horizon_days)
-        df["forward_return"] = fwd_ret.shift(-horizon_days)
+        # Calculate forward returns (convert to int for pandas operations)
+        horizon_days_int = max(1, int(np.ceil(horizon_days)))
+        fwd_ret = df["close"].pct_change(periods=horizon_days_int)
+        df["forward_return"] = fwd_ret.shift(-horizon_days_int)
 
         if mode == "classification":
             # Create labels: bullish (1), neutral (0), bearish (-1)
@@ -676,8 +677,9 @@ class EnhancedForecaster:
         """
         df = features_df.copy()
 
-        # Calculate forward returns
-        df["forward_return"] = df["close"].pct_change(periods=horizon_days).shift(-horizon_days)
+        # Calculate forward returns (convert to int for pandas operations)
+        horizon_days_int = max(1, int(np.ceil(horizon_days)))
+        df["forward_return"] = df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int)
 
         # Create labels
         low_thresh, high_thresh = self.classification_thresholds
