@@ -119,9 +119,8 @@ gh workflow run daily-data-refresh.yml -f timeframe=d1
 
 | Workflow | Description |
 |----------|-------------|
-| `test-ml.yml` | ML tests and linting (push/PR trigger) |
+| `ci.yml` | Comprehensive CI with change detection (includes ML tests, linting, edge functions tests, migration validation) |
 | `api-contract-tests.yml` | API schema validation |
-| `frontend-integration-checks.yml` | E2E integration checks |
 
 ### Queue Processing
 

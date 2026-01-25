@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import List
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 import requests
 from dotenv import load_dotenv
 
@@ -38,6 +39,7 @@ load_dotenv(root_dir / ".env")
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.data.supabase_db import db  # noqa: E402
+from src.data.data_validator import OHLCValidator  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,6 +54,9 @@ ALPACA_API_SECRET = os.getenv("ALPACA_API_SECRET")
 
 # Rate limiting: Alpaca allows 200 requests/minute
 RATE_LIMIT_DELAY = 0.3  # 60/200 = 0.3 seconds between requests
+
+# OHLC data validator for pre-insertion validation
+_ohlc_validator = OHLCValidator()
 
 # How long we consider existing data "fresh" while markets are closed (hours)
 MAX_STALE_HOURS_WHEN_CLOSED = 72
@@ -261,9 +266,32 @@ def persist_bars_v2(symbol: str, timeframe: str, bars: List[dict]) -> int:
     """
     Persist bars to ohlc_bars_v2 with provider='alpaca'.
 
+    Validates OHLC data before insertion to prevent contaminated data
+    from reaching Supabase.
+
     Returns count of inserted bars.
     """
     if not bars:
+        return 0
+
+    # Convert to DataFrame for validation
+    df = pd.DataFrame(bars)
+
+    # Validate OHLC data before insertion
+    df, validation_result = _ohlc_validator.validate(df, fix_issues=True)
+
+    if validation_result.rows_removed > 0:
+        logger.warning(
+            f"Removed {validation_result.rows_removed} invalid rows for {symbol} {timeframe}"
+        )
+
+    if validation_result.issues:
+        for issue in validation_result.issues:
+            logger.warning(f"{symbol} {timeframe}: {issue}")
+
+    # If all rows were removed, don't proceed
+    if df.empty:
+        logger.error(f"All data removed during validation for {symbol} {timeframe}")
         return 0
 
     symbol_id = db.get_symbol_id(symbol)
@@ -277,8 +305,8 @@ def persist_bars_v2(symbol: str, timeframe: str, bars: List[dict]) -> int:
         microsecond=0,
     )
 
-    for bar in bars:
-        bar_ts = datetime.fromisoformat(bar["ts"].replace("Z", "+00:00"))
+    for _, row in df.iterrows():
+        bar_ts = datetime.fromisoformat(row["ts"].replace("Z", "+00:00"))
         bar_date = bar_ts.replace(hour=0, minute=0, second=0, microsecond=0)
 
         # Determine if this is intraday data (today's data only)
@@ -288,12 +316,12 @@ def persist_bars_v2(symbol: str, timeframe: str, bars: List[dict]) -> int:
             {
                 "symbol_id": symbol_id,
                 "timeframe": timeframe,
-                "ts": bar["ts"],
-                "open": bar["open"],
-                "high": bar["high"],
-                "low": bar["low"],
-                "close": bar["close"],
-                "volume": bar["volume"],
+                "ts": row["ts"],
+                "open": row["open"],
+                "high": row["high"],
+                "low": row["low"],
+                "close": row["close"],
+                "volume": row["volume"],
                 "provider": "alpaca",
                 "is_intraday": is_intraday,
                 "is_forecast": False,
