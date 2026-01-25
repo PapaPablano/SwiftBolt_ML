@@ -787,9 +787,9 @@ def main() -> None:
     parser.add_argument(
         "--horizon",
         type=str,
-        choices=["15m", "1h"],
+        choices=["15m", "1h", "4h", "8h", "1D"],
         required=True,
-        help="Forecast horizon (15m or 1h)",
+        help="Forecast horizon (15m, 1h, 4h, 8h, or 1D)",
     )
     parser.add_argument(
         "--symbol",
