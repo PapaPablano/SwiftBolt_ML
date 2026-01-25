@@ -14,8 +14,8 @@ import yfinance as yf
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.data.supabase_db import db  # noqa: E402
 from src.data.data_validator import OHLCValidator  # noqa: E402
+from src.data.supabase_db import db  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -78,14 +78,16 @@ def backfill_symbol(symbol: str, days: int = 730, timeframe: str = "d1") -> int:
         logger.info(f"✅ Fetched {len(df)} bars for {symbol}")
 
         # Convert to DataFrame format for validation
-        validation_df = pd.DataFrame({
-            "ts": [idx.isoformat() for idx in df.index],
-            "open": df["Open"].values,
-            "high": df["High"].values,
-            "low": df["Low"].values,
-            "close": df["Close"].values,
-            "volume": df["Volume"].values,
-        })
+        validation_df = pd.DataFrame(
+            {
+                "ts": [idx.isoformat() for idx in df.index],
+                "open": df["Open"].values,
+                "high": df["High"].values,
+                "low": df["Low"].values,
+                "close": df["Close"].values,
+                "volume": df["Volume"].values,
+            }
+        )
 
         # Validate OHLC data before insertion
         validation_df, validation_result = _ohlc_validator.validate(validation_df, fix_issues=True)

@@ -33,8 +33,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 import pandas as pd  # noqa: E402
 import requests  # noqa: E402
 
-from src.data.supabase_db import db  # noqa: E402
 from src.data.data_validator import OHLCValidator  # noqa: E402
+from src.data.supabase_db import db  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,

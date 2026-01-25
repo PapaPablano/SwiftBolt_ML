@@ -21,8 +21,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 import pandas as pd  # noqa: E402
 import requests  # noqa: E402
 
-from src.data.supabase_db import db  # noqa: E402
 from src.data.data_validator import OHLCValidator  # noqa: E402
+from src.data.supabase_db import db  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -181,9 +181,7 @@ def persist_bars(symbol_id: str, timeframe: str, bars: list[dict]) -> int:
     df, validation_result = _ohlc_validator.validate(df, fix_issues=True)
 
     if validation_result.rows_removed > 0:
-        logger.warning(
-            f"Removed {validation_result.rows_removed} invalid rows for {timeframe}"
-        )
+        logger.warning(f"Removed {validation_result.rows_removed} invalid rows for {timeframe}")
 
     if validation_result.issues:
         for issue in validation_result.issues:
