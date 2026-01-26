@@ -736,6 +736,7 @@ class SupabaseDatabase:
         overall_label: str,
         confidence: float,
         points: list[dict[str, Any]],
+        forecast_return: float | None = None,
         supertrend_data: dict[str, Any] | None = None,
         backtest_metrics: dict[str, Any] | None = None,
         quality_score: float | None = None,
@@ -761,6 +762,7 @@ class SupabaseDatabase:
             overall_label: Overall trend label (Bullish/Neutral/Bearish)
             confidence: Model confidence score (0-1)
             points: List of forecast points
+            forecast_return: Optional forecast return (as decimal)
             supertrend_data: Optional SuperTrend AI data dict
             backtest_metrics: Optional backtest performance metrics
             quality_score: Optional quality score
@@ -781,6 +783,7 @@ class SupabaseDatabase:
                 "overall_label": overall_label,
                 "confidence": confidence,
                 "points": points,
+                "forecast_return": forecast_return,
                 "run_at": pd.Timestamp.now().isoformat(),
                 "updated_at": pd.Timestamp.now().isoformat(),
                 "timeframe": timeframe_value,

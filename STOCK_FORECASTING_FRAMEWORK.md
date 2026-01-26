@@ -1,4 +1,5 @@
 # STOCK FORECASTING FRAMEWORK
+
 ## Complete Research-Backed Methodology for Predictive Accuracy
 
 **Document Version:** 2.0  

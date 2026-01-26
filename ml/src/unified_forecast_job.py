@@ -192,7 +192,11 @@ class UnifiedForecastProcessor:
 
         # Focus on framework horizons (1D/5D/10D/20D)
         focus_horizons = {"1D", "5D", "10D", "20D"}
-        horizons = [h for h in horizons if str(h).upper() in focus_horizons]
+        requested_horizons = [str(h).upper() for h in horizons]
+        invalid_horizons = [h for h in requested_horizons if h not in focus_horizons]
+        if invalid_horizons:
+            logger.warning("Skipping invalid horizons: %s", ", ".join(invalid_horizons))
+        horizons = [h for h in requested_horizons if h in focus_horizons]
         
         start_time = time.time()
         result = {
@@ -383,13 +387,22 @@ class UnifiedForecastProcessor:
                         )
                     
                     # Build forecast dict
+                    synthesis = synth_result.to_dict()
+                    synthesis["horizon"] = horizon_key.lower()
+                    forecast_return = ml_pred.get("forecast_return")
+                    if forecast_return is None and current_price:
+                        forecast_return = (synth_result.target - current_price) / current_price
+
                     forecast = {
                         "label": synth_result.direction.lower(),
                         "confidence": synth_result.confidence,
                         "horizon": horizon_key,
                         "points": self._build_forecast_points(synth_result, df["ts"].iloc[-1], horizon_days),
-                        "synthesis": synth_result.to_dict(),
+                        "synthesis": synthesis,
                         "weight_source": weight_source,
+                        "forecast_return": (
+                            float(forecast_return) if forecast_return is not None else None
+                        ),
                     }
                     
                     # Apply confidence calibration
@@ -430,6 +443,13 @@ class UnifiedForecastProcessor:
                         quality_score = forecast["synthesis"].get("quality_score")
 
                     confidence_gate_passed = adjusted_confidence >= settings.confidence_threshold
+                    confidence_quality = (
+                        "high"
+                        if adjusted_confidence >= settings.confidence_threshold
+                        else "medium"
+                        if adjusted_confidence >= 0.45
+                        else "low"
+                    )
                     if not confidence_gate_passed:
                         quality_issues.append(
                             {
@@ -442,13 +462,38 @@ class UnifiedForecastProcessor:
                                 "action": "review",
                             }
                         )
-                        forecast["label"] = "neutral"
 
                     if isinstance(forecast.get("synthesis"), dict):
-                        forecast["synthesis"]["confidence_gate"] = {
+                        synthesis = forecast["synthesis"]
+                        synthesis["confidence_gate"] = {
                             "passed": confidence_gate_passed,
                             "threshold": settings.confidence_threshold,
+                            "quality": confidence_quality,
                         }
+                        synthesis["confidence"] = forecast["confidence"]
+
+                        current_price_value = synthesis.get("current_price", current_price)
+                        model_target = synthesis.get("target", current_price_value)
+                        if confidence_quality == "high":
+                            adjusted_target = model_target
+                        elif confidence_quality == "medium":
+                            adjusted_target = (model_target + current_price_value) / 2
+                        else:
+                            adjusted_target = current_price_value * 0.8 + model_target * 0.2
+
+                        synthesis["target"] = round(float(adjusted_target), 2)
+                        if synthesis.get("tp1") is not None:
+                            synthesis["tp1"] = round(float(adjusted_target), 2)
+
+                        for point in forecast.get("points", []):
+                            if point.get("type") == "target":
+                                point["value"] = round(float(adjusted_target), 2)
+                                point["price"] = round(float(adjusted_target), 2)
+
+                        if current_price_value:
+                            forecast["forecast_return"] = float(
+                                (adjusted_target - current_price_value) / current_price_value
+                            )
                     
                     result['forecasts'][horizon] = forecast
                     
@@ -459,6 +504,7 @@ class UnifiedForecastProcessor:
                         overall_label=forecast["label"],
                         confidence=forecast["confidence"],
                         points=forecast["points"],
+                        forecast_return=forecast.get("forecast_return"),
                         supertrend_data=supertrend_data,
                         quality_score=quality_score,
                         quality_issues=quality_issues,

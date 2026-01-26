@@ -117,6 +117,7 @@ class Database:
         overall_label: str,
         confidence: float,
         points: list[dict[str, Any]],
+        forecast_return: float | None = None,
     ) -> None:
         """
         Insert or update an ML forecast in the database.
@@ -136,17 +137,18 @@ class Database:
                 cur.execute(
                     """
                     INSERT INTO ml_forecasts (
-                        symbol_id, horizon, overall_label, confidence, points, run_at
+                        symbol_id, horizon, overall_label, confidence, points, forecast_return, run_at
                     )
-                    VALUES (%s, %s, %s, %s, %s, NOW())
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
                     ON CONFLICT (symbol_id, horizon)
                     DO UPDATE SET
                         overall_label = EXCLUDED.overall_label,
                         confidence = EXCLUDED.confidence,
                         points = EXCLUDED.points,
+                        forecast_return = EXCLUDED.forecast_return,
                         run_at = EXCLUDED.run_at
                     """,
-                    (symbol_id, horizon, overall_label, confidence, json.dumps(points)),
+                    (symbol_id, horizon, overall_label, confidence, json.dumps(points), forecast_return),
                 )
                 conn.commit()
                 logger.info(
