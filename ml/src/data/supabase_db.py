@@ -202,6 +202,12 @@ class SupabaseDatabase:
             "supertrend_value",
             "supertrend_trend",
             "supertrend_factor",
+            "supertrend_performance_index",
+            "supertrend_signal_strength",
+            "signal_confidence",
+            "supertrend_confidence_norm",
+            "supertrend_distance_norm",
+            "perf_ama",
             "nearest_support",
             "nearest_resistance",
             "support_distance_pct",
@@ -2304,6 +2310,8 @@ class SupabaseDatabase:
                 - open, high, low, close, volume: OHLC data
                 - rsi_14, macd, macd_signal, macd_hist: Momentum indicators
                 - supertrend_value, supertrend_trend, supertrend_factor: SuperTrend
+                - supertrend_performance_index, supertrend_signal_strength, signal_confidence
+                - supertrend_confidence_norm, supertrend_distance_norm, perf_ama
                 - nearest_support, nearest_resistance: S/R levels
                 - support_distance_pct, resistance_distance_pct: S/R distance metrics
                 - adx, atr_14, bb_upper, bb_lower: Additional indicators
@@ -2370,9 +2378,29 @@ class SupabaseDatabase:
                         "macd_signal": _safe_float(ind.get("macd_signal")),
                         "macd_hist": _safe_float(ind.get("macd_hist")),
                         # SuperTrend
-                        "supertrend_value": _safe_float(ind.get("supertrend_value")),
+                        "supertrend_value": _safe_float(
+                            ind.get("supertrend_value") or ind.get("supertrend")
+                        ),
                         "supertrend_trend": _safe_int(ind.get("supertrend_trend")),
-                        "supertrend_factor": _safe_float(ind.get("supertrend_factor")),
+                        "supertrend_factor": _safe_float(
+                            ind.get("supertrend_factor")
+                            or ind.get("supertrend_adaptive_factor")
+                            or ind.get("target_factor")
+                        ),
+                        "supertrend_performance_index": _safe_float(
+                            ind.get("supertrend_performance_index")
+                        ),
+                        "supertrend_signal_strength": _safe_int(
+                            ind.get("supertrend_signal_strength")
+                        ),
+                        "signal_confidence": _safe_int(ind.get("signal_confidence")),
+                        "supertrend_confidence_norm": _safe_float(
+                            ind.get("supertrend_confidence_norm")
+                        ),
+                        "supertrend_distance_norm": _safe_float(
+                            ind.get("supertrend_distance_norm")
+                        ),
+                        "perf_ama": _safe_float(ind.get("perf_ama")),
                         # S/R
                         "nearest_support": _safe_float(ind.get("nearest_support")),
                         "nearest_resistance": _safe_float(ind.get("nearest_resistance")),

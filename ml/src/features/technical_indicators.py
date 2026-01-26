@@ -73,9 +73,74 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     # TRADINGVIEW-VALIDATED: period=9, k_smooth=5, d_smooth=5 (EMA smoothing)
     df = TechnicalIndicatorsCorrect.calculate_kdj_correct(df, period=9, k_smooth=5, d_smooth=5)
 
-    # SuperTrend (WAS MISSING - now implemented with 20% weight)
-    # TRADINGVIEW-VALIDATED: period=7, multiplier=2.0
-    df = TechnicalIndicatorsCorrect.calculate_supertrend(df, period=7, multiplier=2.0)
+    # Williams %R (momentum)
+    df["williams_r"] = TechnicalIndicatorsCorrect.calculate_williams_r(df, period=14)
+
+    # CCI (trend/momentum)
+    df["cci"] = TechnicalIndicatorsCorrect.calculate_cci(df, period=20)
+
+    # SuperTrend AI (ADAPTIVE with K-means clustering)
+    # Replaces basic SuperTrend with performance-driven adaptive implementation
+    # This is the LuxAlgo-inspired version with much higher predictive power
+    try:
+        from src.strategies.supertrend_ai import SuperTrendAI
+        
+        st_ai = SuperTrendAI(
+            df,
+            atr_length=10,
+            min_mult=1.0,
+            max_mult=5.0,
+            step=0.5,
+            perf_alpha=10,
+            from_cluster="Best"
+        )
+        df, st_info = st_ai.calculate()
+        
+        # SuperTrend AI adds these columns automatically:
+        # - supertrend: Adaptive SuperTrend value
+        # - supertrend_trend: Trend direction (1=bull, 0=bear)
+        # - perf_ama: Performance-adaptive moving average
+        # - target_factor: Selected ATR multiplier
+        # - atr: ATR values
+        # - supertrend_signal: Signal changes (1=buy, -1=sell, 0=hold)
+        # - signal_confidence: Per-bar confidence (0-10)
+        
+        # Add ML-specific features from SuperTrend AI
+        df["supertrend_performance_index"] = st_info["performance_index"]
+        df["supertrend_signal_strength"] = st_info["signal_strength"]  # 0-10
+        df["supertrend_adaptive_factor"] = st_info["target_factor"]
+
+        # Map to DB column names for caching/persistence
+        df["supertrend_value"] = df["supertrend"]
+        df["supertrend_factor"] = st_info["target_factor"]
+        
+        # Create normalized versions for ML (0-1 scale)
+        df["supertrend_confidence_norm"] = df["signal_confidence"] / 10.0
+        df["supertrend_distance_norm"] = (
+            (df["close"] - df["supertrend"]) / df["close"]
+        ).abs()
+        # perf_ama is produced by SuperTrendAI and retained in df for persistence
+        
+        logger.info(
+            f"SuperTrend AI: factor={st_info['target_factor']:.2f}, "
+            f"perf={st_info['performance_index']:.3f}, "
+            f"strength={st_info['signal_strength']}/10"
+        )
+        
+    except Exception as exc:  # noqa: BLE001
+        # Fallback to basic SuperTrend if AI version fails
+        logger.warning(f"SuperTrend AI failed ({exc}), using basic SuperTrend")
+        df = TechnicalIndicatorsCorrect.calculate_supertrend(df, period=7, multiplier=2.0)
+        # Add placeholder features
+        df["supertrend_performance_index"] = 0.5
+        df["supertrend_signal_strength"] = 5
+        df["supertrend_adaptive_factor"] = 2.0
+        df["signal_confidence"] = 5
+        df["supertrend_confidence_norm"] = 0.5
+        df["supertrend_distance_norm"] = 0.0
+        df["supertrend_value"] = df["supertrend"]
+        df["supertrend_factor"] = 2.0
+        df["perf_ama"] = df["supertrend"]
 
     # ATR (for normalization only, NOT as directional signal)
     df["atr_14"] = TechnicalIndicatorsCorrect.calculate_atr(df, period=14)

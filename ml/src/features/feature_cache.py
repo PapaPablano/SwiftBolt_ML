@@ -252,7 +252,18 @@ def fetch_or_build_features(
             end_ts=cutoff_ts,
         )
         if cutoff_ts is not None and not ohlc.empty and "ts" in ohlc.columns:
-            ohlc = ohlc[ohlc["ts"] < cutoff_ts].copy()
+            ts_series = pd.to_datetime(ohlc["ts"], errors="coerce")
+            cutoff = pd.to_datetime(cutoff_ts, errors="coerce")
+            # Align timezone awareness to avoid invalid comparisons
+            if ts_series.dt.tz is None:
+                if getattr(cutoff, "tzinfo", None) is not None:
+                    cutoff = cutoff.tz_convert("UTC").tz_localize(None)
+            else:
+                if getattr(cutoff, "tzinfo", None) is None:
+                    cutoff = cutoff.tz_localize("UTC")
+                ts_series = ts_series.dt.tz_convert("UTC")
+            ohlc = ohlc[ts_series < cutoff].copy()
+            ohlc["ts"] = ts_series.values
         if ohlc.empty:
             results[timeframe] = ohlc
             continue

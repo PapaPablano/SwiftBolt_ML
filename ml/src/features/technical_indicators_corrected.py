@@ -309,6 +309,33 @@ class TechnicalIndicatorsCorrect:
 
         return df
 
+    @staticmethod
+    def calculate_williams_r(df: pd.DataFrame, period: int = 14) -> pd.Series:
+        """
+        Williams %R (momentum oscillator).
+
+        %R = -100 * (HighestHigh - Close) / (HighestHigh - LowestLow)
+        """
+        highest_high = df["high"].rolling(window=period, min_periods=period).max()
+        lowest_low = df["low"].rolling(window=period, min_periods=period).min()
+        range_hl = (highest_high - lowest_low).replace(0, np.nan)
+        return -100 * (highest_high - df["close"]) / range_hl
+
+    @staticmethod
+    def calculate_cci(df: pd.DataFrame, period: int = 20) -> pd.Series:
+        """
+        Commodity Channel Index (CCI).
+
+        CCI = (TP - SMA(TP)) / (0.015 * MeanDeviation)
+        """
+        tp = (df["high"] + df["low"] + df["close"]) / 3.0
+        sma = tp.rolling(window=period, min_periods=period).mean()
+        mean_dev = tp.rolling(window=period, min_periods=period).apply(
+            lambda x: np.mean(np.abs(x - np.mean(x))), raw=True
+        )
+        denom = (0.015 * mean_dev).replace(0, np.nan)
+        return (tp - sma) / denom
+
     # =========================================================================
     # TREND FOLLOWING - SUPERTREND (MISSING IMPLEMENTATION)
     # =========================================================================

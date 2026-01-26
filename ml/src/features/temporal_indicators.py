@@ -77,6 +77,108 @@ class TemporalFeatureEngineer:
         return float(macd), float(ema26)
 
     @staticmethod
+    def compute_supertrend_features(
+        df: pd.DataFrame,
+        idx: int,
+        atr_length: int = 10,
+        multiplier: float = 2.0,
+    ) -> dict:
+        """
+        Compute SuperTrend features up to idx (no lookahead).
+
+        Uses precomputed SuperTrend AI columns if present in df; otherwise
+        falls back to a basic SuperTrend calculation using only history.
+        """
+        min_required = max(atr_length, 2)
+        if idx < min_required:
+            return {
+                "supertrend_value": np.nan,
+                "supertrend_trend": np.nan,
+                "supertrend_factor": np.nan,
+                "supertrend_performance_index": np.nan,
+                "supertrend_signal_strength": np.nan,
+                "signal_confidence": np.nan,
+                "supertrend_confidence_norm": np.nan,
+                "supertrend_distance_norm": np.nan,
+                "perf_ama": np.nan,
+            }
+
+        # Prefer precomputed AI features if available in df
+        if "supertrend_value" in df.columns and "supertrend_trend" in df.columns:
+            row = df.iloc[idx]
+            value = float(row.get("supertrend_value", np.nan))
+            trend = float(row.get("supertrend_trend", np.nan))
+            factor = float(row.get("supertrend_factor", multiplier))
+            perf_idx = float(row.get("supertrend_performance_index", 0.5))
+            strength = float(row.get("supertrend_signal_strength", 5))
+            confidence = float(row.get("signal_confidence", 5))
+            conf_norm = float(row.get("supertrend_confidence_norm", confidence / 10.0))
+            dist_norm = float(row.get("supertrend_distance_norm", np.nan))
+            perf_ama = float(row.get("perf_ama", value))
+
+            if pd.isna(dist_norm):
+                close_val = float(row.get("close", np.nan))
+                if close_val and close_val == close_val:
+                    dist_norm = float(abs(close_val - value) / close_val)
+
+            return {
+                "supertrend_value": value,
+                "supertrend_trend": trend,
+                "supertrend_factor": factor,
+                "supertrend_performance_index": perf_idx,
+                "supertrend_signal_strength": strength,
+                "signal_confidence": confidence,
+                "supertrend_confidence_norm": conf_norm,
+                "supertrend_distance_norm": dist_norm,
+                "perf_ama": perf_ama,
+            }
+
+        # Fallback: compute a basic SuperTrend using only historical data
+        high = df["high"].values[: idx + 1]
+        low = df["low"].values[: idx + 1]
+        close = df["close"].values[: idx + 1]
+
+        start = max(1, idx - atr_length + 1)
+        high_window = high[start : idx + 1]
+        low_window = low[start : idx + 1]
+        close_window = close[start : idx + 1]
+
+        if start > 0:
+            prev_close = np.concatenate([close[start - 1 : start], close_window[:-1]])
+        else:
+            prev_close = np.concatenate([close_window[:1], close_window[:-1]])
+
+        tr = np.maximum(
+            high_window - low_window,
+            np.maximum(
+                np.abs(high_window - prev_close),
+                np.abs(low_window - prev_close),
+            ),
+        )
+        atr = float(np.mean(tr)) if len(tr) else np.nan
+
+        hl2 = (high[-1] + low[-1]) / 2.0
+        basic_upper = hl2 + (multiplier * atr)
+        basic_lower = hl2 - (multiplier * atr)
+
+        close_last = close[-1]
+        supertrend_value = basic_lower if close_last > basic_upper else basic_upper
+        supertrend_trend = 1 if close_last > supertrend_value else 0
+        distance_norm = float(abs(close_last - supertrend_value) / close_last) if close_last else np.nan
+
+        return {
+            "supertrend_value": float(supertrend_value),
+            "supertrend_trend": float(supertrend_trend),
+            "supertrend_factor": float(multiplier),
+            "supertrend_performance_index": 0.5,
+            "supertrend_signal_strength": 5.0,
+            "signal_confidence": 5.0,
+            "supertrend_confidence_norm": 0.5,
+            "supertrend_distance_norm": distance_norm,
+            "perf_ama": float(supertrend_value),
+        }
+
+    @staticmethod
     def add_features_to_point(
         df: pd.DataFrame,
         idx: int,
@@ -124,6 +226,10 @@ class TemporalFeatureEngineer:
                 (point["close"] - sma_20) / point["close"] if point["close"] > 0 else 0
             ),
         }
+
+        # Add SuperTrend AI/basic features (temporal-safe)
+        supertrend_features = TemporalFeatureEngineer.compute_supertrend_features(df, idx)
+        features.update(supertrend_features)
 
         return features
 

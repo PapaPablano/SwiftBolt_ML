@@ -73,7 +73,17 @@ class ForecastExplainer:
     """
 
     # Feature category mappings
-    TREND_FEATURES = ["sma", "ema", "price_vs_sma", "supertrend", "adx", "plus_di", "minus_di"]
+    TREND_FEATURES = [
+        "sma",
+        "ema",
+        "price_vs_sma",
+        "supertrend",
+        "adx",
+        "plus_di",
+        "minus_di",
+        "signal_confidence",
+        "perf_ama",
+    ]
     MOMENTUM_FEATURES = ["rsi", "macd", "macd_signal", "macd_hist", "stochastic", "kdj"]
     VOLATILITY_FEATURES = ["atr", "bb_width", "volatility", "bb_upper", "bb_lower"]
     VOLUME_FEATURES = ["volume", "volume_ratio", "obv", "mfi", "vwap"]

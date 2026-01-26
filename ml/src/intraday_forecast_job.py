@@ -513,6 +513,27 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                     # ADX
                     "adx": row.get("adx"),
                     "atr_14": row.get("atr_14"),
+                    # Additional momentum/trend
+                    "williams_r": row.get("williams_r"),
+                    "cci": row.get("cci"),
+                    # SuperTrend AI features
+                    "supertrend_factor": row.get("supertrend_factor")
+                    or row.get("supertrend_adaptive_factor")
+                    or row.get("target_factor"),
+                    "supertrend_performance_index": row.get(
+                        "supertrend_performance_index"
+                    ),
+                    "supertrend_signal_strength": row.get(
+                        "supertrend_signal_strength"
+                    ),
+                    "signal_confidence": row.get("signal_confidence"),
+                    "supertrend_confidence_norm": row.get(
+                        "supertrend_confidence_norm"
+                    ),
+                    "supertrend_distance_norm": row.get(
+                        "supertrend_distance_norm"
+                    ),
+                    "perf_ama": row.get("perf_ama"),
                 }
 
                 # Add SuperTrend if available
