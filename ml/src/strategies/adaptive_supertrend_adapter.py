@@ -8,10 +8,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
+from pathlib import Path
 from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
+
+# Ensure local adaptive_supertrend package is importable when not installed site-wide
+_repo_root = Path(__file__).resolve().parents[3]
+_local_ast = _repo_root / "adaptive_supertrend"
+if _local_ast.exists() and str(_local_ast) not in sys.path:
+    sys.path.insert(0, str(_local_ast))
 
 from adaptive_supertrend import AdaptiveSuperTrend, SuperTrendConfig
 
