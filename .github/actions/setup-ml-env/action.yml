@@ -50,6 +50,8 @@ runs:
       run: |
         if [ -f adaptive_supertrend/requirements.txt ]; then
           pip install -r adaptive_supertrend/requirements.txt
+          # Install package in editable mode so module imports resolve during jobs
+          pip install -e adaptive_supertrend
         fi
 
     - name: Install development dependencies
