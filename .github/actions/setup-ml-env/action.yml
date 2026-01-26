@@ -39,12 +39,19 @@ runs:
         cache: 'pip'
         cache-dependency-path: 'ml/requirements.txt'
 
-    - name: Install system deps (Linux) for ta-lib
+    - name: Install TA-Lib (Linux)
       if: runner.os == 'Linux'
       shell: bash
       run: |
+        set -euo pipefail
         sudo apt-get update -y
-        sudo apt-get install -y libta-lib0 libta-lib-dev
+        sudo apt-get install -y build-essential wget
+        wget -q http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
+        tar -xzf ta-lib-0.4.0-src.tar.gz
+        cd ta-lib
+        ./configure --prefix=/usr
+        make -j"$(nproc)"
+        sudo make install
 
     - name: Install dependencies
       shell: bash
