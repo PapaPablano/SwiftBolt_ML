@@ -9,7 +9,6 @@ scikit-learn>=1.3.0
 
 # Technical Analysis
 ta-lib>=0.4.24
-talib-numpy>=0.4.24
 
 # ML/Deep Learning (optional, for advanced features)
 torch>=2.0.0
