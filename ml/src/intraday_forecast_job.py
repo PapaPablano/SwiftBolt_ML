@@ -513,9 +513,16 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                     # ADX
                     "adx": row.get("adx"),
                     "atr_14": row.get("atr_14"),
+                    # Volatility bands
+                    "bb_upper": row.get("bb_upper"),
+                    "bb_lower": row.get("bb_lower"),
                     # Additional momentum/trend
+                    "stoch_k": row.get("stoch_k"),
+                    "stoch_d": row.get("stoch_d"),
                     "williams_r": row.get("williams_r"),
                     "cci": row.get("cci"),
+                    "mfi": row.get("mfi") or row.get("mfi_14"),
+                    "obv": row.get("obv"),
                     # SuperTrend AI features
                     "supertrend_factor": row.get("supertrend_factor")
                     or row.get("supertrend_adaptive_factor")

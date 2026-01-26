@@ -1322,6 +1322,13 @@ def process_symbol(symbol: str) -> None:
                     # Bollinger Bands
                     "bb_upper": row.get("bb_upper"),
                     "bb_lower": row.get("bb_lower"),
+                    # Oscillators / volume
+                    "stoch_k": row.get("stoch_k"),
+                    "stoch_d": row.get("stoch_d"),
+                    "williams_r": row.get("williams_r"),
+                    "cci": row.get("cci"),
+                    "mfi": row.get("mfi") or row.get("mfi_14"),
+                    "obv": row.get("obv"),
                 }
 
                 # Add SuperTrend if calculated successfully

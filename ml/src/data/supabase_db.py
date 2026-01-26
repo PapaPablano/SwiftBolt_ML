@@ -2447,6 +2447,13 @@ class SupabaseDatabase:
                         "atr_14": _safe_float(ind.get("atr_14")),
                         "bb_upper": _safe_float(ind.get("bb_upper")),
                         "bb_lower": _safe_float(ind.get("bb_lower")),
+                        # Momentum / oscillators
+                        "stoch_k": _safe_float(ind.get("stoch_k")),
+                        "stoch_d": _safe_float(ind.get("stoch_d")),
+                        "williams_r": _safe_float(ind.get("williams_r")),
+                        "cci": _safe_float(ind.get("cci")),
+                        "mfi": _safe_float(ind.get("mfi") or ind.get("mfi_14")),
+                        "obv": _safe_float(ind.get("obv")),
                         # Metadata
                         "metadata": ind.get("metadata", {}),
                     }
