@@ -243,6 +243,7 @@ class UnifiedForecastProcessor:
             
             # Get symbol_id
             symbol_id = db.get_symbol_id(symbol)
+            mtf_signals = self._fetch_mtf_signals(symbol_id)
             
             # === STEP 2: Data validation ===
             validator = OHLCValidator()
@@ -474,12 +475,47 @@ class UnifiedForecastProcessor:
 
                         current_price_value = synthesis.get("current_price", current_price)
                         model_target = synthesis.get("target", current_price_value)
+                        base_return = forecast.get("forecast_return")
+                        if base_return is None and current_price_value:
+                            base_return = (model_target - current_price_value) / current_price_value
+                        base_return = float(base_return or 0.0)
+
+                        horizon_days = self._horizon_to_days(horizon_key)
+                        horizon_weight = min(horizon_days / 20.0, 1.0)
+
+                        # Multi-timeframe consensus adjustment
+                        dominant_tf, secondary_tf = self._dominant_timeframes(horizon_days)
+                        dominant_signal = mtf_signals.get(dominant_tf, {})
+                        dominant_trend = dominant_signal.get("supertrend_trend")
+                        if dominant_trend is None:
+                            dominant_trend = 0.5
+                        dominant_strength = dominant_signal.get("signal_confidence", 5) / 10.0
+                        mtf_bias = (dominant_trend - 0.5) * 2.0
+                        mtf_adjustment = mtf_bias * dominant_strength * 0.02
+
+                        adjusted_return = base_return + mtf_adjustment
+                        model_target_adjusted = current_price_value * (1 + adjusted_return)
+
                         if confidence_quality == "high":
-                            adjusted_target = model_target
+                            model_weight = 1.0
                         elif confidence_quality == "medium":
-                            adjusted_target = (model_target + current_price_value) / 2
+                            model_weight = 0.5 + (horizon_weight * 0.3)
                         else:
-                            adjusted_target = current_price_value * 0.8 + model_target * 0.2
+                            model_weight = 0.2 + (horizon_weight * 0.2)
+
+                        adjusted_target = (
+                            model_target_adjusted * model_weight
+                            + current_price_value * (1 - model_weight)
+                        )
+
+                        logger.info(
+                            "%s: conf=%.2f, model_weight=%.2f, target=%.2f vs current=%.2f",
+                            horizon_key,
+                            adjusted_confidence,
+                            model_weight,
+                            adjusted_target,
+                            current_price_value,
+                        )
 
                         synthesis["target"] = round(float(adjusted_target), 2)
                         if synthesis.get("tp1") is not None:
@@ -570,6 +606,58 @@ class UnifiedForecastProcessor:
                 "type": "target",
             },
         ]
+
+    @staticmethod
+    def _horizon_to_days(horizon: str) -> int:
+        horizon_key = str(horizon).upper()
+        return {
+            "1D": 1,
+            "5D": 5,
+            "10D": 10,
+            "20D": 20,
+        }.get(horizon_key, 1)
+
+    @staticmethod
+    def _dominant_timeframes(horizon_days: int) -> tuple[str, str]:
+        if horizon_days <= 1:
+            return "h4", "d1"
+        if horizon_days <= 5:
+            return "d1", "w1"
+        return "w1", "d1"
+
+    @staticmethod
+    def _fetch_mtf_signals(symbol_id: str) -> dict[str, dict[str, float]]:
+        signals: dict[str, dict[str, float]] = {}
+        timeframes = ["h4", "d1", "w1"]
+        for tf in timeframes:
+            try:
+                resp = (
+                    db.client.table("indicator_values")
+                    .select(
+                        "timeframe,supertrend_trend,signal_confidence,supertrend_signal_strength"
+                    )
+                    .eq("symbol_id", symbol_id)
+                    .eq("timeframe", tf)
+                    .order("ts", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                rows = resp.data or []
+                if not rows:
+                    continue
+                row = rows[0]
+                strength = row.get("signal_confidence")
+                if strength is None:
+                    strength = row.get("supertrend_signal_strength")
+                if strength is None:
+                    strength = 5
+                signals[tf] = {
+                    "supertrend_trend": row.get("supertrend_trend"),
+                    "signal_confidence": float(strength),
+                }
+            except Exception:
+                continue
+        return signals
     
     def process_universe(
         self,
