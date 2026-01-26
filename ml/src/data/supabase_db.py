@@ -96,6 +96,18 @@ class SupabaseDatabase:
 
                 if limit:
                     query = query.limit(limit)
+                else:
+                    # Safety cap to avoid long-running queries
+                    default_caps = {
+                        "m15": 500,
+                        "h1": 500,
+                        "h4": 400,
+                        "d1": 400,
+                        "w1": 260,
+                    }
+                    cap = default_caps.get(timeframe)
+                    if cap:
+                        query = query.limit(cap)
 
                 response = query.execute()
                 df = pd.DataFrame(response.data)

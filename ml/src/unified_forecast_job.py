@@ -221,7 +221,13 @@ class UnifiedForecastProcessor:
             features_by_tf = fetch_or_build_features(
                 db=db,
                 symbol=symbol,
-                limits={"d1": 252},
+                limits={
+                    "m15": 500,
+                    "h1": 500,
+                    "h4": 400,
+                    "d1": 252,
+                    "w1": 260,
+                },
                 cutoff_ts=cutoff_ts,
                 force_refresh=force_refresh,
             )

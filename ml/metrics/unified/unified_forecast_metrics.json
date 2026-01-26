@@ -1,0 +1,28 @@
+{
+  "start_time": "2026-01-26T15:47:07.536913",
+  "symbols_processed": 1,
+  "feature_cache_hits": 0,
+  "feature_cache_misses": 0,
+  "forecast_times": [
+    9.619446992874146
+  ],
+  "weight_sources": {},
+  "db_writes": 0,
+  "errors": [
+    {
+      "symbol": "AAPL",
+      "error": "{'message': 'canceling statement due to statement timeout', 'code': '57014', 'hint': None, 'details': None}",
+      "timestamp": "2026-01-26T15:47:23.801264"
+    }
+  ],
+  "version_id": null,
+  "aggregated": {
+    "total_symbols": 1,
+    "successful": 0,
+    "failed": 1,
+    "total_processing_time": 9.619446992874146,
+    "avg_processing_time": 9.619446992874146,
+    "feature_cache_hit_rate": 0
+  },
+  "end_time": "2026-01-26T15:47:23.801773"
+}
