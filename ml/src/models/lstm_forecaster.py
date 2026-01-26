@@ -388,23 +388,24 @@ class LSTMForecaster:
             predictions = []
             for _ in range(self.mc_iterations):
                 # Training=True enables dropout during inference
-                pred = self.model(X, training=True).numpy()[0, 0]
-                predictions.append(pred)
+                pred = self.model(X, training=True).numpy()
+                predictions.append(float(np.squeeze(pred)))
 
-            predictions = np.array(predictions)
+            predictions = np.asarray(predictions, dtype=float)
 
             # Inverse transform
-            mean_pred = np.mean(predictions)
-            std_pred = np.std(predictions)
+            mean_pred = float(np.mean(predictions))
+            std_pred = float(np.std(predictions))
 
-            forecast_price = self.scaler.inverse_transform([[mean_pred]])[0, 0]
-            last_close = df["close"].iloc[-1]
+            forecast_price = float(self.scaler.inverse_transform([[mean_pred]])[0, 0])
+            last_close = float(df["close"].iloc[-1])
 
             # Calculate return and volatility
             forecast_return = (forecast_price - last_close) / last_close
 
             # Uncertainty from MC Dropout (in price space)
-            price_std = std_pred * (self.scaler.data_max_ - self.scaler.data_min_)
+            price_range = float(np.squeeze(self.scaler.data_max_ - self.scaler.data_min_))
+            price_std = std_pred * price_range
             forecast_volatility = float(price_std / last_close)
 
             # Classification
@@ -447,7 +448,8 @@ class LSTMForecaster:
     ) -> Dict[str, float]:
         """Calculate class probabilities from MC samples."""
         # Inverse transform all MC predictions
-        prices = self.scaler.inverse_transform(mc_predictions.reshape(-1, 1)).flatten()
+        mc_predictions = np.asarray(mc_predictions, dtype=float).reshape(-1, 1)
+        prices = self.scaler.inverse_transform(mc_predictions).flatten()
 
         # Calculate returns for each MC sample
         returns = (prices - last_close) / last_close
