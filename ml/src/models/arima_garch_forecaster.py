@@ -107,9 +107,10 @@ class ArimaGarchForecaster:
             return series
 
         freq = series.index.freq or pd.infer_freq(series.index)
-        if freq is None:
-            freq = "B"
         series = series.copy()
+        if freq is None:
+            series.index = pd.DatetimeIndex(series.index)
+            return series
         series.index = pd.DatetimeIndex(series.index, freq=freq)
         return series
 

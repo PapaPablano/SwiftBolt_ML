@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 
 
 class UnifiedForecastProcessor:
-    """Central forecast processor for daily forecasts (1D, 1W, 1M)."""
+    """Central forecast processor for framework horizons (1D, 5D, 10D, 20D)."""
     
     def __init__(self, redis_cache=None, metrics_file=None):
         """
@@ -181,7 +181,7 @@ class UnifiedForecastProcessor:
         
         Args:
             symbol: Symbol ticker
-            horizons: List of horizons ['1D', '1W', '1M']
+            horizons: List of horizons ['1D', '5D', '10D', '20D']
             force_refresh: Skip cache, rebuild features
         
         Returns:
@@ -190,8 +190,8 @@ class UnifiedForecastProcessor:
         if horizons is None:
             horizons = settings.forecast_horizons
 
-        # Focus on near-term horizons until 1D/1W/1M are stable
-        focus_horizons = {"1D", "1W", "1M"}
+        # Focus on framework horizons (1D/5D/10D/20D)
+        focus_horizons = {"1D", "5D", "10D", "20D"}
         horizons = [h for h in horizons if str(h).upper() in focus_horizons]
         
         start_time = time.time()
@@ -288,14 +288,10 @@ class UnifiedForecastProcessor:
                     
                     # Get horizon days
                     horizon_days = {
-                        '1D': 1,
-                        '1W': 7,
-                        '1M': 30,
-                        '2M': 60,
-                        '3M': 90,
-                        '4M': 120,
-                        '5M': 150,
-                        '6M': 180,
+                        "1D": 1,
+                        "5D": 5,
+                        "10D": 10,
+                        "20D": 20,
                     }.get(horizon_key, 1)
                     
                     # Use production ensemble (includes Transformer if ENABLE_TRANSFORMER=true)

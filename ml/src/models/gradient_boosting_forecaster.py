@@ -129,10 +129,10 @@ class GradientBoostingForecaster:
                 "Insufficient training data: " f"{features_df.shape[0]} rows (need >= 100)"
             )
 
-        # Remove rows with NaN in features
-        feature_mask = ~features_df.isna().any(axis=1)
-        features_clean = features_df[feature_mask]
-        labels_clean = labels_series[feature_mask]
+        # Handle NaNs conservatively (forward-fill, then zero-fill)
+        features_clean = features_df.copy()
+        features_clean = features_clean.ffill().fillna(0)
+        labels_clean = labels_series.copy()
 
         # Convert external labels (-1, 0, 1) to internal (0, 1, 2) for XGBoost
         # Handle both numeric and string labels

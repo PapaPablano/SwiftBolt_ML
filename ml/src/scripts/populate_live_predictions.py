@@ -32,6 +32,9 @@ logger = logging.getLogger(__name__)
 # Note: timeframe enum supports: m15, h1, h4, d1, w1, m1
 HORIZON_TO_TIMEFRAME = {
     '1D': 'd1',      # Daily
+    '5D': 'd1',      # 5 trading days
+    '10D': 'd1',     # 10 trading days
+    '20D': 'd1',     # 20 trading days
     '1W': 'w1',      # Weekly
     '1M': 'w1',      # Monthly -> use weekly as closest match
     '2M': 'w1',      # 2 months -> use weekly

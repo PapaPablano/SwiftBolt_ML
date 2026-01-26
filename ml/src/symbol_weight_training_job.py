@@ -320,7 +320,7 @@ def main() -> None:
     )
 
     for symbol in symbols:
-        for horizon in ["1D", "1W", "1M"]:
+        for horizon in settings.forecast_horizons:
             try:
                 train_symbol_weights(symbol, horizon=horizon, lookback_days=365)
             except Exception as e:

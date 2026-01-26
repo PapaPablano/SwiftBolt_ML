@@ -127,11 +127,9 @@ class ForecastValidator:
     # Horizon mapping: horizon string -> trading days
     HORIZON_DAYS = {
         "1D": 1,
-        "1W": 5,
-        "1M": 20,
-        "2M": 40,
-        "3M": 60,
-        "6M": 120,
+        "5D": 5,
+        "10D": 10,
+        "20D": 20,
     }
 
     def validate(

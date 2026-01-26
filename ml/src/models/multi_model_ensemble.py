@@ -247,7 +247,7 @@ class MultiModelEnsemble:
                 self.enable_transformer = False
 
     def _calculate_default_weights(self) -> Dict[str, float]:
-        """Calculate default equal weights for enabled models."""
+        """Calculate default weights for enabled models."""
         enabled_models = []
         if self.enable_rf:
             enabled_models.append(self.MODEL_RF)
@@ -264,6 +264,21 @@ class MultiModelEnsemble:
 
         if not enabled_models:
             return {}
+
+        # Framework-aligned defaults (4-model core)
+        framework_core = {
+            self.MODEL_GB,
+            self.MODEL_AG,
+            self.MODEL_LSTM,
+            self.MODEL_TRANSFORMER,
+        }
+        if set(enabled_models) == framework_core:
+            return {
+                self.MODEL_AG: 0.20,        # ARIMA-GARCH
+                self.MODEL_GB: 0.35,        # XGBoost
+                self.MODEL_LSTM: 0.25,      # LSTM
+                self.MODEL_TRANSFORMER: 0.20,  # Transformer
+            }
 
         weight = 1.0 / len(enabled_models)
         return {model: weight for model in enabled_models}

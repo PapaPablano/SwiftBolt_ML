@@ -65,13 +65,9 @@ class Settings(BaseSettings):
     # ML Configuration
     forecast_horizons: list[str] = [
         "1D",
-        "1W",
-        "1M",
-        "2M",
-        "3M",
-        "4M",
-        "5M",
-        "6M",
+        "5D",
+        "10D",
+        "20D",
     ]
     # Minimum for statistical significance
     min_bars_for_training: int = 100

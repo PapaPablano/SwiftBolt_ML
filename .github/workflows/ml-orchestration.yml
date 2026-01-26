@@ -215,8 +215,13 @@ jobs:
           USE_ENSEMBLE_FORECASTER: "true"
           MIN_BARS_FOR_TRAINING: "50"
           REDIS_FEATURE_CACHE: "false"  # Enable when Redis is available
-          ENABLE_TRANSFORMER: ${{ vars.ENABLE_TRANSFORMER || 'false' }}  # Enable Transformer model (set in repo vars)
           ENABLE_ADVANCED_ENSEMBLE: ${{ vars.ENABLE_ADVANCED_ENSEMBLE || 'true' }}  # Enable 6-model ensemble
+          ENABLE_RF: ${{ vars.ENABLE_RF || 'false' }}  # Align with framework (disable RF)
+          ENABLE_GB: ${{ vars.ENABLE_GB || 'true' }}  # XGBoost
+          ENABLE_ARIMA_GARCH: ${{ vars.ENABLE_ARIMA_GARCH || 'true' }}
+          ENABLE_PROPHET: ${{ vars.ENABLE_PROPHET || 'false' }}
+          ENABLE_LSTM: ${{ vars.ENABLE_LSTM || 'true' }}
+          ENABLE_TRANSFORMER: ${{ vars.ENABLE_TRANSFORMER || 'true' }}
         run: |
           cd ml
           
@@ -234,7 +239,7 @@ jobs:
           echo "## ML Forecast (Ensemble)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Model**: Ensemble (RF + XGBoost)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Model**: Ensemble (XGBoost + ARIMA-GARCH + LSTM + Transformer)" >> $GITHUB_STEP_SUMMARY
           echo "- **Symbol**: ${{ inputs.symbol || 'All watchlist' }}" >> $GITHUB_STEP_SUMMARY
 
   # ===========================================================================

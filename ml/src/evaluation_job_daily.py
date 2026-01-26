@@ -1,5 +1,5 @@
 """
-Daily evaluation job - evaluates 1D, 1W, 1M forecasts only.
+Daily evaluation job - evaluates framework horizons (1D, 5D, 10D, 20D).
 
 Runs AFTER daily forecasts complete.
 Writes to forecast_evaluations table (with daily-specific logic).
@@ -41,7 +41,7 @@ def _bool_env(name: str, default: bool = False) -> bool:
 
 
 class DailyForecastEvaluator:
-    """Evaluates daily forecasts (1D, 1W, 1M) against actual market data."""
+    """Evaluates daily forecasts (1D, 5D, 10D, 20D) against actual market data."""
 
     # Thresholds for direction classification
     BULLISH_THRESHOLD = 0.02  # +2%
@@ -127,14 +127,12 @@ class DailyForecastEvaluator:
                 return None
 
             # Resolve evaluation to next trading-day close
-            if horizon == "1D":
-                trading_steps = 1
-            elif horizon == "1W":
-                trading_steps = 5
-            elif horizon == "1M":
-                trading_steps = 20
-            else:
-                trading_steps = 1
+            trading_steps = {
+                "1D": 1,
+                "5D": 5,
+                "10D": 10,
+                "20D": 20,
+            }.get(horizon, 1)
 
             realized = db.get_nth_future_close_after(
                 symbol,
@@ -347,12 +345,12 @@ class DailyForecastEvaluator:
 
 def run_daily_evaluation_job() -> dict[str, Any]:
     """
-    Run daily evaluation job for 1D, 1W, 1M forecasts.
+    Run daily evaluation job for framework horizons.
 
     Returns:
         Summary of evaluation results
     """
-    horizons = ["1D", "1W", "1M"]
+    horizons = [str(h).upper() for h in settings.forecast_horizons]
 
     logger.info("=" * 80)
     logger.info("Starting Daily Forecast Evaluation Job")

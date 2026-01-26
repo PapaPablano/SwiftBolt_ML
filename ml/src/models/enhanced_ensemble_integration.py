@@ -69,10 +69,12 @@ class EnhancedEnsembleForecaster:
         self,
         horizon: str = "1D",
         symbol_id: Optional[str] = None,
+        enable_rf: bool = False,
+        enable_gb: bool = True,
         enable_arima_garch: bool = True,
-        enable_prophet: bool = True,
-        enable_lstm: bool = False,
-        enable_transformer: bool = False,
+        enable_prophet: bool = False,
+        enable_lstm: bool = True,
+        enable_transformer: bool = True,
         confidence_level: float = 0.95,
         optimization_method: str = "ridge",
         enable_monitoring: bool = True,
@@ -83,6 +85,8 @@ class EnhancedEnsembleForecaster:
         Args:
             horizon: Forecast horizon ("1D" or "1W")
             symbol_id: Optional symbol ID for per-symbol weights
+            enable_rf: Enable Random Forest model
+            enable_gb: Enable Gradient Boosting model (XGBoost)
             enable_arima_garch: Enable ARIMA-GARCH model
             enable_prophet: Enable Prophet model
             enable_lstm: Enable LSTM model (slower)
@@ -95,6 +99,8 @@ class EnhancedEnsembleForecaster:
         self.symbol_id = symbol_id
 
         # Model flags
+        self.enable_rf = enable_rf
+        self.enable_gb = enable_gb
         self.enable_arima_garch = enable_arima_garch
         self.enable_prophet = enable_prophet
         self.enable_lstm = enable_lstm
@@ -106,8 +112,8 @@ class EnhancedEnsembleForecaster:
 
         self.ensemble_manager = EnsembleManager(
             horizon=horizon,
-            enable_rf=True,
-            enable_gb=True,
+            enable_rf=enable_rf,
+            enable_gb=enable_gb,
             enable_arima_garch=enable_arima_garch,
             enable_prophet=enable_prophet,
             enable_lstm=enable_lstm,
@@ -128,8 +134,8 @@ class EnhancedEnsembleForecaster:
         # Track model count
         self.n_models = sum(
             [
-                True,  # RF always enabled
-                True,  # GB always enabled
+                enable_rf,
+                enable_gb,
                 enable_arima_garch,
                 enable_prophet,
                 enable_lstm,
@@ -457,6 +463,8 @@ def get_production_ensemble(
         return EnhancedEnsembleForecaster(
             horizon=horizon,
             symbol_id=symbol_id,
+            enable_rf=_bool_env("ENABLE_RF", default=False),
+            enable_gb=_bool_env("ENABLE_GB", default=True),
             enable_arima_garch=False,
             enable_prophet=False,
             enable_lstm=False,
@@ -468,10 +476,12 @@ def get_production_ensemble(
     return EnhancedEnsembleForecaster(
         horizon=horizon,
         symbol_id=symbol_id,
+        enable_rf=_bool_env("ENABLE_RF", default=False),
+        enable_gb=_bool_env("ENABLE_GB", default=True),
         enable_arima_garch=_bool_env("ENABLE_ARIMA_GARCH", default=True),
-        enable_prophet=_bool_env("ENABLE_PROPHET", default=True),
-        enable_lstm=_bool_env("ENABLE_LSTM", default=False),
-        enable_transformer=_bool_env("ENABLE_TRANSFORMER", default=False),
+        enable_prophet=_bool_env("ENABLE_PROPHET", default=False),
+        enable_lstm=_bool_env("ENABLE_LSTM", default=True),
+        enable_transformer=_bool_env("ENABLE_TRANSFORMER", default=True),
         optimization_method=os.getenv("ENSEMBLE_OPTIMIZATION_METHOD", "ridge"),
         enable_monitoring=_bool_env("ENABLE_MONITORING", default=True),
     )
