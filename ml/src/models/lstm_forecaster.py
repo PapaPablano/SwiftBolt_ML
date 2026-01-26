@@ -373,6 +373,10 @@ class LSTMForecaster:
 
         if df is None or "close" not in df.columns:
             return self._null_prediction("No valid data provided")
+        if len(df) < self.lookback:
+            return self._null_prediction(
+                f"Insufficient data: {len(df)} < {self.lookback}"
+            )
 
         try:
             # Prepare input sequence
