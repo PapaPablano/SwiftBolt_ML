@@ -229,8 +229,8 @@ jobs:
             echo "📊 Forecasting single symbol: ${{ inputs.symbol }}"
             python -m src.unified_forecast_job --symbol "${{ inputs.symbol }}"
           else
-            echo "📊 Forecasting all watchlist symbols"
-            python -m src.unified_forecast_job
+            echo "📊 Forecasting resolved symbols: ${SWIFTBOLT_SYMBOLS}"
+            python -m src.unified_forecast_job --symbols "${SWIFTBOLT_SYMBOLS}"
           fi
 
       - name: Job summary

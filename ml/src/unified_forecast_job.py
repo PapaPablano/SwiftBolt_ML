@@ -597,6 +597,7 @@ def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description='Unified ML Forecast Job')
     parser.add_argument('--symbol', help='Process single symbol (for testing)')
+    parser.add_argument('--symbols', help='Comma-separated list of symbols to process')
     parser.add_argument('--force-refresh', action='store_true', help='Rebuild features')
     parser.add_argument('--metrics-file', help='Output metrics file', 
                         default='metrics/unified/unified_forecast_metrics.json')
@@ -636,6 +637,14 @@ def main():
         logger.info(f"Processing single symbol: {args.symbol}")
         result = processor.process_symbol(args.symbol, force_refresh=args.force_refresh)
         logger.info(f"\nResult: {json.dumps(result, indent=2, default=str)}")
+    elif args.symbols:
+        symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+        logger.info(f"Processing symbol list: {', '.join(symbols)}")
+        results = processor.process_universe(
+            symbols=symbols,
+            force_refresh=args.force_refresh,
+        )
+        logger.info(f"\nAggregated: {json.dumps(results, indent=2, default=str)}")
     else:
         logger.info("Processing full universe")
         results = processor.process_universe(force_refresh=args.force_refresh)
