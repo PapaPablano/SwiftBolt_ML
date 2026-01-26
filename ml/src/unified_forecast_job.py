@@ -325,10 +325,10 @@ class UnifiedForecastProcessor:
                                 ohlc_df=ohlc_train,
                             )
                             
-                            # Get prediction using last row of features and corresponding OHLC
+                            # Get prediction using last row of features and full OHLC history
                             ml_pred = ensemble.predict(
                                 features_df=X_train.tail(1),
-                                ohlc_df=df.tail(1),
+                                ohlc_df=df,
                             )
                             
                             logger.info(
