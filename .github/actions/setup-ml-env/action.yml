@@ -39,6 +39,13 @@ runs:
         cache: 'pip'
         cache-dependency-path: 'ml/requirements.txt'
 
+    - name: Install system deps (Linux) for ta-lib
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y libta-lib0 libta-lib-dev
+
     - name: Install dependencies
       shell: bash
       run: |
@@ -53,6 +60,11 @@ runs:
           # Install package in editable mode so module imports resolve during jobs
           pip install -e adaptive_supertrend
         fi
+
+    - name: Export PYTHONPATH for adaptive_supertrend
+      shell: bash
+      run: |
+        echo "PYTHONPATH=${PYTHONPATH:+$PYTHONPATH:}$(pwd)/adaptive_supertrend" >> $GITHUB_ENV
 
     - name: Install development dependencies
       if: inputs.install-dev-deps == 'true'
