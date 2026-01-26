@@ -12,6 +12,7 @@ from psycopg2.extras import RealDictCursor
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
+ALLOWED_FORECAST_HORIZONS = {"1D", "5D", "10D", "20D"}
 
 
 class Database:
@@ -131,6 +132,15 @@ class Database:
         """
         import json
 
+        horizon_key = str(horizon).upper()
+        if horizon_key not in ALLOWED_FORECAST_HORIZONS:
+            logger.warning(
+                "Skipping forecast write for %s with invalid horizon %s",
+                symbol_id,
+                horizon,
+            )
+            return
+
         with self.get_connection() as conn:
             with conn.cursor() as cur:
                 # Upsert forecast
@@ -148,7 +158,7 @@ class Database:
                         forecast_return = EXCLUDED.forecast_return,
                         run_at = EXCLUDED.run_at
                     """,
-                    (symbol_id, horizon, overall_label, confidence, json.dumps(points), forecast_return),
+                    (symbol_id, horizon_key, overall_label, confidence, json.dumps(points), forecast_return),
                 )
                 conn.commit()
                 logger.info(

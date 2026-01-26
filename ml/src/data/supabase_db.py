@@ -12,6 +12,7 @@ from supabase import Client, create_client
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
+ALLOWED_FORECAST_HORIZONS = {"1D", "5D", "10D", "20D"}
 
 
 class SupabaseDatabase:
@@ -774,12 +775,20 @@ class SupabaseDatabase:
             synthesis_data: Optional 3-layer forecast synthesis data
         """
         try:
+            horizon_key = str(horizon).upper()
+            if horizon_key not in ALLOWED_FORECAST_HORIZONS:
+                logger.warning(
+                    "Skipping forecast write for %s with invalid horizon %s",
+                    symbol_id,
+                    horizon,
+                )
+                return
             # Build forecast data for upsert keyed by (symbol_id, horizon)
             timeframe_value = timeframe or "legacy"
 
             forecast_data = {
                 "symbol_id": symbol_id,
-                "horizon": horizon,
+                "horizon": horizon_key,
                 "overall_label": overall_label,
                 "confidence": confidence,
                 "points": points,
@@ -870,11 +879,18 @@ class SupabaseDatabase:
 
         for raw_forecast in forecasts:
             forecast = {**raw_forecast}
+            horizon_key = str(forecast.get("horizon", "")).upper()
+            if horizon_key not in ALLOWED_FORECAST_HORIZONS:
+                logger.warning(
+                    "Skipping multi-horizon forecast with invalid horizon %s",
+                    forecast.get("horizon"),
+                )
+                continue
             payload.append(
                 {
                     "symbol_id": symbol_id,
                     "timeframe": timeframe,
-                    "horizon": forecast.get("horizon"),
+                    "horizon": horizon_key,
                     "overall_label": forecast.get("overall_label"),
                     "confidence": forecast.get("confidence"),
                     "target_price": forecast.get("target_price"),
@@ -901,6 +917,9 @@ class SupabaseDatabase:
                     "updated_at": now_iso,
                 }
             )
+
+        if not payload:
+            return
 
         try:
             self.client.table("ml_forecasts").upsert(
@@ -931,11 +950,18 @@ class SupabaseDatabase:
         now_iso = pd.Timestamp.now('UTC').isoformat()
 
         for forecast in forecasts:
+            horizon_key = str(forecast.get("horizon", "")).upper()
+            if horizon_key not in ALLOWED_FORECAST_HORIZONS:
+                logger.warning(
+                    "Skipping consensus forecast with invalid horizon %s",
+                    forecast.get("horizon"),
+                )
+                continue
             payload.append(
                 {
                     "symbol_id": symbol_id,
                     "timeframe": "consensus",
-                    "horizon": forecast.get("horizon"),
+                    "horizon": horizon_key,
                     "overall_label": forecast.get("overall_label"),
                     "confidence": forecast.get("confidence"),
                     "target_price": forecast.get("target_price"),
@@ -959,6 +985,9 @@ class SupabaseDatabase:
                     "updated_at": now_iso,
                 }
             )
+
+        if not payload:
+            return
 
         try:
             self.client.table("ml_forecasts").upsert(
