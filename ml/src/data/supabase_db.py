@@ -208,6 +208,7 @@ class SupabaseDatabase:
             "signal_confidence",
             "supertrend_confidence_norm",
             "supertrend_distance_norm",
+            "supertrend_distance_pct",
             "perf_ama",
             "nearest_support",
             "nearest_resistance",
@@ -219,6 +220,7 @@ class SupabaseDatabase:
             "cci",
             "mfi",
             "obv",
+            "supertrend_metrics",
         ]
 
         records = []
@@ -2432,6 +2434,10 @@ class SupabaseDatabase:
                         "supertrend_distance_norm": _safe_float(
                             ind.get("supertrend_distance_norm")
                         ),
+                        "supertrend_distance_pct": _safe_float(
+                            ind.get("supertrend_distance_pct")
+                        ),
+                        "supertrend_metrics": ind.get("supertrend_metrics"),
                         "perf_ama": _safe_float(ind.get("perf_ama")),
                         # S/R
                         "nearest_support": _safe_float(ind.get("nearest_support")),

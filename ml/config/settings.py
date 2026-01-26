@@ -82,6 +82,14 @@ class Settings(BaseSettings):
     max_feature_count: int = 40
     feature_selection_cv_splits: int = 5
 
+    # Adaptive SuperTrend
+    enable_adaptive_supertrend: bool = False
+    adaptive_st_optimization: bool = True
+    adaptive_st_caching: bool = True
+    adaptive_st_cache_ttl_hours: int = 24
+    adaptive_st_metric_objective: str = "sharpe"
+    adaptive_st_min_bars: int = 60
+
     # Intraday Weight Calibration Configuration
     intraday_horizons: list[str] = ["15m", "1h"]
     # ~2 days of 15-minute data

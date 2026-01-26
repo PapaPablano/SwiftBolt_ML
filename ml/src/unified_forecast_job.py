@@ -44,6 +44,9 @@ from src.monitoring.forecast_quality import ForecastQualityMonitor
 from src.monitoring.forecast_validator import ForecastValidator
 from src.strategies.supertrend_ai import SuperTrendAI
 
+from src.strategies.adaptive_supertrend_adapter import (  # noqa: E402
+    get_adaptive_supertrend_adapter,
+)
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -284,6 +287,35 @@ class UnifiedForecastProcessor:
                     "performance_index": 0.5,
                     "atr": current_price * 0.02,
                 }
+            
+            # Optional AdaptiveSuperTrend replacement
+            if getattr(settings, "enable_adaptive_supertrend", False):
+                adapter = get_adaptive_supertrend_adapter(
+                    metric_objective=getattr(settings, "adaptive_st_metric_objective", "sharpe"),
+                    cache_enabled=getattr(settings, "adaptive_st_caching", True),
+                    cache_ttl_hours=getattr(settings, "adaptive_st_cache_ttl_hours", 24),
+                    min_bars=getattr(settings, "adaptive_st_min_bars", 60),
+                    enable_optimization=getattr(settings, "adaptive_st_optimization", True),
+                )
+                adaptive_signal = adapter.compute_signal(symbol, df, "d1")
+                if adaptive_signal:
+                    st_info_raw = {
+                        "current_trend": "BULL" if adaptive_signal["trend"] == 1 else "BEAR",
+                        "signal_strength": adaptive_signal["signal_strength"],
+                        "performance_index": adaptive_signal["performance_index"],
+                        "atr": adaptive_signal["distance_pct"] * current_price,
+                        "trend_duration_bars": adaptive_signal["trend_duration"],
+                        "target_factor": adaptive_signal["factor"],
+                    }
+                    supertrend_data = {
+                        "supertrend_factor": adaptive_signal["factor"],
+                        "supertrend_performance": adaptive_signal["performance_index"],
+                        "supertrend_signal": adaptive_signal["trend"],
+                        "trend_label": "BULL" if adaptive_signal["trend"] == 1 else "BEAR",
+                        "trend_confidence": adaptive_signal["signal_strength"],
+                        "stop_level": adaptive_signal["supertrend_value"],
+                        "trend_duration_bars": adaptive_signal["trend_duration"],
+                    }
             
             # === STEP 5: Generate forecasts for each horizon ===
             for horizon in horizons:

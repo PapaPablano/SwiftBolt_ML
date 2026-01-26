@@ -36,6 +36,9 @@ from src.strategies.supertrend_ai import SuperTrendAI  # noqa: E402
 from src.models.enhanced_ensemble_integration import get_production_ensemble  # noqa: E402
 from src.intraday_daily_feedback import IntradayDailyFeedback  # noqa: E402
 from src.features.timeframe_consensus import add_consensus_to_forecast  # noqa: E402
+from src.strategies.adaptive_supertrend_adapter import (  # noqa: E402
+    get_adaptive_supertrend_adapter,
+)
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -476,19 +479,37 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
         sr_levels = sr_detector.find_all_levels(df)
         current_price = df["close"].iloc[-1]
 
-        # SuperTrend AI
+        # SuperTrend (Adaptive vs legacy)
         st_info_raw = None
-        try:
-            supertrend = SuperTrendAI(df)
-            _, st_info_raw = supertrend.calculate()
-        except Exception as e:
-            logger.warning("SuperTrend failed for %s: %s", symbol, e)
-            st_info_raw = {
-                "current_trend": "NEUTRAL",
-                "signal_strength": 5,
-                "performance_index": 0.5,
-                "atr": current_price * 0.01,
-            }
+        adaptive_signal = None
+        if getattr(settings, "enable_adaptive_supertrend", False):
+            adapter = get_adaptive_supertrend_adapter(
+                metric_objective=getattr(settings, "adaptive_st_metric_objective", "sharpe"),
+                cache_enabled=getattr(settings, "adaptive_st_caching", True),
+                cache_ttl_hours=getattr(settings, "adaptive_st_cache_ttl_hours", 24),
+                min_bars=getattr(settings, "adaptive_st_min_bars", 60),
+                enable_optimization=getattr(settings, "adaptive_st_optimization", True),
+            )
+            adaptive_signal = adapter.compute_signal(symbol, df, timeframe)
+            if adaptive_signal:
+                st_info_raw = {
+                    "current_trend": "BULL" if adaptive_signal["trend"] == 1 else "BEAR",
+                    "signal_strength": adaptive_signal["signal_strength"],
+                    "performance_index": adaptive_signal["performance_index"],
+                    "atr": adaptive_signal["distance_pct"] * current_price,
+                }
+        if st_info_raw is None:
+            try:
+                supertrend = SuperTrendAI(df)
+                _, st_info_raw = supertrend.calculate()
+            except Exception as e:
+                logger.warning("SuperTrend failed for %s: %s", symbol, e)
+                st_info_raw = {
+                    "current_trend": "NEUTRAL",
+                    "signal_strength": 5,
+                    "performance_index": 0.5,
+                    "atr": current_price * 0.01,
+                }
 
         # === Save Indicator Snapshot for Intraday ===
         try:
@@ -544,7 +565,18 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                 }
 
                 # Add SuperTrend if available
-                if "supertrend" in df.columns:
+                if adaptive_signal and idx == -1:
+                    record["supertrend_value"] = adaptive_signal["supertrend_value"]
+                    record["supertrend_trend"] = 1 if adaptive_signal["trend"] == 1 else 0
+                    record["supertrend_factor"] = adaptive_signal["factor"]
+                    record["supertrend_performance_index"] = adaptive_signal["performance_index"]
+                    record["supertrend_signal_strength"] = adaptive_signal["signal_strength"]
+                    record["signal_confidence"] = int(round(adaptive_signal["confidence"] * 10))
+                    record["supertrend_confidence_norm"] = adaptive_signal["confidence"]
+                    record["supertrend_distance_norm"] = adaptive_signal["distance_pct"]
+                    record["supertrend_distance_pct"] = adaptive_signal["distance_pct"]
+                    record["supertrend_metrics"] = adaptive_signal["metrics"]
+                elif "supertrend" in df.columns:
                     record["supertrend_value"] = row.get("supertrend")
                     record["supertrend_trend"] = (
                         1 if row.get("supertrend_signal", 0) > 0 else 0
