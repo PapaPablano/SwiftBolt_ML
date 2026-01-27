@@ -583,6 +583,7 @@ class UnifiedForecastProcessor:
                         quality_score=quality_score,
                         quality_issues=quality_issues,
                         synthesis_data=forecast.get("synthesis"),
+                        timeframe="d1",
                     )
                     self.metrics['db_writes'] += 1
                     
