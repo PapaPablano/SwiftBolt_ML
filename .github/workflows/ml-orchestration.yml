@@ -276,6 +276,7 @@ jobs:
           python -m src.evaluation_job_daily
 
       - name: Populate live_predictions from evaluations
+        continue-on-error: true
         run: |
           cd ml
           echo "📊 Populating live_predictions table from recent evaluations..."
