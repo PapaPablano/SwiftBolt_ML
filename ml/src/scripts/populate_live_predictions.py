@@ -217,13 +217,14 @@ if __name__ == "__main__":
         print(f"   Evaluations found: {stats['evaluations_found']}")
         print(f"   Predictions written: {stats['predictions_written']}")
         print(f"   Predictions skipped: {stats['predictions_skipped']}")
-        
+
         if stats['predictions_written'] == 0:
             print("\n⚠️  No predictions written. This could mean:")
             print("   - No forecast evaluations exist yet")
             print("   - Evaluations are too old (need recent evaluations)")
             print("   - Need at least 3 evaluations per symbol/horizon")
-            sys.exit(1)
+            print("\n✅ Continuing workflow (insufficient data for live_predictions)")
+            sys.exit(0)  # Exit cleanly - this is expected in early stages
     except Exception as e:
         logger.error(f"Error populating live_predictions: {e}", exc_info=True)
         sys.exit(1)
