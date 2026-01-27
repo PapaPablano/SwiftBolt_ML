@@ -94,6 +94,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('ml/requirements.txt', 'ml/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       - name: Setup ML Environment
         uses: ./.github/actions/setup-ml-env
         with:
@@ -113,102 +121,7 @@ jobs:
       - name: Validate OHLC data quality before training
         run: |
           cd ml
-          python -c "
-          import os
-          from dotenv import load_dotenv
-          load_dotenv()
-          
-          from src.data.data_validator import OHLCValidator
-          from src.data.supabase_db import db
-          from src.scripts.universe_utils import get_symbol_universe
-          
-          validator = OHLCValidator()
-          
-          # Get symbols - handle watchlist_items.created_at error gracefully
-          try:
-              universe = get_symbol_universe()
-              symbols = universe.get('symbols', []) or ['SPY', 'AAPL', 'NVDA', 'MSFT']
-          except Exception as e:
-              print(f'⚠️ Unable to fetch watchlist symbols: {e}')
-              print('   Using default symbols: SPY, AAPL, NVDA, MSFT')
-              symbols = ['SPY', 'AAPL', 'NVDA', 'MSFT']
-          
-          # Limit to top 10 symbols for performance
-          symbols_to_check = symbols[:10]
-          critical_errors = []
-          warnings = []
-          
-          # Define critical issues that should fail the workflow
-          critical_keywords = [
-              'High < max(Open,Close)',
-              'Low > min(Open,Close)',
-              'Negative volume',
-              'Non-positive'
-          ]
-          
-          for symbol in symbols_to_check:
-              symbol = symbol.strip()
-              if not symbol:
-                  continue
-              try:
-                  # Check daily timeframe (used for training)
-                  df = db.fetch_ohlc_bars(symbol, timeframe='d1', limit=252)
-                  if df.empty:
-                      print(f'⚠️ {symbol}: No data found')
-                      warnings.append(f'{symbol}: No data found')
-                      continue
-                  
-                  df, result = validator.validate(df, fix_issues=False)
-                  
-                  if result.issues:
-                      # Separate critical issues from warnings
-                      symbol_critical = []
-                      symbol_warnings = []
-                      
-                      for issue in result.issues:
-                          is_critical = any(keyword in issue for keyword in critical_keywords)
-                          if is_critical:
-                              symbol_critical.append(issue)
-                          else:
-                              # Outliers and gaps are warnings, not critical
-                              symbol_warnings.append(issue)
-                      
-                      if symbol_critical:
-                          error_msg = f'{symbol}: {symbol_critical}'
-                          critical_errors.append(error_msg)
-                          print(f'❌ {error_msg}')
-                      else:
-                          # Only warnings (outliers/gaps) - acceptable
-                          print(f'⚠️ {symbol}: {symbol_warnings} (non-critical)')
-                          warnings.append(f'{symbol}: {symbol_warnings}')
-                  else:
-                      print(f'✅ {symbol}: OHLC validation passed ({len(df)} bars)')
-              except Exception as e:
-                  critical_errors.append(f'{symbol}: {str(e)}')
-                  print(f'❌ {symbol}: Validation error - {e}')
-          
-          # Only fail on critical errors
-          if critical_errors:
-              print('')
-              print('❌ OHLC validation failed for some symbols (critical issues):')
-              for error in critical_errors:
-                  print(f'  - {error}')
-              print('')
-              print('::error::Critical OHLC data quality issues detected. ML training may produce unreliable results.')
-              exit(1)
-          
-          # Show warnings but don't fail
-          if warnings:
-              print('')
-              print('⚠️ OHLC validation warnings (non-critical):')
-              for warning in warnings:
-                  print(f'  - {warning}')
-              print('')
-              print('::warning::Some OHLC data quality warnings detected (outliers/gaps). These are common in real market data.')
-          
-          print('')
-          print('✅ OHLC validation passed for all checked symbols (critical checks only)')
-          "
+          python -m src.scripts.validate_ohlc_before_training --limit 10
 
       - name: Generate ML forecasts (Unified)
         env:
@@ -257,6 +170,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('ml/requirements.txt', 'ml/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
       - name: Setup ML Environment
         uses: ./.github/actions/setup-ml-env
         with:
@@ -277,19 +198,19 @@ jobs:
       - name: Process options data
         run: |
           cd ml
-          
+
           if [ -n "${{ inputs.symbol }}" ]; then
             echo "📊 Processing options for: ${{ inputs.symbol }}"
-            python src/scripts/backfill_options.py --symbol "${{ inputs.symbol }}" || echo "⚠️ Options backfill warning"
+            python src/scripts/backfill_options.py --symbol "${{ inputs.symbol }}"
           else
             echo "📊 Processing options for all watchlist"
-            python src/scripts/backfill_options.py --all || echo "⚠️ Options backfill warning"
+            python src/scripts/backfill_options.py --all
           fi
 
       - name: Capture options snapshots
         run: |
           cd ml
-          python src/options_snapshot_job.py || echo "⚠️ Snapshot capture warning"
+          python src/options_snapshot_job.py
 
       - name: Job summary
         if: always()
@@ -309,15 +230,23 @@ jobs:
   model-health:
     needs: [check-trigger, ml-forecast]
     if: |
-      always() &&
       needs.check-trigger.outputs.should_run == 'true' &&
-      (inputs.job_filter == '' || inputs.job_filter == 'model-health')
+      (inputs.job_filter == '' || inputs.job_filter == 'model-health') &&
+      (needs.ml-forecast.result == 'success' || needs.ml-forecast.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('ml/requirements.txt', 'ml/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
       - name: Setup ML Environment
         uses: ./.github/actions/setup-ml-env
@@ -344,118 +273,19 @@ jobs:
         run: |
           cd ml
           echo "📊 Running daily ML evaluation (1D, 1W, 1M)..."
-          python -m src.evaluation_job_daily || echo "⚠️ Evaluation completed with warnings"
+          python -m src.evaluation_job_daily
 
       - name: Populate live_predictions from evaluations
         run: |
           cd ml
           echo "📊 Populating live_predictions table from recent evaluations..."
-          python -m src.scripts.populate_live_predictions --days-back 30 || echo "⚠️ Live predictions population completed with warnings"
+          python -m src.scripts.populate_live_predictions --days-back 30
 
       - name: Run unified validation
         run: |
           cd ml
           echo "📊 Running unified validation with real database scores..."
-          python -c "
-          import os
-          import asyncio
-          import sys
-          from dotenv import load_dotenv
-          load_dotenv()
-          
-          sys.path.insert(0, 'src')
-          
-          from src.services.validation_service import ValidationService
-          
-          # Core symbols to validate
-          SYMBOLS = ['AAPL', 'NVDA', 'MSFT', 'TSLA', 'META', 'AMD', 'CRWD', 'GOOGL', 'AMZN']
-          
-          service = ValidationService()
-          
-          print('=' * 60)
-          print('UNIFIED VALIDATION REPORT (Real Database Scores)')
-          print('=' * 60)
-          print('')
-          print('Note: If live_predictions table is empty, scores will use conservative defaults.')
-          print('      This is expected until predictions are written to the database.')
-          print('')
-          
-          drift_alerts = []
-          validation_errors = []
-          missing_live_data = []
-          
-          async def validate_symbol(symbol):
-              try:
-                  # Fetch actual validation from database
-                  # Use BULLISH as default direction (can be enhanced to fetch actual direction)
-                  result = await service.get_live_validation(symbol, 'BULLISH')
-                  
-                  # Check if using default scores (indicates missing data)
-                  using_defaults = (
-                      result.live_score == 0.50 and
-                      result.backtesting_score == 0.55 and
-                      result.walkforward_score == 0.60
-                  )
-                  
-                  status = result.get_status_emoji()
-                  print(f'{status} {symbol}: {result.unified_confidence:.1%} confidence')
-                  print(f'   Drift: {result.drift_severity} ({result.drift_magnitude:.0%})')
-                  print(f'   Consensus: {result.consensus_direction}')
-                  
-                  if using_defaults:
-                      missing_live_data.append(symbol)
-                      print(f'   ℹ️  Using default scores (live_predictions table empty)')
-                  
-                  if result.drift_detected:
-                      drift_alerts.append({
-                          'symbol': symbol,
-                          'severity': result.drift_severity,
-                          'magnitude': result.drift_magnitude,
-                          'recommendation': result.recommendation
-                      })
-                  
-                  if result.retraining_trigger:
-                      print(f'   ⚠️ RETRAINING TRIGGERED: {result.retraining_reason}')
-                  
-                  return None
-              except Exception as e:
-                  error_msg = f'{symbol}: {str(e)}'
-                  validation_errors.append(error_msg)
-                  print(f'⚠️ {error_msg}')
-                  return error_msg
-          
-          # Run async validation for all symbols
-          async def run_all_validations():
-              tasks = [validate_symbol(symbol) for symbol in SYMBOLS]
-              await asyncio.gather(*tasks)
-          
-          asyncio.run(run_all_validations())
-          
-          print('')
-          print('=' * 60)
-          
-          if validation_errors:
-              print(f'⚠️ VALIDATION ERRORS: {len(validation_errors)} symbols')
-              for error in validation_errors:
-                  print(f'   - {error}')
-              print('')
-          
-          if missing_live_data:
-              print(f'ℹ️  MISSING LIVE DATA: {len(missing_live_data)} symbols using default scores')
-              print(f'   Symbols: {", ".join(missing_live_data)}')
-              print('   This is expected until predictions are written to live_predictions table.')
-              print('')
-          
-          if drift_alerts:
-              print(f'⚠️ DRIFT ALERTS: {len(drift_alerts)} symbols')
-              for alert in drift_alerts:
-                  print(f'   - {alert[\"symbol\"]}: {alert[\"severity\"]} drift ({alert[\"magnitude\"]:.0%})')
-          else:
-              print('✅ No drift alerts')
-          
-          print('=' * 60)
-          print('✅ Unified validation complete')
-          " || echo "⚠️ Unified validation completed with warnings"
+          python -m src.scripts.run_unified_validation_report
 
       - name: Update model weights
         continue-on-error: true
@@ -479,32 +309,7 @@ jobs:
         continue-on-error: true
         run: |
           cd ml
-          echo "📊 Checking model drift and data staleness..."
-          python -c "
-          import sys
-          sys.path.insert(0, '.')
-          from src.monitoring.forecast_staleness import check_all_staleness
-          
-          print('📊 Checking data staleness...')
-          try:
-              staleness = check_all_staleness()
-              any_stale = False
-              for name, result in staleness.items():
-                  print(f'{result.icon} {name}: {result.message}')
-                  if not result.is_ok:
-                      any_stale = True
-              if any_stale:
-                  print('')
-                  print('::warning::Some data sources are stale!')
-                  print('Note: Stale forecasts are expected if ML Orchestration has not run recently.')
-                  print('      Forecasts will be refreshed when ml-forecast job completes.')
-              else:
-                  print('✅ All data sources are fresh')
-          except Exception as e:
-              print(f'⚠️ Staleness check error: {e}')
-          
-          print('✅ Drift monitoring complete')
-          " || echo "⚠️ Drift check completed with warnings"
+          python -m src.scripts.check_model_health
 
       - name: Data quality validation
         continue-on-error: true
@@ -550,7 +355,7 @@ jobs:
   smoke-tests:
     needs: [check-trigger, ml-forecast, options-processing, model-health]
     if: |
-      always() &&
+      !cancelled() &&
       needs.check-trigger.outputs.should_run == 'true' &&
       (inputs.job_filter == '' || inputs.job_filter == 'smoke-tests')
     runs-on: ubuntu-latest
@@ -559,6 +364,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('ml/requirements.txt', 'ml/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
       - name: Setup ML Environment
         uses: ./.github/actions/setup-ml-env
@@ -579,31 +392,7 @@ jobs:
       - name: Run smoke tests
         run: |
           cd ml
-          
-          echo "📊 Running quick smoke tests..."
-          
-          # Test that key tables are accessible
-          python -c "
-          import os
-          from dotenv import load_dotenv
-          load_dotenv()
-          
-          from src.data.supabase_db import db
-          
-          # Check OHLC data
-          df = db.fetch_ohlc_bars('SPY', timeframe='d1', limit=5)
-          assert len(df) > 0, 'No OHLC data found'
-          print(f'✅ OHLC bars: {len(df)} records')
-          
-          # Check forecasts exist
-          try:
-              forecasts = db.client.table('ml_forecasts').select('*').limit(1).execute()
-              print(f'✅ ML forecasts table accessible')
-          except Exception as e:
-              print(f'⚠️ ML forecasts check: {e}')
-          
-          print('✅ Smoke tests passed')
-          "
+          python -m src.scripts.smoke_tests
 
       - name: Log provider coverage snapshot
         if: always()

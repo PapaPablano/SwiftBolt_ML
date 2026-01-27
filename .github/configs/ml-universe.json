@@ -1,0 +1,29 @@
+{
+  "default_symbols": [
+    "AAPL",
+    "NVDA",
+    "MSFT",
+    "TSLA",
+    "META",
+    "AMD",
+    "CRWD",
+    "GOOGL",
+    "AMZN"
+  ],
+  "fallback_symbols": [
+    "SPY",
+    "AAPL",
+    "NVDA",
+    "MSFT"
+  ],
+  "validation_sample_size": 10,
+  "feature_flags": {
+    "enable_advanced_ensemble": true,
+    "enable_rf": false,
+    "enable_gb": true,
+    "enable_arima_garch": true,
+    "enable_prophet": false,
+    "enable_lstm": true,
+    "enable_transformer": true
+  }
+}
