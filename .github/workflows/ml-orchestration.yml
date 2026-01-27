@@ -134,7 +134,7 @@ jobs:
           ENABLE_ARIMA_GARCH: ${{ vars.ENABLE_ARIMA_GARCH || 'true' }}
           ENABLE_PROPHET: ${{ vars.ENABLE_PROPHET || 'false' }}
           ENABLE_LSTM: ${{ vars.ENABLE_LSTM || 'true' }}
-          ENABLE_TRANSFORMER: ${{ vars.ENABLE_TRANSFORMER || 'true' }}
+          ENABLE_TRANSFORMER: ${{ vars.ENABLE_TRANSFORMER || 'false' }}  # Disabled: causes workflow failures (TensorFlow not available)
         run: |
           cd ml
           
