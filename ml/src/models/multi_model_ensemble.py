@@ -265,7 +265,22 @@ class MultiModelEnsemble:
         if not enabled_models:
             return {}
 
-        # Framework-aligned defaults (4-model core)
+        # Research-backed 2-model LSTM-ARIMA core (15-30% RMSE improvement)
+        if len(enabled_models) == 2 and set(enabled_models) == {self.MODEL_LSTM, self.MODEL_AG}:
+            return {
+                self.MODEL_AG: 0.50,        # ARIMA-GARCH - Linear patterns, mean reversion
+                self.MODEL_LSTM: 0.50,      # LSTM - Nonlinear patterns, long-term dependencies
+            }
+
+        # 3-model configuration (LSTM + ARIMA + XGBoost)
+        if len(enabled_models) == 3 and set(enabled_models) == {self.MODEL_GB, self.MODEL_AG, self.MODEL_LSTM}:
+            return {
+                self.MODEL_AG: 0.30,        # ARIMA-GARCH - Linear autocorrelation
+                self.MODEL_LSTM: 0.40,      # LSTM - Primary nonlinear component
+                self.MODEL_GB: 0.30,        # XGBoost - Feature interactions
+            }
+
+        # Legacy 4-model core (deprecated, kept for backward compatibility)
         framework_core = {
             self.MODEL_GB,
             self.MODEL_AG,
@@ -273,6 +288,10 @@ class MultiModelEnsemble:
             self.MODEL_TRANSFORMER,
         }
         if set(enabled_models) == framework_core:
+            logger.warning(
+                "Using deprecated 4-model ensemble (GB, AG, LSTM, Transformer). "
+                "Consider switching to 2-3 model core for better generalization."
+            )
             return {
                 self.MODEL_AG: 0.20,        # ARIMA-GARCH
                 self.MODEL_GB: 0.35,        # XGBoost
@@ -280,6 +299,7 @@ class MultiModelEnsemble:
                 self.MODEL_TRANSFORMER: 0.20,  # Transformer
             }
 
+        # Fallback: equal weights
         weight = 1.0 / len(enabled_models)
         return {model: weight for model in enabled_models}
 

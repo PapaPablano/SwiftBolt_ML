@@ -9,6 +9,7 @@ import logging
 import sys
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
+from typing import Dict
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -49,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 # Mapping from horizon to timeframe and bars
 HORIZON_CONFIG = {
-    # Existing short-term horizons (use basic ensemble for speed)
+    # Existing short-term horizons (use basic ensemble for speed, no walk-forward)
     "15m": {
         "timeframe": "m15",
         "bars_per_hour": 4,
@@ -57,6 +58,7 @@ HORIZON_CONFIG = {
         "min_training_bars": 60,  # ~1 trading day (reduced from 100)
         "indicator_scale": 0.25,  # Scale down indicator periods
         "use_advanced_ensemble": False,  # Keep basic for speed
+        "use_walk_forward": False,  # Too short for walk-forward validation
     },
     "1h": {
         "timeframe": "h1",
@@ -65,8 +67,9 @@ HORIZON_CONFIG = {
         "min_training_bars": 60,  # ~1.5 trading weeks (reduced from 100)
         "indicator_scale": 0.5,
         "use_advanced_ensemble": False,  # Keep basic for speed
+        "use_walk_forward": False,  # Too short for walk-forward validation
     },
-    # NEW: Medium-term horizons with advanced 4-model ensemble
+    # Medium-term horizons with walk-forward validation (prevents overfitting)
     "4h": {
         "timeframe": "h4",
         "bars_per_hour": 0.25,
@@ -74,6 +77,7 @@ HORIZON_CONFIG = {
         "min_training_bars": 100,  # ~2 months (reduced from 200)
         "indicator_scale": 1.0,
         "use_advanced_ensemble": True,  # Use advanced ensemble
+        "use_walk_forward": True,  # Enable walk-forward validation
         "horizon_days": 0.167,  # 4/24 hours
     },
     "8h": {
@@ -83,6 +87,7 @@ HORIZON_CONFIG = {
         "min_training_bars": 120,  # ~2.5 months (reduced from 250)
         "indicator_scale": 1.5,
         "use_advanced_ensemble": True,  # Use advanced ensemble
+        "use_walk_forward": True,  # Enable walk-forward validation
         "horizon_days": 0.333,  # 8/24 hours
     },
     "1D": {
@@ -91,6 +96,7 @@ HORIZON_CONFIG = {
         "min_training_bars": 200,  # ~10 months (reduced from 500)
         "indicator_scale": 2.0,
         "use_advanced_ensemble": True,  # Use advanced ensemble
+        "use_walk_forward": True,  # Enable walk-forward validation
         "horizon_days": 1.0,  # 1 day
     },
 }
@@ -418,6 +424,109 @@ def convert_supertrend_to_synthesizer_format(st_info: dict) -> dict:
     }
 
 
+def validate_ensemble_with_walk_forward(
+    df: pd.DataFrame,
+    symbol: str,
+    horizon: str,
+    ensemble,
+) -> Dict:
+    """
+    Validate ensemble using walk-forward optimization.
+
+    Detects overfitting via divergence (val_rmse vs test_rmse).
+    If divergence > 20%, returns signal to simplify ensemble.
+
+    Args:
+        df: Historical OHLC data
+        symbol: Stock ticker
+        horizon: Forecast horizon ('4h', '8h', '1D')
+        ensemble: Ensemble forecaster to validate
+
+    Returns:
+        Dict with 'overfitting_detected' bool and 'divergence' float
+    """
+    try:
+        from src.training.walk_forward_optimizer import WalkForwardOptimizer
+
+        logger.info(
+            "Running walk-forward validation for %s %s (divergence threshold=20%%)",
+            symbol,
+            horizon,
+        )
+
+        # Initialize walk-forward optimizer
+        wf_optimizer = WalkForwardOptimizer(
+            train_days=1000,
+            val_days=250,
+            test_days=250,
+            divergence_threshold=0.20,
+        )
+
+        # Prepare data (ensure it has 'actual' column for RMSE)
+        val_df = df.copy()
+        if "actual" not in val_df.columns:
+            # Use close as proxy for actual
+            val_df["actual"] = val_df["close"]
+
+        # Create windows
+        windows = wf_optimizer.create_windows(val_df)
+
+        if not windows:
+            logger.warning("No walk-forward windows created for %s", symbol)
+            return {"overfitting_detected": False, "divergence": 0.0}
+
+        # Optimize on most recent window only
+        latest_window = windows[-1]
+        logger.debug("Using most recent window: %s", latest_window)
+
+        result = wf_optimizer.optimize_window(
+            latest_window,
+            val_df,
+            ensemble,
+            param_grid=None,
+        )
+
+        # Check divergence
+        overfitting_detected = result.divergence > 0.20
+        if overfitting_detected:
+            logger.warning(
+                "%s %s: Divergence %.2f%% > 20%% threshold. "
+                "Ensemble simplification recommended.",
+                symbol,
+                horizon,
+                result.divergence * 100,
+            )
+        else:
+            logger.info(
+                "%s %s: Divergence %.2f%% within normal range.",
+                symbol,
+                horizon,
+                result.divergence * 100,
+            )
+
+        # Get summary
+        summary = wf_optimizer.get_divergence_summary()
+        logger.info("Walk-forward summary: %s", summary)
+
+        return {
+            "overfitting_detected": overfitting_detected,
+            "divergence": result.divergence,
+            "val_rmse": result.val_rmse,
+            "test_rmse": result.test_rmse,
+            "summary": summary,
+        }
+
+    except Exception as e:
+        logger.warning(
+            "Walk-forward validation failed for %s %s: %s",
+            symbol,
+            horizon,
+            e,
+        )
+        # Don't fail the entire forecast, just log warning
+        return {"overfitting_detected": False, "divergence": 0.0}
+
+
 def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) -> bool:
     """
     Generate an intraday forecast for a single symbol.
@@ -640,11 +749,39 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
             if len(unique_labels) > 1:
                 try:
                     if use_advanced:
-                        # ADVANCED ENSEMBLE: 4-6 model ensemble with OHLC data
+                        # ADVANCED ENSEMBLE: 2-3 model ensemble with OHLC data
                         ensemble = get_production_ensemble(
                             horizon=horizon,
                             symbol_id=symbol_id,
                         )
+
+                        # NEW: Walk-forward validation for overfitting detection
+                        use_walk_forward = config.get("use_walk_forward", False)
+                        if use_walk_forward and len(df) >= 2000:  # Need enough data for WF
+                            wf_result = validate_ensemble_with_walk_forward(
+                                df=df,
+                                symbol=symbol,
+                                horizon=horizon,
+                                ensemble=ensemble,
+                            )
+                            # If high divergence detected, simplify ensemble
+                            if wf_result.get("overfitting_detected", False):
+                                logger.warning(
+                                    "%s %s: Simplifying ensemble due to overfitting "
+                                    "(divergence=%.2f%%)",
+                                    symbol,
+                                    horizon,
+                                    wf_result.get("divergence", 0) * 100,
+                                )
+                                # Recreate ensemble with 2-model core only
+                                import os
+                                old_model_count = os.environ.get("ENSEMBLE_MODEL_COUNT", "2")
+                                os.environ["ENSEMBLE_MODEL_COUNT"] = "2"
+                                ensemble = get_production_ensemble(
+                                    horizon=horizon,
+                                    symbol_id=symbol_id,
+                                )
+                                os.environ["ENSEMBLE_MODEL_COUNT"] = old_model_count
 
                         # Align OHLC data with features (pattern from unified_forecast_job.py)
                         min_offset = 50 if len(df) >= 100 else (26 if len(df) >= 60 else 14)

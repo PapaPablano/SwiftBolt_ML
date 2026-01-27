@@ -120,6 +120,41 @@ class ForecastWeights:
 
         return True
 
+    def get_ensemble_weights_for_model_count(self, model_count: int) -> Dict[str, float]:
+        """
+        Get ensemble weights adjusted for model count.
+
+        Returns appropriate weights for 2-model (LSTM+ARIMA) or 3-model
+        (add XGBoost) ensemble configurations.
+
+        Args:
+            model_count: Number of models (2 or 3)
+
+        Returns:
+            Dict of ensemble component weights
+        """
+        if model_count == 2:
+            # 2-model ensemble (LSTM + ARIMA-GARCH)
+            # Simple averaging, no model agreement needed
+            return {
+                "lstm_confidence": 0.50,
+                "arima_confidence": 0.50,
+            }
+        elif model_count == 3:
+            # 3-model ensemble (LSTM + ARIMA-GARCH + XGBoost)
+            # LSTM primary (40%), ARIMA/XGBoost complementary (30% each)
+            return {
+                "lstm_confidence": 0.40,
+                "arima_confidence": 0.30,
+                "xgboost_confidence": 0.30,
+            }
+        else:
+            # Default to 2-model if invalid count
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Unsupported model_count={model_count}, using 2-model default")
+            return self.get_ensemble_weights_for_model_count(2)
+
     def adjust_for_symbol(self, symbol: str) -> "ForecastWeights":
         """
         Adjust weights based on symbol characteristics.

@@ -265,7 +265,8 @@ class ForecastSynthesizer:
         # ===== LAYER 3: Ensemble Direction =====
         ml_label = ensemble_result.get("label", "Neutral")
         ml_confidence = ensemble_result.get("confidence", 0.5)
-        ml_agreement = ensemble_result.get("agreement", False)
+        # ml_agreement is a score from 0.0-1.0 indicating ensemble model consensus (2-3 models)
+        ml_agreement = ensemble_result.get("agreement", 0.0)
 
         if ml_label.lower() == "bullish":
             ml_bias = 1
@@ -984,8 +985,9 @@ class ForecastSynthesizer:
         elif ml_confidence >= 0.55:
             confidence += boosts["high_ensemble_conf"] * 0.5
 
-        # Boost from RF/GB agreement
-        if ml_agreement:
+        # Boost from ensemble agreement (2-3 model consensus)
+        # ml_agreement is a score from 0.0-1.0 (1.0 = all models agree)
+        if ml_agreement >= 0.5:
             confidence += boosts["strong_agreement"]
 
         # Boost from multi-layer agreement
@@ -1026,7 +1028,7 @@ class ForecastSynthesizer:
         direction: str,
         signal_strength: float,
         ml_confidence: float,
-        ml_agreement: bool,
+        ml_agreement: float,
         poly_is_expanding: bool,
         logistic_resistance_prob: float,
         logistic_support_prob: float,
@@ -1045,8 +1047,9 @@ class ForecastSynthesizer:
         elif ml_confidence >= 0.55:
             drivers.append(f"Moderate ML consensus ({ml_confidence*100:.0f}%)")
 
-        if ml_agreement:
-            drivers.append("RF and GB models agree")
+        # Ensemble agreement (2-3 models consensus)
+        if ml_agreement >= 0.5:
+            drivers.append(f"Ensemble models aligned ({ml_agreement*100:.0f}%)")
 
         if poly_is_expanding:
             drivers.append("S/R levels expanding (room for move)")
@@ -1211,7 +1214,8 @@ class ForecastSynthesizer:
         # ===== LAYER 3: Ensemble Direction =====
         ml_label = ensemble_result.get("label", "Neutral")
         ml_confidence = ensemble_result.get("confidence", 0.5)
-        ml_agreement = ensemble_result.get("agreement", False)
+        # ml_agreement is a score from 0.0-1.0 indicating ensemble model consensus (2-3 models)
+        ml_agreement = ensemble_result.get("agreement", 0.0)
 
         if ml_label.lower() == "bullish":
             ml_bias = 1

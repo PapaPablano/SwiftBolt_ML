@@ -388,7 +388,15 @@ class IntradayWeightCalibrator:
         use_scipy: bool = True,
     ) -> CalibrationResult | None:
         """
-        Calibrate weights for a single symbol.
+        Calibrate weights with train/val/test split and divergence monitoring.
+
+        Implements 3-way split to detect overfitting:
+        - Train (60%): For grid search
+        - Validation (20%): For hyperparameter selection
+        - Test (20%): For final held-out evaluation (overfitting detection)
+
+        Divergence = |val_mae - test_mae| / val_mae
+        If divergence > 15%, reverts to conservative equal weights (0.33, 0.33, 0.34).
 
         Args:
             symbol: Stock ticker
@@ -420,33 +428,106 @@ class IntradayWeightCalibrator:
 
         logger.info("Found %d evaluation samples for %s", len(df), symbol)
 
-        # Grid search for initial weights
-        w_st, w_sr, w_ens, mae, acc = self._grid_search_weights(df)
+        # NEW: 3-way split to prevent overfitting (train/val/test)
+        df = df.sort_values("evaluated_at").reset_index(drop=True)
+        n = len(df)
+        train_end = int(n * 0.60)
+        val_end = int(n * 0.80)
+
+        train_df = df.iloc[:train_end]
+        val_df = df.iloc[train_end:val_end]
+        test_df = df.iloc[val_end:]
+
         logger.info(
-            "Grid search result: ST=%.2f SR=%.2f ENS=%.2f MAE=%.4f Acc=%.2f%%",
+            "Data split: train=%d (60%%), val=%d (20%%), test=%d (20%%)",
+            len(train_df),
+            len(val_df),
+            len(test_df),
+        )
+
+        # Grid search on TRAIN set only
+        w_st, w_sr, w_ens, train_mae, train_acc = self._grid_search_weights(train_df)
+        logger.info(
+            "Grid search on train set: ST=%.2f SR=%.2f ENS=%.2f MAE=%.4f Acc=%.2f%%",
             w_st,
             w_sr,
             w_ens,
-            mae,
-            acc * 100,
+            train_mae,
+            train_acc * 100,
         )
 
-        # Optionally refine with scipy
-        if use_scipy and mae != float("inf"):
+        # Evaluate on VALIDATION set
+        val_mae, val_acc = self._evaluate_weights(val_df, w_st, w_sr, w_ens)
+        logger.info(
+            "Validation result: MAE=%.4f Acc=%.2f%%",
+            val_mae,
+            val_acc * 100,
+        )
+
+        # Optionally refine with scipy on TRAIN+VAL combined
+        if use_scipy and val_mae != float("inf"):
+            combined_df = pd.concat([train_df, val_df])
             w_st_opt, w_sr_opt, w_ens_opt, mae_opt, acc_opt = self._scipy_optimize_weights(
-                df, (w_st, w_sr, w_ens)
+                combined_df, (w_st, w_sr, w_ens)
             )
 
-            if mae_opt < mae:
-                w_st, w_sr, w_ens, mae, acc = w_st_opt, w_sr_opt, w_ens_opt, mae_opt, acc_opt
+            if mae_opt < val_mae:
+                w_st, w_sr, w_ens = w_st_opt, w_sr_opt, w_ens_opt
                 logger.info(
-                    "Scipy refined: ST=%.2f SR=%.2f ENS=%.2f MAE=%.4f Acc=%.2f%%",
+                    "Scipy refined: ST=%.2f SR=%.2f ENS=%.2f",
                     w_st,
                     w_sr,
                     w_ens,
-                    mae,
-                    acc * 100,
                 )
+
+        # Evaluate on held-out TEST set
+        test_mae, test_acc = self._evaluate_weights(test_df, w_st, w_sr, w_ens)
+        logger.info(
+            "Test result: MAE=%.4f Acc=%.2f%%",
+            test_mae,
+            test_acc * 100,
+        )
+
+        # NEW: Calculate divergence (overfitting indicator)
+        if val_mae > 0:
+            divergence = abs(val_mae - test_mae) / val_mae
+        else:
+            divergence = 0.0
+
+        logger.info(
+            "Divergence: %.2f%% (val_mae=%.4f, test_mae=%.4f)",
+            divergence * 100,
+            val_mae,
+            test_mae,
+        )
+
+        # NEW: Check for overfitting and revert to equal weights if needed
+        if divergence > 0.15:
+            logger.warning(
+                "%s %s: Calibration divergence %.2f%% > 15%% threshold. "
+                "Overfitting detected. Reverting to conservative equal weights.",
+                symbol,
+                horizon or "all",
+                divergence * 100,
+            )
+            # Revert to equal weights (prevents meta-learner overfitting)
+            w_st, w_sr, w_ens = 0.33, 0.33, 0.34
+            divergence = 0.0  # Reset divergence since we're using safe defaults
+
+            # Re-evaluate with equal weights on test set
+            test_mae, test_acc = self._evaluate_weights(test_df, w_st, w_sr, w_ens)
+            logger.info(
+                "With equal weights on test: MAE=%.4f Acc=%.2f%%",
+                test_mae,
+                test_acc * 100,
+            )
+        else:
+            logger.info(
+                "%s %s: Divergence %.2f%% within normal range (< 15%% threshold).",
+                symbol,
+                horizon or "all",
+                divergence * 100,
+            )
 
         return CalibrationResult(
             symbol=symbol,
@@ -454,8 +535,8 @@ class IntradayWeightCalibrator:
             supertrend_weight=w_st,
             sr_weight=w_sr,
             ensemble_weight=w_ens,
-            validation_mae=mae,
-            direction_accuracy=acc,
+            validation_mae=test_mae,  # Use TEST mae (more realistic than validation)
+            direction_accuracy=test_acc,
             sample_count=len(df),
             horizon=horizon or "all",
         )

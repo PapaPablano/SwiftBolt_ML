@@ -128,13 +128,15 @@ jobs:
           USE_ENSEMBLE_FORECASTER: "true"
           MIN_BARS_FOR_TRAINING: "50"
           REDIS_FEATURE_CACHE: "false"  # Enable when Redis is available
-          ENABLE_ADVANCED_ENSEMBLE: ${{ vars.ENABLE_ADVANCED_ENSEMBLE || 'true' }}  # Enable 6-model ensemble
-          ENABLE_RF: ${{ vars.ENABLE_RF || 'false' }}  # Align with framework (disable RF)
-          ENABLE_GB: ${{ vars.ENABLE_GB || 'true' }}  # XGBoost
-          ENABLE_ARIMA_GARCH: ${{ vars.ENABLE_ARIMA_GARCH || 'true' }}
-          ENABLE_PROPHET: ${{ vars.ENABLE_PROPHET || 'false' }}
+          # Ensemble Configuration (Research-backed 2-3 model core)
+          ENSEMBLE_MODEL_COUNT: ${{ vars.ENSEMBLE_MODEL_COUNT || '2' }}  # 2 (LSTM+ARIMA), 3 (add XGBoost), 4 (legacy)
           ENABLE_LSTM: ${{ vars.ENABLE_LSTM || 'true' }}
-          ENABLE_TRANSFORMER: ${{ vars.ENABLE_TRANSFORMER || 'false' }}  # Disabled: causes workflow failures (TensorFlow not available)
+          ENABLE_ARIMA_GARCH: ${{ vars.ENABLE_ARIMA_GARCH || 'true' }}
+          ENABLE_GB: ${{ vars.ENABLE_GB || 'false' }}  # Only enable for 3-model ensemble
+          ENABLE_TRANSFORMER: 'false'  # Permanently disabled
+          ENABLE_RF: 'false'  # Permanently disabled from core
+          ENABLE_PROPHET: 'false'  # Permanently disabled - redundant with ARIMA
+          ENSEMBLE_OPTIMIZATION_METHOD: ${{ vars.ENSEMBLE_OPTIMIZATION_METHOD || 'simple_avg' }}
         run: |
           cd ml
           
