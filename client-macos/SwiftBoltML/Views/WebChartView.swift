@@ -568,14 +568,10 @@ struct WebChartView: NSViewRepresentable {
             parent.bridge.send(.removeSeries(id: "forecast-1d"))
             parent.bridge.send(.removeSeries(id: "forecast-1w"))
             parent.bridge.send(.removeSeries(id: "forecast-1m"))
-            parent.bridge.setForecastLayer(from: forecastBars)
-            if parent.viewModel.timeframe.isIntraday {
-                parent.bridge.setForecastCandles(from: forecastBars)
-            }
-            applyForecastTargetLine(
-                currentPrice: parent.viewModel.bars.last?.close,
-                label: parent.viewModel.chartDataV2?.mlSummary?.overallLabel
-            )
+
+            // Use simplified forecast visualization: dots + line + horizontal price line
+            let currentPrice = parent.viewModel.bars.last?.close
+            parent.bridge.setSimpleForecast(from: forecastBars, currentPrice: currentPrice)
         }
 
         private func applyLegacyForecastOverlay(with data: ChartResponse) {
@@ -592,7 +588,24 @@ struct WebChartView: NSViewRepresentable {
             parent.bridge.send(.removeSeries(id: "forecast-1d"))
             parent.bridge.send(.removeSeries(id: "forecast-1w"))
             parent.bridge.send(.removeSeries(id: "forecast-1m"))
-            parent.bridge.setForecast(from: selectedSeries, direction: mlSummary.overallLabel ?? "neutral")
+
+            // Convert ForecastSeries points to OHLCBar for simplified visualization
+            let forecastBars = selectedSeries.points.map { point in
+                OHLCBar(
+                    ts: Date(timeIntervalSince1970: TimeInterval(point.ts)),
+                    open: point.value,
+                    high: max(point.value, point.upper, point.lower),
+                    low: min(point.value, point.upper, point.lower),
+                    close: point.value,
+                    volume: 0,
+                    upperBand: point.upper,
+                    lowerBand: point.lower,
+                    confidenceScore: nil
+                )
+            }
+
+            let currentPrice = data.bars.last?.close
+            parent.bridge.setSimpleForecast(from: forecastBars, currentPrice: currentPrice)
 
             if let srLevels = mlSummary.srLevels {
                 parent.bridge.setSRLevels(
@@ -600,12 +613,6 @@ struct WebChartView: NSViewRepresentable {
                     resistance: srLevels.nearestResistance
                 )
             }
-
-            applyForecastTargetLine(
-                currentPrice: data.bars.last?.close,
-                label: mlSummary.overallLabel,
-                series: selectedSeries
-            )
         }
 
         private func updateChart(with data: ChartResponse) {

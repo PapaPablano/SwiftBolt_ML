@@ -819,28 +819,28 @@ final class ChartBridge: NSObject, ObservableObject {
     /// Set forecast layer (dashed line with confidence bands)
     func setForecastLayer(from bars: [OHLCBar]) {
         guard !bars.isEmpty else { return }
-        
+
         let midPoints = bars.map { bar in
             LightweightDataPoint(time: Int(bar.ts.timeIntervalSince1970), value: bar.close)
         }
-        
+
         let upperPoints = bars.compactMap { bar -> LightweightDataPoint? in
             guard let upper = bar.upperBand else { return nil }
             return LightweightDataPoint(time: Int(bar.ts.timeIntervalSince1970), value: upper)
         }
-        
+
         let lowerPoints = bars.compactMap { bar -> LightweightDataPoint? in
             guard let lower = bar.lowerBand else { return nil }
             return LightweightDataPoint(time: Int(bar.ts.timeIntervalSince1970), value: lower)
         }
-        
+
         // Direction-aware color based on forecast slope
         let firstClose = bars.first?.close ?? 0
         let lastClose = bars.last?.close ?? 0
         let isUp = lastClose >= firstClose
         let color = isUp ? "#4de680" : "#ff5959"
         let bandColor = isUp ? "rgba(77, 230, 128, 0.2)" : "rgba(255, 89, 89, 0.2)"
-        
+
         send(.setForecast(
             midData: midPoints,
             upperData: upperPoints,
@@ -850,6 +850,57 @@ final class ChartBridge: NSObject, ObservableObject {
                 bandColor: bandColor
             )
         ))
+    }
+
+    /// Set simple forecast visualization: dots at target price + connecting line + horizontal price line
+    func setSimpleForecast(from bars: [OHLCBar], currentPrice: Double?) {
+        guard !bars.isEmpty else { return }
+
+        let sortedBars = bars.sorted { $0.ts < $1.ts }
+        let lastForecastPrice = sortedBars.last?.close ?? 0
+        let currentPriceValue = currentPrice ?? sortedBars.first?.close ?? 0
+
+        // Determine color based on target price vs current price
+        let isAboveCurrentPrice = lastForecastPrice >= currentPriceValue
+        let color = isAboveCurrentPrice ? "#4de680" : "#ff5959"  // Green if above, red if below
+
+        // Create markers (dots) at each forecast point
+        let markers = sortedBars.enumerated().map { (index, bar) -> ChartMarker in
+            return ChartMarker(
+                time: Int(bar.ts.timeIntervalSince1970),
+                type: "circle",
+                text: "",
+                color: color,
+                position: "inBar",
+                shape: "circle",
+                size: index == sortedBars.count - 1 ? 2 : 1  // Larger dot at final target
+            )
+        }
+        setMarkers(markers, seriesId: "candles")
+
+        // Create line connecting all forecast points
+        let forecastLine = sortedBars.map { bar in
+            LightweightDataPoint(time: Int(bar.ts.timeIntervalSince1970), value: bar.close)
+        }
+
+        send(.setLine(
+            id: "forecast-line",
+            data: forecastLine,
+            options: LineOptions(
+                color: color,
+                lineWidth: 1,
+                lineStyle: 2,  // Dashed line
+                name: "Forecast"
+            )
+        ))
+
+        // Create horizontal price line at the target price
+        let options = PriceLineOptions(
+            color: color,
+            lineStyle: 0,  // Solid line
+            title: String(format: "Target: %.2f", lastForecastPrice)
+        )
+        send(.addPriceLine(seriesId: "candles", price: lastForecastPrice, options: options))
     }
     
     /// Toggle Heikin-Ashi candlestick display
