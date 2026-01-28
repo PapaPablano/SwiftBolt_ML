@@ -110,7 +110,8 @@ def fetch_ohlc_bars(symbol: str, horizon: str, days_back: int = 30) -> List[OHLC
     }
     
     timeframe = timeframe_map.get(horizon, 'd1')
-    cutoff = (datetime.now() - timedelta(days=days_back)).isoformat()
+    # Use UTC time for database queries (database stores UTC timestamps)
+    cutoff = (datetime.utcnow() - timedelta(days=days_back)).isoformat()
     
     try:
         # Get symbol_id
@@ -134,8 +135,12 @@ def fetch_ohlc_bars(symbol: str, horizon: str, days_back: int = 30) -> List[OHLC
         bars = []
         for row in result.data or []:
             try:
+                # Normalize timestamp to noon UTC for consistent chart rendering
+                # This ensures daily bars align properly across timezones
+                ts = pd.Timestamp(row['ts']).normalize() + pd.Timedelta(hours=12)
+
                 bars.append(OHLCBar(
-                    time=int(pd.Timestamp(row['ts']).timestamp()),
+                    time=int(ts.timestamp()),
                     open=float(row['open']),
                     high=float(row['high']),
                     low=float(row['low']),
@@ -157,17 +162,18 @@ def fetch_ohlc_bars(symbol: str, horizon: str, days_back: int = 30) -> List[OHLC
 def fetch_forecast_overlays(symbol: str, horizon: str, days_back: int = 30) -> List[ForecastOverlay]:
     """
     Fetch forecast targets as overlay data.
-    
+
     Args:
         symbol: Stock ticker
         horizon: Timeframe
         days_back: Number of days of forecast history
-    
+
     Returns:
         List of forecast overlays for chart rendering
     """
     db = get_db()
-    cutoff = (datetime.now() - timedelta(days=days_back)).isoformat()
+    # Use UTC time for database queries (database stores UTC timestamps)
+    cutoff = (datetime.utcnow() - timedelta(days=days_back)).isoformat()
     
     try:
         # Determine table based on horizon type
@@ -182,8 +188,10 @@ def fetch_forecast_overlays(symbol: str, horizon: str, days_back: int = 30) -> L
             overlays = []
             for row in result.data or []:
                 try:
+                    # Use forecast creation time as-is for intraday
+                    ts = int(pd.Timestamp(row['created_at']).timestamp())
                     overlays.append(ForecastOverlay(
-                        time=int(pd.Timestamp(row['created_at']).timestamp()),
+                        time=ts,
                         price=float(row['target_price']),
                         confidence=float(row['confidence']),
                         direction=row['overall_label'].lower()
@@ -214,13 +222,15 @@ def fetch_forecast_overlays(symbol: str, horizon: str, days_back: int = 30) -> L
                     points = row.get('points', [])
                     if not points or not isinstance(points, list):
                         continue
-                    
+
                     # Last point is the target
                     target = float(points[-1]['value']) if points else None
-                    
+
                     if target:
+                        # Normalize forecast timestamp to noon UTC for chart alignment
+                        ts = pd.Timestamp(row['created_at']).normalize() + pd.Timedelta(hours=12)
                         overlays.append(ForecastOverlay(
-                            time=int(pd.Timestamp(row['created_at']).timestamp()),
+                            time=int(ts.timestamp()),
                             price=target,
                             confidence=float(row['confidence']),
                             direction=row['overall_label'].lower()
