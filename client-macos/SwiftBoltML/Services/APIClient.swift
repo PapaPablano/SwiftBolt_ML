@@ -1085,26 +1085,62 @@ final class APIClient {
     }
 
     /// Fetch Support & Resistance levels for a symbol (default 252 bars = 1 year of trading days)
+    /// Tries FastAPI first for fresher data, falls back to Supabase if unavailable
     func fetchSupportResistance(symbol: String, lookback: Int = 252) async throws -> SupportResistanceResponse {
+        // Try FastAPI first (primary source for fresher data)
+        do {
+            return try await fetchSupportResistanceFromFastAPI(symbol: symbol, lookback: lookback)
+        } catch {
+            #if DEBUG
+            print("[APIClient] FastAPI S/R fetch failed, falling back to Supabase: \(error)")
+            #endif
+            // Fall back to Supabase
+            return try await fetchSupportResistanceFromSupabase(symbol: symbol, lookback: lookback)
+        }
+    }
+
+    /// Fetch Support & Resistance from FastAPI backend (primary source)
+    private func fetchSupportResistanceFromFastAPI(symbol: String, lookback: Int = 252) async throws -> SupportResistanceResponse {
+        var components = URLComponents(url: Config.fastAPIURL.appendingPathComponent("api/v1/support-resistance"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "symbol", value: symbol),
+            URLQueryItem(name: "timeframe", value: "d1"),
+            URLQueryItem(name: "lookback", value: String(lookback))
+        ]
+
+        guard let url = components?.url else {
+            throw APIError.invalidURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 60
+
+        return try await performRequest(request)
+    }
+
+    /// Fetch Support & Resistance from Supabase Edge Function (fallback)
+    private func fetchSupportResistanceFromSupabase(symbol: String, lookback: Int = 252) async throws -> SupportResistanceResponse {
         guard var components = URLComponents(url: functionURL("support-resistance"), resolvingAgainstBaseURL: false) else {
             throw APIError.invalidURL
         }
-        
+
         components.queryItems = [
             URLQueryItem(name: "symbol", value: symbol),
             URLQueryItem(name: "lookback", value: String(lookback))
         ]
-        
+
         guard let url = components.url else {
             throw APIError.invalidURL
         }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
+
         return try await performRequest(request)
     }
     

@@ -12,10 +12,19 @@ struct AnalysisView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                // Scanner Alerts Section
-                AlertsSection(analysisViewModel: analysisViewModel)
+                // Technical Indicators Section
+                if let symbol = appViewModel.selectedSymbol?.ticker {
+                    #if DEBUG
+                    let _ = print("[AnalysisView] Rendering ML sections for symbol: \(symbol)")
+                    #endif
+                    
+                    TechnicalIndicatorsSection(
+                        symbol: symbol,
+                        timeframe: chartViewModel.timeframe.rawValue
+                    )
 
-                Divider()
+                    Divider()
+                }
 
                 // ML Forecast Breakdown Section (Fix B: shared horizon selection)
                 if let mlSummary = chartViewModel.chartData?.mlSummary {
@@ -27,31 +36,24 @@ struct AnalysisView: View {
                     )
                     Divider()
                 }
-                
-                // Enhanced ML Insights Section
-                EnhancedInsightsSection(analysisViewModel: analysisViewModel)
-
-                Divider()
 
                 // Support & Resistance Section
                 SupportResistanceView(analysisViewModel: analysisViewModel)
 
                 Divider()
 
-                // Technical Indicators Section
+                // Enhanced ML Insights Section
+                EnhancedInsightsSection(analysisViewModel: analysisViewModel)
+
+                Divider()
+
+                // Scanner Alerts Section
+                AlertsSection(analysisViewModel: analysisViewModel)
+
+                Divider()
+
+                // Backtesting Section
                 if let symbol = appViewModel.selectedSymbol?.ticker {
-                    #if DEBUG
-                    let _ = print("[AnalysisView] Rendering ML sections for symbol: \(symbol)")
-                    #endif
-                    
-                    TechnicalIndicatorsSection(
-                        symbol: symbol,
-                        timeframe: chartViewModel.timeframe.rawValue
-                    )
-                    
-                    Divider()
-                    
-                    // Backtesting Section
                     BacktestingSection(
                         symbol: symbol,
                         timeframe: chartViewModel.timeframe.rawValue

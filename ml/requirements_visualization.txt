@@ -1,0 +1,26 @@
+# Polynomial S/R Flux Charts Visualization Dependencies
+# Install with: pip install -r requirements_visualization.txt
+
+# Core numerical computing
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Static visualization (matplotlib)
+matplotlib>=3.7.0
+
+# Interactive visualization (optional but recommended)
+plotly>=5.14.0
+kaleido>=0.2.1  # For static export from plotly
+
+# Data handling
+python-dateutil>=2.8.0
+
+# Logging and utilities
+python-dotenv>=1.0.0
+
+# Supabase integration (if using real data)
+supabase>=1.0.0
+psycopg2-binary>=2.9.0
+
+# Additional visualization enhancements
+seaborn>=0.12.0  # Optional: enhanced color palettes

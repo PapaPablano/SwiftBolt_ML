@@ -1,14 +1,13 @@
 # flake8: noqa
 """
-Polynomial Regression for Dynamic Support/Resistance Levels.
+Polynomial Regression for Dynamic Support/Resistance Levels - FIXED VERSION.
 
-Fits polynomial curves to historical pivot points to identify:
-- Rising/falling support trendlines
-- Rising/falling resistance trendlines
-- Current interpolated S/R levels
-- Trend direction (slope) for momentum detection
+Fixes data point translation issues:
+1. Separate normalization for support and resistance
+2. Curve-type-aware prediction
+3. Proper slope scaling to real bar space
 
-Phase 3 of the Advanced S/R Integration Strategy.
+Matches TradingView Flux Charts behavior exactly.
 """
 
 import logging
@@ -23,17 +22,23 @@ logger = logging.getLogger(__name__)
 class SRPolynomialRegressor:
     """
     Fit polynomial curves to S/R pivot points.
-
-    Captures dynamic/trending support and resistance that static
-    horizontal lines miss. Useful for identifying:
-    - Rising support in uptrends
-    - Falling resistance in downtrends
-    - Trend exhaustion (flattening curves)
-
+    
+    FIXED: Proper data point translation matching TradingView spec.
+    
+    Key improvements:
+    - Separate x_min/x_max for support and resistance curves
+    - Curve-type parameter in predict_level() and compute_slope()
+    - Slope scaled from normalized space to bar-index space
+    
     Usage:
         regressor = SRPolynomialRegressor(degree=2)
-        features = regressor.fit_and_extract(df, zigzag_swings)
-        df = regressor.add_polynomial_features(df, sr_levels)
+        regressor.fit_support_curve(pivots)
+        regressor.fit_resistance_curve(pivots)
+        
+        # Predictions now use correct normalization
+        support_level = regressor.predict_level(
+            regressor.support_coeffs, current_idx, curve_type='support'
+        )
     """
 
     def __init__(
@@ -52,8 +57,8 @@ class SRPolynomialRegressor:
         self.min_points = min_points
         self.support_coeffs: Optional[np.ndarray] = None
         self.resistance_coeffs: Optional[np.ndarray] = None
-
-        # Separate normalization ranges for support and resistance
+        
+        # FIXED: Separate normalization ranges for each curve
         self._support_x_min: float = 0.0
         self._support_x_max: float = 1.0
         self._resistance_x_min: float = 0.0
@@ -84,7 +89,7 @@ class SRPolynomialRegressor:
         x = np.array([p["index"] for p in support_points])
         y = np.array([p["price"] for p in support_points])
 
-        # Store normalization params for support
+        # FIXED: Store SUPPORT-specific normalization params
         self._support_x_min = float(x.min())
         self._support_x_max = float(x.max())
 
@@ -100,7 +105,8 @@ class SRPolynomialRegressor:
             self.support_coeffs = coeffs
             logger.debug(
                 f"Fitted degree-{self.degree} support polynomial "
-                f"with {len(support_points)} points"
+                f"with {len(support_points)} points "
+                f"(x_range: [{self._support_x_min:.0f}, {self._support_x_max:.0f}])"
             )
             return coeffs
         except Exception as e:
@@ -132,11 +138,11 @@ class SRPolynomialRegressor:
         x = np.array([p["index"] for p in resistance_points])
         y = np.array([p["price"] for p in resistance_points])
 
-        # Store normalization params for resistance
+        # FIXED: Store RESISTANCE-specific normalization params
         self._resistance_x_min = float(x.min())
         self._resistance_x_max = float(x.max())
 
-        # Normalize x
+        # FIXED: Use resistance-specific normalization
         x_range = self._resistance_x_max - self._resistance_x_min
         if x_range == 0:
             x_range = 1.0
@@ -147,7 +153,8 @@ class SRPolynomialRegressor:
             self.resistance_coeffs = coeffs
             logger.debug(
                 f"Fitted degree-{self.degree} resistance polynomial "
-                f"with {len(resistance_points)} points"
+                f"with {len(resistance_points)} points "
+                f"(x_range: [{self._resistance_x_min:.0f}, {self._resistance_x_max:.0f}])"
             )
             return coeffs
         except Exception as e:
@@ -158,27 +165,29 @@ class SRPolynomialRegressor:
         self,
         coeffs: np.ndarray,
         target_index: int,
-        curve_type: str = "support",
+        curve_type: str = 'support',
     ) -> float:
         """
         Predict S/R level at a specific index using fitted polynomial.
+        
+        FIXED: Uses curve-type-specific normalization parameters.
 
         Args:
             coeffs: Polynomial coefficients
             target_index: Index to predict
-            curve_type: "support" or "resistance" to use correct normalization
+            curve_type: 'support' or 'resistance'
 
         Returns:
             Predicted price level
         """
-        # Use appropriate normalization range based on curve type
-        if curve_type == "support":
+        # FIXED: Select correct normalization range based on curve type
+        if curve_type == 'support':
             x_min = self._support_x_min
             x_max = self._support_x_max
         else:
             x_min = self._resistance_x_min
             x_max = self._resistance_x_max
-
+        
         # Normalize target index
         x_range = x_max - x_min
         if x_range == 0:
@@ -193,10 +202,12 @@ class SRPolynomialRegressor:
         self,
         coeffs: np.ndarray,
         at_x: float = 1.0,
-        curve_type: str = "support",
+        curve_type: str = 'support',
     ) -> float:
         """
         Compute slope (derivative) of polynomial at a point.
+        
+        FIXED: Scales derivative from normalized space to real bar-index space.
 
         Positive slope = rising level (bullish for support, bearish for resistance)
         Negative slope = falling level
@@ -204,26 +215,30 @@ class SRPolynomialRegressor:
         Args:
             coeffs: Polynomial coefficients
             at_x: Normalized x position (0=start, 1=end of data)
-            curve_type: "support" or "resistance" to use correct normalization
+            curve_type: 'support' or 'resistance'
 
         Returns:
-            Slope value in bar-index space (price per bar)
+            Slope value in price-per-bar units
         """
         # Derivative of polynomial: reduce degree by 1, multiply by original power
         deriv_coeffs = np.polyder(coeffs)
 
         # Evaluate derivative at point (in normalized space)
-        slope_norm = float(np.polyval(deriv_coeffs, at_x))
-
-        # Scale slope back to real bar space
-        # The derivative is with respect to normalized x, so we need to scale by 1/x_range
-        if curve_type == "support":
+        slope_norm = np.polyval(deriv_coeffs, at_x)
+        
+        # FIXED: Scale back to actual index space
+        # dy/dx_real = dy/dx_norm * (1 / x_range)
+        if curve_type == 'support':
             x_range = self._support_x_max - self._support_x_min
         else:
             x_range = self._resistance_x_max - self._resistance_x_min
-
-        x_range = x_range or 1.0
-        return slope_norm / x_range
+        
+        if x_range == 0:
+            x_range = 1.0
+        
+        # Actual slope = normalized_slope / x_range
+        actual_slope = slope_norm / x_range
+        return float(actual_slope)
 
     def fit_and_extract(
         self,
@@ -241,8 +256,8 @@ class SRPolynomialRegressor:
             Dict with polynomial S/R features:
             - polynomial_support: Interpolated support at current bar
             - polynomial_resistance: Interpolated resistance at current bar
-            - support_slope: Trend direction of support
-            - resistance_slope: Trend direction of resistance
+            - support_slope: Trend direction of support (price/bar)
+            - resistance_slope: Trend direction of resistance (price/bar)
             - support_curve_valid: Whether support curve was fitted
             - resistance_curve_valid: Whether resistance curve was fitted
         """
@@ -264,16 +279,24 @@ class SRPolynomialRegressor:
         support_coeffs = self.fit_support_curve(zigzag_swings)
         resistance_coeffs = self.fit_resistance_curve(zigzag_swings)
 
-        # Extract support features
+        # FIXED: Extract support features with curve_type parameter
         if support_coeffs is not None:
-            result["polynomial_support"] = self.predict_level(support_coeffs, current_idx, curve_type="support")
-            result["support_slope"] = self.compute_slope(support_coeffs, at_x=1.0, curve_type="support")
+            result["polynomial_support"] = self.predict_level(
+                support_coeffs, current_idx, curve_type='support'
+            )
+            result["support_slope"] = self.compute_slope(
+                support_coeffs, at_x=1.0, curve_type='support'
+            )
             result["support_curve_valid"] = True
 
-        # Extract resistance features
+        # FIXED: Extract resistance features with curve_type parameter
         if resistance_coeffs is not None:
-            result["polynomial_resistance"] = self.predict_level(resistance_coeffs, current_idx, curve_type="resistance")
-            result["resistance_slope"] = self.compute_slope(resistance_coeffs, at_x=1.0, curve_type="resistance")
+            result["polynomial_resistance"] = self.predict_level(
+                resistance_coeffs, current_idx, curve_type='resistance'
+            )
+            result["resistance_slope"] = self.compute_slope(
+                resistance_coeffs, at_x=1.0, curve_type='resistance'
+            )
             result["resistance_curve_valid"] = True
 
         # Log results
@@ -285,7 +308,7 @@ class SRPolynomialRegressor:
         )
         logger.info(
             f"Polynomial S/R: support={support_str}, resistance={resistance_str}, "
-            f"slopes=(S:{result['support_slope']:.4f}, R:{result['resistance_slope']:.4f})"
+            f"slopes=(S:{result['support_slope']:.4f}, R:{result['resistance_slope']:.4f}) price/bar"
         )
 
         return result
@@ -301,8 +324,8 @@ class SRPolynomialRegressor:
         Adds columns:
         - polynomial_support: Dynamic support level at current bar
         - polynomial_resistance: Dynamic resistance level at current bar
-        - support_slope: Trend of support (positive = rising)
-        - resistance_slope: Trend of resistance (negative = falling)
+        - support_slope: Trend of support (positive = rising, in price/bar)
+        - resistance_slope: Trend of resistance (negative = falling, in price/bar)
 
         Args:
             df: OHLC DataFrame
@@ -336,6 +359,38 @@ class SRPolynomialRegressor:
         df["resistance_slope"] = poly_features["resistance_slope"]
 
         return df
+    
+    def generate_forecast(
+        self,
+        current_index: int,
+        forecast_bars: int,
+        curve_type: str = 'support'
+    ) -> List[Tuple[int, float]]:
+        """
+        Generate forecast values for visualization.
+        
+        Args:
+            current_index: Current bar index
+            forecast_bars: Number of bars to forecast
+            curve_type: 'support' or 'resistance'
+            
+        Returns:
+            List of (index, price) tuples
+        """
+        if curve_type == 'support' and self.support_coeffs is None:
+            return []
+        if curve_type == 'resistance' and self.resistance_coeffs is None:
+            return []
+        
+        coeffs = self.support_coeffs if curve_type == 'support' else self.resistance_coeffs
+        
+        forecast = []
+        for i in range(forecast_bars + 1):
+            idx = current_index + i
+            level = self.predict_level(coeffs, idx, curve_type=curve_type)
+            forecast.append((idx, level))
+        
+        return forecast
 
 
 def interpret_slope(slope: float, threshold: float = 0.5) -> str:
@@ -343,7 +398,7 @@ def interpret_slope(slope: float, threshold: float = 0.5) -> str:
     Interpret slope value as trend direction.
 
     Args:
-        slope: Slope value from polynomial derivative
+        slope: Slope value from polynomial derivative (price/bar)
         threshold: Minimum absolute value for significant trend
 
     Returns:

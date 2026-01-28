@@ -3,8 +3,10 @@ import Foundation
 enum Config {
     private static let supabaseURLKey = "SUPABASE_URL"
     private static let supabaseAnonKeyKey = "SUPABASE_ANON_KEY"
+    private static let fastAPIURLKey = "FASTAPI_URL"
     private static var cachedSupabaseURL: URL?
     private static var cachedSupabaseAnonKey: String?
+    private static var cachedFastAPIURL: URL?
 
     static var supabaseURL: URL {
         if let cachedSupabaseURL {
@@ -29,7 +31,21 @@ enum Config {
         cachedSupabaseAnonKey = key
         return key
     }
-    
+
+    static var fastAPIURL: URL {
+        if let cachedFastAPIURL {
+            return cachedFastAPIURL
+        }
+
+        let rawValue = loadOrStoreConfigValue(for: fastAPIURLKey)
+        guard let url = URL(string: rawValue) else {
+            fatalError("Invalid FASTAPI_URL: \(rawValue)")
+        }
+
+        cachedFastAPIURL = url
+        return url
+    }
+
     // ✅ Single source of truth for all Edge Function calls
     static var functionsBaseURL: URL {
         supabaseURL.appendingPathComponent("functions/v1")

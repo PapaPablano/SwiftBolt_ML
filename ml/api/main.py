@@ -18,6 +18,7 @@ from api.routers import (
     model_training,
     portfolio,
     stress_test,
+    support_resistance,
     technical_indicators,
     volatility_surface,
     walk_forward,
@@ -59,6 +60,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(technical_indicators.router, prefix="/api/v1", tags=["Technical Indicators"])
+app.include_router(support_resistance.router, prefix="/api/v1", tags=["Support & Resistance"])
 app.include_router(backtest.router, prefix="/api/v1", tags=["Backtesting"])
 app.include_router(walk_forward.router, prefix="/api/v1", tags=["Walk-Forward Optimization"])
 app.include_router(portfolio.router, prefix="/api/v1", tags=["Portfolio Optimization"])

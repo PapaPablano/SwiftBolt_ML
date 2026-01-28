@@ -118,6 +118,10 @@
 		F67ABD112F29827500916110 /* RealtimeForecastService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD102F29827500916110 /* RealtimeForecastService.swift */; };
 		F67ABD132F2982A600916110 /* ChartViewModel+RealtimeForecasts.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD122F2982A600916110 /* ChartViewModel+RealtimeForecasts.swift */; };
 		F67ABD152F2982B200916110 /* RealtimeForecastToggle.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD142F2982B200916110 /* RealtimeForecastToggle.swift */; };
+		F67ABD222F2AB14800916110 /* PivotStatisticalMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD212F2AB14800916110 /* PivotStatisticalMetrics.swift */; };
+		F67ABD232F2AB14800916110 /* OptimizedPivotDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD1E2F2AB14800916110 /* OptimizedPivotDetector.swift */; };
+		F67ABD242F2AB14800916110 /* PivotPeriodManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD202F2AB14800916110 /* PivotPeriodManager.swift */; };
+		F67ABD252F2AB14800916110 /* PivotChartDrawing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD1F2F2AB14800916110 /* PivotChartDrawing.swift */; };
 		F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */; };
 		F6EBEFB92F23DD2C001C6A4D /* SelectedContractState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFB82F23DD2C001C6A4D /* SelectedContractState.swift */; };
 		F6EBEFBB2F23DD3D001C6A4D /* MarketDataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFBA2F23DD3D001C6A4D /* MarketDataService.swift */; };
@@ -274,6 +278,10 @@
 		F67ABD162F29885500916110 /* ChartViewModel+RealtimeForecasts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ChartViewModel+RealtimeForecasts.swift"; sourceTree = "<group>"; };
 		F67ABD182F29887700916110 /* RealtimeForecastModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeForecastModels.swift; sourceTree = "<group>"; };
 		F67ABD1A2F29888D00916110 /* RealtimeForecastService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeForecastService.swift; sourceTree = "<group>"; };
+		F67ABD1E2F2AB14800916110 /* OptimizedPivotDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptimizedPivotDetector.swift; sourceTree = "<group>"; };
+		F67ABD1F2F2AB14800916110 /* PivotChartDrawing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PivotChartDrawing.swift; sourceTree = "<group>"; };
+		F67ABD202F2AB14800916110 /* PivotPeriodManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PivotPeriodManager.swift; sourceTree = "<group>"; };
+		F67ABD212F2AB14800916110 /* PivotStatisticalMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PivotStatisticalMetrics.swift; sourceTree = "<group>"; };
 		F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastHorizonsView.swift; sourceTree = "<group>"; };
 		F6EBEFB82F23DD2C001C6A4D /* SelectedContractState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectedContractState.swift; sourceTree = "<group>"; };
 		F6EBEFBA2F23DD3D001C6A4D /* MarketDataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketDataService.swift; sourceTree = "<group>"; };
@@ -508,6 +516,10 @@
 		A5000007233456780000007 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				F67ABD1E2F2AB14800916110 /* OptimizedPivotDetector.swift */,
+				F67ABD1F2F2AB14800916110 /* PivotChartDrawing.swift */,
+				F67ABD202F2AB14800916110 /* PivotPeriodManager.swift */,
+				F67ABD212F2AB14800916110 /* PivotStatisticalMetrics.swift */,
 				F67ABD1A2F29888D00916110 /* RealtimeForecastService.swift */,
 				F67ABD102F29827500916110 /* RealtimeForecastService.swift */,
 				F6EBEFBA2F23DD3D001C6A4D /* MarketDataService.swift */,
@@ -772,6 +784,10 @@
 				2FC800BC68800F807D6266D0 /* AnalysisViewModel.swift in Sources */,
 				F63BBA1B2F22F047003EE3B0 /* WalkForwardViewModel.swift in Sources */,
 				F63BBA1C2F22F047003EE3B0 /* BacktestingViewModel.swift in Sources */,
+				F67ABD222F2AB14800916110 /* PivotStatisticalMetrics.swift in Sources */,
+				F67ABD232F2AB14800916110 /* OptimizedPivotDetector.swift in Sources */,
+				F67ABD242F2AB14800916110 /* PivotPeriodManager.swift in Sources */,
+				F67ABD252F2AB14800916110 /* PivotChartDrawing.swift in Sources */,
 				F67ABD112F29827500916110 /* RealtimeForecastService.swift in Sources */,
 				F63BBA1D2F22F047003EE3B0 /* StressTestingViewModel.swift in Sources */,
 				F63BBA1E2F22F047003EE3B0 /* TechnicalIndicatorsViewModel.swift in Sources */,

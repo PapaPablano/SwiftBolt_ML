@@ -4,9 +4,13 @@
 # Phase 7.1 Canary Daily Monitoring Script
 # Run once daily at 6 PM to generate complete daily report
 # Usage: bash scripts/canary_daily_monitoring.sh
+#
+# Automatically uses Supabase configuration from .env file
 ##############################################################################
 
-set -e
+# Use the Supabase-based monitoring script (more reliable than psql)
+node "$(dirname "$0")/canary_daily_monitoring_supabase.js"
+exit $?
 
 # Configuration
 REPORT_DIR="canary_monitoring_reports"

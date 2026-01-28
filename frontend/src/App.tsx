@@ -12,7 +12,7 @@
  */
 
 import React, { useState } from 'react';
-import { TradingViewChart } from './components/TradingViewChart';
+import { ChartWithIndicators } from './components/ChartWithIndicators';
 
 function App() {
   const [selectedSymbol, setSelectedSymbol] = useState('AAPL');
@@ -97,14 +97,12 @@ function App() {
           </div>
         </div>
 
-        {/* Chart */}
-        <div className="rounded-lg bg-gray-900 p-4 md:p-6 shadow-xl">
-          <TradingViewChart
-            symbol={selectedSymbol}
-            horizon={selectedHorizon}
-            daysBack={selectedHorizonData?.days || 7}
-          />
-        </div>
+        {/* Chart with Indicators */}
+        <ChartWithIndicators
+          symbol={selectedSymbol}
+          horizon={selectedHorizon}
+          daysBack={selectedHorizonData?.days || 7}
+        />
 
         {/* Footer */}
         <div className="mt-8 text-center text-sm text-gray-500">
@@ -117,7 +115,10 @@ function App() {
             </span>
           </p>
           <p className="mt-1">
-            Data updates automatically via WebSocket connection
+            Multi-timeframe pivot levels & support/resistance analysis
+          </p>
+          <p className="mt-1 text-xs text-gray-600">
+            Data updates automatically via WebSocket | Live pivot detection
           </p>
         </div>
       </div>

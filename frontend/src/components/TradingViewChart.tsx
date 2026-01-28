@@ -23,6 +23,7 @@ import { createChart, IChartApi, ISeriesApi, ColorType } from 'lightweight-chart
 import axios from 'axios';
 import { ChartData, ForecastOverlay } from '../types/chart';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { SupportResistanceData } from '../hooks/useIndicators';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -30,18 +31,22 @@ interface TradingViewChartProps {
   symbol: string;
   horizon: string;
   daysBack?: number;
+  srData?: SupportResistanceData | null;
 }
 
 export const TradingViewChart: React.FC<TradingViewChartProps> = ({
   symbol,
   horizon,
   daysBack = 7,
+  srData = null,
 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const forecastSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const confidenceBandRef = useRef<ISeriesApi<'Area'> | null>(null);
+  const supportLineRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const resistanceLineRef = useRef<ISeriesApi<'Line'> | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -129,6 +134,32 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
       crosshairMarkerVisible: false,
     });
     confidenceBandRef.current = confidenceBand;
+
+    // Add polynomial support line
+    const supportLine = chart.addLineSeries({
+      color: '#2962ff',
+      lineWidth: 2,
+      lineStyle: 0,
+      title: 'Polynomial Support',
+      priceLineVisible: true,
+      lastValueVisible: true,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 4,
+    });
+    supportLineRef.current = supportLine;
+
+    // Add polynomial resistance line
+    const resistanceLine = chart.addLineSeries({
+      color: '#f23645',
+      lineWidth: 2,
+      lineStyle: 0,
+      title: 'Polynomial Resistance',
+      priceLineVisible: true,
+      lastValueVisible: true,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 4,
+    });
+    resistanceLineRef.current = resistanceLine;
 
     // Handle window resize
     const handleResize = () => {
@@ -230,6 +261,38 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
       setLatestForecast(data);
     }
   }, [lastUpdate]);
+
+  // Update S/R lines when indicator data arrives
+  useEffect(() => {
+    if (!srData || !supportLineRef.current || !resistanceLineRef.current) return;
+
+    // Get current bars to determine time for S/R levels
+    if (candleSeriesRef.current && srData.polynomial_support) {
+      // Add support line point at current bar
+      const supportData = [
+        {
+          time: Math.floor(Date.now() / 1000) as any,
+          value: srData.polynomial_support.level,
+        },
+      ];
+      supportLineRef.current.setData(supportData);
+    }
+
+    if (candleSeriesRef.current && srData.polynomial_resistance) {
+      // Add resistance line point at current bar
+      const resistanceData = [
+        {
+          time: Math.floor(Date.now() / 1000) as any,
+          value: srData.polynomial_resistance.level,
+        },
+      ];
+      resistanceLineRef.current.setData(resistanceData);
+    }
+
+    console.log(
+      `[Chart] Updated S/R: Support ${srData.polynomial_support?.level.toFixed(2)}, Resistance ${srData.polynomial_resistance?.level.toFixed(2)}`
+    );
+  }, [srData]);
 
   // Format direction emoji
   const getDirectionEmoji = (direction?: string) => {
@@ -356,6 +419,18 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
           <div className="h-3 w-3 bg-blue-300 opacity-30 rounded" />
           <span>Confidence Band</span>
         </div>
+        {srData?.polynomial_support && (
+          <div className="flex items-center gap-2">
+            <div className="h-3 w-3 bg-blue-400 rounded" />
+            <span>Polynomial Support</span>
+          </div>
+        )}
+        {srData?.polynomial_resistance && (
+          <div className="flex items-center gap-2">
+            <div className="h-3 w-3 bg-red-400 rounded" />
+            <span>Polynomial Resistance</span>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -10,6 +10,25 @@ const { createClient } = require("@supabase/supabase-js");
 const fs = require("fs");
 const path = require("path");
 
+// Load .env file manually
+function loadEnv() {
+  const envPath = path.join(__dirname, "..", ".env");
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, "utf-8");
+    envContent.split("\n").forEach((line) => {
+      const [key, ...valueParts] = line.split("=");
+      if (key && valueParts.length > 0) {
+        const value = valueParts.join("=").trim();
+        if (!process.env[key.trim()]) {
+          process.env[key.trim()] = value;
+        }
+      }
+    });
+  }
+}
+
+loadEnv();
+
 // Configuration
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -66,11 +85,26 @@ async function main() {
     // ============================================================================
     log.header("[1/3] Running Divergence Summary Query...");
 
+    // Get latest validation date first
+    const { data: latestDate, error: latestDateError } = await supabase
+      .from("ensemble_validation_metrics")
+      .select("validation_date")
+      .order("validation_date", { ascending: false })
+      .limit(1);
+
+    if (latestDateError || !latestDate || latestDate.length === 0) {
+      log.error(`Could not determine latest date: ${latestDateError?.message || "No data found"}`);
+      throw new Error("No validation data found in database");
+    }
+
+    const latestValidationDate = latestDate[0].validation_date;
+    log.header(`[Using latest data from: ${latestValidationDate}]`);
+
     const divergenceQuery = supabase
       .from("ensemble_validation_metrics")
       .select("symbol, divergence, is_overfitting")
       .in("symbol", ["AAPL", "MSFT", "SPY"])
-      .gte("validation_date", new Date().toISOString().split("T")[0]);
+      .gte("validation_date", latestValidationDate.split("T")[0]);
 
     const { data: divergenceData, error: divergenceError } = await divergenceQuery;
 
@@ -136,7 +170,7 @@ async function main() {
       .from("ensemble_validation_metrics")
       .select("symbol, val_rmse, test_rmse")
       .in("symbol", ["AAPL", "MSFT", "SPY"])
-      .gte("validation_date", new Date().toISOString().split("T")[0]);
+      .gte("validation_date", latestValidationDate.split("T")[0]);
 
     const { data: rmseData, error: rmseError } = await rmseQuery;
 
@@ -201,7 +235,7 @@ async function main() {
       .from("ensemble_validation_metrics")
       .select("symbol, is_overfitting, divergence")
       .in("symbol", ["AAPL", "MSFT", "SPY"])
-      .gte("validation_date", new Date().toISOString().split("T")[0]);
+      .gte("validation_date", latestValidationDate.split("T")[0]);
 
     const { data: overfittingData, error: overfittingError } = await overfittingQuery;
 
