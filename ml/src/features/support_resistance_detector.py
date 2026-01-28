@@ -1659,6 +1659,155 @@ class SupportResistanceDetector:
         return df
 
 
+    def find_all_levels(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Find all support and resistance levels using 3 modern indicators.
+        
+        This is the main method that orchestrates all 3 indicators:
+        1. Pivot Levels (multi-timeframe)
+        2. Polynomial Regression (trending S/R with forecasts)
+        3. Logistic Regression (ML-based probability levels)
+        
+        Args:
+            df: DataFrame with OHLC data
+            
+        Returns:
+            Dict containing:
+            - nearest_support: Closest support level below current price
+            - nearest_resistance: Closest resistance level above current price
+            - support_distance_pct: Distance to support as percentage
+            - resistance_distance_pct: Distance to resistance as percentage
+            - bias: Overall market bias ('bullish', 'bearish', or 'neutral')
+            - all_supports: List of all detected support levels
+            - all_resistances: List of all detected resistance levels
+            - indicators: Dict with results from each indicator
+        """
+        if df.empty:
+            return {
+                "nearest_support": None,
+                "nearest_resistance": None,
+                "support_distance_pct": None,
+                "resistance_distance_pct": None,
+                "bias": "neutral",
+                "all_supports": [],
+                "all_resistances": [],
+                "indicators": {},
+            }
+        
+        current_price = float(df["close"].iloc[-1])
+        logger.info(f"[SR] Finding all levels for price ${current_price:.2f}")
+        
+        # Calculate all 3 indicators
+        pivot_result = self.calculate_pivot_levels(df)
+        poly_result = self.calculate_polynomial_sr(df)
+        logistic_result = self.calculate_logistic_sr(df)
+        
+        # Aggregate all support levels
+        all_supports = []
+        all_resistances = []
+        
+        # Add pivot levels
+        for pivot in pivot_result.get("pivot_levels", []):
+            if pivot.get("level_low") and pivot["level_low"] < current_price:
+                all_supports.append(pivot["level_low"])
+            if pivot.get("level_high") and pivot["level_high"] > current_price:
+                all_resistances.append(pivot["level_high"])
+        
+        # Add polynomial levels
+        if poly_result.get("current_support") and poly_result["current_support"] < current_price:
+            all_supports.append(poly_result["current_support"])
+        if poly_result.get("current_resistance") and poly_result["current_resistance"] > current_price:
+            all_resistances.append(poly_result["current_resistance"])
+        
+        # Add logistic levels
+        for level_data in logistic_result.get("support_levels", []):
+            level = level_data.get("level")
+            if level and level < current_price:
+                all_supports.append(level)
+        for level_data in logistic_result.get("resistance_levels", []):
+            level = level_data.get("level")
+            if level and level > current_price:
+                all_resistances.append(level)
+        
+        # Find nearest levels
+        nearest_support = max(all_supports) if all_supports else None
+        nearest_resistance = min(all_resistances) if all_resistances else None
+        
+        # Calculate distances
+        support_distance_pct = None
+        resistance_distance_pct = None
+        
+        if nearest_support:
+            support_distance_pct = abs(current_price - nearest_support) / current_price * 100
+        
+        if nearest_resistance:
+            resistance_distance_pct = abs(nearest_resistance - current_price) / current_price * 100
+        
+        # Determine bias
+        bias = "neutral"
+        if support_distance_pct and resistance_distance_pct:
+            # Bias toward the nearest level
+            if support_distance_pct < resistance_distance_pct:
+                bias = "bullish"  # Support is closer, likely to bounce
+            else:
+                bias = "bearish"  # Resistance is closer, likely to reverse
+        elif nearest_support and not nearest_resistance:
+            bias = "bullish"
+        elif nearest_resistance and not nearest_support:
+            bias = "bearish"
+        
+        # Calculate trend from polynomial slopes
+        support_slope = poly_result.get("support_slope", 0)
+        resistance_slope = poly_result.get("resistance_slope", 0)
+        
+        # Determine trends
+        def get_trend(slope: float) -> str:
+            if slope > 0.001:
+                return "rising"
+            elif slope < -0.001:
+                return "falling"
+            else:
+                return "flat"
+        
+        support_trend = get_trend(support_slope)
+        resistance_trend = get_trend(resistance_slope)
+        
+        support_str = f"{nearest_support:.2f}" if nearest_support else "0"
+        resistance_str = f"{nearest_resistance:.2f}" if nearest_resistance else "0"
+        support_dist_str = f"{support_distance_pct:.1f}" if support_distance_pct else "0"
+        resistance_dist_str = f"{resistance_distance_pct:.1f}" if resistance_distance_pct else "0"
+
+        logger.info(
+            f"[SR] Levels found - Support: ${support_str} ({support_dist_str}%), "
+            f"Resistance: ${resistance_str} ({resistance_dist_str}%), "
+            f"Bias: {bias}"
+        )
+        
+        return {
+            "nearest_support": nearest_support,
+            "nearest_resistance": nearest_resistance,
+            "support_distance_pct": round(support_distance_pct, 2) if support_distance_pct else None,
+            "resistance_distance_pct": round(resistance_distance_pct, 2) if resistance_distance_pct else None,
+            "bias": bias,
+            "all_supports": sorted(list(set(all_supports)), reverse=True),
+            "all_resistances": sorted(list(set(all_resistances))),
+            "indicators": {
+                "pivot_levels": pivot_result,
+                "polynomial": {
+                    "support": poly_result.get("current_support"),
+                    "resistance": poly_result.get("current_resistance"),
+                    "support_slope": poly_result.get("support_slope"),
+                    "resistance_slope": poly_result.get("resistance_slope"),
+                    "support_trend": support_trend,
+                    "resistance_trend": resistance_trend,
+                    "forecast_support": poly_result.get("forecast_support"),
+                    "forecast_resistance": poly_result.get("forecast_resistance"),
+                },
+                "logistic": logistic_result,
+            },
+        }
+
+
 def add_support_resistance_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Convenience function to add S/R features to a DataFrame.

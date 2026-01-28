@@ -8,6 +8,7 @@
  * - OHLC candlestick chart
  * - Forecast target overlay (line series)
  * - Confidence bands (area series)
+ * - Polynomial S/R regression curves
  * - Real-time WebSocket updates
  * - Responsive design
  * - Connection status indicator
@@ -19,7 +20,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { createChart, IChartApi, ISeriesApi, ColorType } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, ColorType, LineStyle } from 'lightweight-charts';
 import axios from 'axios';
 import { ChartData, ForecastOverlay } from '../types/chart';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -32,6 +33,71 @@ interface TradingViewChartProps {
   horizon: string;
   daysBack?: number;
   srData?: SupportResistanceData | null;
+}
+
+/**
+ * Calculate polynomial regression values for chart plotting
+ * Creates a smooth curve across all historical bars
+ */
+function calculatePolynomialCurve(
+  bars: any[],
+  currentLevel: number,
+  slope: number,
+  extendForward: number = 10
+): any[] {
+  if (!bars || bars.length === 0) return [];
+
+  const curveData: any[] = [];
+  const totalPoints = bars.length + extendForward;
+  
+  // Plot curve backward from current bar
+  for (let i = 0; i < totalPoints; i++) {
+    const barIndex = bars.length - 1 - i;
+    
+    // Calculate polynomial value: y = currentLevel + slope * (x - currentBar)
+    // Negative i means going backward in time
+    const value = currentLevel + (slope * -i);
+    
+    // Use actual bar time for historical data
+    if (barIndex >= 0 && bars[barIndex]) {
+      curveData.push({
+        time: bars[barIndex].time,
+        value: value,
+      });
+    }
+    // Extend into future with estimated timestamps
+    else if (i >= bars.length && bars.length > 0) {
+      const lastBar = bars[bars.length - 1];
+      const timeIncrement = determineTimeIncrement(bars);
+      const futureTime = lastBar.time + (timeIncrement * (i - bars.length + 1));
+      
+      curveData.push({
+        time: futureTime,
+        value: value,
+      });
+    }
+  }
+  
+  // Reverse to get chronological order
+  return curveData.reverse();
+}
+
+/**
+ * Determine time increment between bars (for extending into future)
+ */
+function determineTimeIncrement(bars: any[]): number {
+  if (bars.length < 2) return 86400; // Default to 1 day
+  
+  // Calculate average time between bars
+  let totalDiff = 0;
+  let count = 0;
+  
+  for (let i = 1; i < Math.min(10, bars.length); i++) {
+    totalDiff += bars[i].time - bars[i - 1].time;
+    count++;
+  }
+  
+  return count > 0 ? Math.round(totalDiff / count) : 86400;
 }
 
 export const TradingViewChart: React.FC<TradingViewChartProps> = ({
@@ -52,6 +118,7 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [latestPrice, setLatestPrice] = useState<number | null>(null);
   const [latestForecast, setLatestForecast] = useState<ForecastOverlay | null>(null);
+  const [chartBars, setChartBars] = useState<any[]>([]);
 
   // WebSocket for real-time updates
   const { isConnected, lastUpdate, error: wsError } = useWebSocket(symbol, horizon);
@@ -135,26 +202,26 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
     });
     confidenceBandRef.current = confidenceBand;
 
-    // Add polynomial support line
+    // Add polynomial support line (smooth curve)
     const supportLine = chart.addLineSeries({
       color: '#2962ff',
       lineWidth: 2,
-      lineStyle: 0,
+      lineStyle: LineStyle.Solid,
       title: 'Polynomial Support',
-      priceLineVisible: true,
+      priceLineVisible: false,
       lastValueVisible: true,
       crosshairMarkerVisible: true,
       crosshairMarkerRadius: 4,
     });
     supportLineRef.current = supportLine;
 
-    // Add polynomial resistance line
+    // Add polynomial resistance line (smooth curve)
     const resistanceLine = chart.addLineSeries({
       color: '#f23645',
       lineWidth: 2,
-      lineStyle: 0,
+      lineStyle: LineStyle.Solid,
       title: 'Polynomial Resistance',
-      priceLineVisible: true,
+      priceLineVisible: false,
       lastValueVisible: true,
       crosshairMarkerVisible: true,
       crosshairMarkerRadius: 4,
@@ -197,6 +264,7 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
         if (candleSeriesRef.current && data.bars.length > 0) {
           candleSeriesRef.current.setData(data.bars);
           setLatestPrice(data.latest_price);
+          setChartBars(data.bars); // Store bars for polynomial curve calculation
         }
 
         // Update forecast series
@@ -262,37 +330,55 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
     }
   }, [lastUpdate]);
 
-  // Update S/R lines when indicator data arrives
+  // Update S/R polynomial curves when indicator data arrives
   useEffect(() => {
-    if (!srData || !supportLineRef.current || !resistanceLineRef.current) return;
+    if (!srData || chartBars.length === 0) return;
+    if (!supportLineRef.current || !resistanceLineRef.current) return;
 
-    // Get current bars to determine time for S/R levels
-    if (candleSeriesRef.current && srData.polynomial_support) {
-      // Add support line point at current bar
-      const supportData = [
-        {
-          time: Math.floor(Date.now() / 1000) as any,
-          value: srData.polynomial_support.level,
-        },
-      ];
-      supportLineRef.current.setData(supportData);
+    console.log('[Chart] Updating polynomial S/R curves...');
+
+    // Plot polynomial support curve
+    if (srData.polynomial_support) {
+      const supportCurve = calculatePolynomialCurve(
+        chartBars,
+        srData.polynomial_support.level,
+        srData.polynomial_support.slope,
+        10 // Extend 10 bars into future
+      );
+
+      if (supportCurve.length > 0) {
+        supportLineRef.current.setData(supportCurve);
+        console.log(
+          `[Chart] Plotted ${supportCurve.length} support points: ` +
+          `${srData.polynomial_support.level.toFixed(2)} (slope: ${srData.polynomial_support.slope.toFixed(4)})`
+        );
+      }
+    } else {
+      // Clear support line if no data
+      supportLineRef.current.setData([]);
     }
 
-    if (candleSeriesRef.current && srData.polynomial_resistance) {
-      // Add resistance line point at current bar
-      const resistanceData = [
-        {
-          time: Math.floor(Date.now() / 1000) as any,
-          value: srData.polynomial_resistance.level,
-        },
-      ];
-      resistanceLineRef.current.setData(resistanceData);
-    }
+    // Plot polynomial resistance curve
+    if (srData.polynomial_resistance) {
+      const resistanceCurve = calculatePolynomialCurve(
+        chartBars,
+        srData.polynomial_resistance.level,
+        srData.polynomial_resistance.slope,
+        10 // Extend 10 bars into future
+      );
 
-    console.log(
-      `[Chart] Updated S/R: Support ${srData.polynomial_support?.level.toFixed(2)}, Resistance ${srData.polynomial_resistance?.level.toFixed(2)}`
-    );
-  }, [srData]);
+      if (resistanceCurve.length > 0) {
+        resistanceLineRef.current.setData(resistanceCurve);
+        console.log(
+          `[Chart] Plotted ${resistanceCurve.length} resistance points: ` +
+          `${srData.polynomial_resistance.level.toFixed(2)} (slope: ${srData.polynomial_resistance.slope.toFixed(4)})`
+        );
+      }
+    } else {
+      // Clear resistance line if no data
+      resistanceLineRef.current.setData([]);
+    }
+  }, [srData, chartBars]);
 
   // Format direction emoji
   const getDirectionEmoji = (direction?: string) => {
@@ -422,16 +508,34 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
         {srData?.polynomial_support && (
           <div className="flex items-center gap-2">
             <div className="h-3 w-3 bg-blue-400 rounded" />
-            <span>Polynomial Support</span>
+            <span>Polynomial Support ({srData.polynomial_support.trend})</span>
           </div>
         )}
         {srData?.polynomial_resistance && (
           <div className="flex items-center gap-2">
             <div className="h-3 w-3 bg-red-400 rounded" />
-            <span>Polynomial Resistance</span>
+            <span>Polynomial Resistance ({srData.polynomial_resistance.trend})</span>
           </div>
         )}
       </div>
+
+      {/* S/R Info Debug */}
+      {srData && (srData.polynomial_support || srData.polynomial_resistance) && (
+        <div className="mt-2 text-xs text-gray-500">
+          {srData.polynomial_support && (
+            <div>
+              Support: ${srData.polynomial_support.level.toFixed(2)} 
+              (slope: {srData.polynomial_support.slope > 0 ? '+' : ''}{srData.polynomial_support.slope.toFixed(6)})
+            </div>
+          )}
+          {srData.polynomial_resistance && (
+            <div>
+              Resistance: ${srData.polynomial_resistance.level.toFixed(2)} 
+              (slope: {srData.polynomial_resistance.slope > 0 ? '+' : ''}{srData.polynomial_resistance.slope.toFixed(6)})
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

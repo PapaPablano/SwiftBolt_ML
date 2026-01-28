@@ -7,6 +7,20 @@ import { useState, useEffect, useCallback } from 'react';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+/**
+ * Convert frontend timeframe format (1h, 4h, 1D, 15m) to backend format (h1, h4, d1, m15)
+ */
+function convertTimeframeFormat(frontendTimeframe: string): string {
+  const mapping: Record<string, string> = {
+    '15m': 'm15',
+    '1h': 'h1',
+    '4h': 'h4',
+    '1D': 'd1',
+    'D': 'd1',
+  };
+  return mapping[frontendTimeframe] || frontendTimeframe;
+}
+
 export interface PolynomialSRData {
   level: number;
   slope: number;
@@ -50,8 +64,9 @@ export const useIndicators = (symbol: string, timeframe: string) => {
     setError(null);
 
     try {
+      const backendTimeframe = convertTimeframeFormat(timeframe);
       const response = await fetch(
-        `${API_BASE_URL}/api/support-resistance?symbol=${symbol}&timeframe=${timeframe}`
+        `${API_BASE_URL}/api/v1/support-resistance?symbol=${symbol}&timeframe=${backendTimeframe}`
       );
 
       if (!response.ok) {

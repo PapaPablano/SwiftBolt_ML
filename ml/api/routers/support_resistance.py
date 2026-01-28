@@ -112,19 +112,31 @@ async def get_support_resistance(
         poly_support = None
         poly_resistance = None
 
-        if poly_indicator.get("support"):
+        # Helper function to determine trend from slope
+        def get_trend(slope: float) -> str:
+            if slope > 0.001:
+                return "rising"
+            elif slope < -0.001:
+                return "falling"
+            else:
+                return "flat"
+
+        # Use correct key names: support/resistance (mapped from current_support/current_resistance)
+        if poly_indicator.get("support") is not None:
+            support_slope = poly_indicator.get("support_slope", 0)
             poly_support = PolynomialLevel(
                 level=poly_indicator["support"],
-                slope=poly_indicator.get("support_slope", 0),
-                trend=poly_indicator.get("support_trend", "unknown"),
+                slope=support_slope,
+                trend=poly_indicator.get("support_trend", get_trend(support_slope)),
                 forecast=poly_indicator.get("forecast_support"),
             )
 
-        if poly_indicator.get("resistance"):
+        if poly_indicator.get("resistance") is not None:
+            resistance_slope = poly_indicator.get("resistance_slope", 0)
             poly_resistance = PolynomialLevel(
                 level=poly_indicator["resistance"],
-                slope=poly_indicator.get("resistance_slope", 0),
-                trend=poly_indicator.get("resistance_trend", "unknown"),
+                slope=resistance_slope,
+                trend=poly_indicator.get("resistance_trend", get_trend(resistance_slope)),
                 forecast=poly_indicator.get("forecast_resistance"),
             )
 
