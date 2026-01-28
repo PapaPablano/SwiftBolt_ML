@@ -2,6 +2,7 @@
 
 import logging
 import sys
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
@@ -17,6 +18,15 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("/technical-indicators/health")
+async def technical_indicators_health():
+    """
+    Health check for technical indicators endpoint.
+    Returns immediately without doing heavy calculations.
+    """
+    return {"status": "healthy", "service": "technical-indicators"}
+
+
 @router.get("/technical-indicators", response_model=TechnicalIndicatorsResponse)
 async def get_technical_indicators(
     symbol: str = Query(..., description="Stock ticker symbol"),
@@ -25,22 +35,31 @@ async def get_technical_indicators(
 ):
     """
     Get technical indicators for a symbol/timeframe.
-    
+
     Returns all calculated technical indicators for the latest bar.
+    May take up to 60 seconds for first calculation.
     """
+    start_time = time.time()
     try:
+        logger.info(f"[TI] Starting calculation for {symbol}/{timeframe} (lookback={lookback})")
+
         result = get_latest_indicators(
             symbol=symbol.upper(),
             timeframe=timeframe,
             lookback_bars=lookback,
         )
-        
+
+        elapsed = time.time() - start_time
+        logger.info(f"[TI] Calculation completed in {elapsed:.1f}s for {symbol}/{timeframe}")
+
         if "error" in result:
+            logger.error(f"[TI] Indicator error for {symbol}: {result['error']}")
             raise HTTPException(status_code=400, detail=result["error"])
-        
+
         return TechnicalIndicatorsResponse(**result)
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting technical indicators: {e}", exc_info=True)
+        elapsed = time.time() - start_time
+        logger.error(f"[TI] Error after {elapsed:.1f}s for {symbol}/{timeframe}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

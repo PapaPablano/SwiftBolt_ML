@@ -1471,30 +1471,41 @@ final class APIClient {
     }
     
     // MARK: - Technical Indicators
-    
+
     /// Fetch technical indicators for a symbol/timeframe
+    /// Calls FastAPI backend directly: http://localhost:8000/api/v1/technical-indicators
     func fetchTechnicalIndicators(symbol: String, timeframe: String = "d1") async throws -> TechnicalIndicatorsResponse {
-        guard var components = URLComponents(url: functionURL("technical-indicators"), resolvingAgainstBaseURL: false) else {
+        guard let backendURL = URL(string: "http://localhost:8000") else {
             throw APIError.invalidURL
         }
-        
+
+        guard var components = URLComponents(url: backendURL.appendingPathComponent("api/v1/technical-indicators"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+
         components.queryItems = [
             URLQueryItem(name: "symbol", value: symbol.uppercased()),
-            URLQueryItem(name: "timeframe", value: timeframe)
+            URLQueryItem(name: "timeframe", value: timeframe),
+            URLQueryItem(name: "lookback", value: "500")
         ]
-        
+
         guard let url = components.url else {
             throw APIError.invalidURL
         }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
-        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        
-        return try await performRequest(request)
+        request.timeoutInterval = 90  // Increased from 30s - indicator calculation can be slow
+
+        do {
+            return try await performRequest(request)
+        } catch let error as NSError where error.code == NSURLErrorTimedOut {
+            throw APIError.serviceUnavailable(message: "Technical indicators request timed out. The calculation is taking longer than expected - try again in a moment.")
+        } catch {
+            throw APIError.serviceUnavailable(message: "FastAPI backend not available at http://localhost:8000. Make sure ML backend is running.")
+        }
     }
     
     // MARK: - Backtesting
