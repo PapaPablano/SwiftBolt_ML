@@ -62,14 +62,15 @@ final class TechnicalIndicatorsViewModel: ObservableObject {
         error = nil
         
         do {
-            // Use request deduplication to prevent duplicate calls
-            let deduplicationKey = "technical_indicators_\(symbol.uppercased())_\(timeframe)"
+            // Use request deduplication to prevent duplicate calls (unless forcing refresh)
+            let deduplicationKey = forceRefresh ? "" : "technical_indicators_\(symbol.uppercased())_\(timeframe)"
             let response = try await RequestDeduplicator.shared.execute(key: deduplicationKey) {
                 // Use retry logic with exponential backoff
                 try await withRetry(policy: .default) {
                     try await APIClient.shared.fetchTechnicalIndicators(
                         symbol: symbol,
-                        timeframe: timeframe
+                        timeframe: timeframe,
+                        forceRefresh: forceRefresh
                     )
                 }
             }
