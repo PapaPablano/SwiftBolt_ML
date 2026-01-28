@@ -385,9 +385,21 @@ class PivotLevelsDetector:
         """
         Update pivot statuses based on current price position.
 
-        PineScript:
-          color1 = low > H+atr ? colorSup : high < H-atr ? colorRes : colorActive
-          color2 = low > L+atr ? colorSup : high < L-atr ? colorRes : colorActive
+        Status legend:
+        - ACTIVE: Price is testing the level (within ATR zone)
+        - SUPPORT: Level is acting as support (price respecting from above)
+        - RESISTANCE: Level is acting as resistance (price respecting from below)
+        - INACTIVE: Level is broken through or not applicable
+
+        For HIGH pivots (natural resistance):
+        - Price far above: INACTIVE (level broken through)
+        - Price near level: ACTIVE (testing)
+        - Price far below: RESISTANCE (level is resistive)
+
+        For LOW pivots (natural support):
+        - Price far above: SUPPORT (level is supportive)
+        - Price near level: ACTIVE (testing)
+        - Price far below: INACTIVE (level broken through)
         """
         if df.empty:
             return
@@ -395,25 +407,44 @@ class PivotLevelsDetector:
         last_bar = df.iloc[-1]
         last_low = last_bar["low"]
         last_high = last_bar["high"]
+        current_price = last_bar.get("close", (last_low + last_high) / 2)
 
         for i, level in enumerate(self._pivot_levels):
-            # HIGH pivot color logic
+            # HIGH pivot (natural resistance) logic
             if level.level_high > 0:
-                if last_low > level.level_high + self._current_atr:
-                    level.high_status = PivotStatus.SUPPORT
-                elif last_high < level.level_high - self._current_atr:
-                    level.high_status = PivotStatus.RESISTANCE
-                else:
-                    level.high_status = PivotStatus.ACTIVE
+                distance = abs(current_price - level.level_high)
+                price_above = current_price > level.level_high
 
-            # LOW pivot color logic
-            if level.level_low > 0:
-                if last_low > level.level_low + self._current_atr:
-                    level.low_status = PivotStatus.SUPPORT
-                elif last_high < level.level_low - self._current_atr:
-                    level.low_status = PivotStatus.RESISTANCE
+                if price_above:
+                    # Price is above the resistance level
+                    level.high_status = (
+                        PivotStatus.ACTIVE if distance <= self._current_atr
+                        else PivotStatus.INACTIVE
+                    )
                 else:
-                    level.low_status = PivotStatus.ACTIVE
+                    # Price is below the resistance level
+                    level.high_status = (
+                        PivotStatus.ACTIVE if distance <= self._current_atr
+                        else PivotStatus.RESISTANCE
+                    )
+
+            # LOW pivot (natural support) logic
+            if level.level_low > 0:
+                distance = abs(current_price - level.level_low)
+                price_above = current_price > level.level_low
+
+                if price_above:
+                    # Price is above the support level
+                    level.low_status = (
+                        PivotStatus.ACTIVE if distance <= self._current_atr
+                        else PivotStatus.SUPPORT
+                    )
+                else:
+                    # Price is below the support level
+                    level.low_status = (
+                        PivotStatus.ACTIVE if distance <= self._current_atr
+                        else PivotStatus.INACTIVE
+                    )
 
             self._pivot_levels[i] = level
 
