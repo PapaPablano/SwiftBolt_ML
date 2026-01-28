@@ -517,75 +517,73 @@ struct WebChartView: NSViewRepresentable {
                 }
             }
             
-            // Set Support & Resistance Indicators
-            if !config.useWebChart {
-                if config.showPolynomialSR {
-                    if let poly = parent.viewModel.polynomialSRIndicator.resistanceLine {
-                        let resPoints: [LightweightDataPoint] = poly.predictedPoints.compactMap { pt in
+            // Set Support & Resistance Indicators (for both WebChart and legacy)
+            if config.showPolynomialSR {
+                if let poly = parent.viewModel.polynomialSRIndicator.resistanceLine {
+                    let resPoints: [LightweightDataPoint] = poly.predictedPoints.compactMap { pt in
+                        let i = Int(pt.x)
+                        guard i >= 0, i < allBars.count else { return nil }
+                        return LightweightDataPoint(
+                            time: Int(allBars[i].ts.timeIntervalSince1970),
+                            value: Double(pt.y)
+                        )
+                    }
+
+                    let supPoints: [LightweightDataPoint] =
+                        parent.viewModel.polynomialSRIndicator.supportLine?.predictedPoints.compactMap { pt in
                             let i = Int(pt.x)
                             guard i >= 0, i < allBars.count else { return nil }
                             return LightweightDataPoint(
                                 time: Int(allBars[i].ts.timeIntervalSince1970),
                                 value: Double(pt.y)
                             )
-                        }
-                        
-                        let supPoints: [LightweightDataPoint] =
-                            parent.viewModel.polynomialSRIndicator.supportLine?.predictedPoints.compactMap { pt in
-                                let i = Int(pt.x)
-                                guard i >= 0, i < allBars.count else { return nil }
-                                return LightweightDataPoint(
-                                    time: Int(allBars[i].ts.timeIntervalSince1970),
-                                    value: Double(pt.y)
-                                )
-                            } ?? []
-                        
-                        bridge.send(.setPolynomialSR(resistance: resPoints, support: supPoints))
-                    }
-                } else {
-                    bridge.send(.removeSeries(id: "poly-res"))
-                    bridge.send(.removeSeries(id: "poly-sup"))
+                        } ?? []
+
+                    bridge.send(.setPolynomialSR(resistance: resPoints, support: supPoints))
                 }
-                
-                if config.showPivotLevels {
-                    let levels = parent.viewModel.pivotLevelsIndicator.pivotLevels.map { level in
-                        SRLevel(
-                            price: level.levelHigh > 0 ? level.levelHigh : level.levelLow,
-                            color: level.levelHigh > 0 ? "#FF5252" : "#4CAF50", // Red for Res, Green for Sup
-                            title: "Pivot \(level.length)",
-                            lineWidth: 1,
-                            lineStyle: 2 // Dashed
-                        )
-                    }
-                    bridge.send(.setPivotLevels(levels: levels))
-                } else {
-                    bridge.send(.removePriceLines(category: "pivots"))
+            } else {
+                bridge.send(.removeSeries(id: "poly-res"))
+                bridge.send(.removeSeries(id: "poly-sup"))
+            }
+
+            if config.showPivotLevels {
+                let levels = parent.viewModel.pivotLevelsIndicator.pivotLevels.map { level in
+                    SRLevel(
+                        price: level.levelHigh > 0 ? level.levelHigh : level.levelLow,
+                        color: level.levelHigh > 0 ? "#FF5252" : "#4CAF50", // Red for Res, Green for Sup
+                        title: "Pivot \(level.length)",
+                        lineWidth: 1,
+                        lineStyle: 2 // Dashed
+                    )
                 }
-                
-                if config.showLogisticSR {
-                    var levels: [SRLevel] = []
-                    for level in parent.viewModel.logisticSRIndicator.supportLevels {
-                        levels.append(SRLevel(
-                            price: level.level,
-                            color: "#089981", // Teal
-                            title: "ML Sup",
-                            lineWidth: 2,
-                            lineStyle: 0 // Solid
-                        ))
-                    }
-                    for level in parent.viewModel.logisticSRIndicator.resistanceLevels {
-                        levels.append(SRLevel(
-                            price: level.level,
-                            color: "#F23645", // Red
-                            title: "ML Res",
-                            lineWidth: 2,
-                            lineStyle: 0 // Solid
-                        ))
-                    }
-                    bridge.send(.setLogisticSR(levels: levels))
-                } else {
-                    bridge.send(.removePriceLines(category: "logistic"))
+                bridge.send(.setPivotLevels(levels: levels))
+            } else {
+                bridge.send(.removePriceLines(category: "pivots"))
+            }
+
+            if config.showLogisticSR {
+                var levels: [SRLevel] = []
+                for level in parent.viewModel.logisticSRIndicator.supportLevels {
+                    levels.append(SRLevel(
+                        price: level.level,
+                        color: "#089981", // Teal
+                        title: "ML Sup",
+                        lineWidth: 2,
+                        lineStyle: 0 // Solid
+                    ))
                 }
+                for level in parent.viewModel.logisticSRIndicator.resistanceLevels {
+                    levels.append(SRLevel(
+                        price: level.level,
+                        color: "#F23645", // Red
+                        title: "ML Res",
+                        lineWidth: 2,
+                        lineStyle: 0 // Solid
+                    ))
+                }
+                bridge.send(.setLogisticSR(levels: levels))
+            } else {
+                bridge.send(.removePriceLines(category: "logistic"))
             }
         }
 
