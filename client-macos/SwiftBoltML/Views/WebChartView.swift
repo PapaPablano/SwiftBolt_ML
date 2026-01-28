@@ -156,6 +156,28 @@ struct WebChartView: NSViewRepresentable {
                 }
                 .store(in: &cancellables)
 
+
+            // Subscribe to real-time forecast data changes and re-render chart with overlays
+            // Debounce to prevent rapid duplicate renders
+            parent.viewModel.$realtimeChartData
+                .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] realtimeData in
+                    guard let self = self,
+                          self.parent.bridge.isReady,
+                          realtimeData != nil else { return }
+
+                    print("[WebChartView] Real-time data updated, re-rendering chart with overlays")
+
+                    // Trigger chart update with real-time overlays
+                    if let dataV2 = self.parent.viewModel.chartDataV2 {
+                        self.updateChartV2(with: dataV2)
+                    } else if let data = self.parent.viewModel.chartData {
+                        self.updateChart(with: data)
+                    }
+                }
+                .store(in: &cancellables)
+
             // Subscribe to indicator config changes (re-apply overlays/subpanels)
             parent.viewModel.$indicatorConfig
                 .removeDuplicates(by: { lhs, rhs in
@@ -262,41 +284,48 @@ struct WebChartView: NSViewRepresentable {
 
             bridge.setCandles(from: uniqueCandles)
 
-            // Forecast confidence badge/overlay for all timeframes (Fix E: removed intraday-only constraint)
-            if let ml = data.mlSummary, let lastBar = uniqueCandles.last {
-                // Remove previous confidence lines to avoid duplicates
-                bridge.send(.removePriceLines(category: "forecast-confidence"))
+            // Only apply ML forecast overlays if we DON'T have real-time data
+            // (real-time overlays are more current and will be applied separately)
+            if parent.viewModel.realtimeChartData == nil {
+                // Forecast confidence badge/overlay for all timeframes (Fix E: removed intraday-only constraint)
+                if let ml = data.mlSummary, let lastBar = uniqueCandles.last {
+                    // Remove previous confidence lines to avoid duplicates
+                    bridge.send(.removePriceLines(category: "forecast-confidence"))
 
-                // Derive a label and color from overall prediction
-                let label = (ml.overallLabel ?? "neutral").lowercased()
-                let color = forecastColorHex(for: label)
+                    // Derive a label and color from overall prediction
+                    let label = (ml.overallLabel ?? "neutral").lowercased()
+                    let color = forecastColorHex(for: label)
 
-                // Add a labeled price line as a badge at the last close
-                let price = lastBar.close
-                let title = "AI: \(label.uppercased()) \(Int((ml.confidence) * 100))%"
-                let options = PriceLineOptions(
-                    color: color,
-                    lineWidth: 2,
-                    lineStyle: 1,
-                    showLabel: true,
-                    title: title,
-                    category: "forecast-confidence"
-                )
-                bridge.send(.addPriceLine(seriesId: "candles", price: price, options: options))
-            }
-            
-            // Clear previous overlays/indicators (keeps candles)
-            bridge.send(.clearIndicators)
+                    // Add a labeled price line as a badge at the last close
+                    let price = lastBar.close
+                    let title = "AI: \(label.uppercased()) \(Int((ml.confidence) * 100))%"
+                    let options = PriceLineOptions(
+                        color: color,
+                        lineWidth: 2,
+                        lineStyle: 1,
+                        showLabel: true,
+                        title: title,
+                        category: "forecast-confidence"
+                    )
+                    bridge.send(.addPriceLine(seriesId: "candles", price: price, options: options))
+                }
 
-            // Add forecast data if present
-            if !forecastBars.isEmpty {
-                applyForecastOverlay(using: forecastBars)
+                // Add forecast data if present
+                if !forecastBars.isEmpty {
+                    applyForecastOverlay(using: forecastBars)
+                } else {
+                    applyForecastTargetLine(
+                        currentPrice: uniqueCandles.last?.close,
+                        label: data.mlSummary?.overallLabel
+                    )
+                }
             } else {
-                applyForecastTargetLine(
-                    currentPrice: uniqueCandles.last?.close,
-                    label: data.mlSummary?.overallLabel
-                )
+                print("[WebChartView] Skipping ML forecast overlay - real-time data available")
             }
+
+            // Clear previous overlays/indicators (keeps candles and markers)
+            // Note: this clears SMA, EMA, Bollinger Bands, etc., but NOT markers
+            bridge.send(.clearIndicators)
 
             // Push indicator configuration down to bridge (drives JS-side panel layout)
             let config = parent.viewModel.indicatorConfig
@@ -467,6 +496,12 @@ struct WebChartView: NSViewRepresentable {
                 bridge.hidePanel("atr")
             }
 
+            // Apply real-time forecast overlays if available (integrated into main chart flow)
+            if let realtimeData = parent.viewModel.realtimeChartData, !realtimeData.forecasts.isEmpty {
+                print("[WebChartView] updateChartV2: Applying \(realtimeData.forecasts.count) real-time forecast overlays")
+                applyRealtimeForecastOverlays(realtimeData)
+            }
+
             applyInitialZoomIfNeeded(bars: uniqueCandles)
 
             // Restore prior visible range after overlays are applied
@@ -615,6 +650,59 @@ struct WebChartView: NSViewRepresentable {
             }
         }
 
+        /// Apply real-time forecast overlays from the real-time API
+        private func applyRealtimeForecastOverlays(_ realtimeData: RealtimeChartData) {
+            guard !realtimeData.forecasts.isEmpty else { return }
+
+            print("[WebChartView] Processing \(realtimeData.forecasts.count) forecasts for display")
+
+            // Deduplicate markers by price level (within $0.50 tolerance)
+            // This prevents multiple markers from clustering too close together
+            var uniqueMarkers: [ChartMarker] = []
+            var seenPrices: Set<String> = []
+
+            for forecast in realtimeData.forecasts {
+                // Round price to nearest 0.50 for deduplication
+                let roundedPrice = (forecast.price * 2).rounded() / 2
+                let priceKey = String(format: "%.2f", roundedPrice)
+
+                guard !seenPrices.contains(priceKey) else { continue }
+                seenPrices.insert(priceKey)
+
+                var marker = forecast.toChartMarker()
+                marker.size = 1  // Smaller, cleaner markers
+                uniqueMarkers.append(marker)
+            }
+
+            print("[WebChartView] After deduplication: \(uniqueMarkers.count) unique markers")
+
+            // Sample markers to show every Nth marker for better spacing
+            // For intraday (many forecasts), sample more aggressively
+            let sampleRate = realtimeData.forecasts.count > 100 ? 5 : 2
+            let sampledMarkers = stride(from: 0, to: uniqueMarkers.count, by: sampleRate)
+                .map { uniqueMarkers[$0] }
+
+            print("[WebChartView] After sampling (every \(sampleRate)): \(sampledMarkers.count) markers to render")
+
+            // Set markers on the candles series
+            if !sampledMarkers.isEmpty {
+                parent.bridge.setMarkers(sampledMarkers, seriesId: "candles")
+            }
+
+            // Apply price line for the latest forecast with distinctive styling
+            if let latestForecast = realtimeData.latestForecast {
+                let (price, color, label) = latestForecast.toPriceLine()
+                let options = PriceLineOptions(
+                    color: color,
+                    lineWidth: 3,  // Thicker for visibility
+                    lineStyle: 3,  // Dotted line
+                    showLabel: true,
+                    title: "RT: " + label  // Prefix to distinguish from ML targets
+                )
+                parent.bridge.send(.addPriceLine(seriesId: "candles", price: price, options: options))
+            }
+        }
+
         private func updateChart(with data: ChartResponse) {
             let bridge = parent.bridge
             // Preserve current visible range to avoid reset when toggling indicators
@@ -638,7 +726,12 @@ struct WebChartView: NSViewRepresentable {
 
             bridge.setCandles(from: data.bars)
 
-            applyLegacyForecastOverlay(with: data)
+            // Only apply legacy overlays if real-time data is NOT available
+            if parent.viewModel.realtimeChartData == nil {
+                applyLegacyForecastOverlay(with: data)
+            } else {
+                print("[WebChartView] Skipping legacy forecast overlay - real-time data available")
+            }
 
             // Push indicator configuration down to bridge (drives JS-side panel layout)
             let config = parent.viewModel.indicatorConfig
@@ -843,6 +936,12 @@ struct WebChartView: NSViewRepresentable {
                 bridge.setATR(data: parent.viewModel.atr)
             } else {
                 bridge.hidePanel("atr")
+            }
+
+            // Apply real-time forecast overlays if available (integrated into main chart flow)
+            if let realtimeData = parent.viewModel.realtimeChartData, !realtimeData.forecasts.isEmpty {
+                print("[WebChartView] updateChart: Applying \(realtimeData.forecasts.count) real-time forecast overlays")
+                applyRealtimeForecastOverlays(realtimeData)
             }
 
             print("[WebChartView] Chart updated with \(data.bars.count) bars")

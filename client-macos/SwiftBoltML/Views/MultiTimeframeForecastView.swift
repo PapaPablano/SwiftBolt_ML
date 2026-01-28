@@ -13,24 +13,54 @@ struct MultiTimeframeForecastGridView: View {
         case day = "Day"       // d1, h1, m15
         case all = "All"       // all 5
 
-        var timeframes: [String] {
+        var timeframes: [Timeframe] {
             switch self {
-            case .swing: return ["w1", "d1", "h4"]
-            case .day: return ["d1", "h1", "m15"]
-            case .all: return ["m15", "h1", "h4", "d1", "w1"]
+            case .swing: return [.w1, .d1, .h4]
+            case .day: return [.d1, .h1, .m15]
+            case .all: return Timeframe.allOrdered
             }
         }
     }
 
     @State private var selectedPreset: TimeframePreset = .all
 
-    private var filteredForecasts: [(String, ChartResponse)] {
-        chartViewModel.multiTimeframeForecasts
-            .filter { selectedPreset.timeframes.contains($0.key) }
-            .sorted { lhs, rhs in
-                let order = ["m15", "h1", "h4", "d1", "w1"]
-                return (order.firstIndex(of: lhs.key) ?? 0) < (order.firstIndex(of: rhs.key) ?? 0)
+    // Local model for a mapped forecast entry
+    private struct ForecastEntry {
+        let key: String
+        let timeframe: Timeframe?
+        let response: ChartResponse
+    }
+
+    private var filteredForecasts: [ForecastEntry] {
+        // Map backend keys (strings) to Timeframe enum when possible.
+        let mapped = chartViewModel.multiTimeframeForecasts.compactMap { (key, response) -> ForecastEntry? in
+            if let tf = Timeframe(from: key) {
+                return ForecastEntry(key: key, timeframe: tf, response: response)
+            } else {
+                // Keep unknown keys only when showing the full set to help surface bad data
+                if selectedPreset == .all {
+                    return ForecastEntry(key: key, timeframe: nil, response: response)
+                }
+                return nil
             }
+        }
+
+        // Filter by preset and sort by canonical order (unknowns at end)
+        let filtered = mapped.filter { entry in
+            if let tf = entry.timeframe {
+                return selectedPreset.timeframes.contains(tf)
+            }
+            return selectedPreset == .all
+        }
+
+        return filtered.sorted { lhs, rhs in
+            switch (lhs.timeframe, rhs.timeframe) {
+            case let (l?, r?): return l.orderIndex < r.orderIndex
+            case let (l?, nil): return true
+            case let (nil, r?): return false
+            case (nil, nil): return lhs.key < rhs.key
+            }
+        }
     }
 
     var body: some View {
@@ -78,10 +108,11 @@ struct MultiTimeframeForecastGridView: View {
                     GridItem(.flexible(), spacing: 12),
                     GridItem(.flexible(), spacing: 12)
                 ], spacing: 12) {
-                    ForEach(filteredForecasts, id: \.0) { timeframe, response in
+                    ForEach(filteredForecasts, id: \.key) { entry in
                         MultiTimeframeForecastCard(
-                            timeframe: timeframe,
-                            response: response,
+                            timeframe: entry.timeframe,
+                            timeframeLabel: entry.key,
+                            response: entry.response,
                             currentPrice: currentPrice
                         )
                     }
@@ -97,7 +128,9 @@ struct MultiTimeframeForecastGridView: View {
 
 /// Individual forecast card for a single timeframe
 struct MultiTimeframeForecastCard: View {
-    let timeframe: String
+    // Accept either a known Timeframe or a raw label for unknown/legacy tokens
+    let timeframe: Timeframe?
+    let timeframeLabel: String
     let response: ChartResponse
     let currentPrice: Double?
 
@@ -105,8 +138,10 @@ struct MultiTimeframeForecastCard: View {
         response.mlSummary
     }
 
+    // Color mapping for labels (normalized)
     private var labelColor: Color {
-        switch mlSummary?.overallLabel?.lowercased() {
+        guard let raw = mlSummary?.overallLabel?.lowercased() else { return .gray }
+        switch raw {
         case "bullish": return .green
         case "bearish": return .red
         case "neutral": return .orange
@@ -132,22 +167,44 @@ struct MultiTimeframeForecastCard: View {
         return ((target - current) / current) * 100
     }
 
+    private func clampedConfidencePercent() -> Int? {
+        guard let c = mlSummary?.confidence else { return nil }
+        if c.isNaN { return nil }
+        let pct = Int((min(max(c, 0.0), 1.0)) * 100.0)
+        return pct
+    }
+
+    private func confidenceTier(_ pct: Int) -> String {
+        switch pct {
+        case 0..<40: return "Low"
+        case 40..<70: return "Medium"
+        default: return "High"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Header
             HStack {
-                Text(timeframe.uppercased())
+                Text(timeframe?.displayName ?? timeframeLabel.uppercased())
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
 
                 Spacer()
 
                 if let summary = mlSummary {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 6) {
                         Image(systemName: labelIcon)
                             .font(.caption)
-                        Text("\(Int(summary.confidence * 100))%")
-                            .font(.caption.bold())
+                        if let pct = clampedConfidencePercent() {
+                            Text("\(pct)%")
+                                .font(.caption.bold())
+                                .accessibilityLabel(Text("Confidence \(pct) percent"))
+                        } else {
+                            Text("—")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .foregroundStyle(labelColor)
                 }
@@ -175,6 +232,10 @@ struct MultiTimeframeForecastCard: View {
                         Text(delta >= 0 ? "+\(String(format: "%.1f", delta))%" : "\(String(format: "%.1f", delta))%")
                             .font(.caption)
                             .foregroundStyle(delta >= 0 ? .green : .red)
+                    } else {
+                        Text("—")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -185,11 +246,11 @@ struct MultiTimeframeForecastCard: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(10)
-        .background(labelColor.opacity(0.08))
+        .background(labelColor.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(labelColor.opacity(0.3), lineWidth: 1)
+                .stroke(labelColor.opacity(0.22), lineWidth: 1)
         )
     }
 }

@@ -100,6 +100,11 @@ final class ChartViewModel: ObservableObject {
     }
     @Published private(set) var volumeProfile: [[String: Any]] = []
 
+    // Real-Time Forecast Chart Data
+    @Published var realtimeChartData: RealtimeChartData?
+    @Published var isRealtimeConnected: Bool = false
+    var realtimeWebSocket: RealtimeForecastWebSocket?
+
     // Multi-Timeframe Forecasts (Fix F)
     @Published var isMultiTimeframeMode: Bool = false
     @Published private(set) var isLoadingMultiTimeframe: Bool = false
@@ -868,12 +873,45 @@ final class ChartViewModel: ObservableObject {
             return
         }
 
+        print("[DEBUG] - Symbol: \(symbol.ticker)")
+        print("[DEBUG] - Asset Type: \(symbol.assetType)")
+        print("[DEBUG] - Timeframe: \(timeframe.rawValue) (sending: \(timeframe.apiToken))")
+        print("[DEBUG] - Is Intraday: \(timeframe.isIntraday)")
+        print("[DEBUG] - Fetching real-time forecast overlays...")
+        isLoading = true
+        errorMessage = nil
+
+        // Fetch real-time forecast data asynchronously (don't block on this)
+        Task {
+            do {
+                let isHealthy = await APIClient.shared.checkRealtimeAPIHealth()
+                if isHealthy {
+                    let horizon = timeframe.toHorizonString()
+                    let realtimeData = try await APIClient.shared.fetchRealtimeChartData(
+                        symbol: symbol.ticker,
+                        horizon: horizon,
+                        daysBack: 30
+                    )
+
+                    // Store the forecast overlays (not the bars, since we're using the standard API bars)
+                    await MainActor.run {
+                        self.realtimeChartData = realtimeData
+                        print("[DEBUG] ChartViewModel.loadChart() - Real-time forecast overlays loaded: \(realtimeData.forecasts.count) forecasts")
+                        // Auto-start WebSocket for live updates
+                        self.startRealtimeForecastUpdates()
+                    }
+                }
+            } catch {
+                print("[DEBUG] ChartViewModel.loadChart() - Real-time forecast fetch failed: \(error.localizedDescription), continuing with standard chart...")
+            }
+        }
+
         // Try to warm-load from cache for immediate display
         if let cached = ChartCache.loadBars(symbol: symbol.ticker, timeframe: timeframe), !cached.isEmpty {
             let newestBar = cached.max(by: { $0.ts < $1.ts })
             let barAge = newestBar.map { Date().timeIntervalSince($0.ts) / 3600 } ?? 0
             print("[DEBUG] ChartViewModel.loadChart() - Using cached bars: \(cached.count), newest bar age: \(Int(barAge))h")
-            
+
             // Populate legacy chartData so indicators can render quickly
             self.chartData = ChartResponse(
                 symbol: symbol.ticker,
@@ -888,13 +926,8 @@ final class ChartViewModel: ObservableObject {
             )
         }
 
-        print("[DEBUG] - Symbol: \(symbol.ticker)")
-        print("[DEBUG] - Asset Type: \(symbol.assetType)")
-        print("[DEBUG] - Timeframe: \(timeframe.rawValue) (sending: \(timeframe.apiToken))")
-        print("[DEBUG] - Is Intraday: \(timeframe.isIntraday)")
-        print("[DEBUG] - Starting chart data fetch...")
-        isLoading = true
-        errorMessage = nil
+        print("[DEBUG] - Starting standard chart data fetch (fallback)...")
+
         
         // Sync symbol to backend for multi-timeframe backfill
         SymbolSyncService.shared.syncSymbolInBackground(symbol.ticker, source: .chartView)
@@ -916,6 +949,8 @@ final class ChartViewModel: ObservableObject {
                 if useV2API {
                     let response: ChartDataV2Response
                     do {
+                        // Backend automatically separates today's bars into intraday layer
+                        // Just fetch the timeframe data and trust the layer separation
                         response = try await APIClient.shared.fetchChartV2(
                             symbol: symbol.ticker,
                             timeframe: timeframe.apiToken,
@@ -986,7 +1021,41 @@ final class ChartViewModel: ObservableObject {
                     updateSelectedForecastHorizon(from: response.mlSummary)
 
                     if indicatorConfig.useWebChart {
-                        chartDataV2 = response
+                        // For d1 timeframe, create a new response with aggregated bars instead of raw h1 bars
+                        if timeframe == .d1 {
+                            // Create new layers with aggregated bars in historical, empty intraday
+                            let aggregatedLayers = ChartLayers(
+                                historical: LayerData(
+                                    count: bars.count,
+                                    provider: response.layers.historical.provider,
+                                    data: bars,
+                                    oldestBar: bars.first?.ts.ISO8601Format(),
+                                    newestBar: bars.last?.ts.ISO8601Format()
+                                ),
+                                intraday: LayerData(
+                                    count: 0,
+                                    provider: "",
+                                    data: [],
+                                    oldestBar: nil,
+                                    newestBar: nil
+                                ),
+                                forecast: response.layers.forecast
+                            )
+
+                            // Create new response with aggregated layers
+                            chartDataV2 = ChartDataV2Response(
+                                symbol: response.symbol,
+                                timeframe: response.timeframe,
+                                layers: aggregatedLayers,
+                                metadata: response.metadata,
+                                dataQuality: response.dataQuality,
+                                mlSummary: response.mlSummary,
+                                indicators: response.indicators,
+                                superTrendAI: response.superTrendAI
+                            )
+                        } else {
+                            chartDataV2 = response
+                        }
                     } else {
                         chartDataV2 = nil
                     }
@@ -1137,12 +1206,26 @@ final class ChartViewModel: ObservableObject {
     }
 
     /// Helper to build bars from response - merges all layers and sorts by timestamp
-    /// With Alpaca, all timeframes use the same API, so no special handling needed
+    /// For daily timeframe: aggregates today's intraday (hourly) bars into ONE daily bar
+    /// For other timeframes: just concatenates the layers
     private func buildBars(from response: ChartDataV2Response, for timeframe: Timeframe) -> [OHLCBar] {
         let intraday = response.layers.intraday.data
         let historical = response.layers.historical.data
 
-        // Merge all bars and sort by timestamp (works for all timeframes)
+        print("[DEBUG] buildBars for \(timeframe.apiToken): hist=\(historical.count), intraday=\(intraday.count)")
+
+        // For daily timeframe, aggregate today's intraday data into ONE daily bar
+        if timeframe == .d1 {
+            print("[DEBUG] ✓ Daily timeframe - aggregating intraday bars into daily bar")
+            let bars = mergeHourlyIntoDailyBars(historical: historical, intraday: intraday)
+            print("[DEBUG] ✓ Daily merge result: \(bars.count) bars")
+            if let last = bars.last {
+                print("[DEBUG]   Last bar: \(last.ts.ISO8601Format()) O:\(String(format: "%.2f", last.open)) C:\(String(format: "%.2f", last.close))")
+            }
+            return bars
+        }
+
+        // For other timeframes, just combine historical + intraday
         let allBars = (historical + intraday).sorted(by: { $0.ts < $1.ts })
 
         let histLast = historical.last?.ts.ISO8601Format() ?? "none"
@@ -1152,6 +1235,104 @@ final class ChartViewModel: ObservableObject {
         print("[DEBUG] 📊 buildBars(\(timeframe.apiToken)): hist=\(historical.count) (last: \(histLast)) + intraday=\(intraday.count) (last: \(intradayLast)) → merged=\(allBars.count) (last: \(mergedLast))")
 
         return allBars
+    }
+
+    /// Merge hourly bars into single daily bar for today
+    /// - Historical bars: all past completed days
+    /// - Today's bar: ONE aggregated bar from all hourly data
+    /// - Today's bar updates throughout the day as hourly data changes
+    private func mergeHourlyIntoDailyBars(historical: [OHLCBar], intraday: [OHLCBar]) -> [OHLCBar] {
+        let now = Date()
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: now)
+
+        guard !historical.isEmpty else {
+            // No historical bars - aggregate intraday into single today bar
+            guard !intraday.isEmpty else { return [] }
+            let todayBar = aggregateIntradayToday(intraday, date: todayStart)
+            return [todayBar]
+        }
+
+        let lastHistorical = historical.last!
+        let lastHistIsToday = calendar.startOfDay(for: lastHistorical.ts) == todayStart
+
+        if lastHistIsToday && !intraday.isEmpty {
+            // Check if there are any intraday bars specifically for today
+            let todayBars = intraday.filter { bar in
+                calendar.startOfDay(for: bar.ts) == todayStart
+            }
+
+            if !todayBars.isEmpty {
+                // Remove today's historical bar and replace with aggregated intraday bar
+                let historicalWithoutToday = Array(historical.dropLast())
+                let todayBar = aggregateIntradayToday(intraday, date: todayStart)
+
+                let result = (historicalWithoutToday + [todayBar]).sorted(by: { $0.ts < $1.ts })
+                print("[DEBUG] 📊 Daily timeframe: \(historicalWithoutToday.count) past days + 1 updated bar for today")
+                return result
+            } else {
+                // Intraday data exists but not for today - keep historical
+                return historical.sorted(by: { $0.ts < $1.ts })
+            }
+        } else if lastHistIsToday {
+            // Today's bar exists but no hourly data - just keep historical
+            return historical.sorted(by: { $0.ts < $1.ts })
+        } else if !intraday.isEmpty {
+            // Check if there are any intraday bars specifically for today
+            let todayBars = intraday.filter { bar in
+                calendar.startOfDay(for: bar.ts) == todayStart
+            }
+
+            if !todayBars.isEmpty {
+                // Last bar is from past, but we have intraday data from today - append aggregated today bar
+                let todayBar = aggregateIntradayToday(intraday, date: todayStart)
+                let result = (historical + [todayBar]).sorted(by: { $0.ts < $1.ts })
+                print("[DEBUG] 📊 Daily timeframe: \(historical.count) past days + 1 new bar for today")
+                return result
+            } else {
+                // Intraday data exists but not for today - just return historical
+                return historical.sorted(by: { $0.ts < $1.ts })
+            }
+        } else {
+            // Last bar is from past and no hourly data - just return historical
+            return historical.sorted(by: { $0.ts < $1.ts })
+        }
+    }
+
+    /// Aggregate intraday hourly bars into a single daily OHLC bar for today
+    /// - Open: first hour's open
+    /// - High: highest hour's high
+    /// - Low: lowest hour's low
+    /// - Close: latest hour's close
+    private func aggregateIntradayToday(_ intraday: [OHLCBar], date: Date) -> OHLCBar {
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: date)
+        let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: todayStart)!
+
+        // Filter to ONLY today's bars (not past days from the 30-day fetch)
+        let todayBars = intraday.filter { bar in
+            bar.ts >= todayStart && bar.ts < tomorrowStart
+        }
+
+        let sorted = todayBars.sorted(by: { $0.ts < $1.ts })
+
+        // When no intraday data exists for today, all OHLC values should default to 0 (not infinity)
+        let open = sorted.first?.open ?? 0
+        let high = sorted.map { $0.high }.max() ?? 0
+        let low = sorted.map { $0.low }.min() ?? 0
+        let close = sorted.last?.close ?? 0
+        let volume = sorted.map { $0.volume }.reduce(0, +)
+
+        print("[DEBUG] aggregateIntradayToday: Found \(todayBars.count) bars for \(date.ISO8601Format()), O:\(open) H:\(high) L:\(low) C:\(close)")
+
+        return OHLCBar(
+            ts: date,
+            open: open,
+            high: high,
+            low: low,
+            close: close,
+            volume: volume
+        )
     }
 
     /// Converts a ChartResponse to ChartDataV2Response format for WebChartView layered rendering

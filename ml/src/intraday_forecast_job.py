@@ -40,6 +40,7 @@ from src.features.timeframe_consensus import add_consensus_to_forecast  # noqa: 
 from src.strategies.adaptive_supertrend_adapter import (  # noqa: E402
     get_adaptive_supertrend_adapter,
 )
+from src.monitoring.divergence_monitor import DivergenceMonitor  # noqa: E402
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -507,6 +508,58 @@ def validate_ensemble_with_walk_forward(
         # Get summary
         summary = wf_optimizer.get_divergence_summary()
         logger.info("Walk-forward summary: %s", summary)
+
+        # LOG METRICS TO DATABASE (Phase 7.1 Monitoring)
+        try:
+            # Create divergence monitor with Supabase client
+            divergence_monitor = DivergenceMonitor(
+                db_client=None,  # Will log via direct Supabase call below
+                divergence_threshold=0.20,
+            )
+
+            # Prepare data for logging
+            symbol_id = f"symbol_{symbol.lower()}"  # Simple symbol_id generation
+
+            # Log to database using Supabase directly
+            metric_record = {
+                "symbol_id": symbol_id,
+                "symbol": symbol,
+                "horizon": horizon,
+                "validation_date": datetime.now(timezone.utc).isoformat(),
+                "window_id": getattr(result, 'window_id', 0),
+                "train_rmse": getattr(result, 'train_rmse', None),
+                "val_rmse": result.val_rmse,
+                "test_rmse": result.test_rmse,
+                "divergence": result.divergence,
+                "divergence_threshold": 0.20,
+                "is_overfitting": overfitting_detected,
+                "model_count": 2,  # 2-model ensemble
+                "models_used": ["LSTM", "ARIMA_GARCH"],
+                "n_train_samples": getattr(result, 'n_train_samples', len(df) * 0.6),
+                "n_val_samples": getattr(result, 'n_val_samples', len(df) * 0.2),
+                "n_test_samples": getattr(result, 'n_test_samples', len(df) * 0.2),
+                "data_span_days": getattr(result, 'data_span_days', len(df) // 252),
+            }
+
+            # Insert into ensemble_validation_metrics table
+            db.client.table("ensemble_validation_metrics").insert(metric_record).execute()
+
+            logger.info(
+                "Logged metrics to ensemble_validation_metrics: "
+                "%s %s divergence=%.2f%% (val_rmse=%.4f, test_rmse=%.4f)",
+                symbol,
+                horizon,
+                result.divergence * 100,
+                result.val_rmse,
+                result.test_rmse,
+            )
+        except Exception as log_err:
+            logger.warning(
+                "Failed to log metrics to database for %s %s: %s",
+                symbol,
+                horizon,
+                log_err,
+            )
 
         return {
             "overfitting_detected": overfitting_detected,

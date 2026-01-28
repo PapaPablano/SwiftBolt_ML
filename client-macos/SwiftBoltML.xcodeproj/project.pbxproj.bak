@@ -118,6 +118,9 @@
 		F67ABD112F29827500916110 /* RealtimeForecastService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD102F29827500916110 /* RealtimeForecastService.swift */; };
 		F67ABD132F2982A600916110 /* ChartViewModel+RealtimeForecasts.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD122F2982A600916110 /* ChartViewModel+RealtimeForecasts.swift */; };
 		F67ABD152F2982B200916110 /* RealtimeForecastToggle.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD142F2982B200916110 /* RealtimeForecastToggle.swift */; };
+		F67ABD172F29885500916110 /* ChartViewModel+RealtimeForecasts.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD162F29885500916110 /* ChartViewModel+RealtimeForecasts.swift */; };
+		F67ABD192F29887700916110 /* RealtimeForecastModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD182F29887700916110 /* RealtimeForecastModels.swift */; };
+		F67ABD1B2F29888D00916110 /* RealtimeForecastService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD1A2F29888D00916110 /* RealtimeForecastService.swift */; };
 		F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */; };
 		F6EBEFB92F23DD2C001C6A4D /* SelectedContractState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFB82F23DD2C001C6A4D /* SelectedContractState.swift */; };
 		F6EBEFBB2F23DD3D001C6A4D /* MarketDataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFBA2F23DD3D001C6A4D /* MarketDataService.swift */; };
@@ -697,6 +700,7 @@
 				A1000007233456780000007 /* NewsListView.swift in Sources */,
 				F6370B212F13723F00011F78 /* DataQualityBadge.swift in Sources */,
 				A1000008233456780000008 /* Symbol.swift in Sources */,
+				F67ABD1B2F29888D00916110 /* RealtimeForecastService.swift in Sources */,
 				A1000009233456780000009 /* OHLCBar.swift in Sources */,
 				F60BB96C2EF036FA0044BE7E /* OptionContract.swift in Sources */,
 				F60BB96D2EF036FA0044BE7E /* OptionsChainResponse.swift in Sources */,
@@ -756,6 +760,7 @@
 				F6F972F42F0F72670010C828 /* ChartCache.swift in Sources */,
 				80B1B38AB6AA986B4B10DD85 /* MLAccuracyModels.swift in Sources */,
 				TRGA0000123456789ABCDEF /* GAStrategyModels.swift in Sources */,
+				F67ABD192F29887700916110 /* RealtimeForecastModels.swift in Sources */,
 				29A803E54D93C7BF1DAAF99A /* ForecastAccuracyTabView.swift in Sources */,
 				1469ED89052E948868C57E9E /* PivotLevel.swift in Sources */,
 				186379F7E02CD3F395A86D0E /* PivotLevelsIndicator.swift in Sources */,
@@ -780,6 +785,7 @@
 				A8052D8012DDF9B50B591DA6 /* AnalysisView.swift in Sources */,
 				4529AC756E5F22D03E743400 /* ChartBridge.swift in Sources */,
 				89DD292B67C2CFAB0A8731F5 /* WebChartView.swift in Sources */,
+				F67ABD172F29885500916110 /* ChartViewModel+RealtimeForecasts.swift in Sources */,
 				F67ABD152F2982B200916110 /* RealtimeForecastToggle.swift in Sources */,
 				WC734A8413BAD142EF9439139C /* WebChartControlsView.swift in Sources */,
 				F63BBA202F22F047003EE3B0 /* TechnicalIndicatorsView.swift in Sources */,

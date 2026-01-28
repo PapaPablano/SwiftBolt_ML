@@ -22,6 +22,57 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def run_walk_forward(
+    symbol: str = "AAPL",
+    horizon: str = "1D",
+    forecaster_type: str = "baseline",
+    timeframe: str = "d1",
+    train_window: int = 100,
+    test_window: int = 20,
+    step_size: int = 10,
+    limit: int = 1400,
+) -> dict:
+    """
+    Wrapper function for walk-forward validation.
+
+    Args:
+        symbol: Stock ticker (e.g., AAPL)
+        horizon: Forecast horizon (1D, 1W, 1M, etc.)
+        forecaster_type: Type of forecaster ('baseline', 'ml', etc.)
+        timeframe: OHLC timeframe (d1, h4, h1, m15, etc.)
+        train_window: Training window size in bars
+        test_window: Test window size in bars
+        step_size: Step size for walk-forward (bars)
+        limit: Max bars to fetch
+
+    Returns:
+        Dictionary with metrics and results
+    """
+    try:
+        db = SupabaseDatabase()
+        df = db.fetch_ohlc_bars(symbol, timeframe=timeframe, limit=limit)
+
+        if df.empty:
+            return {"error": f"No OHLC data found for {symbol} ({timeframe})"}
+
+        backtester = WalkForwardBacktester(horizon=horizon)
+        forecaster = BaselineForecaster()
+
+        metrics = backtester.backtest(df, forecaster, horizons=[horizon])
+        payload = metrics_to_dict(metrics, symbol, horizon, timeframe)
+        payload["run_at"] = datetime.now().isoformat()
+        payload["params"] = {
+            "train_window": train_window,
+            "test_window": test_window,
+            "step_size": step_size,
+        }
+
+        return payload
+    except Exception as e:
+        logger.error(f"Error in run_walk_forward: {e}", exc_info=True)
+        return {"error": str(e)}
+
+
 def metrics_to_dict(metrics, symbol: str, horizon: str, timeframe: str) -> dict:
     return {
         "symbol": symbol,

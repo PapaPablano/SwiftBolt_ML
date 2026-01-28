@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from api.routers import (
     backtest,
+    forecast_charts_realtime,
     forecast_quality,
     greeks_surface,
     model_training,
@@ -66,6 +67,7 @@ app.include_router(model_training.router, prefix="/api/v1", tags=["Model Trainin
 app.include_router(forecast_quality.router, prefix="/api/v1", tags=["Forecast Quality"])
 app.include_router(greeks_surface.router, prefix="/api/v1", tags=["Options Greeks"])
 app.include_router(volatility_surface.router, prefix="/api/v1", tags=["Volatility Surfaces"])
+app.include_router(forecast_charts_realtime.router, prefix="/api/v1", tags=["Real-time Charts"])
 
 
 @app.get("/")
@@ -79,8 +81,9 @@ async def root():
 
 
 @app.get("/health")
+@app.head("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint (supports GET and HEAD)."""
     return {"status": "healthy"}
 
 

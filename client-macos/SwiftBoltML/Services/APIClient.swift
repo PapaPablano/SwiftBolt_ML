@@ -1473,12 +1473,16 @@ final class APIClient {
     // MARK: - Technical Indicators
 
     /// Fetch technical indicators for a symbol/timeframe
-    /// Calls Supabase edge function with built-in caching
-    /// - Cache TTL: 5 minutes
-    /// - Fresh cache: Returns in ~50ms
-    /// - Stale cache: Calls FastAPI, returns in ~60s
+    /// Calls FastAPI backend directly
+    /// - May take up to 60 seconds for first calculation
+    /// - Uses request deduplication to prevent duplicate calls
     func fetchTechnicalIndicators(symbol: String, timeframe: String = "d1", forceRefresh: Bool = false) async throws -> TechnicalIndicatorsResponse {
-        guard var components = URLComponents(url: functionURL("technical-indicators"), resolvingAgainstBaseURL: false) else {
+        guard let baseUrl = URL(string: "http://localhost:8000") else {
+            throw APIError.invalidURL
+        }
+
+        let endpoint = baseUrl.appendingPathComponent("api/v1/technical-indicators")
+        guard var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false) else {
             throw APIError.invalidURL
         }
 
@@ -1488,26 +1492,20 @@ final class APIClient {
             URLQueryItem(name: "lookback", value: "500")
         ]
 
-        if forceRefresh {
-            components.queryItems?.append(URLQueryItem(name: "force", value: "true"))
-        }
-
         guard let url = components.url else {
             throw APIError.invalidURL
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
-        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.timeoutInterval = 90  // Allow time for FastAPI calculation if cache misses
+        request.timeoutInterval = 90  // Allow time for FastAPI calculation (~60 seconds)
 
         do {
             return try await performRequest(request)
         } catch let error as NSError where error.code == NSURLErrorTimedOut {
-            throw APIError.serviceUnavailable(message: "Technical indicators request timed out.")
+            throw APIError.serviceUnavailable(message: "Technical indicators request timed out after 90 seconds.")
         } catch {
             throw APIError.serviceUnavailable(message: "Technical indicators service unavailable")
         }

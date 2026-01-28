@@ -19,7 +19,7 @@ public enum Timeframe: String, CaseIterable, Codable, Hashable, Identifiable {
         }
     }
 
-    /// Friendly label for UI
+    /// Friendly short label for UI (kept short for compact cards)
     var displayName: String {
         switch self {
         case .m15: return "15m"
@@ -27,6 +27,53 @@ public enum Timeframe: String, CaseIterable, Codable, Hashable, Identifiable {
         case .h4:  return "4h"
         case .d1:  return "1D"
         case .w1:  return "1W"
+        }
+    }
+
+    /// Longer descriptive label if UI needs it
+    var fullDisplayName: String {
+        switch self {
+        case .m15: return "15 Minute"
+        case .h1:  return "1 Hour"
+        case .h4:  return "4 Hour"
+        case .d1:  return "1 Day"
+        case .w1:  return "1 Week"
+        }
+    }
+
+    /// Order index (low -> high) for consistent sorting in multi-timeframe views
+    var orderIndex: Int {
+        switch self {
+        case .m15: return 0
+        case .h1:  return 1
+        case .h4:  return 2
+        case .d1:  return 3
+        case .w1:  return 4
+        }
+    }
+
+    /// Convenience: all timeframes in canonical order
+    static var allOrdered: [Timeframe] {
+        return [.m15, .h1, .h4, .d1, .w1]
+    }
+
+    /// Robust initializer that accepts a variety of legacy/remote tokens and normalizes them.
+    /// Examples accepted: "m15", "15m", "15min", "M15", "1h", "H1", "1hour", "d1", "1D", "1day", "w1", "1w", "week"
+    init?(from raw: String) {
+        let cleaned = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
+            .lowercased()
+
+        switch cleaned {
+        case "m15", "15m", "15min", "15mins", "15minute", "15minutes": self = .m15
+        case "h1", "1h", "1hour", "1hours", "hour": self = .h1
+        case "h4", "4h", "4hour", "4hours": self = .h4
+        case "d1", "1d", "1day", "day", "daily": self = .d1
+        case "w1", "1w", "1week", "week", "weekly": self = .w1
+        default:
+            return nil
         }
     }
 
@@ -84,4 +131,3 @@ public enum Timeframe: String, CaseIterable, Codable, Hashable, Identifiable {
         }
     }
 }
-

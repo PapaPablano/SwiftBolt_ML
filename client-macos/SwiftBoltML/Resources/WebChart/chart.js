@@ -1362,35 +1362,35 @@
 
         const interval = inferBarIntervalSeconds(bars);
         // Defaults tuned for compressed (uniform) distribution
-        let barSpacing = 8;
-        let minBarSpacing = 2;
-        let rightOffset = 10;
+        let barSpacing = 20;
+        let minBarSpacing = 5;
+        let rightOffset = 20;
 
         if (interval != null) {
             if (interval <= 60) {
-                barSpacing = 5;
-                minBarSpacing = 1;
-                rightOffset = 8;
+                barSpacing = 16;
+                minBarSpacing = 4;
+                rightOffset = 16;
             } else if (interval <= 60 * 5) {
-                barSpacing = 6;
-                minBarSpacing = 1;
-                rightOffset = 8;
+                barSpacing = 17;
+                minBarSpacing = 4;
+                rightOffset = 16;
             } else if (interval <= 60 * 60) {
-                barSpacing = 7;
-                minBarSpacing = 2;
-                rightOffset = 10;
+                barSpacing = 18;
+                minBarSpacing = 5;
+                rightOffset = 18;
             } else if (interval <= 60 * 60 * 4) {
-                barSpacing = 8;
-                minBarSpacing = 2;
-                rightOffset = 10;
+                barSpacing = 19;
+                minBarSpacing = 5;
+                rightOffset = 18;
             } else if (interval <= 60 * 60 * 24) {
-                barSpacing = 9;
-                minBarSpacing = 2;
-                rightOffset = 12;
+                barSpacing = 20;
+                minBarSpacing = 5;
+                rightOffset = 20;
             } else {
-                barSpacing = 10;
-                minBarSpacing = 3;
-                rightOffset = 12;
+                barSpacing = 22;
+                minBarSpacing = 6;
+                rightOffset = 20;
             }
         }
 

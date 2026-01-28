@@ -1,0 +1,37 @@
+version: '3.9'
+
+services:
+  # SwiftBolt ML Backend API
+  backend:
+    build:
+      context: ./ml
+      dockerfile: Dockerfile
+    container_name: swiftbolt-ml-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # Add any environment variables here
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      # Mount the ml directory for live code reloading
+      - ./ml:/app
+      # Exclude __pycache__ and .git
+      - /app/__pycache__
+      - /app/.git
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - swiftbolt
+    # Uncomment to see all output
+    # tty: true
+    # stdin_open: true
+
+networks:
+  swiftbolt:
+    driver: bridge
