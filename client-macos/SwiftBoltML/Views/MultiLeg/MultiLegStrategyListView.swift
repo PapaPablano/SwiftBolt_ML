@@ -4,6 +4,8 @@ struct MultiLegStrategyListView: View {
     @StateObject private var viewModel = MultiLegViewModel()
     @State private var showCreateSheet = false
     @State private var selectedStrategyId: String?
+    @State private var strategyToDelete: MultiLegStrategy?
+    @State private var listDeleteError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,6 +33,34 @@ struct MultiLegStrategyListView: View {
         }
         .task {
             await viewModel.loadStrategies(reset: true)
+        }
+        .confirmationDialog("Delete Strategy", isPresented: Binding(
+            get: { strategyToDelete != nil },
+            set: { if !$0 { strategyToDelete = nil } }
+        ), titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                guard let s = strategyToDelete else { return }
+                strategyToDelete = nil
+                Task {
+                    let success = await viewModel.deleteStrategy(strategyId: s.id)
+                    if !success {
+                        listDeleteError = viewModel.errorMessage ?? "Delete failed."
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { strategyToDelete = nil }
+        } message: {
+            if let s = strategyToDelete {
+                Text("Permanently delete '\(s.name)'? This cannot be undone.")
+            }
+        }
+        .alert("Delete Failed", isPresented: Binding(
+            get: { listDeleteError != nil },
+            set: { if !$0 { listDeleteError = nil } }
+        )) {
+            Button("OK") { listDeleteError = nil }
+        } message: {
+            if let msg = listDeleteError { Text(msg) }
         }
     }
 
@@ -247,6 +277,11 @@ struct MultiLegStrategyListView: View {
                         .contentShape(Rectangle())
                         .onTapGesture {
                             viewModel.selectStrategy(strategy)
+                        }
+                        .contextMenu {
+                            Button("Delete", role: .destructive) {
+                                strategyToDelete = strategy
+                            }
                         }
                 }
 

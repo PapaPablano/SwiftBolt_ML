@@ -10,6 +10,7 @@ struct MultiLegStrategyDetailView: View {
     @State private var selectedLegToClose: OptionsLeg?
     @State private var showDeleteConfirmation = false
     @State private var isDeleting = false
+    @State private var deleteErrorMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -80,11 +81,21 @@ struct MultiLegStrategyDetailView: View {
                         isDeleting = false
                         if success {
                             dismiss()
+                        } else {
+                            deleteErrorMessage = viewModel.errorMessage ?? "Delete failed."
                         }
                     }
                 }
             } message: {
                 Text("Are you sure you want to permanently delete '\(strategy.name)'? This action cannot be undone.")
+            }
+            .alert("Delete Failed", isPresented: Binding(
+                get: { deleteErrorMessage != nil },
+                set: { if !$0 { deleteErrorMessage = nil } }
+            )) {
+                Button("OK") { deleteErrorMessage = nil }
+            } message: {
+                if let msg = deleteErrorMessage { Text(msg) }
             }
         }
         .sheet(isPresented: $showCloseStrategySheet) {
