@@ -6,6 +6,10 @@ struct OptionRankDetailView: View {
     let rank: OptionRank
     let symbol: String
     let allRankings: [OptionRank]
+    /// When true, hide the Close button (e.g. when embedded in a tab).
+    var showCloseButton: Bool = true
+    /// When true, use flexible frame instead of fixed size (e.g. when embedded in a tab).
+    var embeddedInTab: Bool = false
     @Environment(\.dismiss) var dismiss
 
     // Group rankings by strike for comparison
@@ -71,7 +75,8 @@ struct OptionRankDetailView: View {
             }
             .padding(24)
         }
-        .frame(width: 700, height: 800)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(width: embeddedInTab ? nil : 700, height: embeddedInTab ? nil : 800)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -97,10 +102,12 @@ struct OptionRankDetailView: View {
 
                 Spacer()
 
-                Button("Close") {
-                    dismiss()
+                if showCloseButton {
+                    Button("Close") {
+                        dismiss()
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
             }
 
             // Contract title with signal badges

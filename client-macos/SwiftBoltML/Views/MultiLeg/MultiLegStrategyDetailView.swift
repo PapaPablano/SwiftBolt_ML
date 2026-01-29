@@ -63,6 +63,7 @@ struct MultiLegStrategyDetailView: View {
                     } else {
                         MultiLegOptionsRankerTab(
                             symbol: strategy.underlyingTicker,
+                            leg: legs.sorted(by: { $0.legNumber < $1.legNumber }).first,
                             rankerViewModel: appViewModel.optionsRankerViewModel
                         )
                     }
@@ -356,19 +357,131 @@ struct MultiLegStrategyDetailView: View {
     }
 }
 
-// MARK: - Options Ranker Tab (for strategy underlying)
+// MARK: - Options Ranker Tab (single-option detail for strategy leg)
 
 struct MultiLegOptionsRankerTab: View {
     let symbol: String
+    let leg: OptionsLeg?
     @ObservedObject var rankerViewModel: OptionsRankerViewModel
 
+    private var legSide: OptionSide? {
+        guard let leg = leg else { return nil }
+        return OptionSide(rawValue: leg.optionType.rawValue)
+    }
+
+    private func matchingRank(in rankings: [OptionRank]) -> OptionRank? {
+        guard let leg = leg, let side = legSide else { return nil }
+        return rankings.first { rank in
+            rank.strike == leg.strike && rank.expiry == leg.expiry && rank.side == side
+        }
+    }
+
     var body: some View {
-        RankedOptionsContent(rankerViewModel: rankerViewModel, symbol: symbol)
-            .onAppear {
+        Group {
+            if let leg = leg {
+                SingleLegRankerContent(
+                    symbol: symbol,
+                    leg: leg,
+                    rankerViewModel: rankerViewModel,
+                    matchingRank: matchingRank(in: rankerViewModel.rankings)
+                )
+            } else {
+                emptyState
+            }
+        }
+        .onAppear {
+            guard leg != nil else { return }
+            Task {
+                await rankerViewModel.ensureLoaded(for: symbol)
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "chart.bar.doc.horizontal")
+                .font(.system(size: 36))
+                .foregroundStyle(.secondary)
+            Text("No leg to show")
+                .font(.headline)
+            Text("This strategy has no legs.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct SingleLegRankerContent: View {
+    let symbol: String
+    let leg: OptionsLeg
+    @ObservedObject var rankerViewModel: OptionsRankerViewModel
+    let matchingRank: OptionRank?
+
+    var body: some View {
+        Group {
+            if let rank = matchingRank {
+                OptionRankDetailView(
+                    rank: rank,
+                    symbol: symbol,
+                    allRankings: rankerViewModel.rankings,
+                    showCloseButton: false,
+                    embeddedInTab: true
+                )
+            } else if rankerViewModel.isLoading {
+                ProgressView("Loading rankings for \(symbol)...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if rankerViewModel.rankings.isEmpty {
+                loadPromptView
+            } else {
+                notFoundView
+            }
+        }
+    }
+
+    private var loadPromptView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "chart.bar.doc.horizontal")
+                .font(.system(size: 40))
+                .foregroundStyle(.secondary)
+            Text("No rankings loaded")
+                .font(.headline)
+            Text("Load rankings for \(symbol) to see this option's composite rank and breakdown.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+            Button("Load rankings") {
                 Task {
                     await rankerViewModel.ensureLoaded(for: symbol)
                 }
             }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var notFoundView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 40))
+                .foregroundStyle(.secondary)
+            Text("Option not in current rankings")
+                .font(.headline)
+            Text("\(symbol) $\(String(format: "%.2f", leg.strike)) \(leg.optionType.rawValue.capitalized) (\(leg.expiry)) did not appear in the last run. Trigger a new ranking for \(symbol) to include it.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+            Button("Refresh rankings") {
+                Task {
+                    await rankerViewModel.triggerRankingJob(for: symbol)
+                    await rankerViewModel.ensureLoaded(for: symbol)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
