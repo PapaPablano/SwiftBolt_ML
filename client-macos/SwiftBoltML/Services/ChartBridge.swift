@@ -192,6 +192,16 @@ struct WebIndicatorConfig: Encodable {
     let superTrendAIFromCluster: String
     let superTrendAIMaxIterations: Int
     let superTrendAIHistoricalBars: Int
+
+    // Overlay / S&R (must be sent so chart.js recalcIndicators does not remove series)
+    let showPolynomialSR: Bool
+    let showLogisticSR: Bool
+    let showSMA20: Bool
+    let showSMA50: Bool
+    let showEMA9: Bool
+    let showEMA21: Bool
+    let showSMA200: Bool
+    let showBollingerBands: Bool
 }
 
 // MARK: - Data Models for Lightweight Charts
@@ -932,7 +942,15 @@ final class ChartBridge: NSObject, ObservableObject {
             superTrendAIPerfAlpha: config.superTrendAIPerfAlpha,
             superTrendAIFromCluster: config.superTrendAIFromCluster.rawValue.capitalized,
             superTrendAIMaxIterations: config.superTrendAIMaxIterations,
-            superTrendAIHistoricalBars: config.superTrendAIHistoricalBars
+            superTrendAIHistoricalBars: config.superTrendAIHistoricalBars,
+            showPolynomialSR: config.showPolynomialSR,
+            showLogisticSR: config.showLogisticSR,
+            showSMA20: config.showSMA20,
+            showSMA50: config.showSMA50,
+            showEMA9: config.showEMA9,
+            showEMA21: config.showEMA21,
+            showSMA200: config.showSMA200,
+            showBollingerBands: config.showBollingerBands
         )
         send(.setIndicatorConfig(config: payload))
     }

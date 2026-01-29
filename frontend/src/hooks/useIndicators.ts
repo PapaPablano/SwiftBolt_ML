@@ -65,9 +65,8 @@ export const useIndicators = (symbol: string, timeframe: string) => {
 
     try {
       const backendTimeframe = convertTimeframeFormat(timeframe);
-      const response = await fetch(
-        `${API_BASE_URL}/api/v1/support-resistance?symbol=${symbol}&timeframe=${backendTimeframe}`
-      );
+      const url = `${API_BASE_URL}/api/v1/support-resistance?symbol=${symbol}&timeframe=${backendTimeframe}`;
+      const response = await fetch(url);
 
       if (!response.ok) {
         throw new Error(`API error: ${response.statusText}`);

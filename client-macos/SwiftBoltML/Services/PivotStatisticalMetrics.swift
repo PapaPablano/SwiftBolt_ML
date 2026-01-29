@@ -33,7 +33,16 @@ struct PivotStatisticalMetrics {
         type: PivotType
     ) -> PivotTypeMetrics {
         guard !bars.isEmpty else {
-            return PivotTypeMetrics(type: type, pivotCount: 0, strength: 0)
+            return PivotTypeMetrics(
+                type: type,
+                pivotCount: 0,
+                strength: 0,
+                frequency: 0,
+                clustering: 0,
+                recency: 0,
+                averageSpacing: 0,
+                consistency: 0
+            )
         }
 
         let frequency = calculateFrequency(pivots)
@@ -68,7 +77,7 @@ struct PivotStatisticalMetrics {
 
         var bounceCount = 0
 
-        for (index, pivot) in pivots.enumerated() {
+        for (_, pivot) in pivots.enumerated() {
             guard pivot.index > 0, pivot.index < bars.count - 1 else { continue }
 
             let beforeBar = bars[pivot.index - 1]
@@ -95,7 +104,6 @@ struct PivotStatisticalMetrics {
             .map { indices[$0 + 1] - indices[$0] }
 
         let avgSpacing = Double(spacings.reduce(0, +)) / Double(spacings.count)
-        let minSpacing = Double(spacings.min() ?? 1)
 
         // Clustering = how much spacing varies (inverse of variance)
         let variance = spacings.map { pow(Double($0) - avgSpacing, 2) }.reduce(0, +) / Double(spacings.count)

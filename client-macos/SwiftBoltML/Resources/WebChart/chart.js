@@ -1013,8 +1013,8 @@
 
     const recalcIndicators = () => {
         const cfg = state.indicatorConfig;
-        if (!cfg) return;
         const bars = getSourceBars();
+        if (!cfg) return;
         if (!bars || bars.length === 0) return;
 
         if (cfg.showSuperTrend) {

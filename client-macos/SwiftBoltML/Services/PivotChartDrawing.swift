@@ -81,7 +81,7 @@ struct PivotChartDrawing {
         size: CGFloat = 8
     ) -> some View {
         let color = statusColor(status)
-        let shape = pivotType == .high ? AnyShape(Ellipse()) : AnyShape(Ellipse())
+        _ = pivotType  // Use pivotType to avoid unused warning
 
         return Circle()
             .fill(color)
@@ -326,16 +326,4 @@ struct PivotStrength {
     }
 }
 
-// MARK: - Helper Type
-
-struct AnyShape: Shape {
-    let path: (CGRect) -> Path
-
-    init<S: Shape>(_ shape: S) {
-        self.path = { shape.path(in: $0) }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        self.path(rect)
-    }
-}
+// MARK: - No longer needed AnyShape type removed for Swift 6 Sendable compliance
