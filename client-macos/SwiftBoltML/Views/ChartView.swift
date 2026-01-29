@@ -82,8 +82,7 @@ struct ChartView: View {
                     HStack(spacing: 4) {
                         if chartViewModel.isRefreshing {
                             ProgressView()
-                                .scaleEffect(0.6)
-                                .frame(width: 14, height: 14)
+                                .frame(width: 32, height: 32)
                         } else {
                             Image(systemName: "arrow.triangle.2.circlepath")
                                 .font(.system(size: 12))
@@ -476,6 +475,7 @@ struct LoadingChartView: View {
     var body: some View {
         VStack {
             ProgressView()
+                .frame(width: 32, height: 32)
             Text("Loading chart data...")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -618,7 +618,7 @@ struct MultiTimeframeControlStrip: View {
             // Loading indicator
             if chartViewModel.isLoadingMultiTimeframe {
                 ProgressView()
-                    .scaleEffect(0.6)
+                    .frame(width: 32, height: 32)
             }
 
             // Trend alignment badge (Fix G)

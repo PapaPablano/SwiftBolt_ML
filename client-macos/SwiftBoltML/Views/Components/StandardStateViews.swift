@@ -155,7 +155,7 @@ struct StandardLoadingView: View {
     var body: some View {
         VStack(spacing: 16) {
             ProgressView()
-                .scaleEffect(1.2)
+                .frame(width: 32, height: 32)
 
             Text(message)
                 .font(.subheadline)

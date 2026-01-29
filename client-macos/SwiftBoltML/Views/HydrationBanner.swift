@@ -8,8 +8,7 @@ struct HydrationBanner: View {
         if isHydrating {
             HStack(spacing: 8) {
                 ProgressView()
-                    .scaleEffect(0.7)
-                    .frame(width: 16, height: 16)
+                    .frame(width: 32, height: 32)
                 
                 Text("Hydrating intraday… \(progress)%")
                     .font(.caption)

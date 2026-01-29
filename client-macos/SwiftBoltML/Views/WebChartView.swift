@@ -1119,6 +1119,8 @@ struct WebChartView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> WKWebView {
+        // Note: macOS 26 / Tahoe may log "IconRendering.framework ... binary.metallib invalid format" when WKWebView loads.
+        // Known WebKit bug (rdar 164826744); benign, no functional impact.
         // Configure WKWebView
         let config = WKWebViewConfiguration()
         config.defaultWebpagePreferences.allowsContentJavaScript = true
