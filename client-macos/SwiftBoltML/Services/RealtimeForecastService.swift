@@ -77,26 +77,43 @@ extension APIClient {
         }
     }
     
-    /// Check if FastAPI backend is available
+    /// Check if FastAPI backend is available.
+    /// Uses a short backoff after failure to avoid repeated timeout logs when localhost:8000 isn't running.
     func checkRealtimeAPIHealth() async -> Bool {
         guard let url = URL(string: "http://localhost:8000/api/v1/health/realtime-charts") else {
             return false
         }
         
+        // Skip network call if we recently failed (reduces console timeout noise when backend isn't running)
+        let backoff: TimeInterval = 45
+        if let last = RealtimeHealthCache.lastFailure, Date().timeIntervalSince(last) < backoff {
+            return false
+        }
+        
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.timeoutInterval = 3
+        request.timeoutInterval = 1.5
         
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
+                RealtimeHealthCache.lastFailure = Date()
                 return false
             }
-            return (200...299).contains(httpResponse.statusCode)
+            let ok = (200...299).contains(httpResponse.statusCode)
+            if ok { RealtimeHealthCache.lastFailure = nil }
+            else { RealtimeHealthCache.lastFailure = Date() }
+            return ok
         } catch {
+            RealtimeHealthCache.lastFailure = Date()
             return false
         }
     }
+}
+
+/// In-memory cache to avoid repeated health checks when localhost backend is down (reduces console noise).
+private enum RealtimeHealthCache {
+    static var lastFailure: Date?
 }
 
 // MARK: - WebSocket Service for Live Updates

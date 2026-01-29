@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct TechnicalIndicatorsView: View {
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = TechnicalIndicatorsViewModel()
     let symbol: String
     let timeframe: String
@@ -33,11 +34,25 @@ struct TechnicalIndicatorsView: View {
             .padding()
         }
         .navigationTitle("Technical Indicators")
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Back") {
+                    // Defer dismiss to avoid re-entrant view updates / Metal/IconRendering crash on pop (macOS 26 / Tahoe)
+                    DispatchQueue.main.async { dismiss() }
+                }
+            }
+        }
         .task {
             await viewModel.loadIndicators(symbol: symbol, timeframe: timeframe)
         }
         .refreshable {
             await viewModel.refresh()
+        }
+        .onAppear {
+            // #region agent log
+            _agentLog("TechnicalIndicatorsView onAppear", location: "TechnicalIndicatorsView.swift:onAppear", data: ["symbol": symbol, "timeframe": timeframe], hypothesisId: "A")
+            // #endregion
         }
     }
     
