@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MultiLegStrategyListView: View {
+    @EnvironmentObject private var appViewModel: AppViewModel
     @StateObject private var viewModel = MultiLegViewModel()
     @State private var showCreateSheet = false
     @State private var selectedStrategyId: String?
@@ -30,6 +31,7 @@ struct MultiLegStrategyListView: View {
                 viewModel: viewModel,
                 strategy: strategy
             )
+            .environmentObject(appViewModel)
         }
         .task {
             await viewModel.loadStrategies(reset: true)
@@ -273,7 +275,7 @@ struct MultiLegStrategyListView: View {
         ScrollView {
             LazyVStack(spacing: 8) {
                 ForEach(viewModel.filteredStrategies) { strategy in
-                    MultiLegStrategyRow(strategy: strategy)
+                    MultiLegStrategyRow(strategy: strategy, onDelete: { strategyToDelete = strategy })
                         .contentShape(Rectangle())
                         .onTapGesture {
                             viewModel.selectStrategy(strategy)
@@ -325,6 +327,7 @@ struct StatBadge: View {
 
 struct MultiLegStrategyRow: View {
     let strategy: MultiLegStrategy
+    var onDelete: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -387,6 +390,19 @@ struct MultiLegStrategyRow: View {
             // Alerts badge
             if strategy.activeAlertCount > 0 {
                 alertBadge
+            }
+
+            // Delete (visible for all strategies, including 0-leg)
+            if let onDelete = onDelete {
+                Button {
+                    onDelete()
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Delete strategy")
             }
 
             // Chevron

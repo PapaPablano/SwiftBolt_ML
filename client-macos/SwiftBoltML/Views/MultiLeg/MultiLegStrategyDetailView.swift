@@ -1,10 +1,17 @@
 import SwiftUI
 
+enum MultiLegDetailTab: String, CaseIterable {
+    case details = "Details"
+    case optionsRanker = "Options Ranker"
+}
+
 struct MultiLegStrategyDetailView: View {
     @ObservedObject var viewModel: MultiLegViewModel
     let strategy: MultiLegStrategy
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appViewModel: AppViewModel
 
+    @State private var selectedTab: MultiLegDetailTab = .details
     @State private var showCloseStrategySheet = false
     @State private var showEditSheet = false
     @State private var selectedLegToClose: OptionsLeg?
@@ -14,31 +21,53 @@ struct MultiLegStrategyDetailView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    // Header card
-                    headerCard
-
-                    // P&L and Risk card
-                    plRiskCard
-
-                    // Greeks card
-                    greeksCard
-
-                    // Legs section
-                    legsSection
-
-                    // Alerts section
-                    if !activeAlerts.isEmpty {
-                        alertsSection
-                    }
-
-                    // Notes section
-                    if let notes = strategy.notes, !notes.isEmpty {
-                        notesSection(notes)
+            VStack(spacing: 0) {
+                Picker("Tab", selection: $selectedTab) {
+                    ForEach(MultiLegDetailTab.allCases, id: \.self) { tab in
+                        Text(tab.rawValue).tag(tab)
                     }
                 }
-                .padding()
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+
+                Group {
+                    if selectedTab == .details {
+                        ScrollView {
+                            VStack(spacing: 20) {
+                                // Header card
+                                headerCard
+
+                                // P&L and Risk card
+                                plRiskCard
+
+                                // Greeks card
+                                greeksCard
+
+                                // Legs section
+                                legsSection
+
+                                // Alerts section
+                                if !activeAlerts.isEmpty {
+                                    alertsSection
+                                }
+
+                                // Notes section
+                                if let notes = strategy.notes, !notes.isEmpty {
+                                    notesSection(notes)
+                                }
+                            }
+                            .padding()
+                        }
+                    } else {
+                        MultiLegOptionsRankerTab(
+                            symbol: strategy.underlyingTicker,
+                            rankerViewModel: appViewModel.optionsRankerViewModel
+                        )
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .navigationTitle(strategy.name)
             .toolbar {
@@ -324,6 +353,22 @@ struct MultiLegStrategyDetailView: View {
         case .bearish: return .red
         case .neutral: return .gray
         }
+    }
+}
+
+// MARK: - Options Ranker Tab (for strategy underlying)
+
+struct MultiLegOptionsRankerTab: View {
+    let symbol: String
+    @ObservedObject var rankerViewModel: OptionsRankerViewModel
+
+    var body: some View {
+        RankedOptionsContent(rankerViewModel: rankerViewModel, symbol: symbol)
+            .onAppear {
+                Task {
+                    await rankerViewModel.ensureLoaded(for: symbol)
+                }
+            }
     }
 }
 
