@@ -596,26 +596,29 @@ serve(async (req: Request): Promise<Response> => {
       ranking_stability_score: null,
     }));
 
-    // Upsert to options_ranks
-    const { error: upsertError } = await supabase
-      .from("options_ranks")
-      .upsert(records, {
-        onConflict: "underlying_symbol_id,ranking_mode,expiry,strike,side",
-      });
-
-    if (upsertError) {
-      console.error(`[Ranking Job] Upsert error:`, upsertError);
-      if (jobId) {
-        await supabase
-          .from("ranking_jobs")
-          .update({
-            status: "failed",
-            completed_at: new Date().toISOString(),
-            error_message: upsertError.message,
-          })
-          .eq("id", jobId);
+    // Upsert to options_ranks in batches to avoid statement timeout (Supabase default ~8s)
+    const RANKS_BATCH_SIZE = 30;
+    for (let i = 0; i < records.length; i += RANKS_BATCH_SIZE) {
+      const batch = records.slice(i, i + RANKS_BATCH_SIZE);
+      const { error: upsertError } = await supabase
+        .from("options_ranks")
+        .upsert(batch, {
+          onConflict: "underlying_symbol_id,ranking_mode,expiry,strike,side",
+        });
+      if (upsertError) {
+        console.error(`[Ranking Job] Upsert error (batch ${Math.floor(i / RANKS_BATCH_SIZE) + 1}):`, upsertError);
+        if (jobId) {
+          await supabase
+            .from("ranking_jobs")
+            .update({
+              status: "failed",
+              completed_at: new Date().toISOString(),
+              error_message: upsertError.message,
+            })
+            .eq("id", jobId);
+        }
+        return errorResponse(`Failed to save rankings: ${upsertError.message}`, 500);
       }
-      return errorResponse(`Failed to save rankings: ${upsertError.message}`, 500);
     }
 
     const durationMs = Date.now() - startTime;

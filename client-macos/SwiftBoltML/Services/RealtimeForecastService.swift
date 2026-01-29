@@ -104,6 +104,9 @@ extension APIClient {
             return ok
         } catch {
             FastAPIBackoff.recordFailure(url: url)
+            #if DEBUG
+            print("[RealtimeForecast] Health check failed. Test from this machine: curl -v \"\(url.absoluteString)\"")
+            #endif
             return false
         }
     }
