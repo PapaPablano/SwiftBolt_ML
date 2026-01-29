@@ -98,7 +98,7 @@ struct ChartView: View {
                 .disabled(chartViewModel.isRefreshing)
                 .padding(.trailing, 8)
 
-                IndicatorToggleMenu(chartViewModel: chartViewModel, config: $appViewModel.chartViewModel.indicatorConfig)
+                IndicatorToggleMenu(chartViewModel: chartViewModel, config: Binding.deferred(get: { chartViewModel.indicatorConfig }, set: { chartViewModel.indicatorConfig = $0 }))
             }
             .padding(.horizontal)
             .padding(.top, 8)
@@ -528,9 +528,9 @@ struct IndicatorToggleMenu: View {
     var body: some View {
         Menu {
             Section("Chart Options") {
-                Toggle("Heikin-Ashi", isOn: $chartViewModel.useHeikinAshi)
+                Toggle("Heikin-Ashi", isOn: Binding.deferred(get: { chartViewModel.useHeikinAshi }, set: { chartViewModel.useHeikinAshi = $0 }))
                     .disabled(!config.useWebChart)
-                Toggle("Volume Profile", isOn: $chartViewModel.showVolumeProfile)
+                Toggle("Volume Profile", isOn: Binding.deferred(get: { chartViewModel.showVolumeProfile }, set: { chartViewModel.showVolumeProfile = $0 }))
                     .disabled(!config.useWebChart)
             }
 

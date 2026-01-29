@@ -95,12 +95,12 @@ struct MultiLegStrategyListView: View {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
-                TextField("Search strategies...", text: $viewModel.searchText)
+                TextField("Search strategies...", text: Binding.deferred(get: { viewModel.searchText }, set: { viewModel.searchText = $0 }))
                     .textFieldStyle(.plain)
 
                 if !viewModel.searchText.isEmpty {
                     Button {
-                        viewModel.searchText = ""
+                        DispatchQueue.main.async { viewModel.searchText = "" }
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
@@ -114,7 +114,7 @@ struct MultiLegStrategyListView: View {
             .frame(maxWidth: 200)
 
             // Status filter
-            Picker("Status", selection: $viewModel.statusFilter) {
+            Picker("Status", selection: Binding.deferred(get: { viewModel.statusFilter }, set: { viewModel.statusFilter = $0 })) {
                 ForEach(StrategyStatusFilter.allCases, id: \.self) { status in
                     Text(status.rawValue).tag(status)
                 }
@@ -123,7 +123,7 @@ struct MultiLegStrategyListView: View {
             .frame(maxWidth: 250)
 
             // Sort
-            Picker("Sort", selection: $viewModel.sortOption) {
+            Picker("Sort", selection: Binding.deferred(get: { viewModel.sortOption }, set: { viewModel.sortOption = $0 })) {
                 ForEach(StrategySortOption.allCases, id: \.self) { option in
                     Text(option.rawValue).tag(option)
                 }
@@ -135,12 +135,12 @@ struct MultiLegStrategyListView: View {
             // Strategy type filter
             Menu {
                 Button("All Types") {
-                    viewModel.strategyTypeFilter = nil
+                    DispatchQueue.main.async { viewModel.strategyTypeFilter = nil }
                 }
                 Divider()
                 ForEach(StrategyType.allCases, id: \.self) { type in
                     Button(type.displayName) {
-                        viewModel.strategyTypeFilter = type
+                        DispatchQueue.main.async { viewModel.strategyTypeFilter = type }
                     }
                 }
             } label: {
@@ -152,7 +152,7 @@ struct MultiLegStrategyListView: View {
 
             if viewModel.strategyTypeFilter != nil || !viewModel.searchText.isEmpty {
                 Button("Clear") {
-                    viewModel.clearFilters()
+                    DispatchQueue.main.async { viewModel.clearFilters() }
                 }
                 .buttonStyle(.borderless)
                 .foregroundColor(.accentColor)

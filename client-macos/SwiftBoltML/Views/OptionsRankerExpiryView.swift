@@ -89,7 +89,7 @@ struct ExpiryViewHeader: View {
                     Text("Side")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    Picker("", selection: Binding(
+                    Picker("", selection: Binding.deferred(
                         get: { rankerViewModel.selectedSide },
                         set: { rankerViewModel.setSide($0) }
                     )) {

@@ -38,8 +38,8 @@ struct ContentView: View {
             print("[DEBUG] - Old: \(oldValue?.ticker ?? "nil")")
             print("[DEBUG] - New: \(newValue?.ticker ?? "nil")")
             print("[DEBUG] ========================================")
-            // Always return to stock detail when a symbol is selected
-            activeSection = .stocks
+            // Defer to avoid publishing changes from within view updates
+            DispatchQueue.main.async { activeSection = .stocks }
         }
         #if DEBUG
         .onAppear {
@@ -108,7 +108,7 @@ struct DetailView: View {
                     .frame(minWidth: 600)
 
                 VStack(spacing: 0) {
-                    Picker("", selection: $appViewModel.selectedDetailTab) {
+                    Picker("", selection: Binding.deferred(get: { appViewModel.selectedDetailTab }, set: { appViewModel.selectedDetailTab = $0 })) {
                         Text("News").tag(0)
                         Text("Options").tag(1)
                         Text("Analysis").tag(2)

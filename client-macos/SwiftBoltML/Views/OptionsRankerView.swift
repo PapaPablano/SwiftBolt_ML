@@ -263,7 +263,7 @@ struct RankerHeader: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
 
-                    Picker("", selection: $rankerViewModel.rankingMode) {
+                    Picker("", selection: Binding.deferred(get: { rankerViewModel.rankingMode }, set: { rankerViewModel.rankingMode = $0 })) {
                         ForEach(RankingMode.allCases) { mode in
                             Label(mode.displayName, systemImage: mode.icon)
                                 .tag(mode)
@@ -292,7 +292,7 @@ struct RankerHeader: View {
                         Text("Expiry")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        Picker("", selection: Binding(
+                        Picker("", selection: Binding.deferred(
                             get: { rankerViewModel.selectedExpiry },
                             set: { rankerViewModel.setExpiry($0) }
                         )) {
@@ -311,7 +311,7 @@ struct RankerHeader: View {
                         Text("Side")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        Picker("", selection: Binding(
+                        Picker("", selection: Binding.deferred(
                             get: { rankerViewModel.selectedSide },
                             set: { rankerViewModel.setSide($0) }
                         )) {
@@ -328,7 +328,7 @@ struct RankerHeader: View {
                         Text("Signal")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        Picker("", selection: Binding(
+                        Picker("", selection: Binding.deferred(
                             get: { rankerViewModel.selectedSignal },
                             set: { rankerViewModel.setSignalFilter($0) }
                         )) {
@@ -348,7 +348,7 @@ struct RankerHeader: View {
                         Text("Sort By")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        Picker("", selection: Binding(
+                        Picker("", selection: Binding.deferred(
                             get: { rankerViewModel.sortOption },
                             set: { rankerViewModel.setSortOption($0) }
                         )) {
@@ -372,7 +372,7 @@ struct RankerHeader: View {
                                 .foregroundStyle(.purple)
                         }
 
-                        Slider(value: $rankerViewModel.minScore, in: 0...1, step: 0.05)
+                        Slider(value: Binding.deferred(get: { rankerViewModel.minScore }, set: { rankerViewModel.minScore = $0 }), in: 0...1, step: 0.05)
                             .tint(.purple)
                     }
                 }
@@ -393,14 +393,14 @@ struct RankerHeader: View {
                     }
 
                     HStack(spacing: 8) {
-                        TextField("Min $", text: $rankerViewModel.minPriceInput)
+                        TextField("Min $", text: Binding.deferred(get: { rankerViewModel.minPriceInput }, set: { rankerViewModel.minPriceInput = $0 }))
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 80)
 
                         Text("–")
                             .foregroundStyle(.secondary)
 
-                        TextField("Max $", text: $rankerViewModel.maxPriceInput)
+                        TextField("Max $", text: Binding.deferred(get: { rankerViewModel.maxPriceInput }, set: { rankerViewModel.maxPriceInput = $0 }))
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 80)
                     }

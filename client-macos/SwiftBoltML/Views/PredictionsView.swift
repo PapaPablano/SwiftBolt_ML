@@ -13,7 +13,7 @@ struct PredictionsView: View {
             headerSection
 
             // Tab selector
-            Picker("", selection: $appViewModel.selectedPredictionsTab) {
+            Picker("", selection: Binding.deferred(get: { appViewModel.selectedPredictionsTab }, set: { appViewModel.selectedPredictionsTab = $0 })) {
                 Text("Overview").tag(0)
                 Text("Model Performance").tag(1)
                 Text("Statistical Validation").tag(2)
