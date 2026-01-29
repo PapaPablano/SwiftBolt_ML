@@ -56,8 +56,8 @@ struct MultiTimeframeForecastGridView: View {
         return filtered.sorted { lhs, rhs in
             switch (lhs.timeframe, rhs.timeframe) {
             case let (l?, r?): return l.orderIndex < r.orderIndex
-            case let (l?, nil): return true
-            case let (nil, r?): return false
+            case (_, nil): return true
+            case (nil, _): return false
             case (nil, nil): return lhs.key < rhs.key
             }
         }
@@ -192,7 +192,7 @@ struct MultiTimeframeForecastCard: View {
 
                 Spacer()
 
-                if let summary = mlSummary {
+                if mlSummary != nil {
                     HStack(spacing: 6) {
                         Image(systemName: labelIcon)
                             .font(.caption)

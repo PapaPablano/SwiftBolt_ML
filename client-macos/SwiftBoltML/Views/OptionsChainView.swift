@@ -22,7 +22,7 @@ struct OptionsChainView: View {
                 .environmentObject(appViewModel)
             } else {
                 // Tab selector
-                Picker("", selection: Binding.deferred(get: { appViewModel.selectedOptionsTab }, set: { appViewModel.selectedOptionsTab = $0 })) {
+                Picker("", selection: Binding<Int>.deferred(get: { appViewModel.selectedOptionsTab }, set: { appViewModel.selectedOptionsTab = $0 })) {
                     Label("ML Ranker", systemImage: "brain.head.profile").tag(0)
                     Label("Full Chain", systemImage: "chart.bar.doc.horizontal").tag(1)
                 }
@@ -170,9 +170,9 @@ struct OptionsChainHeader: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
-                Picker("", selection: Binding.deferred(
+                Picker("", selection: Binding<TimeInterval?>.deferred(
                     get: { viewModel.selectedExpiration },
-                    set: { (expiration: TimeInterval?) in viewModel.selectExpiration(expiration) }
+                    set: { viewModel.selectExpiration($0) }
                 )) {
                     Text("All").tag(nil as TimeInterval?)
                     ForEach(viewModel.availableExpirations, id: \.self) { expiration in
