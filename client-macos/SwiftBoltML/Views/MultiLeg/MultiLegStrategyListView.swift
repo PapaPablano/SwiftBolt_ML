@@ -95,7 +95,7 @@ struct MultiLegStrategyListView: View {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
-                TextField("Search strategies...", text: Binding.deferred(get: { viewModel.searchText }, set: { viewModel.searchText = $0 }))
+                TextField("Search strategies...", text: deferredBinding(get: { viewModel.searchText }, set: { viewModel.searchText = $0 }))
                     .textFieldStyle(.plain)
 
                 if !viewModel.searchText.isEmpty {
@@ -114,7 +114,7 @@ struct MultiLegStrategyListView: View {
             .frame(maxWidth: 200)
 
             // Status filter
-            Picker("Status", selection: Binding.deferred(get: { viewModel.statusFilter }, set: { viewModel.statusFilter = $0 })) {
+            Picker("Status", selection: deferredBinding(get: { viewModel.statusFilter }, set: { viewModel.statusFilter = $0 })) {
                 ForEach(StrategyStatusFilter.allCases, id: \.self) { status in
                     Text(status.rawValue).tag(status)
                 }
@@ -123,7 +123,7 @@ struct MultiLegStrategyListView: View {
             .frame(maxWidth: 250)
 
             // Sort
-            Picker("Sort", selection: Binding.deferred(get: { viewModel.sortOption }, set: { viewModel.sortOption = $0 })) {
+            Picker("Sort", selection: deferredBinding(get: { viewModel.sortOption }, set: { viewModel.sortOption = $0 })) {
                 ForEach(StrategySortOption.allCases, id: \.self) { option in
                     Text(option.rawValue).tag(option)
                 }

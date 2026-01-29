@@ -25,7 +25,7 @@ struct WebChartControlsView: View {
                 
                 Spacer()
                 
-                Toggle("", isOn: Binding.deferred(get: { viewModel.useHeikinAshi }, set: { viewModel.useHeikinAshi = $0 }))
+                Toggle("", isOn: deferredBinding(get: { viewModel.useHeikinAshi }, set: { viewModel.useHeikinAshi = $0 }))
                     .toggleStyle(.switch)
                     .labelsHidden()
             }
@@ -43,7 +43,7 @@ struct WebChartControlsView: View {
                 
                 Spacer()
                 
-                Toggle("", isOn: Binding.deferred(get: { viewModel.showVolumeProfile }, set: { viewModel.showVolumeProfile = $0 }))
+                Toggle("", isOn: deferredBinding(get: { viewModel.showVolumeProfile }, set: { viewModel.showVolumeProfile = $0 }))
                     .toggleStyle(.switch)
                     .labelsHidden()
                     .onChange(of: viewModel.showVolumeProfile) { _, newValue in

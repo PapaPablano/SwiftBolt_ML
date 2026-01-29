@@ -150,6 +150,7 @@
 		MF0001012345678900000002 /* BackfillStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000002 /* BackfillStatusView.swift */; };
 		MF0001012345678900000003 /* CacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000003 /* CacheManager.swift */; };
 		MF0001012345678900000004 /* DataValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000004 /* DataValidator.swift */; };
+		DEFB00012345678900000001 /* DeferredBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEFB00022345678900000001 /* DeferredBinding.swift */; };
 		MF0001012345678900000005 /* Debouncer.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000005 /* Debouncer.swift */; };
 		MF0001012345678900000006 /* Downsampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000006 /* Downsampler.swift */; };
 		MF0001012345678900000007 /* MarketStatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000007 /* MarketStatusBadge.swift */; };
@@ -312,6 +313,7 @@
 		MF0002012345678900000002 /* BackfillStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackfillStatusView.swift; sourceTree = "<group>"; };
 		MF0002012345678900000003 /* CacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheManager.swift; sourceTree = "<group>"; };
 		MF0002012345678900000004 /* DataValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataValidator.swift; sourceTree = "<group>"; };
+		DEFB00022345678900000001 /* DeferredBinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeferredBinding.swift; sourceTree = "<group>"; };
 		MF0002012345678900000005 /* Debouncer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Debouncer.swift; sourceTree = "<group>"; };
 		MF0002012345678900000006 /* Downsampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Downsampler.swift; sourceTree = "<group>"; };
 		MF0002012345678900000007 /* MarketStatusBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketStatusBadge.swift; sourceTree = "<group>"; };
@@ -606,6 +608,7 @@
 		MF0003012345678900000002 /* Utilities */ = {
 			isa = PBXGroup;
 			children = (
+				DEFB00022345678900000001 /* DeferredBinding.swift */,
 				MF0002012345678900000003 /* CacheManager.swift */,
 				MF0002012345678900011 /* RequestDeduplicator.swift */,
 				MF0002012345678900012 /* RetryPolicy.swift */,
@@ -821,6 +824,7 @@
 				F768A2A036F22E169CA9E8AC /* ReloadWatchlistResponse.swift in Sources */,
 				MF0001012345678900000001 /* BackfillService.swift in Sources */,
 				MF0001012345678900000002 /* BackfillStatusView.swift in Sources */,
+				DEFB00012345678900000001 /* DeferredBinding.swift in Sources */,
 				MF0001012345678900000003 /* CacheManager.swift in Sources */,
 				MF0001012345678900011 /* RequestDeduplicator.swift in Sources */,
 				MF0001012345678900012 /* RetryPolicy.swift in Sources */,

@@ -108,7 +108,7 @@ struct DetailView: View {
                     .frame(minWidth: 600)
 
                 VStack(spacing: 0) {
-                    Picker("", selection: Binding.deferred(get: { appViewModel.selectedDetailTab }, set: { appViewModel.selectedDetailTab = $0 })) {
+                    Picker("", selection: deferredBinding(get: { appViewModel.selectedDetailTab }, set: { appViewModel.selectedDetailTab = $0 })) {
                         Text("News").tag(0)
                         Text("Options").tag(1)
                         Text("Analysis").tag(2)
