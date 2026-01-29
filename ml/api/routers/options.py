@@ -3,10 +3,16 @@
 Uses Alpaca first (when credentials are set), then Tradier as fallback. Same
 response shape as Supabase Edge options-chain and options-quotes so the macOS
 client can use FastAPI (Docker) for live options data when available.
+
+Optional short-TTL Redis cache for options chain and quotes to reduce Alpaca/Tradier
+calls when the same symbol/contracts are requested repeatedly (e.g. polling).
 """
 
+import hashlib
+import json
 import logging
 import math
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +30,97 @@ router = APIRouter()
 
 ALPACA_OPTIONS_BASE = "https://data.alpaca.markets/v1beta1/options"
 _tradier_client = None
+_redis_client = None
+
+
+def _options_cache_ttl_seconds() -> int:
+    """Options cache TTL from env (default 60s for quotes/chain)."""
+    try:
+        return max(10, int(os.getenv("OPTIONS_CACHE_TTL_SECONDS", "60")))
+    except Exception:
+        return 60
+
+
+def _options_cache_enabled() -> bool:
+    return os.getenv("ENABLE_OPTIONS_CACHE", "true").strip().lower() in ("1", "true", "yes", "y", "on")
+
+
+def _get_redis():
+    """Lazy Redis client for options cache; None if disabled or unavailable."""
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    if not _options_cache_enabled():
+        return None
+    try:
+        import redis
+        host = os.getenv("REDIS_HOST", "localhost")
+        port = int(os.getenv("REDIS_PORT", "6379"))
+        _redis_client = redis.Redis(host=host, port=port, decode_responses=True)
+        _redis_client.ping()
+        return _redis_client
+    except Exception as e:
+        logger.debug("Options cache Redis unavailable: %s", e)
+        return None
+
+
+def _options_chain_cache_key(underlying: str, expiration: int | None) -> str:
+    return f"options_chain:v1:{underlying}:{expiration if expiration else 'all'}"
+
+
+def _options_quotes_cache_key(symbol: str, contracts: list[str]) -> str:
+    h = hashlib.sha256(",".join(sorted(c.upper() for c in contracts)).encode()).hexdigest()[:24]
+    return f"options_quotes:v1:{symbol}:{h}"
+
+
+def _get_options_chain_cached(underlying: str, expiration: int | None):
+    r = _get_redis()
+    if not r:
+        return None
+    try:
+        key = _options_chain_cache_key(underlying, expiration)
+        raw = r.get(key)
+        if raw:
+            return json.loads(raw)
+    except Exception as e:
+        logger.debug("Options chain cache get error: %s", e)
+    return None
+
+
+def _set_options_chain_cached(underlying: str, expiration: int | None, data: dict) -> None:
+    r = _get_redis()
+    if not r:
+        return
+    try:
+        key = _options_chain_cache_key(underlying, expiration)
+        r.setex(key, _options_cache_ttl_seconds(), json.dumps(data, default=str))
+    except Exception as e:
+        logger.debug("Options chain cache set error: %s", e)
+
+
+def _get_options_quotes_cached(symbol: str, contracts: list[str]):
+    r = _get_redis()
+    if not r:
+        return None
+    try:
+        key = _options_quotes_cache_key(symbol, contracts)
+        raw = r.get(key)
+        if raw:
+            return json.loads(raw)
+    except Exception as e:
+        logger.debug("Options quotes cache get error: %s", e)
+    return None
+
+
+def _set_options_quotes_cached(symbol: str, contracts: list[str], data: dict) -> None:
+    r = _get_redis()
+    if not r:
+        return
+    try:
+        key = _options_quotes_cache_key(symbol, contracts)
+        r.setex(key, _options_cache_ttl_seconds(), json.dumps(data, default=str))
+    except Exception as e:
+        logger.debug("Options quotes cache set error: %s", e)
 
 
 def _json_safe_float(v):
@@ -315,16 +412,23 @@ async def get_options_chain(
 ):
     """
     Fetch live options chain from Alpaca (primary) or Tradier (fallback). Same
-    response shape as Supabase options-chain Edge Function.
+    response shape as Supabase options-chain Edge Function. Optionally served
+    from short-TTL Redis cache when ENABLE_OPTIONS_CACHE is true.
     """
     underlying = (underlying or "").strip().upper()
     if not underlying:
         raise HTTPException(status_code=400, detail="underlying is required")
 
+    # Optional: return cached chain (short TTL)
+    cached = _get_options_chain_cached(underlying, expiration)
+    if cached is not None:
+        return cached
+
     # Try Alpaca first when credentials are set
     if _alpaca_configured():
         result = _fetch_alpaca_options_chain(underlying, expiration)
         if result and (result["calls"] or result["puts"]):
+            _set_options_chain_cached(underlying, expiration, result)
             return result
 
     # Fall back to Tradier
@@ -363,13 +467,15 @@ async def get_options_chain(
         else:
             puts.append(contract)
     expirations = sorted(expirations_set)
-    return {
+    result = {
         "underlying": underlying,
         "timestamp": int(datetime.now(timezone.utc).timestamp()),
         "expirations": expirations,
         "calls": calls,
         "puts": puts,
     }
+    _set_options_chain_cached(underlying, expiration, result)
+    return result
 
 
 class OptionsQuotesRequest(BaseModel):
@@ -382,7 +488,8 @@ class OptionsQuotesRequest(BaseModel):
 async def post_options_quotes(body: OptionsQuotesRequest):
     """
     Return live quotes for the given option contracts from Alpaca (primary) or
-    Tradier (fallback). Same response shape as Supabase options-quotes.
+    Tradier (fallback). Same response shape as Supabase options-quotes. Optionally
+    served from short-TTL Redis cache when ENABLE_OPTIONS_CACHE is true.
     """
     symbol = (body.symbol or "").strip().upper()
     contracts = [c.strip().upper() for c in (body.contracts or []) if c and c.strip()]
@@ -391,10 +498,16 @@ async def post_options_quotes(body: OptionsQuotesRequest):
     if not contracts:
         raise HTTPException(status_code=400, detail="contracts list is required")
 
+    # Optional: return cached quotes (short TTL)
+    cached = _get_options_quotes_cached(symbol, contracts)
+    if cached is not None:
+        return cached
+
     # Try Alpaca first when credentials are set
     if _alpaca_configured():
         result = _fetch_alpaca_options_quotes(symbol, contracts)
         if result is not None:
+            _set_options_quotes_cached(symbol, contracts, result)
             return result
 
     # Fall back to Tradier: fetch full chain and filter to requested contracts
@@ -453,7 +566,7 @@ async def post_options_quotes(body: OptionsQuotesRequest):
                 "rho": rho,
                 "updated_at": now_iso,
             })
-    return {
+    result = {
         "symbol": symbol,
         "timestamp": now_iso,
         "chain_timestamp": now_iso,
@@ -461,6 +574,8 @@ async def post_options_quotes(body: OptionsQuotesRequest):
         "total_returned": len(quotes),
         "quotes": quotes,
     }
+    _set_options_quotes_cached(symbol, contracts, result)
+    return result
 
 
 HISTORY_LOOKBACK_DAYS = 30
