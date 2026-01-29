@@ -1,7 +1,7 @@
 # FastAPI Server Dockerfile
 # Multi-stage build with Alpine for minimal image size
 
-FROM python:3.10-alpine as builder
+FROM python:3.14-alpine as builder
 
 # Set working directory
 WORKDIR /app
@@ -24,7 +24,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements-docker.txt
 
 # Production stage
-FROM python:3.10-alpine
+FROM python:3.14-alpine
 
 # Set working directory
 WORKDIR /app
@@ -37,7 +37,7 @@ RUN apk add --no-cache \
     curl
 
 # Copy Python dependencies from builder
-COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code

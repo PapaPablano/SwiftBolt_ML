@@ -249,11 +249,11 @@ struct OptionContractRow: View {
 
                 Spacer()
 
-                Text("Vol: \(Int(contract.volume))")
+                Text("Vol: \(Int(contract.volume ?? 0))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
-                Text("OI: \(Int(contract.openInterest))")
+                Text("OI: \(Int(contract.openInterest ?? 0))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

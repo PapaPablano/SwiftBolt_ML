@@ -857,7 +857,7 @@ struct PortfolioOptimizationSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: "chart.pie.circle")
+                Image(systemName: "chart.pie")
                     .font(.title3)
                     .foregroundStyle(.teal)
                 Text("Portfolio Optimization")
@@ -900,7 +900,7 @@ struct StressTestingSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: "exclamationmark.triangle.circle")
+                Image(systemName: "exclamationmark.triangle")
                     .font(.title3)
                     .foregroundStyle(.red)
                 Text("Stress Testing")
@@ -1037,7 +1037,7 @@ private struct GreeksSurfaceSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: "chart.3d")
+                Image(systemName: "square.stack.3d.up")
                     .font(.title3)
                     .foregroundStyle(.orange)
                 Text("Greeks Surface")

@@ -754,9 +754,8 @@
             if (!pivots.length) return [];
             const xVals = pivots.map(p => lastIndex - p.index);
             const yVals = pivots.map(p => p.price);
-            let degree = 1;
-            if (pivots.length >= 4) degree = 3;
-            else if (pivots.length >= 3) degree = 2;
+            // TradingView default: linear regression (straight lines). Use degree 1 only.
+            const degree = 1;
             const fit = fitPolynomialNormalized(xVals, yVals, degree);
             if (!fit) return [];
 

@@ -29,6 +29,24 @@ enum StrategySortOption: String, CaseIterable {
     case name = "Name"
 }
 
+/// Live Greeks from options-quotes (per leg and combined).
+struct LiveGreeks {
+    let combinedDelta: Double
+    let combinedGamma: Double
+    let combinedTheta: Double
+    let combinedVega: Double
+    let combinedRho: Double
+    let perLeg: [String: LegLiveGreeks]
+}
+
+struct LegLiveGreeks {
+    let delta: Double
+    let gamma: Double
+    let theta: Double
+    let vega: Double
+    let rho: Double
+}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -64,6 +82,9 @@ class MultiLegViewModel: ObservableObject {
     @Published var lastRefresh: Date?
     @Published var isAutoRefreshing = false
     private var refreshTimer: AnyCancellable?
+
+    /// Live Greeks from options-quotes (keyed by strategy id); used when DB Greeks are missing.
+    @Published var liveGreeksByStrategyId: [String: LiveGreeks] = [:]
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -145,9 +166,10 @@ class MultiLegViewModel: ObservableObject {
             .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
             .removeDuplicates()
             .sink { [weak self] _ in
-                // Maintain weak capture (for symmetry with other observers) and explicitly
-                // trigger an update cycle so dependent views refresh immediately.
-                self?.objectWillChange.send()
+                // Defer to next run loop to avoid "Publishing changes from within view updates"
+                DispatchQueue.main.async {
+                    self?.objectWillChange.send()
+                }
             }
             .store(in: &cancellables)
 
@@ -238,6 +260,9 @@ class MultiLegViewModel: ObservableObject {
                 
                 strategyDetail = response
 
+                // Fetch live Greeks when DB Greeks are missing (options-quotes)
+                await refreshLiveGreeks(strategy: response.strategy, legs: response.legs)
+
                 // Update the strategy in the list if it exists
                 if let index = strategies.firstIndex(where: { $0.id == strategyId }) {
                     var updated = response.strategy
@@ -274,6 +299,50 @@ class MultiLegViewModel: ObservableObject {
         currentLoadingStrategyId = nil
         selectedStrategy = nil
         strategyDetail = nil
+        liveGreeksByStrategyId.removeAll()
+    }
+
+    /// Fetch options quotes for open legs and compute live Greeks (combined + per leg).
+    func refreshLiveGreeks(strategy: MultiLegStrategy, legs: [OptionsLeg]) async {
+        let openLegs = legs.filter { !$0.isClosed }
+        guard !openLegs.isEmpty else { return }
+        let symbol = strategy.underlyingTicker
+        let contracts = openLegs.map { $0.occSymbol(underlying: symbol) }.filter { !$0.isEmpty }
+        guard contracts.count == openLegs.count else { return }
+        do {
+            let response = try await APIClient.shared.fetchOptionsQuotes(symbol: symbol, contracts: contracts)
+            let normalizedKey: (String) -> String = { $0.uppercased().replacingOccurrences(of: " ", with: "") }
+            let quoteBySymbol = Dictionary(uniqueKeysWithValues: response.quotes.map { (normalizedKey($0.contractSymbol), $0) })
+            var perLeg: [String: LegLiveGreeks] = [:]
+            var combinedDelta: Double = 0, combinedGamma: Double = 0, combinedTheta: Double = 0, combinedVega: Double = 0, combinedRho: Double = 0
+            var hasAnyGreek = false
+            for leg in openLegs {
+                let occ = leg.occSymbol(underlying: symbol)
+                guard let quote = quoteBySymbol[occ.uppercased().replacingOccurrences(of: " ", with: "")] else { continue }
+                let d = quote.delta ?? 0, g = quote.gamma ?? 0, t = quote.theta ?? 0, v = quote.vega ?? 0, r = quote.rho ?? 0
+                if quote.delta != nil || quote.gamma != nil || quote.theta != nil || quote.vega != nil { hasAnyGreek = true }
+                let sign = leg.positionType == .long ? 1.0 : -1.0
+                let mult = Double(leg.contracts) * 100.0
+                perLeg[leg.id] = LegLiveGreeks(delta: d * sign, gamma: g * sign, theta: t * sign, vega: v * sign, rho: r * sign)
+                combinedDelta += d * sign * mult
+                combinedGamma += g * sign * mult
+                combinedTheta += t * sign * mult
+                combinedVega += v * sign * mult
+                combinedRho += r * sign * mult
+            }
+            if !perLeg.isEmpty && hasAnyGreek {
+                liveGreeksByStrategyId[strategy.id] = LiveGreeks(
+                    combinedDelta: combinedDelta,
+                    combinedGamma: combinedGamma,
+                    combinedTheta: combinedTheta,
+                    combinedVega: combinedVega,
+                    combinedRho: combinedRho,
+                    perLeg: perLeg
+                )
+            }
+        } catch {
+            // Non-fatal: keep DB Greeks or N/A
+        }
     }
 
     // MARK: - Create Strategy

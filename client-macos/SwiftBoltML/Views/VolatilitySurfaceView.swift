@@ -95,7 +95,7 @@ struct VolatilitySurfaceView: View {
         StandardEmptyView(
             title: "No Surface Data",
             message: "Volatility surface will be generated from the provided slices.",
-            icon: "chart.3d",
+            icon: "square.stack.3d.up",
             actionLabel: "Generate Surface",
             action: {
                 Task {

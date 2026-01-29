@@ -132,7 +132,7 @@ struct GreeksSurfaceView: View {
         StandardEmptyView(
             title: "No Surface Data",
             message: "Enter parameters and click calculate to generate a 3D Greeks surface.",
-            icon: "chart.3d",
+            icon: "square.stack.3d.up",
             actionLabel: "Calculate Surface",
             action: {
                 Task {

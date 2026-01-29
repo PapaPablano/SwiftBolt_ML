@@ -33,8 +33,23 @@ loadEnv();
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const REPORT_DIR = "canary_monitoring_reports";
-const TODAY = new Date().toISOString().split("T")[0].replace(/-/g, "");
+const NOW = new Date();
+// Use local date for "today" so the report matches the runner's calendar day
+const TODAY_STR = [
+  NOW.getFullYear(),
+  String(NOW.getMonth() + 1).padStart(2, "0"),
+  String(NOW.getDate()).padStart(2, "0"),
+].join("-");
+const TODAY = TODAY_STR.replace(/-/g, "");
 const REPORT_FILE = path.join(REPORT_DIR, `${TODAY}_canary_report.md`);
+
+// Start/end of today in UTC (for filtering; DB stores timestamps in UTC)
+function getTodayUTCBounds() {
+  const start = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate());
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
 
 // Color codes
 const colors = {
@@ -78,33 +93,67 @@ async function main() {
 
     // Start report file
     let report = `# Phase 7.1 Canary Daily Monitoring Report\n\n`;
-    report += `Date: ${new Date().toISOString().split("T")[0]}\n\n`;
+    report += `Date: ${TODAY_STR}\n\n`;
+
+    // Prefer today's data; fall back to latest if no data for today yet
+    const { start: todayStart, end: todayEnd } = getTodayUTCBounds();
+    const { data: todayRows, error: todayError } = await supabase
+      .from("ensemble_validation_metrics")
+      .select("validation_date")
+      .in("symbol", ["AAPL", "MSFT", "SPY"])
+      .gte("validation_date", todayStart)
+      .lt("validation_date", todayEnd)
+      .limit(1);
+
+    let dataDateStart;
+    let dataDateEnd;
+    let dataDateLabel;
+    let usedFallback = false;
+
+    if (!todayError && todayRows && todayRows.length > 0) {
+      dataDateStart = todayStart;
+      dataDateEnd = todayEnd;
+      dataDateLabel = TODAY_STR;
+      log.header(`[Using data from today: ${TODAY_STR}]`);
+    } else {
+      const { data: latestDate, error: latestDateError } = await supabase
+        .from("ensemble_validation_metrics")
+        .select("validation_date")
+        .order("validation_date", { ascending: false })
+        .limit(1);
+
+      if (latestDateError || !latestDate || latestDate.length === 0) {
+        log.error(`Could not determine latest date: ${latestDateError?.message || "No data found"}`);
+        throw new Error("No validation data found in database");
+      }
+
+      const latestValidationDate = latestDate[0].validation_date;
+      const latestDay = latestValidationDate.split("T")[0];
+      dataDateStart = `${latestDay}T00:00:00.000Z`;
+      const [y, m, d] = latestDay.split("-").map(Number);
+      const nextDay = new Date(Date.UTC(y, m - 1, d + 1));
+      dataDateEnd = nextDay.toISOString();
+      dataDateLabel = latestDay;
+      usedFallback = true;
+      log.warning(`No data for today (${TODAY_STR}) yet; using latest: ${dataDateLabel}`);
+    }
+
+    report += `**Data date:** ${dataDateLabel}${usedFallback ? " (latest available; no data for today yet)" : ""}\n\n`;
+
+    // Helper: query for the chosen date range only
+    const dateRange = (q) => q.gte("validation_date", dataDateStart).lt("validation_date", dataDateEnd);
 
     // ============================================================================
     // QUERY 1: Daily Divergence Summary
     // ============================================================================
     log.header("[1/3] Running Divergence Summary Query...");
 
-    // Get latest validation date first
-    const { data: latestDate, error: latestDateError } = await supabase
-      .from("ensemble_validation_metrics")
-      .select("validation_date")
-      .order("validation_date", { ascending: false })
-      .limit(1);
-
-    if (latestDateError || !latestDate || latestDate.length === 0) {
-      log.error(`Could not determine latest date: ${latestDateError?.message || "No data found"}`);
-      throw new Error("No validation data found in database");
-    }
-
-    const latestValidationDate = latestDate[0].validation_date;
-    log.header(`[Using latest data from: ${latestValidationDate}]`);
-
-    const divergenceQuery = supabase
-      .from("ensemble_validation_metrics")
-      .select("symbol, divergence, is_overfitting")
-      .in("symbol", ["AAPL", "MSFT", "SPY"])
-      .gte("validation_date", latestValidationDate.split("T")[0]);
+    const divergenceQuery = dateRange(
+      supabase
+        .from("ensemble_validation_metrics")
+        .select("symbol, divergence, is_overfitting")
+        .in("symbol", ["AAPL", "MSFT", "SPY"])
+    );
 
     const { data: divergenceData, error: divergenceError } = await divergenceQuery;
 
@@ -166,11 +215,12 @@ async function main() {
     // ============================================================================
     log.header("[2/3] Running RMSE Comparison Query...");
 
-    const rmseQuery = supabase
-      .from("ensemble_validation_metrics")
-      .select("symbol, val_rmse, test_rmse")
-      .in("symbol", ["AAPL", "MSFT", "SPY"])
-      .gte("validation_date", latestValidationDate.split("T")[0]);
+    const rmseQuery = dateRange(
+      supabase
+        .from("ensemble_validation_metrics")
+        .select("symbol, val_rmse, test_rmse")
+        .in("symbol", ["AAPL", "MSFT", "SPY"])
+    );
 
     const { data: rmseData, error: rmseError } = await rmseQuery;
 
@@ -231,11 +281,12 @@ async function main() {
     // ============================================================================
     log.header("[3/3] Running Overfitting Status Query...");
 
-    const overfittingQuery = supabase
-      .from("ensemble_validation_metrics")
-      .select("symbol, is_overfitting, divergence")
-      .in("symbol", ["AAPL", "MSFT", "SPY"])
-      .gte("validation_date", latestValidationDate.split("T")[0]);
+    const overfittingQuery = dateRange(
+      supabase
+        .from("ensemble_validation_metrics")
+        .select("symbol, is_overfitting, divergence")
+        .in("symbol", ["AAPL", "MSFT", "SPY"])
+    );
 
     const { data: overfittingData, error: overfittingError } = await overfittingQuery;
 

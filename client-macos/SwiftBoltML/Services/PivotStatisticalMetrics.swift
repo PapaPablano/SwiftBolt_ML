@@ -77,7 +77,7 @@ struct PivotStatisticalMetrics {
 
         var bounceCount = 0
 
-        for (_, pivot) in pivots.enumerated() {
+        for pivot in pivots {
             guard pivot.index > 0, pivot.index < bars.count - 1 else { continue }
 
             let beforeBar = bars[pivot.index - 1]

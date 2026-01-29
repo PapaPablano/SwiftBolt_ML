@@ -16,7 +16,10 @@ from api.routers import (
     forecast_quality,
     greeks_surface,
     model_training,
+    multi_leg,
+    options,
     portfolio,
+    ranking,
     stress_test,
     support_resistance,
     technical_indicators,
@@ -68,6 +71,9 @@ app.include_router(stress_test.router, prefix="/api/v1", tags=["Stress Testing"]
 app.include_router(model_training.router, prefix="/api/v1", tags=["Model Training"])
 app.include_router(forecast_quality.router, prefix="/api/v1", tags=["Forecast Quality"])
 app.include_router(greeks_surface.router, prefix="/api/v1", tags=["Options Greeks"])
+app.include_router(options.router, prefix="/api/v1", tags=["Options Chain & Quotes"])
+app.include_router(ranking.router, prefix="/api/v1", tags=["Options Ranking"])
+app.include_router(multi_leg.router, prefix="/api/v1", tags=["Multi-Leg Strategies"])
 app.include_router(volatility_surface.router, prefix="/api/v1", tags=["Volatility Surfaces"])
 app.include_router(forecast_charts_realtime.router, prefix="/api/v1", tags=["Real-time Charts"])
 

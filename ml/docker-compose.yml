@@ -23,11 +23,14 @@ services:
       - ./config:/app/config
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8000/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     networks:
       - swiftbolt-network
 

@@ -592,6 +592,22 @@ struct OptionsLeg: Codable, Identifiable {
         return formatter.string(from: date)
     }
 
+    /// OCC option symbol for API (21 chars: 6 root + 6 YYMMDD + 1 C/P + 8 strike). e.g. MU    260726P00090000
+    func occSymbol(underlying: String) -> String {
+        let root = String(underlying.uppercased().prefix(6))
+        let paddedRoot = root.padding(toLength: 6, withPad: " ", startingAt: 0)
+        let parts = expiry.split(separator: "-")
+        guard parts.count == 3 else { return "" }
+        let yy = String(parts[0].suffix(2))
+        let mm = String(parts[1])
+        let dd = String(parts[2])
+        let dateStr = "\(yy)\(mm)\(dd)"
+        let typeChar = optionType == .call ? "C" : "P"
+        let strikeCents = Int(round(strike * 1000))
+        let strikeStr = String(format: "%08d", strikeCents)
+        return paddedRoot + dateStr + typeChar + strikeStr
+    }
+
     var plColor: Color {
         guard let pl = isClosed ? realizedPL : unrealizedPL else { return .gray }
         if pl > 0 { return .green }

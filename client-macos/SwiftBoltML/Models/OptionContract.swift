@@ -13,15 +13,15 @@ struct OptionContract: Codable, Identifiable {
     let expiration: TimeInterval
     let type: OptionType
 
-    // Pricing
+    // Pricing (API can return null for last when no recent trade)
     let bid: Double
     let ask: Double
-    let last: Double
+    let last: Double?
     let mark: Double
 
-    // Volume & Open Interest
-    let volume: Double
-    let openInterest: Double
+    // Volume & Open Interest (API can return null)
+    let volume: Double?
+    let openInterest: Double?
 
     // Greeks
     let delta: Double?
@@ -59,11 +59,11 @@ struct OptionContract: Codable, Identifiable {
 
         self.bid = try container.decode(Double.self, forKey: .bid)
         self.ask = try container.decode(Double.self, forKey: .ask)
-        self.last = try container.decode(Double.self, forKey: .last)
+        self.last = try container.decodeIfPresent(Double.self, forKey: .last)
         self.mark = try container.decode(Double.self, forKey: .mark)
 
-        self.volume = try container.decode(Double.self, forKey: .volume)
-        self.openInterest = try container.decode(Double.self, forKey: .openInterest)
+        self.volume = try container.decodeIfPresent(Double.self, forKey: .volume)
+        self.openInterest = try container.decodeIfPresent(Double.self, forKey: .openInterest)
 
         self.delta = try container.decodeIfPresent(Double.self, forKey: .delta)
         self.gamma = try container.decodeIfPresent(Double.self, forKey: .gamma)

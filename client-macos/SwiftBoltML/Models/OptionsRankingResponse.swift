@@ -80,6 +80,11 @@ struct OptionContractQuote: Codable {
     let volume: Double?
     let openInterest: Double?
     let impliedVol: Double?
+    let delta: Double?
+    let gamma: Double?
+    let theta: Double?
+    let vega: Double?
+    let rho: Double?
     let updatedAt: String
 
     enum CodingKeys: String, CodingKey {
@@ -91,6 +96,11 @@ struct OptionContractQuote: Codable {
         case volume
         case openInterest = "open_interest"
         case impliedVol = "implied_vol"
+        case delta
+        case gamma
+        case theta
+        case vega
+        case rho
         case updatedAt = "updated_at"
     }
 

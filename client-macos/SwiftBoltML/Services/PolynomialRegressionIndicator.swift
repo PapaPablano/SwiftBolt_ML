@@ -258,7 +258,9 @@ class PolynomialRegressionIndicator: ObservableObject {
         var showPivots: Bool = true
         var showTests: Bool = true
         var showBreaks: Bool = true
-        var rollingCalculation: Bool = false  // Recalculate as bars update
+        /// Show "B" (break) and "R" (respect/test) labels at signal markers (TradingView-style)
+        var showSignalLabels: Bool = true
+        var rollingCalculation: Bool = true  // Recalculate when new data enters or period moves (on by default)
 
         // Lookback window - only use pivots from the last N bars (nil = all bars)
         // TradingView style typically uses ~150 bar window for cleaner trend lines
@@ -292,21 +294,38 @@ class PolynomialRegressionIndicator: ObservableObject {
     // MARK: - Private Properties
 
     private var bars: [OHLCBar] = []
+    /// When rollingCalculation is false, skip recalc if bar set unchanged
+    private var lastCalculatedBarSignature: (count: Int, lastTs: TimeInterval)?
 
     // MARK: - Public Methods
 
-    /// Calculate polynomial regression S&R for given bars
-    /// Optimized for macOS performance with minimal allocations
+    /// Calculate polynomial regression S&R for given bars.
+    /// When rollingCalculation is true (default): recalculates whenever bars change (new data or period move).
+    /// When false: recalculates only when bar count or last bar identity changes.
     func calculate(bars: [OHLCBar]) {
-        // Always reset state first to ensure clean calculation for new data
+        guard !bars.isEmpty else {
+            resistanceLine = nil
+            supportLine = nil
+            signals = []
+            pivots = ([], [])
+            activePivots = ([], [])
+            self.bars = []
+            lastCalculatedBarSignature = nil
+            return
+        }
+
+        let signature = (bars.count, bars.last!.ts.timeIntervalSince1970)
+        if !settings.rollingCalculation, let last = lastCalculatedBarSignature, last == signature {
+            return
+        }
+
+        // Reset state for a fresh calculation
         resistanceLine = nil
         supportLine = nil
         signals = []
         pivots = ([], [])
         activePivots = ([], [])
         self.bars = []
-
-        guard !bars.isEmpty else { return }
 
         isLoading = true
         errorMessage = nil
@@ -370,6 +389,7 @@ class PolynomialRegressionIndicator: ObservableObject {
         print("[PolynomialSR] Result: R=\(currentResistance.map { String(format: "%.2f", $0) } ?? "nil"), S=\(currentSupport.map { String(format: "%.2f", $0) } ?? "nil")")
         #endif
 
+        lastCalculatedBarSignature = (bars.count, bars.last!.ts.timeIntervalSince1970)
         isLoading = false
     }
 
@@ -763,6 +783,7 @@ class PolynomialRegressionIndicator: ObservableObject {
         return points
     }
 
+    /// Detect break and retest signals for every bar in the regression range (TradingView-style historical B/R labels).
     private func detectSignals(bars: [OHLCBar]) {
         var detectedSignals: [RegressionSignal] = []
 
@@ -771,60 +792,58 @@ class PolynomialRegressionIndicator: ObservableObject {
             return
         }
 
-        let lastBar = bars[bars.count - 1]
-        let prevBar = bars[bars.count - 2]
         let lastIndex = bars.count - 1
+        // Scan from first bar after regression start (so we have a previous bar for break detection)
+        let rStart = resistanceLine.map { $0.startIndex + 1 } ?? Int.max
+        let sStart = supportLine.map { $0.startIndex + 1 } ?? Int.max
+        let startBar = max(1, min(rStart, sStart, lastIndex))
 
-        // Check resistance signals
-        if let resLine = resistanceLine {
-            // x=0 is current bar, x=1 is previous bar
-            let currentRes = PolynomialRegression.predict(coefficients: resLine.coefficients, x: 0)
-            let prevRes = PolynomialRegression.predict(coefficients: resLine.coefficients, x: 1)
+        for i in startBar...lastIndex {
+            let bar = bars[i]
+            let prevBar = bars[i - 1]
+            // x = bars from current bar; bar i is (lastIndex - i) bars ago
+            let x = Double(lastIndex - i)
 
-            // Test: high touched resistance from below
-            if lastBar.high >= currentRes && prevBar.high < prevRes && settings.showTests {
-                detectedSignals.append(RegressionSignal(
-                    type: .resistanceTest,
-                    price: lastBar.high,
-                    index: lastIndex,
-                    date: lastBar.ts
-                ))
+            // Resistance: break = close crosses above; retest = high touches, close stays below
+            if let resLine = resistanceLine {
+                let resLevel = PolynomialRegression.predict(coefficients: resLine.coefficients, x: x)
+                if settings.showBreaks && prevBar.close <= resLevel && bar.close > resLevel {
+                    detectedSignals.append(RegressionSignal(
+                        type: .resistanceBreak,
+                        price: bar.close,
+                        index: i,
+                        date: bar.ts
+                    ))
+                }
+                if settings.showTests && bar.high >= resLevel && bar.close < resLevel {
+                    detectedSignals.append(RegressionSignal(
+                        type: .resistanceTest,
+                        price: bar.high,
+                        index: i,
+                        date: bar.ts
+                    ))
+                }
             }
 
-            // Break: close crossed above resistance
-            if lastBar.close > currentRes && prevBar.close <= prevRes && settings.showBreaks {
-                detectedSignals.append(RegressionSignal(
-                    type: .resistanceBreak,
-                    price: lastBar.close,
-                    index: lastIndex,
-                    date: lastBar.ts
-                ))
-            }
-        }
-
-        // Check support signals
-        if let supLine = supportLine {
-            let currentSup = PolynomialRegression.predict(coefficients: supLine.coefficients, x: 0)
-            let prevSup = PolynomialRegression.predict(coefficients: supLine.coefficients, x: 1)
-
-            // Test: low touched support from above
-            if lastBar.low <= currentSup && prevBar.low > prevSup && settings.showTests {
-                detectedSignals.append(RegressionSignal(
-                    type: .supportTest,
-                    price: lastBar.low,
-                    index: lastIndex,
-                    date: lastBar.ts
-                ))
-            }
-
-            // Break: close crossed below support
-            if lastBar.close < currentSup && prevBar.close >= prevSup && settings.showBreaks {
-                detectedSignals.append(RegressionSignal(
-                    type: .supportBreak,
-                    price: lastBar.close,
-                    index: lastIndex,
-                    date: lastBar.ts
-                ))
+            // Support: break = close crosses below; retest = low touches, close stays above
+            if let supLine = supportLine {
+                let supLevel = PolynomialRegression.predict(coefficients: supLine.coefficients, x: x)
+                if settings.showBreaks && prevBar.close >= supLevel && bar.close < supLevel {
+                    detectedSignals.append(RegressionSignal(
+                        type: .supportBreak,
+                        price: bar.close,
+                        index: i,
+                        date: bar.ts
+                    ))
+                }
+                if settings.showTests && bar.low <= supLevel && bar.close > supLevel {
+                    detectedSignals.append(RegressionSignal(
+                        type: .supportTest,
+                        price: bar.low,
+                        index: i,
+                        date: bar.ts
+                    ))
+                }
             }
         }
 

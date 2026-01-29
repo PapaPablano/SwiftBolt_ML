@@ -85,7 +85,7 @@ extension APIClient {
         
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.timeoutInterval = 5
+        request.timeoutInterval = 3
         
         do {
             let (_, response) = try await URLSession.shared.data(for: request)

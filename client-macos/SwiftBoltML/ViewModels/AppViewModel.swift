@@ -54,12 +54,15 @@ final class AppViewModel: ObservableObject {
         self.watchlistViewModel = WatchlistViewModel()
 
         // Keep indicator config in sync (IndicatorsViewModel <-> ChartViewModel)
+        // Defer updates to avoid "Publishing changes from within view updates"
         indicatorsViewModel.$config
             .removeDuplicates()
             .sink { [weak self] config in
                 guard let self else { return }
-                if self.chartViewModel.indicatorConfig != config {
-                    self.chartViewModel.indicatorConfig = config
+                DispatchQueue.main.async {
+                    if self.chartViewModel.indicatorConfig != config {
+                        self.chartViewModel.indicatorConfig = config
+                    }
                 }
             }
             .store(in: &cancellables)
@@ -68,8 +71,10 @@ final class AppViewModel: ObservableObject {
             .removeDuplicates()
             .sink { [weak self] config in
                 guard let self else { return }
-                if self.indicatorsViewModel.config != config {
-                    self.indicatorsViewModel.config = config
+                DispatchQueue.main.async {
+                    if self.indicatorsViewModel.config != config {
+                        self.indicatorsViewModel.config = config
+                    }
                 }
             }
             .store(in: &cancellables)
@@ -128,10 +133,12 @@ final class AppViewModel: ObservableObject {
             }
         }.store(in: &cancellables)
 
-        // Update GA strategy when options ranker changes
+        // Update GA strategy when options ranker changes (defer to avoid publish-in-view-update)
         optionsRankerViewModel.$gaStrategy
             .sink { [weak self] strategy in
-                self?.selectedContractState.updateGAStrategy(strategy)
+                DispatchQueue.main.async {
+                    self?.selectedContractState.updateGAStrategy(strategy)
+                }
             }
             .store(in: &cancellables)
 

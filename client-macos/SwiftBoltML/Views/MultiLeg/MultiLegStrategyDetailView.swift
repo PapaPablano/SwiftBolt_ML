@@ -199,28 +199,29 @@ struct MultiLegStrategyDetailView: View {
     // MARK: - Greeks Card
 
     private var greeksCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let live = viewModel.liveGreeksByStrategyId[strategy.id]
+        return VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Greeks")
                     .font(.headline)
 
                 Spacer()
 
-                Text(strategy.greeksAgeLabel)
+                Text(live != nil ? "Live" : strategy.greeksAgeLabel)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
 
             HStack(spacing: 0) {
-                GreekDisplay(name: "Delta", value: strategy.combinedDelta, format: "%.2f")
+                GreekDisplay(name: "Delta", value: live?.combinedDelta ?? strategy.combinedDelta, format: "%.2f")
                 Spacer()
-                GreekDisplay(name: "Gamma", value: strategy.combinedGamma, format: "%.3f")
+                GreekDisplay(name: "Gamma", value: live?.combinedGamma ?? strategy.combinedGamma, format: "%.3f")
                 Spacer()
-                GreekDisplay(name: "Theta", value: strategy.combinedTheta, format: "%.2f", negativeIsGood: false)
+                GreekDisplay(name: "Theta", value: live?.combinedTheta ?? strategy.combinedTheta, format: "%.2f", negativeIsGood: false)
                 Spacer()
-                GreekDisplay(name: "Vega", value: strategy.combinedVega, format: "%.2f")
+                GreekDisplay(name: "Vega", value: live?.combinedVega ?? strategy.combinedVega, format: "%.2f")
                 Spacer()
-                GreekDisplay(name: "Rho", value: strategy.combinedRho, format: "%.3f")
+                GreekDisplay(name: "Rho", value: live?.combinedRho ?? strategy.combinedRho, format: "%.3f")
             }
         }
         .padding()
@@ -244,7 +245,10 @@ struct MultiLegStrategyDetailView: View {
             }
 
             ForEach(legs.sorted { $0.legNumber < $1.legNumber }) { leg in
-                LegRow(leg: leg) {
+                LegRow(
+                    leg: leg,
+                    liveDelta: viewModel.liveGreeksByStrategyId[strategy.id]?.perLeg[leg.id]?.delta
+                ) {
                     selectedLegToClose = leg
                 }
             }
@@ -401,7 +405,10 @@ struct GreekDisplay: View {
 
 struct LegRow: View {
     let leg: OptionsLeg
+    var liveDelta: Double? = nil
     let onClose: () -> Void
+
+    private var displayDelta: Double? { liveDelta ?? leg.currentDelta }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -452,7 +459,7 @@ struct LegRow: View {
             Spacer()
 
             // Greeks
-            if let delta = leg.currentDelta {
+            if let delta = displayDelta {
                 VStack(spacing: 0) {
                     Text("Delta")
                         .font(.caption2)

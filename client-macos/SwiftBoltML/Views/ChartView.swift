@@ -37,7 +37,7 @@ struct ChartView: View {
 
         return VStack(spacing: 0) {
             ChartHeader(
-                symbol: chartViewModel.selectedSymbol,
+                symbol: chartViewModel.selectedSymbol ?? appViewModel.selectedSymbol,
                 lastBar: chartViewModel.bars.last,
                 liveQuote: chartViewModel.liveQuote,
                 marketState: chartViewModel.marketState,

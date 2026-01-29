@@ -24,7 +24,9 @@ struct SupportResistanceOverlayView: View {
         let polySup = polyIndicator.currentSupport ?? 0
         let pivotCount = pivotIndicator.pivotLevels.count
         let logisticCount = logisticIndicator.regressionLevels.count
-        return "\(polyRes)-\(polySup)-\(pivotCount)-\(logisticCount)-\(priceMin)-\(priceMax)"
+        let signalCount = polyIndicator.signals.count
+        let showLabels = polyIndicator.settings.showSignalLabels
+        return "\(polyRes)-\(polySup)-\(pivotCount)-\(logisticCount)-\(signalCount)-\(showLabels)-\(priceMin)-\(priceMax)"
     }
 
     var body: some View {
@@ -178,22 +180,37 @@ struct SupportResistanceOverlayView: View {
             }
         }
 
-        // Draw signals
+        // Draw signals (and optional B/R labels)
         for signal in polyIndicator.signals {
             let x = indexToX(signal.index)
             let y = priceToY(signal.price)
 
             if x >= 0 && x <= chartWidth {
+                let labelText: String
+                let labelColor: Color
                 switch signal.type {
                 case .resistanceBreak, .supportBreak:
                     let diamond = diamondPath(at: CGPoint(x: x, y: y), size: 8)
                     context.fill(diamond, with: .color(.blue))
+                    labelText = "B"
+                    labelColor = .blue
                 case .resistanceTest:
                     let triangle = trianglePath(at: CGPoint(x: x, y: y), size: 6, pointingDown: true)
                     context.fill(triangle, with: .color(polyIndicator.settings.resistanceColor))
+                    labelText = "R"
+                    labelColor = polyIndicator.settings.resistanceColor
                 case .supportTest:
                     let triangle = trianglePath(at: CGPoint(x: x, y: y), size: 6, pointingDown: false)
                     context.fill(triangle, with: .color(polyIndicator.settings.supportColor))
+                    labelText = "R"
+                    labelColor = polyIndicator.settings.supportColor
+                }
+                if polyIndicator.settings.showSignalLabels {
+                    let labelPoint = CGPoint(x: x + 6, y: y - 4)
+                    context.draw(
+                        Text(labelText).font(.system(size: 10, weight: .bold)).foregroundColor(labelColor),
+                        at: labelPoint
+                    )
                 }
             }
         }

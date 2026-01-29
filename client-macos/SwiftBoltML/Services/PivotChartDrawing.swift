@@ -29,7 +29,7 @@ struct PivotChartDrawing {
 
         let y = yScale(level)
         let startX = xScale(startIndex)
-        let endX = xScale(endIndex)
+        _ = xScale(endIndex)
 
         let lineStart: CGFloat
         let lineEnd: CGFloat
@@ -81,7 +81,7 @@ struct PivotChartDrawing {
         size: CGFloat = 8
     ) -> some View {
         let color = statusColor(status)
-        _ = pivotType  // Use pivotType to avoid unused warning
+        _ = pivotType
 
         return Circle()
             .fill(color)

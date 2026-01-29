@@ -788,67 +788,79 @@ final class APIClient {
     }
 
     func fetchOptionsChain(underlying: String, expiration: TimeInterval? = nil) async throws -> OptionsChainResponse {
+        // Try FastAPI first for fresher options data (Docker/Tradier); fall back to Edge
+        let fastAPIChainURL = Config.fastAPIURL.appendingPathComponent("api/v1/options-chain")
+        if var components = URLComponents(url: fastAPIChainURL, resolvingAgainstBaseURL: false) {
+            var queryItems = [URLQueryItem(name: "underlying", value: underlying)]
+            if let expiration = expiration {
+                queryItems.append(URLQueryItem(name: "expiration", value: String(Int(expiration))))
+            }
+            components.queryItems = queryItems
+            if let url = components.url {
+                var req = URLRequest(url: url)
+                req.httpMethod = "GET"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                do {
+                    let response: OptionsChainResponse = try await performRequest(req)
+                    return response
+                } catch {
+                    // Fall through to Edge
+                }
+            }
+        }
         guard var components = URLComponents(url: functionURL("options-chain"), resolvingAgainstBaseURL: false) else {
             throw APIError.invalidURL
         }
-        
-        var queryItems: [URLQueryItem] = [
-            URLQueryItem(name: "underlying", value: underlying)
-        ]
-        
+        var queryItems: [URLQueryItem] = [URLQueryItem(name: "underlying", value: underlying)]
         if let expiration = expiration {
             queryItems.append(URLQueryItem(name: "expiration", value: String(Int(expiration))))
         }
-        
         components.queryItems = queryItems
-        
-        guard let url = components.url else {
-            throw APIError.invalidURL
-        }
-        
+        guard let url = components.url else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
         return try await performRequest(request)
     }
 
     func fetchOptionsRankings(symbol: String, expiry: String? = nil, side: OptionSide? = nil, mode: String? = nil, limit: Int = 50) async throws -> OptionsRankingsResponse {
-        guard var components = URLComponents(url: functionURL("options-rankings"), resolvingAgainstBaseURL: false) else {
-            throw APIError.invalidURL
-        }
-        
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "symbol", value: symbol),
             URLQueryItem(name: "limit", value: String(limit))
         ]
+        if let expiry = expiry { queryItems.append(URLQueryItem(name: "expiry", value: expiry)) }
+        if let side = side { queryItems.append(URLQueryItem(name: "side", value: side.rawValue)) }
+        if let mode = mode { queryItems.append(URLQueryItem(name: "mode", value: mode)) }
 
-        if let expiry = expiry {
-            queryItems.append(URLQueryItem(name: "expiry", value: expiry))
+        // Try FastAPI first (options-rankings from Supabase via FastAPI)
+        let fastAPIRankingsURL = Config.fastAPIURL.appendingPathComponent("api/v1/options-rankings")
+        if var components = URLComponents(url: fastAPIRankingsURL, resolvingAgainstBaseURL: false) {
+            components.queryItems = queryItems
+            if let url = components.url {
+                var req = URLRequest(url: url)
+                req.httpMethod = "GET"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                do {
+                    let response: OptionsRankingsResponse = try await performRequest(req)
+                    return response
+                } catch {
+                    // Fall through to Edge
+                }
+            }
         }
 
-        if let side = side {
-            queryItems.append(URLQueryItem(name: "side", value: side.rawValue))
-        }
-
-        if let mode = mode {
-            queryItems.append(URLQueryItem(name: "mode", value: mode))
-        }
-        
-        components.queryItems = queryItems
-        
-        guard let url = components.url else {
+        guard var components = URLComponents(url: functionURL("options-rankings"), resolvingAgainstBaseURL: false) else {
             throw APIError.invalidURL
         }
-        
+        components.queryItems = queryItems
+        guard let url = components.url else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
         return try await performRequest(request)
     }
 
@@ -862,15 +874,28 @@ final class APIClient {
             let contracts: [String]
         }
 
+        let body = OptionsQuotesRequest(symbol: symbol, contracts: contracts)
+        let bodyData = try JSONEncoder().encode(body)
+
+        // Try FastAPI first for fresher quotes (Docker/Tradier); fall back to Edge
+        let fastAPIQuotesURL = Config.fastAPIURL.appendingPathComponent("api/v1/options-quotes")
+        var req = URLRequest(url: fastAPIQuotesURL)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = bodyData
+        do {
+            let response: OptionsQuotesResponse = try await performRequest(req)
+            return response
+        } catch {
+            // Fall through to Edge
+        }
+
         var request = URLRequest(url: functionURL("options-quotes"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        let body = OptionsQuotesRequest(symbol: symbol, contracts: contracts)
-        request.httpBody = try JSONEncoder().encode(body)
-        
+        request.httpBody = bodyData
         return try await performRequest(request)
     }
 
@@ -888,15 +913,27 @@ final class APIClient {
     }
 
     func triggerRankingJob(for symbol: String) async throws -> TriggerRankingResponse {
+        let body = ["symbol": symbol]
+        let bodyData = try JSONEncoder().encode(body)
+        let fastAPIURL = Config.fastAPIURL.appendingPathComponent("api/v1/trigger-ranking-job")
+        var fastAPIRequest = URLRequest(url: fastAPIURL)
+        fastAPIRequest.httpMethod = "POST"
+        fastAPIRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        fastAPIRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        fastAPIRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        fastAPIRequest.httpBody = bodyData
+        do {
+            let response: TriggerRankingResponse = try await performRequest(fastAPIRequest)
+            return response
+        } catch {
+            // Fall back to Supabase Edge
+        }
         var request = URLRequest(url: functionURL("trigger-ranking-job"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body = ["symbol": symbol]
-        request.httpBody = try JSONEncoder().encode(body)
-
+        request.httpBody = bodyData
         print("[API] Triggering ranking job for \(symbol)...")
         return try await performRequest(request)
     }
@@ -1343,166 +1380,227 @@ final class APIClient {
         limit: Int = 50,
         offset: Int = 0
     ) async throws -> ListStrategiesResponse {
-        guard var components = URLComponents(url: functionURL("multi-leg-list"), resolvingAgainstBaseURL: false) else {
-            throw APIError.invalidURL
-        }
-
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "limit", value: String(limit)),
             URLQueryItem(name: "offset", value: String(offset))
         ]
+        if let status = status { queryItems.append(URLQueryItem(name: "status", value: status.rawValue)) }
+        if let symbolId = underlyingSymbolId { queryItems.append(URLQueryItem(name: "underlyingSymbolId", value: symbolId)) }
+        if let type = strategyType { queryItems.append(URLQueryItem(name: "strategyType", value: type.rawValue)) }
 
-        if let status = status {
-            queryItems.append(URLQueryItem(name: "status", value: status.rawValue))
-        }
-        if let symbolId = underlyingSymbolId {
-            queryItems.append(URLQueryItem(name: "underlyingSymbolId", value: symbolId))
-        }
-        if let type = strategyType {
-            queryItems.append(URLQueryItem(name: "strategyType", value: type.rawValue))
+        // Try FastAPI first (proxy to Edge)
+        let fastAPIListURL = Config.fastAPIURL.appendingPathComponent("api/v1/multi-leg-list")
+        if var components = URLComponents(url: fastAPIListURL, resolvingAgainstBaseURL: false) {
+            components.queryItems = queryItems
+            if let url = components.url {
+                var req = URLRequest(url: url)
+                req.httpMethod = "GET"
+                req.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+                req.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                do {
+                    let response: ListStrategiesResponse = try await performRequest(req)
+                    return response
+                } catch { /* fall through */ }
+            }
         }
 
+        guard var components = URLComponents(url: functionURL("multi-leg-list"), resolvingAgainstBaseURL: false) else { throw APIError.invalidURL }
         components.queryItems = queryItems
-
-        guard let url = components.url else {
-            throw APIError.invalidURL
-        }
-
+        guard let url = components.url else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
         return try await performRequest(request)
     }
 
     /// Get detailed info for a single strategy including legs and alerts
     func getMultiLegStrategyDetail(strategyId: String) async throws -> StrategyDetailResponse {
-        guard var components = URLComponents(url: functionURL("multi-leg-detail"), resolvingAgainstBaseURL: false) else {
-            throw APIError.invalidURL
+        let queryItems = [URLQueryItem(name: "strategyId", value: strategyId)]
+        let fastAPIDetailURL = Config.fastAPIURL.appendingPathComponent("api/v1/multi-leg-detail")
+        if var components = URLComponents(url: fastAPIDetailURL, resolvingAgainstBaseURL: false) {
+            components.queryItems = queryItems
+            if let url = components.url {
+                var req = URLRequest(url: url)
+                req.httpMethod = "GET"
+                req.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+                req.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                do {
+                    let response: StrategyDetailResponse = try await performRequest(req)
+                    return response
+                } catch { /* fall through */ }
+            }
         }
-
-        components.queryItems = [URLQueryItem(name: "strategyId", value: strategyId)]
-
-        guard let url = components.url else {
-            throw APIError.invalidURL
-        }
-
+        guard var components = URLComponents(url: functionURL("multi-leg-detail"), resolvingAgainstBaseURL: false) else { throw APIError.invalidURL }
+        components.queryItems = queryItems
+        guard let url = components.url else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
         return try await performRequest(request)
     }
 
     /// Create a new multi-leg strategy with legs
     func createMultiLegStrategy(_ request: CreateStrategyRequest) async throws -> CreateStrategyResponse {
+        let body = try JSONEncoder().encode(request)
+        let fastAPICreateURL = Config.fastAPIURL.appendingPathComponent("api/v1/multi-leg-create")
+        var req = URLRequest(url: fastAPICreateURL)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        req.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = body
+        do {
+            let response: CreateStrategyResponse = try await performRequest(req)
+            return response
+        } catch { /* fall through */ }
         var urlRequest = URLRequest(url: functionURL("multi-leg-create"))
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let encoder = JSONEncoder()
-        urlRequest.httpBody = try encoder.encode(request)
-
+        urlRequest.httpBody = body
         return try await performRequest(urlRequest)
     }
 
     /// Update strategy metadata
     func updateMultiLegStrategy(strategyId: String, update: UpdateStrategyRequest) async throws -> MultiLegStrategy {
-        guard var components = URLComponents(url: functionURL("multi-leg-update"), resolvingAgainstBaseURL: false) else {
-            throw APIError.invalidURL
+        let queryItems = [URLQueryItem(name: "strategyId", value: strategyId)]
+        let body = try JSONEncoder().encode(update)
+        let fastAPIUpdateURL = Config.fastAPIURL.appendingPathComponent("api/v1/multi-leg-update")
+        if var components = URLComponents(url: fastAPIUpdateURL, resolvingAgainstBaseURL: false) {
+            components.queryItems = queryItems
+            if let url = components.url {
+                var req = URLRequest(url: url)
+                req.httpMethod = "PATCH"
+                req.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+                req.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = body
+                do {
+                    let response: MultiLegStrategy = try await performRequest(req)
+                    return response
+                } catch { /* fall through */ }
+            }
         }
-
-        components.queryItems = [URLQueryItem(name: "strategyId", value: strategyId)]
-
-        guard let url = components.url else {
-            throw APIError.invalidURL
-        }
-
+        guard var components = URLComponents(url: functionURL("multi-leg-update"), resolvingAgainstBaseURL: false) else { throw APIError.invalidURL }
+        components.queryItems = queryItems
+        guard let url = components.url else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let encoder = JSONEncoder()
-        request.httpBody = try encoder.encode(update)
-
+        request.httpBody = body
         return try await performRequest(request)
     }
 
     /// Close a single leg of a strategy
     func closeMultiLegLeg(strategyId: String, request: CloseLegRequest) async throws -> CloseLegResponse {
-        guard var components = URLComponents(url: functionURL("multi-leg-close-leg"), resolvingAgainstBaseURL: false) else {
-            throw APIError.invalidURL
+        let queryItems = [URLQueryItem(name: "strategyId", value: strategyId)]
+        let body = try JSONEncoder().encode(request)
+        let fastAPICloseLegURL = Config.fastAPIURL.appendingPathComponent("api/v1/multi-leg-close-leg")
+        if var components = URLComponents(url: fastAPICloseLegURL, resolvingAgainstBaseURL: false) {
+            components.queryItems = queryItems
+            if let url = components.url {
+                var req = URLRequest(url: url)
+                req.httpMethod = "POST"
+                req.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+                req.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = body
+                do {
+                    let response: CloseLegResponse = try await performRequest(req)
+                    return response
+                } catch { /* fall through */ }
+            }
         }
-
-        components.queryItems = [URLQueryItem(name: "strategyId", value: strategyId)]
-
-        guard let url = components.url else {
-            throw APIError.invalidURL
-        }
-
+        guard var components = URLComponents(url: functionURL("multi-leg-close-leg"), resolvingAgainstBaseURL: false) else { throw APIError.invalidURL }
+        components.queryItems = queryItems
+        guard let url = components.url else { throw APIError.invalidURL }
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let encoder = JSONEncoder()
-        urlRequest.httpBody = try encoder.encode(request)
-
+        urlRequest.httpBody = body
         return try await performRequest(urlRequest)
     }
 
     /// Close an entire strategy (all legs at once)
     func closeMultiLegStrategy(_ request: CloseStrategyRequest) async throws -> CloseStrategyResponse {
+        let body = try JSONEncoder().encode(request)
+        let fastAPICloseURL = Config.fastAPIURL.appendingPathComponent("api/v1/multi-leg-close-strategy")
+        var req = URLRequest(url: fastAPICloseURL)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        req.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = body
+        do {
+            let response: CloseStrategyResponse = try await performRequest(req)
+            return response
+        } catch { /* fall through */ }
         var urlRequest = URLRequest(url: functionURL("multi-leg-close-strategy"))
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let encoder = JSONEncoder()
-        urlRequest.httpBody = try encoder.encode(request)
-
+        urlRequest.httpBody = body
         return try await performRequest(urlRequest)
     }
 
     /// Fetch strategy templates
     func fetchStrategyTemplates() async throws -> TemplatesResponse {
+        let fastAPITemplatesURL = Config.fastAPIURL.appendingPathComponent("api/v1/multi-leg-templates")
+        var req = URLRequest(url: fastAPITemplatesURL)
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        req.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        do {
+            let response: TemplatesResponse = try await performRequest(req)
+            return response
+        } catch { /* fall through */ }
         var request = URLRequest(url: functionURL("multi-leg-templates"))
         request.httpMethod = "GET"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
         return try await performRequest(request)
     }
 
     /// Delete a multi-leg strategy permanently
     func deleteMultiLegStrategy(strategyId: String) async throws -> DeleteStrategyResponse {
-        guard var components = URLComponents(url: functionURL("multi-leg-delete"), resolvingAgainstBaseURL: false) else {
-            throw APIError.invalidURL
+        let queryItems = [URLQueryItem(name: "strategyId", value: strategyId)]
+        let fastAPIDeleteURL = Config.fastAPIURL.appendingPathComponent("api/v1/multi-leg-delete")
+        if var components = URLComponents(url: fastAPIDeleteURL, resolvingAgainstBaseURL: false) {
+            components.queryItems = queryItems
+            if let url = components.url {
+                var req = URLRequest(url: url)
+                req.httpMethod = "DELETE"
+                req.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+                req.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                do {
+                    let response: DeleteStrategyResponse = try await performRequest(req)
+                    return response
+                } catch { /* fall through */ }
+            }
         }
-
-        components.queryItems = [URLQueryItem(name: "strategyId", value: strategyId)]
-
-        guard let url = components.url else {
-            throw APIError.invalidURL
-        }
-
+        guard var components = URLComponents(url: functionURL("multi-leg-delete"), resolvingAgainstBaseURL: false) else { throw APIError.invalidURL }
+        components.queryItems = queryItems
+        guard let url = components.url else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
         return try await performRequest(request)
     }
     
