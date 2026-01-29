@@ -47,6 +47,45 @@ enum APIError: LocalizedError {
     }
 }
 
+/// Shared backoff for FastAPI (localhost:8000) to avoid repeated timeout/connection-lost
+/// console spam when the backend is not running. Skip requests for a short period after failure.
+enum FastAPIBackoff {
+    private static let lock = NSLock()
+    private static var lastFailure: Date?
+    private static let backoffDuration: TimeInterval = 45
+
+    static func shouldSkip(url: URL?) -> Bool {
+        guard let url else { return false }
+        let base = Config.fastAPIURL
+        let sameHost = url.host == base.host && (url.port ?? 80) == (base.port ?? 80)
+        guard sameHost else { return false }
+        lock.lock()
+        defer { lock.unlock() }
+        guard let last = lastFailure else { return false }
+        return Date().timeIntervalSince(last) < backoffDuration
+    }
+
+    static func recordFailure(url: URL?) {
+        guard let url else { return }
+        let base = Config.fastAPIURL
+        let sameHost = url.host == base.host && (url.port ?? 80) == (base.port ?? 80)
+        guard sameHost else { return }
+        lock.lock()
+        lastFailure = Date()
+        lock.unlock()
+    }
+
+    static func clearSuccess(url: URL?) {
+        guard let url else { return }
+        let base = Config.fastAPIURL
+        let sameHost = url.host == base.host && (url.port ?? 80) == (base.port ?? 80)
+        guard sameHost else { return }
+        lock.lock()
+        lastFailure = nil
+        lock.unlock()
+    }
+}
+
 final class APIClient {
     static let shared = APIClient()
 
@@ -144,6 +183,11 @@ final class APIClient {
         guard let url = request.url else {
             throw APIError.invalidURL
         }
+
+        // Skip FastAPI requests during backoff to reduce timeout/connection-lost console spam
+        if FastAPIBackoff.shouldSkip(url: url) {
+            throw APIError.serviceUnavailable(message: "Backend at \(Config.fastAPIURL.absoluteString) is unavailable. Start the FastAPI server to enable options, multi-leg, and real-time features.")
+        }
         
         let requestKey = url.absoluteString
         
@@ -176,6 +220,14 @@ final class APIClient {
                 print("[DEBUG] Network request cancelled")
                 throw CancellationError()
             } catch {
+                if let urlError = error as? URLError {
+                    switch urlError.code {
+                    case .timedOut, .networkConnectionLost, .cannotConnectToHost, .notConnectedToInternet:
+                        FastAPIBackoff.recordFailure(url: request.url)
+                    default:
+                        break
+                    }
+                }
                 print("[DEBUG] Network error: \(error)")
                 throw APIError.networkError(error)
             }
@@ -185,7 +237,9 @@ final class APIClient {
             }
             
             print("[DEBUG] API Response status: \(httpResponse.statusCode)")
-            
+            if (200...299).contains(httpResponse.statusCode) {
+                FastAPIBackoff.clearSuccess(url: request.url)
+            }
             guard (200...299).contains(httpResponse.statusCode) else {
                 let message = String(data: data, encoding: .utf8)
                 print("[DEBUG] API Error response: \(message ?? "nil")")

@@ -1153,7 +1153,8 @@ struct WebChartView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        // Updates are handled via Combine subscriptions in Coordinator
+        // Updates are handled via Combine subscriptions in Coordinator.
+        // Do not set frame/bounds here synchronously to avoid layoutSubtreeIfNeeded recursion.
     }
 
     private func loadChart(in webView: WKWebView) {

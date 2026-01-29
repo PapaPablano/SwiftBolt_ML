@@ -74,6 +74,7 @@
 		D0A1B2C3D4E5F60718293A4B /* tooltip-enhanced.js in Resources */ = {isa = PBXBuildFile; fileRef = 73AD50F0BE1D403ABA5D67BA /* tooltip-enhanced.js */; };
 		DB5DC3A92A28C05E8315D9E8 /* LogisticRegressionIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA6C3F9FCEAD53FBEF384F10 /* LogisticRegressionIndicator.swift */; };
 		DC8011B65E28852181663316 /* ForecastExplainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 848DB246B70C854F2FE0A63C /* ForecastExplainerView.swift */; };
+		DEFB00012345678900000001 /* DeferredBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEFB00022345678900000001 /* DeferredBinding.swift */; };
 		E2C1E2A5492FE1CCBEFC9CCD /* PolynomialRegressionIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A702F82DACC8241B3B9A8BA /* PolynomialRegressionIndicator.swift */; };
 		E86094E11441AE6E464BA239 /* MultiLegStrategyListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAEC8C02158A22493B1B2537 /* MultiLegStrategyListView.swift */; };
 		EAB197F7318F24B608BAA78D /* MLDashboardModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 495F16DC7FC5729654ADE6C7 /* MLDashboardModels.swift */; };
@@ -122,6 +123,7 @@
 		F67ABD232F2AB14800916110 /* OptimizedPivotDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD1E2F2AB14800916110 /* OptimizedPivotDetector.swift */; };
 		F67ABD242F2AB14800916110 /* PivotPeriodManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD202F2AB14800916110 /* PivotPeriodManager.swift */; };
 		F67ABD252F2AB14800916110 /* PivotChartDrawing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD1F2F2AB14800916110 /* PivotChartDrawing.swift */; };
+		F67ABD272F2BE32600916110 /* PivotChartDrawing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD262F2BE32600916110 /* PivotChartDrawing.swift */; };
 		F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */; };
 		F6EBEFB92F23DD2C001C6A4D /* SelectedContractState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFB82F23DD2C001C6A4D /* SelectedContractState.swift */; };
 		F6EBEFBB2F23DD3D001C6A4D /* MarketDataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFBA2F23DD3D001C6A4D /* MarketDataService.swift */; };
@@ -150,7 +152,6 @@
 		MF0001012345678900000002 /* BackfillStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000002 /* BackfillStatusView.swift */; };
 		MF0001012345678900000003 /* CacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000003 /* CacheManager.swift */; };
 		MF0001012345678900000004 /* DataValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000004 /* DataValidator.swift */; };
-		DEFB00012345678900000001 /* DeferredBinding.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEFB00022345678900000001 /* DeferredBinding.swift */; };
 		MF0001012345678900000005 /* Debouncer.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000005 /* Debouncer.swift */; };
 		MF0001012345678900000006 /* Downsampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000006 /* Downsampler.swift */; };
 		MF0001012345678900000007 /* MarketStatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = MF0002012345678900000007 /* MarketStatusBadge.swift */; };
@@ -238,6 +239,7 @@
 		D2105D896E918ACDCE342EFA /* ForecastAccuracyTabView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ForecastAccuracyTabView.swift; sourceTree = "<group>"; };
 		D749EA683B66324ED10E4516 /* SuperTrendChartView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SuperTrendChartView.swift; sourceTree = "<group>"; };
 		D7A8F9A56AC9A504B07BE56A /* chart.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = chart.js; sourceTree = "<group>"; };
+		DEFB00022345678900000001 /* DeferredBinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeferredBinding.swift; sourceTree = "<group>"; };
 		E634B03F26BB41088DCBCDA5 /* heikin-ashi.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "heikin-ashi.js"; sourceTree = "<group>"; };
 		EA6C3F9FCEAD53FBEF384F10 /* LogisticRegressionIndicator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LogisticRegressionIndicator.swift; sourceTree = "<group>"; };
 		EE33C7CA7CA515703FFF0B5D /* StrikePriceComparisonView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StrikePriceComparisonView.swift; sourceTree = "<group>"; };
@@ -283,6 +285,7 @@
 		F67ABD1F2F2AB14800916110 /* PivotChartDrawing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PivotChartDrawing.swift; sourceTree = "<group>"; };
 		F67ABD202F2AB14800916110 /* PivotPeriodManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PivotPeriodManager.swift; sourceTree = "<group>"; };
 		F67ABD212F2AB14800916110 /* PivotStatisticalMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PivotStatisticalMetrics.swift; sourceTree = "<group>"; };
+		F67ABD262F2BE32600916110 /* PivotChartDrawing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PivotChartDrawing.swift; sourceTree = "<group>"; };
 		F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastHorizonsView.swift; sourceTree = "<group>"; };
 		F6EBEFB82F23DD2C001C6A4D /* SelectedContractState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectedContractState.swift; sourceTree = "<group>"; };
 		F6EBEFBA2F23DD3D001C6A4D /* MarketDataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketDataService.swift; sourceTree = "<group>"; };
@@ -313,7 +316,6 @@
 		MF0002012345678900000002 /* BackfillStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackfillStatusView.swift; sourceTree = "<group>"; };
 		MF0002012345678900000003 /* CacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheManager.swift; sourceTree = "<group>"; };
 		MF0002012345678900000004 /* DataValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataValidator.swift; sourceTree = "<group>"; };
-		DEFB00022345678900000001 /* DeferredBinding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeferredBinding.swift; sourceTree = "<group>"; };
 		MF0002012345678900000005 /* Debouncer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Debouncer.swift; sourceTree = "<group>"; };
 		MF0002012345678900000006 /* Downsampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Downsampler.swift; sourceTree = "<group>"; };
 		MF0002012345678900000007 /* MarketStatusBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketStatusBadge.swift; sourceTree = "<group>"; };
@@ -518,6 +520,7 @@
 		A5000007233456780000007 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				F67ABD262F2BE32600916110 /* PivotChartDrawing.swift */,
 				F67ABD1E2F2AB14800916110 /* OptimizedPivotDetector.swift */,
 				F67ABD1F2F2AB14800916110 /* PivotChartDrawing.swift */,
 				F67ABD202F2AB14800916110 /* PivotPeriodManager.swift */,
@@ -714,6 +717,7 @@
 				A1000008233456780000008 /* Symbol.swift in Sources */,
 				A1000009233456780000009 /* OHLCBar.swift in Sources */,
 				F60BB96C2EF036FA0044BE7E /* OptionContract.swift in Sources */,
+				F67ABD272F2BE32600916110 /* PivotChartDrawing.swift in Sources */,
 				F60BB96D2EF036FA0044BE7E /* OptionsChainResponse.swift in Sources */,
 				A1000010233456780000010 /* ChartResponse.swift in Sources */,
 				BDE40B47AF240844B1A78E5F /* ChartDataV2Response.swift in Sources */,

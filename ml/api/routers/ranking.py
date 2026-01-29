@@ -63,14 +63,13 @@ async def _proxy(request: Request) -> Response:
     body = await request.body()
     async with httpx.AsyncClient(timeout=120.0) as client:
         r = await client.post(url, headers=headers, content=body)
+    # Do not copy Content-Length: Starlette sets it from len(content). Copying upstream
+    # Content-Length can cause "Response content longer than Content-Length" if upstream
+    # was wrong or encoding differs.
     return Response(
         content=r.content,
         status_code=r.status_code,
-        headers={
-            k: v
-            for k, v in r.headers.items()
-            if k.lower() in ("content-type", "content-length")
-        },
+        headers={k: v for k, v in r.headers.items() if k.lower() == "content-type"},
     )
 
 

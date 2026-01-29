@@ -127,7 +127,26 @@ It's not legal to call -layoutSubtreeIfNeeded on a view which is already being l
 
 **Impact**: Minimal - logged only once, so not a persistent issue.
 
-**Fix Required**: None (unless it causes visible UI issues).
+**Fix Applied (2026-01-29)**: WebChartView is given a minimum frame (`.frame(minWidth: 400, minHeight: 300)`) in ChartView so the hosting view has a stable size and layout recursion is avoided.
+
+---
+
+## Console Warnings Fix Summary (2026-01-29)
+
+### Fixed in code
+
+1. **NSURLErrorDomain -1001 (timeout) and -1005 (connection lost)**  
+   When the FastAPI backend (localhost:8000) is not running, the app no longer repeatedly hits the backend and fills the console with timeout/connection-lost messages. A shared **FastAPIBackoff** (45s) skips FastAPI requests after a failure; successful responses clear the backoff. Used by `APIClient.performRequest` and `RealtimeForecastService.checkRealtimeAPIHealth()`.
+
+2. **Layout recursion**  
+   WebChartView now has a minimum frame in ChartView so layout doesn’t recurse; `updateNSView` does not set frame/bounds synchronously.
+
+### Expected (no app change)
+
+- **Unable to obtain a task name port right for pid** – System/kernel message; benign in development.
+- **ViewBridge to RemoteViewService Terminated** – Apple ViewBridge; benign unless unexpected.
+- **WebContent sandbox** (pboard, launchservicesd, coreservicesd, RunningBoard, networkd, etc.) – Normal for WKWebView in a sandboxed app; no action needed.
+- **AFIsDeviceGreymatterEligible Missing entitlements** – Apple framework; no impact.
 
 ---
 

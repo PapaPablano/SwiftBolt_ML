@@ -184,8 +184,10 @@ struct ChartView: View {
                         // Data updates are handled via Combine subscriptions, not view recreation
                         if chartViewModel.indicatorConfig.useWebChart {
                             VStack(spacing: 0) {
-                                // WebChart Display - stable ID prevents WKWebView recreation on timeframe change
+                                // WebChart Display - stable ID prevents WKWebView recreation on timeframe change.
+                                // Minimum frame avoids layout recursion (layoutSubtreeIfNeeded during layout).
                                 WebChartView(viewModel: chartViewModel)
+                                    .frame(minWidth: 400, minHeight: 300)
                                     .padding()
                                     .id("web-chart-\(chartData.symbol)")
                             }
