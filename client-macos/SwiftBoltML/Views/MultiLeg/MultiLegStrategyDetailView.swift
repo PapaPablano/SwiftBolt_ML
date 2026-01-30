@@ -359,6 +359,18 @@ struct MultiLegStrategyDetailView: View {
 
 // MARK: - Options Ranker Tab (single-option detail for strategy leg)
 
+// #region agent log
+private func _agentDebugLogMultiLeg(_ data: [String: Any], hypothesisId: String, location: String, message: String) {
+    let path = "/Users/ericpeterson/SwiftBolt_ML/.cursor/debug.log"
+    var payload: [String: Any] = ["sessionId": "debug-session", "hypothesisId": hypothesisId, "location": location, "message": message, "timestamp": Int(Date().timeIntervalSince1970 * 1000)]
+    data.forEach { payload[$0.key] = $0.value }
+    guard let json = try? JSONSerialization.data(withJSONObject: payload), let line = String(data: json, encoding: .utf8), let dataToWrite = (line + "\n").data(using: .utf8) else { return }
+    if !FileManager.default.fileExists(atPath: path) { FileManager.default.createFile(atPath: path, contents: Data(), attributes: nil) }
+    guard let handle = FileHandle(forWritingAtPath: path) else { return }
+    handle.seekToEndOfFile(); handle.write(dataToWrite); handle.closeFile()
+}
+// #endregion
+
 struct MultiLegOptionsRankerTab: View {
     let symbol: String
     let leg: OptionsLeg?
@@ -391,6 +403,9 @@ struct MultiLegOptionsRankerTab: View {
         }
         .onAppear {
             guard leg != nil else { return }
+            // #region agent log
+            _agentDebugLogMultiLeg(["data": ["symbol": symbol, "hasLeg": true]], hypothesisId: "H4", location: "MultiLegStrategyDetailView.swift:onAppear", message: "Options Ranker tab onAppear ensureLoaded")
+            // #endregion
             Task {
                 await rankerViewModel.ensureLoaded(for: symbol)
             }
@@ -434,10 +449,41 @@ private struct SingleLegRankerContent: View {
             } else if rankerViewModel.rankings.isEmpty {
                 loadPromptView
             } else {
+                // #region agent log
+                _logNotFoundReason()
+                // #endregion
                 notFoundView
             }
         }
     }
+
+    // #region agent log
+    private func _logNotFoundReason() {
+        let rankings = rankerViewModel.rankings
+        let hasAnySameExpiry = rankings.contains { $0.expiry == leg.expiry }
+        let hasAnySameStrike = rankings.contains { abs($0.strike - leg.strike) < 0.001 }
+        let side = OptionSide(rawValue: leg.optionType.rawValue)
+        let hasSameStrikeExpirySide = side.map { s in rankings.contains { abs($0.strike - leg.strike) < 0.001 && $0.expiry == leg.expiry && $0.side == s } } ?? false
+        let firstExpiry = rankings.first?.expiry ?? ""
+        let firstStrike = rankings.first.map { $0.strike } ?? 0
+        _agentDebugLogMultiLeg([
+            "data": [
+                "symbol": symbol,
+                "legStrike": leg.strike,
+                "legExpiry": leg.expiry,
+                "legSide": leg.optionType.rawValue,
+                "rankingsCount": rankings.count,
+                "hasAnySameExpiry": hasAnySameExpiry,
+                "hasAnySameStrike": hasAnySameStrike,
+                "hasSameStrikeExpirySide": hasSameStrikeExpirySide,
+                "sampleRankExpiry": firstExpiry,
+                "sampleRankStrike": firstStrike,
+                "legExpiryLength": leg.expiry.count,
+                "sampleExpiryLength": firstExpiry.count
+            ]
+        ], hypothesisId: "H1_H2_H3", location: "MultiLegStrategyDetailView.swift:SingleLegRankerContent", message: "notFoundView shown")
+    }
+    // #endregion
 
     private var loadPromptView: some View {
         VStack(spacing: 16) {

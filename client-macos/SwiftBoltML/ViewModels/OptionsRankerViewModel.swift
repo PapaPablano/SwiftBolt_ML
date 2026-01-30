@@ -1,6 +1,18 @@
 import Foundation
 import Combine
 
+// #region agent log
+private func _agentDebugLogRanker(_ data: [String: Any], hypothesisId: String, location: String, message: String) {
+    let path = "/Users/ericpeterson/SwiftBolt_ML/.cursor/debug.log"
+    var payload: [String: Any] = ["sessionId": "debug-session", "hypothesisId": hypothesisId, "location": location, "message": message, "timestamp": Int(Date().timeIntervalSince1970 * 1000)]
+    data.forEach { payload[$0.key] = $0.value }
+    guard let json = try? JSONSerialization.data(withJSONObject: payload), let line = String(data: json, encoding: .utf8), let dataToWrite = (line + "\n").data(using: .utf8) else { return }
+    if !FileManager.default.fileExists(atPath: path) { FileManager.default.createFile(atPath: path, contents: Data(), attributes: nil) }
+    guard let handle = FileHandle(forWritingAtPath: path) else { return }
+    handle.seekToEndOfFile(); handle.write(dataToWrite); handle.closeFile()
+}
+// #endregion
+
 // Signal filter options
 enum SignalFilter: String, CaseIterable {
     case all = "All"
@@ -209,6 +221,10 @@ class OptionsRankerViewModel: ObservableObject {
                 self.updateRankingStatus()
                 self.isLoading = false
                 self.activeSymbol = symbol
+                // #region agent log
+                let first = response.ranks.first
+                _agentDebugLogRanker(["data": ["symbol": symbol, "count": response.ranks.count, "firstContractSymbol": first?.contractSymbol ?? "", "firstExpiry": first?.expiry ?? "", "firstStrike": first.map { $0.strike } ?? 0]], hypothesisId: "H4", location: "OptionsRankerViewModel.swift:loadRankings", message: "rankings loaded")
+                // #endregion
             }
 
             print("[OptionsRanker] Loaded \(rankings.count) ranked options for \(symbol)")
