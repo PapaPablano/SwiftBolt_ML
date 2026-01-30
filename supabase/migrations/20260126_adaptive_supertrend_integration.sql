@@ -39,11 +39,11 @@ ADD COLUMN IF NOT EXISTS supertrend_metrics JSONB;
 -- ============================================================================
 
 CREATE INDEX IF NOT EXISTS idx_indicator_values_symbol_supertrend_factor
-ON indicator_values(symbol, supertrend_factor)
+ON indicator_values(symbol_id, supertrend_factor)
 WHERE supertrend_factor IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_indicator_values_symbol_confidence
-ON indicator_values(symbol, supertrend_confidence DESC)
+ON indicator_values(symbol_id, supertrend_confidence DESC)
 WHERE supertrend_confidence IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_indicator_values_created_at_supertrend
@@ -68,18 +68,19 @@ ADD COLUMN IF NOT EXISTS adaptive_supertrend_confidence FLOAT8;
 
 CREATE OR REPLACE VIEW adaptive_supertrend_latest_signals AS
 SELECT
-    symbol,
-    supertrend_factor,
-    supertrend_signal_strength,
-    supertrend_confidence,
-    supertrend_performance_index,
-    supertrend_distance_pct,
-    supertrend_trend_duration,
-    supertrend_metrics,
-    created_at,
-    ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY created_at DESC) as rn
-FROM indicator_values
-WHERE supertrend_factor IS NOT NULL;
+    s.ticker,
+    iv.supertrend_factor,
+    iv.supertrend_signal_strength,
+    iv.supertrend_confidence,
+    iv.supertrend_performance_index,
+    iv.supertrend_distance_pct,
+    iv.supertrend_trend_duration,
+    iv.supertrend_metrics,
+    iv.created_at,
+    ROW_NUMBER() OVER (PARTITION BY iv.symbol_id ORDER BY iv.created_at DESC) as rn
+FROM indicator_values iv
+JOIN symbols s ON s.id = iv.symbol_id
+WHERE iv.supertrend_factor IS NOT NULL;
 
 -- ============================================================================
 -- 5. Helper function: Get latest adaptive factor for symbol
@@ -87,11 +88,12 @@ WHERE supertrend_factor IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION get_latest_adaptive_supertrend_factor(p_symbol TEXT)
 RETURNS FLOAT8 AS $$
-SELECT supertrend_factor
-FROM indicator_values
-WHERE symbol = p_symbol
-AND supertrend_factor IS NOT NULL
-ORDER BY created_at DESC
+SELECT iv.supertrend_factor
+FROM indicator_values iv
+JOIN symbols s ON s.id = iv.symbol_id
+WHERE s.ticker = p_symbol
+AND iv.supertrend_factor IS NOT NULL
+ORDER BY iv.created_at DESC
 LIMIT 1;
 $$ LANGUAGE SQL STABLE;
 
@@ -112,19 +114,20 @@ RETURNS TABLE (
     created_at TIMESTAMP WITH TIME ZONE
 ) AS $$
 SELECT
-    symbol,
-    supertrend_factor,
-    supertrend_signal_strength,
-    supertrend_confidence,
-    supertrend_performance_index,
-    supertrend_distance_pct,
-    supertrend_trend_duration,
-    supertrend_metrics,
-    created_at
-FROM indicator_values
-WHERE symbol = p_symbol
-AND supertrend_factor IS NOT NULL
-ORDER BY created_at DESC
+    s.ticker,
+    iv.supertrend_factor,
+    iv.supertrend_signal_strength,
+    iv.supertrend_confidence,
+    iv.supertrend_performance_index,
+    iv.supertrend_distance_pct,
+    iv.supertrend_trend_duration,
+    iv.supertrend_metrics,
+    iv.created_at
+FROM indicator_values iv
+JOIN symbols s ON s.id = iv.symbol_id
+WHERE s.ticker = p_symbol
+AND iv.supertrend_factor IS NOT NULL
+ORDER BY iv.created_at DESC
 LIMIT 1;
 $$ LANGUAGE SQL STABLE;
 
@@ -134,20 +137,21 @@ $$ LANGUAGE SQL STABLE;
 
 CREATE OR REPLACE VIEW adaptive_supertrend_factor_stats AS
 SELECT
-    symbol,
+    s.ticker,
     COUNT(*) as signal_count_24h,
-    AVG(supertrend_factor) as avg_factor,
-    MIN(supertrend_factor) as min_factor,
-    MAX(supertrend_factor) as max_factor,
-    STDDEV(supertrend_factor) as stddev_factor,
-    AVG(supertrend_confidence) as avg_confidence,
-    AVG(supertrend_signal_strength) as avg_strength,
-    MAX(created_at) as latest_update,
-    EXTRACT(HOURS FROM NOW() - MAX(created_at)) as hours_since_update
-FROM indicator_values
-WHERE supertrend_factor IS NOT NULL
-AND created_at > NOW() - INTERVAL '24 hours'
-GROUP BY symbol
+    AVG(iv.supertrend_factor) as avg_factor,
+    MIN(iv.supertrend_factor) as min_factor,
+    MAX(iv.supertrend_factor) as max_factor,
+    STDDEV(iv.supertrend_factor) as stddev_factor,
+    AVG(iv.supertrend_confidence) as avg_confidence,
+    AVG(iv.supertrend_signal_strength) as avg_strength,
+    MAX(iv.created_at) as latest_update,
+    EXTRACT(HOURS FROM NOW() - MAX(iv.created_at)) as hours_since_update
+FROM indicator_values iv
+JOIN symbols s ON s.id = iv.symbol_id
+WHERE iv.supertrend_factor IS NOT NULL
+AND iv.created_at > NOW() - INTERVAL '24 hours'
+GROUP BY iv.symbol_id, s.ticker
 ORDER BY signal_count_24h DESC;
 
 -- ============================================================================
@@ -156,29 +160,30 @@ ORDER BY signal_count_24h DESC;
 
 CREATE OR REPLACE VIEW adaptive_supertrend_performance_stats AS
 SELECT
-    symbol,
+    s.ticker,
     COUNT(*) as metric_count,
     -- Sharpe Ratio stats
-    AVG((supertrend_metrics->'sharpe_ratio')::FLOAT8) as avg_sharpe,
-    MAX((supertrend_metrics->'sharpe_ratio')::FLOAT8) as max_sharpe,
+    AVG((iv.supertrend_metrics->'sharpe_ratio')::FLOAT8) as avg_sharpe,
+    MAX((iv.supertrend_metrics->'sharpe_ratio')::FLOAT8) as max_sharpe,
     -- Sortino Ratio stats
-    AVG((supertrend_metrics->'sortino_ratio')::FLOAT8) as avg_sortino,
-    MAX((supertrend_metrics->'sortino_ratio')::FLOAT8) as max_sortino,
+    AVG((iv.supertrend_metrics->'sortino_ratio')::FLOAT8) as avg_sortino,
+    MAX((iv.supertrend_metrics->'sortino_ratio')::FLOAT8) as max_sortino,
     -- Calmar Ratio stats
-    AVG((supertrend_metrics->'calmar_ratio')::FLOAT8) as avg_calmar,
-    MAX((supertrend_metrics->'calmar_ratio')::FLOAT8) as max_calmar,
+    AVG((iv.supertrend_metrics->'calmar_ratio')::FLOAT8) as avg_calmar,
+    MAX((iv.supertrend_metrics->'calmar_ratio')::FLOAT8) as max_calmar,
     -- Win Rate stats
-    AVG((supertrend_metrics->'win_rate')::FLOAT8) as avg_win_rate,
+    AVG((iv.supertrend_metrics->'win_rate')::FLOAT8) as avg_win_rate,
     -- Max Drawdown stats
-    MIN((supertrend_metrics->'max_drawdown')::FLOAT8) as min_max_drawdown,  -- Less negative = better
+    MIN((iv.supertrend_metrics->'max_drawdown')::FLOAT8) as min_max_drawdown,  -- Less negative = better
     -- Total Return stats
-    AVG((supertrend_metrics->'total_return')::FLOAT8) as avg_total_return,
-    MAX((supertrend_metrics->'total_return')::FLOAT8) as max_total_return,
-    MAX(created_at) as latest_update
-FROM indicator_values
-WHERE supertrend_metrics IS NOT NULL
-AND created_at > NOW() - INTERVAL '7 days'
-GROUP BY symbol
+    AVG((iv.supertrend_metrics->'total_return')::FLOAT8) as avg_total_return,
+    MAX((iv.supertrend_metrics->'total_return')::FLOAT8) as max_total_return,
+    MAX(iv.created_at) as latest_update
+FROM indicator_values iv
+JOIN symbols s ON s.id = iv.symbol_id
+WHERE iv.supertrend_metrics IS NOT NULL
+AND iv.created_at > NOW() - INTERVAL '7 days'
+GROUP BY iv.symbol_id, s.ticker
 ORDER BY avg_sharpe DESC NULLS LAST;
 
 -- ============================================================================
@@ -187,19 +192,20 @@ ORDER BY avg_sharpe DESC NULLS LAST;
 
 CREATE OR REPLACE VIEW adaptive_supertrend_staleness_check AS
 SELECT
-    symbol,
-    MAX(created_at) as latest_signal,
-    EXTRACT(HOURS FROM NOW() - MAX(created_at)) as hours_since_update,
+    s.ticker,
+    MAX(iv.created_at) as latest_signal,
+    EXTRACT(HOURS FROM NOW() - MAX(iv.created_at)) as hours_since_update,
     COUNT(*) as signals_last_24h,
     CASE
-        WHEN EXTRACT(HOURS FROM NOW() - MAX(created_at)) > 48 THEN 'STALE'
-        WHEN EXTRACT(HOURS FROM NOW() - MAX(created_at)) > 24 THEN 'WARNING'
+        WHEN EXTRACT(HOURS FROM NOW() - MAX(iv.created_at)) > 48 THEN 'STALE'
+        WHEN EXTRACT(HOURS FROM NOW() - MAX(iv.created_at)) > 24 THEN 'WARNING'
         ELSE 'HEALTHY'
     END as staleness_status
-FROM indicator_values
-WHERE supertrend_factor IS NOT NULL
-GROUP BY symbol
-HAVING MAX(created_at) > NOW() - INTERVAL '7 days'
+FROM indicator_values iv
+JOIN symbols s ON s.id = iv.symbol_id
+WHERE iv.supertrend_factor IS NOT NULL
+GROUP BY iv.symbol_id, s.ticker
+HAVING MAX(iv.created_at) > NOW() - INTERVAL '7 days'
 ORDER BY hours_since_update DESC;
 
 -- ============================================================================
@@ -209,16 +215,17 @@ ORDER BY hours_since_update DESC;
 CREATE OR REPLACE VIEW adaptive_vs_fixed_comparison AS
 WITH adaptive_metrics AS (
     SELECT
-        symbol,
-        AVG((supertrend_metrics->'sharpe_ratio')::FLOAT8) as adaptive_sharpe,
-        AVG((supertrend_metrics->'sortino_ratio')::FLOAT8) as adaptive_sortino,
-        AVG((supertrend_metrics->'total_return')::FLOAT8) as adaptive_return,
+        s.ticker AS symbol,
+        AVG((iv.supertrend_metrics->'sharpe_ratio')::FLOAT8) as adaptive_sharpe,
+        AVG((iv.supertrend_metrics->'sortino_ratio')::FLOAT8) as adaptive_sortino,
+        AVG((iv.supertrend_metrics->'total_return')::FLOAT8) as adaptive_return,
         COUNT(*) as adaptive_count
-    FROM indicator_values
-    WHERE supertrend_metrics IS NOT NULL
-    AND supertrend_factor IS NOT NULL
-    AND created_at > NOW() - INTERVAL '7 days'
-    GROUP BY symbol
+    FROM indicator_values iv
+    JOIN symbols s ON s.id = iv.symbol_id
+    WHERE iv.supertrend_metrics IS NOT NULL
+    AND iv.supertrend_factor IS NOT NULL
+    AND iv.created_at > NOW() - INTERVAL '7 days'
+    GROUP BY iv.symbol_id, s.ticker
 )
 SELECT
     am.symbol,
@@ -244,15 +251,16 @@ ORDER BY am.adaptive_sharpe DESC NULLS LAST;
 CREATE OR REPLACE VIEW adaptive_supertrend_anomalies AS
 WITH recent_stats AS (
     SELECT
-        symbol,
-        AVG(supertrend_factor) as avg_factor,
-        STDDEV(supertrend_factor) as stddev_factor,
-        AVG(supertrend_confidence) as avg_confidence,
+        s.ticker AS symbol,
+        AVG(iv.supertrend_factor) as avg_factor,
+        STDDEV(iv.supertrend_factor) as stddev_factor,
+        AVG(iv.supertrend_confidence) as avg_confidence,
         COUNT(*) as count
-    FROM indicator_values
-    WHERE supertrend_factor IS NOT NULL
-    AND created_at > NOW() - INTERVAL '24 hours'
-    GROUP BY symbol
+    FROM indicator_values iv
+    JOIN symbols s ON s.id = iv.symbol_id
+    WHERE iv.supertrend_factor IS NOT NULL
+    AND iv.created_at > NOW() - INTERVAL '24 hours'
+    GROUP BY iv.symbol_id, s.ticker
 )
 SELECT
     symbol,
@@ -276,9 +284,13 @@ ORDER BY symbol;
 -- 12. Grants (adjust as needed for your setup)
 -- ============================================================================
 
--- Allow app_user to read/write indicator_values
-GRANT SELECT, INSERT, UPDATE ON indicator_values TO app_user;
-GRANT USAGE ON SCHEMA public TO app_user;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_user') THEN
+    GRANT SELECT, INSERT, UPDATE ON indicator_values TO app_user;
+    GRANT USAGE ON SCHEMA public TO app_user;
+  END IF;
+END $$;
 
 -- Allow all users to execute helper functions
 GRANT EXECUTE ON FUNCTION get_latest_adaptive_supertrend_factor(TEXT) TO authenticated;
