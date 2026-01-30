@@ -434,26 +434,31 @@ private struct SingleLegRankerContent: View {
     let matchingRank: OptionRank?
 
     var body: some View {
-        Group {
-            if let rank = matchingRank {
-                OptionRankDetailView(
-                    rank: rank,
-                    symbol: symbol,
-                    allRankings: rankerViewModel.rankings,
-                    showCloseButton: false,
-                    embeddedInTab: true
-                )
-            } else if rankerViewModel.isLoading {
-                ProgressView("Loading rankings for \(symbol)...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if rankerViewModel.rankings.isEmpty {
-                loadPromptView
-            } else {
-                // #region agent log
-                _logNotFoundReason()
-                // #endregion
-                notFoundView
-            }
+        singleLegRankerContent
+    }
+
+    @ViewBuilder
+    private var singleLegRankerContent: some View {
+        if let rank = matchingRank {
+            OptionRankDetailView(
+                rank: rank,
+                symbol: symbol,
+                allRankings: rankerViewModel.rankings,
+                showCloseButton: false,
+                embeddedInTab: true
+            )
+        } else if rankerViewModel.isLoading {
+            ProgressView("Loading rankings for \(symbol)...")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if rankerViewModel.rankings.isEmpty {
+            loadPromptView
+        } else {
+            notFoundView
+                .onAppear {
+                    // #region agent log
+                    _logNotFoundReason()
+                    // #endregion
+                }
         }
     }
 

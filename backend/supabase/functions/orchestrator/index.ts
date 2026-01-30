@@ -309,6 +309,11 @@ async function createSlicesForJob(supabase: SupabaseClient, jobDef: JobDefinitio
       slice_to: c.to.toISOString(),
     }));
 
+    // #region agent log
+    const _orchEnqStart = Date.now();
+    fetch('http://127.0.0.1:7242/ingest/c38aa5cd-6eb1-473a-b1f0-0fdd8c2a440d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'orchestrator/index.ts:before-rpc',message:'orchestrator before enqueue_job_slices',data:{symbol:jobDef.symbol,tf:jobDef.timeframe,sliceCount:slicesPayload.length,triggeredBy:'cron'},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1,H2,H4'})}).catch(()=>{});
+    // #endregion
+
     const { data: enqueueResult, error: enqueueError } = await supabase.rpc(
       "enqueue_job_slices",
       {
@@ -320,6 +325,11 @@ async function createSlicesForJob(supabase: SupabaseClient, jobDef: JobDefinitio
         p_triggered_by: "cron",
       }
     );
+
+    // #region agent log
+    const _orchEnqDur = Date.now() - _orchEnqStart;
+    fetch('http://127.0.0.1:7242/ingest/c38aa5cd-6eb1-473a-b1f0-0fdd8c2a440d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'orchestrator/index.ts:after-rpc',message:'orchestrator after enqueue_job_slices',data:{symbol:jobDef.symbol,tf:jobDef.timeframe,durationMs:_orchEnqDur,success:!enqueueError,errorMsg:enqueueError?.message,errorCode:enqueueError?.code},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1,H2,H3,H4,H5'})}).catch(()=>{});
+    // #endregion
 
     if (enqueueError) {
       console.error(`[Orchestrator] Error enqueueing job slices:`, enqueueError);
