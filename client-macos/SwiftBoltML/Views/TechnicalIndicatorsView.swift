@@ -2,12 +2,15 @@ import SwiftUI
 
 struct TechnicalIndicatorsView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var appViewModel: AppViewModel
     @StateObject private var viewModel = TechnicalIndicatorsViewModel()
     let symbol: String
     let timeframe: String
-    
+
     @State private var selectedCategory: IndicatorCategory? = nil
     @State private var expandedCategories: Set<IndicatorCategory> = Set(IndicatorCategory.allCases)
+
+    private var favoritesStore: IndicatorFavoritesStore { appViewModel.indicatorFavoritesStore }
     
     var body: some View {
         ScrollView {
@@ -147,7 +150,12 @@ struct TechnicalIndicatorsView: View {
                 GridItem(.adaptive(minimum: 140), spacing: 12)
             ], spacing: 12) {
                 ForEach(indicators) { indicator in
-                    IndicatorCard(indicator: indicator)
+                    IndicatorCard(
+                        indicator: indicator,
+                        isFavorite: favoritesStore.isFavorite(indicator.name),
+                        canAddFavorite: favoritesStore.favoriteNames.count < IndicatorFavoritesStore.maxFavorites || favoritesStore.isFavorite(indicator.name),
+                        onToggleFavorite: { favoritesStore.toggleFavorite(indicator.name) }
+                    )
                 }
             }
         }
@@ -221,41 +229,60 @@ struct TechnicalIndicatorsView: View {
 
 struct IndicatorCard: View {
     let indicator: IndicatorItem
-    
+    var isFavorite: Bool = false
+    var canAddFavorite: Bool = true
+    var onToggleFavorite: (() -> Void)? = nil
+
     private var interpretation: IndicatorInterpretation {
         indicator.interpretation
     }
-    
+
     private var interpretationColor: Color {
         switch interpretation {
+        case .strongBullish: return .green
         case .bullish: return .green
+        case .neutral: return .gray
         case .bearish: return .red
+        case .strongBearish: return .red
         case .overbought: return .orange
         case .oversold: return .blue
-        case .neutral: return .gray
         }
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Indicator name
-            Text(indicator.formattedName)
-                .font(.caption.bold())
-                .foregroundStyle(.primary)
-            
-            // Value
-            Text(indicator.displayValue)
-                .font(.title3.bold().monospacedDigit())
-                .foregroundStyle(interpretationColor)
-            
-            // Interpretation badge
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(interpretationColor)
-                    .frame(width: 6, height: 6)
-                Text(interpretation.label)
-                    .font(.caption2)
-                    .foregroundStyle(interpretationColor)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(indicator.formattedName)
+                        .font(.caption.bold())
+                        .foregroundStyle(.primary)
+
+                    Text(indicator.displayValue)
+                        .font(.title3.bold().monospacedDigit())
+                        .foregroundStyle(interpretationColor)
+
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(interpretationColor)
+                            .frame(width: 6, height: 6)
+                        Text(interpretation.label)
+                            .font(.caption2)
+                            .foregroundStyle(interpretationColor)
+                    }
+                }
+                Spacer(minLength: 4)
+                if onToggleFavorite != nil {
+                    Button(action: {
+                        guard canAddFavorite || isFavorite else { return }
+                        onToggleFavorite?()
+                    }) {
+                        Image(systemName: isFavorite ? "star.fill" : "star")
+                            .font(.caption)
+                            .foregroundStyle(isFavorite ? .yellow : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canAddFavorite && !isFavorite)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -275,5 +302,6 @@ struct IndicatorCard: View {
 
 #Preview {
     TechnicalIndicatorsView(symbol: "AAPL", timeframe: "d1")
+        .environmentObject(AppViewModel())
         .frame(width: 900, height: 800)
 }

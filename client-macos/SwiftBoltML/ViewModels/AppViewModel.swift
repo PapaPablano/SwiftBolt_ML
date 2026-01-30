@@ -30,6 +30,7 @@ final class AppViewModel: ObservableObject {
     @Published var optionsRankerViewModel: OptionsRankerViewModel
     @Published var predictionsViewModel: PredictionsViewModel
     @Published var validationViewModel: ValidationViewModel
+    @Published var indicatorFavoritesStore: IndicatorFavoritesStore
     @Published var selectedContractState: SelectedContractState
     @Published var selectedDetailTab: Int = 0
     @Published var selectedOptionsTab: Int = 0
@@ -49,6 +50,7 @@ final class AppViewModel: ObservableObject {
         self.optionsRankerViewModel = OptionsRankerViewModel()
         self.predictionsViewModel = PredictionsViewModel()
         self.validationViewModel = ValidationViewModel()
+        self.indicatorFavoritesStore = IndicatorFavoritesStore()
         self.selectedContractState = SelectedContractState()
         self.searchViewModel = SymbolSearchViewModel()
         self.watchlistViewModel = WatchlistViewModel()

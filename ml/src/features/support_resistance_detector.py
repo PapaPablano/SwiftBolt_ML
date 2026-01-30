@@ -1659,7 +1659,16 @@ class SupportResistanceDetector:
         return df
 
 
-    def find_all_levels(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def find_all_levels(
+        self,
+        df: pd.DataFrame,
+        zigzag_threshold: Optional[float] = None,
+        extrema_order: Optional[int] = None,
+        n_clusters: Optional[int] = None,
+        fib_lookback: int = 50,
+        use_new_indicators: bool = True,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
         """
         Find all support and resistance levels using 3 modern indicators.
         
@@ -1670,6 +1679,12 @@ class SupportResistanceDetector:
         
         Args:
             df: DataFrame with OHLC data
+            zigzag_threshold: Deprecated, ignored (kept for API compatibility).
+            extrema_order: Deprecated, ignored.
+            n_clusters: Deprecated, ignored.
+            fib_lookback: Deprecated, ignored.
+            use_new_indicators: Unused; modern indicators always used.
+            **kwargs: Ignored for backward compatibility.
             
         Returns:
             Dict containing:
@@ -1684,6 +1699,7 @@ class SupportResistanceDetector:
         """
         if df.empty:
             return {
+                "current_price": None,
                 "nearest_support": None,
                 "nearest_resistance": None,
                 "support_distance_pct": None,
@@ -1743,14 +1759,16 @@ class SupportResistanceDetector:
         if nearest_resistance:
             resistance_distance_pct = abs(nearest_resistance - current_price) / current_price * 100
         
-        # Determine bias
+        # Determine bias (technical summary: 0.8 proximity factor for clear bias)
         bias = "neutral"
         if support_distance_pct and resistance_distance_pct:
-            # Bias toward the nearest level
-            if support_distance_pct < resistance_distance_pct:
-                bias = "bullish"  # Support is closer, likely to bounce
-            else:
-                bias = "bearish"  # Resistance is closer, likely to reverse
+            # Support closer than 80% of resistance distance => Bullish (floor nearby)
+            if support_distance_pct < resistance_distance_pct * 0.8:
+                bias = "bullish"
+            # Resistance closer than 80% of support distance => Bearish (ceiling nearby)
+            elif resistance_distance_pct < support_distance_pct * 0.8:
+                bias = "bearish"
+            # Else equidistant or unclear => Neutral
         elif nearest_support and not nearest_resistance:
             bias = "bullish"
         elif nearest_resistance and not nearest_support:
@@ -1784,6 +1802,7 @@ class SupportResistanceDetector:
         )
         
         return {
+            "current_price": current_price,
             "nearest_support": nearest_support,
             "nearest_resistance": nearest_resistance,
             "support_distance_pct": round(support_distance_pct, 2) if support_distance_pct else None,

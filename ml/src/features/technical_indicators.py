@@ -58,6 +58,8 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     df["macd"], df["macd_signal"], df["macd_hist"] = TechnicalIndicatorsCorrect.calculate_macd(
         df["close"], fast=12, slow=26, signal=9
     )
+    # Previous bar's MACD histogram for Strong Bullish/Bearish (refined technical summary)
+    df["macd_hist_prev"] = df["macd_hist"].shift(1)
 
     # RSI (using proper EMA smoothing)
     df["rsi_14"] = TechnicalIndicatorsCorrect.calculate_rsi(df["close"], period=14)

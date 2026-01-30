@@ -267,10 +267,10 @@ class MarketCorrelationFeatures:
         - momentum_alignment: Are symbol and market moving same direction?
         """
         for window in [5, 20]:
-            symbol_mom = df["close"].pct_change(window)
+            symbol_mom = df["close"].pct_change(window, fill_method=None)
 
             if "spy_close_aligned" in df.columns:
-                spy_mom = df["spy_close_aligned"].pct_change(window)
+                spy_mom = df["spy_close_aligned"].pct_change(window, fill_method=None)
             else:
                 spy_mom = df["spy_returns"].rolling(window).sum()
 
@@ -278,7 +278,7 @@ class MarketCorrelationFeatures:
             df[f"momentum_spread_{window}d"] = symbol_mom - spy_mom
 
         # Momentum alignment (are they moving same direction?)
-        symbol_dir = np.sign(df["close"].pct_change(5))
+        symbol_dir = np.sign(df["close"].pct_change(5, fill_method=None))
         spy_dir = np.sign(df["spy_returns"].rolling(5).sum())
         df["momentum_alignment"] = (symbol_dir == spy_dir).astype(float)
 

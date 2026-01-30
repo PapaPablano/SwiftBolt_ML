@@ -591,19 +591,29 @@ struct AnalysisErrorBanner: View {
 // MARK: - Technical Indicators Section
 
 struct TechnicalIndicatorsSection: View {
+    @EnvironmentObject var appViewModel: AppViewModel
     let symbol: String
     let timeframe: String
     @StateObject private var viewModel = TechnicalIndicatorsViewModel()
     @State private var isExpanded = true
-    
+
+    private var favoritesStore: IndicatorFavoritesStore { appViewModel.indicatorFavoritesStore }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "chart.line.uptrend.xyaxis")
                     .font(.title3)
                     .foregroundStyle(.blue)
-                Text("Technical Indicators")
-                    .font(.title3.bold())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Technical Indicators")
+                        .font(.title3.bold())
+                    if !favoritesStore.favoriteNames.isEmpty {
+                        Text("\(favoritesStore.favoriteNames.count) favorites in Analysis")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Spacer()
                 Button(action: {
                     isExpanded.toggle()
@@ -642,8 +652,16 @@ struct TechnicalIndicatorsSection: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                 } else if viewModel.hasIndicators {
-                    // Show a preview of key indicators
+                    // Show favorites first (up to 8), then fallback to default priority
                     let keyIndicators = getKeyIndicators()
+                    if !keyIndicators.isEmpty {
+                        if !favoritesStore.favoriteNames.isEmpty {
+                            Text("Favorites")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
                     LazyVGrid(columns: [
                         GridItem(.adaptive(minimum: 120)),
                         GridItem(.adaptive(minimum: 120)),
@@ -687,24 +705,36 @@ struct TechnicalIndicatorsSection: View {
     
     private func getKeyIndicators() -> [IndicatorItem] {
         let all = viewModel.allIndicators
-        // Prioritize common indicators
-        let priority = ["rsi_14", "macd", "macd_signal", "macd_hist", "sma_20", "sma_50", "bollinger_upper", "bollinger_lower", "atr_14", "adx", "volume_ratio"]
         var key: [IndicatorItem] = []
         var seen = Set<String>()
-        
-        // Add priority indicators first
-        for name in priority {
-            if let item = all.first(where: { $0.name.contains(name) && !seen.contains($0.name) }) {
+
+        // Favorites first (up to 8), in user order
+        for name in favoritesStore.orderedFavorites.prefix(IndicatorFavoritesStore.maxFavorites) {
+            if let item = all.first(where: { $0.name == name }), !seen.contains(item.name) {
                 key.append(item)
                 seen.insert(item.name)
             }
         }
-        
-        // Add remaining indicators
-        for item in all where !seen.contains(item.name) {
-            key.append(item)
+
+        // If no favorites or fewer than 8, fill with default priority
+        if key.count < IndicatorFavoritesStore.maxFavorites {
+            let priority = ["rsi_14", "macd", "macd_signal", "macd_hist", "sma_20", "sma_50", "bb_upper", "bb_lower", "atr_14", "adx", "volume_ratio"]
+            for name in priority {
+                if key.count >= IndicatorFavoritesStore.maxFavorites { break }
+                if let item = all.first(where: { $0.name.contains(name) || name.contains($0.name.lowercased()) }),
+                   !seen.contains(item.name) {
+                    key.append(item)
+                    seen.insert(item.name)
+                }
+            }
         }
-        
+
+        // Pad with any remaining up to 8
+        for item in all where key.count < IndicatorFavoritesStore.maxFavorites && !seen.contains(item.name) {
+            key.append(item)
+            seen.insert(item.name)
+        }
+
         return key
     }
 }
@@ -720,11 +750,13 @@ struct CompactIndicatorCard: View {
     
     private var interpretationColor: Color {
         switch interpretation {
+        case .strongBullish: return .green
         case .bullish: return .green
+        case .neutral: return .gray
         case .bearish: return .red
+        case .strongBearish: return .red
         case .overbought: return .orange
         case .oversold: return .blue
-        case .neutral: return .gray
         }
     }
     

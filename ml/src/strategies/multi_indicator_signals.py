@@ -70,11 +70,9 @@ class MultiIndicatorSignalGenerator:
 
     def _score_rsi(self, df: pd.DataFrame) -> float:
         """
-        Score RSI indicator.
+        Score RSI indicator (trending-market bands per technical summary).
 
-        RSI < 30: Oversold = Bullish (+1)
-        RSI > 70: Overbought = Bearish (-1)
-        RSI 30-70: Neutral (0)
+        Strong Bullish >70, Bullish 60-70, Neutral 40-60, Bearish 30-40, Strong Bearish <30.
         """
         if "rsi_14" not in df.columns:
             return 0.0
@@ -83,22 +81,22 @@ class MultiIndicatorSignalGenerator:
         if pd.isna(rsi):
             return 0.0
 
-        if rsi < 30:
-            return 1.0  # Oversold = Buy signal
-        elif rsi > 70:
-            return -1.0  # Overbought = Sell signal
-        elif rsi < 40:
-            return 0.5  # Approaching oversold
-        elif rsi > 60:
-            return -0.5  # Approaching overbought
-        return 0.0
+        if rsi > 70:
+            return 1.0   # Strong Bullish (strong uptrend momentum)
+        if rsi > 60:
+            return 0.6   # Bullish
+        if rsi > 40:
+            return 0.0   # Neutral
+        if rsi > 30:
+            return -0.6  # Bearish
+        return -1.0       # Strong Bearish
 
     def _score_macd(self, df: pd.DataFrame) -> float:
         """
-        Score MACD indicator.
+        Score MACD indicator (technical summary).
 
-        Histogram positive and increasing: Bullish
-        Histogram negative and decreasing: Bearish
+        Histogram >0 & increasing = Strong Bullish; >0 = Bullish.
+        Histogram <0 & decreasing = Strong Bearish; <0 = Bearish.
         """
         if "macd_hist" not in df.columns or len(df) < 2:
             return 0.0
@@ -109,23 +107,18 @@ class MultiIndicatorSignalGenerator:
         if pd.isna(macd_hist) or pd.isna(macd_hist_prev):
             return 0.0
 
-        if macd_hist > 0 and macd_hist > macd_hist_prev:
-            return 1.0  # Bullish momentum increasing
-        elif macd_hist < 0 and macd_hist < macd_hist_prev:
-            return -1.0  # Bearish momentum increasing
-        elif macd_hist > 0:
-            return 0.5  # Bullish but weakening
-        elif macd_hist < 0:
-            return -0.5  # Bearish but weakening
+        histogram_increasing = macd_hist > macd_hist_prev
+        if macd_hist > 0:
+            return 1.0 if histogram_increasing else 0.5  # Strong Bullish / Bullish
+        if macd_hist < 0:
+            return -1.0 if not histogram_increasing else -0.5  # Strong Bearish / Bearish
         return 0.0
 
     def _score_kdj(self, df: pd.DataFrame) -> float:
         """
-        Score KDJ indicator.
+        Score KDJ indicator (technical summary).
 
-        J < 0: Oversold = Bullish
-        J > 100: Overbought = Bearish
-        J-D divergence indicates early reversals
+        J < 0 Strong Bullish, 0-20 Bullish, 20-80 Neutral, 80-100 Bearish, J > 100 Strong Bearish.
         """
         if "kdj_j" not in df.columns:
             return 0.0
@@ -135,23 +128,21 @@ class MultiIndicatorSignalGenerator:
             return 0.0
 
         if j < 0:
-            return 1.0  # Strong oversold
-        elif j > 100:
-            return -1.0  # Strong overbought
-        elif j < 20:
-            return 0.5  # Oversold zone
-        elif j > 80:
-            return -0.5  # Overbought zone
-        return 0.0
+            return 1.0   # Strong Bullish (oversold)
+        if j < 20:
+            return 0.5   # Bullish
+        if j <= 80:
+            return 0.0   # Neutral
+        if j <= 100:
+            return -0.5  # Bearish
+        return -1.0       # Strong Bearish (overbought)
 
     def _score_adx(self, df: pd.DataFrame) -> float:
         """
-        Score ADX indicator.
+        Score ADX + DI (technical summary).
 
-        ADX measures trend strength, not direction.
-        +DI > -DI with strong ADX: Bullish
-        -DI > +DI with strong ADX: Bearish
-        Weak ADX: No clear signal (neutral)
+        ADX < 20: Neutral. ADX 20-25: Neutral (weak trend).
+        ADX > 40 & di_spread > 5: Strong Bullish/Bearish; else 25-40 Bullish/Bearish by +DI/-DI.
         """
         if "adx" not in df.columns or "plus_di" not in df.columns:
             return 0.0
@@ -163,20 +154,31 @@ class MultiIndicatorSignalGenerator:
         if pd.isna(adx) or pd.isna(plus_di) or pd.isna(minus_di):
             return 0.0
 
-        # Only generate signals when trend is strong enough
-        if adx > 25:
-            if plus_di > minus_di:
-                return min(1.0, (adx - 25) / 25)  # Scale by trend strength
-            else:
-                return max(-1.0, -(adx - 25) / 25)
+        di_spread = plus_di - minus_di
+        if adx < 20:
+            return 0.0
+        if adx < 25:
+            return 0.0  # Weak trend forming
+        if adx > 40:
+            if di_spread > 5:
+                return 1.0   # Strong Bullish
+            if di_spread < -5:
+                return -1.0  # Strong Bearish
+            return 0.5 if di_spread > 0 else -0.5
+        # Moderate trend 25-40
+        if di_spread > 0:
+            return 0.5  # Bullish
+        if di_spread < 0:
+            return -0.5  # Bearish
         return 0.0
 
     def _score_bollinger(self, df: pd.DataFrame) -> float:
         """
-        Score Bollinger Bands.
+        Score Bollinger Bands (technical summary).
 
-        Price below lower band: Oversold = Bullish
-        Price above upper band: Overbought = Bearish
+        Price > upper: Strong Bullish if volume_ratio > 1.5 else Bearish (overbought).
+        Price in upper 30%: Bullish; middle 40%: Neutral; lower 30%: Bearish.
+        Price < lower: Strong Bearish if volume > 1.5 else Bullish (oversold bounce).
         """
         if "bb_upper" not in df.columns or "bb_lower" not in df.columns:
             return 0.0
@@ -189,22 +191,33 @@ class MultiIndicatorSignalGenerator:
         if pd.isna(close) or pd.isna(bb_upper) or pd.isna(bb_lower):
             return 0.0
 
+        band_width = bb_upper - bb_lower
+        if band_width <= 0:
+            return 0.0
+        price_position = (close - bb_lower) / band_width  # 0 to 1
+        volume_ratio = df["volume_ratio"].iloc[-1] if "volume_ratio" in df.columns else 1.0
+        if pd.isna(volume_ratio):
+            volume_ratio = 1.0
+
+        if close > bb_upper:
+            return 1.0 if volume_ratio > 1.5 else -0.5  # Breakout vs overbought
         if close < bb_lower:
-            return 1.0  # Below lower band = Buy
-        elif close > bb_upper:
-            return -1.0  # Above upper band = Sell
-        elif close < bb_middle:
-            # Proportional score based on position in band
-            return (bb_middle - close) / (bb_middle - bb_lower) * 0.5
-        else:
-            return -(close - bb_middle) / (bb_upper - bb_middle) * 0.5
+            return -1.0 if volume_ratio > 1.5 else 0.5   # Breakdown vs oversold bounce
+        if price_position > 0.7:
+            return 0.5   # Upper 30% = Bullish
+        if price_position > 0.3:
+            return 0.0   # Middle 40% = Neutral
+        return -0.5       # Lower 30% = Bearish
 
     def _score_volume(self, df: pd.DataFrame) -> float:
         """
-        Score volume indicator.
+        Score volume + price direction (technical summary).
 
-        High volume confirms the current trend signal.
-        Returns a multiplier based on volume ratio.
+        >2 & price up = Strong Bullish; >1.5 & up = Bullish.
+        >2 & price down = Strong Bearish; >1.5 & down = Bearish.
+        <0.5 or 0.5-1.5 = Neutral.
+
+        Uses percentage price change for direction (not just sign).
         """
         if "volume_ratio" not in df.columns:
             return 0.0
@@ -213,15 +226,24 @@ class MultiIndicatorSignalGenerator:
         if pd.isna(vol_ratio):
             return 0.0
 
-        # Get MACD direction to confirm with volume
-        macd_signal = self._score_macd(df)
+        # Percentage change for direction (technical summary: volume MUST consider price direction)
+        price_change = 0.0
+        if "close" in df.columns and len(df) >= 2:
+            prev_close = df["close"].iloc[-2]
+            price_change = (df["close"].iloc[-1] - prev_close) / (prev_close or 1e-9)
 
+        if vol_ratio > 2.0:
+            if price_change > 0:
+                return 1.0   # Strong Bullish
+            if price_change < 0:
+                return -1.0  # Strong Bearish
+            return 0.0
         if vol_ratio > 1.5:
-            # High volume confirms trend
-            return macd_signal * 0.5
-        elif vol_ratio > 1.2:
-            return macd_signal * 0.25
-        return 0.0
+            if price_change > 0:
+                return 0.5   # Bullish
+            if price_change < 0:
+                return -0.5  # Bearish
+        return 0.0  # Average or low volume
 
     def _score_supertrend(self, df: pd.DataFrame) -> float:
         """

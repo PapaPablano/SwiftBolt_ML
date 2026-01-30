@@ -76,34 +76,56 @@ struct TechnicalIndicatorsResponse: Decodable {
 // MARK: - Indicator Categories
 
 extension TechnicalIndicatorsResponse {
+    /// For "SuperTrend AI Factor" we show one row; prefer this key when multiple exist.
+    private static let superTrendFactorKeyOrder = ["supertrend_adaptive_factor", "supertrend_factor", "target_factor"]
+
+    /// Resolve which factor key to show (one of supertrend_adaptive_factor, supertrend_factor, target_factor).
+    private func preferredSuperTrendFactorKey() -> String? {
+        for k in Self.superTrendFactorKeyOrder {
+            guard let key = indicators.keys.first(where: { $0.lowercased() == k }),
+                  indicators[key] != nil else { continue }
+            return key
+        }
+        return nil
+    }
+
     /// Group indicators by category for organized display
     var indicatorsByCategory: [IndicatorCategory: [IndicatorItem]] {
         var grouped: [IndicatorCategory: [IndicatorItem]] = [:]
-        
+        let preferredFactorKey = preferredSuperTrendFactorKey()
+
         for (key, value) in indicators {
             if let category = IndicatorCategory.category(for: key),
                let doubleValue = value {
-                let item = IndicatorItem(name: key, value: doubleValue, formattedName: IndicatorCategory.formattedName(for: key))
+                let formatted = IndicatorCategory.formattedName(for: key)
+                if formatted == "SuperTrend AI Factor", let pref = preferredFactorKey, key.lowercased() != pref.lowercased() {
+                    continue
+                }
+                let item = IndicatorItem(name: key, value: doubleValue, formattedName: formatted, allIndicators: indicators)
                 grouped[category, default: []].append(item)
             }
         }
-        
-        // Sort items within each category
+
         for category in grouped.keys {
             grouped[category]?.sort { $0.formattedName < $1.formattedName }
         }
-        
         return grouped
     }
-    
-    /// Get all indicators as a flat list
+
+    /// Get all indicators as a flat list (one SuperTrend AI Factor row when multiple keys exist)
     var allIndicators: [IndicatorItem] {
-        indicators.compactMap { key, value in
+        let preferredFactorKey = preferredSuperTrendFactorKey()
+        return indicators.compactMap { key, value -> IndicatorItem? in
             guard let doubleValue = value else { return nil }
+            let formatted = IndicatorCategory.formattedName(for: key)
+            if formatted == "SuperTrend AI Factor", let pref = preferredFactorKey, key.lowercased() != pref.lowercased() {
+                return nil
+            }
             return IndicatorItem(
                 name: key,
                 value: doubleValue,
-                formattedName: IndicatorCategory.formattedName(for: key)
+                formattedName: formatted,
+                allIndicators: indicators
             )
         }.sorted { $0.formattedName < $1.formattedName }
     }
@@ -116,6 +138,8 @@ struct IndicatorItem: Identifiable {
     let name: String
     let value: Double
     let formattedName: String
+    /// Full indicator dict for context-dependent interpretation (volume+price, ADX+DI, MACD prev). Nil = use value-only fallbacks.
+    var allIndicators: [String: Double?]? = nil
     
     var formattedValue: String {
         if abs(value) >= 1000 {
@@ -128,7 +152,10 @@ struct IndicatorItem: Identifiable {
     }
     
     var displayValue: String {
-        // Add percentage sign for certain indicators
+        // Ratio/percent indicators: show with % (price_vs_sma is decimal e.g. 0.02 = 2%)
+        if name.lowercased().contains("price_vs_sma") {
+            return String(format: "%.2f%%", value * 100)
+        }
         if name.contains("rsi") || name.contains("mfi") || name.contains("returns") || name.contains("ratio") {
             return "\(formattedValue)%"
         }
@@ -155,9 +182,9 @@ enum IndicatorCategory: String, CaseIterable {
             return .momentum
         }
         
-        // Volatility indicators
-        if lower.contains("bollinger") || lower.contains("atr") || lower.contains("volatility") || 
-           lower.contains("adx") || lower.contains("supertrend") {
+        // Volatility indicators (incl. SuperTrend AI factor)
+        if lower.contains("bollinger") || lower.contains("atr") || lower.contains("volatility") ||
+           lower.contains("adx") || lower.contains("supertrend") || lower == "target_factor" {
             return .volatility
         }
         
@@ -182,6 +209,11 @@ enum IndicatorCategory: String, CaseIterable {
     }
     
     static func formattedName(for indicatorName: String) -> String {
+        let lower = indicatorName.lowercased()
+        // SuperTrend AI adaptive factor (K-means) — single clear label for panel
+        if lower == "supertrend_factor" || lower == "supertrend_adaptive_factor" || lower == "target_factor" {
+            return "SuperTrend AI Factor"
+        }
         // Common replacements
         var formatted = indicatorName
             .replacingOccurrences(of: "_", with: " ")
@@ -228,70 +260,149 @@ enum IndicatorCategory: String, CaseIterable {
 }
 
 // MARK: - Indicator Interpretation
+// Thresholds aligned with docs/technicalsummary.md (Refined Bull/Bear/Neutral)
 
 extension IndicatorItem {
-    /// Get interpretation/signal for the indicator value
+    /// Look up another indicator value (case-insensitive key).
+    private func indicator(_ key: String) -> Double? {
+        guard let all = allIndicators else { return nil }
+        let k = key.lowercased()
+        for (name, val) in all {
+            if name.lowercased() == k, let v = val { return v }
+        }
+        return nil
+    }
+
+    /// Get interpretation/signal for the indicator value (uses allIndicators when available).
     var interpretation: IndicatorInterpretation {
         let lower = name.lowercased()
-        
-        // RSI interpretation
+
+        // RSI (14) — trending-market bands per technical summary
         if lower.contains("rsi") {
-            if value > 70 {
-                return .overbought
-            } else if value < 30 {
-                return .oversold
-            } else {
-                return .neutral
-            }
+            if value > 70 { return .strongBullish }
+            if value > 60 { return .bullish }
+            if value > 40 { return .neutral }
+            if value > 30 { return .bearish }
+            return .strongBearish
         }
-        
-        // MACD interpretation
+
+        // MACD histogram — Strong vs Regular using previous bar when available
         if lower.contains("macd_hist") {
-            if value > 0 {
-                return .bullish
-            } else {
-                return .bearish
+            let prevHist = indicator("macd_hist_prev")
+            if let prev = prevHist {
+                let increasing = value > prev
+                if value > 0 {
+                    return increasing ? .strongBullish : .bullish
+                }
+                if value < 0 {
+                    return increasing ? .bearish : .strongBearish
+                }
+                return .neutral
             }
+            // Fallback: no previous histogram
+            if value > 0 { return .bullish }
+            if value < 0 { return .bearish }
+            return .neutral
         }
-        
-        // Price vs SMA interpretation
+
+        // Price vs SMA — 5-level distance bands (>+5%, +2–5%, ±2%, -2–-5%, <-5%)
         if lower.contains("price_vs_sma") {
-            if value > 0.02 { // > 2% above SMA
-                return .bullish
-            } else if value < -0.02 { // < -2% below SMA
-                return .bearish
-            } else {
-                return .neutral
-            }
+            if value > 0.05 { return .strongBullish }
+            if value > 0.02 { return .bullish }
+            if value >= -0.02 && value <= 0.02 { return .neutral }
+            if value < -0.05 { return .strongBearish }
+            if value < -0.02 { return .bearish }
+            return .neutral
         }
-        
-        // Volume ratio interpretation
+
+        // Volume ratio — MUST use price direction (technical summary)
         if lower.contains("volume_ratio") {
-            if value > 1.5 {
-                return .bullish // High volume
-            } else if value < 0.5 {
-                return .bearish // Low volume
-            } else {
+            let priceChange = indicator("returns_1d") ?? indicator("return_1d")
+            if let dir = priceChange {
+                if value > 2.0 {
+                    if dir > 0 { return .strongBullish }
+                    if dir < 0 { return .strongBearish }
+                    return .neutral
+                }
+                if value > 1.5 {
+                    if dir > 0 { return .bullish }
+                    if dir < 0 { return .bearish }
+                    return .neutral
+                }
+            }
+            if value < 0.5 { return .neutral }
+            return .neutral
+        }
+
+        // MFI (14) — 30–70 Neutral, 70–80 Bearish, >80 Strong Bearish
+        if lower.contains("mfi") {
+            if value < 20 { return .strongBullish }
+            if value < 30 { return .bullish }
+            if value <= 70 { return .neutral }
+            if value <= 80 { return .bearish }
+            return .strongBearish
+        }
+
+        // Williams %R
+        if lower.contains("williams") || lower.contains("williams_r") {
+            if value < -80 { return .bullish }
+            if value < -50 { return .bullish }
+            if value < -20 { return .neutral }
+            return .bearish
+        }
+
+        // CCI
+        if lower.contains("cci") {
+            if value < -200 { return .strongBullish }
+            if value < -100 { return .bullish }
+            if value >= -100 && value <= 100 { return .neutral }
+            if value <= 200 { return .bearish }
+            return .strongBearish
+        }
+
+        // SuperTrend AI Factor (K-means adaptive ATR multiplier, 1.0–5.0) — informational
+        if lower == "supertrend_factor" || lower == "supertrend_adaptive_factor" || lower == "target_factor" {
+            return .neutral
+        }
+
+        // ADX + +DI/-DI — direction from DI spread when available
+        if lower.contains("adx") {
+            guard let plusDI = indicator("plus_di"), let minusDI = indicator("minus_di") else {
                 return .neutral
             }
+            let diSpread = plusDI - minusDI
+            if value < 20 { return .neutral }
+            if value < 25 { return .neutral }
+            if value > 40 {
+                if diSpread > 5 { return .strongBullish }
+                if diSpread < -5 { return .strongBearish }
+                return .neutral
+            }
+            if diSpread > 0 { return .bullish }
+            if diSpread < 0 { return .bearish }
+            return .neutral
         }
-        
+
         return .neutral
     }
 }
 
 enum IndicatorInterpretation {
+    case strongBullish
     case bullish
-    case bearish
     case neutral
-    case overbought
-    case oversold
+    case bearish
+    case strongBearish
+    case overbought  // legacy / display alias
+    case oversold   // legacy / display alias
     
     var color: String {
         switch self {
+        case .strongBullish: return "green"
         case .bullish: return "green"
-        case .bearish: return "red"
         case .neutral: return "gray"
+        case .bearish: return "red"
+        case .strongBearish: return "red"
         case .overbought: return "orange"
         case .oversold: return "blue"
         }
@@ -299,9 +410,11 @@ enum IndicatorInterpretation {
     
     var label: String {
         switch self {
+        case .strongBullish: return "Strong Bullish"
         case .bullish: return "Bullish"
-        case .bearish: return "Bearish"
         case .neutral: return "Neutral"
+        case .bearish: return "Bearish"
+        case .strongBearish: return "Strong Bearish"
         case .overbought: return "Overbought"
         case .oversold: return "Oversold"
         }

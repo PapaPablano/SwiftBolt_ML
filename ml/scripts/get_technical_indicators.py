@@ -103,6 +103,10 @@ def get_latest_indicators(symbol: str, timeframe: str = "d1", lookback_bars: int
                 indicators[col] = None
             else:
                 indicators[col] = str(value)
+
+        # Aliases for Swift app (refined technical summary)
+        if "returns_1d" in indicators:
+            indicators["return_1d"] = indicators["returns_1d"]
         
         # Get timestamp
         timestamp = latest["ts"]

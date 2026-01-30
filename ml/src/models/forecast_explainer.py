@@ -194,53 +194,73 @@ class ForecastExplainer:
         name: str,
         value: float,
     ) -> Tuple[str, str]:
-        """Interpret a feature value and generate description."""
+        """Interpret a feature value per technical summary (refined Bull/Bear/Neutral)."""
         name_lower = name.lower()
 
-        # RSI interpretation
+        # RSI (trending-market bands): >70 Strong Bullish, 60-70 Bullish, 40-60 Neutral, 30-40 Bearish, <30 Strong Bearish
         if "rsi" in name_lower:
             if value > 70:
-                return "bearish", f"RSI at {value:.1f} indicates overbought conditions"
-            elif value < 30:
-                return "bullish", f"RSI at {value:.1f} indicates oversold conditions"
-            else:
+                return "bullish", f"RSI at {value:.1f} indicates strong uptrend momentum"
+            if value > 60:
+                return "bullish", f"RSI at {value:.1f} shows healthy upward momentum"
+            if value > 40:
                 return "neutral", f"RSI at {value:.1f} is in neutral territory"
+            if value > 30:
+                return "bearish", f"RSI at {value:.1f} shows downward momentum building"
+            return "bearish", f"RSI at {value:.1f} indicates strong downtrend momentum"
 
-        # MACD interpretation
+        # MACD (histogram): >0 bullish, <0 bearish
+        if "macd" in name_lower and "signal" not in name_lower and "hist" in name_lower:
+            if value > 0:
+                return "bullish", f"MACD histogram at {value:.2f} shows bullish momentum"
+            if value < 0:
+                return "bearish", f"MACD histogram at {value:.2f} shows bearish momentum"
+            return "neutral", "MACD histogram near zero"
         if "macd" in name_lower and "signal" not in name_lower:
             if value > 0:
                 return "bullish", f"MACD at {value:.2f} shows bullish momentum"
-            else:
+            if value < 0:
                 return "bearish", f"MACD at {value:.2f} shows bearish momentum"
+            return "neutral", "MACD near zero"
 
-        # ADX interpretation
+        # ADX: strength only; direction needs +DI/-DI. Strong trend >25, weak <20
         if "adx" in name_lower:
+            if value > 40:
+                return "neutral", f"ADX at {value:.1f} indicates very strong trend (check +DI/-DI for direction)"
             if value > 25:
-                return "neutral", f"ADX at {value:.1f} indicates strong trend"
-            else:
-                return "neutral", f"ADX at {value:.1f} indicates weak/no trend"
+                return "neutral", f"ADX at {value:.1f} indicates clear trend"
+            if value >= 20:
+                return "neutral", f"ADX at {value:.1f} indicates weak trend forming"
+            return "neutral", f"ADX at {value:.1f} indicates range-bound conditions"
 
-        # Price vs SMA
+        # Price vs SMA: >+5% Strong Bullish, +2–5% Bullish, ±2% Neutral, -2–-5% Bearish, <-5% Strong Bearish
         if "price_vs_sma" in name_lower:
+            pct = value * 100
+            if value > 0.05:
+                return "bullish", f"Price {pct:.1f}% above SMA (strong bullish)"
             if value > 0.02:
-                return "bullish", f"Price {value*100:.1f}% above SMA (bullish)"
-            elif value < -0.02:
-                return "bearish", f"Price {abs(value)*100:.1f}% below SMA (bearish)"
-            else:
+                return "bullish", f"Price {pct:.1f}% above SMA (bullish)"
+            if value >= -0.02 and value <= 0.02:
                 return "neutral", "Price near SMA (neutral)"
+            if value < -0.05:
+                return "bearish", f"Price {abs(pct):.1f}% below SMA (strong bearish)"
+            if value < -0.02:
+                return "bearish", f"Price {abs(pct):.1f}% below SMA (bearish)"
+            return "neutral", "Price near SMA"
 
         # Volatility
         if "volatility" in name_lower or "atr" in name_lower:
             return "neutral", f"Volatility measure at {value:.4f}"
 
-        # Volume ratio
+        # Volume ratio: direction matters; without price we describe level only
         if "volume_ratio" in name_lower:
+            if value > 2.0:
+                return "neutral", f"Volume {value:.1f}x average (very high – confirm with price direction)"
             if value > 1.5:
-                return "neutral", f"Volume {value:.1f}x average (high activity)"
-            elif value < 0.5:
+                return "neutral", f"Volume {value:.1f}x average (high – confirm with price direction)"
+            if value < 0.5:
                 return "neutral", f"Volume {value:.1f}x average (low activity)"
-            else:
-                return "neutral", f"Volume at {value:.1f}x average"
+            return "neutral", f"Volume at {value:.1f}x average"
 
         # Default
         return "neutral", f"{name}: {value:.4f}"
@@ -361,10 +381,10 @@ class ForecastExplainer:
             name_lower = name.lower()
 
             if "rsi" in name_lower:
-                if value > 80:
-                    risks.append("RSI extremely overbought (>80) - reversal risk")
-                elif value < 20:
-                    risks.append("RSI extremely oversold (<20) - reversal risk")
+                if value > 70:
+                    risks.append("RSI overbought (>70) - reversal or continuation risk")
+                elif value < 30:
+                    risks.append("RSI oversold (<30) - reversal or continuation risk")
 
             if "adx" in name_lower and value < 20:
                 risks.append("Weak trend (ADX < 20) - choppy conditions likely")
@@ -379,7 +399,7 @@ class ForecastExplainer:
                 if pd.isna(value):
                     continue
                 if "rsi" in name.lower() and value > 70:
-                    risks.append("Bullish prediction but RSI overbought")
+                    risks.append("Bullish prediction but RSI overbought (>70) – watch for pullback")
                     break
 
         elif prediction == "bearish":
@@ -387,7 +407,7 @@ class ForecastExplainer:
                 if pd.isna(value):
                     continue
                 if "rsi" in name.lower() and value < 30:
-                    risks.append("Bearish prediction but RSI oversold")
+                    risks.append("Bearish prediction but RSI oversold (<30) – watch for bounce")
                     break
 
         if not risks:
