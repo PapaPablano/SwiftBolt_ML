@@ -52,11 +52,6 @@ struct TechnicalIndicatorsView: View {
         .refreshable {
             await viewModel.refresh()
         }
-        .onAppear {
-            // #region agent log
-            _agentLog("TechnicalIndicatorsView onAppear", location: "TechnicalIndicatorsView.swift:onAppear", data: ["symbol": symbol, "timeframe": timeframe], hypothesisId: "A")
-            // #endregion
-        }
     }
     
     // MARK: - Header

@@ -17,7 +17,6 @@ struct AnalysisView: View {
                     #if DEBUG
                     let _ = print("[AnalysisView] Rendering ML sections for symbol: \(symbol)")
                     #endif
-                    
                     TechnicalIndicatorsSection(
                         symbol: symbol,
                         timeframe: chartViewModel.timeframe.rawValue
@@ -609,14 +608,16 @@ private struct TechnicalIndicatorsDestinationWrapper: View {
 }
 
 struct TechnicalIndicatorsSection: View {
-    /// Number of indicator cards shown in the Analysis panel (3 rows × 4 columns).
-    private static let analysisPanelIndicatorCount = 12
+    /// Number of indicator cards shown in the Analysis panel (matches max favorites).
+    private static let analysisPanelIndicatorCount = 16
 
     @EnvironmentObject var appViewModel: AppViewModel
     let symbol: String
     let timeframe: String
     @StateObject private var viewModel = TechnicalIndicatorsViewModel()
     @State private var isExpanded = true
+    @State private var isEditingOrder = false
+    @State private var editingOrder: [String] = []
 
     private var favoritesStore: IndicatorFavoritesStore { appViewModel.indicatorFavoritesStore }
 
@@ -636,6 +637,29 @@ struct TechnicalIndicatorsSection: View {
                     }
                 }
                 Spacer()
+                if !favoritesStore.favoriteNames.isEmpty {
+                    if isEditingOrder {
+                        Button("Cancel") {
+                            editingOrder = favoritesStore.orderedFavorites
+                            isEditingOrder = false
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                        Button("Done") {
+                            favoritesStore.setOrder(editingOrder)
+                            isEditingOrder = false
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .font(.caption)
+                    } else {
+                        Button("Edit") {
+                            editingOrder = favoritesStore.orderedFavorites
+                            isEditingOrder = true
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                    }
+                }
                 Button(action: {
                     isExpanded.toggle()
                 }) {
@@ -647,7 +671,9 @@ struct TechnicalIndicatorsSection: View {
             }
             
             if isExpanded {
-                if viewModel.isLoading {
+                if isEditingOrder {
+                    reorderableFavoritesList
+                } else if viewModel.isLoading {
                     HStack {
                         ProgressView()
                             .scaleEffect(0.7)
@@ -673,7 +699,7 @@ struct TechnicalIndicatorsSection: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                 } else if viewModel.hasIndicators {
-                    // Show favorites first (up to 8), then fallback to default priority
+                    // Show favorites first (up to max), then fallback to default priority
                     let keyIndicators = getKeyIndicators()
                     if !keyIndicators.isEmpty {
                         if !favoritesStore.favoriteNames.isEmpty {
@@ -719,9 +745,34 @@ struct TechnicalIndicatorsSection: View {
         .padding(16)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .onAppear {
+            // Refresh when section reappears (e.g. returning from "View All") so favorites show latest values
+            if viewModel.lastUpdated != nil {
+                Task {
+                    await viewModel.loadIndicators(symbol: symbol, timeframe: timeframe, forceRefresh: true)
+                }
+            }
+        }
         .task(id: "\(symbol)_\(timeframe)") {
             await viewModel.loadIndicators(symbol: symbol, timeframe: timeframe)
         }
+    }
+
+    private var reorderableFavoritesList: some View {
+        List {
+            ForEach(editingOrder, id: \.self) { name in
+                let displayName = viewModel.allIndicators.first(where: { $0.name == name })?.formattedName ?? name
+                Text(displayName)
+                    .font(.caption)
+            }
+            .onMove { source, destination in
+                var copy = editingOrder
+                copy.move(fromOffsets: source, toOffset: destination)
+                editingOrder = copy
+            }
+        }
+        .listStyle(.inset)
+        .frame(minHeight: 200, maxHeight: 400)
     }
     
     private func getKeyIndicators() -> [IndicatorItem] {
@@ -729,7 +780,7 @@ struct TechnicalIndicatorsSection: View {
         var key: [IndicatorItem] = []
         var seen = Set<String>()
 
-        // Favorites first (up to 8), in user order
+        // Favorites first (up to max), in user order
         for name in favoritesStore.orderedFavorites.prefix(IndicatorFavoritesStore.maxFavorites) {
             if let item = all.first(where: { $0.name == name }), !seen.contains(item.name) {
                 key.append(item)
@@ -737,7 +788,7 @@ struct TechnicalIndicatorsSection: View {
             }
         }
 
-        // If no favorites or fewer than 12, fill with default priority
+        // If no favorites or fewer than max, fill with default priority
         if key.count < Self.analysisPanelIndicatorCount {
             let priority = ["rsi_14", "macd", "macd_signal", "macd_hist", "sma_20", "sma_50", "bb_upper", "bb_lower", "atr_14", "adx", "volume_ratio"]
             for name in priority {
@@ -750,7 +801,7 @@ struct TechnicalIndicatorsSection: View {
             }
         }
 
-        // Pad with any remaining up to 12
+        // Pad with any remaining up to analysisPanelIndicatorCount
         for item in all where key.count < Self.analysisPanelIndicatorCount && !seen.contains(item.name) {
             key.append(item)
             seen.insert(item.name)

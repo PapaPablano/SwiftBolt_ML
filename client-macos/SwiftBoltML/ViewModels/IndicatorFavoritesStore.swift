@@ -1,9 +1,9 @@
 import Foundation
 
-/// Persisted list of up to 12 favorite technical indicator names for the Analysis panel.
+/// Persisted list of up to 16 favorite technical indicator names for the Analysis panel.
 @MainActor
 final class IndicatorFavoritesStore: ObservableObject {
-    static let maxFavorites = 12
+    static let maxFavorites = 16
     private static let userDefaultsKey = "technical_indicators_favorite_names"
 
     @Published private(set) var favoriteNames: [String] = [] {
@@ -28,6 +28,15 @@ final class IndicatorFavoritesStore: ObservableObject {
             favoriteNames.remove(at: idx)
         } else if favoriteNames.count < Self.maxFavorites {
             favoriteNames.append(name)
+        }
+    }
+
+    /// Set the order of favorites (e.g. after user reorders in Analysis). Preserves the same set; only order changes.
+    func setOrder(_ names: [String]) {
+        let current = Set(favoriteNames)
+        let newOrder = names.filter { current.contains($0) }
+        if newOrder.count == current.count {
+            favoriteNames = newOrder
         }
     }
 

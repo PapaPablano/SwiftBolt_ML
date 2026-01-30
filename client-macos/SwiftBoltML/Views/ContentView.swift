@@ -1,28 +1,5 @@
 import SwiftUI
 
-// #region agent log
-func _agentLog(_ message: String, location: String, data: [String: String] = [:], hypothesisId: String = "") {
-    let logPath = "/Users/ericpeterson/SwiftBolt_ML/.cursor/debug.log"
-    var payload: [String: Any] = [
-        "timestamp": Int(Date().timeIntervalSince1970 * 1000),
-        "location": location,
-        "message": message,
-        "data": data,
-        "sessionId": "debug-session",
-        "hypothesisId": hypothesisId
-    ]
-    if let json = try? JSONSerialization.data(withJSONObject: payload),
-       let line = String(data: json, encoding: .utf8) {
-        if !FileManager.default.fileExists(atPath: logPath) { FileManager.default.createFile(atPath: logPath, contents: nil) }
-        if let handle = FileHandle(forWritingAtPath: logPath) {
-            handle.seekToEndOfFile()
-            handle.write((line + "\n").data(using: .utf8)!)
-            handle.closeFile()
-        }
-    }
-}
-// #endregion
-
 enum SidebarSection: Hashable {
     case stocks
     case portfolio
@@ -36,10 +13,7 @@ struct ContentView: View {
     @State private var activeSection: SidebarSection = .stocks
 
     var body: some View {
-        // #region agent log
-        let _ = _agentLog("ContentView body", location: "ContentView.swift:body", data: ["activeSection": "\(activeSection)"], hypothesisId: "B")
-        // #endregion
-        return NavigationSplitView {
+        NavigationSplitView {
             SidebarView(activeSection: $activeSection)
                 .environmentObject(appViewModel)
         } detail: {
@@ -58,11 +32,6 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 1200, minHeight: 800)
-        .onChange(of: activeSection) { oldValue, newValue in
-            // #region agent log
-            _agentLog("activeSection changed", location: "ContentView.swift:onChange(activeSection)", data: ["old": "\(oldValue)", "new": "\(newValue)"], hypothesisId: "B")
-            // #endregion
-        }
         .onChange(of: appViewModel.selectedSymbol) { oldValue, newValue in
             print("[DEBUG] ========================================")
             print("[DEBUG] ContentView detected selectedSymbol change")
@@ -131,9 +100,6 @@ struct DetailView: View {
     @EnvironmentObject var appViewModel: AppViewModel
 
     var body: some View {
-        // #region agent log
-        let _ = _agentLog("DetailView body", location: "ContentView.swift:DetailView", data: ["selectedDetailTab": "\(appViewModel.selectedDetailTab)", "hasSymbol": "\(appViewModel.selectedSymbol != nil)"], hypothesisId: "A")
-        // #endregion
         if appViewModel.selectedSymbol != nil {
             // Horizontal split: Chart on left, News/Options/Analysis on right
             HSplitView {

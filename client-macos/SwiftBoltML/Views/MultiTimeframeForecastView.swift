@@ -58,7 +58,6 @@ struct MultiTimeframeForecastGridView: View {
             case let (l?, r?): return l.orderIndex < r.orderIndex
             case (_, nil): return true
             case (nil, _): return false
-            case (nil, nil): return lhs.key < rhs.key
             }
         }
     }

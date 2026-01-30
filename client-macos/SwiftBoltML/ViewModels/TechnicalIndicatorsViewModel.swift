@@ -15,6 +15,9 @@ final class TechnicalIndicatorsViewModel: ObservableObject {
     var symbol: String?
     var timeframe: String = "d1"
     
+    /// Incremented when a new load starts; used to ignore completion from stale (superseded) loads.
+    private var loadGeneration: Int = 0
+    
     // MARK: - Computed Properties
     
     var indicatorsByCategory: [IndicatorCategory: [IndicatorItem]] {
@@ -54,9 +57,15 @@ final class TechnicalIndicatorsViewModel: ObservableObject {
     // MARK: - Data Loading
     
     func loadIndicators(symbol: String, timeframe: String = "d1", forceRefresh: Bool = false) async {
-        guard !isLoading else { return }
+        let requestedSymbol = symbol.uppercased()
+        // Only skip when already loading the same symbol+timeframe (e.g. duplicate call from .task + .onAppear). Allow new load when timeframe/symbol differs so favorites list updates when chart timeframe changes.
+        if isLoading, self.symbol == requestedSymbol, self.timeframe == timeframe {
+            return
+        }
         
-        self.symbol = symbol.uppercased()
+        loadGeneration += 1
+        let myGeneration = loadGeneration
+        self.symbol = requestedSymbol
         self.timeframe = timeframe
         isLoading = true
         error = nil
@@ -75,12 +84,13 @@ final class TechnicalIndicatorsViewModel: ObservableObject {
                 }
             }
             
+            guard myGeneration == loadGeneration else { return }
             self.indicators = response
             self.lastUpdated = Date()
             self.isLoading = false
-            
             print("[TechnicalIndicators] Loaded \(response.indicators.count) indicators for \(symbol)/\(timeframe)")
         } catch {
+            guard myGeneration == loadGeneration else { return }
             self.error = error.localizedDescription
             self.isLoading = false
             print("[TechnicalIndicators] Error loading indicators after retries: \(error)")
@@ -97,7 +107,8 @@ final class TechnicalIndicatorsViewModel: ObservableObject {
     private func setupAutoRefresh() {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: refreshInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self = self, let symbol = self.symbol, !self.isLoading else { return }
+                guard let self = self else { return }
+                guard let symbol = self.symbol, !self.isLoading else { return }
                 // Only auto-refresh if data is stale
                 if self.isStale {
                     await self.loadIndicators(symbol: symbol, timeframe: self.timeframe)

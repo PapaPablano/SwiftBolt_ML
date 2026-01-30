@@ -122,7 +122,6 @@
 		F67ABD222F2AB14800916110 /* PivotStatisticalMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD212F2AB14800916110 /* PivotStatisticalMetrics.swift */; };
 		F67ABD232F2AB14800916110 /* OptimizedPivotDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD1E2F2AB14800916110 /* OptimizedPivotDetector.swift */; };
 		F67ABD242F2AB14800916110 /* PivotPeriodManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD202F2AB14800916110 /* PivotPeriodManager.swift */; };
-		F67ABD252F2AB14800916110 /* PivotChartDrawing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD1F2F2AB14800916110 /* PivotChartDrawing.swift */; };
 		F67ABD272F2BE32600916110 /* PivotChartDrawing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD262F2BE32600916110 /* PivotChartDrawing.swift */; };
 		F67ABD292F2C619A00916110 /* IndicatorFavoritesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD282F2C619A00916110 /* IndicatorFavoritesStore.swift */; };
 		F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */; };
@@ -797,7 +796,6 @@
 				F67ABD222F2AB14800916110 /* PivotStatisticalMetrics.swift in Sources */,
 				F67ABD232F2AB14800916110 /* OptimizedPivotDetector.swift in Sources */,
 				F67ABD242F2AB14800916110 /* PivotPeriodManager.swift in Sources */,
-				F67ABD252F2AB14800916110 /* PivotChartDrawing.swift in Sources */,
 				F67ABD112F29827500916110 /* RealtimeForecastService.swift in Sources */,
 				F63BBA1D2F22F047003EE3B0 /* StressTestingViewModel.swift in Sources */,
 				F63BBA1E2F22F047003EE3B0 /* TechnicalIndicatorsViewModel.swift in Sources */,
