@@ -175,7 +175,9 @@ enum IndicatorCategory: String, CaseIterable {
     
     static func category(for indicatorName: String) -> IndicatorCategory? {
         let lower = indicatorName.lowercased()
-        
+        // Exclude context-only keys (used for interpretation, not displayed as cards)
+        if lower == "close" || lower == "atr_14_prev" || lower == "obv_prev" { return nil }
+
         // Momentum indicators
         if lower.contains("rsi") || lower.contains("macd") || lower.contains("stochastic") || 
            lower.contains("kdj") || lower.contains("mfi") || lower.contains("returns") {
@@ -286,6 +288,24 @@ extension IndicatorItem {
             return .strongBearish
         }
 
+        // MACD line — doc: MACD > Signal = Bullish, MACD < Signal = Bearish
+        if lower == "macd" {
+            if let signal = indicator("macd_signal") {
+                if value > signal { return .bullish }
+                if value < signal { return .bearish }
+                return .neutral
+            }
+            if value > 0 { return .bullish }
+            if value < 0 { return .bearish }
+            return .neutral
+        }
+        // MACD signal — direction from sign when used standalone
+        if lower == "macd_signal" {
+            if value > 0 { return .bullish }
+            if value < 0 { return .bearish }
+            return .neutral
+        }
+
         // MACD histogram — Strong vs Regular using previous bar when available
         if lower.contains("macd_hist") {
             let prevHist = indicator("macd_hist_prev")
@@ -315,7 +335,7 @@ extension IndicatorItem {
             return .neutral
         }
 
-        // Volume ratio — MUST use price direction (technical summary)
+        // Volume ratio — doc: high/very high + price direction; low + price direction = weak bull/bear
         if lower.contains("volume_ratio") {
             let priceChange = indicator("returns_1d") ?? indicator("return_1d")
             if let dir = priceChange {
@@ -325,6 +345,11 @@ extension IndicatorItem {
                     return .neutral
                 }
                 if value > 1.5 {
+                    if dir > 0 { return .bullish }
+                    if dir < 0 { return .bearish }
+                    return .neutral
+                }
+                if value < 0.5 {
                     if dir > 0 { return .bullish }
                     if dir < 0 { return .bearish }
                     return .neutral
@@ -360,8 +385,106 @@ extension IndicatorItem {
             return .strongBearish
         }
 
+        // KDJ divergence (J − D) — can be positive or negative; >15 bullish, >30 strong bullish, <-15 bearish, <-30 strong bearish
+        if lower == "kdj_j_minus_d" || lower == "kdj_j_divergence" {
+            if value > 30 { return .strongBullish }
+            if value > 15 { return .bullish }
+            if value >= -15 && value <= 15 { return .neutral }
+            if value >= -30 { return .bearish }
+            return .strongBearish
+        }
+
+        // KDJ (J, K, D) — doc: J < 0 strong bullish, 0–20 bullish, 20–80 neutral, 80–100 bearish, > 100 strong bearish
+        if lower.contains("kdj") {
+            if value < 0 { return .strongBullish }
+            if value < 20 { return .bullish }
+            if value <= 80 { return .neutral }
+            if value <= 100 { return .bearish }
+            return .strongBearish
+        }
+
+        // Stochastic (%K, %D) — doc: <20 oversold bullish, 60–80 bullish trend, 20–40 bearish trend, >80 overbought bearish
+        if lower.contains("stoch") {
+            if value < 20 { return .bullish }
+            if value >= 20 && value < 40 { return .bearish }
+            if value >= 40 && value <= 60 { return .neutral }
+            if value > 60 && value <= 80 { return .bullish }
+            return .bearish
+        }
+
+        // Returns (1d, 5d, 20d) — decimal e.g. 0.03 = 3%; directional momentum per technical summary
+        if lower.contains("returns_") || lower == "return_1d" {
+            if lower.contains("20") {
+                if value > 0.10 { return .strongBullish }
+                if value > 0.05 { return .bullish }
+                if value >= -0.05 && value <= 0.05 { return .neutral }
+                if value >= -0.10 { return .bearish }
+                return .strongBearish
+            }
+            if lower.contains("5") {
+                if value > 0.05 { return .strongBullish }
+                if value > 0.02 { return .bullish }
+                if value >= -0.02 && value <= 0.02 { return .neutral }
+                if value >= -0.05 { return .bearish }
+                return .strongBearish
+            }
+            // 1d (returns_1d, return_1d)
+            if value > 0.03 { return .strongBullish }
+            if value > 0.01 { return .bullish }
+            if value >= -0.01 && value <= 0.01 { return .neutral }
+            if value >= -0.03 { return .bearish }
+            return .strongBearish
+        }
+
+        // Bollinger Bands (bb_upper, bb_lower, bb_middle) — doc: price position + volume for breakout
+        if lower.hasPrefix("bb_") {
+            guard let close = indicator("close"),
+                  let upper = indicator("bb_upper"),
+                  let lowerBand = indicator("bb_lower"),
+                  upper > lowerBand else { return .neutral }
+            let bandWidth = upper - lowerBand
+            let pricePosition = bandWidth > 0 ? (close - lowerBand) / bandWidth : 0.5
+            let volRatio = indicator("volume_ratio") ?? 1.0
+            if close > upper {
+                if volRatio > 1.5 { return .strongBullish }
+                return .bearish
+            }
+            if close < lowerBand {
+                if volRatio > 1.5 { return .strongBearish }
+                return .bullish
+            }
+            if pricePosition > 0.7 { return .bullish }
+            if pricePosition >= 0.3 { return .neutral }
+            return .bearish
+        }
+
         // SuperTrend AI Factor (K-means adaptive ATR multiplier, 1.0–5.0) — informational
         if lower == "supertrend_factor" || lower == "supertrend_adaptive_factor" || lower == "target_factor" {
+            return .neutral
+        }
+
+        // ATR (14) — doc: rising ATR + price up = bullish, rising ATR + price down = bearish; falling = neutral
+        if lower == "atr_14" {
+            guard let prev = indicator("atr_14_prev") else { return .neutral }
+            let priceChange = indicator("returns_1d") ?? indicator("return_1d")
+            guard let dir = priceChange else { return .neutral }
+            if value > prev {
+                if dir > 0 { return .bullish }
+                if dir < 0 { return .bearish }
+            }
+            return .neutral
+        }
+
+        // OBV — doc: OBV rising + price up = bullish, OBV falling + price down = bearish; divergence logic
+        if lower == "obv" {
+            guard let prevObv = indicator("obv_prev") else { return .neutral }
+            let priceChange = indicator("returns_1d") ?? indicator("return_1d")
+            guard let dir = priceChange else { return .neutral }
+            let obvRising = value > prevObv
+            if obvRising && dir > 0 { return .bullish }
+            if !obvRising && dir < 0 { return .bearish }
+            if obvRising && dir < 0 { return .bullish }
+            if !obvRising && dir > 0 { return .bearish }
             return .neutral
         }
 
@@ -387,6 +510,8 @@ extension IndicatorItem {
     }
 }
 
+/// Bullish / Bearish / Neutral classification per docs/technicalsummary.md.
+/// All technical indicator cards use this for color and label.
 enum IndicatorInterpretation {
     case strongBullish
     case bullish
@@ -395,7 +520,21 @@ enum IndicatorInterpretation {
     case strongBearish
     case overbought  // legacy / display alias
     case oversold   // legacy / display alias
-    
+
+    /// Display label per technical summary (Strong Bullish, Bullish, Neutral, Bearish, Strong Bearish).
+    var label: String {
+        switch self {
+        case .strongBullish: return "Strong Bullish"
+        case .bullish: return "Bullish"
+        case .neutral: return "Neutral"
+        case .bearish: return "Bearish"
+        case .strongBearish: return "Strong Bearish"
+        case .overbought: return "Overbought"
+        case .oversold: return "Oversold"
+        }
+    }
+
+    /// String color name (e.g. for non-SwiftUI use).
     var color: String {
         switch self {
         case .strongBullish: return "green"
@@ -407,16 +546,21 @@ enum IndicatorInterpretation {
         case .oversold: return "blue"
         }
     }
-    
-    var label: String {
+}
+
+// MARK: - SwiftUI color (single source for indicator card colors per technicalsummary.md)
+
+import SwiftUI
+
+extension IndicatorInterpretation {
+    /// Color for indicator value and label in Technical Indicators and Analysis panels (bullish=green, bearish=red, neutral=gray).
+    var swiftUIColor: Color {
         switch self {
-        case .strongBullish: return "Strong Bullish"
-        case .bullish: return "Bullish"
-        case .neutral: return "Neutral"
-        case .bearish: return "Bearish"
-        case .strongBearish: return "Strong Bearish"
-        case .overbought: return "Overbought"
-        case .oversold: return "Oversold"
+        case .strongBullish, .bullish: return .green
+        case .neutral: return .gray
+        case .bearish, .strongBearish: return .red
+        case .overbought: return .orange
+        case .oversold: return .blue
         }
     }
 }

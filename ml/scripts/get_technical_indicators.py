@@ -107,7 +107,16 @@ def get_latest_indicators(symbol: str, timeframe: str = "d1", lookback_bars: int
         # Aliases for Swift app (refined technical summary)
         if "returns_1d" in indicators:
             indicators["return_1d"] = indicators["returns_1d"]
-        
+        # Include close for context-dependent interpretation (Bollinger price position, etc.)
+        indicators["close"] = safe_float(latest["close"])
+        # Previous-bar values for context (excluded from display in Swift)
+        if len(df_with_indicators) >= 2:
+            prev = df_with_indicators.iloc[-2]
+            if "atr_14" in indicator_columns:
+                indicators["atr_14_prev"] = safe_float(prev.get("atr_14"))
+            if "obv" in indicator_columns:
+                indicators["obv_prev"] = safe_float(prev.get("obv"))
+
         # Get timestamp
         timestamp = latest["ts"]
         if hasattr(timestamp, 'isoformat'):

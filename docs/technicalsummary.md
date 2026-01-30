@@ -245,6 +245,18 @@ def classify_cci(cci_value):
 - J crosses above both K & D = **Strong Bullish**
 - J crosses below both K & D = **Strong Bearish**
 
+#### KDJ Divergence (J − D)
+
+J minus D can be **positive or negative**. Used as a crossover/divergence signal.
+
+| Signal Type     | Threshold | Interpretation   |
+|-----------------|-----------|------------------|
+| **Strong Bullish** | J − D > 30 | Strong bullish divergence |
+| **Bullish**     | J − D > 15 | Bullish divergence |
+| **Neutral**     | −15 ≤ J − D ≤ 15 | No clear divergence |
+| **Bearish**     | J − D < −15 | Bearish divergence |
+| **Strong Bearish** | J − D < −30 | Strong bearish divergence |
+
 ---
 
 ### Returns (1d, 5d, 20d)

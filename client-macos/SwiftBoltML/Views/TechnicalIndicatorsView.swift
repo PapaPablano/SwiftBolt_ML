@@ -233,21 +233,8 @@ struct IndicatorCard: View {
     var canAddFavorite: Bool = true
     var onToggleFavorite: (() -> Void)? = nil
 
-    private var interpretation: IndicatorInterpretation {
-        indicator.interpretation
-    }
-
-    private var interpretationColor: Color {
-        switch interpretation {
-        case .strongBullish: return .green
-        case .bullish: return .green
-        case .neutral: return .gray
-        case .bearish: return .red
-        case .strongBearish: return .red
-        case .overbought: return .orange
-        case .oversold: return .blue
-        }
-    }
+    private var interpretation: IndicatorInterpretation { indicator.interpretation }
+    private var interpretationColor: Color { interpretation.swiftUIColor }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

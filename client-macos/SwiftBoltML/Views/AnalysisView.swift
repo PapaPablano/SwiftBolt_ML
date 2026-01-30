@@ -590,7 +590,28 @@ struct AnalysisErrorBanner: View {
 
 // MARK: - Technical Indicators Section
 
+/// Wrapper used as NavigationLink destination so we pass AppViewModel explicitly (destination may not inherit environment).
+private struct TechnicalIndicatorsDestinationWrapper: View {
+    let symbol: String
+    let timeframe: String
+    @ObservedObject var appViewModel: AppViewModel
+
+    init(symbol: String, timeframe: String, appViewModel: AppViewModel) {
+        self.symbol = symbol
+        self.timeframe = timeframe
+        self.appViewModel = appViewModel
+    }
+
+    var body: some View {
+        TechnicalIndicatorsView(symbol: symbol, timeframe: timeframe)
+            .environmentObject(appViewModel)
+    }
+}
+
 struct TechnicalIndicatorsSection: View {
+    /// Number of indicator cards shown in the Analysis panel (3 rows × 4 columns).
+    private static let analysisPanelIndicatorCount = 12
+
     @EnvironmentObject var appViewModel: AppViewModel
     let symbol: String
     let timeframe: String
@@ -668,7 +689,7 @@ struct TechnicalIndicatorsSection: View {
                         GridItem(.adaptive(minimum: 120)),
                         GridItem(.adaptive(minimum: 120))
                     ], spacing: 12) {
-                        ForEach(keyIndicators.prefix(8)) { indicator in
+                        ForEach(keyIndicators.prefix(Self.analysisPanelIndicatorCount)) { indicator in
                             CompactIndicatorCard(indicator: indicator)
                         }
                     }
@@ -676,7 +697,7 @@ struct TechnicalIndicatorsSection: View {
                     // Link to full view
                     HStack {
                         Spacer()
-                        NavigationLink(destination: TechnicalIndicatorsView(symbol: symbol, timeframe: timeframe)) {
+                        NavigationLink(destination: TechnicalIndicatorsDestinationWrapper(symbol: symbol, timeframe: timeframe, appViewModel: appViewModel)) {
                             HStack(spacing: 4) {
                                 Text("View All Indicators")
                                     .font(.caption)
@@ -698,7 +719,7 @@ struct TechnicalIndicatorsSection: View {
         .padding(16)
         .background(Color(nsColor: .controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .task {
+        .task(id: "\(symbol)_\(timeframe)") {
             await viewModel.loadIndicators(symbol: symbol, timeframe: timeframe)
         }
     }
@@ -716,11 +737,11 @@ struct TechnicalIndicatorsSection: View {
             }
         }
 
-        // If no favorites or fewer than 8, fill with default priority
-        if key.count < IndicatorFavoritesStore.maxFavorites {
+        // If no favorites or fewer than 12, fill with default priority
+        if key.count < Self.analysisPanelIndicatorCount {
             let priority = ["rsi_14", "macd", "macd_signal", "macd_hist", "sma_20", "sma_50", "bb_upper", "bb_lower", "atr_14", "adx", "volume_ratio"]
             for name in priority {
-                if key.count >= IndicatorFavoritesStore.maxFavorites { break }
+                if key.count >= Self.analysisPanelIndicatorCount { break }
                 if let item = all.first(where: { $0.name.contains(name) || name.contains($0.name.lowercased()) }),
                    !seen.contains(item.name) {
                     key.append(item)
@@ -729,8 +750,8 @@ struct TechnicalIndicatorsSection: View {
             }
         }
 
-        // Pad with any remaining up to 8
-        for item in all where key.count < IndicatorFavoritesStore.maxFavorites && !seen.contains(item.name) {
+        // Pad with any remaining up to 12
+        for item in all where key.count < Self.analysisPanelIndicatorCount && !seen.contains(item.name) {
             key.append(item)
             seen.insert(item.name)
         }
@@ -744,22 +765,9 @@ struct TechnicalIndicatorsSection: View {
 struct CompactIndicatorCard: View {
     let indicator: IndicatorItem
     
-    private var interpretation: IndicatorInterpretation {
-        indicator.interpretation
-    }
-    
-    private var interpretationColor: Color {
-        switch interpretation {
-        case .strongBullish: return .green
-        case .bullish: return .green
-        case .neutral: return .gray
-        case .bearish: return .red
-        case .strongBearish: return .red
-        case .overbought: return .orange
-        case .oversold: return .blue
-        }
-    }
-    
+    private var interpretation: IndicatorInterpretation { indicator.interpretation }
+    private var interpretationColor: Color { interpretation.swiftUIColor }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(indicator.formattedName)

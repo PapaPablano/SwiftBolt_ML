@@ -124,6 +124,7 @@
 		F67ABD242F2AB14800916110 /* PivotPeriodManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD202F2AB14800916110 /* PivotPeriodManager.swift */; };
 		F67ABD252F2AB14800916110 /* PivotChartDrawing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD1F2F2AB14800916110 /* PivotChartDrawing.swift */; };
 		F67ABD272F2BE32600916110 /* PivotChartDrawing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD262F2BE32600916110 /* PivotChartDrawing.swift */; };
+		F67ABD292F2C619A00916110 /* IndicatorFavoritesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD282F2C619A00916110 /* IndicatorFavoritesStore.swift */; };
 		F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */; };
 		F6EBEFB92F23DD2C001C6A4D /* SelectedContractState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFB82F23DD2C001C6A4D /* SelectedContractState.swift */; };
 		F6EBEFBB2F23DD3D001C6A4D /* MarketDataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFBA2F23DD3D001C6A4D /* MarketDataService.swift */; };
@@ -286,6 +287,7 @@
 		F67ABD202F2AB14800916110 /* PivotPeriodManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PivotPeriodManager.swift; sourceTree = "<group>"; };
 		F67ABD212F2AB14800916110 /* PivotStatisticalMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PivotStatisticalMetrics.swift; sourceTree = "<group>"; };
 		F67ABD262F2BE32600916110 /* PivotChartDrawing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PivotChartDrawing.swift; sourceTree = "<group>"; };
+		F67ABD282F2C619A00916110 /* IndicatorFavoritesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndicatorFavoritesStore.swift; sourceTree = "<group>"; };
 		F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastHorizonsView.swift; sourceTree = "<group>"; };
 		F6EBEFB82F23DD2C001C6A4D /* SelectedContractState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectedContractState.swift; sourceTree = "<group>"; };
 		F6EBEFBA2F23DD3D001C6A4D /* MarketDataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketDataService.swift; sourceTree = "<group>"; };
@@ -446,6 +448,7 @@
 		A5000005233456780000005 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
+				F67ABD282F2C619A00916110 /* IndicatorFavoritesStore.swift */,
 				F67ABD162F29885500916110 /* ChartViewModel+RealtimeForecasts.swift */,
 				F67ABD122F2982A600916110 /* ChartViewModel+RealtimeForecasts.swift */,
 				F63BBA162F22F047003EE3B0 /* BacktestingViewModel.swift */,
@@ -814,6 +817,7 @@
 				F63BBA262F22F047003EE3B0 /* ForecastQualityModels.swift in Sources */,
 				GS0000012345678900000001 /* GreeksSurfaceModels.swift in Sources */,
 				GS0000012345678900000003 /* VolatilitySurfaceModels.swift in Sources */,
+				F67ABD292F2C619A00916110 /* IndicatorFavoritesStore.swift in Sources */,
 				F63BBA272F22F047003EE3B0 /* ModelTrainingViewModel.swift in Sources */,
 				F63BBA282F22F047003EE3B0 /* ForecastQualityViewModel.swift in Sources */,
 				GS0000012345678900000005 /* GreeksSurfaceViewModel.swift in Sources */,
