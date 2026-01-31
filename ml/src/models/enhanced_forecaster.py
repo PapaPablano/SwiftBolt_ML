@@ -55,11 +55,14 @@ ENHANCED_FEATURES = [
     "macd_hist",
     # RSI
     "rsi_14",
-    # Bollinger Bands
+    # Bollinger Bands (enhanced: %B, Band Position, Expansion Ratio, TTM Squeeze)
     "bb_upper",
     "bb_middle",
     "bb_lower",
     "bb_width",
+    "bb_pct_b",
+    "bb_band_position",
+    "bb_expansion_ratio",
     # ATR
     "atr_14",
     # Volume

@@ -233,14 +233,17 @@ phase_four() {
     log_info "Environment ready for canary deployment"
 
     if [ "$DRY_RUN" = false ]; then
-        log_info "Generating initial forecasts for canary symbols..."
-        for symbol in "${CANARY_SYMBOLS[@]}"; do
-            for horizon in "${CANARY_HORIZONS[@]}"; do
-                log_info "Generating forecast for $symbol ($horizon)..."
-                # In actual deployment: python -m src.unified_forecast_job --symbol "$symbol" --horizon "$horizon"
-                echo "→ Would generate forecast for $symbol/$horizon"
-            done
-        done
+        log_info "Generating initial forecasts for canary symbols (AAPL, MSFT, SPY)..."
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+        cd "$PROJECT_ROOT/ml"
+        if [ -f .env.canary ]; then
+            set -a
+            source .env.canary
+            set +a
+            log_info "Loaded .env.canary"
+        fi
+        python -m src.unified_forecast_job --symbols "AAPL,MSFT,SPY"
         log_success "Forecasts generated"
     fi
 }

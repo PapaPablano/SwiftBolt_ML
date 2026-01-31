@@ -486,53 +486,113 @@ class TechnicalIndicatorsCorrect:
 
     @staticmethod
     def calculate_bollinger_bands(
-        df: pd.DataFrame, period: int = 20, std_dev: float = 2.0
+        df: pd.DataFrame,
+        period: int = 20,
+        std_dev: float = 2.0,
+        use_population_std: bool = True,
+        include_ttm_squeeze: bool = True,
     ) -> pd.DataFrame:
         """
-        Bollinger Bands with proper interpretation
+        Bollinger Bands with six core quantifiable metrics.
 
         Components:
-        - Middle: SMA(20)
-        - Upper: Middle + 2*StdDev
-        - Lower: Middle - 2*StdDev
-        - Width: (Upper - Lower) / Middle (volatility measure)
+        - Middle: SMA(period)
+        - Upper: Middle + std_dev * sigma
+        - Lower: Middle - std_dev * sigma
 
-        Interpretation:
-        - Width < 10th percentile: Squeeze (breakout coming)
-        - Width > 90th percentile: Expansion (move ending)
-        - Price > Upper: Overbought (in uptrend) or strong
-        - Price < Lower: Oversold (in downtrend) or weak
+        Six Core Metrics (Bollinger Band Quantitative Framework):
+        1. %B (bb_pct_b): Price position 0-1 scale (0=lower band, 1=upper, 0.5=middle)
+        2. BandWidth (bb_width): ((Upper - Lower) / Middle) * 100 — volatility %
+        3. bb_std: Raw standard deviation (population or sample)
+        4. Band Position Ratio (bb_band_position): (Price - SMA) / sigma — normalized position
+        5. Expansion Ratio (bb_expansion_ratio): Current BBW / Avg BBW(50)
+        6. TTM Squeeze (bb_squeeze): True when BB inside Keltner Channels
+
+        Interpretation thresholds:
+        - %B > 0.80: Uptrend (combine with MFI > 80 for confirmation)
+        - %B < 0.20: Downtrend (combine with MFI < 20)
+        - BandWidth < 2%: Extreme squeeze; 2-5%: Tight; 10-20%: Normal; 20-40%: Expansion
+        - Expansion Ratio > 1.2: Volatility expanding; < 0.8: Contracting
 
         Args:
-            df: DataFrame with close
+            df: DataFrame with close (and high, low for TTM Squeeze)
             period: Period (20 is standard)
             std_dev: Standard deviations (2.0 is standard)
+            use_population_std: Use N divisor (Bollinger standard) vs N-1
+            include_ttm_squeeze: Compute TTM Squeeze when high/low available
 
         Returns:
-            DataFrame with bb_upper, bb_middle, bb_lower, bb_width
+            DataFrame with bb_upper, bb_middle, bb_lower, bb_width, bb_pct_b,
+            bb_std, bb_band_position, bb_width_pct, bb_expansion_ratio, bb_squeeze
         """
         df = df.copy()
+        ddof = 0 if use_population_std else 1
 
         middle = df["close"].rolling(window=period).mean()
-        std = df["close"].rolling(window=period).std()
+        std = df["close"].rolling(window=period).std(ddof=ddof)
 
         upper = middle + (std_dev * std)
         lower = middle - (std_dev * std)
 
-        width = (upper - lower) / middle
+        # BandWidth as percentage: ((Upper - Lower) / Middle) * 100
+        band_width_pct = ((upper - lower) / middle) * 100
 
         df["bb_upper"] = upper
         df["bb_middle"] = middle
         df["bb_lower"] = lower
-        df["bb_width"] = width
+        df["bb_width"] = band_width_pct  # Now stored as percentage
 
-        # Width percentile (for volatility regime)
-        # Use period*2 window to ensure calculation with smaller datasets
+        # 1. %B (Percent B): (Price - Lower) / (Upper - Lower)
+        band_range = upper - lower
+        df["bb_pct_b"] = np.where(
+            band_range > 0,
+            (df["close"] - lower) / band_range,
+            0.5,  # Default to middle when bands collapsed
+        )
+
+        # 2. bb_std: Raw standard deviation (for ML features)
+        df["bb_std"] = std
+
+        # 3. Band Position Ratio: (Price - SMA) / sigma
+        df["bb_band_position"] = np.where(
+            std > 0,
+            (df["close"] - middle) / std,
+            0.0,
+        )
+
+        # 4. Width percentile (for volatility regime)
+        lookback = max(period * 2, 50)
         df["bb_width_pct"] = (
             df["bb_width"]
-            .rolling(window=max(period * 2, 20))
-            .apply(lambda x: (x.iloc[-1] > x).sum() / len(x) * 100 if len(x) > 0 else 50, raw=False)
+            .rolling(window=lookback)
+            .apply(
+                lambda x: (x.iloc[-1] > x).sum() / len(x) * 100 if len(x) > 0 else 50,
+                raw=False,
+            )
         )
+
+        # 5. Expansion Ratio: Current BandWidth / Avg BandWidth(50)
+        bbw_avg = df["bb_width"].rolling(window=50).mean()
+        df["bb_expansion_ratio"] = np.where(
+            bbw_avg > 0,
+            df["bb_width"] / bbw_avg,
+            1.0,
+        )
+
+        # 6. TTM Squeeze: BB inside Keltner (BB Upper < KC Upper AND BB Lower > KC Lower)
+        if include_ttm_squeeze and "high" in df.columns and "low" in df.columns:
+            # Keltner: EMA center, ATR bands (20, 10, 2.0)
+            kc_middle = df["close"].ewm(span=period, adjust=False).mean()
+            tr1 = df["high"] - df["low"]
+            tr2 = (df["high"] - df["close"].shift(1)).abs()
+            tr3 = (df["low"] - df["close"].shift(1)).abs()
+            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+            atr = tr.rolling(window=10).mean()
+            kc_upper = kc_middle + (atr * 2.0)
+            kc_lower = kc_middle - (atr * 2.0)
+            df["bb_squeeze"] = (upper < kc_upper) & (lower > kc_lower)
+        else:
+            df["bb_squeeze"] = False
 
         return df
 

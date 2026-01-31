@@ -145,28 +145,31 @@ class CompositeSignalCalculator:
     @staticmethod
     def score_bb_width(bb_width: float, bb_width_pct: float) -> float:
         """
-        Score Bollinger Bands Width: volatility regime
+        Score Bollinger BandWidth: volatility regime (quantitative framework).
 
-        Width percentile:
-        < 10%: Squeeze (neutral, slight bullish) = 0.2
-        10-25%: Low volatility (ready for move) = 0.3
-        25-75%: Normal volatility = 0.0
-        75-90%: Expansion (continuation likely) = 0.3
-        > 90%: High volatility (move ending soon) = -0.2
+        Uses percentile rank (bb_width_pct) for cross-asset consistency:
+        < 10%: Extreme squeeze (breakout precursor) = 0.3
+        10-25%: Tight consolidation = 0.2
+        25-75%: Normal range = 0.0
+        75-90%: Active expansion (trend continuation) = 0.2
+        > 90%: Extreme volatility (exhaustion) = -0.3
+
+        Raw BandWidth thresholds (when available): <2% extreme, 2-5% tight,
+        10-20% normal, 20-40% expansion, >40% extreme.
         """
         if pd.isna(bb_width_pct):
             return 0.0
 
         if bb_width_pct < 10:
-            return 0.2
+            return 0.3   # Extreme squeeze - breakout likely
         elif bb_width_pct < 25:
-            return 0.3
+            return 0.2   # Tight - early compression
         elif bb_width_pct < 75:
-            return 0.0
+            return 0.0   # Normal
         elif bb_width_pct < 90:
-            return 0.3
+            return 0.2   # Expansion - trend continuation
         else:
-            return -0.2
+            return -0.3  # Extreme volatility - move ending
 
     @staticmethod
     def score_kdj_j(kdj_j: float) -> float:

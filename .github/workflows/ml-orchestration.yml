@@ -128,7 +128,7 @@ jobs:
           USE_ENSEMBLE_FORECASTER: "true"
           MIN_BARS_FOR_TRAINING: "50"
           REDIS_FEATURE_CACHE: "false"  # Enable when Redis is available
-          # Ensemble Configuration (Research-backed 2-3 model core)
+          # Ensemble Configuration (Canary-tested 2-model core)
           ENSEMBLE_MODEL_COUNT: ${{ vars.ENSEMBLE_MODEL_COUNT || '2' }}  # 2 (LSTM+ARIMA), 3 (add XGBoost), 4 (legacy)
           ENABLE_LSTM: ${{ vars.ENABLE_LSTM || 'true' }}
           ENABLE_ARIMA_GARCH: ${{ vars.ENABLE_ARIMA_GARCH || 'true' }}
@@ -137,6 +137,11 @@ jobs:
           ENABLE_RF: 'false'  # Permanently disabled from core
           ENABLE_PROPHET: 'false'  # Permanently disabled - redundant with ARIMA
           ENSEMBLE_OPTIMIZATION_METHOD: ${{ vars.ENSEMBLE_OPTIMIZATION_METHOD || 'simple_avg' }}
+          # Walk-forward and divergence monitoring (Phase 7.1 canary config)
+          WALK_FORWARD_ENABLED: "true"
+          DIVERGENCE_MONITORING_ENABLED: "true"
+          DIVERGENCE_THRESHOLD: "0.20"
+          DIVERGENCE_LOG_TO_DB: "true"
         run: |
           cd ml
           
@@ -154,7 +159,7 @@ jobs:
           echo "## ML Forecast (Ensemble)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Model**: Ensemble (XGBoost + ARIMA-GARCH + LSTM + Transformer)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Model**: 2-model Ensemble (LSTM + ARIMA-GARCH) with walk-forward" >> $GITHUB_STEP_SUMMARY
           echo "- **Symbol**: ${{ inputs.symbol || 'All watchlist' }}" >> $GITHUB_STEP_SUMMARY
 
   # ===========================================================================

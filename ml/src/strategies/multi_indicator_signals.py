@@ -174,11 +174,12 @@ class MultiIndicatorSignalGenerator:
 
     def _score_bollinger(self, df: pd.DataFrame) -> float:
         """
-        Score Bollinger Bands (technical summary).
+        Score Bollinger Bands using quantitative framework.
 
-        Price > upper: Strong Bullish if volume_ratio > 1.5 else Bearish (overbought).
-        Price in upper 30%: Bullish; middle 40%: Neutral; lower 30%: Bearish.
-        Price < lower: Strong Bearish if volume > 1.5 else Bullish (oversold bounce).
+        Uses %B (0.80/0.20) with MFI confirmation per Bollinger:
+        - %B > 0.80 + MFI > 80: Uptrend (strong bullish)
+        - %B < 0.20 + MFI < 20: Downtrend (strong bearish)
+        - Band walk: price > upper + volume confirms breakout vs overbought rejection
         """
         if "bb_upper" not in df.columns or "bb_lower" not in df.columns:
             return 0.0
@@ -186,7 +187,6 @@ class MultiIndicatorSignalGenerator:
         close = df["close"].iloc[-1]
         bb_upper = df["bb_upper"].iloc[-1]
         bb_lower = df["bb_lower"].iloc[-1]
-        bb_middle = df["bb_middle"].iloc[-1]
 
         if pd.isna(close) or pd.isna(bb_upper) or pd.isna(bb_lower):
             return 0.0
@@ -194,20 +194,39 @@ class MultiIndicatorSignalGenerator:
         band_width = bb_upper - bb_lower
         if band_width <= 0:
             return 0.0
-        price_position = (close - bb_lower) / band_width  # 0 to 1
+        # %B = (Price - Lower) / (Upper - Lower)
+        pct_b = (close - bb_lower) / band_width
         volume_ratio = df["volume_ratio"].iloc[-1] if "volume_ratio" in df.columns else 1.0
         if pd.isna(volume_ratio):
             volume_ratio = 1.0
+        mfi = df["mfi"].iloc[-1] if "mfi" in df.columns else 50.0
+        if pd.isna(mfi):
+            mfi = 50.0
 
+        # Above upper band
         if close > bb_upper:
-            return 1.0 if volume_ratio > 1.5 else -0.5  # Breakout vs overbought
+            if volume_ratio > 1.5:
+                return 1.0   # Breakout with volume confirmation
+            return -0.5      # Overbought rejection likely
+
+        # Below lower band
         if close < bb_lower:
-            return -1.0 if volume_ratio > 1.5 else 0.5   # Breakdown vs oversold bounce
-        if price_position > 0.7:
-            return 0.5   # Upper 30% = Bullish
-        if price_position > 0.3:
-            return 0.0   # Middle 40% = Neutral
-        return -0.5       # Lower 30% = Bearish
+            if volume_ratio > 1.5:
+                return -1.0  # Breakdown with volume
+            return 0.5       # Oversold bounce likely
+
+        # Within bands: use %B thresholds with MFI confirmation (Bollinger framework)
+        if pct_b > 0.80 and mfi > 80:
+            return 0.8   # Uptrend confirmed (Bollinger: %B>0.80 + MFI>80)
+        if pct_b < 0.20 and mfi < 20:
+            return -0.8  # Downtrend confirmed
+
+        # Zone-based fallback
+        if pct_b > 0.70:
+            return 0.5   # Upper zone = Bullish
+        if pct_b > 0.30:
+            return 0.0   # Middle = Neutral
+        return -0.5       # Lower zone = Bearish
 
     def _score_volume(self, df: pd.DataFrame) -> float:
         """

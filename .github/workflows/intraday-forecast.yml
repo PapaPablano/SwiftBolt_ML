@@ -43,12 +43,15 @@ permissions:
 env:
   SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-  # Ensemble configuration (default to 4 models for intraday)
-  ENABLE_ADVANCED_ENSEMBLE: ${{ vars.ENABLE_ADVANCED_ENSEMBLE || 'true' }}
+  # Ensemble configuration (canary-tested 2-model)
+  ENSEMBLE_MODEL_COUNT: ${{ vars.ENSEMBLE_MODEL_COUNT || '2' }}
+  ENABLE_GB: ${{ vars.ENABLE_GB || 'false' }}
+  ENABLE_ADVANCED_ENSEMBLE: ${{ vars.ENABLE_ADVANCED_ENSEMBLE || 'false' }}
   ENABLE_ARIMA_GARCH: ${{ vars.ENABLE_ARIMA_GARCH || 'true' }}
-  ENABLE_PROPHET: ${{ vars.ENABLE_PROPHET || 'true' }}
-  ENABLE_LSTM: ${{ vars.ENABLE_INTRADAY_LSTM || 'false' }}  # Disabled by default (slow)
-  ENABLE_TRANSFORMER: ${{ vars.ENABLE_INTRADAY_TRANSFORMER || 'false' }}  # Disabled by default
+  ENABLE_PROPHET: ${{ vars.ENABLE_PROPHET || 'false' }}  # Disabled - 2-model (LSTM+ARIMA)
+  ENABLE_LSTM: ${{ vars.ENABLE_INTRADAY_LSTM || 'true' }}  # Required for 2-model
+  ENABLE_TRANSFORMER: ${{ vars.ENABLE_INTRADAY_TRANSFORMER || 'false' }}  # Disabled
+  WALK_FORWARD_ENABLED: "true"
 
 jobs:
   # Always run for schedule/manual triggers
