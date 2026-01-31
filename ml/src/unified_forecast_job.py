@@ -327,7 +327,12 @@ class UnifiedForecastProcessor:
             for horizon in horizons:
                 try:
                     horizon_key = str(horizon).upper()
-                    logger.debug(f"Generating {horizon_key} forecast for {symbol}...")
+                    logger.info(
+                        "Generating forecast for %s - Horizon: %s (days=%s)",
+                        symbol,
+                        horizon_key,
+                        {"1D": 1, "5D": 5, "10D": 10, "20D": 20}.get(horizon_key, 1),
+                    )
                     
                     # Get horizon days
                     horizon_days = {
@@ -737,7 +742,27 @@ class UnifiedForecastProcessor:
                 self.metrics['feature_cache_hits'] + self.metrics['feature_cache_misses']
             ) if (self.metrics['feature_cache_hits'] + self.metrics['feature_cache_misses']) > 0 else 0,
         }
-        
+
+        # Build forecast outputs list for visibility
+        forecasts_out = []
+        for r in results:
+            sym = r.get('symbol', '')
+            for hor, fc in r.get('forecasts', {}).items():
+                pts = fc.get('points', [])
+                current_pt = next((p for p in pts if p.get('type') == 'current'), {})
+                target_pt = next((p for p in pts if p.get('type') == 'target'), {})
+                forecasts_out.append({
+                    'symbol': sym,
+                    'horizon': hor,
+                    'label': fc.get('label', '').upper(),
+                    'confidence': round(float(fc.get('confidence', 0)) * 100, 1),
+                    'current_price': round(float(current_pt.get('price', 0)), 2) if current_pt else None,
+                    'target_price': round(float(target_pt.get('price', 0)), 2) if target_pt else None,
+                    'forecast_return_pct': round(float(fc.get('forecast_return', 0) or 0) * 100, 2) if fc.get('forecast_return') is not None else None,
+                    'weight_source': fc.get('weight_source', ''),
+                })
+        self.metrics['forecasts'] = forecasts_out
+
         logger.info(f"\n{'='*60}")
         logger.info(f"Processing Complete:")
         logger.info(f"  Successful: {aggregated['successful']}/{aggregated['total_symbols']}")

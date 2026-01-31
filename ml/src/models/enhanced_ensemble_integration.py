@@ -608,6 +608,13 @@ if __name__ == "__main__":
             "volume": np.random.randint(1e6, 1e7, n).astype(float),
         }
     )
+    # ATR for adaptive thresholds (optional; falls back to vol-based if missing)
+    high, low, close = ohlc_df["high"], ohlc_df["low"], ohlc_df["close"]
+    tr = pd.concat(
+        [high - low, (high - close.shift(1)).abs(), (low - close.shift(1)).abs()],
+        axis=1,
+    ).max(axis=1)
+    ohlc_df["atr"] = tr.rolling(14).mean()
 
     # Create features (simplified)
     features_df = pd.DataFrame(
@@ -621,16 +628,18 @@ if __name__ == "__main__":
         }
     ).dropna()
 
-    # Create labels
-    fwd_return = ohlc_df["close"].pct_change().shift(-1)
-    labels = fwd_return.apply(
-        lambda x: "bullish" if x > 0.01 else "bearish" if x < -0.01 else "neutral"
-    ).iloc[:-1]
+    # Create labels with horizon- and volatility-aware thresholds (not fixed ±1%)
+    from src.models.adaptive_targets import create_adaptive_targets
+
+    labels, bear_thresh, bull_thresh = create_adaptive_targets(ohlc_df, horizon_days=1)
+    print(f"Adaptive thresholds (1D): bearish<{bear_thresh:.2%}, bullish>{bull_thresh:.2%}")
 
     # Align data
     features_df = features_df.iloc[:-1]
     ohlc_df = ohlc_df.iloc[:-1]
-    labels = labels.loc[features_df.index]
+    labels = labels.reindex(features_df.index).dropna()
+    features_df = features_df.loc[labels.index]
+    ohlc_df = ohlc_df.loc[labels.index]
 
     # Test with minimal models for speed
     ensemble = EnhancedEnsembleForecaster(

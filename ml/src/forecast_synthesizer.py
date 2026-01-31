@@ -142,6 +142,7 @@ class ForecastSynthesizer:
             sr_response=sr_response,
             ensemble_result=ensemble_result,
             horizon_scale=horizon_scale,
+            horizon_days=horizon_days,
             symbol=symbol,
         )
         
@@ -277,29 +278,33 @@ class ForecastSynthesizer:
 
         # ===== SYNTHESIZE FORECAST =====
 
-        # 1. Count agreeing layers
-        agreeing_layers = 0
-        if st_bias == 1:
-            agreeing_layers += 1
-        if ml_bias == 1:
-            agreeing_layers += 1
-        # For S/R, check if there's room in the direction
-        if st_bias == 1 and resistance_weighted > current_price * 1.01:
-            agreeing_layers += 1
-        elif st_bias == -1 and support_weighted < current_price * 0.99:
-            agreeing_layers += 1
-
-        # Determine overall direction
-        if st_bias == 1 and ml_bias >= 0:
-            direction = "BULLISH"
-        elif st_bias == -1 and ml_bias <= 0:
-            direction = "BEARISH"
-        elif ml_bias == 1 and st_bias >= 0:
-            direction = "BULLISH"
-        elif ml_bias == -1 and st_bias <= 0:
-            direction = "BEARISH"
+        # 1. Count agreeing layers (both BULLISH and BEARISH)
+        layer_directions = []
+        if st_bias != 0:
+            layer_directions.append(st_bias)
+        if ml_bias != 0:
+            layer_directions.append(ml_bias)
+        resistance_room = (resistance_weighted - current_price) / current_price
+        support_room = (current_price - support_weighted) / current_price
+        if st_bias == 1 and resistance_room > 0.01:
+            layer_directions.append(1)
+        elif st_bias == -1 and support_room > 0.01:
+            layer_directions.append(-1)
+        primary_bias = st_bias if st_bias != 0 else ml_bias
+        if primary_bias != 0:
+            agreeing_layers = len([d for d in layer_directions if d == primary_bias])
         else:
-            direction = "NEUTRAL"
+            agreeing_layers = len(layer_directions)
+
+        # Determine overall direction (weighted by layer strength)
+        direction = self._determine_direction(
+            st_bias=st_bias,
+            ml_bias=ml_bias,
+            signal_strength=signal_strength,
+            ml_confidence=ml_confidence,
+            resistance_room=resistance_room,
+            support_room=support_room,
+        )
 
         # 2. Calculate primary target
         if direction == "BULLISH":
@@ -348,6 +353,7 @@ class ForecastSynthesizer:
             poly_is_expanding=poly_is_expanding,
             poly_is_converging=poly_is_converging,
             direction=direction,
+            horizon_days=1.0,  # generate_1d_forecast is always 1D
         )
 
         # 4. Build reasoning
@@ -954,11 +960,59 @@ class ForecastSynthesizer:
             "stop_loss": round(stop, 2),
         }
 
+    def _determine_direction(
+        self,
+        st_bias: int,
+        ml_bias: int,
+        signal_strength: float,
+        ml_confidence: float,
+        resistance_room: float,
+        support_room: float,
+    ) -> str:
+        """
+        Determine overall direction with layer weighting.
+
+        Priority:
+        1. If both agree (st_bias == ml_bias != 0) -> Strong signal
+        2. If one is strong and other neutral -> Follow strong
+        3. If they conflict -> Use strength to decide
+        4. Otherwise -> NEUTRAL
+        """
+        if st_bias == ml_bias:
+            if st_bias == 1:
+                return "BULLISH"
+            elif st_bias == -1:
+                return "BEARISH"
+            else:
+                return "NEUTRAL"
+
+        if st_bias == 0 and ml_bias != 0:
+            return "BULLISH" if ml_bias == 1 else "BEARISH"
+        if ml_bias == 0 and st_bias != 0:
+            return "BULLISH" if st_bias == 1 else "BEARISH"
+
+        # Conflict: use strength to decide
+        st_weight = float(signal_strength)
+        ml_weight = float(ml_confidence)
+        if st_bias == 1 and resistance_room > 0.02:
+            st_weight += 0.1
+        if st_bias == -1 and support_room > 0.02:
+            st_weight += 0.1
+
+        total_bullish = (1 if st_bias == 1 else 0) * st_weight + (1 if ml_bias == 1 else 0) * ml_weight
+        total_bearish = (1 if st_bias == -1 else 0) * st_weight + (1 if ml_bias == -1 else 0) * ml_weight
+
+        if total_bullish > total_bearish + 0.1:
+            return "BULLISH"
+        if total_bearish > total_bullish + 0.1:
+            return "BEARISH"
+        return "NEUTRAL"
+
     def _calculate_confidence(
         self,
         trend_strength: float,
         ml_confidence: float,
-        ml_agreement: bool,
+        ml_agreement: float,  # 0.0-1.0 ensemble model consensus score
         st_bias: int,
         ml_bias: int,
         logistic_resistance_prob: float,
@@ -966,12 +1020,18 @@ class ForecastSynthesizer:
         poly_is_expanding: bool,
         poly_is_converging: bool,
         direction: str,
+        horizon_days: float = 1.0,
     ) -> float:
         """Calculate forecast confidence based on layer agreement."""
         confidence = 0.50  # Start neutral
 
         boosts = self.weights.confidence_boosts
         penalties = self.weights.confidence_penalties
+
+        # Horizon penalty: longer horizons = less confident (uncertainty grows)
+        if horizon_days > 1:
+            horizon_penalty = 0.05 * np.log(horizon_days)
+            confidence -= min(horizon_penalty, 0.15)  # Cap at -15%
 
         # Boost from strong SuperTrend
         if trend_strength >= 0.7:
@@ -987,8 +1047,10 @@ class ForecastSynthesizer:
 
         # Boost from ensemble agreement (2-3 model consensus)
         # ml_agreement is a score from 0.0-1.0 (1.0 = all models agree)
-        if ml_agreement >= 0.5:
+        if ml_agreement >= 0.67:
             confidence += boosts["strong_agreement"]
+        elif ml_agreement >= 0.5:
+            confidence += boosts["strong_agreement"] * 0.5
 
         # Boost from multi-layer agreement
         if st_bias == ml_bias and st_bias != 0:
@@ -1118,6 +1180,7 @@ class ForecastSynthesizer:
         sr_response: Dict,
         ensemble_result: Dict,
         horizon_scale: float,
+        horizon_days: float = 1.0,
         symbol: Optional[str] = None,
     ) -> ForecastResult:
         """
@@ -1225,27 +1288,31 @@ class ForecastSynthesizer:
             ml_bias = 0
 
         # ===== SYNTHESIZE FORECAST =====
-        agreeing_layers = 0
-        if st_bias == 1:
-            agreeing_layers += 1
-        if ml_bias == 1:
-            agreeing_layers += 1
-        if st_bias == 1 and resistance_weighted > current_price * 1.01:
-            agreeing_layers += 1
-        elif st_bias == -1 and support_weighted < current_price * 0.99:
-            agreeing_layers += 1
-
-        # Determine overall direction
-        if st_bias == 1 and ml_bias >= 0:
-            direction = "BULLISH"
-        elif st_bias == -1 and ml_bias <= 0:
-            direction = "BEARISH"
-        elif ml_bias == 1 and st_bias >= 0:
-            direction = "BULLISH"
-        elif ml_bias == -1 and st_bias <= 0:
-            direction = "BEARISH"
+        layer_directions = []
+        if st_bias != 0:
+            layer_directions.append(st_bias)
+        if ml_bias != 0:
+            layer_directions.append(ml_bias)
+        resistance_room = (resistance_weighted - current_price) / current_price
+        support_room = (current_price - support_weighted) / current_price
+        if st_bias == 1 and resistance_room > 0.01:
+            layer_directions.append(1)
+        elif st_bias == -1 and support_room > 0.01:
+            layer_directions.append(-1)
+        primary_bias = st_bias if st_bias != 0 else ml_bias
+        if primary_bias != 0:
+            agreeing_layers = len([d for d in layer_directions if d == primary_bias])
         else:
-            direction = "NEUTRAL"
+            agreeing_layers = len(layer_directions)
+
+        direction = self._determine_direction(
+            st_bias=st_bias,
+            ml_bias=ml_bias,
+            signal_strength=signal_strength,
+            ml_confidence=ml_confidence,
+            resistance_room=resistance_room,
+            support_room=support_room,
+        )
 
         # Calculate primary target
         if direction == "BULLISH":
@@ -1294,6 +1361,7 @@ class ForecastSynthesizer:
             poly_is_expanding=poly_is_expanding,
             poly_is_converging=poly_is_converging,
             direction=direction,
+            horizon_days=horizon_days,
         )
 
         # Build reasoning

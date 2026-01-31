@@ -50,9 +50,12 @@ class BaselineForecaster:
         """
         df = df.copy()
 
-        bearish_thresh, bullish_thresh = AdaptiveThresholds.compute_thresholds(df)
+        bearish_thresh, bullish_thresh = AdaptiveThresholds.compute_thresholds_horizon(
+            df, horizon_days=horizon_days
+        )
         logger.info(
-            "Adaptive thresholds: bearish=%.4f, bullish=%.4f",
+            "Adaptive thresholds (%.0fD): bearish=%.4f, bullish=%.4f",
+            horizon_days,
             bearish_thresh,
             bullish_thresh,
         )

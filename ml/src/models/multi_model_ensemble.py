@@ -860,13 +860,13 @@ if __name__ == "__main__":
     df["vol_20"] = df["return_1d"].rolling(20).std()
     df = df.dropna()
 
-    # Labels
-    fwd = df["close"].pct_change().shift(-1)
-    labels = fwd.apply(
-        lambda x: "bullish" if x > 0.02 else "bearish" if x < -0.02 else "neutral"
-    ).dropna()
-    features = df[["return_1d", "return_5d", "sma_20", "vol_20"]].iloc[:-1]
-    labels = labels.iloc[:-1]
+    # Labels with horizon- and volatility-aware thresholds (not fixed ±2%)
+    from src.models.adaptive_targets import create_adaptive_targets
+
+    labels, bear_thresh, bull_thresh = create_adaptive_targets(df, horizon_days=1)
+    print(f"Adaptive thresholds (1D): bearish<{bear_thresh:.2%}, bullish>{bull_thresh:.2%}")
+    features = df[["return_1d", "return_5d", "sma_20", "vol_20"]].loc[labels.index]
+    df = df.loc[labels.index]
 
     # Initialize and train
     ensemble = MultiModelEnsemble(

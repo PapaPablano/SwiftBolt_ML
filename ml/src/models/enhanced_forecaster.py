@@ -19,6 +19,7 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 
+from ..features.adaptive_thresholds import AdaptiveThresholds
 from ..features.multi_timeframe import (
     MultiTimeframeFeatures,
     fetch_multi_timeframe_data,
@@ -239,8 +240,10 @@ class EnhancedForecaster:
         df["forward_return"] = fwd_ret.shift(-horizon_days_int)
 
         if mode == "classification":
-            # Create labels: bullish (1), neutral (0), bearish (-1)
-            low_thresh, high_thresh = self.classification_thresholds
+            # Create labels using horizon-aware adaptive thresholds
+            low_thresh, high_thresh = AdaptiveThresholds.compute_thresholds_horizon(
+                df, horizon_days=horizon_days_int
+            )
             df["label"] = pd.cut(
                 df["forward_return"],
                 bins=[-np.inf, low_thresh, high_thresh, np.inf],
@@ -684,8 +687,10 @@ class EnhancedForecaster:
         horizon_days_int = max(1, int(np.ceil(horizon_days)))
         df["forward_return"] = df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int)
 
-        # Create labels
-        low_thresh, high_thresh = self.classification_thresholds
+        # Create labels with horizon- and ATR-aware thresholds (not fixed ±2%)
+        low_thresh, high_thresh = AdaptiveThresholds.compute_thresholds_horizon(
+            df, horizon_days=horizon_days_int
+        )
         df["label"] = pd.cut(
             df["forward_return"],
             bins=[-np.inf, low_thresh, high_thresh, np.inf],

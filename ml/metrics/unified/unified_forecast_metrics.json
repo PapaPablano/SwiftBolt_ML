@@ -1,27 +1,108 @@
 {
-  "start_time": "2026-01-30T22:28:53.295923",
-  "symbols_processed": 3,
+  "start_time": "2026-01-30T23:56:14.901133",
+  "symbols_processed": 2,
   "feature_cache_hits": 0,
-  "feature_cache_misses": 3,
+  "feature_cache_misses": 2,
   "forecast_times": [
-    7.635718107223511,
-    5.538175821304321,
-    7.002955198287964
+    7.2606940269470215,
+    5.512346029281616
   ],
   "weight_sources": {
     "intraday": 4,
-    "default": 8
+    "default": 4
   },
-  "db_writes": 12,
+  "db_writes": 8,
   "errors": [],
   "version_id": null,
+  "forecasts": [
+    {
+      "symbol": "AAPL",
+      "horizon": "1D",
+      "label": "NEUTRAL",
+      "confidence": 42.1,
+      "current_price": 258.18,
+      "target_price": 257.93,
+      "forecast_return_pct": -0.1,
+      "weight_source": "intraday_calibrated"
+    },
+    {
+      "symbol": "AAPL",
+      "horizon": "5D",
+      "label": "NEUTRAL",
+      "confidence": 40.0,
+      "current_price": 258.18,
+      "target_price": 258.14,
+      "forecast_return_pct": -0.01,
+      "weight_source": "intraday_calibrated"
+    },
+    {
+      "symbol": "AAPL",
+      "horizon": "10D",
+      "label": "NEUTRAL",
+      "confidence": 40.0,
+      "current_price": 258.18,
+      "target_price": 257.98,
+      "forecast_return_pct": -0.08,
+      "weight_source": "intraday_calibrated"
+    },
+    {
+      "symbol": "AAPL",
+      "horizon": "20D",
+      "label": "NEUTRAL",
+      "confidence": 40.0,
+      "current_price": 258.18,
+      "target_price": 257.92,
+      "forecast_return_pct": -0.1,
+      "weight_source": "intraday_calibrated"
+    },
+    {
+      "symbol": "MSFT",
+      "horizon": "1D",
+      "label": "NEUTRAL",
+      "confidence": 41.9,
+      "current_price": 483.47,
+      "target_price": 483.56,
+      "forecast_return_pct": 0.02,
+      "weight_source": "default"
+    },
+    {
+      "symbol": "MSFT",
+      "horizon": "5D",
+      "label": "NEUTRAL",
+      "confidence": 40.0,
+      "current_price": 483.47,
+      "target_price": 481.64,
+      "forecast_return_pct": -0.38,
+      "weight_source": "default"
+    },
+    {
+      "symbol": "MSFT",
+      "horizon": "10D",
+      "label": "NEUTRAL",
+      "confidence": 40.0,
+      "current_price": 483.47,
+      "target_price": 483.6,
+      "forecast_return_pct": 0.03,
+      "weight_source": "default"
+    },
+    {
+      "symbol": "MSFT",
+      "horizon": "20D",
+      "label": "NEUTRAL",
+      "confidence": 40.0,
+      "current_price": 483.47,
+      "target_price": 483.64,
+      "forecast_return_pct": 0.04,
+      "weight_source": "default"
+    }
+  ],
   "aggregated": {
-    "total_symbols": 3,
-    "successful": 3,
+    "total_symbols": 2,
+    "successful": 2,
     "failed": 0,
-    "total_processing_time": 20.176849126815796,
-    "avg_processing_time": 6.725616375605266,
+    "total_processing_time": 12.773040056228638,
+    "avg_processing_time": 6.386520028114319,
     "feature_cache_hit_rate": 0.0
   },
-  "end_time": "2026-01-30T22:29:13.705216"
+  "end_time": "2026-01-30T23:56:27.913642"
 }
