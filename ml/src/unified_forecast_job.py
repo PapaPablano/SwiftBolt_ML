@@ -39,6 +39,7 @@ from src.forecast_weights import get_default_weights
 from src.intraday_daily_feedback import IntradayDailyFeedback
 from src.models.baseline_forecaster import BaselineForecaster
 from src.models.enhanced_ensemble_integration import get_production_ensemble
+from src.models.tabpfn_forecaster import TabPFNForecaster, is_tabpfn_available
 from src.monitoring.confidence_calibrator import ConfidenceCalibrator
 from src.monitoring.forecast_quality import ForecastQualityMonitor
 from src.monitoring.forecast_validator import ForecastValidator
@@ -57,16 +58,18 @@ logger = logging.getLogger(__name__)
 class UnifiedForecastProcessor:
     """Central forecast processor for framework horizons (1D, 5D, 10D, 20D)."""
     
-    def __init__(self, redis_cache=None, metrics_file=None):
+    def __init__(self, redis_cache=None, metrics_file=None, model_type='xgboost'):
         """
         Initialize processor.
-        
+
         Args:
             redis_cache: Optional Redis connection for distributed caching
             metrics_file: Optional file to write processing metrics
+            model_type: Model type to use ('xgboost', 'tabpfn', or 'all')
         """
         self.redis_cache = redis_cache
         self.metrics_file = metrics_file or 'unified_forecast_metrics.json'
+        self.model_type = model_type
         self.metrics = {
             'start_time': datetime.now().isoformat(),
             'symbols_processed': 0,
@@ -342,64 +345,132 @@ class UnifiedForecastProcessor:
                         "20D": 20,
                     }.get(horizon_key, 1)
                     
-                    # Use production ensemble (includes Transformer if ENABLE_TRANSFORMER=true)
-                    # Fallback to BaselineForecaster if ensemble training fails
+                    # Determine which model(s) to use based on model_type setting
+                    models_to_run = []
+                    if self.model_type == 'xgboost':
+                        models_to_run = ['xgboost']
+                    elif self.model_type == 'tabpfn':
+                        models_to_run = ['tabpfn']
+                    elif self.model_type == 'all':
+                        models_to_run = ['xgboost', 'tabpfn']
+
+                    # We'll use the first model's prediction for synthesis
+                    # If running 'all', both will be saved to DB separately
                     ml_pred = None
-                    try:
-                        # Get production ensemble (reads ENABLE_TRANSFORMER env var)
-                        ensemble = get_production_ensemble(
-                            horizon=horizon_key,
-                            symbol_id=symbol_id,
-                        )
-                        
-                        # Prepare training data using BaselineForecaster's method
-                        baseline_prep = BaselineForecaster()
-                        X_train, y_train = baseline_prep.prepare_training_data(df, horizon_days=horizon_days)
-                        
-                        if len(X_train) >= settings.min_bars_for_training and len(y_train) > 0:
-                            # Calculate training data range (features correspond to indices after min_offset)
-                            min_offset = 50 if len(df) >= 100 else (26 if len(df) >= 60 else 14)
-                            start_idx = max(min_offset, 14)
-                            end_idx = len(df) - horizon_days
-                            
-                            # Align OHLC data with training features
-                            # Features are created for indices [start_idx, end_idx)
-                            ohlc_train = df.iloc[start_idx:end_idx].copy()
-                            
-                            # Train ensemble
-                            ensemble.train(
-                                features_df=X_train,
-                                labels_series=y_train,
-                                ohlc_df=ohlc_train,
-                            )
-                            
-                            # Get prediction using last row of features and full OHLC history
-                            ml_pred = ensemble.predict(
-                                features_df=X_train.tail(1),
-                                ohlc_df=df,
-                            )
-                            
-                            logger.info(
-                                f"Ensemble prediction for {symbol} {horizon_key}: "
-                                f"{ml_pred.get('label', 'unknown').upper()} "
-                                f"({ml_pred.get('confidence', 0):.0%} conf, "
-                                f"n_models={ml_pred.get('n_models', 0)})"
-                            )
-                        else:
-                            logger.warning(
-                                f"Insufficient training data for ensemble: "
-                                f"{len(X_train)} samples (need {settings.min_bars_for_training})"
-                            )
-                            raise ValueError("Insufficient training data")
-                    except Exception as e:
-                        logger.warning(
-                            f"Ensemble training/prediction failed for {symbol} {horizon_key}: {e}. "
-                            f"Falling back to BaselineForecaster."
-                        )
-                        # Fallback to BaselineForecaster
-                        baseline_forecaster = BaselineForecaster()
-                        baseline_forecaster.fit(df, horizon_days=horizon_days)
-                        ml_pred = baseline_forecaster.predict(df, horizon_days=horizon_days)
+                    current_model_type = models_to_run[0] if models_to_run else 'xgboost'
+
+                    for model_name in models_to_run:
+                        try:
+                            if model_name == 'tabpfn':
+                                # Use TabPFN forecaster
+                                if not is_tabpfn_available():
+                                    logger.warning("TabPFN not available, skipping")
+                                    continue
+
+                                logger.info(f"Using TabPFN forecaster for {symbol} {horizon_key}")
+                                tabpfn = TabPFNForecaster(device='cpu')  # Use CPU for stability
+                                tabpfn.fit(df, horizon_days=horizon_days)
+                                model_pred = tabpfn.predict(df, horizon_days=horizon_days)
+                                current_model_type = 'tabpfn'
+
+                                # If this is the first/only model, use it for synthesis
+                                if ml_pred is None:
+                                    ml_pred = model_pred
+
+                                logger.info(
+                                    f"TabPFN prediction for {symbol} {horizon_key}: "
+                                    f"{model_pred.get('label', 'unknown').upper()} "
+                                    f"({model_pred.get('confidence', 0):.0%} conf)"
+                                )
+
+                                # If running 'all', save TabPFN forecast separately
+                                if self.model_type == 'all' and model_name != models_to_run[0]:
+                                    self._save_model_forecast(
+                                        symbol_id, horizon_key, model_pred, 'tabpfn',
+                                        df, supertrend_data, quality_score, quality_issues
+                                    )
+
+                            else:  # xgboost (default ensemble)
+                                # Use production ensemble (includes Transformer if ENABLE_TRANSFORMER=true)
+                                # Fallback to BaselineForecaster if ensemble training fails
+                                try:
+                                    # Get production ensemble (reads ENABLE_TRANSFORMER env var)
+                                    ensemble = get_production_ensemble(
+                                        horizon=horizon_key,
+                                        symbol_id=symbol_id,
+                                    )
+
+                                    # Prepare training data using BaselineForecaster's method
+                                    baseline_prep = BaselineForecaster()
+                                    X_train, y_train = baseline_prep.prepare_training_data(df, horizon_days=horizon_days)
+
+                                    if len(X_train) >= settings.min_bars_for_training and len(y_train) > 0:
+                                        # Calculate training data range (features correspond to indices after min_offset)
+                                        min_offset = 50 if len(df) >= 100 else (26 if len(df) >= 60 else 14)
+                                        start_idx = max(min_offset, 14)
+                                        end_idx = len(df) - horizon_days
+
+                                        # Align OHLC data with training features
+                                        # Features are created for indices [start_idx, end_idx)
+                                        ohlc_train = df.iloc[start_idx:end_idx].copy()
+
+                                        # Train ensemble
+                                        ensemble.train(
+                                            features_df=X_train,
+                                            labels_series=y_train,
+                                            ohlc_df=ohlc_train,
+                                        )
+
+                                        # Get prediction using last row of features and full OHLC history
+                                        model_pred = ensemble.predict(
+                                            features_df=X_train.tail(1),
+                                            ohlc_df=df,
+                                        )
+                                        current_model_type = 'xgboost'
+
+                                        # If this is the first/only model, use it for synthesis
+                                        if ml_pred is None:
+                                            ml_pred = model_pred
+
+                                        logger.info(
+                                            f"Ensemble prediction for {symbol} {horizon_key}: "
+                                            f"{model_pred.get('label', 'unknown').upper()} "
+                                            f"({model_pred.get('confidence', 0):.0%} conf, "
+                                            f"n_models={model_pred.get('n_models', 0)})"
+                                        )
+
+                                        # If running 'all', save XGBoost forecast separately
+                                        if self.model_type == 'all' and model_name != models_to_run[0]:
+                                            self._save_model_forecast(
+                                                symbol_id, horizon_key, model_pred, 'xgboost',
+                                                df, supertrend_data, quality_score, quality_issues
+                                            )
+                                    else:
+                                        logger.warning(
+                                            f"Insufficient training data for ensemble: "
+                                            f"{len(X_train)} samples (need {settings.min_bars_for_training})"
+                                        )
+                                        raise ValueError("Insufficient training data")
+                                except Exception as e:
+                                    logger.warning(
+                                        f"Ensemble training/prediction failed for {symbol} {horizon_key}: {e}. "
+                                        f"Falling back to BaselineForecaster."
+                                    )
+                                    # Fallback to BaselineForecaster
+                                    baseline_forecaster = BaselineForecaster()
+                                    baseline_forecaster.fit(df, horizon_days=horizon_days)
+                                    model_pred = baseline_forecaster.predict(df, horizon_days=horizon_days)
+                                    if ml_pred is None:
+                                        ml_pred = model_pred
+
+                        except Exception as model_error:
+                            logger.error(f"Error with {model_name} model for {symbol} {horizon_key}: {model_error}")
+                            if ml_pred is None:
+                                # Fall back to baseline if no model worked
+                                baseline_forecaster = BaselineForecaster()
+                                baseline_forecaster.fit(df, horizon_days=horizon_days)
+                                ml_pred = baseline_forecaster.predict(df, horizon_days=horizon_days)
+                                current_model_type = 'baseline'
                     
                     # Get layer weights with explicit source tracking (using IntradayDailyFeedback)
                     weights, weight_source = self._get_weight_source(symbol, symbol_id, horizon_key)
@@ -589,6 +660,7 @@ class UnifiedForecastProcessor:
                         quality_issues=quality_issues,
                         synthesis_data=forecast.get("synthesis"),
                         timeframe="d1",
+                        model_type=current_model_type,
                     )
                     self.metrics['db_writes'] += 1
                     
@@ -703,6 +775,89 @@ class UnifiedForecastProcessor:
                 continue
         return signals
     
+    def _save_model_forecast(
+        self,
+        symbol_id: str,
+        horizon: str,
+        ml_pred: Dict[str, Any],
+        model_type: str,
+        df: pd.DataFrame,
+        supertrend_data: Optional[Dict] = None,
+        quality_score: Optional[float] = None,
+        quality_issues: Optional[list] = None,
+    ) -> None:
+        """
+        Save a model-specific forecast to the database (used when running --model-type=all).
+
+        Args:
+            symbol_id: Symbol UUID
+            horizon: Forecast horizon
+            ml_pred: Model prediction dict
+            model_type: Type of model ('xgboost', 'tabpfn', etc.)
+            df: OHLC DataFrame
+            supertrend_data: Optional SuperTrend data
+            quality_score: Optional quality score
+            quality_issues: Optional quality issues
+        """
+        try:
+            current_ts = df["ts"].iloc[-1]
+            horizon_days = self._horizon_to_days(horizon)
+            target_ts = current_ts + timedelta(days=horizon_days)
+            current_price = float(df["close"].iloc[-1])
+
+            # Build minimal forecast points
+            forecast_return = ml_pred.get("forecast_return", 0.0)
+            target_price = current_price * (1 + forecast_return) if forecast_return else current_price
+
+            points = [
+                {
+                    "ts": current_ts.isoformat(),
+                    "value": current_price,
+                    "price": current_price,
+                    "type": "current",
+                },
+                {
+                    "ts": target_ts.isoformat(),
+                    "value": target_price,
+                    "price": target_price,
+                    "type": "target",
+                },
+            ]
+
+            # Build synthesis data from model prediction
+            synthesis_data = {
+                "model_type": model_type,
+                "confidence": ml_pred.get("confidence", 0.5),
+                "forecast_return": forecast_return,
+            }
+            if "intervals" in ml_pred:
+                synthesis_data["intervals"] = ml_pred["intervals"]
+            if "inference_time_sec" in ml_pred:
+                synthesis_data["inference_time_sec"] = ml_pred["inference_time_sec"]
+
+            db.upsert_forecast(
+                symbol_id=symbol_id,
+                horizon=horizon,
+                overall_label=ml_pred.get("label", "neutral"),
+                confidence=ml_pred.get("confidence", 0.5),
+                points=points,
+                forecast_return=forecast_return,
+                supertrend_data=supertrend_data,
+                quality_score=quality_score,
+                quality_issues=quality_issues,
+                synthesis_data=synthesis_data,
+                timeframe="d1",
+                model_type=model_type,
+            )
+
+            logger.info(
+                f"Saved {model_type} forecast for {symbol_id} {horizon}: "
+                f"{ml_pred.get('label', 'unknown').upper()} ({ml_pred.get('confidence', 0):.0%})"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to save {model_type} forecast: {e}")
+
     def process_universe(
         self,
         symbols: Optional[list] = None,
@@ -797,10 +952,14 @@ def main():
     parser.add_argument('--symbol', help='Process single symbol (for testing)')
     parser.add_argument('--symbols', help='Comma-separated list of symbols to process')
     parser.add_argument('--force-refresh', action='store_true', help='Rebuild features')
-    parser.add_argument('--metrics-file', help='Output metrics file', 
+    parser.add_argument('--metrics-file', help='Output metrics file',
                         default='metrics/unified/unified_forecast_metrics.json')
     parser.add_argument('--redis-host', default='localhost', help='Redis host')
     parser.add_argument('--redis-port', type=int, default=6379, help='Redis port')
+    parser.add_argument('--model-type',
+                        choices=['xgboost', 'tabpfn', 'all'],
+                        default='xgboost',
+                        help='Model type to use: xgboost (default), tabpfn, or all (run both for comparison)')
     
     args = parser.parse_args()
     
@@ -824,6 +983,7 @@ def main():
     processor = UnifiedForecastProcessor(
         redis_cache=redis_cache,
         metrics_file=args.metrics_file,
+        model_type=args.model_type,
     )
     
     logger.info("=" * 80)

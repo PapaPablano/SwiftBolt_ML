@@ -13,6 +13,10 @@ hmmlearn>=0.3.0
 arch>=6.0.0
 tensorflow-cpu>=2.15.0
 
+# TabPFN (zero-shot transformer forecaster)
+torch>=2.0.0
+tabpfn>=1.0.0
+
 # Data sources
 supabase>=2.0.0
 yfinance>=0.2.0

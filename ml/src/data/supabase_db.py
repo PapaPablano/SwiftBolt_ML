@@ -767,6 +767,7 @@ class SupabaseDatabase:
         ensemble_weights: dict[str, Any] | None = None,
         confidence_source: str | None = None,
         timeframe: str | None = None,
+        model_type: str | None = None,
     ) -> None:
         """
         Insert or update a forecast in the ml_forecasts table.
@@ -810,6 +811,7 @@ class SupabaseDatabase:
                 "run_at": pd.Timestamp.now().isoformat(),
                 "updated_at": pd.Timestamp.now().isoformat(),
                 "timeframe": timeframe_value,
+                "model_type": model_type or "xgboost",  # Default to xgboost for backwards compatibility
             }
 
             # Add SuperTrend AI data if available
