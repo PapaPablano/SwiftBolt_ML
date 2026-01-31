@@ -1,28 +1,27 @@
 {
-  "start_time": "2026-01-26T15:47:07.536913",
-  "symbols_processed": 1,
+  "start_time": "2026-01-30T22:28:53.295923",
+  "symbols_processed": 3,
   "feature_cache_hits": 0,
-  "feature_cache_misses": 0,
+  "feature_cache_misses": 3,
   "forecast_times": [
-    9.619446992874146
+    7.635718107223511,
+    5.538175821304321,
+    7.002955198287964
   ],
-  "weight_sources": {},
-  "db_writes": 0,
-  "errors": [
-    {
-      "symbol": "AAPL",
-      "error": "{'message': 'canceling statement due to statement timeout', 'code': '57014', 'hint': None, 'details': None}",
-      "timestamp": "2026-01-26T15:47:23.801264"
-    }
-  ],
+  "weight_sources": {
+    "intraday": 4,
+    "default": 8
+  },
+  "db_writes": 12,
+  "errors": [],
   "version_id": null,
   "aggregated": {
-    "total_symbols": 1,
-    "successful": 0,
-    "failed": 1,
-    "total_processing_time": 9.619446992874146,
-    "avg_processing_time": 9.619446992874146,
-    "feature_cache_hit_rate": 0
+    "total_symbols": 3,
+    "successful": 3,
+    "failed": 0,
+    "total_processing_time": 20.176849126815796,
+    "avg_processing_time": 6.725616375605266,
+    "feature_cache_hit_rate": 0.0
   },
-  "end_time": "2026-01-26T15:47:23.801773"
+  "end_time": "2026-01-30T22:29:13.705216"
 }

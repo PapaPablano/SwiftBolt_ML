@@ -813,16 +813,19 @@ class SupabaseDatabase:
             }
 
             # Add SuperTrend AI data if available
+            # trend_confidence and trend_duration_bars are INTEGER in DB; cast float->int
             if supertrend_data:
+                tc = supertrend_data.get("trend_confidence")
+                tdb = supertrend_data.get("trend_duration_bars")
                 forecast_data.update(
                     {
                         "supertrend_factor": supertrend_data.get("supertrend_factor"),
                         "supertrend_performance": supertrend_data.get("supertrend_performance"),
                         "supertrend_signal": supertrend_data.get("supertrend_signal"),
                         "trend_label": supertrend_data.get("trend_label"),
-                        "trend_confidence": supertrend_data.get("trend_confidence"),
+                        "trend_confidence": int(round(float(tc))) if tc is not None else None,
                         "stop_level": supertrend_data.get("stop_level"),
-                        "trend_duration_bars": supertrend_data.get("trend_duration_bars"),
+                        "trend_duration_bars": int(tdb) if tdb is not None else None,
                     }
                 )
 

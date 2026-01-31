@@ -34,12 +34,11 @@ def main() -> None:
     args = parse_args()
     include_timeframes = not args.no_timeframes and args.include_timeframes
     universe = get_symbol_universe(include_timeframes=include_timeframes)
-
+    symbols = universe.get("symbols", [])
+    timeframes = universe.get("timeframes", [])
     if args.output == "json":
         print(json.dumps(universe))
     else:
-        symbols = universe.get("symbols", [])
-        timeframes = universe.get("timeframes", [])
         print(format_env_exports(symbols, timeframes), end="")
 
 

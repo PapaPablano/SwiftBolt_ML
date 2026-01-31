@@ -822,7 +822,7 @@ def main():
         logger.info("Processing full universe")
         results = processor.process_universe(force_refresh=args.force_refresh)
         logger.info(f"\nAggregated: {json.dumps(results, indent=2, default=str)}")
-    
+
     # Close database connections
     db.close()
 
