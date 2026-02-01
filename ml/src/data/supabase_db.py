@@ -800,11 +800,13 @@ class SupabaseDatabase:
                 return
             # Build forecast data for upsert keyed by (symbol_id, horizon)
             timeframe_value = timeframe or "legacy"
+            # DB enum trend_label expects lowercase ('bullish','neutral','bearish')
+            overall_label_normalized = (overall_label or "neutral").strip().lower()
 
             forecast_data = {
                 "symbol_id": symbol_id,
                 "horizon": horizon_key,
-                "overall_label": overall_label,
+                "overall_label": overall_label_normalized,
                 "confidence": confidence,
                 "points": points,
                 "forecast_return": forecast_return,
@@ -819,12 +821,15 @@ class SupabaseDatabase:
             if supertrend_data:
                 tc = supertrend_data.get("trend_confidence")
                 tdb = supertrend_data.get("trend_duration_bars")
+                tl = supertrend_data.get("trend_label")
+                # Normalize trend_label to lowercase for enum compatibility
+                trend_label_normalized = tl.strip().lower() if (tl and str(tl).strip()) else None
                 forecast_data.update(
                     {
                         "supertrend_factor": supertrend_data.get("supertrend_factor"),
                         "supertrend_performance": supertrend_data.get("supertrend_performance"),
                         "supertrend_signal": supertrend_data.get("supertrend_signal"),
-                        "trend_label": supertrend_data.get("trend_label"),
+                        "trend_label": trend_label_normalized,
                         "trend_confidence": int(round(float(tc))) if tc is not None else None,
                         "stop_level": supertrend_data.get("stop_level"),
                         "trend_duration_bars": int(tdb) if tdb is not None else None,
@@ -859,9 +864,10 @@ class SupabaseDatabase:
                 forecast_data["confidence_source"] = confidence_source
 
             # Upsert (insert or update on conflict) - no delete
+            # Conflict key includes model_type so xgboost and tabpfn can coexist
             self.client.table("ml_forecasts").upsert(
                 forecast_data,
-                on_conflict="symbol_id,timeframe,horizon",
+                on_conflict="symbol_id,timeframe,horizon,model_type",
             ).execute()
 
             logger.info(
@@ -910,6 +916,7 @@ class SupabaseDatabase:
                     "symbol_id": symbol_id,
                     "timeframe": timeframe,
                     "horizon": horizon_key,
+                    "model_type": forecast.get("model_type", "xgboost"),
                     "overall_label": forecast.get("overall_label"),
                     "confidence": forecast.get("confidence"),
                     "target_price": forecast.get("target_price"),
@@ -943,7 +950,7 @@ class SupabaseDatabase:
         try:
             self.client.table("ml_forecasts").upsert(
                 payload,
-                on_conflict="symbol_id,timeframe,horizon",
+                on_conflict="symbol_id,timeframe,horizon,model_type",
             ).execute()
         except Exception as exc:
             logger.error(
@@ -981,6 +988,7 @@ class SupabaseDatabase:
                     "symbol_id": symbol_id,
                     "timeframe": "consensus",
                     "horizon": horizon_key,
+                    "model_type": "ensemble",
                     "overall_label": forecast.get("overall_label"),
                     "confidence": forecast.get("confidence"),
                     "target_price": forecast.get("target_price"),
@@ -1011,7 +1019,7 @@ class SupabaseDatabase:
         try:
             self.client.table("ml_forecasts").upsert(
                 payload,
-                on_conflict="symbol_id,timeframe,horizon",
+                on_conflict="symbol_id,timeframe,horizon,model_type",
             ).execute()
         except Exception as exc:
             logger.error(

@@ -5,6 +5,44 @@
 
 ---
 
+## Jan 31 Evening: Critical Fixes Applied
+
+### 1. Confidence Relaxation ✅
+**File:** `ml/src/unified_forecast_job.py`
+
+- **Problem:** Raw model confidence (75–85%) was crushed to 40% floor by `sample_size_multiplier` and calibration.
+- **Fix:** When `raw_confidence >= 0.75`, trust the model and skip crushing. Use `clip(raw, 0.50, 0.95)` instead of applying multipliers.
+- **Effect:** TabPFN 75% → saved as 75% (was 40%); XGBoost 77% → 67% (improved from 40%).
+
+### 2. Schema: model_type in Unique Constraint ✅
+**File:** `supabase/migrations/20260131210000_add_model_type_to_ml_forecasts_unique.sql`
+
+- **Problem:** Unique key was `(symbol_id, timeframe, horizon)` so TabPFN and XGBoost overwrote each other.
+- **Fix:** New unique index `(symbol_id, timeframe, horizon, model_type)` so both can coexist.
+- **Apply manually** (if `supabase db push` fails):
+  ```sql
+  -- In Supabase Dashboard → SQL Editor
+  DROP INDEX IF EXISTS ux_ml_forecasts_symbol_timeframe_horizon;
+  UPDATE ml_forecasts SET model_type = 'xgboost' WHERE model_type IS NULL;
+  CREATE UNIQUE INDEX ux_ml_forecasts_symbol_timeframe_horizon_model_type
+  ON ml_forecasts(symbol_id, timeframe, horizon, model_type);
+  ```
+
+### 3. Upsert Conflict Key Updated ✅
+**File:** `ml/src/data/supabase_db.py`
+
+- `upsert_forecast`: `on_conflict="symbol_id,timeframe,horizon,model_type"`
+- `upsert_multi_horizon_forecasts` and `upsert_consensus_forecasts`: same conflict key + `model_type` in payload.
+
+### 4. TabPFN Run Verified ✅
+```bash
+python -m src.unified_forecast_job --symbol AAPL --horizons 1D,5D,10D,20D --model-type tabpfn
+```
+- TabPFN predictions: 1D 68%, 5D/10D/20D 75% (before: all saved as 40%).
+- Compare models: `python compare_models.py` (run XGBoost + TabPFN for same symbol to see side-by-side after migration).
+
+---
+
 ## What Was Implemented
 
 ### 1. Database Schema ✅
@@ -472,6 +510,28 @@ forecaster = TabPFNForecaster(n_estimators=4)  # Default is 8
 
 **Solution:**
 TabPFN works best with 100-1000 samples. Ensure you have at least 100 bars of OHLC data.
+
+### Today's Forecasts Show Old created_at
+**Symptom:** Logs say "Saved 1D forecast for AAPL" but queries by `created_at` show only Jan 2 / Jan 27.
+
+**Cause:** Forecasts are **upserted** on `(symbol_id, timeframe, horizon)`. Each run **updates** the same row; `created_at` is set only on first insert and is **not** updated. So today's run did save — it updated the row — but `created_at` stays the original insert date.
+
+**Solution:** Use **`run_at`** (or `updated_at`) for "when this was generated" and for filtering "recent" forecasts.
+
+```bash
+cd ml
+# Show TabPFN forecasts by last run (not created_at)
+python display_tabpfn_results.py   # now filters/orders by run_at
+
+# Quick check: run_at vs created_at
+python -c "
+from src.data.supabase_db import SupabaseDatabase
+db = SupabaseDatabase()
+r = db.client.table('ml_forecasts').select('horizon, created_at, run_at, updated_at').eq('model_type','tabpfn').order('run_at', desc=True).limit(5).execute()
+for f in r.data:
+    print(f\"{f['horizon']:4} created_at={f['created_at']} run_at={f['run_at']}\")
+"
+```
 
 ---
 

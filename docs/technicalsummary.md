@@ -1199,6 +1199,66 @@ def calculate_position_size(base_size, signal_confidence, indicator_agreement):
 
 ---
 
+## Simplified Feature Set Benchmark (29 features)
+
+Benchmark on **real data** for 12 symbols (AAPL, AMD, CRWD, GOOG, GOOGL, HL, META, MSFT, MU, NVDA, SPY, TSLA). Per-symbol: 485–600 bars, 80/20 train/val split.
+
+| Symbol | Bars | Samples | Train% | Val% | Time(s) |
+|--------|------|---------|--------|------|---------|
+| AAPL | 600 | 399 | 95.3% | 93.8% | 0.08 |
+| AMD | 600 | 399 | 94.4% | 77.5% | 0.08 |
+| CRWD | 600 | 399 | 95.9% | 93.8% | 0.07 |
+| GOOG | 600 | 399 | 90.9% | 82.5% | 0.08 |
+| GOOGL | 485 | 284 | 95.2% | 86.0% | 0.06 |
+| HL | 600 | 399 | 98.4% | 93.8% | 0.06 |
+| META | 486 | 285 | 94.3% | 80.7% | 0.06 |
+| MSFT | 485 | 284 | 98.2% | 89.5% | 0.06 |
+| MU | 600 | 399 | 96.6% | 83.8% | 0.07 |
+| NVDA | 600 | 399 | 96.6% | 73.8% | 0.07 |
+| SPY | 600 | 399 | 93.1% | 76.2% | 0.08 |
+| TSLA | 600 | 399 | 96.9% | 60.0% | 0.08 |
+| **MEAN** | | | **95.5%** | **82.6%** | **0.07** |
+| **MED(val)** | | | | **83.8%** | |
+
+**Comparison vs before (98 features):** Before: training ~100% (overfit), validation 30–41%. After (29 features): mean train 95.5%, mean val 82.6%, median val 83.8%, ~0.07s per symbol.
+
+**Top feature importances (28-feature model):** rsi_14, macd_hist, macd_hist_lag1, macd, volume_ratio, macd_hist_lag30, macd_signal, kdj_divergence, kdj_divergence_lag14, bb_width_pct, macd_hist_lag7, kdj_divergence_lag1, atr_14, adx, bb_upper.
+
+**Commands:** `python ml/benchmark_simplified_features.py` (run benchmark on 12 symbols), `python ml/analyze_feature_importance.py` (feature importance; uses 3 most recent `*_simplified_28feat.pkl` in `ml/trained_models/`).
+
+---
+
+## Historical sentiment and backtesting
+
+**Yes, historical sentiment is possible** and can be used as a backtest/seasonality-style feature.
+
+### How it works
+
+1. **Storage:** Supabase has `news_items` (symbol_id, title, source, url, summary, published_at, fetched_at). Add an optional `sentiment_score` (float, VADER compound) so that when news is cached or backfilled, we store a score per article.
+2. **Backfill:** Use Alpaca’s date-range news API (`getNewsAdvanced` with start/end). For each symbol and date range:
+   - Fetch historical news (edge function: `GET /news?symbol=AAPL&from=<ts>&to=<ts>` or Alpaca directly).
+   - Score each headline/summary with VADER in Python.
+   - Insert/upsert into `news_items` with `sentiment_score`, or into a dedicated `sentiment_scores(symbol_id, date, sentiment_score)` table (one row per symbol per day, e.g. daily mean).
+3. **Loading for backtest:** For a given symbol and date range, query DB: daily mean of `sentiment_score` by `published_at::date`, return a `pd.Series` indexed by date. Pass that as `sentiment_series` into `compute_simplified_features(df, sentiment_series=...)` when building features for backtest bars (align by `df["ts"]` date; already implemented).
+4. **Seasonality-style metric:** Once you have a daily sentiment series:
+   - **Lagged sentiment:** e.g. `sentiment_score_lag7` (sentiment 1 week ago) in `SIMPLIFIED_FEATURES` and `create_lag_features` (same pattern as `kdj_divergence_lag7`).
+   - **Rolling mean:** e.g. 5-day rolling mean of sentiment as “recent sentiment regime” (new feature name, computed in `compute_simplified_features` from `sentiment_series`).
+
+### Implementation status (Feb 2026: sentiment temporarily disabled)
+
+- **Zero-variance fix:** Sentiment had constant value (std=0). Temporarily removed from SIMPLIFIED_FEATURES. Use `validate_sentiment_variance(symbol)` before re-enabling.
+- **Pipeline:** When enabled, pass `sentiment_series` into `prepare_training_data(..., sentiment_series=...)`.
+- **Loader:** `get_historical_sentiment_series(symbol, start_date, end_date, use_finviz_realtime=True)` — DB + FinViz merge; maps post-end FinViz dates to last N bar-dates.
+- **DB:** Migration `20260131220000_sentiment_scores.sql` adds `sentiment_scores(symbol_id, as_of_date, sentiment_score)` and optional `news_items.sentiment_score`.
+- **Backfill:** `ml/backfill_sentiment.py` — fetches news via edge with from/to, scores with VADER, upserts daily mean into `sentiment_scores`. Run: `cd ml && python backfill_sentiment.py [--symbols AAPL,...] [--days 365]` or `--from YYYY-MM-DD --to YYYY-MM-DD`.
+- **Re-enable sentiment:** After backfill and `validate_sentiment_variance` passes, add `sentiment_score` to the lag list in `create_lag_features` (e.g. `sentiment_score_lag7`, `sentiment_score_lag14`) and append to `SIMPLIFIED_FEATURES` so backtests use “previous week’s sentiment” as a feature.
+
+### DB (in migration above)
+
+- `sentiment_scores` holds daily mean sentiment per symbol. `news_items.sentiment_score` (nullable) added for optional per-article storage.
+
+---
+
 ## Revision History
 
 - **v1.0** - January 29, 2026: Initial refined classification guide

@@ -283,9 +283,11 @@ class EnsembleForecaster:
         if not self.is_trained:
             raise RuntimeError("Ensemble not trained.")
 
-        # Get RF prediction
-        rf_label, rf_confidence, rf_proba = self.rf_model.predict(features_df)
-        rf_probs = dict(zip(self.rf_model.model.classes_, rf_proba[-1]))
+        # Get RF prediction (BaselineForecaster.predict returns a dict)
+        rf_pred = self.rf_model.predict(features_df)
+        rf_label = rf_pred["label"]
+        rf_confidence = rf_pred["confidence"]
+        rf_probs = rf_pred.get("probabilities", {})
 
         # Get GB prediction (if trained)
         if self.gb_model.is_trained:

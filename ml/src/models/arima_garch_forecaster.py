@@ -355,36 +355,47 @@ class ArimaGarchForecaster:
         # Generate ARIMA forecast
         try:
             forecast_result = self.fitted_arima.get_forecast(steps=steps)
-            forecast_mean = forecast_result.predicted_mean.values[0]
+            # Use cumulative return over all steps (ARIMA predicts step-by-step returns)
+            forecast_means = forecast_result.predicted_mean.values
+            forecast_mean_cumulative = float(np.sum(forecast_means))
             forecast_ci = forecast_result.conf_int(alpha=0.05)
-            ci_lower = forecast_ci.iloc[0, 0]
-            ci_upper = forecast_ci.iloc[0, 1]
+            # Use last step CI (uncertainty at horizon endpoint)
+            ci_lower = float(forecast_ci.iloc[-1, 0])
+            ci_upper = float(forecast_ci.iloc[-1, 1])
         except Exception as e:
             logger.error("Forecast failed: %s", e)
-            return self._null_prediction(str(e))
+            return self._null_prediction(str(e), steps=steps)
 
-        # Get GARCH volatility forecast
+        # Get GARCH volatility forecast; scale by sqrt(steps) for multi-period
         try:
             garch_variance = self.garch_model.predict_variance(steps=steps)
-            garch_volatility = np.sqrt(garch_variance)
+            if isinstance(garch_variance, (list, np.ndarray)):
+                avg_variance = np.mean(garch_variance)
+                garch_volatility = np.sqrt(avg_variance * steps)
+            else:
+                garch_volatility = np.sqrt(float(garch_variance) * steps)
         except Exception:
-            # Fallback to simple volatility
-            garch_volatility = (
+            # Fallback to simple volatility, scaled by sqrt(steps)
+            base_vol = (
                 float(self._train_returns.std()) if self._train_returns is not None else 0.02
             )
+            garch_volatility = base_vol * np.sqrt(steps)
 
-        # Classify the forecast
-        if forecast_mean > self.bullish_threshold:
+        # Classify using horizon-scaled thresholds (e.g. 2% per day -> 10% for 5D)
+        bull_thresh = self.bullish_threshold * steps
+        bear_thresh = self.bearish_threshold * steps
+        if forecast_mean_cumulative > bull_thresh:
             label = "Bullish"
-        elif forecast_mean < self.bearish_threshold:
+        elif forecast_mean_cumulative < bear_thresh:
             label = "Bearish"
         else:
             label = "Neutral"
 
-        # Calculate probabilities using forecast uncertainty
+        # Calculate probabilities using cumulative forecast and scaled volatility
         probabilities = self._calculate_probabilities(
-            forecast_mean,
-            garch_volatility,
+            forecast_mean_cumulative,
+            float(garch_volatility),
+            steps=steps,
         )
 
         confidence = float(probabilities[label.lower()])
@@ -393,25 +404,28 @@ class ArimaGarchForecaster:
             "label": label,
             "confidence": confidence,
             "probabilities": probabilities,
-            "forecast_return": float(forecast_mean),
+            "forecast_return": forecast_mean_cumulative,
             "forecast_volatility": float(garch_volatility),
-            "ci_lower": float(ci_lower),
-            "ci_upper": float(ci_upper),
+            "ci_lower": ci_lower,
+            "ci_upper": ci_upper,
             "arima_order": self.arima_order,
             "diagnostics": self.diagnostics,
+            "steps": steps,
         }
 
     def _calculate_probabilities(
         self,
         forecast_mean: float,
         forecast_std: float,
+        steps: int = 1,
     ) -> Dict[str, float]:
         """
         Calculate class probabilities using normal distribution.
 
         Args:
-            forecast_mean: Predicted return
-            forecast_std: Forecast standard deviation
+            forecast_mean: Predicted return (cumulative over steps when steps > 1)
+            forecast_std: Forecast standard deviation (scaled for horizon)
+            steps: Number of forecast steps (used to scale thresholds when > 1)
 
         Returns:
             Dict with probabilities for each class
@@ -419,14 +433,18 @@ class ArimaGarchForecaster:
         if forecast_std <= 0:
             forecast_std = 0.01
 
+        # Scale thresholds for multi-step (consistent with classification)
+        bear_thresh = self.bearish_threshold * steps
+        bull_thresh = self.bullish_threshold * steps
+
         # Calculate probabilities using CDF
         prob_bearish = stats.norm.cdf(
-            self.bearish_threshold,
+            bear_thresh,
             loc=forecast_mean,
             scale=forecast_std,
         )
         prob_bullish = 1 - stats.norm.cdf(
-            self.bullish_threshold,
+            bull_thresh,
             loc=forecast_mean,
             scale=forecast_std,
         )
@@ -522,9 +540,10 @@ class ArimaGarchForecaster:
         for i in range(1, horizon_days + 1):
             forecast_ts = last_ts + timedelta(days=i)
 
-            # Cumulative return with square-root time scaling
-            cumulative_return = forecast_return * i
-            cumulative_volatility = forecast_volatility * np.sqrt(i)
+            # forecast_return is cumulative over horizon_days; scale to day i
+            cumulative_return = forecast_return * (i / horizon_days) if horizon_days else 0
+            # Volatility scales with sqrt(time)
+            cumulative_volatility = forecast_volatility * (np.sqrt(i) / np.sqrt(horizon_days)) if horizon_days else 0
 
             forecast_value = float(last_close) * (1 + cumulative_return)
 
@@ -544,7 +563,7 @@ class ArimaGarchForecaster:
 
         return points
 
-    def _null_prediction(self, error_msg: str) -> Dict[str, Any]:
+    def _null_prediction(self, error_msg: str, steps: int = 1) -> Dict[str, Any]:
         """Return null prediction when model fails."""
         return {
             "label": "Neutral",
@@ -558,6 +577,7 @@ class ArimaGarchForecaster:
             "forecast_volatility": 0.0,
             "ci_lower": 0.0,
             "ci_upper": 0.0,
+            "steps": steps,
             "error": error_msg,
         }
 

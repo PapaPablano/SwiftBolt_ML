@@ -123,6 +123,13 @@ jobs:
           cd ml
           python -m src.scripts.validate_ohlc_before_training --limit 10
 
+      - name: Sentiment backfill (7 days, pre-forecast)
+        continue-on-error: true
+        run: |
+          cd ml
+          echo "Running sentiment backfill for ${SWIFTBOLT_SYMBOLS}..."
+          python backfill_sentiment.py --symbols "${SWIFTBOLT_SYMBOLS}" --days 7 --delay 0.5 || echo "Sentiment backfill skipped or failed"
+
       - name: Generate ML forecasts (Unified)
         env:
           USE_ENSEMBLE_FORECASTER: "true"

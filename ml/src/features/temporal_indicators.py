@@ -9,7 +9,106 @@ from typing import Tuple
 import numpy as np
 import pandas as pd
 
+from src.features.technical_indicators_corrected import TechnicalIndicatorsCorrect
+
 logger = logging.getLogger(__name__)
+
+# Simplified feature set (28 features) based on empirical importance analysis.
+SIMPLIFIED_FEATURES = [
+    # Price & Volume
+    "close",
+    "volume",
+    "volume_ratio",
+    # MACD Family
+    "macd",
+    "macd_hist",
+    "macd_signal",
+    # Oscillators
+    "rsi_14",
+    # Bollinger Bands
+    "bb_lower",
+    "bb_upper",
+    "bb_width_pct",
+    # Trend Strength
+    "adx",
+    "supertrend_trend",
+    # Volatility
+    "atr_14",
+    # Custom Lag Features
+    "supertrend_trend_lag1",
+    "supertrend_trend_lag7",
+    "supertrend_trend_lag14",
+    "supertrend_trend_lag30",
+    "kdj_divergence_lag1",
+    "kdj_divergence_lag7",
+    "kdj_divergence_lag14",
+    "kdj_divergence_lag30",
+    "macd_hist_lag1",
+    "macd_hist_lag7",
+    "macd_hist_lag14",
+    "macd_hist_lag30",
+    # KDJ
+    "kdj_divergence",
+    # Moving Averages
+    "sma_50",
+    "sma_200",
+    # REMOVED: sentiment_score_lag1, sentiment_score_lag7 (zero variance until FinViz pipeline fixed)
+]
+
+
+def create_lag_features(
+    df: pd.DataFrame,
+    lags: tuple[int, ...] = (1, 7, 14, 30),
+) -> pd.DataFrame:
+    """
+    Add lagged columns for supertrend_trend, kdj_divergence, macd_hist,
+    and sentiment_score (lag1 and lag7 only).
+    """
+    df = df.copy()
+    # Source column for KDJ lags: output names are always kdj_divergence_lag*
+    kdj_src = "kdj_divergence" if "kdj_divergence" in df.columns else "kdj_j_divergence"
+    lag_specs: list[tuple[str, str]] = [
+        ("supertrend_trend", "supertrend_trend"),
+        (kdj_src, "kdj_divergence"),
+        ("macd_hist", "macd_hist"),
+    ]
+    for src_col, out_prefix in lag_specs:
+        if src_col not in df.columns:
+            continue
+        for k in lags:
+            df[f"{out_prefix}_lag{k}"] = df[src_col].shift(k)
+    # Sentiment: lag1 and lag7 only (previous day and previous week)
+    if "sentiment_score" in df.columns:
+        for k in (1, 7):
+            df[f"sentiment_score_lag{k}"] = df["sentiment_score"].shift(k)
+    return df
+
+
+def compute_simplified_features(
+    df: pd.DataFrame,
+    sentiment_series: pd.Series | None = None,
+) -> pd.DataFrame:
+    """
+    Compute the simplified feature set: base indicators + lags + sentiment.
+
+    Uses TechnicalIndicatorsCorrect for base indicators, then add_lag_features,
+    then merge optional sentiment. Requires OHLCV columns.
+    """
+    df = df.copy()
+    df = TechnicalIndicatorsCorrect.add_all_technical_features_correct(df)
+    df["kdj_divergence"] = df["kdj_j_divergence"]
+    # Add sentiment before lags so sentiment_score_lag1/lag7 can be created
+    if sentiment_series is not None:
+        if "ts" in df.columns:
+            date_index = pd.to_datetime(df["ts"], utc=False).dt.tz_localize(None).dt.normalize()
+        else:
+            date_index = df.index
+        sentiment_aligned = sentiment_series.reindex(date_index).fillna(0.0)
+        df["sentiment_score"] = sentiment_aligned.values
+    else:
+        df["sentiment_score"] = 0.0
+    df = create_lag_features(df)
+    return df
 
 
 class TemporalFeatureEngineer:
@@ -187,29 +286,29 @@ class TemporalFeatureEngineer:
         """
         Add features for point at idx using only data up to idx.
 
-        Args:
-            df: Full dataframe
-            idx: Index of current point
-            lookback: How many bars back to use
-
-        Returns:
-            Dict of features
+        If df already contains all SIMPLIFIED_FEATURES (e.g. from compute_simplified_features),
+        returns only those columns plus ts. Otherwise computes bar-by-bar (legacy).
         """
         _ = lookback  # reserved for future use
-
         point = df.iloc[idx]
+        ts_col = point.get("ts") if "ts" in point else point.get("date")
+
+        # Use precomputed simplified features when present (no lookahead: row at idx only)
+        if all(c in df.columns for c in SIMPLIFIED_FEATURES):
+            features = {c: point[c] for c in SIMPLIFIED_FEATURES}
+            features["ts"] = ts_col
+            return features
+
+        # Legacy bar-by-bar computation
         close_prices = df["close"].values[: idx + 1]
         high_prices = df["high"].values[: idx + 1]
         low_prices = df["low"].values[: idx + 1]
-        _ = (high_prices, low_prices)  # placeholders for future features
+        _ = (high_prices, low_prices)
         volume_data = df["volume"].values[: idx + 1]
         _ = volume_data
 
         sma_20 = TemporalFeatureEngineer.compute_sma(close_prices, 20, idx)
 
-        # Handle both 'ts' and 'date' column names
-        ts_col = point.get("ts") if "ts" in point else point.get("date")
-        
         features = {
             "ts": ts_col,
             "close": point["close"],
@@ -227,7 +326,6 @@ class TemporalFeatureEngineer:
             ),
         }
 
-        # Add SuperTrend AI/basic features (temporal-safe)
         supertrend_features = TemporalFeatureEngineer.compute_supertrend_features(df, idx)
         features.update(supertrend_features)
 
@@ -237,22 +335,29 @@ class TemporalFeatureEngineer:
 def prepare_training_data_temporal(
     df: pd.DataFrame,
     horizon_days: int = 1,
+    use_simplified_features: bool = True,
 ) -> tuple[pd.DataFrame, pd.Series]:
     """
     Prepare training data with NO lookahead bias.
 
-    Features are computed bar-by-bar using only historical data.
+    If use_simplified_features is True (default), runs compute_simplified_features
+    first and uses start_idx=200 (sma_200 + lags). Otherwise uses legacy bar-by-bar
+    and start_idx=50.
     """
-    engineer = TemporalFeatureEngineer()
+    if use_simplified_features and not all(c in df.columns for c in SIMPLIFIED_FEATURES):
+        df = compute_simplified_features(df)
 
+    engineer = TemporalFeatureEngineer()
     X_list: list[dict] = []
     y_list: list[str] = []
 
-    # Convert horizon_days to int for pandas operations
     horizon_days_int = max(1, int(np.ceil(horizon_days)))
     forward_returns = df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int)
 
-    for idx in range(50, len(df) - horizon_days_int):
+    # Simplified pipeline requires 200+ bars (sma_200 and lags)
+    start_idx = 200 if all(c in df.columns for c in SIMPLIFIED_FEATURES) else 50
+
+    for idx in range(start_idx, len(df) - horizon_days_int):
         features = engineer.add_features_to_point(df, idx, lookback=50)
         actual_return = forward_returns.iloc[idx]
 

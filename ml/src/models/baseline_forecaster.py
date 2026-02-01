@@ -12,7 +12,11 @@ from sklearn.preprocessing import RobustScaler
 from config.settings import settings
 from src.data.data_validator import OHLCValidator, ValidationResult
 from src.features.adaptive_thresholds import AdaptiveThresholds
-from src.features.temporal_indicators import TemporalFeatureEngineer
+from src.features.temporal_indicators import (
+    SIMPLIFIED_FEATURES,
+    TemporalFeatureEngineer,
+    compute_simplified_features,
+)
 from src.monitoring.confidence_calibrator import ConfidenceCalibrator
 
 logger = logging.getLogger(__name__)
@@ -44,11 +48,15 @@ class BaselineForecaster:
         self,
         df: pd.DataFrame,
         horizon_days: int = 1,
+        sentiment_series: pd.Series | None = None,
     ) -> tuple[pd.DataFrame, pd.Series]:
         """
         Prepare training data with adaptive thresholds and temporal features.
+        Uses simplified feature set (compute_simplified_features) and start_idx=200.
+        sentiment_series: optional daily sentiment (index=date) to merge; if None, sentiment_score=0.
         """
         df = df.copy()
+        df = compute_simplified_features(df, sentiment_series=sentiment_series)
 
         bearish_thresh, bullish_thresh = AdaptiveThresholds.compute_thresholds_horizon(
             df, horizon_days=horizon_days
@@ -60,7 +68,6 @@ class BaselineForecaster:
             bullish_thresh,
         )
 
-        # Convert horizon_days to int for pandas operations (pct_change and shift require integers)
         horizon_days_int = max(1, int(np.ceil(horizon_days)))
         forward_returns = df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int)
 
@@ -70,18 +77,9 @@ class BaselineForecaster:
 
         valid_samples = 0
         nan_returns = 0
-        
-        # Adaptive offset: use 50 if we have enough data, otherwise use minimum needed (26 for MACD)
-        # For very small windows, we can start even earlier (14 for RSI)
-        min_offset = 50  # For SMA_50
-        if len(df) < 100:
-            min_offset = 26  # For MACD
-        if len(df) < 60:
-            min_offset = 14  # For RSI_14
-        
-        start_idx = max(min_offset, 14)  # At least 14 for RSI
-        # Convert horizon_days to int (round up to ensure we have enough lookahead)
-        horizon_days_int = max(1, int(np.ceil(horizon_days)))
+
+        # Simplified pipeline requires 200+ bars (sma_200 and lags)
+        start_idx = 200
         end_idx = len(df) - horizon_days_int
         
         logger.debug(

@@ -15,6 +15,32 @@ import { getProviderRouter, getAlpacaClient } from "../_shared/providers/factory
 // Cache staleness threshold (15 minutes)
 const CACHE_TTL_MS = 15 * 60 * 1000;
 
+/** Fetch FinViz news with links from ML backend (same source as stock_sentiment). */
+async function fetchFinvizNewsFromBackend(symbol: string, limit: number): Promise<NewsItem[]> {
+  const backendUrl = Deno.env.get("ML_BACKEND_URL") || "http://localhost:8000";
+  const url = `${backendUrl}/api/v1/news/sentiment?symbol=${encodeURIComponent(symbol)}&limit=${limit}`;
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const raw = (data?.items || []) as Array<{ id?: string; title?: string; url?: string; source?: string; publishedAt?: string; summary?: string }>;
+    return raw.map((it) => ({
+      id: it.id || `finviz-${symbol}-${Math.random().toString(36).slice(2, 9)}`,
+      title: it.title || "",
+      source: it.source || "FinViz",
+      url: it.url && it.url !== "#" ? it.url : "",
+      publishedAt: it.publishedAt || new Date().toISOString(),
+      summary: it.summary,
+    }));
+  } catch (e) {
+    console.warn("FinViz news from ML backend failed (will use Alpaca only):", e);
+    return [];
+  }
+}
+
 interface NewsResponse {
   symbol?: string;
   symbols?: string[];
@@ -142,12 +168,14 @@ serve(async (req: Request): Promise<Response> => {
         }
       }
 
-      // Fetch fresh company news via ProviderRouter (or Alpaca for date range)
-      console.log(`Cache miss for ${symbol} news, fetching via ProviderRouter`);
+      // Fetch fresh company news: FinViz (with links) from ML backend, then Alpaca
+      console.log(`Cache miss for ${symbol} news, fetching FinViz + ProviderRouter`);
       try {
-        let routerNews;
+        // FinViz articles (same source as stock_sentiment) with article links for the news tab
+        const finvizItems = await fetchFinvizNewsFromBackend(symbol, limit);
+        const finvizWithUrl = finvizItems.filter((it) => it.url && it.url !== "#");
 
-        // Use Alpaca directly for date range filtering
+        let routerNews: Array<{ id: string; headline: string; source: string; url: string; publishedAt: number; summary?: string; sentiment?: string }>;
         if (from || to) {
           const alpaca = getAlpacaClient();
           if (alpaca) {
@@ -161,8 +189,7 @@ serve(async (req: Request): Promise<Response> => {
           routerNews = await router.getNews({ symbol, limit });
         }
 
-        // Convert router NewsItem format to response format
-        items = routerNews.map((item) => ({
+        const alpacaItems: NewsItem[] = routerNews.map((item) => ({
           id: item.id,
           title: item.headline,
           source: item.source,
@@ -171,6 +198,9 @@ serve(async (req: Request): Promise<Response> => {
           summary: item.summary,
           sentiment: item.sentiment,
         }));
+
+        // Merge: FinViz first (linked articles), then Alpaca; cap total
+        items = [...finvizWithUrl, ...alpacaItems].slice(0, limit);
 
         // Cache results if we have a symbol_id
         if (symbolId && items.length > 0) {

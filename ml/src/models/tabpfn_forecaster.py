@@ -20,7 +20,11 @@ from sklearn.preprocessing import StandardScaler
 
 from config.settings import settings
 from src.features.adaptive_thresholds import AdaptiveThresholds
-from src.features.temporal_indicators import TemporalFeatureEngineer
+from src.features.temporal_indicators import (
+    SIMPLIFIED_FEATURES,
+    TemporalFeatureEngineer,
+    compute_simplified_features,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +85,7 @@ class TabPFNForecaster:
         self,
         df: pd.DataFrame,
         horizon_days: int = 1,
+        sentiment_series: pd.Series | None = None,
     ) -> Tuple[pd.DataFrame, pd.Series]:
         """
         Prepare training data with adaptive thresholds.
@@ -88,11 +93,13 @@ class TabPFNForecaster:
         Args:
             df: OHLC DataFrame with technical indicators
             horizon_days: Forecast horizon in trading days
+            sentiment_series: optional daily sentiment (index=date) to merge; if None, sentiment_score=0.
 
         Returns:
             (X, y): Features and target returns
         """
         df = df.copy()
+        df = compute_simplified_features(df, sentiment_series=sentiment_series)
 
         # Get adaptive thresholds
         self._bearish_thresh, self._bullish_thresh = AdaptiveThresholds.compute_thresholds_horizon(
@@ -103,18 +110,15 @@ class TabPFNForecaster:
             f"bearish={self._bearish_thresh:.4f}, bullish={self._bullish_thresh:.4f}"
         )
 
-        # Calculate forward returns
         horizon_days_int = max(1, int(np.ceil(horizon_days)))
         forward_returns = df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int)
 
-        # Build features using TemporalFeatureEngineer
         engineer = TemporalFeatureEngineer()
         X_list: list[Dict[str, Any]] = []
         y_list: list[float] = []
 
-        # Adaptive offset for technical indicators
-        min_offset = 50 if len(df) >= 100 else (26 if len(df) >= 60 else 14)
-        start_idx = max(min_offset, 14)
+        # Simplified pipeline requires 200+ bars (sma_200 and lags)
+        start_idx = 200
         end_idx = len(df) - horizon_days_int
 
         logger.debug(

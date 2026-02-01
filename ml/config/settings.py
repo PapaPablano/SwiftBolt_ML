@@ -110,13 +110,20 @@ class Settings(BaseSettings):
         "MU",
     ]
 
-    # Job Configuration
+    # Job Configuration (full universe for TabPFN + Ensemble coverage; uses Supabase/Postgres real data)
     symbols_to_process: list[str] = [
         "AAPL",
+        "AMD",
+        "CRWD",
+        "GOOG",
+        "GOOGL",
+        "HL",
+        "META",
+        "MSFT",
+        "MU",
+        "NVDA",
         "SPY",
         "TSLA",
-        "NVDA",
-        "MSFT",
     ]
     batch_size: int = 10
 

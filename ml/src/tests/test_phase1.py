@@ -380,14 +380,55 @@ class TestTemporalIndicators(unittest.TestCase):
         self.assertIn("close", features)
 
     def test_prepare_training_data_temporal(self):
-        """Test temporal training data preparation."""
+        """Test temporal training data preparation (legacy bar-by-bar; 100 rows)."""
         from src.features.temporal_indicators import prepare_training_data_temporal
 
-        X, y = prepare_training_data_temporal(self.ohlcv_df, horizon_days=1)
+        X, y = prepare_training_data_temporal(
+            self.ohlcv_df, horizon_days=1, use_simplified_features=False
+        )
 
         self.assertGreater(len(X), 0)
         self.assertEqual(len(X), len(y))
         self.assertTrue(all(label in ["bullish", "neutral", "bearish"] for label in y))
+
+    def test_simplified_features_and_temporal_training(self):
+        """Test simplified feature set: compute_simplified_features, then prepare_training_data_temporal."""
+        from src.features.temporal_indicators import (
+            SIMPLIFIED_FEATURES,
+            TemporalFeatureEngineer,
+            compute_simplified_features,
+            prepare_training_data_temporal,
+        )
+
+        n_samples = 250
+        np.random.seed(42)
+        dates = pd.date_range(start="2024-01-01", periods=n_samples, freq="D")
+        prices = 100 + np.random.randn(n_samples).cumsum() * 0.5
+        df = pd.DataFrame(
+            {
+                "ts": dates,
+                "open": prices * (1 + np.random.randn(n_samples) * 0.01),
+                "high": prices * (1 + np.abs(np.random.randn(n_samples) * 0.02)),
+                "low": prices * (1 - np.abs(np.random.randn(n_samples) * 0.02)),
+                "close": prices,
+                "volume": np.random.randint(1_000_000, 10_000_000, n_samples),
+            }
+        )
+        df = compute_simplified_features(df)
+        self.assertTrue(
+            all(c in df.columns for c in SIMPLIFIED_FEATURES),
+            msg=f"Missing: {[c for c in SIMPLIFIED_FEATURES if c not in df.columns]}",
+        )
+        engineer = TemporalFeatureEngineer()
+        features = engineer.add_features_to_point(df, idx=200, lookback=50)
+        self.assertEqual(set(features.keys()), set(SIMPLIFIED_FEATURES) | {"ts"})
+        X, y = prepare_training_data_temporal(df, horizon_days=1, use_simplified_features=True)
+        self.assertGreater(len(X), 0)
+        self.assertEqual(len(X), len(y))
+        self.assertTrue(
+            set(SIMPLIFIED_FEATURES) | {"ts"} >= set(X.columns),
+            msg="X should have SIMPLIFIED_FEATURES and ts",
+        )
 
 
 class TestAdaptiveThresholds(unittest.TestCase):

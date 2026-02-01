@@ -17,6 +17,7 @@ from api.routers import (
     greeks_surface,
     model_training,
     multi_leg,
+    news_sentiment,
     options,
     portfolio,
     ranking,
@@ -63,6 +64,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(technical_indicators.router, prefix="/api/v1", tags=["Technical Indicators"])
+app.include_router(news_sentiment.router, prefix="/api/v1", tags=["News Sentiment"])
 app.include_router(support_resistance.router, prefix="/api/v1", tags=["Support & Resistance"])
 app.include_router(backtest.router, prefix="/api/v1", tags=["Backtesting"])
 app.include_router(walk_forward.router, prefix="/api/v1", tags=["Walk-Forward Optimization"])

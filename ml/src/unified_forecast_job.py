@@ -21,7 +21,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -345,6 +345,10 @@ class UnifiedForecastProcessor:
                         "20D": 20,
                     }.get(horizon_key, 1)
                     
+                    # Initialize before model loop (used by _save_model_forecast when model_type=all)
+                    quality_score = None
+                    quality_issues: list = []
+
                     # Determine which model(s) to use based on model_type setting
                     models_to_run = []
                     if self.model_type == 'xgboost':
@@ -383,8 +387,8 @@ class UnifiedForecastProcessor:
                                     f"({model_pred.get('confidence', 0):.0%} conf)"
                                 )
 
-                                # If running 'all', save TabPFN forecast separately
-                                if self.model_type == 'all' and model_name != models_to_run[0]:
+                                # If running 'all', save TabPFN forecast separately (full coverage)
+                                if self.model_type == 'all':
                                     self._save_model_forecast(
                                         symbol_id, horizon_key, model_pred, 'tabpfn',
                                         df, supertrend_data, quality_score, quality_issues
@@ -439,8 +443,8 @@ class UnifiedForecastProcessor:
                                             f"n_models={model_pred.get('n_models', 0)})"
                                         )
 
-                                        # If running 'all', save XGBoost forecast separately
-                                        if self.model_type == 'all' and model_name != models_to_run[0]:
+                                        # If running 'all', save Ensemble forecast separately (full coverage)
+                                        if self.model_type == 'all':
                                             self._save_model_forecast(
                                                 symbol_id, horizon_key, model_pred, 'xgboost',
                                                 df, supertrend_data, quality_score, quality_issues
@@ -524,12 +528,15 @@ class UnifiedForecastProcessor:
                     raw_confidence = forecast["confidence"]
                     adjusted_confidence = raw_confidence
                     
-                    if self.calibrator.is_fitted:
-                        adjusted_confidence = self.calibrator.calibrate(adjusted_confidence)
-                    
-                    adjusted_confidence *= data_quality_multiplier
-                    adjusted_confidence *= sample_size_multiplier
-                    adjusted_confidence = float(np.clip(adjusted_confidence, 0.40, 0.95))
+                    if raw_confidence >= 0.75:
+                        # Trust the model when highly confident; skip crushing
+                        adjusted_confidence = float(np.clip(raw_confidence, 0.50, 0.95))
+                    else:
+                        if self.calibrator.is_fitted:
+                            adjusted_confidence = self.calibrator.calibrate(adjusted_confidence)
+                        adjusted_confidence *= data_quality_multiplier
+                        adjusted_confidence *= sample_size_multiplier
+                        adjusted_confidence = float(np.clip(adjusted_confidence, 0.45, 0.95))
                     
                     forecast["confidence"] = adjusted_confidence
                     forecast["raw_confidence"] = raw_confidence
@@ -585,6 +592,8 @@ class UnifiedForecastProcessor:
                             "threshold": settings.confidence_threshold,
                             "quality": confidence_quality,
                         }
+                        # Persist raw (model) confidence before overwriting with calibrated
+                        synthesis["raw_confidence"] = synthesis.get("confidence")
                         synthesis["confidence"] = forecast["confidence"]
 
                         current_price_value = synthesis.get("current_price", current_price)
@@ -648,27 +657,33 @@ class UnifiedForecastProcessor:
                     result['forecasts'][horizon] = forecast
                     
                     # === STEP 6: Write to database ===
-                    db.upsert_forecast(
-                        symbol_id=symbol_id,
-                        horizon=forecast["horizon"],
-                        overall_label=forecast["label"],
-                        confidence=forecast["confidence"],
-                        points=forecast["points"],
-                        forecast_return=forecast.get("forecast_return"),
-                        supertrend_data=supertrend_data,
-                        quality_score=quality_score,
-                        quality_issues=quality_issues,
-                        synthesis_data=forecast.get("synthesis"),
-                        timeframe="d1",
-                        model_type=current_model_type,
-                    )
-                    self.metrics['db_writes'] += 1
-                    
-                    logger.info(
-                        f"Saved {horizon_key} forecast for {symbol}: "
-                        f"{forecast['label'].upper()} "
-                        f"({forecast['confidence']:.0%} conf, source={weight_source})"
-                    )
+                    # When model_type=='all', both models were already saved in the loop; skip main write to avoid duplicate
+                    if self.model_type != 'all':
+                        db.upsert_forecast(
+                            symbol_id=symbol_id,
+                            horizon=forecast["horizon"],
+                            overall_label=forecast["label"],
+                            confidence=forecast["confidence"],
+                            points=forecast["points"],
+                            forecast_return=forecast.get("forecast_return"),
+                            supertrend_data=supertrend_data,
+                            quality_score=quality_score,
+                            quality_issues=quality_issues,
+                            synthesis_data=forecast.get("synthesis"),
+                            timeframe="d1",
+                            model_type=current_model_type,
+                        )
+                        self.metrics['db_writes'] += 1
+                        logger.info(
+                            f"Saved {horizon_key} forecast for {symbol}: "
+                            f"{forecast['label'].upper()} "
+                            f"({forecast['confidence']:.0%} conf, source={weight_source})"
+                        )
+                    else:
+                        self.metrics['db_writes'] += 2  # Both models saved in loop
+                        logger.info(
+                            f"Saved both forecasts for {symbol} {horizon_key}: tabpfn + ensemble"
+                        )
                     
                 except Exception as e:
                     logger.error(f"Error generating {horizon_key} forecast for {symbol}: {e}")
@@ -960,8 +975,44 @@ def main():
                         choices=['xgboost', 'tabpfn', 'all'],
                         default='xgboost',
                         help='Model type to use: xgboost (default), tabpfn, or all (run both for comparison)')
+    parser.add_argument('--horizons',
+                        help='Comma-separated horizons (e.g. 1D,5D,10D,20D). Default: from settings.')
+    parser.add_argument('--skip-sentiment-backfill',
+                        action='store_true',
+                        help='Skip automatic sentiment backfill before forecasting')
     
     args = parser.parse_args()
+    
+    # Resolve symbol list for pre-run backfill
+    if args.symbol:
+        symbols_for_backfill = [args.symbol.strip().upper()]
+    elif args.symbols:
+        symbols_for_backfill = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+    else:
+        try:
+            from src.scripts.universe_utils import resolve_symbol_list
+            symbols_for_backfill = resolve_symbol_list()
+        except Exception:
+            symbols_for_backfill = []
+    
+    # Pre-run: sentiment backfill (7 days) for symbols to be processed
+    if not getattr(args, 'skip_sentiment_backfill', False) and symbols_for_backfill:
+        try:
+            from backfill_sentiment import run_sentiment_backfill
+
+            logger.info("Running sentiment backfill (7 days) before forecasts...")
+            written, err = run_sentiment_backfill(
+                symbols=symbols_for_backfill,
+                days=7,
+                delay=0.5,
+                quiet=True,
+            )
+            if err:
+                logger.warning("Sentiment backfill skipped: %s", err)
+            else:
+                logger.info("Sentiment backfill done: %d rows written", written)
+        except Exception as e:
+            logger.warning("Sentiment backfill skipped: %s", e)
     
     # Initialize Redis cache if available
     redis_cache = None
@@ -990,10 +1041,19 @@ def main():
     logger.info("Starting Unified ML Forecasting Job")
     logger.info("=" * 80)
     
+    # Parse horizons if provided
+    horizons = None
+    if getattr(args, 'horizons', None):
+        horizons = [h.strip().upper() for h in args.horizons.split(',') if h.strip()]
+
     # Process
     if args.symbol:
         logger.info(f"Processing single symbol: {args.symbol}")
-        result = processor.process_symbol(args.symbol, force_refresh=args.force_refresh)
+        result = processor.process_symbol(
+            args.symbol,
+            horizons=horizons,
+            force_refresh=args.force_refresh,
+        )
         logger.info(f"\nResult: {json.dumps(result, indent=2, default=str)}")
     elif args.symbols:
         symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
