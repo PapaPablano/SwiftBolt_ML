@@ -1,0 +1,1681 @@
+====================================================================================================
+MARKET REGIME-AWARE BACKTESTING - IMPROVED VERSION
+Testing 10 stocks across 4 market regimes with enhanced validation
+====================================================================================================
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+REGIME: Bear Market Crash
+Period: 2022-03-01 to 2022-10-31 | S&P 500: -18.1%
+Description: High volatility, panic selling, rate hikes
+Threshold: 2.0% (regime-adjusted)
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+LOW-VOLATILITY DEFENSIVE STOCKS (horizon=5d, threshold=1.5%):
+
+  PG     | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 168
+Final X rows: 64
+Final y rows: 64
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  vix_proxy_atr                           : 0.514
+  atr_normalized                          : 0.514
+  historical_volatility_60d               : 0.491
+  macd_hist_lag30                         : 0.460
+  atr_14                                  : 0.414
+  close                                   : 0.411
+  supertrend_trend_lag30                  : 0.333
+  macd                                    : 0.327
+  volume                                  : 0.325
+  roc_20d                                 : 0.318
+
+✅ Max correlation 0.514 looks reasonable
+
+Target distribution:
+  Positive (bullish): 27 (42.2%)
+  Negative (bearish): 37 (57.8%)
+
+NaN check:
+  NaN in X: 40
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+❌ Failed
+
+  KO     | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 168
+Final X rows: 64
+Final y rows: 64
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  supertrend_trend_lag30                  : 0.676
+  macd_hist_lag30                         : 0.427
+  sma_200                                 : 0.427
+  close                                   : 0.387
+  bb_upper                                : 0.378
+  vix_proxy_atr                           : 0.364
+  atr_normalized                          : 0.364
+  volume                                  : 0.360
+  historical_volatility_60d               : 0.356
+  sma_50                                  : 0.332
+
+⚠️  WARNING: Max correlation 0.676 suggests possible leakage!
+
+Target distribution:
+  Positive (bullish): 26 (40.6%)
+  Negative (bearish): 38 (59.4%)
+
+NaN check:
+  NaN in X: 42
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+Dropped 4 high-correlation features: ['bb_lower', 'bb_upper', 'supertrend_trend_lag30', 'historical_volatility_60d']
+❌ Failed
+
+  JNJ    | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 168
+Final X rows: 45
+Final y rows: 45
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  close                                   : 0.589
+  sma_200                                 : 0.531
+  bb_lower                                : 0.497
+  volume                                  : 0.494
+  volume_ratio                            : 0.488
+  sma_50                                  : 0.479
+  vix_proxy_atr                           : 0.466
+  atr_normalized                          : 0.466
+  bb_upper                                : 0.413
+  macd_hist_lag14                         : 0.385
+
+⚠️  CAUTION: Max correlation 0.589 is borderline high
+
+Target distribution:
+  Positive (bullish): 21 (46.7%)
+  Negative (bearish): 24 (53.3%)
+
+NaN check:
+  NaN in X: 30
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+❌ Failed
+
+  MRK    | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 168
+Final X rows: 60
+Final y rows: 60
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  bb_lower                                : 0.601
+  macd_signal                             : 0.520
+  volatility_change                       : 0.511
+  volatility_percentile                   : 0.470
+  ts                                      : 0.456
+  volume_ratio                            : 0.421
+  supertrend_trend_lag1                   : 0.399
+  macd                                    : 0.397
+  close                                   : 0.381
+  supertrend_trend_lag14                  : 0.376
+
+⚠️  CAUTION: Max correlation 0.601 is borderline high
+
+Target distribution:
+  Positive (bullish): 33 (55.0%)
+  Negative (bearish): 27 (45.0%)
+
+NaN check:
+  NaN in X: 31
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+Dropped 4 high-correlation features: ['bb_lower', 'bb_upper', 'supertrend_trend_lag30', 'historical_volatility_60d']
+❌ Failed
+
+MID-RANGE QUALITY GROWTH (horizon=5d, threshold=1.5%):
+
+  AAPL   | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 169
+Final X rows: 79
+Final y rows: 79
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  bb_lower                                : 0.622
+  supertrend_trend_lag30                  : 0.569
+  historical_volatility_60d               : 0.541
+  sma_50                                  : 0.522
+  bb_upper                                : 0.483
+  close                                   : 0.376
+  macd_hist_lag30                         : 0.366
+  sma_200                                 : 0.356
+  macd_hist_lag14                         : 0.353
+  bb_width                                : 0.347
+
+⚠️  CAUTION: Max correlation 0.622 is borderline high
+
+Target distribution:
+  Positive (bullish): 43 (54.4%)
+  Negative (bearish): 36 (45.6%)
+
+NaN check:
+  NaN in X: 43
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+Dropped 4 high-correlation features: ['bb_lower', 'bb_upper', 'supertrend_trend_lag30', 'historical_volatility_60d']
+❌ Failed
+
+  MSFT   | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 169
+Final X rows: 86
+Final y rows: 86
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  vix_proxy_atr                           : 0.392
+  atr_normalized                          : 0.392
+  historical_volatility_60d               : 0.367
+  kdj_divergence_lag14                    : 0.355
+  volume                                  : 0.354
+  atr_14                                  : 0.354
+  supertrend_trend_lag30                  : 0.319
+  close                                   : 0.261
+  kdj_divergence_lag7                     : 0.244
+  bb_lower                                : 0.229
+
+✅ Max correlation 0.392 looks reasonable
+
+Target distribution:
+  Positive (bullish): 40 (46.5%)
+  Negative (bearish): 46 (53.5%)
+
+NaN check:
+  NaN in X: 42
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+❌ Failed
+
+  AMGN   | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 169
+Final X rows: 52
+Final y rows: 52
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  sma_50                                  : 0.660
+  historical_volatility_20d               : 0.651
+  bb_lower                                : 0.646
+  historical_volatility_60d               : 0.622
+  volatility_regime                       : 0.597
+  sma_200                                 : 0.562
+  volatility_percentile                   : 0.492
+  macd_signal                             : 0.469
+  bb_width                                : 0.464
+  supertrend_trend_lag1                   : 0.456
+
+⚠️  WARNING: Max correlation 0.660 suggests possible leakage!
+
+Target distribution:
+  Positive (bullish): 30 (57.7%)
+  Negative (bearish): 22 (42.3%)
+
+NaN check:
+  NaN in X: 39
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+Dropped 4 high-correlation features: ['bb_lower', 'bb_upper', 'supertrend_trend_lag30', 'historical_volatility_60d']
+❌ Failed
+
+  BRK.B  | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 168
+Final X rows: 67
+Final y rows: 67
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  historical_volatility_60d               : 0.525
+  bb_lower                                : 0.509
+  close                                   : 0.443
+  kdj_divergence_lag30                    : 0.407
+  supertrend_trend_lag14                  : 0.383
+  bb_upper                                : 0.377
+  kdj_divergence_lag14                    : 0.369
+  supertrend_trend_lag1                   : 0.260
+  macd_signal                             : 0.258
+  supertrend_trend                        : 0.251
+
+✅ Max correlation 0.525 looks reasonable
+
+Target distribution:
+  Positive (bullish): 35 (52.2%)
+  Negative (bearish): 32 (47.8%)
+
+NaN check:
+  NaN in X: 30
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+❌ Failed
+
+HIGH-VOLATILITY SEMICONDUCTORS (horizon=10d, threshold=2.0%):
+
+  NVDA   | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 169
+Final X rows: 97
+Final y rows: 97
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  supertrend_trend_lag14                  : 0.460
+  volatility_percentile                   : 0.425
+  supertrend_trend_lag7                   : 0.348
+  macd_signal                             : 0.322
+  kdj_divergence_lag7                     : 0.307
+  macd_hist_lag14                         : 0.307
+  atr_normalized                          : 0.298
+  vix_proxy_atr                           : 0.298
+  historical_volatility_60d               : 0.280
+  ts                                      : 0.254
+
+✅ Max correlation 0.460 looks reasonable
+
+Target distribution:
+  Positive (bullish): 38 (39.2%)
+  Negative (bearish): 59 (60.8%)
+
+NaN check:
+  NaN in X: 52
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+❌ Failed
+
+  MU     | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 169
+Final X rows: 85
+Final y rows: 85
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  macd_signal                             : 0.666
+  macd_hist_lag14                         : 0.495
+  macd                                    : 0.489
+  supertrend_trend_lag14                  : 0.480
+  bb_lower                                : 0.445
+  adx                                     : 0.430
+  supertrend_trend_lag7                   : 0.358
+  close                                   : 0.333
+  volume                                  : 0.313
+  bb_width                                : 0.302
+
+⚠️  WARNING: Max correlation 0.666 suggests possible leakage!
+
+Target distribution:
+  Positive (bullish): 37 (43.5%)
+  Negative (bearish): 48 (56.5%)
+
+NaN check:
+  NaN in X: 39
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+Dropped 4 high-correlation features: ['bb_lower', 'bb_upper', 'supertrend_trend_lag30', 'historical_volatility_60d']
+❌ Failed
+
+  ALB    | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 168
+Final X rows: 95
+Final y rows: 95
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  supertrend_trend_lag14                  : 0.678
+  macd_hist_lag14                         : 0.509
+  volatility_percentile                   : 0.495
+  bb_upper                                : 0.479
+  atr_14                                  : 0.447
+  bb_lower                                : 0.386
+  historical_volatility_20d               : 0.366
+  volatility_regime                       : 0.362
+  close                                   : 0.361
+  macd_signal                             : 0.343
+
+⚠️  WARNING: Max correlation 0.678 suggests possible leakage!
+
+Target distribution:
+  Positive (bullish): 51 (53.7%)
+  Negative (bearish): 44 (46.3%)
+
+NaN check:
+  NaN in X: 49
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+Dropped 4 high-correlation features: ['bb_lower', 'bb_upper', 'supertrend_trend_lag30', 'historical_volatility_60d']
+❌ Failed
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+REGIME: Post-Crash Recovery
+Period: 2022-11-01 to 2023-12-31 | S&P 500: +26.3%
+Description: V-shaped recovery, mean reversion
+Threshold: 1.6% (regime-adjusted)
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+LOW-VOLATILITY DEFENSIVE STOCKS (horizon=5d, threshold=1.5%):
+
+  PG     | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 292
+Final X rows: 91
+Final y rows: 91
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  supertrend_trend_lag30                  : 0.647
+  bb_lower                                : 0.549
+  macd_hist_lag30                         : 0.425
+  bb_width_pct                            : 0.425
+  sma_50                                  : 0.424
+  sma_200                                 : 0.399
+  close                                   : 0.394
+  bb_upper                                : 0.374
+  macd_hist                               : 0.325
+  macd_hist_lag1                          : 0.315
+
+⚠️  CAUTION: Max correlation 0.647 is borderline high
+
+Target distribution:
+  Positive (bullish): 43 (47.3%)
+  Negative (bearish): 48 (52.7%)
+
+NaN check:
+  NaN in X: 22
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+Dropped 4 high-correlation features: ['bb_lower', 'bb_upper', 'supertrend_trend_lag30', 'historical_volatility_60d']
+❌ Failed
+
+  KO     | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 292
+Final X rows: 76
+Final y rows: 76
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  supertrend_trend_lag30                  : 0.527
+  historical_volatility_20d               : 0.523
+  volatility_percentile                   : 0.507
+  vix_proxy_atr                           : 0.478
+  atr_normalized                          : 0.478
+  atr_14                                  : 0.455
+  historical_volatility_60d               : 0.451
+  bb_lower                                : 0.405
+  sma_200                                 : 0.388
+  bb_upper                                : 0.382
+
+✅ Max correlation 0.527 looks reasonable
+
+Target distribution:
+  Positive (bullish): 37 (48.7%)
+  Negative (bearish): 39 (51.3%)
+
+NaN check:
+  NaN in X: 17
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+❌ Failed
+
+  JNJ    | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 292
+Final X rows: 122
+Final y rows: 122
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  bb_lower                                : 0.417
+  sma_50                                  : 0.416
+  close                                   : 0.388
+  bb_upper                                : 0.357
+  sma_200                                 : 0.265
+  macd_hist_lag30                         : 0.258
+  supertrend_trend_lag7                   : 0.223
+  atr_14                                  : 0.203
+  historical_volatility_60d               : 0.193
+  volume                                  : 0.176
+
+✅ Max correlation 0.417 looks reasonable
+
+Target distribution:
+  Positive (bullish): 50 (41.0%)
+  Negative (bearish): 72 (59.0%)
+
+NaN check:
+  NaN in X: 32
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+✅ Accuracy: 46.0% ± 18.5% | Test: 50 bars | Windows: 5
+
+  MRK    | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 292
+Final X rows: 111
+Final y rows: 111
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  bb_lower                                : 0.422
+  close                                   : 0.347
+  adx                                     : 0.345
+  supertrend_trend_lag7                   : 0.328
+  macd_signal                             : 0.285
+  bb_upper                                : 0.250
+  sma_200                                 : 0.240
+  sma_50                                  : 0.236
+  supertrend_trend_lag1                   : 0.235
+  bb_width                                : 0.224
+
+✅ Max correlation 0.422 looks reasonable
+
+Target distribution:
+  Positive (bullish): 53 (47.7%)
+  Negative (bearish): 58 (52.3%)
+
+NaN check:
+  NaN in X: 37
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+❌ Failed
+
+MID-RANGE QUALITY GROWTH (horizon=5d, threshold=1.5%):
+
+  AAPL   | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 292
+Final X rows: 148
+Final y rows: 148
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  close                                   : 0.209
+  bb_upper                                : 0.183
+  bb_lower                                : 0.179
+  sma_50                                  : 0.176
+  macd_hist_lag7                          : 0.168
+  adx                                     : 0.164
+  volatility_percentile                   : 0.159
+  atr_14                                  : 0.139
+  sma_200                                 : 0.116
+  ts                                      : 0.112
+
+✅ Max correlation 0.209 looks reasonable
+
+Target distribution:
+  Positive (bullish): 101 (68.2%)
+  Negative (bearish): 47 (31.8%)
+
+NaN check:
+  NaN in X: 43
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+✅ Accuracy: 45.7% ± 23.2% | Test: 70 bars | Windows: 7
+
+  MSFT   | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 292
+Final X rows: 136
+Final y rows: 136
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  atr_14                                  : 0.356
+  supertrend_trend_lag7                   : 0.311
+  bb_upper                                : 0.273
+  close                                   : 0.263
+  macd_hist_lag30                         : 0.261
+  bb_lower                                : 0.246
+  sma_50                                  : 0.231
+  macd_signal                             : 0.219
+  macd_hist_lag7                          : 0.216
+  supertrend_trend_lag1                   : 0.200
+
+✅ Max correlation 0.356 looks reasonable
+
+Target distribution:
+  Positive (bullish): 93 (68.4%)
+  Negative (bearish): 43 (31.6%)
+
+NaN check:
+  NaN in X: 41
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+✅ Accuracy: 43.3% ± 29.8% | Test: 60 bars | Windows: 6
+
+  AMGN   | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 292
+Final X rows: 141
+Final y rows: 141
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  bb_width_pct                            : 0.433
+  sma_200                                 : 0.417
+  bb_width                                : 0.399
+  ts                                      : 0.386
+  adx                                     : 0.382
+  kdj_divergence_lag7                     : 0.211
+  bb_upper                                : 0.187
+  kdj_divergence_lag1                     : 0.171
+  kdj_divergence_lag14                    : 0.162
+  sma_50                                  : 0.157
+
+✅ Max correlation 0.433 looks reasonable
+
+Target distribution:
+  Positive (bullish): 69 (48.9%)
+  Negative (bearish): 72 (51.1%)
+
+NaN check:
+  NaN in X: 43
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+✅ Accuracy: 55.0% ± 20.6% | Test: 60 bars | Windows: 6
+
+  BRK.B  | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 292
+Final X rows: 93
+Final y rows: 93
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  adx                                     : 0.367
+  historical_volatility_20d               : 0.334
+  volatility_percentile                   : 0.332
+  close                                   : 0.311
+  bb_upper                                : 0.292
+  volatility_regime                       : 0.285
+  volatility_change                       : 0.275
+  bb_lower                                : 0.270
+  sma_50                                  : 0.231
+  sma_200                                 : 0.203
+
+✅ Max correlation 0.367 looks reasonable
+
+Target distribution:
+  Positive (bullish): 58 (62.4%)
+  Negative (bearish): 35 (37.6%)
+
+NaN check:
+  NaN in X: 12
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+❌ Failed
+
+HIGH-VOLATILITY SEMICONDUCTORS (horizon=10d, threshold=2.0%):
+
+  NVDA   | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 292
+Final X rows: 202
+Final y rows: 202
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  close                                   : 0.428
+  macd_hist_lag14                         : 0.403
+  bb_upper                                : 0.369
+  sma_50                                  : 0.358
+  macd_hist_lag30                         : 0.350
+  bb_lower                                : 0.322
+  macd_hist_lag1                          : 0.315
+  atr_14                                  : 0.307
+  ts                                      : 0.291
+  macd_hist                               : 0.286
+
+✅ Max correlation 0.428 looks reasonable
+
+Target distribution:
+  Positive (bullish): 144 (71.3%)
+  Negative (bearish): 58 (28.7%)
+
+NaN check:
+  NaN in X: 50
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+✅ Accuracy: 71.8% ± 28.5% | Test: 110 bars | Windows: 11
+
+  MU     | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 292
+Final X rows: 189
+Final y rows: 189
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  macd                                    : 0.481
+  macd_signal                             : 0.454
+  roc_20d                                 : 0.403
+  macd_hist_lag7                          : 0.337
+  rsi_14                                  : 0.288
+  bb_width                                : 0.287
+  supertrend_trend                        : 0.287
+  supertrend_trend_lag1                   : 0.278
+  supertrend_trend_lag7                   : 0.273
+  historical_volatility_60d               : 0.263
+
+✅ Max correlation 0.481 looks reasonable
+
+Target distribution:
+  Positive (bullish): 107 (56.6%)
+  Negative (bearish): 82 (43.4%)
+
+NaN check:
+  NaN in X: 51
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+✅ Accuracy: 50.0% ± 24.5% | Test: 100 bars | Windows: 10
+
+  ALB    | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 292
+Final X rows: 205
+Final y rows: 205
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  historical_volatility_60d               : 0.446
+  volatility_regime                       : 0.400
+  historical_volatility_20d               : 0.326
+  bb_lower                                : 0.319
+  vix_proxy_atr                           : 0.310
+  atr_normalized                          : 0.310
+  volatility_percentile                   : 0.300
+  volume                                  : 0.287
+  sma_50                                  : 0.276
+  bb_upper                                : 0.271
+
+✅ Max correlation 0.446 looks reasonable
+
+Target distribution:
+  Positive (bullish): 78 (38.0%)
+  Negative (bearish): 127 (62.0%)
+
+NaN check:
+  NaN in X: 49
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+✅ Accuracy: 50.0% ± 24.8% | Test: 120 bars | Windows: 12
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+REGIME: Mega-Cap Bull
+Period: 2024-01-01 to 2024-12-31 | S&P 500: +25.0%
+Description: AI euphoria, low volatility
+Threshold: 1.2% (regime-adjusted)
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+LOW-VOLATILITY DEFENSIVE STOCKS (horizon=5d, threshold=1.5%):
+
+  PG     | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 251
+Final X rows: 101
+Final y rows: 101
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  close                                   : 0.469
+  macd                                    : 0.443
+  macd_signal                             : 0.428
+  roc_20d                                 : 0.381
+  bb_upper                                : 0.331
+  macd_hist_lag7                          : 0.299
+  bb_lower                                : 0.290
+  macd_hist_lag30                         : 0.257
+  volatility_percentile                   : 0.247
+  volume_ratio                            : 0.238
+
+✅ Max correlation 0.469 looks reasonable
+
+Target distribution:
+  Positive (bullish): 54 (53.5%)
+  Negative (bearish): 47 (46.5%)
+
+NaN check:
+  NaN in X: 18
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+❌ Failed
+
+  KO     | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 251
+Final X rows: 108
+Final y rows: 108
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  sma_50                                  : 0.368
+  sma_200                                 : 0.363
+  macd_hist_lag7                          : 0.317
+  bb_lower                                : 0.306
+  bb_upper                                : 0.298
+  supertrend_trend_lag7                   : 0.293
+  ts                                      : 0.274
+  historical_volatility_60d               : 0.249
+  close                                   : 0.240
+  adx                                     : 0.203
+
+✅ Max correlation 0.368 looks reasonable
+
+Target distribution:
+  Positive (bullish): 57 (52.8%)
+  Negative (bearish): 51 (47.2%)
+
+NaN check:
+  NaN in X: 23
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+❌ Failed
+
+  JNJ    | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 251
+Final X rows: 110
+Final y rows: 110
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  historical_volatility_60d               : 0.504
+  sma_50                                  : 0.451
+  sma_200                                 : 0.318
+  bb_lower                                : 0.312
+  supertrend_trend_lag30                  : 0.295
+  bb_upper                                : 0.278
+  volume                                  : 0.271
+  close                                   : 0.260
+  ts                                      : 0.228
+  macd_hist_lag14                         : 0.211
+
+✅ Max correlation 0.504 looks reasonable
+
+Target distribution:
+  Positive (bullish): 49 (44.5%)
+  Negative (bearish): 61 (55.5%)
+
+NaN check:
+  NaN in X: 44
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+❌ Failed
+
+  MRK    | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 251
+Final X rows: 134
+Final y rows: 134
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  macd_hist                               : 0.330
+  macd_hist_lag1                          : 0.318
+  supertrend_trend_lag14                  : 0.308
+  ts                                      : 0.249
+  rsi_14                                  : 0.245
+  macd_hist_lag7                          : 0.203
+  bb_width                                : 0.199
+  volatility_percentile                   : 0.195
+  roc_20d                                 : 0.192
+  roc_5d                                  : 0.187
+
+✅ Max correlation 0.330 looks reasonable
+
+Target distribution:
+  Positive (bullish): 59 (44.0%)
+  Negative (bearish): 75 (56.0%)
+
+NaN check:
+  NaN in X: 51
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+✅ Accuracy: 38.3% ± 18.6% | Test: 60 bars | Windows: 6
+
+MID-RANGE QUALITY GROWTH (horizon=5d, threshold=1.5%):
+
+  AAPL   | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 251
+Final X rows: 138
+Final y rows: 138
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  historical_volatility_60d               : 0.270
+  bb_width_pct                            : 0.241
+  volatility_regime                       : 0.216
+  volume_ratio                            : 0.155
+  volatility_change                       : 0.143
+  ts                                      : 0.143
+  macd_signal                             : 0.135
+  kdj_divergence_lag1                     : 0.134
+  macd                                    : 0.122
+  kdj_divergence_lag14                    : 0.122
+
+✅ Max correlation 0.270 looks reasonable
+
+Target distribution:
+  Positive (bullish): 94 (68.1%)
+  Negative (bearish): 44 (31.9%)
+
+NaN check:
+  NaN in X: 29
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+✅ Accuracy: 48.3% ± 26.1% | Test: 60 bars | Windows: 6
+
+  MSFT   | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 251
+Final X rows: 144
+Final y rows: 144
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  close                                   : 0.389
+  bb_lower                                : 0.358
+  bb_upper                                : 0.321
+  supertrend_trend_lag30                  : 0.308
+  macd_signal                             : 0.296
+  sma_50                                  : 0.289
+  supertrend_trend_lag7                   : 0.273
+  macd                                    : 0.271
+  vix_proxy_atr                           : 0.251
+  atr_normalized                          : 0.251
+
+✅ Max correlation 0.389 looks reasonable
+
+Target distribution:
+  Positive (bullish): 77 (53.5%)
+  Negative (bearish): 67 (46.5%)
+
+NaN check:
+  NaN in X: 26
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+✅ Accuracy: 57.1% ± 27.6% | Test: 70 bars | Windows: 7
+
+  AMGN   | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 251
+Final X rows: 131
+Final y rows: 131
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  macd_hist_lag30                         : 0.334
+  sma_200                                 : 0.320
+  ts                                      : 0.298
+  supertrend_trend_lag30                  : 0.297
+  adx                                     : 0.261
+  supertrend_trend_lag14                  : 0.236
+  sma_50                                  : 0.216
+  bb_upper                                : 0.203
+  volume                                  : 0.194
+  bb_width_pct                            : 0.189
+
+✅ Max correlation 0.334 looks reasonable
+
+Target distribution:
+  Positive (bullish): 66 (50.4%)
+  Negative (bearish): 65 (49.6%)
+
+NaN check:
+  NaN in X: 49
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+✅ Accuracy: 56.0% ± 17.4% | Test: 50 bars | Windows: 5
+
+  BRK.B  | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 251
+Final X rows: 119
+Final y rows: 119
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  roc_20d                                 : 0.471
+  macd                                    : 0.386
+  supertrend_trend_lag1                   : 0.370
+  macd_hist_lag7                          : 0.368
+  macd_hist_lag1                          : 0.337
+  supertrend_trend                        : 0.333
+  adx                                     : 0.329
+  close                                   : 0.327
+  macd_signal                             : 0.326
+  macd_hist                               : 0.288
+
+✅ Max correlation 0.471 looks reasonable
+
+Target distribution:
+  Positive (bullish): 68 (57.1%)
+  Negative (bearish): 51 (42.9%)
+
+NaN check:
+  NaN in X: 34
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+❌ Failed
+
+HIGH-VOLATILITY SEMICONDUCTORS (horizon=10d, threshold=2.0%):
+
+  NVDA   | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 250
+Final X rows: 173
+Final y rows: 173
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  adx                                     : 0.245
+  macd_hist_lag14                         : 0.220
+  supertrend_trend                        : 0.183
+  historical_volatility_60d               : 0.180
+  volume                                  : 0.176
+  supertrend_trend_lag1                   : 0.149
+  supertrend_trend_lag30                  : 0.147
+  kdj_divergence_lag14                    : 0.136
+  volatility_regime                       : 0.130
+  supertrend_trend_lag7                   : 0.126
+
+✅ Max correlation 0.245 looks reasonable
+
+Target distribution:
+  Positive (bullish): 92 (53.2%)
+  Negative (bearish): 81 (46.8%)
+
+NaN check:
+  NaN in X: 46
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+✅ Accuracy: 37.8% ± 31.5% | Test: 90 bars | Windows: 9
+
+  MU     | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 251
+Final X rows: 176
+Final y rows: 176
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  sma_200                                 : 0.306
+  historical_volatility_60d               : 0.303
+  close                                   : 0.292
+  bb_upper                                : 0.286
+  sma_50                                  : 0.268
+  bb_lower                                : 0.221
+  atr_14                                  : 0.190
+  historical_volatility_20d               : 0.181
+  ts                                      : 0.178
+  bb_width_pct                            : 0.175
+
+✅ Max correlation 0.306 looks reasonable
+
+Target distribution:
+  Positive (bullish): 87 (49.4%)
+  Negative (bearish): 89 (50.6%)
+
+NaN check:
+  NaN in X: 54
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+✅ Accuracy: 43.3% ± 17.0% | Test: 90 bars | Windows: 9
+
+  ALB    | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 251
+Final X rows: 173
+Final y rows: 173
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  vix_proxy_atr                           : 0.445
+  atr_normalized                          : 0.445
+  close                                   : 0.345
+  sma_50                                  : 0.316
+  bb_lower                                : 0.301
+  macd_hist_lag1                          : 0.226
+  macd_hist                               : 0.217
+  bb_width                                : 0.216
+  bb_upper                                : 0.216
+  historical_volatility_60d               : 0.212
+
+✅ Max correlation 0.445 looks reasonable
+
+Target distribution:
+  Positive (bullish): 78 (45.1%)
+  Negative (bearish): 95 (54.9%)
+
+NaN check:
+  NaN in X: 54
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+✅ Accuracy: 40.0% ± 31.3% | Test: 90 bars | Windows: 9
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+REGIME: Growth Rotation
+Period: 2021-09-01 to 2022-06-30 | S&P 500: -15.5%
+Description: First signs of weakness, rate shock
+Threshold: 1.8% (regime-adjusted)
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+LOW-VOLATILITY DEFENSIVE STOCKS (horizon=5d, threshold=1.5%):
+
+  PG     | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 100
+Final X rows: 28
+Final y rows: 28
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  vix_proxy_atr                           : 0.899
+  atr_normalized                          : 0.899
+  atr_14                                  : 0.884
+  adx                                     : 0.844
+  close                                   : 0.750
+  bb_width                                : 0.742
+  bb_width_pct                            : 0.737
+  historical_volatility_60d               : 0.711
+  macd_hist                               : 0.688
+  macd                                    : 0.675
+
+⚠️  WARNING: Max correlation 0.899 suggests possible leakage!
+
+Target distribution:
+  Positive (bullish): 9 (32.1%)
+  Negative (bearish): 19 (67.9%)
+
+NaN check:
+  NaN in X: 28
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+Dropped 4 high-correlation features: ['bb_lower', 'bb_upper', 'supertrend_trend_lag30', 'historical_volatility_60d']
+❌ Failed
+
+  KO     | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 100
+Final X rows: 29
+Final y rows: 29
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  macd_hist                               : 0.784
+  vix_proxy_atr                           : 0.747
+  atr_normalized                          : 0.747
+  atr_14                                  : 0.684
+  close                                   : 0.682
+  volatility_percentile                   : 0.651
+  rsi_14                                  : 0.650
+  macd_hist_lag1                          : 0.641
+  volume                                  : 0.548
+  roc_5d                                  : 0.496
+
+⚠️  WARNING: Max correlation 0.784 suggests possible leakage!
+
+Target distribution:
+  Positive (bullish): 12 (41.4%)
+  Negative (bearish): 17 (58.6%)
+
+NaN check:
+  NaN in X: 28
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+Dropped 4 high-correlation features: ['bb_lower', 'bb_upper', 'supertrend_trend_lag30', 'historical_volatility_60d']
+❌ Failed
+
+  JNJ    | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 100
+Final X rows: 23
+Final y rows: 23
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  bb_width_pct                            : 0.935
+  bb_width                                : 0.851
+  bb_lower                                : 0.798
+  roc_20d                                 : 0.725
+  close                                   : 0.689
+  macd                                    : 0.686
+  macd_hist_lag1                          : 0.684
+  macd_hist                               : 0.650
+  volatility_percentile                   : 0.635
+  macd_hist_lag30                         : 0.624
+
+⚠️  WARNING: Max correlation 0.935 suggests possible leakage!
+
+Target distribution:
+  Positive (bullish): 8 (34.8%)
+  Negative (bearish): 15 (65.2%)
+
+NaN check:
+  NaN in X: 21
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+Dropped 4 high-correlation features: ['bb_lower', 'bb_upper', 'supertrend_trend_lag30', 'historical_volatility_60d']
+❌ Failed
+
+  MRK    | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 100
+Final X rows: 33
+Final y rows: 33
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  historical_volatility_60d               : 0.815
+  bb_width_pct                            : 0.721
+  bb_lower                                : 0.638
+  close                                   : 0.614
+  volume_ratio                            : 0.578
+  volatility_change                       : 0.518
+  kdj_divergence                          : 0.504
+  macd_hist_lag7                          : 0.488
+  kdj_divergence_lag14                    : 0.487
+  bb_upper                                : 0.469
+
+⚠️  WARNING: Max correlation 0.815 suggests possible leakage!
+
+Target distribution:
+  Positive (bullish): 19 (57.6%)
+  Negative (bearish): 14 (42.4%)
+
+NaN check:
+  NaN in X: 34
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+Dropped 4 high-correlation features: ['bb_lower', 'bb_upper', 'supertrend_trend_lag30', 'historical_volatility_60d']
+❌ Failed
+
+MID-RANGE QUALITY GROWTH (horizon=5d, threshold=1.5%):
+
+  AAPL   | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 100
+Final X rows: 36
+Final y rows: 36
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  adx                                     : 0.790
+  volatility_percentile                   : 0.737
+  close                                   : 0.682
+  bb_width                                : 0.667
+  macd                                    : 0.646
+  bb_width_pct                            : 0.606
+  bb_lower                                : 0.570
+  historical_volatility_60d               : 0.522
+  sma_50                                  : 0.521
+  sma_200                                 : 0.497
+
+⚠️  WARNING: Max correlation 0.790 suggests possible leakage!
+
+Target distribution:
+  Positive (bullish): 12 (33.3%)
+  Negative (bearish): 24 (66.7%)
+
+NaN check:
+  NaN in X: 45
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+Dropped 4 high-correlation features: ['bb_lower', 'bb_upper', 'supertrend_trend_lag30', 'historical_volatility_60d']
+❌ Failed
+
+  MSFT   | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 100
+Final X rows: 32
+Final y rows: 32
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  bb_width_pct                            : 0.792
+  bb_width                                : 0.723
+  macd_hist_lag14                         : 0.679
+  adx                                     : 0.672
+  macd                                    : 0.629
+  close                                   : 0.579
+  kdj_divergence_lag7                     : 0.563
+  macd_hist                               : 0.557
+  macd_hist_lag1                          : 0.527
+  rsi_14                                  : 0.506
+
+⚠️  WARNING: Max correlation 0.792 suggests possible leakage!
+
+Target distribution:
+  Positive (bullish): 15 (46.9%)
+  Negative (bearish): 17 (53.1%)
+
+NaN check:
+  NaN in X: 36
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+Dropped 4 high-correlation features: ['bb_lower', 'bb_upper', 'supertrend_trend_lag30', 'historical_volatility_60d']
+❌ Failed
+
+  AMGN   | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 100
+Final X rows: 37
+Final y rows: 37
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  supertrend_trend_lag1                   : 1.000
+  supertrend_trend                        : 0.947
+  roc_20d                                 : 0.873
+  macd                                    : 0.833
+  macd_hist_lag7                          : 0.819
+  historical_volatility_20d               : 0.777
+  close                                   : 0.736
+  macd_signal                             : 0.714
+  bb_width                                : 0.691
+  atr_normalized                          : 0.685
+
+⚠️  WARNING: Max correlation 1.000 suggests possible leakage!
+
+Target distribution:
+  Positive (bullish): 19 (51.4%)
+  Negative (bearish): 18 (48.6%)
+
+NaN check:
+  NaN in X: 42
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+Dropped 4 high-correlation features: ['bb_lower', 'bb_upper', 'supertrend_trend_lag30', 'historical_volatility_60d']
+❌ Failed
+
+  BRK.B  | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 100
+Final X rows: 29
+Final y rows: 29
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  macd                                    : 0.571
+  adx                                     : 0.551
+  macd_signal                             : 0.531
+  roc_20d                                 : 0.511
+  historical_volatility_60d               : 0.495
+  vix_proxy_atr                           : 0.483
+  atr_normalized                          : 0.483
+  historical_volatility_20d               : 0.477
+  bb_lower                                : 0.472
+  bb_width                                : 0.454
+
+⚠️  CAUTION: Max correlation 0.571 is borderline high
+
+Target distribution:
+  Positive (bullish): 6 (20.7%)
+  Negative (bearish): 23 (79.3%)
+
+NaN check:
+  NaN in X: 35
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+❌ Failed
+
+HIGH-VOLATILITY SEMICONDUCTORS (horizon=10d, threshold=2.0%):
+
+  NVDA   | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 100
+Final X rows: 37
+Final y rows: 37
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  close                                   : 0.708
+  bb_width_pct                            : 0.704
+  atr_normalized                          : 0.643
+  vix_proxy_atr                           : 0.643
+  kdj_divergence_lag30                    : 0.561
+  historical_volatility_20d               : 0.543
+  macd_signal                             : 0.486
+  kdj_divergence_lag14                    : 0.428
+  bb_lower                                : 0.393
+  volatility_percentile                   : 0.380
+
+⚠️  WARNING: Max correlation 0.708 suggests possible leakage!
+
+Target distribution:
+  Positive (bullish): 11 (29.7%)
+  Negative (bearish): 26 (70.3%)
+
+NaN check:
+  NaN in X: 54
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+Dropped 4 high-correlation features: ['bb_lower', 'bb_upper', 'supertrend_trend_lag30', 'historical_volatility_60d']
+❌ Failed
+
+  MU     | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 100
+Final X rows: 30
+Final y rows: 30
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  bb_width_pct                            : 0.519
+  historical_volatility_60d               : 0.503
+  macd_hist_lag14                         : 0.390
+  macd_signal                             : 0.386
+  volatility_change                       : 0.385
+  ts                                      : 0.349
+  volume_ratio                            : 0.348
+  supertrend_trend_lag1                   : 0.316
+  supertrend_trend                        : 0.316
+  macd                                    : 0.309
+
+✅ Max correlation 0.519 looks reasonable
+
+Target distribution:
+  Positive (bullish): 10 (33.3%)
+  Negative (bearish): 20 (66.7%)
+
+NaN check:
+  NaN in X: 37
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+❌ Failed
+
+  ALB    | 
+================================================================================
+FEATURE/TARGET VERIFICATION
+================================================================================
+Original df rows: 100
+Final X rows: 35
+Final y rows: 35
+Lengths match: True
+Indices match: True
+
+Top 10 features by correlation with target:
+  sma_50                                  : 0.796
+  sma_200                                 : 0.792
+  macd_signal                             : 0.749
+  bb_width_pct                            : 0.737
+  bb_lower                                : 0.733
+  bb_upper                                : 0.732
+  close                                   : 0.695
+  ts                                      : 0.675
+  macd                                    : 0.637
+  macd_hist_lag14                         : 0.580
+
+⚠️  WARNING: Max correlation 0.796 suggests possible leakage!
+
+Target distribution:
+  Positive (bullish): 21 (60.0%)
+  Negative (bearish): 14 (40.0%)
+
+NaN check:
+  NaN in X: 50
+  NaN in y: 0
+  ❌ ERROR: Found NaN values!
+================================================================================
+Dropped 4 high-correlation features: ['bb_lower', 'bb_upper', 'supertrend_trend_lag30', 'historical_volatility_60d']
+❌ Failed
+
+
+====================================================================================================
+SUMMARY REPORT
+====================================================================================================
+
+Accuracy by Stock and Regime:
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Regime Mega-Cap Bull Post-Crash Recovery Average
+Stock                                           
+AAPL           48.3%               45.7%   47.0%
+ALB            40.0%               50.0%   45.0%
+AMGN           56.0%               55.0%   55.5%
+JNJ              N/A               46.0%   46.0%
+MRK            38.3%                 N/A   38.3%
+MSFT           57.1%               43.3%   50.2%
+MU             43.3%               50.0%   46.7%
+NVDA           37.8%               71.8%   54.8%
+
+
+Key Insights by Regime:
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+Post-Crash Recovery (2022-11-01 to 2023-12-31):
+  Average accuracy: 51.7% ± 24.3%
+  Best performer: NVDA at 71.8%
+  Stocks tested: 7
+  Average windows per test: 8.1
+
+Mega-Cap Bull (2024-01-01 to 2024-12-31):
+  Average accuracy: 45.8% ± 24.2%
+  Best performer: MSFT at 57.1%
+  Stocks tested: 7
+  Average windows per test: 7.3
+
+
+Insights by Stock Category:
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+Low-volatility defensive stocks:
+  Average accuracy: 42.2% ± 18.6%
+  Best regime: Post-Crash Recovery (46.0%)
+
+Mid-range quality growth:
+  Average accuracy: 50.9% ± 24.1%
+  Best regime: Mega-Cap Bull (57.1%)
+
+High-volatility semiconductors:
+  Average accuracy: 48.8% ± 26.3%
+  Best regime: Post-Crash Recovery (71.8%)
+
+
+Overall Statistics:
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Total tests completed: 14
+Average accuracy: 48.8% ± 9.1%
+Best result: 71.8%
+Worst result: 37.8%
+Median accuracy: 47.2%
+Accuracy range: 34.0%
+
+Accuracy distribution:
+  >60%: 1 tests
+  55-60%: 3 tests
+  50-55%: 2 tests
+  45-50%: 3 tests
+  <45%: 5 tests
+
+📊 Results saved to: regime_test_results_improved.csv

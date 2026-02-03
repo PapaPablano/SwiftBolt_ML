@@ -1,154 +1,214 @@
+#!/usr/bin/env python3
 """
-Compare TabPFN vs XGBoost forecasts side-by-side.
+Compare ARIMA-GARCH vs XGBoost vs TabPFN on binary stock prediction.
 
-Uses run_at for "recent" (same as display_tabpfn_results) since forecasts
-are upserted by (symbol_id, timeframe, horizon).
+Usage:
+  cd ml && python compare_models.py --symbol TSLA --threshold 0.005
 """
+
+import argparse
 import sys
-from datetime import datetime, timedelta
-from src.data.supabase_db import SupabaseDatabase
+from pathlib import Path
 
-db = SupabaseDatabase()
+import numpy as np
+import pandas as pd
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.model_selection import train_test_split
 
-print("=" * 120)
-print("MODEL COMPARISON: TabPFN vs Ensemble (XGBoost/ARIMA-GARCH+LSTM)")
-print("=" * 120)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-# Get recent forecasts for both models (last 24 hours by run_at)
-recent_cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
+LIMIT_BARS = 600
+TRAIN_VAL_SPLIT = 0.8
 
-forecasts = (
-    db.client.table("ml_forecasts")
-    .select("*, symbols!inner(ticker)")
-    .in_("model_type", ["xgboost", "tabpfn"])
-    .gte("run_at", recent_cutoff)
-    .order("run_at", desc=True)
-    .execute()
-)
 
-if not forecasts.data:
-    print("\n⚠ No forecasts in last 24 hours. Checking all recent forecasts...")
-    forecasts = (
-        db.client.table("ml_forecasts")
-        .select("*, symbols!inner(ticker)")
-        .in_("model_type", ["xgboost", "tabpfn"])
-        .order("run_at", desc=True)
-        .limit(50)
-        .execute()
+def load_ohlcv(symbol: str, limit: int = LIMIT_BARS) -> pd.DataFrame | None:
+    """Load OHLCV from Supabase."""
+    try:
+        from src.data.supabase_db import SupabaseDatabase
+        db = SupabaseDatabase()
+        df = db.fetch_ohlc_bars(symbol, timeframe="d1", limit=limit)
+        if df is not None and len(df) >= 250:
+            return df
+    except Exception as e:
+        print(f"  [{symbol}] DB error: {e}")
+    return None
+
+
+def load_sentiment(symbol: str, start_ts, end_ts) -> pd.Series | None:
+    """Load daily sentiment for symbol."""
+    if start_ts is None or end_ts is None:
+        return None
+    try:
+        from src.features.stock_sentiment import get_historical_sentiment_series
+        start_date = pd.to_datetime(start_ts).date()
+        end_date = pd.to_datetime(end_ts).date()
+        return get_historical_sentiment_series(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            use_finviz_realtime=True,
+        )
+    except Exception as e:
+        print(f"  Sentiment error: {e}")
+        return None
+
+
+def test_model(
+    model_class,
+    model_name: str,
+    df: pd.DataFrame,
+    sentiment: pd.Series | None,
+    threshold_pct: float,
+    use_features: bool,
+    horizon_days: int = 1,
+) -> float:
+    """Test a single model; return validation accuracy."""
+    print(f"\n{'='*60}")
+    print(f"Testing {model_name}")
+    print("="*60)
+
+    forecaster = model_class()
+    out = forecaster.prepare_training_data_binary(
+        df,
+        horizon_days=horizon_days,
+        sentiment_series=sentiment,
+        threshold_pct=threshold_pct,
+        add_simple_regime=use_features,
     )
+    X, y, dates = out[0], out[1], out[2]
 
-if not forecasts.data:
-    print("✗ No forecasts found at all!")
-    sys.exit(1)
+    if len(X) < 50:
+        print(f"  Too few samples: {len(X)}. Skipping.")
+        return 0.0
 
-# Group by (symbol, horizon); keep one row per model (latest run_at wins)
-comparisons = {}
-for f in forecasts.data:
-    key = (f["symbols"]["ticker"], f["horizon"])
-    if key not in comparisons:
-        comparisons[key] = {}
-    if f["model_type"] not in comparisons[key]:
-        comparisons[key][f["model_type"]] = f
+    # Time-based split: train on past 80%, validate on last 20% (no future leakage)
+    n = len(X)
+    split_idx = int(n * TRAIN_VAL_SPLIT)
+    X_train = X.iloc[:split_idx] if hasattr(X, "iloc") else X[:split_idx]
+    X_val = X.iloc[split_idx:] if hasattr(X, "iloc") else X[split_idx:]
+    y_train = y.iloc[:split_idx] if hasattr(y, "iloc") else y[:split_idx]
+    y_val = y.iloc[split_idx:] if hasattr(y, "iloc") else y[split_idx:]
 
-def _dir(row):
-    return (row.get("overall_label") or row.get("direction") or "").upper()
+    print(f"Train samples: {len(X_train)}")
+    print(f"Val samples: {len(X_val)}")
 
-# Display comparison table
-print(
-    f"\n{'Symbol':<8} {'Horizon':<8} {'TabPFN Dir':<12} {'TabPFN Conf':<13} {'TabPFN Return':<14} "
-    f"{'Ensemble Dir':<12} {'Ensemble Conf':<13} {'Ensemble Return':<14} {'Match':<8}"
-)
-print("-" * 120)
+    forecaster.train(X_train, y_train, min_samples=30)
+    y_pred = forecaster.predict_batch(X_val)
 
-matches = 0
-total = 0
-tabpfn_only = 0
-xgboost_only = 0
+    # Ensure same types for accuracy_score
+    y_val_labels = np.asarray(y_val).ravel()
+    y_pred = np.asarray(y_pred).ravel()
+    acc = accuracy_score(y_val_labels, y_pred)
+    lift = (acc - 0.5) / 0.5 * 100 if 0.5 else 0
 
-for (ticker, horizon), models in sorted(comparisons.items()):
-    if "tabpfn" in models and "xgboost" in models:
-        t = models["tabpfn"]
-        x = models["xgboost"]
-        t_dir = _dir(t)
-        x_dir = _dir(x)
+    print(f"\nValidation Accuracy: {acc:.1%}")
+    print(f"Random baseline: 50.0%")
+    print(f"Lift: {lift:+.1f}%")
+    print(f"\n{classification_report(y_val_labels, y_pred)}")
+    return float(acc)
 
-        match = "✓ Yes" if t_dir == x_dir else "✗ No"
-        if t_dir == x_dir:
-            matches += 1
-        total += 1
 
-        t_return = t.get("forecast_return") or 0
-        x_return = x.get("forecast_return") or 0
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Compare ARIMA-GARCH vs XGBoost vs TabPFN on binary prediction"
+    )
+    parser.add_argument("--symbol", default="TSLA", help="Symbol to test")
+    parser.add_argument("--horizon", type=int, default=1, help="Prediction horizon in days (default: 1)")
+    parser.add_argument("--threshold", type=float, default=0.008, help="Min |return| for binary (0.8%%)")
+    parser.add_argument("--no-arima", action="store_true", help="Skip ARIMA-GARCH")
+    parser.add_argument("--no-xgboost", action="store_true", help="Skip XGBoost")
+    parser.add_argument("--optimized", action="store_true", help="Use XGBoost with top-30 feature selection")
+    parser.add_argument("--no-tabpfn", action="store_true", help="Skip TabPFN")
+    args = parser.parse_args()
 
-        print(
-            f"{ticker:<8} {horizon:<8} "
-            f"{t_dir:<12} {t['confidence']:>11.1%}  {t_return:>12.2%}  "
-            f"{x_dir:<12} {x['confidence']:>11.1%}  {x_return:>12.2%}  "
-            f"{match:<8}"
-        )
+    print(f"Loading {args.symbol} (horizon={args.horizon}d, threshold={args.threshold:.2%})...")
+    df = load_ohlcv(args.symbol, limit=LIMIT_BARS)
+    if df is None:
+        print("Failed to load OHLCV.")
+        sys.exit(1)
 
-    elif "tabpfn" in models:
-        tabpfn_only += 1
-        t = models["tabpfn"]
-        t_dir = _dir(t)
-        t_return = t.get("forecast_return") or 0
-        print(
-            f"{ticker:<8} {horizon:<8} "
-            f"{t_dir:<12} {t['confidence']:>11.1%}  {t_return:>12.2%}  "
-            f"{'---':<12} {'---':>11}  {'---':>12}  {'TabPFN only':<8}"
-        )
+    start_ts = pd.to_datetime(df["ts"]).min()
+    end_ts = pd.to_datetime(df["ts"]).max()
+    sentiment = load_sentiment(args.symbol, start_ts, end_ts)
 
-    elif "xgboost" in models:
-        xgboost_only += 1
-        x = models["xgboost"]
-        x_dir = _dir(x)
-        x_return = x.get("forecast_return") or 0
-        print(
-            f"{ticker:<8} {horizon:<8} "
-            f"{'---':<12} {'---':>11}  {'---':>12}  "
-            f"{x_dir:<12} {x['confidence']:>11.1%}  {x_return:>12.2%}  "
-            f"{'Ensemble only':<8}"
-        )
+    results: dict[str, float] = {}
 
-# Summary
-print("-" * 120)
-print(f"\n📊 SUMMARY:")
-print(f"   Forecasts with both models: {total}")
-if total > 0:
-    print(f"   Agreement rate: {matches}/{total} = {matches/total*100:.1f}%")
-print(f"   TabPFN only: {tabpfn_only}")
-print(f"   Ensemble only: {xgboost_only}")
-print("=" * 120)
+    if not args.no_arima:
+        try:
+            from src.models.arima_garch_forecaster import ARIMAGARCHForecaster
+            results["ARIMA-GARCH"] = test_model(
+                ARIMAGARCHForecaster,
+                "ARIMA-GARCH",
+                df,
+                sentiment,
+                args.threshold,
+                use_features=True,
+                horizon_days=args.horizon,
+            )
+        except Exception as e:
+            print(f"ARIMA-GARCH failed: {e}")
+            results["ARIMA-GARCH"] = 0.0
 
-# Show detailed disagreements
-if total > 0:
-    print("\n🔍 DETAILED DISAGREEMENTS:")
-    print("-" * 120)
-    disagreements = []
-    for (ticker, horizon), models in sorted(comparisons.items()):
-        if "tabpfn" in models and "xgboost" in models:
-            t = models["tabpfn"]
-            x = models["xgboost"]
-            if _dir(t) != _dir(x):
-                disagreements.append(
-                    {"ticker": ticker, "horizon": horizon, "tabpfn": t, "xgboost": x}
+    if not args.no_xgboost:
+        try:
+            if args.optimized:
+                from src.models.xgboost_forecaster_optimized import XGBoostForecasterOptimized
+                results["XGBoost (optimized)"] = test_model(
+                    XGBoostForecasterOptimized,
+                    "XGBoost (top-30 features)",
+                    df,
+                    sentiment,
+                    args.threshold,
+                    use_features=True,
+                    horizon_days=args.horizon,
                 )
+            else:
+                from src.models.xgboost_forecaster import XGBoostForecaster
+                results["XGBoost"] = test_model(
+                    XGBoostForecaster,
+                    "XGBoost (with features)",
+                    df,
+                    sentiment,
+                    args.threshold,
+                    use_features=True,
+                    horizon_days=args.horizon,
+                )
+        except Exception as e:
+            print(f"XGBoost failed: {e}")
+            results["XGBoost" if not args.optimized else "XGBoost (optimized)"] = 0.0
 
-    if disagreements:
-        for d in disagreements:
-            print(f"\n{d['ticker']} - {d['horizon']}:")
-            t = d["tabpfn"]
-            x = d["xgboost"]
-            print(
-                f"  TabPFN:  {_dir(t):8} (conf: {t['confidence']:.1%}, return: {t.get('forecast_return') or 0:+.2%})"
+    if not args.no_tabpfn:
+        try:
+            from src.models.tabpfn_forecaster import TabPFNForecaster
+            results["TabPFN"] = test_model(
+                TabPFNForecaster,
+                "TabPFN",
+                df,
+                sentiment,
+                args.threshold,
+                use_features=True,
+                horizon_days=args.horizon,
             )
-            print(
-                f"  Ensemble: {_dir(x):8} (conf: {x['confidence']:.1%}, return: {x.get('forecast_return') or 0:+.2%})"
-            )
-            t_ret = t.get("forecast_return") or 0
-            x_ret = x.get("forecast_return") or 0
-            diff = abs(t_ret - x_ret)
-            print(f"  Return difference: {diff:.2%}")
-    else:
-        print("✓ All forecasts agree!")
-    print("-" * 120)
+        except Exception as e:
+            print(f"TabPFN failed: {e}")
+            results["TabPFN"] = 0.0
+
+    print(f"\n{'='*60}")
+    print("FINAL RESULTS")
+    print("="*60)
+    for model, acc in sorted(results.items(), key=lambda x: x[1], reverse=True):
+        print(f"  {model:20s}: {acc:.1%}")
+    print("="*60)
+
+    if results:
+        best_model = max(results.items(), key=lambda x: x[1])
+        print(f"\nBest model: {best_model[0]} ({best_model[1]:.1%})")
+        if best_model[1] >= 0.55:
+            print("  Production ready (>55% accuracy)")
+        else:
+            print("  Below 55% threshold")
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

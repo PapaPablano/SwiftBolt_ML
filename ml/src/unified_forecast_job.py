@@ -257,6 +257,31 @@ class UnifiedForecastProcessor:
             symbol_id = db.get_symbol_id(symbol)
             mtf_signals = self._fetch_mtf_signals(symbol_id)
             
+            # === STEP 1.5: Load sentiment (when enabled) ===
+            sentiment_series = None
+            if getattr(settings, "enable_sentiment_features", False):
+                try:
+                    from src.features.stock_sentiment import (
+                        get_historical_sentiment_series,
+                        validate_sentiment_variance,
+                    )
+
+                    # Validate sentiment has variance before using
+                    if validate_sentiment_variance(symbol, lookback_days=100):
+                        start_date = pd.to_datetime(df["ts"]).min().date()
+                        end_date = pd.to_datetime(df["ts"]).max().date()
+                        sentiment_series = get_historical_sentiment_series(
+                            symbol=symbol,
+                            start_date=start_date,
+                            end_date=end_date,
+                            use_finviz_realtime=True,
+                        )
+                        logger.info(f"Sentiment loaded for {symbol} (std={sentiment_series.std():.4f})")
+                    else:
+                        logger.warning(f"Sentiment variance check failed for {symbol}, skipping")
+                except Exception as e:
+                    logger.warning(f"Sentiment loading failed for {symbol}: {e}")
+            
             # === STEP 2: Data validation ===
             validator = OHLCValidator()
             df, validation_result = validator.validate(df, fix_issues=True)
@@ -405,8 +430,11 @@ class UnifiedForecastProcessor:
                                     )
 
                                     # Prepare training data using BaselineForecaster's method
+                                    # Uses compute_simplified_features (28 base features + sentiment if enabled)
                                     baseline_prep = BaselineForecaster()
-                                    X_train, y_train = baseline_prep.prepare_training_data(df, horizon_days=horizon_days)
+                                    X_train, y_train = baseline_prep.prepare_training_data(
+                                        df, horizon_days=horizon_days, sentiment_series=sentiment_series
+                                    )
 
                                     if len(X_train) >= settings.min_bars_for_training and len(y_train) > 0:
                                         # Calculate training data range (features correspond to indices after min_offset)

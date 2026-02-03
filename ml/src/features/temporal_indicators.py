@@ -13,7 +13,8 @@ from src.features.technical_indicators_corrected import TechnicalIndicatorsCorre
 
 logger = logging.getLogger(__name__)
 
-# Simplified feature set (28 features) based on empirical importance analysis.
+# Simplified feature set (31 features) based on empirical importance analysis.
+# Includes sentiment features (validated; pipeline fixed).
 SIMPLIFIED_FEATURES = [
     # Price & Volume
     "close",
@@ -32,8 +33,11 @@ SIMPLIFIED_FEATURES = [
     # Trend Strength
     "adx",
     "supertrend_trend",
+    "roc_5d",
+    "roc_20d",
     # Volatility
     "atr_14",
+    "vix_proxy_atr",
     # Custom Lag Features
     "supertrend_trend_lag1",
     "supertrend_trend_lag7",
@@ -52,7 +56,47 @@ SIMPLIFIED_FEATURES = [
     # Moving Averages
     "sma_50",
     "sma_200",
-    # REMOVED: sentiment_score_lag1, sentiment_score_lag7 (zero variance until FinViz pipeline fixed)
+    # Sentiment (validated; FinViz pipeline fixed)
+    "sentiment_score",
+    "sentiment_score_lag1",
+    "sentiment_score_lag7",
+    # Regime (market context; add via add_all_regime_features before compute_simplified_features)
+    "spy_above_200ma",
+    "spy_trend_strength",
+    "spy_trend_regime",
+    "vix",
+    "vix_regime",
+    "vix_percentile",
+    "vix_change_5d",
+    "correlation_to_spy_30d",
+    "correlation_regime",
+    "beta_to_spy",
+    "sector_relative_strength",
+    "sector_outperforming",
+    # Stock-specific volatility (no external data; replaces VIX for single-stock prediction)
+    "historical_volatility_20d",
+    "historical_volatility_60d",
+    "atr_normalized",
+    "bb_width",
+    "volatility_regime",
+    "volatility_percentile",
+    "volatility_change",
+    # Simple regime (stock-only; add via add_all_simple_regime_features before compute_simplified_features)
+    "distance_from_200ma",
+    "trend_regime",
+    "trend_strength",
+    "adx_14",
+    "momentum_regime",
+]
+
+VOLATILITY_FEATURES = [
+    "historical_volatility_20d",
+    "historical_volatility_60d",
+    "atr_normalized",
+    "bb_width",
+    "volatility_regime",
+    "volatility_percentile",
+    "volatility_change",
 ]
 
 
@@ -84,15 +128,72 @@ def create_lag_features(
     return df
 
 
+def add_volatility_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add stock-specific volatility indicators (no external data).
+
+    Replaces VIX for single-stock prediction. Requires 'close' (and optionally
+    'high', 'low' for ATR/BB from TechnicalIndicatorsCorrect; atr_normalized
+    and bb_width are added by add_all_technical_features_correct).
+    """
+    df = df.copy()
+    returns = df["close"].pct_change()
+    # Annualized historical volatility (decimal, e.g. 0.20 = 20%)
+    df["historical_volatility_20d"] = returns.rolling(20).std() * np.sqrt(252)
+    df["historical_volatility_60d"] = returns.rolling(60).std() * np.sqrt(252)
+    # atr_normalized and bb_width come from TechnicalIndicatorsCorrect; ensure if missing
+    if "atr_normalized" not in df.columns and "atr_14" in df.columns:
+        df["atr_normalized"] = df["atr_14"] / df["close"]
+    if "bb_width" not in df.columns and "bb_upper" in df.columns and "bb_middle" in df.columns and "bb_lower" in df.columns:
+        df["bb_width"] = (df["bb_upper"] - df["bb_lower"]) / df["bb_middle"].replace(0, np.nan)
+    hv = df["historical_volatility_20d"]
+    # Volatility regime: 0=low (<20%), 1=medium (20–40%), 2=high (>40%)
+    df["volatility_regime"] = np.select(
+        [hv < 0.20, hv < 0.40], [0, 1], default=2
+    )
+    # Percentile of current vol vs last 252 days (0–100)
+    def _pct(w) -> float:
+        s = pd.Series(w).dropna()
+        if len(s) < 2:
+            return np.nan
+        return float(s.rank(pct=True).iloc[-1]) * 100
+
+    df["volatility_percentile"] = hv.rolling(252, min_periods=60).apply(_pct, raw=False)
+    df["volatility_change"] = hv.pct_change(5)
+
+    # Market stress: VIX proxy from ATR (no external VIX needed)
+    # Scale ATR/close to VIX-like level: ~15–40 in normal/crisis
+    if "atr_14" in df.columns:
+        atr_pct = (df["atr_14"] / df["close"].replace(0, np.nan)) * 100
+        df["vix_proxy_atr"] = atr_pct * np.sqrt(252)  # annualized, VIX-ish scale
+    else:
+        tr = np.maximum(
+            df["high"] - df["low"],
+            np.maximum(
+                (df["high"] - df["close"].shift(1)).abs(),
+                (df["low"] - df["close"].shift(1)).abs(),
+            ),
+        )
+        atr = tr.rolling(14).mean()
+        df["vix_proxy_atr"] = (atr / df["close"].replace(0, np.nan) * 100 * np.sqrt(252))
+
+    # Rate-of-change (trend strength complement to ADX)
+    df["roc_5d"] = df["close"].pct_change(5)
+    df["roc_20d"] = df["close"].pct_change(20)
+
+    return df
+
+
 def compute_simplified_features(
     df: pd.DataFrame,
     sentiment_series: pd.Series | None = None,
+    add_volatility: bool = True,
 ) -> pd.DataFrame:
     """
-    Compute the simplified feature set: base indicators + lags + sentiment.
+    Compute the simplified feature set: base indicators + lags + sentiment + volatility.
 
     Uses TechnicalIndicatorsCorrect for base indicators, then add_lag_features,
-    then merge optional sentiment. Requires OHLCV columns.
+    optional add_volatility_features, then merge optional sentiment. Requires OHLCV columns.
     """
     df = df.copy()
     df = TechnicalIndicatorsCorrect.add_all_technical_features_correct(df)
@@ -108,6 +209,14 @@ def compute_simplified_features(
     else:
         df["sentiment_score"] = 0.0
     df = create_lag_features(df)
+    if add_volatility:
+        df = add_volatility_features(df)
+    # Simple regime columns (defaults so SIMPLIFIED_FEATURES selection never misses)
+    from src.features.regime_features_simple import add_simple_regime_defaults
+    df = add_simple_regime_defaults(df)
+    # Old regime columns (SPY/VIX) with defaults so SIMPLIFIED_FEATURES selection never misses
+    from src.features.regime_features import add_regime_defaults
+    df = add_regime_defaults(df)
     return df
 
 

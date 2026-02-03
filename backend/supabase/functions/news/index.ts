@@ -141,8 +141,9 @@ serve(async (req: Request): Promise<Response> => {
 
       symbolId = symbolData?.id || null;
 
-      // Check cache if we have a symbol_id
-      if (symbolId) {
+      // Check cache if we have a symbol_id AND no date range filters
+      // Skip cache when from/to are provided (historical backfill needs specific dates)
+      if (symbolId && !from && !to) {
         const cacheThreshold = new Date(Date.now() - CACHE_TTL_MS).toISOString();
 
         const { data: cachedNews } = await supabase
@@ -166,6 +167,8 @@ serve(async (req: Request): Promise<Response> => {
 
           return jsonResponse({ symbol, items } as NewsResponse);
         }
+      } else if (from || to) {
+        console.log(`Skipping cache for ${symbol} (date range: from=${from}, to=${to})`);
       }
 
       // Fetch fresh company news: FinViz (with links) from ML backend, then Alpaca

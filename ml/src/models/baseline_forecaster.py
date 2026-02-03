@@ -1,4 +1,4 @@
-"""Baseline ML forecaster using Random Forest for price movement prediction."""
+"""Baseline ML forecaster using XGBoost for price movement prediction."""
 
 import logging
 from datetime import datetime, timedelta
@@ -6,8 +6,8 @@ from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import RobustScaler
+from xgboost import XGBClassifier
 
 from config.settings import settings
 from src.data.data_validator import OHLCValidator, ValidationResult
@@ -22,27 +22,38 @@ from src.monitoring.confidence_calibrator import ConfidenceCalibrator
 logger = logging.getLogger(__name__)
 
 
+# Default label encoding (3-class); binary uses dynamic 0/1 from unique y
+LABEL_DECODE = {0: "bearish", 1: "neutral", 2: "bullish"}
+
+
 class BaselineForecaster:
     """
-    Baseline forecaster using Random Forest to predict price direction.
+    Baseline forecaster using XGBoost to predict price direction.
 
     Predicts: Bullish (up >2%), Neutral (-2% to 2%), Bearish (down >2%)
     """
 
     def __init__(self) -> None:
         """Initialize the forecaster."""
-        # RobustScaler uses median/IQR instead of mean/std
-        # Better for OHLC data with gaps and outliers
         self.scaler = RobustScaler()
-        self.model = RandomForestClassifier(
-            n_estimators=100,
-            max_depth=10,
-            min_samples_split=5,
+        self.model = XGBClassifier(
+            n_estimators=500,
+            max_depth=6,
+            learning_rate=0.05,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            min_child_weight=3,
+            gamma=0.1,
+            reg_alpha=0.1,
+            reg_lambda=1.0,
             random_state=42,
+            n_jobs=-1,
+            eval_metric="mlogloss",
         )
         self.feature_columns: list[str] = []
         self.is_trained = False
         self._last_df: Optional[pd.DataFrame] = None  # Cache for predict method
+        self._label_decode: dict[int, str] = {}  # 0/1/2 -> bearish/neutral/bullish (set at train)
 
     def prepare_training_data(
         self,
@@ -52,7 +63,7 @@ class BaselineForecaster:
     ) -> tuple[pd.DataFrame, pd.Series]:
         """
         Prepare training data with adaptive thresholds and temporal features.
-        Uses simplified feature set (compute_simplified_features) and start_idx=200.
+        Uses simplified feature set (compute_simplified_features) and start_idx=50 (min lookback for lags).
         sentiment_series: optional daily sentiment (index=date) to merge; if None, sentiment_score=0.
         """
         df = df.copy()
@@ -78,8 +89,8 @@ class BaselineForecaster:
         valid_samples = 0
         nan_returns = 0
 
-        # Simplified pipeline requires 200+ bars (sma_200 and lags)
-        start_idx = 200
+        # Min lookback 50 bars (lags/supertrend); sma_200 uses min_periods=1 so valid from row 0
+        start_idx = 50
         end_idx = len(df) - horizon_days_int
         
         logger.debug(
@@ -127,6 +138,67 @@ class BaselineForecaster:
 
         return X, y
 
+    def prepare_training_data_binary(
+        self,
+        df: pd.DataFrame,
+        horizon_days: int = 1,
+        sentiment_series: pd.Series | None = None,
+        threshold_pct: float = 0.005,
+        add_simple_regime: bool = False,
+    ) -> tuple[pd.DataFrame, pd.Series]:
+        """
+        Binary classification: bullish vs bearish only.
+        Drops small moves (|return| < threshold_pct) as too noisy.
+        Uses same feature pipeline as prepare_training_data; only labels and filter differ.
+        When add_simple_regime=True, adds stock-only trend/momentum regime (no VIX/SPY).
+        """
+        df = df.copy()
+        df = compute_simplified_features(df, sentiment_series=sentiment_series, add_volatility=True)
+        if add_simple_regime:
+            from src.features.regime_features_simple import add_all_simple_regime_features
+            df = add_all_simple_regime_features(df)
+
+        horizon_days_int = max(1, int(np.ceil(horizon_days)))
+        forward_returns = df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int)
+
+        engineer = TemporalFeatureEngineer()
+        X_list: list[dict[str, Any]] = []
+        y_list: list[str] = []
+
+        # Min lookback 50 bars (lags/supertrend); sma_200 uses min_periods=1 so valid from row 0
+        start_idx = 50
+        end_idx = len(df) - horizon_days_int
+        filtered_out = 0
+
+        date_list: list[pd.Timestamp] = []
+        ts_col = df["ts"] if "ts" in df.columns else df.index
+        for idx in range(start_idx, end_idx):
+            actual_return = forward_returns.iloc[idx]
+            if not pd.notna(actual_return):
+                continue
+            if abs(actual_return) <= threshold_pct:
+                filtered_out += 1
+                continue
+            features = engineer.add_features_to_point(df, idx)
+            X_list.append(features)
+            y_list.append("bullish" if actual_return > 0 else "bearish")
+            date_list.append(pd.to_datetime(ts_col.iloc[idx]))
+
+        X = pd.DataFrame(X_list)
+        y = pd.Series(y_list)
+        dates = pd.Series(date_list) if date_list else pd.Series(dtype="datetime64[ns]")
+
+        logger.info(
+            "Binary training data: %s samples (filtered out %s moves < %.2f%%), "
+            "bullish=%.1f%%, bearish=%.1f%%",
+            len(X),
+            filtered_out,
+            threshold_pct * 100,
+            (y == "bullish").mean() * 100 if len(y) > 0 else 0,
+            (y == "bearish").mean() * 100 if len(y) > 0 else 0,
+        )
+        return X, y, dates
+
     def train(self, X: pd.DataFrame, y: pd.Series, min_samples: Optional[int] = None) -> None:
         """
         Train the forecaster model with enhanced metrics logging.
@@ -149,8 +221,14 @@ class BaselineForecaster:
         self.feature_columns = numeric_cols
         X_scaled = self.scaler.fit_transform(X)
 
-        logger.info("Training Random Forest model...")
-        self.model.fit(X_scaled, y)
+        # XGBoost expects contiguous 0, 1, ..., k-1; encode from unique labels
+        unique_labels = sorted(set(str(l).lower() for l in y))
+        label_encode = {lbl: i for i, lbl in enumerate(unique_labels)}
+        self._label_decode = {i: lbl for lbl, i in label_encode.items()}
+        y_encoded = np.array([label_encode.get(str(l).lower(), 0) for l in y])
+
+        logger.info("Training XGBoost model...")
+        self.model.fit(X_scaled, y_encoded)
 
         from sklearn.metrics import (
             accuracy_score,
@@ -161,21 +239,21 @@ class BaselineForecaster:
         )
 
         predictions = self.model.predict(X_scaled)
-        accuracy = accuracy_score(y, predictions)
+        accuracy = accuracy_score(y_encoded, predictions)
         precision = precision_score(
-            y,
+            y_encoded,
             predictions,
             average="weighted",
             zero_division=0,
         )
         recall = recall_score(
-            y,
+            y_encoded,
             predictions,
             average="weighted",
             zero_division=0,
         )
-        f1 = f1_score(y, predictions, average="weighted", zero_division=0)
-        cm = confusion_matrix(y, predictions)
+        f1 = f1_score(y_encoded, predictions, average="weighted", zero_division=0)
+        cm = confusion_matrix(y_encoded, predictions)
         # Feature importances (RF supports this attribute)
         importances = getattr(self.model, "feature_importances_", None)
         if importances is not None and len(importances) == len(self.feature_columns):
@@ -286,20 +364,25 @@ class BaselineForecaster:
         # Scale features
         X_scaled = self.scaler.transform(X_features)
 
-        # Predict
-        predictions = self.model.predict(X_scaled)
+        # Predict (XGBoost returns 0/1/2; decode to bearish/neutral/bullish)
+        predictions_encoded = self.model.predict(X_scaled)
         probabilities = self.model.predict_proba(X_scaled)
 
         # Get most recent prediction (last row)
-        label = predictions[-1]
+        label_encoded = int(predictions_encoded[-1])
+        label = self._label_decode.get(label_encoded, LABEL_DECODE.get(label_encoded, "neutral"))
         proba = probabilities[-1]
         confidence = float(proba.max())
 
-        logger.info(f"Prediction: {label} (confidence: {confidence:.3f})")
-        logger.info(f"Probabilities: {dict(zip(self.model.classes_, proba))}")
+        # proba order follows _label_decode (0,1,...,k-1)
+        proba_dict = {
+            self._label_decode.get(i, LABEL_DECODE.get(i, "neutral")): float(proba[i])
+            for i in range(min(len(proba), len(self._label_decode) or 3))
+        }
 
-        # Return ensemble-compatible dict format
-        proba_dict = dict(zip(self.model.classes_, proba))
+        logger.info(f"Prediction: {label} (confidence: {confidence:.3f})")
+        logger.info(f"Probabilities: {proba_dict}")
+
         return {
             "label": label,
             "confidence": confidence,

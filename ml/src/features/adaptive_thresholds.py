@@ -92,27 +92,87 @@ class AdaptiveThresholds:
         return bearish_threshold, bullish_threshold
 
     @staticmethod
-    def compute_thresholds_horizon(
+    def compute_thresholds_percentile(
         df: pd.DataFrame,
         horizon_days: int = 1,
-        atr_multiplier: float = 1.0,
-        use_atr_prefer: bool = True,
+        bearish_percentile: float = 0.35,
+        bullish_percentile: float = 0.65,
     ) -> Tuple[float, float]:
         """
-        Compute horizon-aware thresholds: shorter horizons = tighter, longer = wider.
+        Compute thresholds based on historical return distribution (percentile-based).
 
-        Uses ATR when available (scales with sqrt(horizon)); falls back to vol-based.
+        Goal: Create balanced label distribution (e.g., 30% bearish, 40% neutral, 30% bullish)
+        instead of ATR-based which creates 96-100% neutral in low-volatility regimes.
 
         Args:
-            df: DataFrame with OHLCV (and optionally 'atr')
+            df: DataFrame with OHLCV
             horizon_days: Forecast horizon in days
-            atr_multiplier: Multiplier for ATR-based threshold (default 1.0 = 1 ATR)
-            use_atr_prefer: Prefer ATR when column exists
+            bearish_percentile: Percentile for bearish threshold (default 0.35 = 35th percentile)
+            bullish_percentile: Percentile for bullish threshold (default 0.65 = 65th percentile)
 
         Returns:
             (bearish_threshold, bullish_threshold)
         """
         horizon_days = max(1, int(horizon_days))
+        returns = df["close"].pct_change()
+
+        # Compute forward returns for this horizon
+        forward_returns = returns.rolling(horizon_days).sum().shift(-horizon_days)
+        forward_returns = forward_returns.dropna()
+
+        if len(forward_returns) < 30:
+            logger.warning("Insufficient data for percentile thresholds, falling back to ATR")
+            return AdaptiveThresholds.compute_thresholds_horizon(df, horizon_days)
+
+        # Use percentiles to set thresholds (creates 30-40-30 split by default)
+        bearish_threshold = float(forward_returns.quantile(bearish_percentile))
+        bullish_threshold = float(forward_returns.quantile(bullish_percentile))
+
+        logger.info(
+            "Percentile thresholds (%.0fD) - range=[%.4f, %.4f] (p%.0f/p%.0f)",
+            horizon_days,
+            bearish_threshold,
+            bullish_threshold,
+            bearish_percentile * 100,
+            bullish_percentile * 100,
+        )
+
+        return bearish_threshold, bullish_threshold
+
+    @staticmethod
+    def compute_thresholds_horizon(
+        df: pd.DataFrame,
+        horizon_days: int = 1,
+        atr_multiplier: float = 1.0,
+        use_atr_prefer: bool = True,
+        use_percentile: bool = True,
+    ) -> Tuple[float, float]:
+        """
+        Compute horizon-aware thresholds: shorter horizons = tighter, longer = wider.
+
+        Uses percentile-based thresholds by default (creates balanced labels).
+        Falls back to ATR when percentile fails or use_percentile=False.
+
+        Args:
+            df: DataFrame with OHLCV (and optionally 'atr')
+            horizon_days: Forecast horizon in days
+            atr_multiplier: Multiplier for ATR-based threshold (default 1.0 = 1 ATR)
+            use_atr_prefer: Prefer ATR when column exists (used in fallback)
+            use_percentile: Use percentile-based thresholds (default True, recommended)
+
+        Returns:
+            (bearish_threshold, bullish_threshold)
+        """
+        horizon_days = max(1, int(horizon_days))
+
+        # Prefer percentile-based (creates balanced labels, avoids 96% neutral)
+        if use_percentile:
+            try:
+                return AdaptiveThresholds.compute_thresholds_percentile(df, horizon_days)
+            except Exception as e:
+                logger.warning("Percentile threshold failed: %s, falling back to ATR", e)
+
+        # Fallback: ATR-based (original behavior)
         horizon_scale = np.sqrt(float(horizon_days))
 
         atr_col = "atr" if "atr" in df.columns else ("atr_14" if "atr_14" in df.columns else None)
@@ -133,9 +193,8 @@ class AdaptiveThresholds:
                 )
                 return bearish_threshold, bullish_threshold
 
-        # Fallback: vol-based with horizon scaling (shorter = tighter base)
+        # Final fallback: vol-based with horizon scaling
         bearish_thresh, bullish_thresh = AdaptiveThresholds.compute_thresholds(df)
-        # Scale: 1D uses full range, 20D uses ~4.5x (wider for longer horizon)
         bearish_threshold = bearish_thresh * horizon_scale
         bullish_threshold = bullish_thresh * horizon_scale
         logger.info(

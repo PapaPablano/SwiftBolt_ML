@@ -1,0 +1,119 @@
+services:
+  tabpfn-walk-forward:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.tabpfn
+    image: swiftbolt/tabpfn-forecaster:latest
+    container_name: tabpfn-walk-forward
+
+    # GPU support: uncomment when NVIDIA Container Toolkit is available
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+    env_file:
+      - ../.env
+    environment:
+      PYTHONPATH: /app
+      CUDA_VISIBLE_DEVICES: "0"
+      # HuggingFace token required for gated TabPFN 2.5: accept terms at https://huggingface.co/Prior-Labs/tabpfn_2_5 then set HF_TOKEN
+      HF_TOKEN: ${HF_TOKEN:-}
+      SYMBOL: ${SYMBOL:-TSLA}
+      INITIAL_TRAIN_DAYS: ${INITIAL_TRAIN_DAYS:-300}
+      TEST_DAYS: ${TEST_DAYS:-50}
+      STEP_DAYS: ${STEP_DAYS:-50}
+      USE_TABPFN: "true"
+
+    volumes:
+      - ../trained_models:/app/trained_models
+      - ../results:/app/results
+      - ../logs:/app/logs
+      - ../.env:/app/.env:ro
+
+    network_mode: bridge
+    restart: "no"
+    command: python scripts/tabpfn_job.py
+
+  tabpfn-batch:
+    image: swiftbolt/tabpfn-forecaster:latest
+    container_name: tabpfn-batch
+
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+    env_file:
+      - ../.env
+    environment:
+      PYTHONPATH: /app
+      CUDA_VISIBLE_DEVICES: "0"
+      HF_TOKEN: ${HF_TOKEN:-}
+      SYMBOLS: ${SYMBOLS:-TSLA,NVDA,AAPL,MSFT,META,SPY}
+      PARALLEL: ${PARALLEL:-true}
+      MAX_WORKERS: ${MAX_WORKERS:-2}
+      INITIAL_TRAIN_DAYS: ${INITIAL_TRAIN_DAYS:-300}
+      TEST_DAYS: ${TEST_DAYS:-50}
+      STEP_DAYS: ${STEP_DAYS:-50}
+      USE_TABPFN: "true"
+
+    volumes:
+      - ../trained_models:/app/trained_models
+      - ../results:/app/results
+      - ../logs:/app/logs
+      - ../.env:/app/.env:ro
+
+    network_mode: bridge
+    restart: "no"
+    command: python scripts/tabpfn_batch_job.py
+
+  # Single-split hybrid TabPFN + XGBoost on AAPL (quick signal)
+  tabpfn-hybrid-aapl:
+    image: swiftbolt/tabpfn-forecaster:latest
+    container_name: tabpfn-hybrid-aapl
+    env_file:
+      - ../.env
+    environment:
+      PYTHONPATH: /app
+      CUDA_VISIBLE_DEVICES: "0"
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - ../results:/app/results
+      - ../logs:/app/logs
+      - ../.env:/app/.env:ro
+    network_mode: bridge
+    restart: "no"
+    command: python hybrid_tabpfn_xgb_aapl.py
+
+  # Walk-forward weekly (XGBoost + ARIMA + Hybrid); default d1 (daily) - 4h often insufficient bars
+  tabpfn-walk-forward-weekly:
+    image: swiftbolt/tabpfn-forecaster:latest
+    container_name: tabpfn-walk-forward-weekly
+    env_file:
+      - ../.env
+    environment:
+      PYTHONPATH: /app
+      CUDA_VISIBLE_DEVICES: "0"
+      HF_TOKEN: ${HF_TOKEN:-}
+      SYMBOL: ${SYMBOL:-TSLA}
+      TIMEFRAME: ${TIMEFRAME:-d1}
+      H4_SOURCE: ${H4_SOURCE:-supabase}
+      HORIZON: ${HORIZON:-5}
+      THRESHOLD: ${THRESHOLD:-0.02}
+      TRAIN_WINDOW: ${TRAIN_WINDOW:-252}
+      REFIT_FREQ: ${REFIT_FREQ:-21}
+    volumes:
+      - ../trained_models:/app/trained_models
+      - ../results:/app/results
+      - ../logs:/app/logs
+      - ../.env:/app/.env:ro
+    network_mode: bridge
+    restart: "no"
+    command: sh -c "python walk_forward_weekly.py $${SYMBOL:-TSLA} --timeframe $${TIMEFRAME:-d1} --h4-source $${H4_SOURCE:-supabase} --horizon $${HORIZON:-5} --threshold $${THRESHOLD:-0.02} --train-window $${TRAIN_WINDOW:-252} --refit-freq $${REFIT_FREQ:-21}"

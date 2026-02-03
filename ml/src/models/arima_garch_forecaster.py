@@ -597,6 +597,183 @@ class ArimaGarchForecaster:
         }
 
 
+# ---------------------------------------------------------------------------
+# Benchmark-compatible ARIMA-GARCH (binary, prepare_training_data_binary / train / predict_batch)
+# ---------------------------------------------------------------------------
+
+import warnings
+from typing import Any, Dict, Optional, Tuple
+
+try:
+    from arch import arch_model
+except ImportError:
+    arch_model = None  # type: ignore
+
+from statsmodels.tsa.stattools import adfuller
+
+
+class ARIMAGARCHForecaster:
+    """
+    Two-stage forecaster for benchmark comparison:
+    1. ARIMA for conditional mean (return prediction)
+    2. GARCH for conditional variance (volatility)
+    API: prepare_training_data_binary -> train(X,y) -> predict_batch(X).
+    """
+
+    def __init__(
+        self,
+        arima_order: Tuple[int, int, int] = (1, 0, 1),
+        garch_order: Tuple[int, int] = (1, 1),
+        horizon_days: int = 1,
+    ) -> None:
+        self.arima_order = arima_order
+        self.garch_order = garch_order
+        self.horizon_days = horizon_days
+        self.arima_result: Any = None
+        self.garch_result: Any = None
+        self._returns_series: Optional[pd.Series] = None
+        self._dates: Optional[pd.Series] = None
+        self._train_size: Optional[int] = None
+
+    def prepare_training_data_binary(
+        self,
+        df: pd.DataFrame,
+        horizon_days: int = 1,
+        sentiment_series: Optional[pd.Series] = None,
+        threshold_pct: float = 0.005,
+        add_simple_regime: bool = False,
+    ) -> Tuple[Any, Any, pd.Series]:
+        """
+        Prepare binary data for benchmark compatibility.
+        ARIMA-GARCH uses returns only; returns dummy X and labels/dates.
+        """
+        horizon_int = max(1, int(np.ceil(horizon_days)))
+        returns = df["close"].pct_change().dropna()
+        forward_returns = (
+            df["close"].pct_change(periods=horizon_int).shift(-horizon_int)
+        )
+        # Align and filter significant moves
+        common = returns.index.intersection(forward_returns.dropna().index)
+        returns = returns.loc[common].dropna()
+        forward_returns = forward_returns.loc[returns.index]
+        mask = forward_returns.abs() > threshold_pct
+        returns = returns[mask].dropna()
+        forward_returns = forward_returns.loc[returns.index]
+        dates = pd.Series(returns.index)
+        labels = pd.Series(
+            np.where(forward_returns.values > 0, "bullish", "bearish"),
+            index=returns.index,
+        )
+        # Store for training (percentage)
+        self._returns_series = returns * 100
+        self._dates = dates
+        X_dummy = np.zeros((len(returns), 1))
+        return X_dummy, labels.values, dates
+
+    def train(
+        self,
+        X: Any,
+        y: Any,
+        min_samples: Optional[int] = None,
+        feature_names: Any = None,
+    ) -> Dict[str, float]:
+        """Train ARIMA-GARCH on the first len(y) returns (X ignored)."""
+        if self._returns_series is None:
+            raise RuntimeError("Call prepare_training_data_binary first")
+        n_train = len(y) if hasattr(y, "__len__") else len(X)
+        self._train_size = n_train
+        train_returns = self._returns_series.iloc[:n_train]
+        if len(train_returns) < 30:
+            logger.warning("Very few samples for ARIMA-GARCH")
+        warnings.filterwarnings("ignore")
+        # Stationarity
+        try:
+            adf_result = adfuller(train_returns.dropna())
+            if adf_result[1] > 0.05:
+                logger.debug("Series may be non-stationary (ADF p=%.4f)", adf_result[1])
+        except Exception:
+            pass
+        # ARIMA
+        try:
+            arima = ARIMA(train_returns.astype(float), order=self.arima_order)
+            self.arima_result = arima.fit()
+            residuals = self.arima_result.resid
+        except Exception as e:
+            logger.warning("ARIMA fit failed: %s. Using mean forecast.", e)
+            self.arima_result = None
+            residuals = train_returns.astype(float)
+        # GARCH
+        if arch_model is None:
+            self.garch_result = None
+        else:
+            try:
+                garch = arch_model(
+                    residuals.dropna(),
+                    vol="Garch",
+                    p=self.garch_order[0],
+                    q=self.garch_order[1],
+                    dist="normal",
+                )
+                self.garch_result = garch.fit(disp="off")
+            except Exception as e:
+                logger.warning("GARCH fit failed: %s", e)
+                self.garch_result = None
+        # In-sample accuracy
+        pred = self._forecast_next_n(len(train_returns))
+        actual = np.where(train_returns.values > 0, "bullish", "bearish")
+        acc = np.mean(np.array(pred) == np.array(actual))
+        return {"train_accuracy": float(acc)}
+
+    def _forecast_next_n(self, n: int) -> np.ndarray:
+        """Forecast next n steps (mean only for direction)."""
+        if self.arima_result is None:
+            return np.zeros(n)  # neutral -> bearish by sign
+        try:
+            f = self.arima_result.get_forecast(steps=n)
+            mean = f.predicted_mean
+            if hasattr(mean, "values"):
+                return mean.values
+            return np.asarray(mean)
+        except Exception:
+            return np.zeros(n)
+
+    def predict_batch(self, X: Any) -> np.ndarray:
+        """
+        Rolling one-step-ahead forecasts (proper walk-forward).
+
+        For each validation point: refit ARIMA on expanding window up to that point,
+        forecast 1 step ahead, then move to next point. Correct implementation per:
+        - "Forecast of Stock Prices with ARIMA, Rolling Forecast, and GARCH" (2025)
+        - Alpha Scientist walk-forward methodology (2012)
+        """
+        if self._returns_series is None or self._train_size is None:
+            raise RuntimeError("Call prepare_training_data_binary and train() first")
+        n_val = len(X) if hasattr(X, "__len__") else 1
+        n_train = self._train_size
+        window_size = min(252, n_train)
+        predictions = []
+        logger.info("ARIMA-GARCH: Rolling one-step-ahead forecast for %s validation samples (window=%s)...", n_val, window_size)
+        for i in range(n_val):
+            train_start = max(0, n_train + i - window_size)
+            train_end = n_train + i
+            train_data = self._returns_series.iloc[train_start:train_end]
+            if len(train_data) < 30:
+                predictions.append("bearish")
+                continue
+            try:
+                arima = ARIMA(train_data.astype(float), order=self.arima_order)
+                fitted = arima.fit(disp=0)
+                f = fitted.get_forecast(steps=1)
+                pred_mean = f.predicted_mean
+                pred_return = float(pred_mean.iloc[0]) if hasattr(pred_mean, "iloc") else float(pred_mean[0])
+            except Exception:
+                pred_return = float(train_data.tail(20).mean())
+            predictions.append("bullish" if pred_return > 0 else "bearish")
+            if (i + 1) % 20 == 0:
+                logger.info("  Forecasted %s/%s samples...", i + 1, n_val)
+        return np.array(predictions)
+
+
 if __name__ == "__main__":
     # Quick test
     import yfinance as yf

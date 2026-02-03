@@ -150,6 +150,61 @@ class TabPFNForecaster:
 
         return X, y
 
+    def prepare_training_data_binary(
+        self,
+        df: pd.DataFrame,
+        horizon_days: int = 1,
+        sentiment_series: pd.Series | None = None,
+        threshold_pct: float = 0.005,
+        add_simple_regime: bool = False,
+    ) -> Tuple[pd.DataFrame, pd.Series]:
+        """
+        Binary mode: same as prepare_training_data but only keeps rows with
+        |return| > threshold_pct. Returns (X, y) with y = continuous return
+        (for regressor); at inference convert pred to bullish if pred > 0 else bearish.
+        When add_simple_regime=True, adds stock-only trend/momentum regime (no VIX/SPY).
+        """
+        df = df.copy()
+        df = compute_simplified_features(df, sentiment_series=sentiment_series, add_volatility=True)
+        if add_simple_regime:
+            from src.features.regime_features_simple import add_all_simple_regime_features
+            df = add_all_simple_regime_features(df)
+
+        horizon_days_int = max(1, int(np.ceil(horizon_days)))
+        forward_returns = df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int)
+
+        engineer = TemporalFeatureEngineer()
+        X_list: list[Dict[str, Any]] = []
+        y_list: list[float] = []
+
+        start_idx = 200
+        end_idx = len(df) - horizon_days_int
+        filtered_out = 0
+
+        date_list: list = []
+        ts_col = df["ts"] if "ts" in df.columns else df.index
+        for idx in range(start_idx, end_idx):
+            actual_return = forward_returns.iloc[idx]
+            if not pd.notna(actual_return):
+                continue
+            if abs(actual_return) <= threshold_pct:
+                filtered_out += 1
+                continue
+            features = engineer.add_features_to_point(df, idx)
+            X_list.append(features)
+            y_list.append(actual_return)
+            date_list.append(pd.to_datetime(ts_col.iloc[idx]))
+
+        X = pd.DataFrame(X_list)
+        y = pd.Series(y_list)
+        dates = pd.Series(date_list) if date_list else pd.Series(dtype="datetime64[ns]")
+
+        logger.info(
+            f"TabPFN binary training data: {len(X)} samples "
+            f"(filtered out {filtered_out} moves < {threshold_pct:.2%})"
+        )
+        return X, y, dates
+
     def train(
         self,
         X: pd.DataFrame,
@@ -390,6 +445,22 @@ class TabPFNForecaster:
             "inference_time_sec": inference_time,
             "model_type": "tabpfn",
         }
+
+    def predict_batch(self, X: pd.DataFrame) -> np.ndarray:
+        """
+        Predict labels for multiple rows (binary: bullish/bearish).
+        For compatibility with compare_models and walk-forward.
+        """
+        if not self.is_trained:
+            raise ValueError("TabPFN model must be trained before prediction")
+        cols = [c for c in self.feature_columns if c in X.columns]
+        if not cols:
+            raise ValueError("No feature columns found in X")
+        X_feat = X[cols].reindex(columns=self.feature_columns).fillna(0)
+        X_scaled = self.scaler.transform(X_feat)
+        pred_returns = self.model.predict(X_scaled)
+        pred_returns = np.atleast_1d(pred_returns)
+        return np.where(pred_returns > 0, "bullish", "bearish")
 
     def generate_forecast(
         self,

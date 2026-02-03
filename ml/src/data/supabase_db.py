@@ -33,16 +33,19 @@ class SupabaseDatabase:
         limit: int | None = None,
         providers: list[str] | tuple[str, ...] | None = None,
         end_ts: datetime | str | pd.Timestamp | None = None,
+        source: str | None = None,
     ) -> pd.DataFrame:
         """
         Fetch OHLC bars for a symbol from the database.
 
         Args:
             symbol: Stock ticker symbol
-            timeframe: Timeframe (d1, h1, etc.)
+            timeframe: Timeframe (d1, h1, h4, etc.)
             limit: Maximum number of bars to fetch (most recent)
             end_ts: Optional cutoff timestamp (exclusive). Bars at or after this
                 timestamp are excluded.
+            source: If "alpaca_4h" and timeframe "h4", read from ohlc_bars_h4_alpaca
+                (Alpaca 4h clone for TabPFN experiments). Otherwise use ohlc_bars_v2.
 
         Returns:
             DataFrame with columns: ts, open, high, low, close, volume
@@ -57,6 +60,39 @@ class SupabaseDatabase:
                 .execute()
             )
             symbol_id = symbol_response.data["id"]
+
+            # Alpaca 4h clone: used only for TabPFN/hybrid experiments (ML house rules)
+            if source == "alpaca_4h" and timeframe == "h4":
+                query = (
+                    self.client.table("ohlc_bars_h4_alpaca")
+                    .select("ts, open, high, low, close, volume")
+                    .eq("symbol_id", symbol_id)
+                    .order("ts", desc=True)
+                )
+                if end_ts is not None:
+                    ts_iso = pd.to_datetime(end_ts).isoformat()
+                    query = query.lt("ts", ts_iso)
+                if limit:
+                    query = query.limit(limit)
+                response = query.execute()
+                df = pd.DataFrame(response.data)
+                if df.empty:
+                    logger.warning(
+                        "No 4h bars in ohlc_bars_h4_alpaca for %s; run Alpaca 4h backfill.",
+                        symbol,
+                    )
+                    return df
+                df["ts"] = pd.to_datetime(df["ts"])
+                if df["ts"].dt.tz is not None:
+                    df["ts"] = df["ts"].dt.tz_localize(None)
+                df = df.sort_values("ts").reset_index(drop=True)
+                df.attrs["provider"] = "alpaca"
+                logger.info(
+                    "Fetched %s 4h bars for %s from ohlc_bars_h4_alpaca",
+                    len(df),
+                    symbol,
+                )
+                return df
 
             preferred_providers = list(
                 dict.fromkeys(
@@ -629,6 +665,26 @@ class SupabaseDatabase:
                 e,
             )
             raise
+
+    def get_or_create_symbol_id(self, symbol: str) -> str:
+        """
+        Get symbol UUID, or insert a new symbols row (stock, alpaca) if missing.
+        Used by 4h backfill so new regime tickers don't require a migration.
+        """
+        try:
+            return self.get_symbol_id(symbol)
+        except Exception:
+            try:
+                self.client.table("symbols").insert(
+                    {
+                        "ticker": symbol.upper(),
+                        "asset_type": "stock",
+                        "primary_source": "alpaca",
+                    }
+                ).execute()
+            except Exception:
+                pass  # e.g. race: another process inserted
+            return self.get_symbol_id(symbol)
 
     def fetch_recent_forecast_horizons(
         self,

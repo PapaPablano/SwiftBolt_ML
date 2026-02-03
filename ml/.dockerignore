@@ -44,9 +44,11 @@ htmlcov/
 .env.local
 .env.*.local
 
-# Logs
+# Logs and outputs (mounted as volumes at runtime)
 *.log
 logs/
+results/
+trained_models/
 
 # OS
 .DS_Store

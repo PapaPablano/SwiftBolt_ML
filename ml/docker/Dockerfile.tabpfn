@@ -1,0 +1,51 @@
+# Python slim base (avoids pulling large NVIDIA image; run on CPU or use --build-arg for GPU base)
+# Build from ml/ (context = .): docker build -f docker/Dockerfile.tabpfn .
+# For GPU base (from ml/):     docker build -f docker/Dockerfile.tabpfn --build-arg BASE_IMAGE=nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04 .
+ARG BASE_IMAGE=python:3.11-slim-bookworm
+FROM ${BASE_IMAGE}
+
+# Metadata
+LABEL maintainer="eric@swiftbolt.ai"
+LABEL description="TabPFN forecaster (CPU default; use BASE_IMAGE for GPU)"
+
+# Install system deps (slim has python3; nvidia/cuda base often has none — install so both work)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-dev \
+    gcc \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Ensure python is in PATH (nvidia/cuda base has no python; slim may have it)
+RUN (command -v python >/dev/null 2>&1) || ln -sf /usr/bin/python3 /usr/local/bin/python
+
+# Upgrade pip (use python3 so both slim and nvidia/cuda bases work)
+RUN python3 -m pip install --upgrade pip setuptools wheel
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements first (for layer caching)
+COPY docker/requirements.tabpfn.txt .
+RUN python3 -m pip install --no-cache-dir -r requirements.tabpfn.txt
+
+# Copy ML code (build context is ml/)
+COPY src/ ./src/
+COPY config/ ./config/
+COPY scripts/ ./scripts/
+COPY analyze_walk_forward.py .
+COPY walk_forward_compare.py .
+COPY walk_forward_weekly.py .
+COPY hybrid_tabpfn_xgb_aapl.py .
+
+# Create output directories
+RUN mkdir -p /app/logs /app/results /app/trained_models
+
+# Environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+# Leave CUDA_VISIBLE_DEVICES unset for CPU; set at runtime for GPU
+
+# Default command (python3 for nvidia/cuda base compatibility)
+CMD ["python3", "scripts/tabpfn_job.py"]

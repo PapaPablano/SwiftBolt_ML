@@ -1,0 +1,4 @@
+# Optional: for compare_rl_agent.py (Hugging Face RL model comparison)
+stable-baselines3>=2.0.0
+huggingface-sb3>=2.0.0
+gymnasium>=0.29.0

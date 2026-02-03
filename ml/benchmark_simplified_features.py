@@ -55,15 +55,28 @@ def load_ohlcv(symbol: str, limit: int = LIMIT_BARS) -> pd.DataFrame | None:
     return None
 
 
-def load_sentiment_for_symbol(symbol: str, start_date=None, end_date=None):
+def load_sentiment_for_symbol(
+    symbol: str, start_date=None, end_date=None
+) -> pd.Series | None:
     """
     Load daily sentiment for symbol over [start_date, end_date].
-    Returns None (disabled) until sentiment pipeline has verified variance (std > 0.01).
-    When re-enabled, use get_historical_sentiment_series and validate_sentiment_variance first.
+    Uses sentiment_scores DB + FinViz realtime fallback.
+    Returns None on error (graceful degradation).
     """
-    # DISABLED: Sentiment had zero variance (constant -0.186633). Re-enable after fixing
-    # FinViz integration and running validate_sentiment_variance(symbol).
-    return None
+    if start_date is None or end_date is None:
+        return None
+    try:
+        from src.features.stock_sentiment import get_historical_sentiment_series
+
+        return get_historical_sentiment_series(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            use_finviz_realtime=True,
+        )
+    except Exception as e:
+        print(f"  Sentiment error for {symbol}: {e}")
+        return None
 
 
 def run_one_symbol(
@@ -142,7 +155,7 @@ def main() -> None:
         except Exception as e:
             print(f"  Sentiment backfill skipped: {e}\n")
 
-    print("Benchmarking simplified 28-feature pipeline on real data (sentiment disabled)")
+    print("Benchmarking simplified 31-feature pipeline on real data (sentiment enabled)")
     print(f"Symbols: {', '.join(BENCHMARK_SYMBOLS)}")
     print(f"Bars per symbol: {LIMIT_BARS}, train/val split: {TRAIN_VAL_SPLIT:.0%}\n")
 
@@ -174,7 +187,7 @@ def main() -> None:
             },
             "n_features": len(out["feature_columns"]),
         }
-        out_path = trained_models_dir / f"{symbol}_simplified_28feat.pkl"
+        out_path = trained_models_dir / f"{symbol}_simplified_31feat.pkl"
         with open(out_path, "wb") as f:
             pickle.dump(artifact, f)
         print(
@@ -189,7 +202,7 @@ def main() -> None:
 
     # Summary table
     print("\n" + "=" * 90)
-    print("BENCHMARK RESULTS (28 features, sentiment disabled)")
+    print("BENCHMARK RESULTS (31 features, sentiment enabled)")
     print("=" * 90)
     print(f"{'Symbol':<8} {'Bars':>6} {'Samples':>8} {'Train%':>8} {'Val%':>8} {'Time(s)':>8}")
     print("-" * 90)
@@ -207,7 +220,7 @@ def main() -> None:
     print(f"{'MEAN':<8} {'':>6} {'':>8} {avg_train:>7.1%} {avg_val:>7.1%} {avg_time:>8.2f}")
     print(f"{'MED(val)':<8} {'':>6} {'':>8} {'':>8} {med_val:>7.1%}")
     print("=" * 90)
-    print(f"Models saved to {trained_models_dir} (*_simplified_28feat.pkl)")
+    print(f"Models saved to {trained_models_dir} (*_simplified_31feat.pkl)")
     print("Run: python ml/analyze_feature_importance.py")
 
 

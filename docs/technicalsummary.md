@@ -1251,6 +1251,7 @@ Benchmark on **real data** for 12 symbols (AAPL, AMD, CRWD, GOOG, GOOGL, HL, MET
 - **Loader:** `get_historical_sentiment_series(symbol, start_date, end_date, use_finviz_realtime=True)` — DB + FinViz merge; maps post-end FinViz dates to last N bar-dates.
 - **DB:** Migration `20260131220000_sentiment_scores.sql` adds `sentiment_scores(symbol_id, as_of_date, sentiment_score)` and optional `news_items.sentiment_score`.
 - **Backfill:** `ml/backfill_sentiment.py` — fetches news via edge with from/to, scores with VADER, upserts daily mean into `sentiment_scores`. Run: `cd ml && python backfill_sentiment.py [--symbols AAPL,...] [--days 365]` or `--from YYYY-MM-DD --to YYYY-MM-DD`.
+- **Automatic backfill:** `benchmark_simplified_features.py` and `unified_forecast_job.py` run sentiment backfill (7 days) before execution. Use `--skip-sentiment-backfill` to skip. GitHub `ml-orchestration.yml` runs backfill before ML forecasts.
 - **Re-enable sentiment:** After backfill and `validate_sentiment_variance` passes, add `sentiment_score` to the lag list in `create_lag_features` (e.g. `sentiment_score_lag7`, `sentiment_score_lag14`) and append to `SIMPLIFIED_FEATURES` so backtests use “previous week’s sentiment” as a feature.
 
 ### DB (in migration above)
