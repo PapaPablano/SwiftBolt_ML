@@ -1,5 +1,15 @@
 # Stock Analysis Platform — High‑Level Blueprint (Working Draft)
 
+**Last Updated:** February 2026
+
+## Implementation Status (Feb 2026)
+
+- **Backend**: Supabase (Postgres + Edge Functions). Primary market data: **Alpaca**; news/events: Finnhub; supplemental: Polygon (Massive).
+- **ML pipeline**: Unified forecast job (`unified_forecast_job.py`), daily horizons 1D/1W/1M, intraday 15m/1h. **2-model ensemble** (LSTM + ARIMA-GARCH) in canary; Gradient Boosting and Transformer disabled for production (Transformer permanently off; see ACTION_ITEMS.md).
+- **Phase 7 canary**: 6-day validation (Jan 28–Feb 4) on AAPL, MSFT, SPY; walk-forward optimizer, divergence monitoring, `ensemble_validation_metrics`. GO/NO-GO decision after canary. See `1_27_Phase_7.1_Schedule.md`, `PHASE_7_CANARY_DEPLOYMENT_STATUS.md`.
+- **Sentiment**: Backfill and `sentiment_scores` table exist; sentiment feature temporarily disabled (zero-variance fix) until `validate_sentiment_variance` passes. See `docs/technicalsummary.md`.
+- **Orchestration**: GitHub Actions ML workflow; Transformer disabled; continue-on-error for populate_live_predictions; health checks documented.
+
 ## Mission
 
 Make advanced technical analysis and machine‑learning insights accessible and digestible to the average trader.
@@ -37,15 +47,15 @@ Make advanced technical analysis and machine‑learning insights accessible and 
 
 **Future Trading & Risk Layer**: Optional integration with broker APIs; position sizing tools; stop/limit modeling.
 
-## Technology Stack (Draft)
+## Technology Stack (Current)
 
-**Backend**: Python for ingestion/ML; Postgres or TimescaleDB; FastAPI for API layer; WebSockets for live feeds.
+**Backend**: Supabase (Postgres + Edge Functions, TypeScript/Deno). Data: Alpaca (primary OHLC), Finnhub (news/quotes), Polygon/Massive (supplemental).
 
-**ML Stack**: scikit‑learn, XGBoost, Prophet or neural nets for time-series forecasting.
+**ML Stack**: Python 3.11+; scikit-learn, pandas, statsmodels (ARIMA-GARCH); LSTM and ARIMA-GARCH in production ensemble; XGBoost/TabPFN for regime and experiments; Transformer disabled in workflow.
 
-**Frontend**: Swift + SwiftUI macOS app; financial charting component; MVVM architecture using ObservableObject/State and async/await for networking; server interactions via HTTPS APIs refreshed on a 10-minute cadence.
+**Frontend**: Swift 5.9+ / SwiftUI macOS app; MVVM; async/await; HTTPS to Supabase Edge Functions; chart data and ML overlay via `/chart` and related endpoints.
 
-**Infrastructure**: Docker; CI/CD; nightly data refresh; scheduled ML retraining.
+**Infrastructure**: Docker (ML images); GitHub Actions (ML forecast, backfill, validation); scheduled ingestion and ML jobs; canary monitoring (divergence, RMSE).
 
 ## Architectural Risks & Trade‑offs
 
@@ -98,10 +108,11 @@ To prevent scope creep and maintain a clear MVP path, features are categorized i
 * **Backend Platform**: Supabase (Postgres + Auth + Edge Functions).
 * **External Data Providers**:
 
-  * **Finnhub**: quotes, OHLC candles, and news for stocks (and later forex/crypto).
-  * **Massive API**: high-quality historical and real-time data for stocks, options, indices, currencies, and futures.
-* **Client**: macOS SwiftUI app communicates only with Supabase Edge Functions (never directly with Finnhub/Massive) to keep API keys secure and centralize logic.
-* **ML Engine**: runs server-side (could be a separate service or scheduled function) and writes forecast outputs into `ml_forecasts` table in Postgres.
+  * **Alpaca**: primary source for OHLC bars, corporate actions, market calendar, and news (used by Edge Functions and ML backfills).
+  * **Finnhub**: quotes and news for stocks (supplemental).
+  * **Polygon (Massive API)**: supplemental historical and options data.
+* **Client**: macOS SwiftUI app communicates only with Supabase Edge Functions (never directly with providers) to keep API keys secure and centralize logic.
+* **ML Engine**: Python pipeline (unified forecast job, evaluation jobs); runs via GitHub Actions or local/scheduled; writes to `ml_forecasts`, `ml_forecasts_intraday`, and `ensemble_validation_metrics` (Phase 7 canary).
 
 Two core data flows:
 
@@ -372,15 +383,17 @@ These contracts are intentionally compact to keep the macOS app simple and to ce
 
 ## Roadmap
 
-**Phase 1 (MVP)**: Multi‑asset data ingestion, charts, basic indicators, screeners, dashboard.
+**Phase 1 (MVP)**: Multi‑asset data ingestion, charts, basic indicators, screeners, dashboard. ✅
 
-**Phase 2**: ML feature pipeline, baseline predictive models, ML signal UI.
+**Phase 2**: ML feature pipeline, baseline predictive models, ML signal UI. ✅
 
-**Phase 3**: Alerts, notification engine, saved strategies.
+**Phase 3**: Alerts, notification engine, saved strategies. (Partial)
 
-**Phase 4**: Extensibility layer, API for custom strategies, option analytics (IV, greeks).
+**Phase 4**: Extensibility layer, API for custom strategies, option analytics (IV, greeks). (Partial; options ranker deployed)
 
-**Phase 5**: Crypto expansion, potential broker integration, risk‑management systems.
+**Phase 5**: Crypto expansion, potential broker integration, risk‑management systems. (Later)
+
+**Phase 7 (Feb 2026)**: 2-model ensemble canary (LSTM + ARIMA-GARCH) on AAPL, MSFT, SPY; walk-forward validation; divergence monitoring; GO/NO-GO after 6-day canary. In progress.
 
 ## Guiding Principles
 
@@ -406,7 +419,7 @@ Clarity; transparency; modularity; performance; user‑centric design.
 
 ---
 
-This document will be iteratively updated as we refine the architecture and define the build sequence.
+This document is iteratively updated as we refine the architecture and define the build sequence. Last substantive update: February 2026 (Phase 7 canary, Alpaca primary, 2-model ensemble).
 
 ## Front-End UX Blueprint (Main Dashboard)
 

@@ -1,5 +1,7 @@
 # ML Blueprint: Options Ranking Pipeline
 
+**Last Reviewed:** February 2026. Options ranker and job queue remain in use; underlying ML forecasts use 2-model ensemble (Phase 7 canary).
+
 ## Overview
 
 This document describes the complete ML pipeline for options contract ranking in SwiftBolt ML, from data ingestion to UI display.

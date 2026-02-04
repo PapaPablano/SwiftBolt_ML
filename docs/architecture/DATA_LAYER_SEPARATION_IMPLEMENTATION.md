@@ -1,5 +1,7 @@
 # Data Layer Separation Implementation Summary
 
+**Last Reviewed:** February 2026. Layer separation (historical / intraday / forecast) remains in place; primary OHLC provider is Alpaca; tables include `ohlc_bars_v2` with provider and `is_forecast` flags.
+
 ## Overview
 Implemented a complete data layering architecture to separate historical, intraday, and forecast data flows, preventing the data corruption issues described in `@dataintegrity.md`.
 

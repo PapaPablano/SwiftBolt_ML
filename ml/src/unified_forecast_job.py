@@ -32,6 +32,11 @@ from config.settings import settings
 from src.data.data_validator import OHLCValidator
 from src.data.supabase_db import db
 from src.features.feature_cache import fetch_or_build_features
+from src.features.lookahead_checks import (
+    LookaheadViolation,
+    assert_truncation_stable,
+    run_synthetic_feature_guard,
+)
 from src.features.support_resistance_detector import SupportResistanceDetector
 from src.features.timeframe_consensus import add_consensus_to_forecast
 from src.forecast_synthesizer import ForecastSynthesizer
@@ -88,6 +93,19 @@ class UnifiedForecastProcessor:
         
         # Validation metrics cached
         self.validation_metrics = self._load_validation_metrics()
+        self.strict_guard_enabled = os.getenv("STRICT_LOOKAHEAD_CHECK", "0").strip().lower() in {
+            '1',
+            'true',
+            'yes',
+            'on',
+        }
+        if self.strict_guard_enabled:
+            try:
+                run_synthetic_feature_guard()
+                logger.info("STRICT_LOOKAHEAD_CHECK enabled (synthetic guard passed)")
+            except LookaheadViolation as exc:
+                logger.error("Synthetic lookahead guard failed: %s", exc)
+                raise
     
     def _load_calibrator(self):
         """Load confidence calibrator from DB."""
@@ -135,6 +153,22 @@ class UnifiedForecastProcessor:
         except Exception as e:
             logger.warning(f"Could not load validation metrics: {e}")
             return None
+
+    def _maybe_run_strict_guard(
+        self,
+        df: pd.DataFrame,
+        *,
+        sentiment_series: pd.Series | None,
+        symbol: str,
+    ) -> None:
+        """Optional heavy-weight guard to ensure truncation stability."""
+        if not self.strict_guard_enabled or df is None or len(df) < 3:
+            return
+        try:
+            assert_truncation_stable(df, sentiment_series=sentiment_series)
+        except LookaheadViolation as exc:
+            logger.error("Strict lookahead guard failed for %s: %s", symbol, exc)
+            raise
     
     def _get_weight_source(self, symbol: str, symbol_id: str, horizon: str) -> tuple:
         """
@@ -281,6 +315,8 @@ class UnifiedForecastProcessor:
                         logger.warning(f"Sentiment variance check failed for {symbol}, skipping")
                 except Exception as e:
                     logger.warning(f"Sentiment loading failed for {symbol}: {e}")
+
+            self._maybe_run_strict_guard(df, sentiment_series=sentiment_series, symbol=symbol)
             
             # === STEP 2: Data validation ===
             validator = OHLCValidator()

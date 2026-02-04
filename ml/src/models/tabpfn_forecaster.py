@@ -111,7 +111,11 @@ class TabPFNForecaster:
         )
 
         horizon_days_int = max(1, int(np.ceil(horizon_days)))
-        forward_returns = df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int)
+        forward_returns = (
+            df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int).copy()
+        )
+        if horizon_days_int > 0:
+            forward_returns.iloc[-horizon_days_int:] = np.nan
 
         engineer = TemporalFeatureEngineer()
         X_list: list[Dict[str, Any]] = []
@@ -171,7 +175,11 @@ class TabPFNForecaster:
             df = add_all_simple_regime_features(df)
 
         horizon_days_int = max(1, int(np.ceil(horizon_days)))
-        forward_returns = df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int)
+        forward_returns = (
+            df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int).copy()
+        )
+        if horizon_days_int > 0:
+            forward_returns.iloc[-horizon_days_int:] = np.nan
 
         engineer = TemporalFeatureEngineer()
         X_list: list[Dict[str, Any]] = []

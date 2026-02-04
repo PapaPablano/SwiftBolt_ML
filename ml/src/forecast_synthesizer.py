@@ -9,12 +9,14 @@ Combines:
 Into precise directional forecasts with dynamic confidence bands.
 """
 
+import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
+from src.features.lookahead_checks import LookaheadViolation
 from src.forecast_weights import ForecastWeights, get_default_weights
 
 
@@ -104,6 +106,21 @@ class ForecastSynthesizer:
 
     def __init__(self, weights: Optional[ForecastWeights] = None):
         self.weights = weights or get_default_weights()
+        self.strict_guard_enabled = os.getenv("STRICT_LOOKAHEAD_CHECK", "0").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+
+    def _validate_inputs(self, df: pd.DataFrame) -> None:
+        if not self.strict_guard_enabled or df is None:
+            return
+        bad_cols = [col for col in df.columns if "[t]" in str(col).lower()]
+        if bad_cols:
+            raise LookaheadViolation(
+                f"ForecastSynthesizer received disallowed look-ahead columns: {bad_cols}"
+            )
 
     def generate_forecast(
         self,
@@ -132,6 +149,8 @@ class ForecastSynthesizer:
         Returns:
             ForecastResult with target, bands, confidence
         """
+        self._validate_inputs(df)
+
         # Scale ATR-based moves by horizon length
         horizon_scale = np.sqrt(horizon_days)  # Volatility scales with sqrt(time)
         
@@ -175,6 +194,8 @@ class ForecastSynthesizer:
         Returns:
             ForecastResult with target, bands, confidence
         """
+        self._validate_inputs(df)
+
         # Normalize S/R structure
         sr_response = self._normalize_sr_response(sr_response, current_price)
 

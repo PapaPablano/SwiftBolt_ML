@@ -1,8 +1,12 @@
 # ML Blueprint: Stock Price Prediction Pipeline
 
+**Last Updated:** February 2026
+
 ## Overview
 
 This document describes the complete ML pipeline for stock price prediction in SwiftBolt ML, from data ingestion to UI display.
+
+**Current production (Feb 2026):** Unified forecast job (`unified_forecast_job.py`) and intraday job; **2-model ensemble** (LSTM + ARIMA-GARCH) in Phase 7 canary on AAPL, MSFT, SPY. Transformer disabled. Walk-forward validation and divergence monitoring. Simplified 29-feature set; TabPFN used for regime/experiments. Sentiment feature temporarily disabled (see `docs/technicalsummary.md`).
 
 ---
 
@@ -11,12 +15,13 @@ This document describes the complete ML pipeline for stock price prediction in S
 ### Primary Data: OHLC Bars
 | Source | Provider | Data Type | Timeframes |
 |--------|----------|-----------|------------|
-| Polygon.io (via Massive) | `massive-client.ts` | Historical OHLC | m15, h1, d1, w1 |
-| Finnhub | `finnhub-client.ts` | Real-time quotes | Intraday |
+| Alpaca | Edge Functions / backfills | Historical & intraday OHLC | m15, h1, h4, d1, w1 |
+| Polygon (Massive) | `massive-client.ts` | Supplemental historical | m15, h1, d1, w1 |
+| Finnhub | `finnhub-client.ts` | Real-time quotes, news | Intraday |
 
 ### Data Flow
 ```
-Polygon API → chart Edge Function → ohlc_bars table → ML Scripts
+Alpaca / chart-data-v2 → ohlc_bars_v2 → ML scripts (unified_forecast_job, evaluation jobs)
 ```
 
 ### Database Tables

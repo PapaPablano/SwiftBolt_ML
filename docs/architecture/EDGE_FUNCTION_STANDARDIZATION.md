@@ -1,5 +1,7 @@
 # Edge Function Standardization - January 2026
 
+**Last Updated:** February 2026. Patterns (CORS, job queue, `ohlc_bars_v2`) remain current.
+
 ## Summary
 Audited and standardized all Supabase Edge Functions to follow consistent patterns from working functions (`fetch-bars`, `chart-data-v2`, `ensure-coverage`).
 

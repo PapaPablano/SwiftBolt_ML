@@ -2,7 +2,7 @@
 
 **SwiftBolt ML - Comprehensive Technical Analysis Classification Guide**
 
-Last Updated: January 29, 2026
+Last Updated: February 3, 2026
 
 ---
 

@@ -137,7 +137,7 @@ def add_volatility_features(df: pd.DataFrame) -> pd.DataFrame:
     and bb_width are added by add_all_technical_features_correct).
     """
     df = df.copy()
-    returns = df["close"].pct_change()
+    returns = df["close"].pct_change(fill_method=None)
     # Annualized historical volatility (decimal, e.g. 0.20 = 20%)
     df["historical_volatility_20d"] = returns.rolling(20).std() * np.sqrt(252)
     df["historical_volatility_60d"] = returns.rolling(60).std() * np.sqrt(252)
@@ -461,7 +461,11 @@ def prepare_training_data_temporal(
     y_list: list[str] = []
 
     horizon_days_int = max(1, int(np.ceil(horizon_days)))
-    forward_returns = df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int)
+    forward_returns = (
+        df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int).copy()
+    )
+    if horizon_days_int > 0:
+        forward_returns.iloc[-horizon_days_int:] = np.nan
 
     # Simplified pipeline requires 200+ bars (sma_200 and lags)
     start_idx = 200 if all(c in df.columns for c in SIMPLIFIED_FEATURES) else 50

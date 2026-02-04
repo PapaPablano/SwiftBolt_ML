@@ -1,5 +1,7 @@
 # Stock Analysis Platform — Implementation Checklist
 
+**Last Updated:** February 2026
+
 This document turns the **Stock Analysis Blueprint** into an ordered, phase-based implementation plan. It is written so that an AI agent (or human lead) can:
 
 * Work phase-by-phase.
@@ -443,23 +445,54 @@ Status notation:
 
 ---
 
+## Phase 7.1 — Ensemble Canary & Validation (Feb 2026)
+
+**Goal:** Validate 2-model ensemble (LSTM + ARIMA-GARCH) via 6-day canary on AAPL, MSFT, SPY; walk-forward validation and divergence monitoring. See `1_27_Phase_7.1_Schedule.md`, `PHASE_7_CANARY_DEPLOYMENT_STATUS.md`.
+
+### 7.1.1. Ensemble Simplification
+
+* [x] Disable Transformer in production workflow (permanent; TensorFlow dependency removed).
+* [x] Set `ENSEMBLE_MODEL_COUNT=2`; enable LSTM + ARIMA-GARCH; disable GB for canary.
+* [x] Implement walk-forward optimizer (`ml/src/training/walk_forward_optimizer.py`).
+* [x] Implement divergence monitor (`ml/src/monitoring/divergence_monitor.py`).
+* [x] Update `enhanced_ensemble_integration.py`, `multi_model_ensemble.py`, `forecast_synthesizer.py`, `forecast_weights.py`.
+
+### 7.1.2. Database & Monitoring
+
+* [x] Migration for `ensemble_validation_metrics` table (schema, indexes, views).
+* [x] Canary monitoring script (e.g. `scripts/canary_daily_monitoring_supabase.js`) and report output (`canary_monitoring_reports/`).
+* [x] Deployment and rollback scripts (`scripts/deploy_phase_7_canary.sh`, `scripts/rollback_to_legacy.sh`).
+
+### 7.1.3. Validation & GO/NO-GO
+
+* [x] 104 validation tests (database divergence, walk-forward, calibrator, 2/3-model synthesis, backward compatibility).
+* [ ] Execute 6-day canary (Jan 28–Feb 4): daily run, divergence &lt; 15%, RMSE stable, GO/NO-GO decision per `1_27_Phase_7.1_Schedule.md`.
+* [ ] If GO: document 2-model validated; scale monitoring to weekly. If NO-GO: rollback to 4-model or extend canary.
+
+### 7.1.4. Orchestration Resilience
+
+* [x] Continue-on-error for `populate_live_predictions` in GitHub Actions so workflow does not fail entirely on insufficient data.
+* [x] Document health-check commands and verification steps (see ACTION_ITEMS.md).
+
+---
+
 ## Phase 7 — Hardening, Observability & Polish
 
 **Goal:** Make the system robust enough for real usage.
 
-### 7.1. Error Handling & Degradation
+### 7.2. Error Handling & Degradation
 
 * [ ] Define how `/chart` behaves when external providers fail:
 
   * [ ] Return last-known data with `stale: true` flag.
 * [ ] Ensure client shows appropriate UI for stale/failed data.
 
-### 7.2. Monitoring & Logging
+### 7.3. Monitoring & Logging
 
 * [ ] Centralize logging for Edge Functions.
 * [ ] Add basic metrics (errors, latency, job success/failure) plus per-provider usage and 429 rate-limit events (see `api_handling.md`).
 
-### 7.3. Performance & UX Polish
+### 7.4. Performance & UX Polish
 
 * [ ] Verify 10-minute cadence is stable.
 * [ ] Optimize heavy queries (indexes, limit ranges).

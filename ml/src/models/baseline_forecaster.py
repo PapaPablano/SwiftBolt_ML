@@ -12,6 +12,7 @@ from xgboost import XGBClassifier
 from config.settings import settings
 from src.data.data_validator import OHLCValidator, ValidationResult
 from src.features.adaptive_thresholds import AdaptiveThresholds
+from src.features.lookahead_checks import LookaheadViolation, assert_label_gap
 from src.features.temporal_indicators import (
     SIMPLIFIED_FEATURES,
     TemporalFeatureEngineer,
@@ -80,7 +81,11 @@ class BaselineForecaster:
         )
 
         horizon_days_int = max(1, int(np.ceil(horizon_days)))
-        forward_returns = df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int)
+        forward_returns = (
+            df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int).copy()
+        )
+        if horizon_days_int > 0:
+            forward_returns.iloc[-horizon_days_int:] = np.nan
 
         engineer = TemporalFeatureEngineer()
         X_list: list[dict[str, Any]] = []
@@ -104,6 +109,16 @@ class BaselineForecaster:
         
         for idx in range(start_idx, end_idx):
             features = engineer.add_features_to_point(df, idx)
+            try:
+                assert_label_gap(df, idx, horizon_days_int)
+            except LookaheadViolation as exc:
+                logger.error(
+                    "Lookahead violation detected (idx=%s, horizon=%s): %s",
+                    idx,
+                    horizon_days_int,
+                    exc,
+                )
+                raise
             actual_return = forward_returns.iloc[idx]
 
             if pd.notna(actual_return):
@@ -159,7 +174,14 @@ class BaselineForecaster:
             df = add_all_simple_regime_features(df)
 
         horizon_days_int = max(1, int(np.ceil(horizon_days)))
-        forward_returns = df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int)
+        forward_returns = (
+            df["close"]
+            .pct_change(periods=horizon_days_int)
+            .shift(-horizon_days_int)
+            .copy()
+        )
+        if horizon_days_int > 0:
+            forward_returns.iloc[-horizon_days_int:] = np.nan
 
         engineer = TemporalFeatureEngineer()
         X_list: list[dict[str, Any]] = []
@@ -179,6 +201,16 @@ class BaselineForecaster:
             if abs(actual_return) <= threshold_pct:
                 filtered_out += 1
                 continue
+            try:
+                assert_label_gap(df, idx, horizon_days_int)
+            except LookaheadViolation as exc:
+                logger.error(
+                    "Lookahead violation detected (binary idx=%s, horizon=%s): %s",
+                    idx,
+                    horizon_days_int,
+                    exc,
+                )
+                raise
             features = engineer.add_features_to_point(df, idx)
             X_list.append(features)
             y_list.append("bullish" if actual_return > 0 else "bearish")

@@ -1,6 +1,6 @@
 # SwiftBolt_ML Architecture
 
-**Last Updated:** January 10, 2026  
+**Last Updated:** February 2026  
 **Version:** 1.0.0
 
 ---
@@ -153,10 +153,11 @@ sync-corporate-actions-twice-daily
 **Module Structure:**
 
 #### `ml/src/models/`
-- `arima_model.py` - ARIMA time series forecasting
-- `garch_model.py` - Volatility modeling
-- `xgboost_model.py` - Gradient boosting predictions
-- `ensemble_model.py` - Multi-model combination
+- `arima_garch_forecaster.py` - ARIMA-GARCH time series and volatility (production)
+- `tabpfn_forecaster.py` - TabPFN for regime/classification
+- `baseline_forecaster.py` - Baseline (Random Forest)
+- `enhanced_ensemble_integration.py` / `multi_model_ensemble.py` - 2-model ensemble (LSTM + ARIMA-GARCH) in Phase 7 canary
+- `xgboost_forecaster.py` - XGBoost (optional; disabled in canary)
 
 #### `ml/src/features/`
 - `technical_indicators.py` - RSI, MACD, Bollinger Bands
@@ -174,18 +175,20 @@ sync-corporate-actions-twice-daily
 
 **ML Workflow:**
 ```
-1. Data Ingestion (Alpaca API)
+1. Data Ingestion (Alpaca API, Supabase ohlc_bars)
    ↓
-2. Feature Engineering (technical indicators, regime detection)
+2. Feature Engineering (technical indicators, simplified 29-feature set, regime detection)
    ↓
-3. Model Training (ARIMA-GARCH, XGBoost)
+3. Model Training (LSTM, ARIMA-GARCH; XGBoost/TabPFN for experiments)
    ↓
-4. Prediction Generation
+4. Prediction Generation (unified_forecast_job.py, intraday_forecast_job.py)
    ↓
-5. Strategy Execution (via backtesting or live)
+5. Walk-Forward Validation & Divergence Monitoring (Phase 7 canary)
    ↓
-6. Performance Monitoring (ranking evaluations)
+6. Performance Monitoring (evaluation_job_daily/intraday, ensemble_validation_metrics)
 ```
+
+**Phase 7 / Ensemble & Canary (Feb 2026):** Production ensemble uses 2 models (LSTM + ARIMA-GARCH). Transformer disabled. Walk-forward optimizer and divergence monitor feed `ensemble_validation_metrics`. Canary runs on AAPL, MSFT, SPY (1D) for 6 days; GO/NO-GO decision per `1_27_Phase_7.1_Schedule.md`.
 
 ---
 

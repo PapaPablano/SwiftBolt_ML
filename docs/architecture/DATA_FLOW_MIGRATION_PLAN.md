@@ -1,5 +1,7 @@
 # Data Flow Migration Plan: Polygon → Yahoo Finance
 
+**Note (Feb 2026):** Primary market data for OHLC is now **Alpaca** (chart-data-v2, fetch-bars, backfills). This document describes a prior Polygon→Yahoo migration plan; some steps may be superseded or adapted for Alpaca-centric flows. See `docs/ARCHITECTURE.md` and `docs/master_blueprint.md` for current data flow.
+
 ## Current State Analysis
 
 ### ✅ Completed

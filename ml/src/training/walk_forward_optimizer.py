@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import TimeSeriesSplit
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +227,8 @@ class WalkForwardOptimizer:
         val_data = data[window.val_start : window.val_end]
         test_data = data[window.test_start : window.test_end]
 
+        self._log_cv_boundaries(train_data)
+
         logger.debug(
             "Window data: train=%d, val=%d, test=%d samples",
             len(train_data),
@@ -315,16 +318,16 @@ class WalkForwardOptimizer:
         ensemble,
     ) -> Dict:
         """
-        Tune hyperparameters on validation set only.
+        Tune hyperparameters using TimeSeriesSplit CV on train_data.
 
         This method prevents validation leakage by:
-        1. Training on train_data
-        2. Evaluating on val_data (never on train_data)
-        3. Selecting hyperparameters that minimize val_data loss
+        1. Using TimeSeriesSplit(n_splits=3) on train_data for param selection
+        2. Selecting hyperparameters that minimize average CV RMSE
+        3. If train_data too small for CV, falls back to single train/val split
 
         Args:
             train_data: Training data for model fitting
-            val_data: Validation data for hyperparameter selection
+            val_data: Validation data (used only in fallback when train too small)
             param_grid: Search grid for hyperparameter optimization
             ensemble: Ensemble model to tune
 
@@ -335,33 +338,76 @@ class WalkForwardOptimizer:
             logger.debug("No hyperparameter grid provided, using defaults")
             return {}
 
-        logger.debug("Tuning hyperparameters on %d validation samples", len(val_data))
+        n_splits = 3
+        min_samples_for_cv = n_splits + 1  # need at least 4 for 3-fold
+        use_cv = len(train_data) >= min_samples_for_cv
 
-        # Simple grid search on validation set
-        best_params = {}
-        best_val_loss = np.inf
+        if use_cv:
+            logger.debug(
+                "Tuning hyperparameters with TimeSeriesSplit(n_splits=%d) on %d train samples",
+                n_splits,
+                len(train_data),
+            )
+        else:
+            logger.debug(
+                "Train data too small for CV (n=%d), using single train/val split",
+                len(train_data),
+            )
+
+        best_params: Optional[Dict] = None
+        best_avg_score = np.inf
 
         for params_combo in self._generate_param_combos(param_grid):
             try:
-                # Train with this parameter combo
-                ensemble.set_hyperparameters(params_combo)
-                ensemble.train(train_data)
+                cv_scores: List[float] = []
 
-                # Evaluate on validation set (NOT on training set!)
-                val_pred = ensemble.predict(val_data)
-                val_loss = self._calculate_rmse(val_pred, val_data.get("actual", val_data.iloc[:, 0]))
+                if not use_cv:
+                    # Fall back to single split: train on train_data, score on val_data
+                    ensemble.set_hyperparameters(params_combo)
+                    ensemble.train(train_data)
+                    val_pred = ensemble.predict(val_data)
+                    score = self._calculate_rmse(
+                        val_pred,
+                        val_data.get("actual", val_data.iloc[:, 0]),
+                    )
+                    cv_scores = [score]
+                else:
+                    # TimeSeriesSplit CV on train_data
+                    tscv = TimeSeriesSplit(n_splits=n_splits)
+                    for train_idx, cv_val_idx in tscv.split(train_data):
+                        cv_train = train_data.iloc[train_idx]
+                        cv_val = train_data.iloc[cv_val_idx]
+                        ensemble.set_hyperparameters(params_combo)
+                        ensemble.train(cv_train)
+                        cv_pred = ensemble.predict(cv_val)
+                        cv_actuals = cv_val.get("actual", cv_val.iloc[:, 0])
+                        fold_score = self._calculate_rmse(cv_pred, cv_actuals)
+                        cv_scores.append(fold_score)
 
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
+                avg_score = float(np.mean(cv_scores))
+                logger.debug(
+                    "CV scores for params %s: %s, avg=%.4f",
+                    params_combo,
+                    [round(s, 4) for s in cv_scores],
+                    avg_score,
+                )
+
+                if avg_score < best_avg_score:
+                    best_avg_score = avg_score
                     best_params = params_combo
-                    logger.debug("Found better params with val_loss=%.4f", val_loss)
+                    logger.debug("Found better params with avg CV score=%.4f", avg_score)
 
             except Exception as e:
                 logger.debug("Parameter combo failed: %s", e)
                 continue
 
-        logger.debug("Best hyperparameters: %s (val_loss=%.4f)", best_params, best_val_loss)
-        return best_params
+        result = best_params if best_params is not None else {}
+        logger.info(
+            "Best hyperparameters: %s with avg CV score: %.4f",
+            result,
+            best_avg_score if best_params is not None else np.inf,
+        )
+        return result
 
     def _generate_param_combos(self, param_grid: Dict) -> List[Dict]:
         """
@@ -416,6 +462,59 @@ class WalkForwardOptimizer:
         except Exception as e:
             logger.warning("RMSE calculation failed: %s", e)
             return np.inf
+
+    def _log_cv_boundaries(self, data: pd.DataFrame, n_splits: int = 5) -> None:
+        """Log first 3 TimeSeriesSplit fold boundaries and verify sequential order."""
+        if data is None or len(data) < (n_splits + 1):
+            logger.debug("Insufficient data for TimeSeriesSplit logging")
+            return
+
+        tscv = TimeSeriesSplit(n_splits=n_splits)
+        index = data.index
+        prev_test_end = None
+
+        for fold_idx, (train_idx, test_idx) in enumerate(tscv.split(data)):
+            if fold_idx >= 3:
+                break
+
+            train_start = index[train_idx[0]]
+            train_end = index[train_idx[-1]]
+            test_start = index[test_idx[0]]
+            test_end = index[test_idx[-1]]
+
+            logger.info(
+                "CV fold %d boundaries: train=%s to %s, test=%s to %s",
+                fold_idx,
+                train_start,
+                train_end,
+                test_start,
+                test_end,
+            )
+
+            if prev_test_end is not None and prev_test_end >= test_start:
+                logger.error(
+                    "TEST SET OVERLAP: prior test_end %s >= current test_start %s (fold %d)",
+                    prev_test_end,
+                    test_start,
+                    fold_idx,
+                )
+
+            if train_end < test_start:
+                logger.debug(
+                    "Fold %d sequential check passed (train_end=%s, test_start=%s)",
+                    fold_idx,
+                    train_end,
+                    test_start,
+                )
+            else:
+                logger.warning(
+                    "Fold %d ordering unexpected: train_end=%s, test_start=%s",
+                    fold_idx,
+                    train_end,
+                    test_start,
+                )
+
+            prev_test_end = test_end
 
     def _get_active_models(self, ensemble) -> List[str]:
         """

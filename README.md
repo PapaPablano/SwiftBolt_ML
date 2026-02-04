@@ -16,7 +16,7 @@ SwiftBolt ML is an end-to-end market intelligence platform that unifies intraday
 - **Backend**: Supabase Edge Functions (TypeScript/Deno)
 - **Database**: PostgreSQL (Supabase)
 - **ML**: Python 3.11+, scikit-learn, pandas
-- **Data Providers**: Finnhub, Massive API
+- **Data Providers**: Alpaca (primary market data), Finnhub (news/events), Polygon (Massive API)
 
 ## Project Structure
 
@@ -68,11 +68,10 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-**Recent Updates (Jan 2026)**: The ML forecasting pipeline has been consolidated and optimized:
-- Unified forecast processor (`unified_forecast_job.py`) replaces multiple legacy scripts
-- Split evaluation jobs (daily/intraday) for better data quality
-- Redis feature caching for 4-6x performance improvement
-- See `CONSOLIDATION_COMPLETE_SUMMARY.md` for details
+**Recent Updates (Jan–Feb 2026)**:
+- **ML consolidation**: Unified forecast processor (`unified_forecast_job.py`), split evaluation jobs (daily/intraday), Redis feature caching (4–6x improvement). See `CONSOLIDATION_COMPLETE_SUMMARY.md`.
+- **Phase 7 canary (Feb 2026)**: 2-model ensemble (LSTM + ARIMA-GARCH) in 6-day canary on AAPL, MSFT, SPY; walk-forward validation and divergence monitoring. Transformer disabled in production workflow. See `1_27_Phase_7.1_Schedule.md` and `PHASE_7_CANARY_DEPLOYMENT_STATUS.md`.
+- **Sentiment**: Temporarily disabled in features (zero-variance fix); backfill and `validate_sentiment_variance` before re-enable. See `docs/technicalsummary.md`.
 
 **Running Forecasts**:
 ```bash
@@ -96,8 +95,13 @@ Open `client-macos/SwiftBolt.xcodeproj` in Xcode and run.
 ## Documentation
 
 ### Architecture & Design
-- [Master Blueprint](docs/master_blueprint.md) - Full architecture
-- [Implementation Checklist](docs/blueprint_checklist.md) - Progress tracker
+- [Master Blueprint](docs/master_blueprint.md) - Vision, scope, backend/API design
+- [Architecture](docs/ARCHITECTURE.md) - System diagram, components, data flow
+- [Implementation Checklist](docs/blueprint_checklist.md) - Phase-based progress tracker
+
+### Phase 7 & ML (Feb 2026)
+- [Phase 7.1 Schedule](1_27_Phase_7.1_Schedule.md) - Canary plan, GO/NO-GO criteria
+- [Phase 7 Canary Status](PHASE_7_CANARY_DEPLOYMENT_STATUS.md) - Deployment readiness, 2-model ensemble
 
 ### ML Pipeline Consolidation (Jan 2026)
 - [Consolidation Summary](CONSOLIDATION_COMPLETE_SUMMARY.md) - Complete overview of Phases 1-4
