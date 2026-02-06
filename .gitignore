@@ -100,3 +100,6 @@ logs/
 tmp/
 temp/
 *.tmp
+
+# Third-party / external
+timesfm/
