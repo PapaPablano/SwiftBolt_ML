@@ -35,6 +35,8 @@ final class AppViewModel: ObservableObject {
     @Published var selectedDetailTab: Int = 0
     @Published var selectedOptionsTab: Int = 0
     @Published var selectedPredictionsTab: Int = 0
+    /// When true, Supabase host could not be resolved (DNS -1003). Show connectivity banner; Supabase-backed calls short-circuit.
+    @Published var supabaseUnreachable: Bool = false
     let searchViewModel: SymbolSearchViewModel
     let watchlistViewModel: WatchlistViewModel
 
@@ -144,6 +146,14 @@ final class AppViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+    }
+
+    /// Run one-time Supabase DNS/connectivity check and set supabaseUnreachable. Call at startup.
+    func checkSupabaseConnectivity() async {
+        let reachable = await SupabaseConnectivity.performCheck()
+        await MainActor.run {
+            supabaseUnreachable = !reachable
+        }
     }
 
     private func handleSymbolChange() async {

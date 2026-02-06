@@ -417,6 +417,124 @@ Clarity; transparency; modularity; performance; user‑centric design.
 * MVP indicator set
 * ML model update frequency
 
+## Term-Structure & Forward-Vol (Options Ranker)
+
+### Goal (5-min ranker)
+Add term-structure and forward-vol features that:
+- Work with a 2-expiry snapshot per symbol (near + ~30D).
+- Are numerically stable (no complex vols, no throws).
+- Support dual scoring via StrategyIntent: long_premium vs short_premium.
+
+### Decisions (recommended)
+- **Ranker modes:** Apply the feature bundle across **all** modes (ENTRY, EXIT, MONITOR). Mode controls how features influence scoring (weights/gating), not whether they exist.
+- **Backend scope:** Python batch job computes forward-vol, VRP, skew, and (later) GEX/DEX. Edge/TS remains a data fetch layer: returns chains (`persist=0`) plus cached expiries; no term-structure/forward-vol math in TS.
+- **Strategy intent:** Keep StrategyIntent explicit (`long_premium` | `short_premium`) with env default `RANKER_STRATEGY_INTENT`, overridable per run/request.
+
+### Mode behavior (how features affect scores)
+- **ENTRY:** Use VRP + term structure primarily inside **Value** (cheap/expensive vol by intent) and as a confidence multiplier (e.g., penalize low-confidence forward-vol). Earnings-jump isolation (when bracketed): boost “sell premium” when event move is large and IV elevated; boost “buy premium” when VRP negative and term structure implies near-term vol cheap.
+- **EXIT:** Use VRP + term structure mainly for **risk/decay context** (e.g., short premium + term structure flips to backwardation → tighten exits; long premium + IV collapsing post-event → prioritize profit protection). Earnings module matters most here (IV crush / post-event regime detection).
+- **MONITOR:** Use them as **screening context**: fast ranking stability + better comparability across symbols.
+
+### Backend scope (what lives where)
+- **Python:** Forward-vol, earnings-jump, MenthorQ math. Iterate quickly; keep logic in one place.
+- **Edge/TS:** `/options-chain` retrieval (twice per symbol with `expiration=` + `persist=0`); expiry cache reads/writes (daily refresh job; not in the 5-min loop).
+
+### Time convention (single source of truth)
+- Use Unix seconds end-to-end for expiries in the pipeline and cache.
+- Convert to years inside ML modules using ACT/365:
+  - SECONDS_PER_YEAR = 365 * 24 * 60 * 60
+  - T_years = max(0, (exp_ts - now_ts) / SECONDS_PER_YEAR)
+
+### Edge contract (5-min loop)
+For each symbol, fetch two chains via Edge (and do NOT persist full chains):
+- /options-chain?underlying=SYMBOL&expiration=NEAR_TS&persist=0
+- /options-chain?underlying=SYMBOL&expiration=FAR_TS&persist=0
+
+### Supabase: options_expiration_cache (migration)
+File: supabase/migrations/20260206000000_options_expiration_cache.sql
+
+```sql
+-- Per-symbol cached expiries for 5-min ranker (Unix seconds)
+create table if not exists public.options_expiration_cache (
+  symbol           text primary key,
+  expirations_ts   bigint[] not null default '{}',
+  expiry_near_ts   bigint not null,
+  expiry_far_ts    bigint not null,
+  source           text not null default 'tradier',
+  updated_at       timestamptz not null default now(),
+
+  constraint options_expiry_near_positive check (expiry_near_ts > 0),
+  constraint options_expiry_far_positive  check (expiry_far_ts > 0),
+  constraint options_expiry_order_ok      check (expiry_far_ts >= expiry_near_ts)
+);
+
+comment on table public.options_expiration_cache is
+  'Per-symbol option expirations cache for 5-min ranker. Stores Unix seconds for direct Edge /options-chain expiration param.';
+
+create index if not exists idx_options_expiration_cache_updated_at
+  on public.options_expiration_cache(updated_at);
+
+alter table public.options_expiration_cache enable row level security;
+```
+
+### Daily refresh job (outline)
+Run once per day (and on symbol-add). Do NOT run inside the 5-min loop.
+
+Inputs:
+- symbols: list[str] (ranker universe, ~100)
+
+Steps:
+1) For each symbol:
+   - Call Tradier get_expirations(symbol) once (returns YYYY-MM-DD strings).
+   - Apply selection rule:
+     - expiry_near: first expiry >= ref_date
+     - expiry_far: first expiry with DTE in [28,45], else closest to 30D; ensure expiry_far != expiry_near if possible.
+2) Convert chosen dates to Unix seconds (canonical: midnight UTC).
+3) Upsert row:
+   - (symbol, expirations_ts[], expiry_near_ts, expiry_far_ts, updated_at)
+
+Fallback:
+- If <2 expiries, set both near/far to the only available expiry or mark stale and skip symbol in 5-min job.
+
+### New ML modules / edits (Option A)
+- New: ml/src/models/forward_vol.py
+  - Build ATM IV per expiry directly from chain (no SVI required for 5-min loop).
+  - Forward vol:
+    sigma_f = sqrt( max(0, (T2*s2^2 - T1*s1^2) / (T2 - T1)) )
+    If raw numerator < 0, clamp to 0 and set low_confidence=True.
+  - Term-structure regime naming:
+    - contango: front IV < back IV (upward slope, "short cheap")
+    - backwardation: front IV > back IV (downward slope, "short rich")
+
+- Extend: ml/src/models/earnings_analyzer.py
+  - Add isolate_earnings_jump(...) using bracketing expiries (E1 before, E2 after earnings) + variance subtraction.
+  - Keep current heuristic regime scoring as fallback.
+
+- Extend: ml/src/models/options_momentum_ranker.py
+  - Add StrategyIntent enum: long_premium | short_premium
+  - Default StrategyIntent from env: RANKER_STRATEGY_INTENT
+  - Dual-intent mapping inside Value/Greeks (keep 40/35/25):
+    - IV rank: long uses (100 - iv_rank), short uses (iv_rank)
+    - VRP: positive favors short_premium, negative favors long_premium
+    - Term structure: backwardation favors long_premium, contango favors short_premium
+
+- Extend: ml/src/options_ranking_job.py
+  - Fetch two expiries via Edge (persist=0), merge, compute feature bundle, pass into ranker kwargs.
+  - Persist only filtered feature snapshots (avoid writing full chains each cycle).
+
+### Defaults and config
+- `RANKER_STRATEGY_INTENT` default: `long_premium`.
+- `TERMSTRUCT_LOW_CONFIDENCE_PENALTY`: subtract X points or multiply Value score by 0.9 when forward-vol is clamped/dirty so it doesn’t dominate ranks.
+- GEX/DEX: context-only initially (or behind a flag) because with only 2 expiries you’ll be computing partial-surface exposures.
+
+### Env vars
+- RANKER_STRATEGY_INTENT: long_premium | short_premium (default: long_premium)
+- (Optional) TERMSTRUCT_MIN_OI / TERMSTRUCT_MIN_VOL for ATM IV liquidity filters
+- (Optional) TERMSTRUCT_LOW_CONFIDENCE_PENALTY for clamped forward-vol
+
+### Clarifications needed (options ranker)
+- **UI:** Should the app show two separate ranked lists (“Long premium” and “Short premium”) every refresh, or will the UI toggle intent and re-rank on demand?
+
 ---
 
 This document is iteratively updated as we refine the architecture and define the build sequence. Last substantive update: February 2026 (Phase 7 canary, Alpaca primary, 2-model ensemble).

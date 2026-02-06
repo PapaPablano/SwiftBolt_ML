@@ -286,3 +286,103 @@ struct ForecastPoint: Codable, Equatable {
         try container.encode(upper, forKey: .upper)
     }
 }
+
+// MARK: - Binary Forecast API Response
+
+/// Response from POST /api/v1/forecast/binary.
+struct BinaryForecastResponse: Decodable {
+    struct Horizon: Decodable {
+        let horizon_days: Int
+        let label: String
+        let confidence: Double
+        let probabilities: [String: Double]
+
+        init(horizon_days: Int, label: String, confidence: Double, probabilities: [String: Double]) {
+            self.horizon_days = horizon_days
+            self.label = label
+            self.confidence = confidence
+            self.probabilities = probabilities
+        }
+    }
+    let symbol: String
+    let horizons: [Horizon]
+
+    init(symbol: String, horizons: [Horizon]) {
+        self.symbol = symbol
+        self.horizons = horizons
+    }
+}
+
+// MARK: - Binary Forecast Overlay
+
+/// Single up/down forecast for chart overlay (from FastAPI /forecast or Supabase ml_binary_forecasts).
+struct BinaryForecastOverlay: Codable, Equatable {
+    let symbol: String
+    let horizonDays: Int
+    let label: String       // "up" or "down"
+    let confidence: Double
+    let probUp: Double
+    let probDown: Double
+    let forecastDate: Date
+
+    enum CodingKeys: String, CodingKey {
+        case symbol
+        case horizonDays = "horizon_days"
+        case label
+        case predicted_label
+        case confidence
+        case probUp = "prob_up"
+        case probDown = "prob_down"
+        case forecastDate = "forecast_date"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        symbol = try container.decode(String.self, forKey: .symbol)
+        horizonDays = try container.decode(Int.self, forKey: .horizonDays)
+
+        if let decodedLabel = try container.decodeIfPresent(String.self, forKey: .label) {
+            label = decodedLabel
+        } else if let decodedPredicted = try container.decodeIfPresent(String.self, forKey: .predicted_label) {
+            label = decodedPredicted
+        } else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.label,
+                DecodingError.Context(codingPath: container.codingPath, debugDescription: "Missing label/predicted_label")
+            )
+        }
+
+        confidence = try container.decode(Double.self, forKey: .confidence)
+        probUp = try container.decode(Double.self, forKey: .probUp)
+        probDown = try container.decode(Double.self, forKey: .probDown)
+        let dateStr = try container.decode(String.self, forKey: .forecastDate)
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        forecastDate = formatter.date(from: dateStr) ?? ISO8601DateFormatter().date(from: dateStr) ?? Date()
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(symbol, forKey: .symbol)
+        try container.encode(horizonDays, forKey: .horizonDays)
+        try container.encode(label, forKey: .label)
+        try container.encode(confidence, forKey: .confidence)
+        try container.encode(probUp, forKey: .probUp)
+        try container.encode(probDown, forKey: .probDown)
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let iso = formatter.string(from: forecastDate)
+        try container.encode(iso, forKey: .forecastDate)
+    }
+
+    init(symbol: String, horizonDays: Int, label: String, confidence: Double, probUp: Double, probDown: Double, forecastDate: Date) {
+        self.symbol = symbol
+        self.horizonDays = horizonDays
+        self.label = label
+        self.confidence = confidence
+        self.probUp = probUp
+        self.probDown = probDown
+        self.forecastDate = forecastDate
+    }
+}

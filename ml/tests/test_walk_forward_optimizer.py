@@ -5,6 +5,7 @@ Tests the WalkForwardOptimizer implementation for rigorous validation methodolog
 from research on LSTM-ARIMA hybrid models.
 """
 
+import logging
 import pytest
 import pandas as pd
 import numpy as np
@@ -25,9 +26,9 @@ class TestWindowConfig:
         """Test creating a WindowConfig."""
         train_start = datetime(2023, 1, 1)
         train_end = datetime(2023, 5, 1)
-        val_start = datetime(2023, 5, 1)
+        val_start = datetime(2023, 5, 2)
         val_end = datetime(2023, 9, 1)
-        test_start = datetime(2023, 9, 1)
+        test_start = datetime(2023, 9, 2)
         test_end = datetime(2024, 1, 1)
 
         window = WindowConfig(
@@ -48,9 +49,9 @@ class TestWindowConfig:
         """Test WindowConfig string representation."""
         train_start = datetime(2023, 1, 1)
         train_end = datetime(2023, 5, 1)
-        val_start = datetime(2023, 5, 1)
+        val_start = datetime(2023, 5, 2)
         val_end = datetime(2023, 9, 1)
-        test_start = datetime(2023, 9, 1)
+        test_start = datetime(2023, 9, 2)
         test_end = datetime(2024, 1, 1)
 
         window = WindowConfig(
@@ -152,17 +153,19 @@ class TestCreateWindows:
         optimizer = WalkForwardOptimizer(train_days=100, val_days=50, test_days=50)
         windows = optimizer.create_windows(data)
 
-        # With 504 days, step=1, train=100+val=50+test=50=200 total per window
-        # Should create (504-200)/1 + 1 = 305 windows
-        # Actually: first window starts at day 0, ends at day 200
-        # Second starts at day 1, ends at day 201, etc.
-        # Last valid window: starts at day 304, ends at day 504
-        # So we get 305 windows but the last one doesn't fit...
-        # Actually formula: (end_date - start_date - total_window_days) / step_size + 1
-        # With step_size=1: (504 - 200) = 304 possible windows
         assert len(windows) > 0
-        assert windows[0].window_id == 0
-        assert windows[0].train_start == data.index.min()
+        first_window = windows[0]
+        assert first_window.window_id == 0
+        assert first_window.train_start == data.index.min()
+        assert (
+            first_window.train_end - first_window.train_start
+        ).days + 1 == optimizer.train_days
+        assert (
+            first_window.val_end - first_window.val_start
+        ).days + 1 == optimizer.val_days
+        assert (
+            first_window.test_end - first_window.test_start
+        ).days + 1 == optimizer.test_days
 
     def test_create_windows_no_overlap(self):
         """Test that windows have no temporal overlap."""
@@ -175,15 +178,10 @@ class TestCreateWindows:
         optimizer = WalkForwardOptimizer(train_days=100, val_days=50, test_days=50)
         windows = optimizer.create_windows(data)
 
-        if len(windows) > 1:
-            # Check first two windows for no overlap
-            window1 = windows[0]
-            window2 = windows[1]
-
-            # window1's test_end should be <= window2's train_start
-            # Actually, windows overlap because step_size=1
-            # So window2 starts 1 day after window1
-            assert window2.train_start > window1.train_start
+        for window in windows:
+            assert window.train_end < window.val_start
+            assert window.val_end < window.test_start
+            assert window.train_start < window.train_end
 
     def test_create_windows_insufficient_data(self):
         """Test with insufficient data."""
@@ -198,6 +196,21 @@ class TestCreateWindows:
 
         # Should create no windows (only 50 days, need 200)
         assert len(windows) == 0
+
+    def test_window_timeline_logging(self, caplog):
+        """Test logging of window timeline preview."""
+        dates = pd.date_range(start="2022-01-01", periods=365, freq="D")
+        data = pd.DataFrame({"close": np.random.randn(365)}, index=dates)
+
+        optimizer = WalkForwardOptimizer(train_days=120, val_days=30, test_days=30)
+
+        with caplog.at_level(logging.INFO):
+            optimizer.create_windows(data)
+
+        timeline_logs = [
+            message for message in caplog.messages if "Window timeline preview" in message
+        ]
+        assert timeline_logs, "Expected timeline preview log message"
 
 
 class TestDivergenceDetection:

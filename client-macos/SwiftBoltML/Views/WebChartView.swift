@@ -17,6 +17,8 @@ struct WebChartView: NSViewRepresentable {
         var hasAppliedInitialZoom = false
         var lastVisibleRange: (from: Int, to: Int)?
         var lastCandleSignature: (count: Int, lastTs: Int)?
+        /// Only resend setRealtimeConfig when (symbolId, timeframe-for-binary, modelType) changes to avoid redundant subscriptions.
+        var lastRealtimeConfigSignature: String?
 
         init(_ parent: WebChartView) {
             self.parent = parent
@@ -223,13 +225,23 @@ struct WebChartView: NSViewRepresentable {
                     }
                 }
                 .store(in: &cancellables)
+
+            // When binary forecast arrives (async after chart load), draw overlay if we have bars
+            parent.viewModel.$binaryForecastOverlay
+                .receive(on: DispatchQueue.main)
+                .compactMap { $0 }
+                .sink { [weak self] overlay in
+                    guard let self = self, self.parent.bridge.isReady,
+                          let lastBar = self.parent.viewModel.bars.last else { return }
+                    self.parent.bridge.setBinaryForecastCandle(overlay: overlay, lastBar: lastBar)
+                }
+                .store(in: &cancellables)
         }
 
         private func updateChartV2(with data: ChartDataV2Response) {
             let bridge = parent.bridge
             let preservedRange = lastVisibleRange ?? bridge.visibleRange
             let forecastBars = data.layers.forecast.data
-            
             print("[WebChartView] Updating chart with V2 layered data")
             print("[WebChartView] - Historical: \(data.layers.historical.count) bars")
             print("[WebChartView] - Intraday: \(data.layers.intraday.count) bars")
@@ -284,6 +296,25 @@ struct WebChartView: NSViewRepresentable {
 
             bridge.setCandles(from: uniqueCandles)
 
+            // Pass Realtime subscription context only when (symbolId, timeframe-for-binary, modelType) changes. Binary forecasts are written with timeframe="d1", so always use "d1" for binary to avoid silently dropping rows.
+            if let symbolId = data.symbolId {
+                let timeframeForBinary = "d1"
+                let modelType = "binary"
+                let signature = "\(symbolId)|\(timeframeForBinary)|\(modelType)"
+                if lastRealtimeConfigSignature != signature {
+                    lastRealtimeConfigSignature = signature
+                    bridge.setRealtimeConfig(
+                        supabaseURL: Config.supabaseURL.absoluteString,
+                        anonKey: Config.supabaseAnonKey,
+                        symbolId: symbolId,
+                        timeframe: timeframeForBinary,
+                        modelType: modelType
+                    )
+                }
+            } else {
+                lastRealtimeConfigSignature = nil
+            }
+
             // Only apply ML forecast overlays if we DON'T have real-time data
             // (real-time overlays are more current and will be applied separately)
             if parent.viewModel.realtimeChartData == nil {
@@ -321,6 +352,11 @@ struct WebChartView: NSViewRepresentable {
                 }
             } else {
                 print("[WebChartView] Skipping ML forecast overlay - real-time data available")
+            }
+
+            // Binary forecast overlay: single up/down candle at horizon (from ml_binary_forecasts)
+            if let overlay = parent.viewModel.binaryForecastOverlay, let lastBar = uniqueCandles.last {
+                bridge.setBinaryForecastCandle(overlay: overlay, lastBar: lastBar)
             }
 
             // Clear previous overlays/indicators (keeps candles and markers)

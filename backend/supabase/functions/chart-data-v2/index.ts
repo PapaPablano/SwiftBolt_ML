@@ -285,7 +285,7 @@ function buildIntradayForecastPoints(params: {
 
 const DAILY_FORECAST_MAX_POINTS = 6;
 const INTRADAY_FORECAST_MAX_POINTS = 6;
-const DAILY_FORECAST_HORIZONS = ['1D', '1W', '1M'];
+const DAILY_FORECAST_HORIZONS = ['1D', '5D', '10D', '1W', '1M'];
 
 const INTRADAY_FORECAST_EXPIRY_GRACE_SECONDS = 2 * 60 * 60;
 

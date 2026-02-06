@@ -77,6 +77,19 @@ interface OptionRank {
   run_at: string;
 }
 
+interface SymbolFeatures {
+  expected_move_near_dollar?: number;
+  expected_move_near_pct?: number;
+  expected_move_far_dollar?: number;
+  expected_move_far_pct?: number;
+  atm_iv_near?: number;
+  atm_iv_far?: number;
+  forward_vol?: number;
+  term_structure_regime?: string;
+  low_confidence?: boolean;
+  vrp?: number;
+}
+
 interface OptionsRankingsResponse {
   symbol: string;
   totalRanks: number;
@@ -86,6 +99,7 @@ interface OptionsRankingsResponse {
     expiry?: string;
     side?: "call" | "put";
   };
+  symbolFeatures?: SymbolFeatures;
 }
 
 interface PriceHistoryRow {
@@ -168,6 +182,7 @@ serve(async (req: Request): Promise<Response> => {
     const sideParam = url.searchParams.get("side")?.toLowerCase();
     const signalParam = url.searchParams.get("signal")?.toLowerCase(); // discount, runner, greeks, buy
     const modeParam = url.searchParams.get("mode")?.toLowerCase(); // entry, exit
+    const strategyIntentParam = url.searchParams.get("strategy_intent")?.toLowerCase(); // long_premium, short_premium
     const sortBy = url.searchParams.get("sort") || "composite"; // composite, ml, momentum, value, greeks
     const limit = parseInt(url.searchParams.get("limit") || "50", 10);
 
@@ -186,6 +201,10 @@ serve(async (req: Request): Promise<Response> => {
     
     if (mode !== "entry" && mode !== "exit" && mode !== "monitor") {
       return errorResponse("Invalid mode parameter (must be 'entry', 'exit', or 'monitor')", 400);
+    }
+
+    if (strategyIntentParam && strategyIntentParam !== "long_premium" && strategyIntentParam !== "short_premium") {
+      return errorResponse("Invalid strategy_intent parameter (must be 'long_premium' or 'short_premium')", 400);
     }
 
     // Validate signal parameter
@@ -214,12 +233,19 @@ serve(async (req: Request): Promise<Response> => {
     const symbolId = symbolData.id;
     console.log(`[Options Rankings] Symbol ID: ${symbolId}`);
 
-    console.log(`[Options Rankings] Fetching latest run_at for mode=${mode}...`);
-    const { data: latestRunRows, error: latestRunError } = await supabase
+    const strategyIntent = strategyIntentParam || "long_premium";
+    console.log(`[Options Rankings] Fetching latest run_at for mode=${mode}, strategy_intent=${strategyIntent}...`);
+    let latestRunQuery = supabase
       .from("options_ranks")
       .select("run_at")
       .eq("underlying_symbol_id", symbolId)
-      .eq("ranking_mode", mode)
+      .eq("ranking_mode", mode);
+    if (strategyIntent === "long_premium") {
+      latestRunQuery = latestRunQuery.or("strategy_intent.eq.long_premium,strategy_intent.is.null");
+    } else {
+      latestRunQuery = latestRunQuery.eq("strategy_intent", strategyIntent);
+    }
+    const { data: latestRunRows, error: latestRunError } = await latestRunQuery
       .order("run_at", { ascending: false })
       .limit(1)
       .returns<{ run_at: string }[]>();
@@ -277,7 +303,14 @@ serve(async (req: Request): Promise<Response> => {
       .from("options_ranks")
       .select("*")
       .eq("underlying_symbol_id", symbolId)
-      .eq("ranking_mode", mode)
+      .eq("ranking_mode", mode);
+    // Filter by strategy_intent; for long_premium also include legacy NULL rows
+    if (strategyIntent === "long_premium") {
+      query = query.or("strategy_intent.eq.long_premium,strategy_intent.is.null");
+    } else {
+      query = query.eq("strategy_intent", strategyIntent);
+    }
+    query = query
       .gte("expiry", today)  // Filter out expired options
       .order(sortColumn, { ascending: false, nullsFirst: false })
       .order("ml_score", { ascending: false, nullsFirst: false })
@@ -425,6 +458,35 @@ serve(async (req: Request): Promise<Response> => {
       };
     });
 
+    // Fetch latest symbolFeatures from options_feature_snapshots
+    let symbolFeatures: SymbolFeatures | undefined;
+    try {
+      const { data: snapshotRows } = await supabase
+        .from("options_feature_snapshots")
+        .select("atm_iv_near, atm_iv_far, forward_vol, term_structure_regime, low_confidence, expected_move_near_pct, expected_move_far_pct, expected_move_near_dollar, expected_move_far_dollar, vrp")
+        .eq("symbol", symbol)
+        .order("ts_utc", { ascending: false })
+        .limit(1)
+        .returns<{ atm_iv_near: number | null; atm_iv_far: number | null; forward_vol: number | null; term_structure_regime: string | null; low_confidence: boolean | null; expected_move_near_pct: number | null; expected_move_far_pct: number | null; expected_move_near_dollar: number | null; expected_move_far_dollar: number | null; vrp: number | null }[]>();
+      if (snapshotRows && snapshotRows.length > 0) {
+        const row = snapshotRows[0];
+        symbolFeatures = {
+          atm_iv_near: row.atm_iv_near ?? undefined,
+          atm_iv_far: row.atm_iv_far ?? undefined,
+          forward_vol: row.forward_vol ?? undefined,
+          term_structure_regime: row.term_structure_regime ?? undefined,
+          low_confidence: row.low_confidence ?? undefined,
+          expected_move_near_pct: row.expected_move_near_pct ?? undefined,
+          expected_move_far_pct: row.expected_move_far_pct ?? undefined,
+          expected_move_near_dollar: row.expected_move_near_dollar ?? undefined,
+          expected_move_far_dollar: row.expected_move_far_dollar ?? undefined,
+          vrp: row.vrp ?? undefined,
+        };
+      }
+    } catch (snapErr) {
+      console.warn("[Options Rankings] Could not fetch symbolFeatures:", snapErr);
+    }
+
     const response: OptionsRankingsResponse = {
       symbol,
       totalRanks: ranks.length,
@@ -434,6 +496,7 @@ serve(async (req: Request): Promise<Response> => {
         ...(expiryParam && { expiry: expiryParam }),
         ...(sideParam && { side: sideParam as "call" | "put" }),
       },
+      ...(symbolFeatures && { symbolFeatures }),
     };
 
     console.log(

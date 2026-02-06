@@ -22,7 +22,11 @@ final class NewsViewModel: ObservableObject {
             print("[DEBUG] - Received \(newsItems.count) news items")
         } catch {
             print("[DEBUG] NewsViewModel.loadNews() - ERROR: \(error)")
-            errorMessage = error.localizedDescription
+            if APIError.isSupabaseUnreachable(error) {
+                errorMessage = "Offline: news unavailable"
+            } else {
+                errorMessage = error.localizedDescription
+            }
             newsItems = []
         }
 

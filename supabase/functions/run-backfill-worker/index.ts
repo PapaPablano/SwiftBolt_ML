@@ -8,7 +8,7 @@ import { fetchIntradayForDay, type BackfillBar } from "../_shared/backfill-adapt
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-sb-gateway-key",
 };
 
 interface BackfillChunk {
@@ -25,6 +25,24 @@ serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
+  }
+
+  // Enforce gateway key when verify_jwt is false (only service/cron should call this)
+  const expectedKey = Deno.env.get("SB_GATEWAY_KEY");
+  if (!expectedKey || expectedKey.length === 0) {
+    console.error("[BackfillWorker] SB_GATEWAY_KEY is not set");
+    return new Response(
+      JSON.stringify({ error: "Gateway key not configured" }),
+      { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+  const providedKey = req.headers.get("x-sb-gateway-key") ?? req.headers.get("X-SB-Gateway-Key") ?? "";
+  if (providedKey !== expectedKey) {
+    console.warn("[BackfillWorker] Invalid or missing X-SB-Gateway-Key");
+    return new Response(
+      JSON.stringify({ error: "Unauthorized" }),
+      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 
   const startTime = Date.now();

@@ -150,9 +150,20 @@ struct ChartView: View {
                 } else {
                     VStack(spacing: 0) {
                         // Multi-timeframe control strip (Fix F & G)
-                        MultiTimeframeControlStrip(chartViewModel: chartViewModel)
-                            .padding(.horizontal)
-                            .padding(.top, 8)
+                        HStack {
+                            MultiTimeframeControlStrip(chartViewModel: chartViewModel)
+                            Spacer()
+                            Button {
+                                Task { await chartViewModel.refreshBinaryForecast() }
+                            } label: {
+                                Label("Refresh ML forecast", systemImage: "arrow.clockwise")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Regenerate binary up/down forecast and reload chart")
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 8)
 
                         if let mlSummary = chartData.mlSummary {
                             let referencePrice = chartViewModel.liveQuote?.last ?? chartData.bars.last?.close

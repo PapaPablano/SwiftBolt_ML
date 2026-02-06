@@ -598,6 +598,7 @@ async def get_options_rankings(
     expiry: str | None = Query(None, description="Filter by expiry YYYY-MM-DD"),
     side: str | None = Query(None, description="call or put"),
     mode: str = Query("monitor", description="entry, exit, or monitor"),
+    strategy_intent: str | None = Query(None, description="long_premium or short_premium for dual-intent scoring"),
     sort: str = Query("composite", description="composite, ml, momentum, value, greeks, etc."),
     limit: int = Query(50, ge=1, le=200),
 ):
@@ -613,6 +614,8 @@ async def get_options_rankings(
     mode = (mode or "monitor").lower()
     if mode not in ("entry", "exit", "monitor"):
         raise HTTPException(status_code=400, detail="mode must be entry, exit, or monitor")
+    if strategy_intent and strategy_intent.lower() not in ("long_premium", "short_premium"):
+        raise HTTPException(status_code=400, detail="strategy_intent must be long_premium or short_premium")
 
     try:
         from datetime import timedelta
@@ -646,19 +649,22 @@ async def get_options_rankings(
         sort_column = "exit_rank"
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    strategy_intent_val = (strategy_intent or "long_premium").lower()
 
-    # Latest run_at for (symbol, mode) to scope run window
+    # Latest run_at for (symbol, mode, strategy_intent) to scope run window
     run_window_start = None
     try:
-        latest = (
+        latest_query = (
             db.client.table("options_ranks")
             .select("run_at")
             .eq("underlying_symbol_id", symbol_id)
             .eq("ranking_mode", mode)
-            .order("run_at", desc=True)
-            .limit(1)
-            .execute()
         )
+        if strategy_intent_val == "long_premium":
+            latest_query = latest_query.or_("strategy_intent.eq.long_premium,strategy_intent.is.null")
+        else:
+            latest_query = latest_query.eq("strategy_intent", strategy_intent_val)
+        latest = latest_query.order("run_at", desc=True).limit(1).execute()
         if latest.data and len(latest.data) > 0:
             run_at_str = latest.data[0].get("run_at")
             if run_at_str:
@@ -672,6 +678,13 @@ async def get_options_rankings(
         .select("*")
         .eq("underlying_symbol_id", symbol_id)
         .eq("ranking_mode", mode)
+    )
+    if strategy_intent_val == "long_premium":
+        query = query.or_("strategy_intent.eq.long_premium,strategy_intent.is.null")
+    else:
+        query = query.eq("strategy_intent", strategy_intent_val)
+    query = (
+        query
         .gte("expiry", today)
         .order(sort_column, desc=True)
         .order("ml_score", desc=True)
@@ -782,16 +795,47 @@ async def get_options_rankings(
         }
 
     ranks = [row_to_rank(r) for r in rows]
+
+    # Fetch latest symbolFeatures from options_feature_snapshots
+    symbol_features = None
+    try:
+        snap = (
+            db.client.table("options_feature_snapshots")
+            .select("atm_iv_near, atm_iv_far, forward_vol, term_structure_regime, low_confidence, expected_move_near_pct, expected_move_far_pct, expected_move_near_dollar, expected_move_far_dollar, vrp")
+            .eq("symbol", symbol)
+            .order("ts_utc", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if snap.data and len(snap.data) > 0:
+            row = snap.data[0]
+            symbol_features = {
+                "expected_move_near_pct": _safe_rank_val(row.get("expected_move_near_pct")),
+                "expected_move_far_pct": _safe_rank_val(row.get("expected_move_far_pct")),
+                "expected_move_near_dollar": _safe_rank_val(row.get("expected_move_near_dollar")),
+                "expected_move_far_dollar": _safe_rank_val(row.get("expected_move_far_dollar")),
+                "atm_iv_near": _safe_rank_val(row.get("atm_iv_near")),
+                "atm_iv_far": _safe_rank_val(row.get("atm_iv_far")),
+                "forward_vol": _safe_rank_val(row.get("forward_vol")),
+                "term_structure_regime": row.get("term_structure_regime"),
+                "low_confidence": row.get("low_confidence"),
+                "vrp": _safe_rank_val(row.get("vrp")),
+            }
+    except Exception:
+        pass
     filters = {}
     if expiry:
         filters["expiry"] = expiry
     if side:
         filters["side"] = side.lower()
 
-    return {
+    resp: dict = {
         "symbol": symbol,
         "totalRanks": len(ranks),
         "ranks": ranks,
         "mode": mode,
         "filters": filters,
     }
+    if symbol_features:
+        resp["symbolFeatures"] = symbol_features
+    return resp

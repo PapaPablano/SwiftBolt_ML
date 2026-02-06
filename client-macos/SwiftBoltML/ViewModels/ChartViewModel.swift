@@ -105,6 +105,9 @@ final class ChartViewModel: ObservableObject {
     @Published var isRealtimeConnected: Bool = false
     var realtimeWebSocket: RealtimeForecastWebSocket?
 
+    // Binary forecast overlay (from POST /api/v1/forecast/binary or Supabase ml_binary_forecasts)
+    @Published private(set) var binaryForecastOverlay: BinaryForecastResponse?
+
     // Multi-Timeframe Forecasts (Fix F)
     @Published var isMultiTimeframeMode: Bool = false
     @Published private(set) var isLoadingMultiTimeframe: Bool = false
@@ -492,8 +495,12 @@ final class ChartViewModel: ObservableObject {
         _cachedSelectedForecastBars = buildSelectedForecastBars()
 
         // Update chartDataV2 forecast layer when horizon changes (Fix A continuation)
+        // Skip when symbol mismatch (mid–symbol switch) or chartData has no ML (cache warm-load):
+        // otherwise we overwrite chartDataV2 with a hybrid that has mlSummary nil and trigger 0-forecast flicker.
         if let existingV2 = chartDataV2,
            let chartResponse = chartData,
+           existingV2.symbol == chartResponse.symbol,
+           chartResponse.mlSummary != nil,
            indicatorConfig.useWebChart {
             let forecastBars = _cachedSelectedForecastBars ?? []
             let newForecastLayer = LayerData(
@@ -880,6 +887,7 @@ final class ChartViewModel: ObservableObject {
         print("[DEBUG] - Fetching real-time forecast overlays...")
         isLoading = true
         errorMessage = nil
+        binaryForecastOverlay = nil
 
         // Fetch real-time forecast data asynchronously (don't block on this)
         Task {
@@ -986,6 +994,8 @@ final class ChartViewModel: ObservableObject {
                         ChartCache.saveBars(symbol: symbol.ticker, timeframe: timeframe, bars: fallbackBars)
                         scheduleIndicatorRecalculation()
 
+                        Task { await loadBinaryForecastWhenCandlesPresent(symbol: symbol.ticker) }
+
                         if liveQuoteTask == nil || liveQuoteTask?.isCancelled == true {
                             startLiveQuoteUpdates()
                         }
@@ -1066,6 +1076,8 @@ final class ChartViewModel: ObservableObject {
                     // Explicitly recalculate indicators with new data
                     scheduleIndicatorRecalculation()
 
+                    Task { await loadBinaryForecastWhenCandlesPresent(symbol: symbol.ticker) }
+
                     // Start live quotes (streaming price updates every 5s during market hours)
                     if liveQuoteTask == nil || liveQuoteTask?.isCancelled == true {
                         startLiveQuoteUpdates()
@@ -1102,6 +1114,8 @@ final class ChartViewModel: ObservableObject {
                     // Explicitly recalculate indicators with new data
                     scheduleIndicatorRecalculation()
 
+                    Task { await loadBinaryForecastWhenCandlesPresent(symbol: symbol.ticker) }
+
                     // Start live quotes (streaming price updates every 5s during market hours)
                     if liveQuoteTask == nil || liveQuoteTask?.isCancelled == true {
                         startLiveQuoteUpdates()
@@ -1133,7 +1147,31 @@ final class ChartViewModel: ObservableObject {
 
             print("[DEBUG] ChartViewModel.loadChart() - ERROR: \(error)")
             if currentLoadId == loadId {
-                errorMessage = error.localizedDescription
+                if APIError.isSupabaseUnreachable(error),
+                   let cached = ChartCache.loadBars(symbol: symbol.ticker, timeframe: timeframe), !cached.isEmpty {
+                    print("[DEBUG] ChartViewModel.loadChart() - Supabase unreachable, using cached bars: \(cached.count)")
+                    chartData = ChartResponse(
+                        symbol: symbol.ticker,
+                        assetType: symbol.assetType,
+                        timeframe: timeframe.apiToken,
+                        bars: cached,
+                        mlSummary: nil,
+                        indicators: nil,
+                        superTrendAI: nil,
+                        dataQuality: nil,
+                        refresh: nil
+                    )
+                    updateSelectedForecastHorizon(from: nil)
+                    if indicatorConfig.useWebChart {
+                        chartDataV2 = convertToV2Response(chartData!)
+                    } else {
+                        chartDataV2 = nil
+                    }
+                    scheduleIndicatorRecalculation()
+                    errorMessage = nil
+                } else {
+                    errorMessage = error.localizedDescription
+                }
                 isLoading = false
             }
         }
@@ -1148,6 +1186,59 @@ final class ChartViewModel: ObservableObject {
 
     }
 
+    /// Trigger when candles are present: call POST /api/v1/forecast/binary and set binaryForecastOverlay; on failure fall back to Supabase ml_binary_forecasts.
+    private func loadBinaryForecastWhenCandlesPresent(symbol: String) async {
+        do {
+            try await loadBinaryForecast(symbol: symbol, horizons: [1, 5, 10])
+        } catch {
+            await fetchBinaryForecast(symbol: symbol)
+        }
+    }
+
+    /// Fetches latest binary forecast for the symbol from Supabase ml_binary_forecasts and maps to BinaryForecastResponse.
+    private func fetchBinaryForecast(symbol: String) async {
+        do {
+            let response = try await supabase
+                .from("ml_binary_forecasts")
+                .select()
+                .eq("symbol", value: symbol.uppercased())
+                .order("forecast_date", ascending: false)
+                .limit(10)
+                .execute()
+
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let rows = try decoder.decode([BinaryForecastOverlay].self, from: response.data)
+            if !rows.isEmpty {
+                let horizons = rows.map { row in
+                    BinaryForecastResponse.Horizon(
+                        horizon_days: row.horizonDays,
+                        label: row.label,
+                        confidence: row.confidence,
+                        probabilities: ["up": row.probUp, "down": row.probDown]
+                    )
+                }
+                let resp = BinaryForecastResponse(symbol: symbol, horizons: horizons)
+                await MainActor.run { self.binaryForecastOverlay = resp }
+                print("[DEBUG] Binary forecast loaded for \(symbol) from Supabase: \(horizons.count) horizons")
+            }
+        } catch {
+            print("[DEBUG] Binary forecast fetch failed for \(symbol): \(error.localizedDescription)")
+        }
+    }
+
+    /// Calls POST /api/v1/forecast/binary and assigns the response to binaryForecastOverlay. Trigger when candles are present (e.g. after chartDataV2 set or symbol/horizon change).
+    func loadBinaryForecast(symbol: String, horizons: [Int] = [1, 5, 10]) async throws {
+        let url = Config.fastAPIURL.appendingPathComponent("api/v1/forecast/binary")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["symbol": symbol, "horizons": horizons])
+        let (data, _) = try await URLSession.shared.data(for: req)
+        let decoded = try JSONDecoder().decode(BinaryForecastResponse.self, from: data)
+        await MainActor.run { self.binaryForecastOverlay = decoded }
+    }
+
     func setTimeframe(_ newTimeframe: Timeframe) async {
         timeframe = newTimeframe
         // loadChart() will be called automatically by didSet
@@ -1157,6 +1248,17 @@ final class ChartViewModel: ObservableObject {
         // Setting selectedSymbol triggers didSet which calls loadChart() automatically
         // Do NOT call loadChart() explicitly here to avoid duplicate/cancelled requests
         selectedSymbol = symbol
+    }
+
+    /// Calls FastAPI POST /api/v1/forecast/binary for current symbol, then reloads chart so ml_forecasts overlay updates.
+    func refreshBinaryForecast() async {
+        guard let symbol = selectedSymbol else { return }
+        do {
+            try await APIClient.shared.refreshBinaryForecast(symbol: symbol.ticker, horizons: [1, 5, 10])
+        } catch {
+            print("[DEBUG] Refresh binary forecast failed: \(error.localizedDescription)")
+        }
+        await loadChart()
     }
 
     // MARK: - Multi-Timeframe Forecasts (Fix F)

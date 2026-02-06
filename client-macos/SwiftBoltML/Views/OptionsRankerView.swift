@@ -285,6 +285,28 @@ struct RankerHeader: View {
                     }
                 }
 
+                // Strategy Intent: Long vs Short Premium
+                HStack {
+                    Text("Strategy Intent")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+
+                    Picker("", selection: deferredBinding(get: { rankerViewModel.strategyIntent }, set: { rankerViewModel.strategyIntent = $0 })) {
+                        ForEach(StrategyIntent.allCases, id: \.self) { intent in
+                            Text(intent.displayName).tag(intent)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 220)
+
+                    Spacer()
+                }
+                .onChange(of: rankerViewModel.strategyIntent) { _, _ in
+                    Task {
+                        await rankerViewModel.loadRankings(for: symbol)
+                    }
+                }
+
                 // Row 1: Expiry, Side, Signal
                 HStack {
                     // Expiry filter

@@ -36,6 +36,12 @@ struct AnalysisView: View {
                     Divider()
                 }
 
+                // Model Data card (placeholders until API extends with model_metrics)
+                if chartViewModel.binaryForecastOverlay != nil {
+                    ModelDataCardSection(chartViewModel: chartViewModel)
+                    Divider()
+                }
+
                 // Support & Resistance Section
                 SupportResistanceView(analysisViewModel: analysisViewModel)
 
@@ -367,6 +373,76 @@ struct MLForecastBreakdownSection: View {
         case "bearish": return "arrow.down.right"
         case "neutral": return "arrow.left.and.right"
         default: return "questionmark"
+        }
+    }
+}
+
+// MARK: - Model Data Card Section (Analysis tab)
+
+/// Model Data card: Correlation, R², Max/Min forecasted, Lookback. Values from mlSummary when available; Correlation/R² remain — until API provides.
+struct ModelDataCardSection: View {
+    @ObservedObject var chartViewModel: ChartViewModel
+
+    private var mlSummary: MLSummary? {
+        chartViewModel.chartDataV2?.mlSummary ?? chartViewModel.chartData?.mlSummary
+    }
+
+    private var lookbackText: String {
+        guard let n = mlSummary?.trainingStats?.nSamples else { return "—" }
+        return "\(n)"
+    }
+
+    private var maxForecastedText: String {
+        let values = allForecastValues(useUpper: true)
+        guard let m = values.max() else { return "—" }
+        return String(format: "$%.2f", m)
+    }
+
+    private var minForecastedText: String {
+        let values = allForecastValues(useUpper: false)
+        guard let m = values.min() else { return "—" }
+        return String(format: "$%.2f", m)
+    }
+
+    private func allForecastValues(useUpper: Bool) -> [Double] {
+        guard let summary = mlSummary else { return [] }
+        var out: [Double] = []
+        for series in summary.horizons {
+            for pt in series.points {
+                out.append(pt.value)
+                if useUpper { out.append(pt.upper) }
+                else { out.append(pt.lower) }
+            }
+        }
+        return out
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Model Data")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.primary)
+
+            row(label: "Correlation:", value: "—", valueColor: .cyan)
+            row(label: "R²:", value: "—", valueColor: .cyan)
+            row(label: "Max Forecasted:", value: maxForecastedText, valueColor: .green)
+            row(label: "Min Forecasted:", value: minForecastedText, valueColor: .red)
+            row(label: "Lookback:", value: lookbackText, valueColor: .secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.blue.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func row(label: String, value: String, valueColor: Color) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 10))
+            Spacer()
+            Text(value)
+                .font(.system(size: 10))
+                .foregroundColor(valueColor)
         }
     }
 }

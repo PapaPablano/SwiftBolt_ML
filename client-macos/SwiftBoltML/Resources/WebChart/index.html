@@ -175,6 +175,8 @@
 
     <div id="tooltip" class="chart-tooltip"></div>
 
+    <!-- Supabase Realtime (for ml_forecasts postgres_changes); must load before chart.js -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <!-- Lightweight Charts Library (vendored for offline support) -->
     <script src="lightweight-charts.standalone.production.js"></script>
 

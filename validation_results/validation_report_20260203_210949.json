@@ -1,0 +1,53 @@
+{
+  "validation_date": "2026-02-03T21:09:49.787339",
+  "holdout_period": {
+    "start": "2026-01-15T00:00:00",
+    "end": "2026-02-03T00:00:00"
+  },
+  "symbols": [
+    "AAPL"
+  ],
+  "horizons": [
+    "1D",
+    "5D",
+    "10D",
+    "20D"
+  ],
+  "model_type": "baseline",
+  "total_predictions": 26,
+  "overall_accuracy": 0.23076923076923078,
+  "by_symbol": {
+    "AAPL": {
+      "accuracy": 0.23076923076923078,
+      "n_predictions": 26
+    }
+  },
+  "by_horizon": {
+    "1D": {
+      "accuracy": 0.36363636363636365,
+      "n_predictions": 11
+    },
+    "5D": {
+      "accuracy": 0.1111111111111111,
+      "n_predictions": 9
+    },
+    "10D": {
+      "accuracy": 0.16666666666666666,
+      "n_predictions": 6
+    }
+  },
+  "confidence_calibration": {
+    "high (>=0.7)": {
+      "accuracy": 0.3,
+      "n": 10
+    },
+    "medium (0.5-0.7)": {
+      "accuracy": 0.08333333333333333,
+      "n": 12
+    },
+    "low (<0.5)": {
+      "accuracy": 0.5,
+      "n": 4
+    }
+  }
+}

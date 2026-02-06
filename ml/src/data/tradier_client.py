@@ -3,6 +3,9 @@
 Fetches options chains, OHLCV bars, quotes, tick data, and more from Tradier's API.
 Requires a Tradier brokerage account (free to open).
 
+Rate limiting: Uses requests-per-minute (RPM) limiter: 120/min production, 60/min sandbox.
+Do not call get_expirations() inside 5-min ranking loop; use options_expiration_cache.
+
 Supported Data Types:
     - Historical OHLCV (daily, weekly, monthly, minute, tick)
     - Real-time Quotes (bid/ask, volume, last price)
@@ -31,6 +34,7 @@ Usage:
 
 import logging
 import time
+from collections import deque
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -40,6 +44,10 @@ import pandas as pd
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
+
+# Tradier rate limits: 120/min production, 60/min sandbox
+TRADIER_RPM_PRODUCTION = 120
+TRADIER_RPM_SANDBOX = 60
 
 
 class TradierClient:
@@ -69,18 +77,25 @@ class TradierClient:
             timeout=30.0,
         )
 
-        # Rate limiting
-        self._last_request_time = 0.0
-        self._min_request_interval = 0.2  # 5 requests per second max
+        # RPM limiter (sliding window): 120/min prod, 60/min sandbox
+        is_sandbox = "sandbox" in (self.base_url or "").lower()
+        self._rpm_limit = TRADIER_RPM_SANDBOX if is_sandbox else TRADIER_RPM_PRODUCTION
+        self._request_times: deque[float] = deque(maxlen=self._rpm_limit + 10)
 
-        logger.info("Tradier client initialized")
+        logger.info(f"Tradier client initialized (RPM limit={self._rpm_limit})")
 
     def _rate_limit(self) -> None:
-        """Enforce rate limiting."""
-        elapsed = time.time() - self._last_request_time
-        if elapsed < self._min_request_interval:
-            time.sleep(self._min_request_interval - elapsed)
-        self._last_request_time = time.time()
+        """Enforce requests-per-minute rate limiting (sliding window)."""
+        now = time.time()
+        self._request_times.append(now)
+        # Prune requests older than 60 seconds
+        while self._request_times and now - self._request_times[0] >= 60.0:
+            self._request_times.popleft()
+        if len(self._request_times) >= self._rpm_limit:
+            sleep_time = 60.0 - (now - self._request_times[0])
+            if sleep_time > 0:
+                logger.debug(f"RPM limit reached, sleeping {sleep_time:.1f}s")
+                time.sleep(sleep_time)
 
     def _request(self, method: str, endpoint: str, params: dict | None = None) -> dict:
         """Make API request with rate limiting.
@@ -187,6 +202,96 @@ class TradierClient:
         df["fetched_at"] = datetime.utcnow().isoformat()
 
         logger.info(f"Fetched {len(df)} options for {symbol} exp {expiration}")
+        return df
+
+    def get_feature_option_set(
+        self,
+        symbol: str,
+        expiry1: str | int | float,
+        expiry2: str | int | float,
+        spot: float,
+        greeks: bool = True,
+    ) -> pd.DataFrame:
+        """
+        Get minimal option set for term-structure/forward-vol features.
+
+        Fetches 2 expiries × (ATM call + ATM put + 1 OTM strangle per side per expiry).
+        Enough for implied move, skew proxy, term-structure slope.
+        Uses 2 chain requests per symbol; no get_expirations().
+
+        Args:
+            symbol: Underlying ticker
+            expiry1: Near expiry (YYYY-MM-DD or Unix seconds)
+            expiry2: Far expiry (YYYY-MM-DD or Unix seconds)
+            spot: Current underlying price for ATM/OTM selection
+            greeks: Include Greeks
+
+        Returns:
+            DataFrame with filtered option set
+        """
+        def _to_date(e) -> str:
+            if isinstance(e, (int, float)) and e > 1e9:
+                return datetime.utcfromtimestamp(e).strftime("%Y-%m-%d")
+            return str(e)[:10]
+
+        exp1_str = _to_date(expiry1)
+        exp2_str = _to_date(expiry2)
+
+        chains = []
+        for exp_str in (exp1_str, exp2_str):
+            try:
+                chain = self.get_options_chain(symbol, exp_str, greeks=greeks)
+                if not chain.empty:
+                    chain["expiration_date"] = exp_str
+                    chains.append(chain)
+            except Exception as e:
+                logger.warning(f"Failed to fetch chain for {symbol} {exp_str}: {e}")
+
+        if not chains:
+            return pd.DataFrame()
+
+        df = pd.concat(chains, ignore_index=True)
+
+        def _filter_to_feature_set(grp: pd.DataFrame) -> pd.DataFrame:
+            if grp.empty:
+                return grp
+            strikes = grp["strike"].dropna().unique()
+            atm_strike = float(min(strikes, key=lambda k: abs(float(k) - spot)))
+            results = []
+            side_col = "option_type" if "option_type" in grp.columns else "side"
+            if side_col not in grp.columns:
+                return grp
+            for side in ("call", "put"):
+                sub = grp[grp[side_col].astype(str).str.lower() == side]
+                if sub.empty:
+                    continue
+                # ATM
+                atm = sub[abs(sub["strike"].astype(float) - atm_strike) < 0.02]
+                if atm.empty:
+                    atm = sub[sub["strike"].astype(float) == atm_strike]
+                results.append(atm)
+                # OTM: 1 strike away from ATM
+                sorted_strikes = sorted(sub["strike"].unique(), key=lambda k: float(k))
+                if side == "call":
+                    otm_strikes = [s for s in sorted_strikes if float(s) > atm_strike]
+                else:
+                    otm_strikes = [s for s in sorted_strikes if float(s) < atm_strike]
+                if otm_strikes:
+                    otm_strike = otm_strikes[0]
+                    otm = sub[sub["strike"].astype(float) == otm_strike]
+                    if not otm.empty:
+                        results.append(otm)
+            if results:
+                return pd.concat(results, ignore_index=True)
+            return grp
+
+        filtered = []
+        for exp_val, grp in df.groupby("expiration_date", dropna=False):
+            f = _filter_to_feature_set(grp)
+            if not f.empty:
+                filtered.append(f)
+        if filtered:
+            return pd.concat(filtered, ignore_index=True)
         return df
 
     def get_all_chains(

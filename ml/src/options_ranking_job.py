@@ -23,11 +23,21 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings  # noqa: E402
 from src.data.supabase_db import db  # noqa: E402
+from src.models.earnings_analyzer import isolate_earnings_jump  # noqa: E402
+from src.models.forward_vol import (  # noqa: E402
+    ForwardVolResult,
+    compute_forward_vol_from_chain,
+)
+from src.models.menthorq_features import (  # noqa: E402
+    compute_menthorq_features,
+    to_dict as menthorq_to_dict,
+)
 from src.models.options_momentum_ranker import (  # noqa: E402
     CalibratedMomentumRanker,
     IVStatistics,
     OptionsMomentumRanker,
     RankingMode,
+    StrategyIntent,
 )
 from src.options_historical_backfill import ensure_options_history  # noqa: E402
 
@@ -41,12 +51,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def fetch_options_from_api(symbol: str) -> dict:
+def fetch_options_from_api(
+    symbol: str,
+    expiration_ts: int | None = None,
+    persist: int = 0,
+) -> dict:
     """
     Fetch options chain data from the /options-chain Edge Function.
 
     Args:
         symbol: Underlying ticker symbol
+        expiration_ts: Optional Unix seconds to filter by expiry (2 calls per symbol for term-structure)
+        persist: 0 = no full-chain snapshot upsert (use in 5-min loop)
 
     Returns:
         Dictionary with options chain data
@@ -54,7 +70,9 @@ def fetch_options_from_api(symbol: str) -> dict:
     logger.info(f"Fetching options chain for {symbol} from Edge Function...")
 
     url = f"{settings.supabase_url}/functions/v1/options-chain"
-    params = {"underlying": symbol}
+    params = {"underlying": symbol, "persist": persist}
+    if expiration_ts is not None:
+        params["expiration"] = expiration_ts
     headers = {
         "Authorization": f"Bearer {settings.supabase_service_role_key}",
         "Content-Type": "application/json",
@@ -73,6 +91,44 @@ def fetch_options_from_api(symbol: str) -> dict:
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to fetch options chain for {symbol}: {e}")
         raise
+
+
+def fetch_expiry_cache(symbol: str) -> tuple[int, int] | None:
+    """Read expiry_near_ts, expiry_far_ts from options_expiration_cache. Returns None if missing."""
+    try:
+        rows = (
+            db.client.table("options_expiration_cache")
+            .select("expiry_near_ts, expiry_far_ts")
+            .eq("symbol", symbol.upper())
+            .limit(1)
+            .execute()
+        )
+        if rows.data and len(rows.data) > 0:
+            row = rows.data[0]
+            return (int(row["expiry_near_ts"]), int(row["expiry_far_ts"]))
+    except Exception as e:
+        logger.debug(f"No expiry cache for {symbol}: {e}")
+    return None
+
+
+def _merge_chain_responses(responses: list[dict]) -> dict:
+    """Merge multiple options-chain API responses (calls + puts) into one."""
+    merged = {"calls": [], "puts": []}
+    for r in responses:
+        merged["calls"].extend(r.get("calls", []))
+        merged["puts"].extend(r.get("puts", []))
+    return merged
+
+
+def save_feature_snapshot(
+    symbol: str,
+    snapshot: dict,
+) -> None:
+    """Persist filtered feature snapshot to options_feature_snapshots."""
+    try:
+        db.client.table("options_feature_snapshots").insert(snapshot).execute()
+    except Exception as e:
+        logger.warning(f"Failed to save feature snapshot for {symbol}: {e}")
 
 
 def parse_options_chain(api_response: dict) -> pd.DataFrame:
@@ -325,7 +381,12 @@ def _sanitize_number(value: float | int | None, default: float = 0.0) -> float:
     return num
 
 
-def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame, ranking_mode: str = "monitor") -> int:
+def save_rankings_to_db(
+    symbol_id: str,
+    ranked_df: pd.DataFrame,
+    ranking_mode: str = "monitor",
+    strategy_intent: str = "long_premium",
+) -> int:
     """Save ranked options to database with momentum framework scores and entry/exit rankings."""
     saved_count = 0
     run_at = datetime.utcnow().isoformat()
@@ -366,6 +427,7 @@ def save_rankings_to_db(symbol_id: str, ranked_df: pd.DataFrame, ranking_mode: s
                 "run_at": run_at,
                 # Mode tracking
                 "ranking_mode": ranking_mode,
+                "strategy_intent": strategy_intent,
                 # Momentum Framework scores (always populated)
                 "composite_rank": composite_rank,
                 "momentum_score": _sanitize_number(row.get("momentum_score", 0)),
@@ -510,6 +572,7 @@ def process_symbol_options(
     entry_price: float | None = None,
     use_calibration: bool = True,
     use_regime_conditioning: bool = True,
+    strategy_intent: StrategyIntent | None = None,
 ) -> None:
     """
     Process options for a single symbol: fetch data, rank contracts, save rankings.
@@ -525,6 +588,7 @@ def process_symbol_options(
         entry_price: Entry price for exit mode (optional, required for exit mode)
         use_calibration: Apply isotonic calibration
         use_regime_conditioning: Adjust weights by market regime
+        strategy_intent: long_premium vs short_premium for dual-intent scoring
     """
     logger.info(f"Processing options for {symbol}...")
 
@@ -551,6 +615,22 @@ def process_symbol_options(
             f"{symbol}: price=${underlying_price:.2f}, "
             f"HV={historical_vol:.2%}, trend={underlying_trend}"
         )
+
+        # Fetch options chain: use expiry cache if available (2 calls per expiry)
+        expiry_cache = fetch_expiry_cache(symbol)
+        if expiry_cache:
+            expiry_near_ts, expiry_far_ts = expiry_cache
+            try:
+                r1 = fetch_options_from_api(symbol, expiration_ts=expiry_near_ts, persist=0)
+                r2 = fetch_options_from_api(symbol, expiration_ts=expiry_far_ts, persist=0)
+                api_response = _merge_chain_responses([r1, r2])
+            except Exception as e:
+                logger.warning(f"Expiry-cached fetch failed for {symbol}: {e}, falling back to full chain")
+                api_response = fetch_options_from_api(symbol, persist=0)
+                expiry_near_ts, expiry_far_ts = None, None
+        else:
+            api_response = fetch_options_from_api(symbol, persist=0)
+            expiry_near_ts, expiry_far_ts = None, None
 
         # Fetch 7-day underlying metrics from database (if available)
         underlying_metrics = db.get_underlying_metrics(symbol_id, timeframe="d1")
@@ -582,8 +662,6 @@ def process_symbol_options(
                 }
                 logger.info(f"{symbol} computed 7d metrics from OHLC: ret={ret_7d:.2f}%")
 
-        # Fetch options chain from API
-        api_response = fetch_options_from_api(symbol)
         options_df = parse_options_chain(api_response)
 
         if options_df.empty:
@@ -591,6 +669,43 @@ def process_symbol_options(
             return
 
         logger.info(f"Parsed {len(options_df)} contracts for {symbol}")
+
+        # Compute term-structure and MenthorQ features
+        term_structure_features = None
+        menthorq_features = None
+        forward_vol_result = None
+        ref_ts = datetime.utcnow().timestamp()
+        if "expiration" in options_df.columns and not options_df.empty:
+            exp_col = options_df["expiration"]
+            if expiry_near_ts is not None and expiry_far_ts is not None:
+                forward_vol_result = compute_forward_vol_from_chain(
+                    options_df, underlying_price, expiry_near_ts, expiry_far_ts, ref_ts
+                )
+            elif len(exp_col.dropna().unique()) >= 2:
+                exp_vals = sorted(
+                    exp_col.dropna().unique(),
+                    key=lambda x: pd.Timestamp(x).timestamp() if isinstance(x, str) and "-" in str(x) else float(x) if isinstance(x, (int, float)) else 0,
+                )
+                ne, fe = exp_vals[0], exp_vals[-1]
+                ne_ts = pd.Timestamp(ne).timestamp() if isinstance(ne, str) else float(ne)
+                fe_ts = pd.Timestamp(fe).timestamp() if isinstance(fe, str) else float(fe)
+                forward_vol_result = compute_forward_vol_from_chain(
+                    options_df, underlying_price, ne_ts, fe_ts, ref_ts
+                )
+            if forward_vol_result is not None:
+                term_structure_features = {
+                    "forward_vol": forward_vol_result.forward_vol,
+                    "term_structure_regime": forward_vol_result.term_structure_regime,
+                    "low_confidence": forward_vol_result.low_confidence,
+                    "expected_move_near_pct": forward_vol_result.expected_move_near_pct,
+                    "expected_move_far_pct": forward_vol_result.expected_move_far_pct,
+                    "atm_iv_near": forward_vol_result.sigma_near,
+                    "atm_iv_far": forward_vol_result.sigma_far,
+                }
+            mq = compute_menthorq_features(
+                options_df, underlying_price, realized_vol=historical_vol, reference_ts=ref_ts
+            )
+            menthorq_features = menthorq_to_dict(mq)
 
         # Fetch IV statistics for IV Rank calculation
         iv_stats = fetch_iv_stats(symbol_id)
@@ -647,7 +762,34 @@ def process_symbol_options(
             underlying_metrics=underlying_metrics,
             mode=mode_enum,
             entry_data=entry_data,
+            strategy_intent=strategy_intent,
+            term_structure_features=term_structure_features,
+            menthorq_features=menthorq_features,
         )
+
+        # Persist filtered feature snapshot
+        if forward_vol_result is not None or menthorq_features is not None:
+            near_pct = forward_vol_result.expected_move_near_pct if forward_vol_result else None
+            far_pct = forward_vol_result.expected_move_far_pct if forward_vol_result else None
+            snapshot = {
+                "symbol": symbol.upper(),
+                "ts_utc": datetime.utcnow().isoformat(),
+                "atm_iv_near": forward_vol_result.sigma_near if forward_vol_result else None,
+                "atm_iv_far": forward_vol_result.sigma_far if forward_vol_result else None,
+                "forward_vol": forward_vol_result.forward_vol if forward_vol_result else None,
+                "term_structure_regime": forward_vol_result.term_structure_regime if forward_vol_result else None,
+                "low_confidence": forward_vol_result.low_confidence if forward_vol_result else False,
+                "expected_move_near_pct": near_pct,
+                "expected_move_far_pct": far_pct,
+                "expected_move_near_dollar": (underlying_price * near_pct / 100) if near_pct is not None else None,
+                "expected_move_far_dollar": (underlying_price * far_pct / 100) if far_pct is not None else None,
+                "skew_proxy": menthorq_features.get("skew_proxy") if menthorq_features else None,
+                "vrp": menthorq_features.get("vrp") if menthorq_features else None,
+            }
+            if expiry_cache:
+                snapshot["expiry_near_ts"] = expiry_cache[0]
+                snapshot["expiry_far_ts"] = expiry_cache[1]
+            save_feature_snapshot(symbol, snapshot)
 
         # Log regime info if available
         if "trend_regime" in ranked_df.columns:
@@ -682,7 +824,12 @@ def process_symbol_options(
 
         # Save top contracts with balanced expiry distribution
         top_ranked = select_balanced_expiry_contracts(ranked_df)
-        saved_count = save_rankings_to_db(symbol_id, top_ranked, ranking_mode)
+        saved_count = save_rankings_to_db(
+            symbol_id,
+            top_ranked,
+            ranking_mode,
+            strategy_intent=strategy_intent.value if strategy_intent else "long_premium",
+        )
 
         logger.info(f"Saved {saved_count} {ranking_mode.upper()} ranked contracts for {symbol}")
 
@@ -821,6 +968,13 @@ Examples:
         default=None,
         help="Entry price for EXIT mode. Required for accurate profit/loss calculation in exit mode.",
     )
+    parser.add_argument(
+        "--strategy-intent",
+        type=str,
+        default=None,
+        choices=["long_premium", "short_premium"],
+        help="Strategy intent for dual-intent scoring. Default from RANKER_STRATEGY_INTENT env.",
+    )
     args = parser.parse_args()
 
     # Validate EXIT mode requirements
@@ -828,6 +982,15 @@ Examples:
         logger.warning(
             "EXIT mode works best with --entry-price specified. "
             "Will use mark price as fallback, which may not reflect actual position."
+        )
+
+    # Resolve strategy intent
+    strategy_intent = None
+    if args.strategy_intent:
+        strategy_intent = (
+            StrategyIntent.SHORT_PREMIUM
+            if args.strategy_intent == "short_premium"
+            else StrategyIntent.LONG_PREMIUM
         )
 
     # Determine which symbols to process
@@ -850,9 +1013,10 @@ Examples:
     for symbol in symbols_to_process:
         try:
             process_symbol_options(
-                symbol, 
+                symbol,
                 ranking_mode=args.mode,
-                entry_price=args.entry_price
+                entry_price=args.entry_price,
+                strategy_intent=strategy_intent,
             )
             symbols_processed += 1
         except Exception as e:

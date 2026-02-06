@@ -22,19 +22,60 @@
   - Test: Search for `from sklearn.model_selection import TimeSeriesSplit`
   - **Cursor Prompt:** See plan → "Phase 1" → Task 1.2.1
 
-- [ ] **MF-3: Window Overlap Verification** (2-3 hrs)
+- [X] **MF-3: Window Overlap Verification** (2-3 hrs)
   - File: `ml/src/training/walk_forward_optimizer.py:100-150`
   - Task: Print all window dates, verify no overlap
   - Test: Visual timeline of train/test windows
   - **Cursor Prompt:** See plan → "Phase 1" → Task 1.2.2
 
-- [ ] **MF-4: Parameter Freezing** (1-2 hrs)
+- [X] **MF-4: Parameter Freezing** (1-2 hrs)
   - File: `ml/src/training/walk_forward_optimizer.py:150-200`
   - Task: Verify params frozen during OOS testing
   - Test: `assert model.get_params() unchanged after test`
   - **Cursor Prompt:** See plan → "Phase 2" → Task 2.1.2
 
 **Total Est. Time:** 6-10 hours
+
+---
+
+## Unified Forecast Job: Train/Test Split Audit (Feb 3, 2026)
+
+**Goal:** Determine if `unified_forecast_job` uses train/test splits or trains on full history.
+
+**Finding: No explicit train/test split. Models train on full history (with last `horizon_days` excluded from labels) and predict future.**
+
+| Item | Result |
+|------|--------|
+| `train_test_split` calls | **None** in `unified_forecast_job.py`, `baseline_forecaster.py`, or `enhanced_ensemble_integration.py` |
+| Data slicing for train vs test | **No** random/holdout split. Training uses indices `[start_idx, end_idx)` where `end_idx = len(df) - horizon_days` so the **last horizon_days rows have no labels** (forward returns set to NaN). |
+| Overlap risk | **None** — future dates are not in training data. |
+
+**Where models are trained**
+
+- **unified_forecast_job.py**
+  - **Line 437:** `tabpfn.fit(df, horizon_days=horizon_days)` — full `df`; TabPFN’s `fit()` uses `prepare_training_data(df)` which uses `end_idx = len(df) - horizon_days` (same as baseline).
+  - **Lines 470–489:** Ensemble path: `X_train, y_train = baseline_prep.prepare_training_data(df, ...)` then `ohlc_train = df.iloc[start_idx:end_idx]` with `end_idx = len(df) - horizon_days`; `ensemble.train(features_df=X_train, labels_series=y_train, ohlc_df=ohlc_train)`.
+  - **Lines 529, 539:** Fallback: `baseline_forecaster.fit(df, horizon_days=horizon_days)` — full `df`; baseline’s `fit()` uses `prepare_training_data(df)` (same end_idx logic).
+
+- **baseline_forecaster.py**
+  - **Lines 98–99:** `start_idx = 50`, `end_idx = len(df) - horizon_days_int`; rows `[start_idx, end_idx)` get features and labels; last `horizon_days` rows have no valid label.
+  - **Line 348:** `X, y = self.prepare_training_data(df, ...)` then **line 352:** `self.train(X, y)` → **line 263:** `self.model.fit(X_scaled, y_encoded)` — all of that prepared data (no split).
+
+- **enhanced_ensemble_integration.py**
+  - **Lines 178–182:** `self.ensemble_manager.train(ohlc_df=ohlc_df, features_df=features_df, labels=labels_series)` — receives already-prepared features/labels from caller; no internal split.
+
+**Exact data passed to fit/train**
+
+- **Ensemble (unified_forecast_job ~486):** `ensemble.train(features_df=X_train, labels_series=y_train, ohlc_df=ohlc_train)` where `X_train`/`y_train` come from `prepare_training_data(df)` → rows with indices `[50, len(df)-horizon_days)`; `ohlc_train = df.iloc[start_idx:end_idx]` (same range).
+- **Baseline (baseline_forecaster ~348, 263):** `X, y = prepare_training_data(df)` then `model.fit(X_scaled, y_encoded)` — same index range `[50, len(df)-horizon_days)`.
+- **TabPFN (unified_forecast_job ~437, tabpfn_forecaster ~326):** `X, y = prepare_training_data(df)` then `self.train(X, y)` — same range.
+
+**Prediction target dates**
+
+- **unified_forecast_job ~491–495:** `model_pred = ensemble.predict(features_df=X_train.tail(1), ohlc_df=df)` — predict using the **last row** of the training feature set (the last date that had a valid forward return, i.e. `T - horizon_days`). So the model is predicting the return over the **next** `horizon_days` (future).
+- **Baseline/TabPFN predict:** Use last row of features (last bar in `df`); prediction is for the next horizon. Forecast points are built from `df["ts"].iloc[-1]` plus horizon (e.g. ~582).
+
+**Conclusion:** Training uses all available history **except** the last `horizon_days` (which have no labels). Prediction uses the last feature row to forecast the **future** horizon. No train/test split and no overlap — future dates are not in the training set.
 
 ---
 

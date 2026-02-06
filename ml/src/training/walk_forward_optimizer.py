@@ -156,9 +156,11 @@ class WalkForwardOptimizer:
         )
 
         while True:
-            train_end = current_start + timedelta(days=self.train_days)
-            val_end = train_end + timedelta(days=self.val_days)
-            test_end = val_end + timedelta(days=self.test_days)
+            train_end = current_start + timedelta(days=self.train_days - 1)
+            val_start = train_end + timedelta(days=1)
+            val_end = val_start + timedelta(days=self.val_days - 1)
+            test_start = val_end + timedelta(days=1)
+            test_end = test_start + timedelta(days=self.test_days - 1)
 
             if test_end > end_date:
                 logger.info(
@@ -173,12 +175,13 @@ class WalkForwardOptimizer:
             window = WindowConfig(
                 train_start=current_start,
                 train_end=train_end,
-                val_start=train_end,
+                val_start=val_start,
                 val_end=val_end,
-                test_start=val_end,
+                test_start=test_start,
                 test_end=test_end,
                 window_id=window_id,
             )
+            self._validate_window_boundaries(window)
             windows.append(window)
 
             logger.debug("Created %s", window)
@@ -191,6 +194,7 @@ class WalkForwardOptimizer:
             len(windows),
             total_window_days,
         )
+        self._log_window_timeline(windows)
 
         return windows
 
@@ -463,6 +467,38 @@ class WalkForwardOptimizer:
             logger.warning("RMSE calculation failed: %s", e)
             return np.inf
 
+    @staticmethod
+    def _validate_window_boundaries(window: WindowConfig) -> None:
+        """
+        Ensure train/validation/test windows do not overlap and are ordered.
+
+        Args:
+            window: WindowConfig with window boundaries
+
+        Raises:
+            ValueError: If any window sections overlap or are out of order
+        """
+        if window.train_end >= window.val_start:
+            raise ValueError(
+                "Training window overlaps validation window: "
+                f"train_end={window.train_end} val_start={window.val_start}"
+            )
+        if window.val_end >= window.test_start:
+            raise ValueError(
+                "Validation window overlaps test window: "
+                f"val_end={window.val_end} test_start={window.test_start}"
+            )
+        if not (
+            window.train_start < window.train_end < window.val_start < window.val_end
+            < window.test_start < window.test_end
+        ):
+            raise ValueError(
+                "Window boundaries out of order: "
+                f"{window.train_start=} {window.train_end=} "
+                f"{window.val_start=} {window.val_end=} "
+                f"{window.test_start=} {window.test_end=}"
+            )
+
     def _log_cv_boundaries(self, data: pd.DataFrame, n_splits: int = 5) -> None:
         """Log first 3 TimeSeriesSplit fold boundaries and verify sequential order."""
         if data is None or len(data) < (n_splits + 1):
@@ -515,6 +551,50 @@ class WalkForwardOptimizer:
                 )
 
             prev_test_end = test_end
+
+    @staticmethod
+    def _log_window_timeline(windows: List[WindowConfig], preview: int = 5) -> None:
+        """
+        Log a concise overview of window boundaries for manual verification.
+
+        Args:
+            windows: List of window configurations
+            preview: Number of initial windows to log in detail
+        """
+        if not windows:
+            logger.warning("No walk-forward windows generated")
+            return
+
+        logger.info(
+            "Window timeline preview (showing %d of %d windows)",
+            min(preview, len(windows)),
+            len(windows),
+        )
+
+        for window in windows[:preview]:
+            logger.info(
+                "Window %d | train %s → %s | val %s → %s | test %s → %s",
+                window.window_id,
+                window.train_start.date(),
+                window.train_end.date(),
+                window.val_start.date(),
+                window.val_end.date(),
+                window.test_start.date(),
+                window.test_end.date(),
+            )
+
+        if len(windows) > preview:
+            last_window = windows[-1]
+            logger.info(
+                "Last window %d | train %s → %s | val %s → %s | test %s → %s",
+                last_window.window_id,
+                last_window.train_start.date(),
+                last_window.train_end.date(),
+                last_window.val_start.date(),
+                last_window.val_end.date(),
+                last_window.test_start.date(),
+                last_window.test_end.date(),
+            )
 
     def _get_active_models(self, ensemble) -> List[str]:
         """

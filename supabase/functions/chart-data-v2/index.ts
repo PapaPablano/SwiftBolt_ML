@@ -1221,6 +1221,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const response = {
       symbol: symbol.toUpperCase(),
+      symbol_id: symbolId,
       timeframe,
       layers: {
         historical: {

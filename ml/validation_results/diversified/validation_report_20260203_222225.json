@@ -1,0 +1,92 @@
+{
+  "validation_date": "2026-02-03T22:22:25.666075",
+  "holdout_period": {
+    "start": "2025-10-15T00:00:00",
+    "end": "2026-02-03T00:00:00"
+  },
+  "symbols": [
+    "PG",
+    "KO",
+    "JNJ",
+    "MSFT",
+    "AMGN",
+    "NVDA",
+    "MU",
+    "ALB"
+  ],
+  "horizons": [
+    "1D",
+    "5D",
+    "10D",
+    "20D"
+  ],
+  "model_type": "baseline",
+  "total_predictions": 2162,
+  "overall_accuracy": 0.316836262719704,
+  "by_symbol": {
+    "PG": {
+      "accuracy": 0.332089552238806,
+      "n_predictions": 268
+    },
+    "KO": {
+      "accuracy": 0.3208955223880597,
+      "n_predictions": 268
+    },
+    "JNJ": {
+      "accuracy": 0.31343283582089554,
+      "n_predictions": 268
+    },
+    "MSFT": {
+      "accuracy": 0.31343283582089554,
+      "n_predictions": 268
+    },
+    "AMGN": {
+      "accuracy": 0.2835820895522388,
+      "n_predictions": 268
+    },
+    "NVDA": {
+      "accuracy": 0.3104693140794224,
+      "n_predictions": 277
+    },
+    "MU": {
+      "accuracy": 0.3935018050541516,
+      "n_predictions": 277
+    },
+    "ALB": {
+      "accuracy": 0.26492537313432835,
+      "n_predictions": 268
+    }
+  },
+  "by_horizon": {
+    "1D": {
+      "accuracy": 0.33276450511945393,
+      "n_predictions": 586
+    },
+    "5D": {
+      "accuracy": 0.3154121863799283,
+      "n_predictions": 558
+    },
+    "10D": {
+      "accuracy": 0.31647940074906367,
+      "n_predictions": 534
+    },
+    "20D": {
+      "accuracy": 0.29958677685950413,
+      "n_predictions": 484
+    }
+  },
+  "confidence_calibration": {
+    "high (>=0.7)": {
+      "accuracy": 0.3206459054209919,
+      "n": 867
+    },
+    "medium (0.5-0.7)": {
+      "accuracy": 0.31356898517673887,
+      "n": 877
+    },
+    "low (<0.5)": {
+      "accuracy": 0.3157894736842105,
+      "n": 418
+    }
+  }
+}

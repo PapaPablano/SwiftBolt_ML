@@ -17,21 +17,33 @@ struct ContentView: View {
             SidebarView(activeSection: $activeSection)
                 .environmentObject(appViewModel)
         } detail: {
-            switch activeSection {
-            case .predictions:
-                PredictionsView()
-                    .environmentObject(appViewModel)
-            case .portfolio:
-                Text("Portfolio")
-            case .multileg:
-                MultiLegStrategyListView()
-                    .environmentObject(appViewModel)
-            default:
-                DetailView()
-                    .environmentObject(appViewModel)
+            VStack(spacing: 0) {
+                if appViewModel.supabaseUnreachable {
+                    SupabaseConnectivityBanner()
+                        .environmentObject(appViewModel)
+                }
+                Group {
+                    switch activeSection {
+                    case .predictions:
+                        PredictionsView()
+                            .environmentObject(appViewModel)
+                    case .portfolio:
+                        Text("Portfolio")
+                    case .multileg:
+                        MultiLegStrategyListView()
+                            .environmentObject(appViewModel)
+                    default:
+                        DetailView()
+                            .environmentObject(appViewModel)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(minWidth: 1200, minHeight: 800)
+        .task {
+            await appViewModel.checkSupabaseConnectivity()
+        }
         .onChange(of: appViewModel.selectedSymbol) { oldValue, newValue in
             print("[DEBUG] ========================================")
             print("[DEBUG] ContentView detected selectedSymbol change")
@@ -152,6 +164,33 @@ struct EmptyStateView: View {
                 .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Shown when Supabase host can't resolve (DNS -1003). Explains offline mode and offers retry.
+struct SupabaseConnectivityBanner: View {
+    @EnvironmentObject var appViewModel: AppViewModel
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "wifi.slash")
+                .foregroundStyle(.secondary)
+            Text("Supabase unreachable (DNS). Using offline/cached data.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("Retry") {
+                Task {
+                    SupabaseConnectivity.resetCache()
+                    await appViewModel.checkSupabaseConnectivity()
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.orange.opacity(0.15))
     }
 }
 

@@ -32,6 +32,114 @@
             : state.originalBars;
     };
 
+    // Realtime ml_forecasts subscription (postgres_changes). Same IIFE scope so command switch can call handleSetRealtimeConfig; UMD exposes window.supabase.createClient.
+    let supabaseClient = null;
+    let forecastChannel = null;
+    let realtimeCfg = null;
+    const mlForecastsByHorizon = {};
+
+    function handleSetRealtimeConfig(cfg) {
+        if (!cfg || !cfg.supabaseUrl || !cfg.anonKey || !cfg.symbolId) return;
+        realtimeCfg = cfg;
+        console.log('[ChartJS] setRealtimeConfig:', cfg.symbolId, 'timeframe=' + (cfg.timeframe || ''), 'modelType=' + (cfg.modelType || ''));
+
+        if (typeof window.supabase === 'undefined' || !window.supabase.createClient) {
+            console.warn('[ChartJS] Supabase not loaded; skip Realtime subscription');
+            return;
+        }
+        if (!supabaseClient) {
+            supabaseClient = window.supabase.createClient(cfg.supabaseUrl, cfg.anonKey);
+        }
+        if (forecastChannel) {
+            supabaseClient.removeChannel(forecastChannel);
+            forecastChannel = null;
+        }
+        Object.keys(mlForecastsByHorizon).forEach(function(k) { delete mlForecastsByHorizon[k]; });
+
+        // One-time bootstrap so markers appear immediately (don't wait for postgres_changes).
+        (async function bootstrapForecastRows() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('ml_forecasts')
+                    .select('horizon,timeframe,model_type,overall_label,confidence,points,run_at')
+                    .eq('symbol_id', cfg.symbolId)
+                    .eq('timeframe', cfg.timeframe)
+                    .eq('model_type', cfg.modelType)
+                    .in('horizon', ['1D', '5D', '10D'])
+                    .order('run_at', { ascending: false })
+                    .limit(25);
+
+                if (error) throw error;
+                if (!data || !data.length) return;
+
+                // Keep newest row per horizon.
+                Object.keys(mlForecastsByHorizon).forEach(function(k) { delete mlForecastsByHorizon[k]; });
+                for (var idx = 0; idx < data.length; idx++) {
+                    var row = data[idx];
+                    if (!mlForecastsByHorizon[row.horizon]) {
+                        mlForecastsByHorizon[row.horizon] = row;
+                    }
+                }
+                redrawBinaryMarkersFromRows();
+            } catch (e) {
+                console.warn('[ChartJS] bootstrapForecastRows failed:', e);
+            }
+        })();
+
+        forecastChannel = supabaseClient
+            .channel('ml_forecasts:' + cfg.symbolId)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'ml_forecasts',
+                filter: 'symbol_id=eq.' + cfg.symbolId
+            }, function(payload) {
+                const row = payload.new;
+                if (!row) return;
+                if (row.timeframe !== cfg.timeframe) return;
+                if (row.model_type !== cfg.modelType) return;
+                if (['1D', '5D', '10D'].indexOf(row.horizon) === -1) return;
+
+                mlForecastsByHorizon[row.horizon] = row;
+                console.log('[ChartJS] ml_forecasts postgres_changes:', row.symbol_id, row.timeframe, row.model_type, row.horizon);
+                redrawBinaryMarkersFromRows();
+            })
+            .subscribe(function(status, err) {
+                console.log('[ChartJS] Realtime ml_forecasts subscription status:', status);
+                if (err) console.warn('[ChartJS] Realtime subscription error:', err);
+            });
+    }
+
+    function redrawBinaryMarkersFromRows() {
+        // Use originalBars so marker base time/price match real candles (not Heikin-Ashi transformed)
+        const bars = (state.originalBars && state.originalBars.length > 0) ? state.originalBars : getSourceBars();
+        const last = bars && bars.length ? bars[bars.length - 1] : null;
+        if (!last) return;
+
+        const baseTime = last.time;
+        const basePrice = last.close;
+
+        const items = Object.keys(mlForecastsByHorizon).map(function(horizon) {
+            const row = mlForecastsByHorizon[horizon];
+            const horizonDays = parseInt(horizon.replace('D', ''), 10) || 1;
+            const direction = row.overall_label === 'Bullish' ? 'up'
+                : row.overall_label === 'Bearish' ? 'down'
+                : 'neutral';
+            const confidence = Number(row.confidence || 0);
+            const pt = (Array.isArray(row.points) && row.points.length) ? row.points[row.points.length - 1] : null;
+            let t = pt && pt.ts != null ? Number(pt.ts) : null;
+            if (t != null && t > 1e12) t = Math.floor(t / 1000);
+            if (t == null) t = baseTime + horizonDays * 86400;
+            let v = pt && pt.value != null ? Number(pt.value) : basePrice;
+            if (!Number.isFinite(v)) v = basePrice;
+            return { time: t, value: v, horizonDays: horizonDays, direction: direction, confidence: confidence };
+        });
+
+        if (window.chartApi && typeof window.chartApi.setBinaryForecastMarkers === 'function') {
+            window.chartApi.setBinaryForecastMarkers(baseTime, basePrice, items);
+        }
+    }
+
     const rma = (data, period) => {
         if (!data || period <= 0 || data.length < period) {
             return new Array(data ? data.length : 0).fill(null);
@@ -2087,6 +2195,29 @@
             const isBullish = resolvedDirection === 'bullish';
             const isBearish = resolvedDirection === 'bearish';
 
+            // When direction is explicit (e.g. binary overlay), style series so single candle is clearly green or red
+            if (forecastDirection === 'bullish' || forecastDirection === 'bearish') {
+                if (forecastDirection === 'bullish') {
+                    state.series.forecast_candles.applyOptions({
+                        upColor: '#26a69a',
+                        downColor: '#26a69a',
+                        borderUpColor: '#26a69a',
+                        borderDownColor: '#26a69a',
+                        wickUpColor: '#26a69a',
+                        wickDownColor: '#26a69a'
+                    });
+                } else {
+                    state.series.forecast_candles.applyOptions({
+                        upColor: '#ef5350',
+                        downColor: '#ef5350',
+                        borderUpColor: '#ef5350',
+                        borderDownColor: '#ef5350',
+                        wickUpColor: '#ef5350',
+                        wickDownColor: '#ef5350'
+                    });
+                }
+            }
+
             const currentPrice = state.originalBars?.length
                 ? state.originalBars[state.originalBars.length - 1].close
                 : (sortedData.length ? sortedData[0].close : null);
@@ -2143,6 +2274,95 @@
         },
 
         /**
+         * Set binary forecast: future-only dashed line + circle markers. No overlap with historical bars.
+         * items[] = [{ horizonDays, direction, confidence, time?, value? }]. Only points with time >= futureStart are drawn.
+         */
+        setBinaryForecastMarkers: function(baseTime, basePrice, items) {
+            if (!state.chart) return;
+            const SECONDS_PER_DAY = 86400;
+            const bars = (state.originalBars && state.originalBars.length > 0) ? state.originalBars : getSourceBars();
+            const LOOKBACK = 30;
+            let barStepSec = SECONDS_PER_DAY;
+            if (bars && bars.length >= 2) {
+                const deltas = [];
+                for (let i = Math.max(1, bars.length - LOOKBACK); i < bars.length; i++) {
+                    const d = bars[i].time - bars[i - 1].time;
+                    if (d > 0) deltas.push(d);
+                }
+                if (deltas.length > 0) barStepSec = Math.max(1, Math.min.apply(null, deltas));
+            }
+            const futureStart = baseTime + barStepSec;
+
+            const futureItems = (items || [])
+                .filter(function(it) { return it && Number.isFinite(it.time) && it.time >= futureStart; })
+                .sort(function(a, b) { return a.time - b.time; });
+
+            const lineData = futureItems.map(function(it) {
+                return { time: it.time, value: (it.value != null && Number.isFinite(it.value)) ? it.value : basePrice };
+            });
+            const markers = futureItems.map(function(it) {
+                const dir = (it.direction || '').toLowerCase();
+                return {
+                    time: it.time,
+                    position: dir === 'up' ? 'belowBar' : 'aboveBar',
+                    color: dir === 'up' ? '#26a69a' : dir === 'down' ? '#ef5350' : '#888',
+                    shape: 'circle',
+                    text: (it.horizonDays != null ? it.horizonDays + 'D' : ''),
+                    size: 2
+                };
+            });
+
+            // Debug: prove future-only rule (lineData times >= futureStart, never baseTime)
+            const lineTimes = lineData.map(function(p) { return p.time; });
+            console.log('[ChartJS] setBinaryForecastMarkers future-only:', {
+                baseTime: baseTime,
+                barStepSec: barStepSec,
+                futureStart: futureStart,
+                itemsLength: (items || []).length,
+                futureItemsLength: futureItems.length,
+                lineDataTimes: lineTimes,
+                allTimesGteFutureStart: lineTimes.length === 0 || lineTimes.every(function(t) { return t >= futureStart; }),
+                noBaseTimeInLine: lineTimes.indexOf(baseTime) === -1
+            });
+
+            if (!state.series.forecastLine) {
+                state.series.forecastLine = state.chart.addLineSeries({
+                    color: '#2196F3',
+                    lineWidth: 2,
+                    lineStyle: LightweightCharts.LineStyle.Dashed,
+                    priceLineVisible: false,
+                    lastValueVisible: false,
+                    crosshairMarkerVisible: false,
+                    title: 'ML Forecast'
+                });
+            }
+            const series = state.series.forecastLine;
+            series.setData(lineData);
+            series.setMarkers(markers);
+
+            try {
+                if (futureItems.length > 0) {
+                    const maxT = Math.max.apply(null, lineData.map(function(p) { return p.time; }).filter(function(t) { return t != null && Number.isFinite(t); }));
+                    const ts = state.chart.timeScale();
+                    if (ts && typeof ts.getVisibleRange === 'function' && typeof ts.setVisibleRange === 'function') {
+                        const vr = ts.getVisibleRange();
+                        if (vr != null && Number.isFinite(vr.from) && Number.isFinite(vr.to) && maxT > vr.to) {
+                            const span = vr.to - vr.from;
+                            const pad = SECONDS_PER_DAY * 2;
+                            const newTo = maxT + pad;
+                            const newFrom = Math.max(0, newTo - span);
+                            ts.setVisibleRange({ from: newFrom, to: newTo });
+                        }
+                    }
+                }
+            } catch (e) {
+                // no-op
+            }
+
+            console.log('[ChartJS] Binary forecast line + markers set (future-only):', futureItems.length);
+        },
+
+        /**
          * Clear all series except candles
          */
         clearIndicators: function() {
@@ -2163,11 +2383,18 @@
                 delete state.series.supertrend;
             }
 
+            // Remove forecast line series (future-only binary forecast path + markers)
+            if (state.series.forecastLine && state.chart) {
+                try { state.chart.removeSeries(state.series.forecastLine); } catch (e) {}
+                delete state.series.forecastLine;
+            }
+
             // Remove all remaining indicator series (only remove actual series objects)
             Object.keys(state.series).forEach(id => {
                 if (id === 'candles') return;
                 if (id === 'supertrend_segments') return;
                 if (id === 'supertrend') return;
+                if (id === 'forecastLine') return;
 
                 const s = state.series[id];
                 // Defensive: skip non-series values
@@ -2181,6 +2408,11 @@
             try {
                 if (state.series.candles) state.series.candles.setMarkers([]);
             } catch (e) {}
+
+            // Re-apply binary forecast markers from in-memory Realtime state so full chart updates don't leave markers gone until next postgres_changes
+            if (Object.keys(mlForecastsByHorizon).length > 0 && window.chartApi && typeof window.chartApi.setBinaryForecastMarkers === 'function') {
+                redrawBinaryMarkersFromRows();
+            }
             console.log('[ChartJS] Indicators cleared');
         },
 
@@ -2813,6 +3045,12 @@
                     case 'setForecastCandles':
                         this.setForecastCandles(cmd.data, cmd.direction);
                         break;
+                    case 'setBinaryForecastMarkers':
+                        this.setBinaryForecastMarkers(cmd.baseTime, cmd.basePrice, cmd.items || []);
+                        break;
+                    case 'setRealtimeConfig':
+                        handleSetRealtimeConfig(cmd);
+                        break;
                     case 'setMarkers':
                         this.setMarkers(cmd.seriesId, cmd.markers);
                         break;
@@ -3077,6 +3315,12 @@
                 state.hasFitContentOnce = false;
                 // Hide sub-panels
                 Object.keys(subPanelConfig).forEach(name => hideSubPanel(name));
+                // Remove Realtime channel so we don't leak subscriptions when chart is reset (e.g. switch symbol/tab)
+                if (supabaseClient && forecastChannel) {
+                    supabaseClient.removeChannel(forecastChannel);
+                    forecastChannel = null;
+                }
+                Object.keys(mlForecastsByHorizon).forEach(function(k) { delete mlForecastsByHorizon[k]; });
                 console.log('[ChartJS] Cleared all');
             } catch (e) {
                 console.warn('[ChartJS] clearAll failed', e);

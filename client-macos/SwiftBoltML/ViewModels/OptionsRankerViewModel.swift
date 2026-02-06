@@ -35,6 +35,8 @@ class OptionsRankerViewModel: ObservableObject {
     @Published var sortOption: RankingSortOption = .composite
     @Published var minScore: Double = 0.0
     @Published var rankingMode: RankingMode = .monitor
+    @Published var strategyIntent: StrategyIntent = .longPremium
+    @Published var symbolFeatures: SymbolFeatures?
     @Published var liveQuotes: [String: OptionContractQuote] = [:]
     @Published var lastQuoteRefresh: Date?
     @Published var isRefreshingQuotes: Bool = false
@@ -193,6 +195,7 @@ class OptionsRankerViewModel: ObservableObject {
                 expiry: selectedExpiry,
                 side: selectedSide,
                 mode: rankingMode.rawValue,
+                strategyIntent: strategyIntent,
                 limit: 200
             )
 
@@ -207,6 +210,7 @@ class OptionsRankerViewModel: ObservableObject {
             // Batch all state updates together to prevent cascading view updates
             await MainActor.run {
                 self.rankings = response.ranks
+                self.symbolFeatures = response.symbolFeatures
                 self.updateRankingStatus()
                 self.isLoading = false
                 self.activeSymbol = symbol

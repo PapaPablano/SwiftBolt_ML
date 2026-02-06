@@ -378,8 +378,8 @@ class BaselineForecaster:
 
         # Check if X is OHLC data (has 'close' column) or features
         if X is not None and 'close' in X.columns:
-            # OHLC data - prepare features first
-            df = X
+            # OHLC data - run same pipeline as training so feature columns match
+            df = compute_simplified_features(X.copy(), sentiment_series=None)
             engineer = TemporalFeatureEngineer()
             last_idx = len(df) - 1
             features = engineer.add_features_to_point(df, last_idx)

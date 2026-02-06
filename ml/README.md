@@ -88,6 +88,24 @@ This will:
 4. Generate forecasts for each horizon (1D, 1W)
 5. Store results in `ml_forecasts` table
 
+### Run the API (FastAPI on port 8000)
+
+Start the server **from the `ml` directory** with `PYTHONPATH=.` so all routers (including binary forecast) load:
+
+```bash
+cd ml
+PYTHONPATH=. uvicorn api.main:app --reload --port 8000
+```
+
+Or use the helper script:
+
+```bash
+cd ml
+./run_api.sh
+```
+
+If something else is already on port 8000 (e.g. Docker or an older uvicorn), that process may not have the same routes. Either stop it and run the above, or use a different port: `./run_api.sh 8002` then call `http://localhost:8002/api/v1/forecast/binary`. When using Docker (`./start-backend.sh` from repo root), rebuild after adding routes: `docker-compose build && docker-compose up -d`.
+
 ### Configuration
 
 Edit `config/settings.py` or set environment variables:

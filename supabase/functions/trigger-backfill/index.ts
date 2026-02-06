@@ -41,13 +41,14 @@ Deno.serve(async (req: Request) => {
 
     console.log("[TriggerBackfill] Calling run-backfill-worker...");
 
-    // Call the backfill worker
+    // Call the backfill worker (verify_jwt=false; auth via X-SB-Gateway-Key)
     const response = await fetch(`${supabaseUrl}/functions/v1/run-backfill-worker`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${gatewayKey}`,
         "apikey": gatewayKey,
+        "X-SB-Gateway-Key": gatewayKey,
       },
       body: "{}",
     });

@@ -38,12 +38,16 @@ enum ChartCommand: Encodable {
     case removeVolumeProfile
     case removePriceLines(category: String)
     case setTechnicalIndicatorsOverlay(indicators: [TechnicalIndicatorOverlay])
+    case setBinaryForecastMarkers(baseTime: Int, basePrice: Double, items: [BinaryForecastMarkerItem])
+    case setRealtimeConfig(supabaseURL: String, anonKey: String, symbolId: String, timeframe: String, modelType: String)
 
     // Custom encoding to match JS API
     private enum CodingKeys: String, CodingKey {
         case type, options, data, candle, id, midData, upperData, lowerData
         case direction
         case seriesId, markers, price, from, to
+        case baseTime, basePrice, items
+        case supabaseUrl, anonKey, symbolId, timeframe, modelType
         case line, signal, histogram, kData, dData, jData, adxData, plusDI, minusDI, panel
         case trendData, strengthData, resistance, support, levels, category
         case config, indicators
@@ -158,7 +162,50 @@ enum ChartCommand: Encodable {
         case .setTechnicalIndicatorsOverlay(let indicators):
             try container.encode("setTechnicalIndicatorsOverlay", forKey: .type)
             try container.encode(indicators, forKey: .indicators)
+        case .setBinaryForecastMarkers(let baseTime, let basePrice, let items):
+            try container.encode("setBinaryForecastMarkers", forKey: .type)
+            try container.encode(baseTime, forKey: .baseTime)
+            try container.encode(basePrice, forKey: .basePrice)
+            try container.encode(items, forKey: .items)
+        case .setRealtimeConfig(let supabaseURL, let anonKey, let symbolId, let timeframe, let modelType):
+            try container.encode("setRealtimeConfig", forKey: .type)
+            try container.encode(supabaseURL, forKey: .supabaseUrl)
+            try container.encode(anonKey, forKey: .anonKey)
+            try container.encode(symbolId, forKey: .symbolId)
+            try container.encode(timeframe, forKey: .timeframe)
+            try container.encode(modelType, forKey: .modelType)
         }
+    }
+}
+
+/// One binary forecast marker for JS (baseTime + horizonDays*86400, basePrice, direction, confidence).
+/// Optional time/value: when present, JS uses them for future-only filtering and alignment; omit to let JS derive.
+struct BinaryForecastMarkerItem: Encodable {
+    let horizonDays: Int
+    let direction: String  // "up" | "down"
+    let confidence: Double
+    var time: Int?    // Unix seconds; when set, JS enforces future-only and marker alignment
+    var value: Double? // price at horizon; when nil, JS uses basePrice
+
+    enum CodingKeys: String, CodingKey {
+        case horizonDays, direction, confidence, time, value
+    }
+
+    init(horizonDays: Int, direction: String, confidence: Double, time: Int? = nil, value: Double? = nil) {
+        self.horizonDays = horizonDays
+        self.direction = direction
+        self.confidence = confidence
+        self.time = time
+        self.value = value
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(horizonDays, forKey: .horizonDays)
+        try container.encode(direction, forKey: .direction)
+        try container.encode(confidence, forKey: .confidence)
+        try container.encodeIfPresent(time, forKey: .time)
+        try container.encodeIfPresent(value, forKey: .value)
     }
 }
 
@@ -824,6 +871,28 @@ final class ChartBridge: NSObject, ObservableObject {
         let lastClose = sortedBars.last?.close ?? 0
         let direction = lastClose >= firstClose ? "bullish" : "bearish"
         send(.setForecastCandles(data: candles, direction: direction))
+    }
+
+    /// Send binary forecast markers to JS: baseTime, basePrice, items[] (horizonDays, direction, confidence, time?). JS draws future-only line + circle markers; time set so JS can enforce boundary and align markers.
+    func setBinaryForecastCandle(overlay: BinaryForecastResponse, lastBar: OHLCBar) {
+        let baseTime = Int(lastBar.ts.timeIntervalSince1970)
+        let basePrice = lastBar.close
+        let secondsPerDay = 86400
+        let items = overlay.horizons.map { h in
+            BinaryForecastMarkerItem(
+                horizonDays: h.horizon_days,
+                direction: h.label.lowercased(),
+                confidence: h.confidence,
+                time: baseTime + h.horizon_days * secondsPerDay,
+                value: nil
+            )
+        }
+        send(.setBinaryForecastMarkers(baseTime: baseTime, basePrice: basePrice, items: items))
+    }
+
+    /// Pass Realtime subscription context so WebView JS can subscribe to postgres_changes on ml_forecasts (anon key only).
+    func setRealtimeConfig(supabaseURL: String, anonKey: String, symbolId: String, timeframe: String, modelType: String) {
+        send(.setRealtimeConfig(supabaseURL: supabaseURL, anonKey: anonKey, symbolId: symbolId, timeframe: timeframe, modelType: modelType))
     }
     
     /// Set forecast layer (dashed line with confidence bands)

@@ -2,6 +2,7 @@ import Foundation
 
 struct ChartDataV2Response: Codable, Equatable {
     let symbol: String
+    let symbolId: String?
     let timeframe: String
     let layers: ChartLayers
     let metadata: ChartMetadata
@@ -12,6 +13,7 @@ struct ChartDataV2Response: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case symbol
+        case symbolId = "symbol_id"
         case timeframe
         case layers
         case metadata
@@ -76,6 +78,7 @@ struct ChartDataV2Response: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         var decodedSymbol = ""
+        var decodedSymbolId: String?
         var decodedTimeframe = ""
 
         var decodedLayers = ChartLayers(
@@ -94,6 +97,7 @@ struct ChartDataV2Response: Codable, Equatable {
         do {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             decodedSymbol = try container.decode(String.self, forKey: .symbol)
+            decodedSymbolId = try container.decodeIfPresent(String.self, forKey: .symbolId)
             decodedTimeframe = try container.decode(String.self, forKey: .timeframe)
             decodedLayers = try container.decode(ChartLayers.self, forKey: .layers)
             decodedMetadata = try container.decode(ChartMetadata.self, forKey: .metadata)
@@ -115,6 +119,7 @@ struct ChartDataV2Response: Codable, Equatable {
             let computedEnd = allBars.last?.ts.ISO8601Format()
 
             decodedSymbol = meta.symbol ?? ""
+            decodedSymbolId = nil
             decodedTimeframe = meta.timeframeEnum ?? meta.timeframeInput ?? ""
 
             decodedLayers = ChartLayers(
@@ -154,6 +159,7 @@ struct ChartDataV2Response: Codable, Equatable {
         }
 
         self.symbol = decodedSymbol
+        self.symbolId = decodedSymbolId
         self.timeframe = decodedTimeframe
         self.layers = decodedLayers
         self.metadata = decodedMetadata
@@ -165,6 +171,7 @@ struct ChartDataV2Response: Codable, Equatable {
 
     init(
         symbol: String,
+        symbolId: String? = nil,
         timeframe: String,
         layers: ChartLayers,
         metadata: ChartMetadata,
@@ -174,6 +181,7 @@ struct ChartDataV2Response: Codable, Equatable {
         superTrendAI: SuperTrendAIData?
     ) {
         self.symbol = symbol
+        self.symbolId = symbolId
         self.timeframe = timeframe
         self.layers = layers
         self.metadata = metadata

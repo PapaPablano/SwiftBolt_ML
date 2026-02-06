@@ -45,6 +45,12 @@ enum APIError: LocalizedError {
             return false
         }
     }
+
+    /// True when the error is serviceUnavailable with "Supabase host unreachable" (offline mode).
+    static func isSupabaseUnreachable(_ error: Error) -> Bool {
+        guard case .serviceUnavailable(let message) = error as? APIError else { return false }
+        return message.contains("Supabase host unreachable")
+    }
 }
 
 /// Shared backoff for FastAPI (localhost:8000) to avoid repeated timeout/connection-lost
@@ -188,6 +194,11 @@ final class APIClient {
         if FastAPIBackoff.shouldSkip(url: url) {
             throw APIError.serviceUnavailable(message: "Backend at \(Config.fastAPIURL.absoluteString) is unavailable. Start the FastAPI server to enable options, multi-leg, and real-time features.")
         }
+
+        // Short-circuit Supabase when host can't resolve (DNS -1003); treat as offline
+        if url.host == Config.supabaseURL.host && !SupabaseConnectivity.isReachable {
+            throw APIError.serviceUnavailable(message: "Supabase host unreachable (DNS). Using offline/cached data.")
+        }
         
         let requestKey = url.absoluteString
         
@@ -222,6 +233,10 @@ final class APIClient {
             } catch {
                 if let urlError = error as? URLError {
                     switch urlError.code {
+                    case .cannotFindHost, .dnsLookupFailed:
+                        if request.url?.host == Config.supabaseURL.host {
+                            SupabaseConnectivity.recordUnreachable()
+                        }
                     case .timedOut, .networkConnectionLost, .cannotConnectToHost, .notConnectedToInternet:
                         FastAPIBackoff.recordFailure(url: request.url)
                     default:
@@ -343,6 +358,10 @@ final class APIClient {
         guard let url = request.url else {
             throw APIError.invalidURL
         }
+
+        if url.host == Config.supabaseURL.host && !SupabaseConnectivity.isReachable {
+            throw APIError.serviceUnavailable(message: "Supabase host unreachable (DNS). Using offline/cached data.")
+        }
         
         let requestKey = url.absoluteString
         
@@ -375,6 +394,11 @@ final class APIClient {
                 print("[DEBUG] Network request cancelled")
                 throw CancellationError()
             } catch {
+                if let urlError = error as? URLError,
+                   (urlError.code == .cannotFindHost || urlError.code == .dnsLookupFailed),
+                   request.url?.host == Config.supabaseURL.host {
+                    SupabaseConnectivity.recordUnreachable()
+                }
                 print("[DEBUG] Network error: \(error)")
                 throw APIError.networkError(error)
             }
@@ -701,6 +725,23 @@ final class APIClient {
         return try await performRequestWithHeaderLogging(request, symbol: symbol, timeframe: timeframe)
     }
     
+    /// Request binary (up/down) forecast from ML API and write to ml_forecasts for chart overlay.
+    /// Call this then reload chart (e.g. loadChart) to show the new forecast.
+    func refreshBinaryForecast(symbol: String, horizons: [Int] = [1, 5, 10]) async throws {
+        let url = Config.fastAPIURL.appendingPathComponent("api/v1/forecast/binary")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = ["symbol": symbol.uppercased(), "horizons": horizons]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.invalidResponse
+        }
+    }
+
     /// Trigger intraday backfill for a symbol (runs in background, doesn't block)
     func triggerIntradayBackfill(symbol: String, backfillDays: Int = 10) async {
         do {
@@ -879,7 +920,7 @@ final class APIClient {
         return try await performRequest(request)
     }
 
-    func fetchOptionsRankings(symbol: String, expiry: String? = nil, side: OptionSide? = nil, mode: String? = nil, limit: Int = 50) async throws -> OptionsRankingsResponse {
+    func fetchOptionsRankings(symbol: String, expiry: String? = nil, side: OptionSide? = nil, mode: String? = nil, strategyIntent: StrategyIntent? = nil, limit: Int = 50) async throws -> OptionsRankingsResponse {
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "symbol", value: symbol),
             URLQueryItem(name: "limit", value: String(limit))
@@ -887,6 +928,7 @@ final class APIClient {
         if let expiry = expiry { queryItems.append(URLQueryItem(name: "expiry", value: expiry)) }
         if let side = side { queryItems.append(URLQueryItem(name: "side", value: side.rawValue)) }
         if let mode = mode { queryItems.append(URLQueryItem(name: "mode", value: mode)) }
+        if let intent = strategyIntent { queryItems.append(URLQueryItem(name: "strategy_intent", value: intent.rawValue)) }
 
         // Try FastAPI first (options-rankings from Supabase via FastAPI)
         let fastAPIRankingsURL = Config.fastAPIURL.appendingPathComponent("api/v1/options-rankings")

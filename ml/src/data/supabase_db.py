@@ -1421,6 +1421,7 @@ class SupabaseDatabase:
         ranking_stability_score: float | None = None,
         iv_curve_ok: bool | None = None,
         iv_data_quality_score: float | None = None,
+        strategy_intent: str | None = None,
         signal_discount: bool = False,
         signal_runner: bool = False,
         signal_greeks: bool = False,
@@ -1483,6 +1484,7 @@ class SupabaseDatabase:
                 "ranking_stability_score": ranking_stability_score,
                 "iv_curve_ok": iv_curve_ok,
                 "iv_data_quality_score": iv_data_quality_score,
+                "strategy_intent": strategy_intent,
                 # Signals
                 "signal_discount": signal_discount,
                 "signal_runner": signal_runner,

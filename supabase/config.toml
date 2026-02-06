@@ -1,0 +1,10 @@
+# Project root Supabase config (used when deploying from repo root).
+# Docs: https://supabase.com/docs/guides/cli/config
+
+project_id = "cygflaemtmwiwaviclks"
+
+[functions]
+# Worker called by cron/trigger-backfill with API key; JWT verification disabled.
+# Auth enforced inside function via X-SB-Gateway-Key (SB_GATEWAY_KEY).
+[functions.run-backfill-worker]
+verify_jwt = false

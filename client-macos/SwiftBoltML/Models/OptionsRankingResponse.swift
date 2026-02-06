@@ -1,6 +1,50 @@
 import Foundation
 import SwiftUI
 
+// MARK: - Strategy Intent (long vs short premium)
+
+enum StrategyIntent: String, Codable, CaseIterable, Identifiable {
+    case longPremium = "long_premium"   // Buyer: favor low IV, backwardation, negative VRP
+    case shortPremium = "short_premium" // Seller: favor high IV, contango, positive VRP
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .longPremium: return "Long Premium"
+        case .shortPremium: return "Short Premium"
+        }
+    }
+}
+
+// MARK: - Symbol Features (term-structure, forward-vol, VRP)
+
+struct SymbolFeatures: Codable {
+    let expectedMoveNearDollar: Double?
+    let expectedMoveNearPct: Double?
+    let expectedMoveFarDollar: Double?
+    let expectedMoveFarPct: Double?
+    let atmIvNear: Double?
+    let atmIvFar: Double?
+    let forwardVol: Double?
+    let termStructureRegime: String?
+    let lowConfidence: Bool?
+    let vrp: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case expectedMoveNearDollar = "expected_move_near_dollar"
+        case expectedMoveNearPct = "expected_move_near_pct"
+        case expectedMoveFarDollar = "expected_move_far_dollar"
+        case expectedMoveFarPct = "expected_move_far_pct"
+        case atmIvNear = "atm_iv_near"
+        case atmIvFar = "atm_iv_far"
+        case forwardVol = "forward_vol"
+        case termStructureRegime = "term_structure_regime"
+        case lowConfidence = "low_confidence"
+        case vrp
+    }
+}
+
 // MARK: - Ranking Mode
 
 enum RankingMode: String, Codable, CaseIterable, Identifiable {
@@ -43,6 +87,7 @@ struct OptionsRankingsResponse: Codable {
     let ranks: [OptionRank]
     let filters: RankingFilters
     let mode: RankingMode?
+    let symbolFeatures: SymbolFeatures?
 
     enum CodingKeys: String, CodingKey {
         case symbol
@@ -50,6 +95,7 @@ struct OptionsRankingsResponse: Codable {
         case ranks
         case filters
         case mode
+        case symbolFeatures
     }
 }
 

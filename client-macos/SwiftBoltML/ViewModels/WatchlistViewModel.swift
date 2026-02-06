@@ -40,7 +40,7 @@ final class WatchlistViewModel: ObservableObject {
             urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
             urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
             urlRequest.httpBody = try JSONEncoder().encode(request)
-            
+
             let response: WatchlistSyncResponse = try await apiClient.performRequest(urlRequest)
 
             if response.success {
