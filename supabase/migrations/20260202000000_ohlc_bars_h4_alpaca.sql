@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS ohlc_bars_h4_alpaca (
   UNIQUE(symbol_id, ts)
 );
 
-CREATE INDEX idx_ohlc_h4_alpaca_symbol_ts ON ohlc_bars_h4_alpaca(symbol_id, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_ohlc_h4_alpaca_symbol_ts ON ohlc_bars_h4_alpaca(symbol_id, ts DESC);
 
 COMMENT ON TABLE ohlc_bars_h4_alpaca IS '4h bars from Alpaca for TabPFN/hybrid ML experiments; same feature pipeline as ohlc_bars_v2';
 

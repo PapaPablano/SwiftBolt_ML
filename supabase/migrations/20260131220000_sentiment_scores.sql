@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS sentiment_scores (
     UNIQUE(symbol_id, as_of_date)
 );
 
-CREATE INDEX idx_sentiment_scores_symbol_date ON sentiment_scores(symbol_id, as_of_date DESC);
+CREATE INDEX IF NOT EXISTS idx_sentiment_scores_symbol_date ON sentiment_scores(symbol_id, as_of_date DESC);
 COMMENT ON TABLE sentiment_scores IS 'Daily aggregate news sentiment (VADER) per symbol for ML backtest and features';
 
 -- Optional: allow storing per-article sentiment when news is cached/backfilled
