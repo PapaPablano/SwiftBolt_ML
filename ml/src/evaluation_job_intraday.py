@@ -194,16 +194,37 @@ class IntradayForecastEvaluator:
             return None
 
     def save_evaluation(self, evaluation: dict) -> bool:
-        """Save intraday evaluation to database."""
+        """Save intraday evaluation to database (forecast_evaluations + ml_forecast_evaluations_intraday for residual loop)."""
         try:
-            # Save to forecast_evaluations table
+            # Save to forecast_evaluations table (existing calibration/analytics)
             db.client.table("forecast_evaluations").insert(evaluation).execute()
-            
+
+            # Also write to ml_forecast_evaluations_intraday so get_recent_intraday_residuals() sees it (residual feedback → confidence damping)
+            db.save_intraday_evaluation(
+                forecast_id=evaluation["forecast_id"],
+                symbol_id=evaluation["symbol_id"],
+                symbol=evaluation["symbol"],
+                horizon=evaluation["horizon"],
+                predicted_label=evaluation["predicted_label"],
+                predicted_price=float(evaluation.get("predicted_value", evaluation.get("predicted_price", 0))),
+                predicted_confidence=float(evaluation.get("predicted_confidence", 0.5)),
+                realized_price=float(evaluation["realized_price"]),
+                realized_return=float(evaluation["realized_return"]),
+                realized_label=evaluation["realized_label"],
+                direction_correct=bool(evaluation["direction_correct"]),
+                price_error=float(evaluation["price_error"]),
+                price_error_pct=float(evaluation["price_error_pct"]),
+                supertrend_direction_correct=None,
+                sr_containment=None,
+                ensemble_direction_correct=None,
+                forecast_created_at=evaluation.get("forecast_date", datetime.now().isoformat()),
+            )
+
             # Update evaluated_at timestamp in ml_forecasts_intraday
             db.client.table("ml_forecasts_intraday").update(
                 {"evaluated_at": datetime.now().isoformat()}
             ).eq("id", evaluation["forecast_id"]).execute()
-            
+
             self.evaluations_added += 1
             return True
         except Exception as e:

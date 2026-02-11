@@ -83,6 +83,10 @@ htmlcov/
 *.model
 models/*.bin
 
+# Forecasting Lab run outputs (local only)
+ml/forecasting_lab/results/*.json
+ml/forecasting_lab/results/*.csv
+
 # IDE
 .idea/
 .vscode/

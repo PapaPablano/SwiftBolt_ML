@@ -1,0 +1,57 @@
+{
+  "validation": {
+    "initial_train_size": 200,
+    "test_size": 15,
+    "step_size": 5,
+    "window_type": "expanding"
+  },
+  "models": {
+    "regime_specific_dir": "models/regime_specific",
+    "directional_model": "xgboost_directional_model.pkl",
+    "advanced_model": "xgboost_advanced_directional_model.pkl"
+  },
+  "monitoring": {
+    "thresholds": {
+      "directional_accuracy": {
+        "LOW": 52.0,
+        "MEDIUM": 55.0,
+        "HIGH": 58.0
+      },
+      "mae_percentage": {
+        "LOW": 3.0,
+        "MEDIUM": 4.0,
+        "HIGH": 6.0
+      },
+      "degradation_threshold": 5.0
+    },
+    "alert_cooldown_hours": 24,
+    "retrain_threshold": 10.0,
+    "validation_schedule": {
+      "frequency": "weekly",
+      "day_of_week": "monday",
+      "time": "09:00"
+    }
+  },
+  "alerts": {
+    "email": {
+      "enabled": false,
+      "recipients": ["admin@company.com"],
+      "smtp_server": "smtp.company.com"
+    },
+    "slack": {
+      "enabled": false,
+      "webhook_url": "https://hooks.slack.com/services/...",
+      "channel": "#ml-alerts"
+    },
+    "log_file": {
+      "enabled": true,
+      "path": "monitoring_reports/alerts.json"
+    }
+  },
+  "retraining": {
+    "enabled": true,
+    "trigger_threshold": 10.0,
+    "min_data_points": 1000,
+    "schedule": "monthly"
+  }
+}

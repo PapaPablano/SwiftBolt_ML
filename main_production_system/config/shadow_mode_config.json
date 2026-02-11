@@ -1,0 +1,54 @@
+{
+  "shadow_mode": {
+    "enabled": true,
+    "tickers": ["CLSK", "DIS", "CRWD"],
+    "duration_days": 14,
+    "log_predictions": true,
+    "log_level": "INFO",
+    "expected_metrics": {
+      "CLSK": {
+        "mae_pct": 0.15,
+        "direction": 49.4,
+        "model_type": "balanced_production"
+      },
+      "DIS": {
+        "mae_pct": 0.09,
+        "direction": 45.8,
+        "model_type": "price_level_specialist"
+      },
+      "CRWD": {
+        "mae_pct": 3.92,
+        "direction": 50.2,
+        "model_type": "balanced_production"
+      }
+    },
+    "model_configs": {
+      "balanced_production": {
+        "arima_weight": 0.6,
+        "xgb_weight": 0.4,
+        "directional_loss_weight": 1.0
+      },
+      "price_level_specialist": {
+        "arima_weight": 0.8,
+        "xgb_weight": 0.2,
+        "directional_loss_weight": 1.0
+      },
+      "directional_specialist": {
+        "arima_weight": 0.3,
+        "xgb_weight": 0.7,
+        "directional_loss_weight": 5.0
+      }
+    },
+    "validation_params": {
+      "initial_train_size": 200,
+      "test_size": 15,
+      "step_size": 5,
+      "window_type": "expanding"
+    },
+    "output_paths": {
+      "predictions_log": "validation_results/shadow_mode/predictions_{ticker}_{date}.json",
+      "performance_log": "validation_results/shadow_mode/performance_{ticker}_{date}.json",
+      "model_snapshots": "validation_results/shadow_mode/models/{ticker}_{date}.pkl"
+    }
+  }
+}

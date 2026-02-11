@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings  # noqa: E402
 from src.data.supabase_db import db  # noqa: E402
+from src.features.indicator_recompute import attach_indicators_to_forecast_points  # noqa: E402
 from src.features.support_resistance_detector import (  # noqa: E402
     SupportResistanceDetector,
 )
@@ -29,6 +30,7 @@ from src.forecast_weights import get_default_weights  # noqa: E402
 from src.models.arima_garch_forecaster import ArimaGarchForecaster  # noqa: E402
 from src.models.baseline_forecaster import BaselineForecaster  # noqa: E402
 from src.models.ensemble_forecaster import EnsembleForecaster  # noqa: E402
+from src.models.xgboost_forecaster import XGBoostForecaster  # noqa: E402
 from src.services.forecast_bar_writer import (  # noqa: E402
     path_points_to_bars,
     upsert_forecast_bars,
@@ -55,11 +57,12 @@ HORIZON_CONFIG = {
     "15m": {
         "timeframe": "m15",
         "bars_per_hour": 4,
-        "forecast_bars": 1,  # 1 bar ahead = 15 minutes
+        "forecast_bars": 4,  # L1 4-bar multi-step (1 hour ahead)
         "min_training_bars": 60,  # ~1 trading day (reduced from 100)
         "indicator_scale": 0.25,  # Scale down indicator periods
         "use_advanced_ensemble": False,  # Keep basic for speed
         "use_walk_forward": False,  # Too short for walk-forward validation
+        "horizon_days": 0.0417,  # 4 * 15m / 86400 (time_scale_days for synthesizer)
     },
     "1h": {
         "timeframe": "h1",
@@ -69,13 +72,14 @@ HORIZON_CONFIG = {
         "indicator_scale": 0.5,
         "use_advanced_ensemble": False,  # Keep basic for speed
         "use_walk_forward": False,  # Too short for walk-forward validation
+        "horizon_days": 0.0417,  # 1 * 1h / 86400
     },
     # Medium-term horizons with walk-forward validation (prevents overfitting)
     "4h": {
         "timeframe": "h4",
         "bars_per_hour": 0.25,
         "forecast_bars": 1,  # 1 bar ahead = 4 hours
-        "min_training_bars": 100,  # ~2 months (reduced from 200)
+        "min_training_bars": 100,  # ~17 days (6 bars/day)
         "indicator_scale": 1.0,
         "use_advanced_ensemble": True,  # Use advanced ensemble
         "use_walk_forward": True,  # Enable walk-forward validation
@@ -85,7 +89,7 @@ HORIZON_CONFIG = {
         "timeframe": "h8",
         "bars_per_hour": 0.125,
         "forecast_bars": 1,  # 1 bar ahead = 8 hours
-        "min_training_bars": 120,  # ~2.5 months (reduced from 250)
+        "min_training_bars": 120,  # ~40 days (3 bars/day)
         "indicator_scale": 1.5,
         "use_advanced_ensemble": True,  # Use advanced ensemble
         "use_walk_forward": True,  # Enable walk-forward validation
@@ -93,6 +97,7 @@ HORIZON_CONFIG = {
     },
     "1D": {
         "timeframe": "d1",
+        "bars_per_hour": 1 / 24,
         "forecast_bars": 1,  # 1 bar ahead = 1 day
         "min_training_bars": 200,  # ~10 months (reduced from 500)
         "indicator_scale": 2.0,
@@ -115,6 +120,64 @@ def timeframe_interval_seconds(timeframe: str) -> int:
     if timeframe == "d1":
         return 24 * 60 * 60
     raise ValueError(f"Unknown timeframe: {timeframe}")
+
+
+def compute_time_scale_days(timeframe: str, forecast_bars: int) -> float:
+    """Real time in days for volatility scaling (synthesizer)."""
+    return forecast_bars * timeframe_interval_seconds(timeframe) / 86400.0
+
+
+def _blend_xgb_into_ensemble_pred(
+    ensemble_pred: Dict,
+    p: float,
+    w: float,
+) -> None:
+    """
+    Blend XGBoost P(bullish) into ensemble_pred probabilities; update label, confidence, agreement.
+
+    Treats XGBoost as an extra direction model. Mutates ensemble_pred in place.
+    - P_blend[k] = (1-w)*E[k] + w*X[k] with X = {bullish: p, bearish: 1-p, neutral: 0}, then renormalize.
+    - label = argmax(P_blend), confidence = P_blend[label].
+    - agreement_new = (agreement_old * n_models_base + (1 if xgb agrees else 0)) / (n_models_base + 1).
+    - Stores xgb_prob, component_predictions["xgb"], weights["xgb"], n_models.
+    """
+    E = ensemble_pred.get("probabilities") or {}
+    for k in ("bullish", "neutral", "bearish"):
+        E[k] = float(E.get(k, 0.0))
+    X = {"bullish": p, "bearish": 1.0 - p, "neutral": 0.0}
+    P_blend = {
+        k: (1.0 - w) * E[k] + w * X[k]
+        for k in ("bullish", "neutral", "bearish")
+    }
+    total = sum(P_blend.values())
+    if total <= 0:
+        return
+    for k in P_blend:
+        P_blend[k] /= total
+    label_key = max(P_blend, key=P_blend.get)
+    label = label_key.capitalize()
+    confidence = P_blend[label_key]
+
+    n_models_base = int(ensemble_pred.get("n_models", 2))
+    agreement_old = float(ensemble_pred.get("agreement", 0.0))
+    xgb_label = "Bullish" if p >= 0.5 else "Bearish"
+    xgb_agrees = 1.0 if xgb_label.lower() == label.lower() else 0.0
+    agreement_new = (agreement_old * n_models_base + xgb_agrees) / (n_models_base + 1)
+
+    ensemble_pred["xgb_prob"] = p
+    comp = ensemble_pred.setdefault("component_predictions", {})
+    comp["xgb"] = {
+        "label": xgb_label,
+        "confidence": float(max(p, 1.0 - p)),
+    }
+    weights_dict = ensemble_pred.setdefault("weights", {})
+    weights_dict["xgb"] = w
+
+    ensemble_pred["label"] = label
+    ensemble_pred["confidence"] = confidence
+    ensemble_pred["probabilities"] = P_blend
+    ensemble_pred["agreement"] = agreement_new
+    ensemble_pred["n_models"] = n_models_base + 1
 
 
 def _aggregate_h4_to_h8(h4_df: pd.DataFrame) -> pd.DataFrame:
@@ -323,6 +386,48 @@ def build_intraday_path_points(
             }
         )
     return points
+
+
+def canonicalize_intraday_points(
+    points: list[dict],
+    timeframe: str,
+) -> list[dict]:
+    """Convert raw points to canonical ForecastPoint shape for ml_forecasts_intraday.points.
+
+    Ensures ts is ISO 8601 UTC string (not unix int); when ts is already a string, parses
+    and re-emits YYYY-MM-DDTHH:MM:SSZ so storage is always normalized. Adds timeframe and
+    1-based step (future step index: step 1 = first future bar). Timeframe must be API/DB
+    token: m15, h1, h4 (no 4h_trading in production writer).
+    """
+    if not points:
+        return []
+    result = []
+    for i, p in enumerate(points):
+        ts_raw = p.get("ts")
+        if isinstance(ts_raw, (int, float)):
+            dt = datetime.fromtimestamp(int(ts_raw), tz=timezone.utc)
+            ts_iso = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        elif isinstance(ts_raw, str) and ts_raw.strip():
+            try:
+                dt = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                else:
+                    dt = dt.astimezone(timezone.utc)
+                ts_iso = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            except (ValueError, TypeError):
+                ts_iso = ts_raw
+        else:
+            ts_iso = ""
+        result.append({
+            "ts": ts_iso,
+            "value": p["value"],
+            "lower": p["lower"],
+            "upper": p["upper"],
+            "timeframe": timeframe,
+            "step": i + 1,
+        })
+    return result
 
 
 def get_expiry_time(horizon: str) -> datetime:
@@ -776,7 +881,11 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
 
         # Determine if we use advanced ensemble based on horizon config
         use_advanced = config.get("use_advanced_ensemble", False)
-        horizon_days = config.get("horizon_days", 1.0)
+        forecast_bars = int(config.get("forecast_bars", 1))
+        lookahead_bars = forecast_bars  # Baseline uses bar-count for labeling
+        time_scale_days = config.get("horizon_days")
+        if time_scale_days is None:
+            time_scale_days = compute_time_scale_days(timeframe, forecast_bars)
 
         # Get layer weights (feedback-based for 4h/8h/1D, defaults for 15m/1h)
         weights, weight_source = get_weight_source_for_intraday(
@@ -786,10 +895,10 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
             use_feedback=use_advanced,
         )
 
-        # Prepare training data
+        # Prepare training data (baseline expects bar-count as horizon_days)
         baseline = BaselineForecaster()
         try:
-            X, y = baseline.prepare_training_data(df, horizon_days=horizon_days)
+            X, y = baseline.prepare_training_data(df, horizon_days=float(lookahead_bars))
         except Exception as e:
             logger.warning("Training data prep failed for %s: %s", symbol, e)
             X = pd.DataFrame()
@@ -839,7 +948,7 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                         # Align OHLC data with features (pattern from unified_forecast_job.py)
                         min_offset = 50 if len(df) >= 100 else (26 if len(df) >= 60 else 14)
                         start_idx = max(min_offset, 14)
-                        end_idx = len(df) - max(1, int(horizon_days))
+                        end_idx = len(df) - max(1, lookahead_bars)
                         ohlc_train = df.iloc[start_idx:end_idx].copy()
 
                         # Train with OHLC data (required for ARIMA-GARCH, Prophet)
@@ -867,6 +976,49 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                         forecaster.train(X, y)
                         last_features = X.tail(1)
                         ensemble_pred = forecaster.predict(last_features)
+
+                        # XGBoost blend: extra direction model contributing P(bullish) into probabilities.
+                        # Require min samples per class to avoid silent bearish bias (neutral→bearish).
+                        xgb_weight = config.get("xgb_weight", 0.2)
+                        min_xgb_per_class = config.get("min_xgb_samples_per_class", 5)
+                        if 0 < xgb_weight < 1 and min_xgb_per_class >= 1:
+                            try:
+                                y_binary = y.map(
+                                    lambda v: "bullish"
+                                    if str(v).lower() == "bullish"
+                                    else "bearish"
+                                )
+                                n_bull = int((y_binary == "bullish").sum())
+                                n_bear = int((y_binary == "bearish").sum())
+                                if (
+                                    n_bull >= min_xgb_per_class
+                                    and n_bear >= min_xgb_per_class
+                                    and len(X) >= min_bars
+                                ):
+                                    xgb_forecaster = XGBoostForecaster()
+                                    xgb_forecaster.train(X, y_binary, min_samples=min_bars)
+                                    proba = xgb_forecaster.predict_proba(last_features)
+                                    if proba is not None and len(proba) > 0:
+                                        p = float(proba[0])
+                                        _blend_xgb_into_ensemble_pred(
+                                            ensemble_pred, p, xgb_weight
+                                        )
+                                        logger.debug(
+                                            "%s %s: XGB blend p=%.3f w=%.2f -> %s (%.0f%%)",
+                                            symbol,
+                                            horizon,
+                                            p,
+                                            xgb_weight,
+                                            ensemble_pred.get("label"),
+                                            ensemble_pred.get("confidence", 0) * 100,
+                                        )
+                            except Exception as xgb_e:
+                                logger.debug(
+                                    "XGBoost blend skipped for %s %s: %s",
+                                    symbol,
+                                    horizon,
+                                    xgb_e,
+                                )
 
                 except Exception as e:
                     logger.warning("Ensemble training failed for %s: %s", symbol, e)
@@ -906,6 +1058,9 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                 confidence * 100,
             )
 
+        # Option B: recent residuals as features for next inference (horizon+1 without retraining)
+        recent_residuals = db.get_recent_intraday_residuals(symbol_id, horizon, limit=20)
+
         # Use ForecastSynthesizer with weights from feedback loop or defaults
         synthesizer = ForecastSynthesizer(weights=weights)
         sr_response = convert_sr_to_synthesizer_format(sr_levels, current_price)
@@ -919,8 +1074,9 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
             sr_response=sr_response,
             ensemble_result=ensemble_pred,
             symbol=symbol,
-            horizon_days=horizon_days,  # NEW: scales volatility by sqrt(time)
+            horizon_days=time_scale_days,  # Real time in days for sqrt scaling
             timeframe=timeframe,
+            recent_residuals=recent_residuals,
         )
 
         try:
@@ -947,8 +1103,16 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
             "8h": 24,
             "1D": 24,
         }
-        short_steps = int(short_steps_by_horizon.get(horizon, 8))
-        short_interval_sec = max(1, int(round(horizon_seconds / max(1, short_steps))))
+        # 15m multi-step: use forecast_bars so stored points = 4 future bars at 15-min intervals
+        if horizon == "15m":
+            short_steps = int(config.get("forecast_bars", 8))
+        else:
+            short_steps = int(short_steps_by_horizon.get(horizon, 8))
+        # 15m 4-bar: each step = one bar (15 min); others: subdivide horizon
+        if horizon == "15m" and short_steps == 4:
+            short_interval_sec = horizon_seconds  # 15 min per step
+        else:
+            short_interval_sec = max(1, int(round(horizon_seconds / max(1, short_steps))))
         short_points = build_intraday_short_points(
             base_ts_sec=base_ts_sec,
             interval_sec=short_interval_sec,
@@ -970,6 +1134,7 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
             "target_price": synth_result.target,
             "current_price": current_price,
             "weight_source": weight_source,
+            "recent_residuals": recent_residuals,
         }
 
         # Add consensus scoring for advanced ensemble horizons (4h, 8h, 1D)
@@ -990,15 +1155,19 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
             except Exception as e:
                 logger.warning(f"Consensus scoring failed for {symbol} {horizon}: {e}")
 
-        # Save intraday forecast (single-target)
-        forecast_id = db.upsert_intraday_forecast(
+        # Save intraday forecast (single-target); canonicalize points for storage (ISO ts, timeframe, step).
+        # Storage contract: step 1 = first future bar. build_intraday_short_points emits anchor at i=0 then
+        # future points; slice off the anchor so we only persist future steps (step 1, 2, ...).
+        short_points_future = short_points[1:] if len(short_points) > 1 else []
+        synthesis_data = {"ensemble_result": ensemble_pred} if ensemble_pred else None
+        forecast_id = db.insert_intraday_forecast(
             symbol_id=symbol_id,
             symbol=symbol,
             horizon=horizon,
             timeframe=timeframe,
             overall_label=consensus_direction,
             confidence=adjusted_confidence,
-            points=short_points,
+            points=canonicalize_intraday_points(short_points_future, timeframe),
             target_price=synth_result.target,
             current_price=current_price,
             supertrend_component=synth_result.supertrend_component,
@@ -1008,6 +1177,7 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
             ensemble_label=ensemble_pred.get("label", "neutral"),
             layers_agreeing=synth_result.layers_agreeing,
             expires_at=expires_at.isoformat(),
+            synthesis_data=synthesis_data,
         )
 
         if forecast_id:
@@ -1044,6 +1214,8 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                         interval_sec=interval_sec,
                         confidence=synth_result.confidence,
                     )
+                    # Option B: enrich with OHLC + recomputed indicators (history + predicted)
+                    path_points = attach_indicators_to_forecast_points(path_df, path_points)
 
                     path_points_by_tf[tf] = path_points
 
@@ -1058,7 +1230,7 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                         overall_label=synth_result.direction.lower(),
                         confidence=synth_result.confidence,
                         model_type="arima_garch",
-                        points=path_points,
+                        points=canonicalize_intraday_points(path_points, tf),
                         expires_at=expires_at_path,
                     )
 

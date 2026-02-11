@@ -180,7 +180,7 @@ src.services.forecast_bar_writer (path_points_to_bars, upsert_forecast_bars)
 
 | Operation | Table | Purpose | Frequency |
 |-----------|-------|---------|-----------|
-| `db.upsert_intraday_forecast()` | `ml_forecasts_intraday` | Store intraday forecasts | Per symbol/horizon |
+| `db.insert_intraday_forecast()` | `ml_forecasts_intraday` | Store intraday forecasts (insert-only) | Per symbol/horizon |
 | `db.insert_intraday_forecast_path()` | `intraday_forecast_paths` | Store path forecasts | Per symbol (if enabled) |
 
 ### feature_cache.py Writes

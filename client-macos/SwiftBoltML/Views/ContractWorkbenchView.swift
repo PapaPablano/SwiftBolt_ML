@@ -35,7 +35,12 @@ struct ContractWorkbenchView: View {
                 Divider()
                 
                 // Key Metrics Strip
-                KeyMetricsStrip(rank: rank)
+                KeyMetricsStrip(
+                    rank: rank,
+                    liveQuote: appViewModel.optionsRankerViewModel.liveQuotes[rank.contractSymbol],
+                    isMissingQuote: appViewModel.optionsRankerViewModel.missingQuoteContracts.contains(rank.contractSymbol),
+                    providersTried: appViewModel.optionsRankerViewModel.lastProvidersTried
+                )
                     .padding(.horizontal)
                     .padding(.vertical, 12)
                 
@@ -65,7 +70,13 @@ struct ContractWorkbenchView: View {
                             rankingMode: appViewModel.optionsRankerViewModel.rankingMode
                         )
                     case .contract:
-                        ContractTabView(rank: rank, symbol: symbol)
+                        ContractTabView(
+                            rank: rank,
+                            symbol: symbol,
+                            liveQuote: appViewModel.optionsRankerViewModel.liveQuotes[rank.contractSymbol],
+                            isMissingQuote: appViewModel.optionsRankerViewModel.missingQuoteContracts.contains(rank.contractSymbol),
+                            providersTried: appViewModel.optionsRankerViewModel.lastProvidersTried
+                        )
                     case .surfaces:
                         SurfacesTabPlaceholder(rank: rank, symbol: symbol)
                     case .risk:

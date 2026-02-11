@@ -1,0 +1,247 @@
+---
+description: "Guide for end-to-end forecasting architecture (SwiftUI → Edge → Postgres → Python ML); temporal hierarchy 15m→1h→4h→1D→1W, GET /chart contract, MVP schema, cascading forecasts, walk-forward, canary."
+globs: "**/master_blueprint.md,**/supabase/functions/**/*.ts,**/supabase/migrations/*.sql,**/ml/**/*.py,.github/workflows/*.yml"
+alwaysApply: false
+---
+
+# Forecasting Architecture MVP — Project Rule
+
+**Goal:** Define and scaffold the end-to-end forecasting architecture (SwiftUI → Supabase Edge Functions → Postgres → scheduled Python ML) with a minimal, testable MVP: **GET /chart** returns OHLC + latest forecasts overlay for one symbol/timeframe. Optionally extend to a **temporal hierarchy** (15m → 1h → 4h → 1D → 1W) with bottom-up resampling and cascading forecasts so higher timeframes stay consistent with lower ones.
+
+**Space file:** [docs/master_blueprint.md](docs/master_blueprint.md) — focus sections: Backend API Architecture, Core Database Schema, ML Data Flow, API contracts.
+
+**Master plan (overall L1 + lab + points contract):** [docs/FORECAST_PIPELINE_MASTER_PLAN.md](docs/FORECAST_PIPELINE_MASTER_PLAN.md). Extended ForecastPoint shape (OHLC + indicators): [docs/master_blueprint.md](docs/master_blueprint.md) — Canonical Forecast Point Schema.
+
+## System components (canonical)
+
+- **SwiftUI macOS client** reads a single **GET /chart** payload (OHLCV + indicator series + latest forecasts + accuracy/health badges) and **never** calls Alpaca or other vendors directly.
+- **Supabase Edge Functions** are the only public API surface: auth, rate limiting, caching, vendor normalization (Supabase documents this as the intended pattern for Edge Functions).
+- **Scheduled Python pipeline** (“ingest + feature + infer + evaluate”) writes bars, features, and forecasts back into Supabase Postgres for the app to consume.
+
+---
+
+## 1. Minimal Postgres Schema (Concern 1)
+
+Keep the MVP schema minimal: OHLC cache + multi-horizon forecasts + canary metrics. Avoid premature complexity.
+
+### Core tables
+
+- **symbols** — `id` (uuid), `ticker` (text, unique), `asset_type`, etc. (existing).
+- **ohlc_bars_v2** (OHLC cache) — `symbol_id`, `timeframe`, `ts`, `open`, `high`, `low`, `close`, `volume`, `provider`, `is_forecast`, `data_status`.  
+  - **Indexes:** `(symbol_id, timeframe, ts DESC)` for chart reads; `(symbol_id, timeframe)` for range queries.  
+  - Do not add extra analytics tables in MVP; chart reads come from this table (or RPCs on top of it).
+- **ml_forecasts** (multi-horizon forecasts) — `id`, `symbol_id`, `horizon` (e.g. `1D`, `5D`, `10D`, `20D`), `overall_label`, `confidence`, `points` (jsonb), `run_at`, plus any existing columns (e.g. `model_type`, `forecast_return`).  
+  - **Indexes:** `(symbol_id, horizon)`, `(symbol_id, run_at DESC)` for “latest forecast per symbol/horizon”.  
+  - One row per (symbol_id, horizon) with upsert; latest `run_at` wins.
+- **forecast_metrics** (or **forecast_validation_metrics** / **ensemble_validation_metrics** for canary) — store walk-forward and canary results: symbol, horizon, validation_date, val_rmse, test_rmse, directional_accuracy, divergence, is_overfitting, etc.  
+  - **Indexes:** `(symbol_id, horizon)`, `(validation_date DESC)` for dashboards and canary runner.
+
+### Extended data model (temporal hierarchy)
+
+When implementing the **temporal hierarchy** (15m → 1h → 4h → 1D → 1W), extend from the blueprint tables as follows (minimal but sufficient):
+
+- **ohlcbars** (or **ohlc_bars_v2**) — `symbol_id`, `timeframe`, `ts`, `open`, `high`, `low`, `close`, `volume`, `source`; unique index on `(symbol_id, timeframe, ts)`.
+- **features** — `symbol_id`, `timeframe`, `ts`, `values` (jsonb), `feature_version`, `computed_at`. `values` includes RSI, MACD, Bollinger, KDJ inputs or computed indicators. **feature_version** lets you evolve indicators without breaking old runs.
+- **forecasts** (extend **ml_forecasts** or add chain table) — `id`, `run_id`, `symbol_id`, `timeframe`, `horizon_steps`, `as_of_ts`, `model_version`, `created_at`, `parent_forecast_id` (nullable, for chain), `points` (jsonb). Each `points[]` element: predicted OHLCV plus predicted or derived indicator values. Chain: L1 15m → L2 1h → L3 4h → L4 1D (and implied weekly).
+- **forecast_eval** — `id`, `forecast_id`, `realized_as_of_ts`, `metrics` (jsonb), `evaluated_at`. Store “when real value becomes known” scoring to feed the learning/monitoring loop and pass residual/error features upward.
+
+### What to avoid in MVP
+
+- No full backtesting result tables, no scripting/job-definition tables, no realtime tick tables.
+- No extra “chart_*” tables beyond what feeds the single chart RPC (use ohlc_bars_v2 + ml_forecasts + views if needed).
+
+---
+
+## 2. GET /chart JSON Contract (Concern 2)
+
+Exact contract so SwiftUI can render candles + forecast line/band reliably. All types and field names must be stable.
+
+### Request
+
+- **Method:** GET.
+- **Path:** `/chart` (or `/functions/v1/chart`).
+- **Query params:** `symbol` (required), `timeframe` (e.g. `d1`, `h1`; default `d1`), optional `start`, `end`, `include_forecast`, `include_options`, `fields`, `bars_limit`, `bars_offset`.
+
+### Response (200 OK) — types and structure
+
+```ts
+// Top-level — OHLCV + indicator series + latest forecasts + accuracy/health badges
+{
+  symbol: string;           // e.g. "AAPL"
+  timeframe: string;        // e.g. "d1"
+  bars: ChartBar[];
+  forecast: ForecastData | null;
+  indicators?: IndicatorSeries[];  // optional: RSI, MACD, Bollinger, KDJ per bar
+  accuracyBadges?: { directionalAccuracy?: number; horizon?: string }[];  // optional health
+  optionsRanks?: OptionsRank[];  // optional for MVP
+  meta: ChartMeta;
+  freshness?: { ageMinutes: number | null; slaMinutes: number; isWithinSla: boolean };
+}
+
+// Candles — SwiftUI maps these to candlestick coordinates
+interface ChartBar {
+  ts: string;      // ISO 8601 timestamptz
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  provider?: string;
+  dataStatus?: string;
+}
+
+// Forecast overlay — line + band
+interface ForecastData {
+  label: string;           // "Bullish" | "Neutral" | "Bearish"
+  confidence: number;     // 0..1
+  horizon: string;         // e.g. "1D"
+  runAt: string;           // ISO 8601
+  points: ForecastPoint[];
+}
+interface ForecastPoint {
+  ts: string;   // ISO 8601
+  value: number;
+  lower: number;
+  upper: number;
+}
+
+// Meta for status and debugging
+interface ChartMeta {
+  lastBarTs: string | null;
+  dataStatus: "fresh" | "stale" | "updating";
+  isMarketOpen: boolean;
+  latestForecastRunAt: string | null;
+  hasPendingSplits: boolean;
+  pendingSplitInfo: string | null;
+  totalBars: number;
+  requestedRange: { start: string; end: string };
+}
+```
+
+- **bars:** Array of OHLC bars in ascending `ts` order. SwiftUI uses `ts` for x-axis and `open/high/low/close` for candles; `volume` optional for volume panel.
+- **forecast:** If present, SwiftUI draws forecast line from `points[].value` and band from `points[].lower` / `points[].upper`; `ts` must be strictly after the last real bar so the overlay is clearly “future”.
+- **meta.dataStatus:** Use to show “Stale” or “Updating” in the UI; **cache-first** in the Edge Function: return cached data immediately and refresh only if stale/missing.
+
+Implement this contract in the single chart Edge Function (e.g. [supabase/functions/chart/index.ts](supabase/functions/chart/index.ts)); do not fragment the contract across multiple endpoints for the main chart path.
+
+**Full payload:** GET /chart should return OHLCV + **indicator series** (e.g. RSI, MACD, Bollinger) + latest forecasts + **accuracy/health badges** so SwiftUI can render candles, overlays, and model-health in one round trip.
+
+---
+
+## Temporal hierarchy and cascading timeframe logic
+
+Use **15-minute bars as the bottom series** and resample upward (15m → 1h → 4h → 1D → 1W) so timeframes are coherent by construction, rather than mixing independently-fetched bars that may have alignment quirks.
+
+- **At each level L:** Forecast the next **H** bars: 15m/1h/4h use **H = 4**; daily uses **H = 5** (per spec).
+- **Aggregate only the first predicted block** into the next level’s “next bar”: e.g. 4×15m → next 1h bar; 4×1h → next 4h bar; 4×4h → next 1D bar; 5×1D → implied next weekly value.
+- **Reconciliation:** Higher timeframes stay consistent with lower ones — implied 1h/4h/daily values match what the lower-level forecasts roll up to (bottom-up hierarchical forecasting). Store each level in **forecasts** with **parent_forecast_id** so the chain is explicit.
+
+---
+
+## 3. Scheduled Jobs: Ingest vs Train vs Infer (Concern 3)
+
+Structure jobs so inference is fast, retraining is controlled, and bad models can be rolled back.
+
+- **Ingest (scheduled):**  
+  - Runs first (e.g. every 10 min during market hours, or daily for d1).  
+  - Fetches OHLC from data vendor **only in the backend**; client never talks to vendors.  
+  - Writes into **ohlc_bars_v2** only (no forecast rows).  
+  - Edge Function or cron triggers ingestion; can enqueue per-symbol/timeframe slices if needed.
+
+- **Train (controlled, not on every tick):**  
+  - Separate job (e.g. daily or weekly).  
+  - Reads OHLC from Postgres, runs **walk-forward validation** (no random splits).  
+  - Writes metrics to **forecast_metrics** / **ensemble_validation_metrics**.  
+  - Optionally writes model artifacts to storage or a **model_registry** table (nice-to-have).  
+  - Retraining cadence is configurable (e.g. env) so it does not run on every ingest.
+
+- **Infer (scheduled, after ingest):**  
+  - Runs after ingest has updated bars (e.g. 5–10 min after ingest).  
+  - Reads latest OHLC from Postgres, runs inference only (no training).  
+  - Writes **ml_forecasts** only (upsert per symbol_id + horizon).  
+  - Kept fast: no heavy training in this path; use pre-trained or last-trained model.
+
+- **Rollback:**  
+  - Prefer a single “active” model pointer or version (e.g. **model_registry.active_version** or env `ACTIVE_MODEL_VERSION`).  
+  - On bad canary or manual decision, switch the pointer or env and redeploy; next inference job uses the new version.  
+  - Optionally keep a small **model_registry** table: version, created_at, is_active; rollback = set previous row to `is_active` and current to false.
+
+---
+
+## ML pipeline (how it “keeps learning”)
+
+- **Training/evaluation:** Walk-forward (time-ordered) only; never leak future information into the past (no random splits).
+- **Error propagation upward:** To avoid error amplification from “forecast-as-input,” pass **both** (a) rolled-up predicted bars and (b) uncertainty/error features upward — e.g. last N forecast residuals per level from **forecast_eval** so higher levels learn when the lower level is currently unreliable.
+- **Cadence:** Run **inference** every 15 minutes; run **evaluation** when each bar closes (score forecasts whose first step corresponds to that bar, write **forecast_eval**); **retrain** on a cadence (nightly or drift-triggered), not every bar — monitor performance and retrain when drift or performance drops.
+- **Indicators:** RSI/MACD/Bollinger can be derived from predicted **close**; **KDJ (stochastic) needs high/low** — either forecast full OHLC (not just close) or forecast KDJ directly as an additional target.
+
+---
+
+## 4. Research Constraints
+
+- **Edge Functions:** Validate auth (Supabase Auth or anon with rate limits) and apply rate limiting (e.g. token-bucket per client/symbol) so one client cannot overwhelm the API or vendors.
+- **Time series evaluation:** Use **walk-forward validation** only; no random train/test splits (avoids leakage and overoptimistic metrics).
+- **TabPFN / trend extrapolation:** TabPFN-style time-series approaches have **trend extrapolation limitations**. Do not make TabPFN the sole model for trending assets; use it in ensemble or for regime only, and prefer XGBoost/ARIMA-GARCH/LSTM for directional forecasts in production.
+
+---
+
+## 5. Scaffolding Deliverables (No Big Refactors)
+
+### Must
+
+- **MVP schema:** Tables and indexes above (ohlc_bars_v2, ml_forecasts, forecast_metrics/ensemble_validation_metrics) and any existing RPCs/views (e.g. `get_chart_data_v2_dynamic`, `latest_forecast_summary`) that support GET /chart.
+- **GET /chart Edge Function skeleton:** One function that implements the GET /chart JSON contract; cache-first read from Postgres, refresh only if stale/missing; auth and rate-limit hooks in place.
+- **Scheduled ingestion job:** Job that pulls OHLC from vendor and writes ohlc_bars_v2 (no ML); trigger via cron or Edge.
+- **Scheduled inference job:** Python job that reads OHLC from Postgres, runs inference, writes **ml_forecasts** (multi-horizon); run after ingest (e.g. GitHub Actions or cron).
+
+### Should
+
+- **Walk-forward evaluation module:** Python module that runs walk-forward validation for XGBoost (or current production model), writes to **forecast_metrics** / **ensemble_validation_metrics**; no random splits.
+- **forecast_metrics table:** For storing validation/canary metrics (or use existing **forecast_validation_metrics** / **ensemble_validation_metrics**).
+- **Canary runner:** Runs at a fixed time (e.g. 6PM CST) for AAPL, MSFT, SPY; evaluates latest forecasts vs actuals, writes canary metrics; used for GO/NO-GO.
+
+### Nice
+
+- **Model registry/versioning table:** version, created_at, is_active, optional artifact path.
+- **Feature-set versioning:** Track which feature set was used for a given run (e.g. column or jsonb in ml_forecasts or in registry).
+- **Simple rollback switch:** Env or DB flag to point inference to a previous model version without code change.
+
+---
+
+## 6. Patterns to Implement
+
+- **Client talks only to Edge Functions** — never directly to data vendors (Alpaca, Finnhub, etc.); all market data and forecasts go through Supabase Edge.
+- **Cache-first reads in Edge Function** — for GET /chart, read from Postgres first; trigger refresh only if data is stale or missing; return cached response immediately when valid.
+- **Walk-forward validation for XGBoost (and time-series models)** — train/val/test splits must respect time order; use existing [ml/src/evaluation/walk_forward_cv.py](ml/src/evaluation/walk_forward_cv.py) or equivalent; never shuffle time series.
+
+---
+
+## 7. Don’t (MVP)
+
+- Do **not** add a full backtesting engine in MVP.
+- Do **not** add a scripting or plugin system in MVP.
+- Do **not** add realtime tick streaming in MVP.
+- Do **not** fragment the main chart read path (single GET /chart contract; avoid multiple competing “chart” endpoints for the same use case).
+
+---
+
+## Incremental build plan (Cursor)
+
+Implement in this order:
+
+1. **Ingest 15m bars** — Pull 15m bars from Alpaca, store into **ohlcbars** (or ohlc_bars_v2), and **resample locally** to 1h/4h/1D/1W for storage and coherence (single source of truth at 15m).
+2. **Feature computation** — Compute features per timeframe and persist to **features** with **feature_version** so indicators can evolve without breaking old runs.
+3. **Forecast chain run** — Implement `forecast_chain_run(run_id)` job: L1 15m → aggregate → L2 1h → aggregate → L3 4h → aggregate → L4 1D (5 bars) → aggregate weekly implied value; store each level in **forecasts** with **parent_forecast_id**.
+4. **Evaluator** — When a new real bar closes, score the forecasts whose first step corresponds to that bar; write **forecast_eval**; update model-health/canary metrics.
+5. **GET /chart** — Serve via Edge Function with caching + rate limiting (auth, cache-first, vendor normalization).
+
+---
+
+## 8. References
+
+- Backend API Architecture, Core Database Schema, ML Data Flow, API contracts: [docs/master_blueprint.md](docs/master_blueprint.md).
+- Chart response shape and existing Edge implementation: [supabase/functions/chart/index.ts](supabase/functions/chart/index.ts).
+- OHLC + forecasts schema: [supabase/migrations/20260105000000_ohlc_bars_v2.sql](supabase/migrations/20260105000000_ohlc_bars_v2.sql), [supabase/migrations/003_ml_forecasts_table.sql](supabase/migrations/003_ml_forecasts_table.sql), [supabase/migrations/20260118020000_chart_denormalized_view.sql](supabase/migrations/20260118020000_chart_denormalized_view.sql).
+- Canary/validation metrics: [supabase/migrations/20260127_ensemble_validation_metrics.sql](supabase/migrations/20260127_ensemble_validation_metrics.sql), [supabase/migrations/20260118060000_forecast_validation_metrics.sql](supabase/migrations/20260118060000_forecast_validation_metrics.sql).
+- Rate limiting: [supabase/functions/_shared/rate-limiter/token-bucket.ts](supabase/functions/_shared/rate-limiter/token-bucket.ts).
+- Walk-forward CV: [ml/src/evaluation/walk_forward_cv.py](ml/src/evaluation/walk_forward_cv.py).

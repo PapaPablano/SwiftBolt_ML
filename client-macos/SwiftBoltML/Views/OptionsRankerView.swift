@@ -142,6 +142,8 @@ struct AllContractsView: View {
                             RankedOptionRow(
                                 rank: rank,
                                 liveQuote: rankerViewModel.liveQuotes[rank.contractSymbol],
+                                isMissingQuote: rankerViewModel.missingQuoteContracts.contains(rank.contractSymbol),
+                                providersTried: rankerViewModel.lastProvidersTried,
                                 symbol: symbol,
                                 rankingMode: rankerViewModel.rankingMode
                             )
@@ -515,6 +517,10 @@ struct RankerHeader: View {
 struct RankedOptionRow: View {
     let rank: OptionRank
     let liveQuote: OptionContractQuote?
+    /// True when provider had no quote (show "—" not $0.00)
+    let isMissingQuote: Bool
+    /// Providers attempted (for "No quote" tooltip)
+    let providersTried: [String]
     let symbol: String
     let rankingMode: RankingMode
     var symbolId: String = ""
@@ -717,8 +723,27 @@ struct RankedOptionRow: View {
         let displayBid = resolved.bid
         let displayAsk = resolved.ask
         let displayMark = resolved.mark
+        let hasRealQuote = !isMissingQuote && (
+            (displayBid != nil && displayAsk != nil && (displayBid! != 0 || displayAsk! != 0)) ||
+            (displayMark != nil && displayMark! != 0)
+        )
 
-        if let bid = displayBid, let ask = displayAsk {
+        if isMissingQuote || !hasRealQuote {
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("Bid / Ask")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text("—")
+                    .font(.title3.bold())
+                    .foregroundStyle(.secondary)
+                if isMissingQuote {
+                    Text("No quote (illiquid/unsupported)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .help(providersTried.isEmpty ? "No quote from provider" : "Providers tried: \(providersTried.joined(separator: ", "))")
+                }
+            }
+        } else if let bid = displayBid, let ask = displayAsk, bid != 0 || ask != 0 {
             VStack(alignment: .trailing, spacing: 2) {
                 Text("Bid / Ask")
                     .font(.caption2)
@@ -740,7 +765,7 @@ struct RankedOptionRow: View {
                         .foregroundStyle(quoteAgeColor)
                 }
             }
-        } else if let mark = displayMark {
+        } else if let mark = displayMark, mark != 0 {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(resolved.isLive ? "Mid (live)" : "Mid (snapshot)")
                     .font(.caption2)
@@ -754,8 +779,8 @@ struct RankedOptionRow: View {
                 }
             }
         } else {
-            Text("No quote")
-                .font(.subheadline)
+            Text("—")
+                .font(.title3.bold())
                 .foregroundStyle(.secondary)
         }
     }

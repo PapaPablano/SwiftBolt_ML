@@ -43,11 +43,13 @@ type ChartBarRow = {
   data_status?: string | null;
 };
 
+// Minimal contract; extended fields (ohlc, indicators, timeframe, step, confidence) passed through when present
 interface ForecastPoint {
   ts: string;
   value: number;
   lower: number;
   upper: number;
+  [key: string]: unknown;
 }
 
 type ForecastPointRow = {
@@ -55,6 +57,7 @@ type ForecastPointRow = {
   value: number;
   lower?: number | null;
   upper?: number | null;
+  [key: string]: unknown;
 };
 
 interface ForecastData {
@@ -127,6 +130,32 @@ interface ChartResponse {
     slaMinutes: number;
     isWithinSla: boolean;
   };
+}
+
+// Map DB/lab point to API ForecastPoint; pass through extended fields (ohlc, indicators, step, etc.). Normalize 4h_trading → h4 at API boundary.
+function mapForecastPoint(p: ForecastPointRow): ForecastPoint {
+  const value = Number(p.value);
+  const lower = Number(p.lower ?? p.lower_band ?? p.value ?? value * 0.95);
+  const upper = Number(p.upper ?? p.upper_band ?? p.value ?? value * 1.05);
+  const base: ForecastPoint = {
+    ts: String(p.ts ?? p.time ?? ""),
+    value,
+    lower: Number.isFinite(lower) ? lower : value * 0.95,
+    upper: Number.isFinite(upper) ? upper : value * 1.05,
+  };
+  // Pass through extended fields (canonical ForecastPoint); normalize timeframe for API
+  const keysToSkip = new Set(["ts", "value", "lower", "upper", "time", "price", "mid", "lower_band", "upper_band", "min", "max", "lower_bound", "upper_bound"]);
+  for (const key of Object.keys(p)) {
+    if (keysToSkip.has(key)) continue;
+    const v = (p as Record<string, unknown>)[key];
+    if (v === undefined) continue;
+    if (key === "timeframe" && v === "4h_trading") {
+      base.timeframe = "h4";
+      continue;
+    }
+    base[key] = v;
+  }
+  return base;
 }
 
 // SLA thresholds in minutes per timeframe
@@ -243,28 +272,49 @@ serve(async (req: Request): Promise<Response> => {
     // 3. Fetch latest forecast if requested
     let forecastData: ForecastData | null = null;
     if (includeForecast) {
-      const { data: forecast } = await supabase
-        .from("latest_forecast_summary")
-        .select("overall_label, confidence, horizon, run_at, points")
-        .eq("symbol_id", symbolId)
-        .limit(1)
-        .single();
+      const isIntraday = ["m15", "h1", "h4"].includes(timeframe);
+      // Intraday: prefer ml_forecasts_intraday.points (canonical ForecastPoint[]); fallback to daily summary
+      if (isIntraday) {
+        const intradayTimeframe = timeframe === "h4" ? "h1" : timeframe; // 4h charts use 1h forecast row
+        const { data: intradayRow } = await supabase
+          .from("ml_forecasts_intraday")
+          .select("overall_label, confidence, horizon, created_at, points")
+          .eq("symbol_id", symbolId)
+          .eq("timeframe", intradayTimeframe)
+          .gte("expires_at", new Date().toISOString())
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-      const forecastRow = forecast as ForecastRow | null;
+        const row = intradayRow as { overall_label?: string | null; confidence?: number | null; horizon?: string | null; created_at?: string; points?: ForecastPointRow[] | null } | null;
+        if (row?.points && Array.isArray(row.points) && row.points.length > 0) {
+          forecastData = {
+            label: row.overall_label || "neutral",
+            confidence: Number(row.confidence) || 0,
+            horizon: row.horizon || (timeframe === "m15" ? "15m" : "1h"),
+            runAt: row.created_at || "",
+            points: (row.points as ForecastPointRow[]).map((p: ForecastPointRow) => mapForecastPoint(p)),
+          };
+        }
+      }
+      if (!forecastData) {
+        const { data: forecast } = await supabase
+          .from("latest_forecast_summary")
+          .select("overall_label, confidence, horizon, run_at, points")
+          .eq("symbol_id", symbolId)
+          .limit(1)
+          .single();
 
-      if (forecastRow) {
-        forecastData = {
-          label: forecastRow.overall_label || "neutral",
-          confidence: Number(forecastRow.confidence) || 0,
-          horizon: forecastRow.horizon || "1D",
-          runAt: forecastRow.run_at || "",
-          points: (forecastRow.points || []).map((p: ForecastPointRow) => ({
-            ts: p.ts,
-            value: Number(p.value),
-            lower: Number(p.lower || p.value * 0.95),
-            upper: Number(p.upper || p.value * 1.05),
-          })),
-        };
+        const forecastRow = forecast as ForecastRow | null;
+        if (forecastRow) {
+          forecastData = {
+            label: forecastRow.overall_label || "neutral",
+            confidence: Number(forecastRow.confidence) || 0,
+            horizon: forecastRow.horizon || "1D",
+            runAt: forecastRow.run_at || "",
+            points: (forecastRow.points || []).map((p: ForecastPointRow) => mapForecastPoint(p)),
+          };
+        }
       }
     }
 

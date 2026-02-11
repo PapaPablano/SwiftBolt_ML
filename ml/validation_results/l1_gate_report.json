@@ -1,0 +1,12 @@
+{
+  "symbols": [
+    "INTC",
+    "F"
+  ],
+  "skipped_symbols": {
+    "INTC": "symbol not in symbols table",
+    "F": "symbol not in symbols table"
+  },
+  "by_symbol": {},
+  "error": "No validation results generated"
+}

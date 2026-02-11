@@ -1,0 +1,276 @@
+# Data Paths and Provider Configuration
+# ML Analysis Platform - Data Flow Optimization
+# Date: October 28, 2025
+
+# Directory Paths (relative to project root)
+paths:
+  # Data directories
+  raw: data/raw
+  engineered: data/engineered
+  forecasts: data/forecasts
+  splits: data/splits
+  
+  # Model directories
+  models: models
+  models_archived: models/archived
+  
+  # Output directories
+  outputs: outputs
+  outputs_charts: outputs/charts
+  outputs_reports: outputs/reports
+  outputs_analysis: outputs/analysis
+  
+  # System directories
+  logs: main_production_system/logs
+  monitoring: monitoring_reports
+  cache: .cache
+  
+  # Documentation
+  docs: docs
+  docs_user_guides: docs/user_guides
+  docs_technical: docs/technical
+  docs_deployment: docs/deployment
+  docs_performance: docs/performance
+
+# Data Provider Configuration
+providers:
+  # Provider priority order (Finnhub -> Polygon -> Yahoo -> Alpha Vantage)
+  priority:
+    - finnhub
+    - polygon
+    - yahoo
+    - alpha_vantage
+  
+  # Finnhub API (PRIMARY - Native 4hr bars)
+  finnhub:
+    enabled: true
+    env_key: FINNHUB_API_KEY
+    base_url: https://finnhub.io/api/v1
+    
+    # Rate limiting
+    rate_limit:
+      calls_per_minute: 60
+      calls_per_day: 2000
+      retry_attempts: 3
+      retry_backoff_sec: 1
+      timeout_sec: 20
+    
+    # Caching
+    cache:
+      enabled: true
+      ttl_hours: 1
+      directory: data/raw/cache
+  
+  # Polygon.io API (SECONDARY - Native 4hr bars)
+  polygon:
+    enabled: true
+    env_key: POLYGON_API_KEY
+    base_url: https://api.polygon.io
+    
+    # Rate limiting
+    rate_limit:
+      calls_per_minute: 300
+      retry_attempts: 3
+      retry_backoff_sec: 1
+      timeout_sec: 20
+    
+    # Caching
+    cache:
+      enabled: true
+      ttl_hours: 1
+      directory: data/raw/cache
+  
+  # Yahoo Finance (FALLBACK - Free, no API key)
+  yahoo:
+    enabled: true
+    # No API key required
+    
+    # Caching
+    cache:
+      enabled: true
+      ttl_hours: 1
+      directory: data/raw/cache
+  
+  # Alpha Vantage API (LAST RESORT - Slow rate limits)
+  alpha_vantage:
+    enabled: true
+    env_key: ALPHA_VANTAGE_API_KEY
+    base_url: https://www.alphavantage.co/query
+    
+    # Data quality requirements
+    min_rows: 100
+    min_span_days: 30
+    required_columns:
+      - timestamp
+      - open
+      - high
+      - low
+      - close
+      - volume
+    
+    # Rate limiting
+    rate_limit:
+      calls_per_minute: 5
+      calls_per_day: 500
+      retry_attempts: 3
+      retry_backoff_sec: 2
+      timeout_sec: 30
+    
+    # Caching
+    cache:
+      enabled: true
+      ttl_hours: 1
+      directory: data/raw/cache
+
+# Supported intervals for providers and pipelines
+supported_intervals:
+  - '1min'
+  - '5min'
+  - '10min'
+  - '15min'
+  - '30min'
+  - '1h'
+  - '4h'
+  - '1d'
+
+# Data Processing Configuration
+processing:
+  # Memory optimization
+  memory:
+    optimize_dtypes: true
+    downcast_numerics: true
+    use_categories: true
+    category_threshold: 0.5  # Convert to category if <50% unique
+  
+  # File format preferences
+  formats:
+    internal: parquet  # Use Parquet internally
+    export: csv        # Export as CSV for users
+    compression: snappy
+  
+  # Incremental loading
+  incremental:
+    enabled: true
+    timestamp_column: timestamp
+    deduplicate: true
+    sort_on_load: true
+  
+  # Feature engineering
+  features:
+    cache_engineered: true
+    recompute_on_new_data: true
+    parallel_processing: false
+
+# Dashboard Configuration
+dashboard:
+  # Streamlit settings
+  streamlit:
+    # Cache settings
+    cache:
+      data_ttl_sec: 300      # 5 minutes for data
+      resource_ttl_sec: null  # No expiry for models/resources
+      max_entries: 100
+    
+    # Performance
+    performance:
+      use_parquet: true
+      lazy_loading: true
+      batch_size: 1000
+      worker_threads: 2
+    
+    # Display
+    display:
+      max_rows_preview: 100
+      date_format: "%Y-%m-%d %H:%M:%S"
+      float_precision: 4
+  
+  # Data refresh
+  refresh:
+    auto_refresh: false
+    interval_sec: 300
+    on_new_data_only: true
+
+# Model Configuration
+models:
+  # Model paths
+  paths:
+    xgboost: models/xgboost_directional_model.pkl
+    arima_garch: models/arima_garch_cache
+    ensemble: models/ensemble_weights.json
+  
+  # Caching
+  cache:
+    enabled: true
+    reload_on_change: true
+  
+  # Ensemble
+  ensemble:
+    default_ml_weight: 0.6
+    default_arima_weight: 0.4
+    confidence_threshold: 0.7
+
+# Forecasting Configuration
+forecasting:
+  # Default parameters
+  defaults:
+    forecast_horizon: 5
+    confidence_level: 0.95
+    
+  # ARIMA-GARCH
+  arima_garch:
+    default_arima_order: [1, 1, 1]
+    default_garch_order: [1, 1]
+    distribution: studentst
+    volatility: GARCH
+  
+  # Output
+  output:
+    save_forecasts: true
+    save_plots: true
+    export_format: both  # 'csv', 'parquet', or 'both'
+
+# Logging Configuration
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  # File logging
+  file:
+    enabled: true
+    directory: main_production_system/logs
+    max_bytes: 10485760  # 10MB
+    backup_count: 5
+  
+  # Console logging
+  console:
+    enabled: true
+    level: INFO
+
+# Monitoring Configuration
+monitoring:
+  # Metrics
+  metrics:
+    enabled: true
+    track_latency: true
+    track_memory: true
+    track_cache_hits: true
+  
+  # Reports
+  reports:
+    directory: monitoring_reports
+    frequency: daily
+    keep_days: 30
+
+# Performance Thresholds
+performance:
+  # Alert if exceeded
+  thresholds:
+    data_load_sec: 5
+    feature_eng_sec: 10
+    model_predict_sec: 2
+    total_pipeline_sec: 20
+  
+  # Memory limits
+  memory:
+    max_dataframe_mb: 500
+    warn_cache_mb: 1000

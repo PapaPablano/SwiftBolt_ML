@@ -327,6 +327,7 @@ class StatisticalSignificanceTester:
         y_pred1: np.ndarray,
         y_pred2: np.ndarray,
         loss_function: str = "squared",
+        max_lags: int | None = None,
     ) -> HypothesisTestResult:
         """
         Diebold-Mariano test for comparing forecast accuracy.
@@ -334,11 +335,15 @@ class StatisticalSignificanceTester:
         Standard test in econometrics for comparing two forecasts.
         Tests whether the forecasts have equal predictive accuracy.
 
+        For multi-step (h > 1) horizons, loss differentials overlap and are autocorrelated.
+        Use max_lags = h - 1 (e.g. 3 for 4-step) for Newey-West HAC variance correction.
+
         Args:
             y_true: True values
             y_pred1: Predictions from model 1
             y_pred2: Predictions from model 2
             loss_function: 'squared' or 'absolute'
+            max_lags: Newey-West lag truncation; h-1 for h-step horizon. None = assume h=1.
 
         Returns:
             HypothesisTestResult
@@ -361,12 +366,22 @@ class StatisticalSignificanceTester:
         n = len(d)
         d_mean = np.mean(d)
 
-        # Newey-West variance estimator (handles autocorrelation)
-        # Using h-1 lags where h is the forecast horizon (assume 1 for simplicity)
-        gamma_0 = np.var(d, ddof=1)
-        dm_var = gamma_0 / n
+        # Variance: Newey-West HAC when max_lags > 0, else simple (h=1)
+        if max_lags is not None and max_lags > 0:
+            # Sample autocovariances gamma_j
+            d_centered = d - d_mean
+            gamma_0 = np.sum(d_centered**2) / n
+            q = min(max_lags, n - 1)
+            s_n = gamma_0
+            for j in range(1, q + 1):
+                gamma_j = np.sum(d_centered[j:] * d_centered[:-j]) / n
+                s_n += 2 * (1 - j / (q + 1)) * gamma_j
+            dm_var = s_n / n
+        else:
+            gamma_0 = np.var(d, ddof=1)
+            dm_var = gamma_0 / n
 
-        dm_statistic = d_mean / np.sqrt(dm_var)
+        dm_statistic = d_mean / np.sqrt(dm_var) if dm_var > 0 else 0.0
 
         # Two-sided p-value from normal distribution
         p_value = 2 * (1 - stats.norm.cdf(abs(dm_statistic)))

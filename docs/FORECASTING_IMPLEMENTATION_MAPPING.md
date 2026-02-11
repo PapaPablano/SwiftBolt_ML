@@ -184,6 +184,20 @@ to the **current SwiftBolt_ML codebase** and highlights what’s already impleme
 
 ---
 
+## 11) L1 15m + Forecasting Lab
+
+**Master plan:** [FORECAST_PIPELINE_MASTER_PLAN.md](FORECAST_PIPELINE_MASTER_PLAN.md) — single entry point for the L1 15m pipeline, lab, canonical points schema, and eval/residuals.
+
+The L1 15m pipeline and forecasting lab share the same **canonical ForecastPoint** shape (see [master_blueprint.md](master_blueprint.md) — Canonical Forecast Point Schema) so lab outputs can be written to `ml_forecasts_intraday.points` and served via GET /chart without reshaping.
+
+| Area | Doc / concept | Code / storage |
+|------|----------------|----------------|
+| **Lab** | Experiments, cascade (15m→1h→4h_trading→1D), canonical points emission | `ml/forecasting_lab/` — [cascade_runner.py](../ml/forecasting_lab/runner/cascade_runner.py), [schema/points.py](../ml/forecasting_lab/schema/points.py) (`ohlc_steps_to_points`), `result["points"]`; forecast_eval + residual features in results JSON |
+| **Production L1** | Predict 15m OHLC → recompute indicators → write points | `ml/src/unified_forecast_job.py` or new L1 job; indicator recompute (e.g. [technical_indicators_corrected.py](../ml/src/features/technical_indicators_corrected.py) or new indicator_recompute); `ml_forecasts_intraday.points` |
+| **Schema** | Canonical ForecastPoint (ts, value, optional ohlc, indicators, etc.) | [master_blueprint.md](master_blueprint.md) — Canonical Forecast Point Schema; migration comment on `ml_forecasts_intraday.points` |
+
+---
+
 ## Quick “What’s Done vs. Not Done”
 
 **Done**

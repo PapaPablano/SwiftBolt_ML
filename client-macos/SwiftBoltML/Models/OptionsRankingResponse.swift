@@ -105,6 +105,13 @@ struct OptionsQuotesResponse: Codable {
     let chainTimestamp: String
     let totalRequested: Int
     let totalReturned: Int
+    /// Contract symbols that had no quote from any provider (client should show "—" not $0.00)
+    let missingContracts: [String]?
+    /// Providers attempted (e.g. ["alpaca","tradier"]) for debugging/tooltips
+    let providersTried: [String]?
+    /// Providers that returned data; null when no quotes
+    let providerHit: [String]?
+
     let quotes: [OptionContractQuote]
 
     enum CodingKeys: String, CodingKey {
@@ -113,12 +120,16 @@ struct OptionsQuotesResponse: Codable {
         case chainTimestamp = "chain_timestamp"
         case totalRequested = "total_requested"
         case totalReturned = "total_returned"
+        case missingContracts = "missing_contracts"
+        case providersTried = "providers_tried"
+        case providerHit = "provider_hit"
         case quotes
     }
 }
 
 struct OptionContractQuote: Codable {
     let contractSymbol: String
+    /// Null when no quote from provider (show "—"); 0.0 can be a real illiquid quote
     let bid: Double?
     let ask: Double?
     let mark: Double?

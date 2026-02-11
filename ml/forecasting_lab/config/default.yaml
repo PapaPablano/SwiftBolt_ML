@@ -1,0 +1,31 @@
+# Forecasting Lab — default config (test project, no production)
+symbols:
+  - AAPL
+  - MSFT
+horizon: 5
+data_adapter: yfinance
+# Optional: alpaca for 15m (requires ALPACA_API_KEY, ALPACA_API_SECRET)
+walk_forward:
+  train_size: 252
+  test_size: 21
+  step_size: 21
+# Purged walk-forward: embargo reduces leakage when comparing variants
+use_purged_walk_forward: true
+embargo_pct: 0.05
+metrics:
+  - directional_accuracy
+  - mae
+  - mse
+# Forecast eval + residual features (for next run)
+residual_last_k: 5
+# Hybrid ensemble: config-driven params
+hybrid_config:
+  xgb_weight: 0.6
+  arima_weight: 0.4
+  arima_order: [2, 0, 2]
+  divergence_threshold: 0.15  # gate ARIMA when |xgb-arima|/max > this (null = no gating)
+# Optional grid for --tune: select best by tune_metric
+# hybrid_grid:
+#   xgb_weight: [0.5, 0.6, 0.7]
+#   arima_order: [[2,0,2], [1,0,1]]
+#   tune_metric: mae  # or directional_accuracy

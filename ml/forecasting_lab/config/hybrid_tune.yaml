@@ -1,0 +1,24 @@
+# Example config for hybrid grid tuning: python -m forecasting_lab.runner.run_experiment --model hybrid --tune --config .../hybrid_tune.yaml
+symbols:
+  - AAPL
+horizon: 5
+data_adapter: yfinance
+walk_forward:
+  train_size: 252
+  test_size: 21
+  step_size: 21
+use_purged_walk_forward: true
+embargo_pct: 0.05
+metrics:
+  - directional_accuracy
+  - mae
+  - mse
+hybrid_config:
+  xgb_weight: 0.6
+  arima_weight: 0.4
+  arima_order: [2, 0, 2]
+  divergence_threshold: 0.15
+hybrid_grid:
+  xgb_weight: [0.5, 0.6, 0.7]
+  arima_order: [[2, 0, 2], [1, 0, 1]]
+  tune_metric: mae  # or directional_accuracy

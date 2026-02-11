@@ -79,6 +79,8 @@ testpaths = ["ml/tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+# Default addopts include coverage. To avoid "No data collected" when integration tests skip,
+# run coverage on unit tests only: pytest -m "not integration" --cov=src ... (CI does this).
 addopts = [
     "--cov=ml/src",
     "--cov-report=html",

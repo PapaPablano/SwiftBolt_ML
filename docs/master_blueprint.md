@@ -348,7 +348,76 @@ These contracts are intentionally compact to keep the macOS app simple and to ce
 * For each symbol + horizon (e.g., `1D`, `1W`), the job writes a row into `ml_forecasts` with:
 
   * `symbol_id`, `horizon`, `overall_label`, `confidence`, `run_at`
-  * `points` (jsonb array of `{ timestamp, value, lower?, upper? }`).
+  * `points` (jsonb array; see **Canonical Forecast Point Schema** below).
+
+#### Canonical Forecast Point Schema (points JSONB)
+
+Both `ml_forecasts.points` and `ml_forecasts_intraday.points` store an array of **ForecastPoint** objects. One canonical shape serves daily/weekly and intraday (15m/1h/4h_trading) so the lab, ML job, Edge Functions, and SwiftUI share the same contract.
+
+**Required (blueprint minimal; backward compatible):**
+
+| Field       | Type   | Description |
+|------------|--------|-------------|
+| `ts`       | string | ISO 8601 timestamp (e.g. `2026-02-07T15:30:00Z`) for this forecast step. |
+| `value`    | number | Primary plot value; typically equals `ohlc.close`. Used by `/chart` for the forecast line. |
+
+**Optional (roll out in phases; no migration needed):** The lab and recommended persistence typically include `timeframe`, `step`, and `ohlc` for each point so Edge/UI can consume without reshaping.
+
+| Field         | Type   | Description |
+|---------------|--------|-------------|
+| `lower`       | number | Lower confidence/interval bound for band. |
+| `upper`       | number | Upper confidence/interval bound for band. |
+| `timeframe`   | string | Bar timeframe: `m15`, `h1`, `4h_trading`, `d1`, `w1`. |
+| `step`        | number | 1-based step index in the horizon (e.g. 1 … 5 for 5-day). |
+| `ohlc`        | object | `{ open, high, low, close, volume? }` when forecast is OHLC. |
+| `indicators`  | object | Recomputed indicators at this step: `rsi_14`, `macd`, `macd_signal`, `macd_hist`, `bb_upper`, `bb_mid`, `bb_lower`, `kdj_k`, `kdj_d`, `kdj_j`, `j_minus_d`, `j_above_d` (optional). |
+| `confidence`  | number | Step-level confidence 0–1 (ensemble or model-specific). |
+| `components` | object | Per-component point forecast, e.g. `{ "xgboost": 187.9, "arima": 186.9 }` for ensembles. |
+| `weights`    | object | Per-component weight at this step, e.g. `{ "xgboost": 0.6, "arima": 0.4 }`. |
+
+**Example (full; all optional fields present):**
+
+```json
+{
+  "ts": "2026-02-07T15:30:00Z",
+  "timeframe": "m15",
+  "step": 1,
+  "value": 187.52,
+  "lower": 185.10,
+  "upper": 190.00,
+  "ohlc": { "open": 187.4, "high": 188.0, "low": 186.9, "close": 187.52, "volume": 0 },
+  "indicators": {
+    "rsi_14": 52.1,
+    "macd": 0.12,
+    "macd_signal": 0.09,
+    "macd_hist": 0.03,
+    "bb_upper": 191.2,
+    "bb_mid": 187.8,
+    "bb_lower": 184.4,
+    "kdj_k": 61.0,
+    "kdj_d": 58.5,
+    "kdj_j": 66.0,
+    "j_minus_d": 7.5,
+    "j_above_d": 1
+  },
+  "confidence": 0.73,
+  "components": { "xgboost": 187.9, "arima": 186.9 },
+  "weights": { "xgboost": 0.6, "arima": 0.4 }
+}
+```
+
+**Example (minimal; blueprint contract only):**
+
+```json
+{ "ts": "2026-02-07T21:00:00Z", "value": 187.52 }
+```
+
+**Mapping from lab / forecaster:**
+
+- **OHLCStep** (lab `BaseForecaster.predict()` output) has `open`, `high`, `low`, `close`, `volume` and optional indicator keys. Convert to ForecastPoint by: `value = ohlc.close` (or primary series), `ts` from base timestamp + step offset, `ohlc` = step dict subset, `indicators` = step dict subset of indicator keys. Non-ensemble models omit `confidence`, `components`, `weights`; ensemble jobs add them when available.
+- **Timeframe** in points: use `m15`, `h1`, `4h_trading`, `d1`, `w1` so intraday and daily/weekly are consistent; Edge/UI can filter or label by `timeframe`.
+- **API/timeframe vocabulary:** Bars and chart API use `m15`, `h1`, `h4`, `d1`, `w1` (same as `ohlc_bars.timeframe`). The lab uses `4h_trading` for 4-hour trading session; it is equivalent to `h4`. Edge/backend accept both and normalize to `h4` in responses so the client sees one token end-to-end.
+- **Implementation and pipeline order (lab + production L1):** see [FORECAST_PIPELINE_MASTER_PLAN.md](FORECAST_PIPELINE_MASTER_PLAN.md).
 
 ### 2. API: Serving Forecasts via `/chart`
 

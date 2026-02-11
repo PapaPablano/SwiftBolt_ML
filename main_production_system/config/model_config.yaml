@@ -1,0 +1,31 @@
+# Model Configuration
+# This file configures model paths and feature flags for the dashboard.
+# Models can be enabled/disabled and paths customized here.
+
+models:
+  xgboost:
+    enabled: true
+    path: "./xgboost_tuned_model.pkl"
+    timeout_seconds: 30
+    description: "XGBoost directional prediction model"
+  
+  kaggle_prophet_hybrid:
+    enabled: true
+    timeout_seconds: 45
+    description: "Elite Kaggle-Prophet Hybrid ensemble model"
+  
+  ensemble:
+    enabled: true
+    timeout_seconds: 30
+    description: "Legacy HybridEnsemble model"
+
+# Global settings
+settings:
+  # Default model path if MODEL_PATH env var not set
+  default_model_dir: "./"
+  
+  # Whether to fail fast if critical models can't load
+  fail_fast: false
+  
+  # Log level for model loading
+  log_level: "INFO"

@@ -38,6 +38,10 @@ class OptionsRankerViewModel: ObservableObject {
     @Published var strategyIntent: StrategyIntent = .longPremium
     @Published var symbolFeatures: SymbolFeatures?
     @Published var liveQuotes: [String: OptionContractQuote] = [:]
+    /// Contract symbols with no quote from provider (show "—" not $0.00)
+    @Published var missingQuoteContracts: Set<String> = []
+    /// Providers attempted for last quote fetch (for "No quote" tooltip)
+    @Published var lastProvidersTried: [String] = []
     @Published var lastQuoteRefresh: Date?
     @Published var isRefreshingQuotes: Bool = false
     @Published var minPriceInput: String = ""
@@ -239,6 +243,8 @@ class OptionsRankerViewModel: ObservableObject {
         // Batch all state changes together
         rankings = []
         liveQuotes = [:]
+        missingQuoteContracts = []
+        lastProvidersTried = []
         lastQuoteRefresh = nil
         errorMessage = nil
         isLoading = false
@@ -318,9 +324,13 @@ class OptionsRankerViewModel: ObservableObject {
             for quote in response.quotes {
                 quoteMap[quote.contractSymbol] = quote
             }
+            let missing = Set(response.missingContracts ?? [])
+            let providers = response.providersTried ?? []
 
             await MainActor.run {
                 self.liveQuotes = quoteMap
+                self.missingQuoteContracts = missing
+                self.lastProvidersTried = providers
                 self.lastQuoteRefresh = ISO8601DateFormatter().date(from: response.timestamp)
                 self.isRefreshingQuotes = false
             }

@@ -309,17 +309,20 @@ function toUnixSeconds(value: unknown): number {
   return Math.floor(Date.now() / 1000);
 }
 
-function normalizeForecastPoint(point: Record<string, unknown>): { ts: number; value: number; lower: number; upper: number } {
-  return {
+// Normalize required fields; pass through extended fields (ohlc, indicators, timeframe, step). Normalize 4h_trading → h4 at API boundary.
+function normalizeForecastPoint(point: Record<string, unknown>): Record<string, unknown> & { ts: number; value: number; lower: number; upper: number } {
+  const out: Record<string, unknown> = {
     ...point,
     ts: toUnixSeconds(point['ts'] ?? point['time']),
     value: Number(point['value'] ?? point['price'] ?? point['mid'] ?? point['midpoint'] ?? 0),
     lower: Number(point['lower'] ?? point['lower_band'] ?? point['min'] ?? point['lower_bound'] ?? point['value'] ?? point['price'] ?? 0),
     upper: Number(point['upper'] ?? point['upper_band'] ?? point['max'] ?? point['upper_bound'] ?? point['value'] ?? point['price'] ?? 0),
   };
+  if (out['timeframe'] === '4h_trading') out['timeframe'] = 'h4';
+  return out as Record<string, unknown> & { ts: number; value: number; lower: number; upper: number };
 }
 
-function normalizeForecastPoints(points: unknown): Array<{ ts: number; value: number; lower: number; upper: number }> {
+function normalizeForecastPoints(points: unknown): Array<Record<string, unknown> & { ts: number; value: number; lower: number; upper: number }> {
   if (!Array.isArray(points)) {
     return [];
   }

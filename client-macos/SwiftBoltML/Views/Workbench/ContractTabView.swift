@@ -5,6 +5,9 @@ import SwiftUI
 struct ContractTabView: View {
     let rank: OptionRank
     let symbol: String
+    var liveQuote: OptionContractQuote? = nil
+    var isMissingQuote: Bool = false
+    var providersTried: [String] = []
     
     var body: some View {
         VStack(spacing: 20) {
@@ -68,6 +71,21 @@ struct ContractTabView: View {
         }
     }
     
+    private var resolvedBid: Double? {
+        isMissingQuote ? nil : (liveQuote?.bid ?? rank.bid)
+    }
+    private var resolvedAsk: Double? {
+        isMissingQuote ? nil : (liveQuote?.ask ?? rank.ask)
+    }
+    private var resolvedMark: Double? {
+        isMissingQuote ? nil : (liveQuote?.mark ?? liveQuote?.last ?? rank.derivedMark ?? rank.mark)
+    }
+    
+    private func formatPrice(_ v: Double?) -> String {
+        guard let v = v, v != 0 else { return "—" }
+        return String(format: "$%.2f", v)
+    }
+    
     @ViewBuilder
     private var pricingSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -75,24 +93,14 @@ struct ContractTabView: View {
                 .font(.headline)
             
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                if let bid = rank.bid {
-                    DetailField(label: "Bid", value: String(format: "$%.2f", bid), color: .red)
+                DetailField(label: "Bid", value: formatPrice(resolvedBid ?? rank.bid), color: .red)
+                DetailField(label: "Ask", value: formatPrice(resolvedAsk ?? rank.ask), color: .green)
+                DetailField(label: "Mark", value: formatPrice(resolvedMark ?? rank.mark ?? rank.derivedMark), color: .blue)
+                if let derivedMark = rank.derivedMark, !isMissingQuote {
+                    DetailField(label: "Derived Mid", value: formatPrice(derivedMark))
                 }
-                
-                if let ask = rank.ask {
-                    DetailField(label: "Ask", value: String(format: "$%.2f", ask), color: .green)
-                }
-                
-                if let mark = rank.mark {
-                    DetailField(label: "Mark", value: String(format: "$%.2f", mark), color: .blue)
-                }
-                
-                if let derivedMark = rank.derivedMark {
-                    DetailField(label: "Derived Mid", value: String(format: "$%.2f", derivedMark))
-                }
-                
-                if let lastPrice = rank.lastPrice {
-                    DetailField(label: "Last Price", value: String(format: "$%.2f", lastPrice))
+                if let lastPrice = rank.lastPrice, !isMissingQuote {
+                    DetailField(label: "Last Price", value: formatPrice(lastPrice))
                 }
                 
                 if let spread = rank.spread {
@@ -106,6 +114,11 @@ struct ContractTabView: View {
                         color: spreadColor
                     )
                 }
+            }
+            if isMissingQuote && !providersTried.isEmpty {
+                Text("No quote (illiquid/unsupported). Providers tried: \(providersTried.joined(separator: ", "))")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             }
         }
     }

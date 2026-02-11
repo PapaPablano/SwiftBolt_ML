@@ -316,3 +316,45 @@ The STOCK_FORECASTING_FRAMEWORK implementation is:
 **Implementation Version:** 1.0
 **Validation Date:** January 24, 2026
 **Status:** ✅ **APPROVED FOR PRODUCTION**
+
+---
+
+## L1 Gate Validation (15m 4-Bar Forecast)
+
+Validates the 15m 4-bar multi-step L1 forecast against a no-change (last close) baseline using walk-forward evaluation and Diebold-Mariano statistical testing.
+
+### Overview
+
+- **Baseline:** No-change (predict last close for all 4 future bars)
+- **Loss:** Option A — final bar only: `L_model = |actual_4 - pred_4|`, `L_baseline = |actual_4 - last_close|`
+- **Pass threshold:** DM p-value < 0.05 AND mean(d) < 0
+
+### How to Run
+
+```bash
+cd ml
+python scripts/l1_gate_validation.py \
+  --symbols AAPL,MSFT,SPY,INTC,F \
+  --train-bars 500 \
+  --test-bars 50 \
+  --step-bars 25 \
+  --output-dir validation_results
+```
+
+### Output
+
+- `validation_results/l1_gate_report.json` — DM statistic, p-value, pass/fail, per-symbol summary
+- `validation_results/l1_gate_losses.csv` — Raw loss series for analysis
+
+### Components
+
+- `ml/src/evaluation/l1_gate_evaluator.py` — `L1GateEvaluator` with `compute_loss_series()` and `run_dm_test()`
+- `ml/scripts/l1_gate_validation.py` — CLI entry point
+- `ml/tests/test_l1_gate_evaluator_guardrail.py` — Guardrail: evaluator never writes to Supabase
+
+### Technical Notes
+
+- **DM test:** Uses Newey-West HAC with `max_lags=3` (h-1 for 4-step horizon) to handle autocorrelated loss differentials.
+- **Window-level reuse:** Indicators computed once per symbol; sliced per origin (no look-ahead).
+- **Baseline origin:** Default `baseline_after_close_t=True` (last_close = close[t]). Use `--no-baseline-after-close` if production runs at open of bar t (last_close = close[t-1]).
+- **Config:** LOOKAHEAD_BARS, TIME_SCALE_DAYS sourced from HORIZON_CONFIG in intraday_forecast_job to avoid drift.

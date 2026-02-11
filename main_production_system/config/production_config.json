@@ -1,0 +1,146 @@
+{
+  "version": "2.0.0",
+  "system_name": "KDJ-Enhanced Hybrid Ensemble Trading System",
+  "description": "Production-ready stock prediction system with KDJ technical indicators",
+  
+  "ensemble": {
+    "ensemble_weights": {
+      "xgboost": 0.6,
+      "arima_garch": 0.4
+    },
+    "stock_specific_weights": {
+      "NYSE_DIS": {
+        "xgboost": 0.2,
+        "arima_garch": 0.8
+      }
+    },
+    "confidence_threshold": 0.7,
+    "directional_threshold": 0.02,
+    "max_prediction_horizon": 5
+  },
+  
+  "training_configs": {
+    "NASDAQ_SOFI": {
+      "directional_loss_penalty": 5.0,
+      "description": "5x directional loss penalty for SOFI"
+    }
+  },
+  
+  "regime_pooling": {
+    "enabled": true,
+    "pool_high_regime_windows": true,
+    "description": "Pool HIGH regime windows for unified mode"
+  },
+  
+  "kdj_features": {
+    "kdj_period": 9,
+    "k_smooth": 3,
+    "d_smooth": 3,
+    "include_divergence": true,
+    "include_position": true
+  },
+  
+  "xgboost": {
+    "n_estimators": 200,
+    "max_depth": 10,
+    "learning_rate": 0.15,
+    "min_child_weight": 3,
+    "gamma": 0.0,
+    "reg_alpha": 0.0,
+    "reg_lambda": 1.0,
+    "random_state": 42,
+    "n_jobs": -1
+  },
+  
+  "monitoring": {
+    "alert_thresholds": {
+      "mae_degradation": 15.0,
+      "rmse_degradation": 15.0,
+      "accuracy_drop": 50.0,
+      "ensemble_improvement": 5.0,
+      "drift_threshold": 0.05,
+      "latency_threshold": 100.0
+    },
+    "monitoring_window": 100,
+    "alert_cooldown": 300,
+    "drift_detection_window": 20
+  },
+  
+  "data_processing": {
+    "test_size": 0.2,
+    "validation_size": 0.1,
+    "min_samples_for_training": 50,
+    "required_columns": ["open", "high", "low", "close"]
+  },
+  
+  "models": {
+    "xgboost_path": "xgboost_tuned_model.pkl",
+    "arima_module": null,
+    "model_save_directory": "models/",
+    "backup_models": true
+  },
+  
+  "dashboard": {
+    "title": "ML Analysis Platform - KDJ Enhanced",
+    "port": 8501,
+    "auto_refresh_interval": 30,
+    "max_history_display": 50
+  },
+  
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file": "ml_platform.log",
+    "max_size_mb": 50,
+    "backup_count": 5
+  },
+  
+  "performance_targets": {
+    "prediction_latency_ms": 100,
+    "mae_target": 12.0,
+    "directional_accuracy_target": 65.0,
+    "confidence_target": 0.75
+  },
+  
+  "retraining": {
+    "schedule_days": 30,
+    "performance_degradation_threshold": 20.0,
+    "min_samples_for_retrain": 200,
+    "validation_method": "time_series_split"
+  },
+  
+  "feature_engineering": {
+    "include_kdj": true,
+    "include_volume": true,
+    "include_moving_averages": true,
+    "moving_average_periods": [5, 10, 20],
+    "volatility_periods": [5, 10],
+    "momentum_periods": [3, 7]
+  },
+  
+  "api": {
+    "enable_rest_api": false,
+    "host": "0.0.0.0",
+    "port": 8000,
+    "rate_limit": 100,
+    "authentication": false
+  },
+  
+  "backup": {
+    "enable_auto_backup": true,
+    "backup_interval_hours": 24,
+    "backup_directory": "backups/",
+    "keep_backups_days": 30
+  },
+  
+  "walk_forward_validation": {
+    "enabled": true,
+    "storage_path": "validation_results",
+    "initial_train_size": 200,
+    "test_size": 15,
+    "step_size": 5,
+    "window_type": "expanding",
+    "schedule": "weekly",
+    "alert_threshold_mae_increase": 15.0
+  }
+}

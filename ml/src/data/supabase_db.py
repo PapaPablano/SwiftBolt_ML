@@ -51,15 +51,27 @@ class SupabaseDatabase:
             DataFrame with columns: ts, open, high, low, close, volume
         """
         try:
-            # Get symbol_id
-            symbol_response = (
-                self.client.table("symbols")
-                .select("id")
-                .eq("ticker", symbol.upper())
-                .single()
-                .execute()
-            )
-            symbol_id = symbol_response.data["id"]
+            # Get symbol_id (soft fail if ticker not in symbols table)
+            try:
+                symbol_response = (
+                    self.client.table("symbols")
+                    .select("id")
+                    .eq("ticker", symbol.upper())
+                    .single()
+                    .execute()
+                )
+                symbol_id = symbol_response.data["id"]
+            except Exception as sym_err:
+                err_str = str(sym_err).lower()
+                if "pgrst116" in err_str or "0 rows" in err_str or "single json object" in err_str:
+                    logger.warning(
+                        "Symbol %s not in symbols table; run symbol seeding for canary set.",
+                        symbol,
+                    )
+                    empty = pd.DataFrame()
+                    empty.attrs["skip_reason"] = "symbol not in symbols table"
+                    return empty
+                raise
 
             # Alpaca 4h clone: used only for TabPFN/hybrid experiments (ML house rules)
             if source == "alpaca_4h" and timeframe == "h4":
@@ -111,29 +123,13 @@ class SupabaseDatabase:
             last_df: pd.DataFrame = pd.DataFrame()
 
             for provider in preferred_providers:
-                query = (
-                    self.client.table("ohlc_bars_v2")
-                    .select("ts, open, high, low, close, volume")
-                    .eq("symbol_id", symbol_id)
-                    .eq("timeframe", timeframe)
-                    .eq("is_forecast", False)
-                    .order("ts", desc=True)
-                )
-
-                if end_ts is not None:
-                    ts_iso = pd.to_datetime(end_ts).isoformat()
-                    query = query.lt("ts", ts_iso)
-
                 if provider:
-                    query = query.eq("provider", provider)
                     attempts.append(provider)
                 else:
                     attempts.append("any")
 
-                if limit:
-                    query = query.limit(limit)
-                else:
-                    # Safety cap to avoid long-running queries
+                effective_limit = limit
+                if not effective_limit:
                     default_caps = {
                         "m15": 500,
                         "h1": 500,
@@ -141,12 +137,43 @@ class SupabaseDatabase:
                         "d1": 400,
                         "w1": 260,
                     }
-                    cap = default_caps.get(timeframe)
-                    if cap:
-                        query = query.limit(cap)
+                    effective_limit = default_caps.get(timeframe)
 
-                response = query.execute()
-                df = pd.DataFrame(response.data)
+                # Supabase caps at 1000 rows per request; paginate when limit > 1000
+                _SUPABASE_MAX_ROWS = 1000
+                all_rows: list[dict] = []
+                offset = 0
+                while True:
+                    chunk_size = min(
+                        _SUPABASE_MAX_ROWS,
+                        effective_limit - len(all_rows) if effective_limit else _SUPABASE_MAX_ROWS,
+                    )
+                    if chunk_size <= 0:
+                        break
+                    chunk_query = (
+                        self.client.table("ohlc_bars_v2")
+                        .select("ts, open, high, low, close, volume")
+                        .eq("symbol_id", symbol_id)
+                        .eq("timeframe", timeframe)
+                        .eq("is_forecast", False)
+                        .order("ts", desc=True)
+                    )
+                    if end_ts is not None:
+                        ts_iso = pd.to_datetime(end_ts).isoformat()
+                        chunk_query = chunk_query.lt("ts", ts_iso)
+                    if provider:
+                        chunk_query = chunk_query.eq("provider", provider)
+                    chunk_query = chunk_query.range(offset, offset + chunk_size - 1)
+                    response = chunk_query.execute()
+                    chunk = response.data or []
+                    all_rows.extend(chunk)
+                    if len(chunk) < chunk_size:
+                        break
+                    offset += chunk_size
+                    if effective_limit and len(all_rows) >= effective_limit:
+                        break
+
+                df = pd.DataFrame(all_rows[: effective_limit] if effective_limit else all_rows)
                 df.attrs["provider"] = provider or "any"
                 last_df = df
 
@@ -180,6 +207,7 @@ class SupabaseDatabase:
                 timeframe,
                 ", ".join(attempts),
             )
+            last_df.attrs["skip_reason"] = "0 bars returned"
             return last_df
 
         except Exception as e:
@@ -1888,7 +1916,7 @@ class SupabaseDatabase:
     # INTRADAY CALIBRATION METHODS
     # ========================================================================
 
-    def upsert_intraday_forecast(
+    def insert_intraday_forecast(
         self,
         symbol_id: str,
         symbol: str,
@@ -1906,9 +1934,31 @@ class SupabaseDatabase:
         ensemble_label: str,
         layers_agreeing: int,
         expires_at: str,
+        *,
+        synthesis_data: dict | None = None,
     ) -> str | None:
         """
-        Insert an intraday forecast for weight calibration.
+        Insert an intraday forecast for weight calibration (insert-only; no upsert).
+
+        Name reflects behavior: no on_conflict is used, so duplicate (symbol_id, horizon, created_at)
+        can only occur if two inserts get the same created_at (e.g. same microsecond). For true
+        idempotency on cron retries, add a real upsert with explicit conflict target and replace
+        policy for synthesis_data/points/confidence (no deep-merge).
+
+        Future upsert (when added): use conflict target (symbol_id, horizon, created_at) and
+        replace-on-conflict for synthesis_data, points, confidence, etc. (set
+        synthesis_data = EXCLUDED.synthesis_data). Job would need to supply deterministic
+        created_at (or a run key) for retries to hit the same row. Verification-gate insert/
+        cleanup flow uses insert-only; ensure any upsert path does not break diagnostic rows.
+
+        Example upsert (sanity-check against verification-gate flow)::
+            forecast_data["created_at"] = created_at_iso  # caller must set for idempotency
+            response = self.client.table("ml_forecasts_intraday").upsert(
+                forecast_data,
+                on_conflict="symbol_id,horizon,created_at",
+            ).execute()
+        Replace policy: all payload columns (synthesis_data, points, confidence, ...) overwrite
+        on conflict; no deep-merge of JSONB.
 
         Args:
             symbol_id: UUID of the symbol
@@ -1926,6 +1976,8 @@ class SupabaseDatabase:
             ensemble_label: Ensemble predicted label
             layers_agreeing: Number of agreeing layers
             expires_at: When forecast expires (ISO string)
+            synthesis_data: Optional JSONB context (e.g. ensemble_result with xgb_prob, components).
+                           Persisted if table has synthesis_data column; evaluator reads it.
 
         Returns:
             Forecast UUID if successful, None otherwise
@@ -1952,6 +2004,9 @@ class SupabaseDatabase:
             if points is not None:
                 forecast_data["points"] = points
 
+            if synthesis_data is not None:
+                forecast_data["synthesis_data"] = synthesis_data
+
             response = self.client.table("ml_forecasts_intraday").insert(forecast_data).execute()
 
             if response.data:
@@ -1967,8 +2022,78 @@ class SupabaseDatabase:
 
         except Exception as e:
             logger.error(
-                "Error upserting intraday forecast for %s: %s",
+                "Error inserting intraday forecast for %s: %s",
                 symbol,
+                e,
+            )
+            return None
+
+    def upsert_intraday_forecast_idempotent(
+        self,
+        symbol_id: str,
+        symbol: str,
+        horizon: str,
+        timeframe: str,
+        created_at_iso: str,
+        overall_label: str,
+        confidence: float,
+        points: list[dict] | None,
+        target_price: float,
+        current_price: float,
+        supertrend_component: float,
+        sr_component: float,
+        ensemble_component: float,
+        supertrend_direction: str,
+        ensemble_label: str,
+        layers_agreeing: int,
+        expires_at: str,
+        *,
+        synthesis_data: dict | None = None,
+    ) -> str | None:
+        """
+        Idempotent upsert for intraday forecast (replace-on-conflict).
+
+        Uses conflict target (symbol_id, horizon, created_at). Caller must supply
+        created_at_iso so retries hit the same row. Payload columns (points,
+        synthesis_data, confidence, etc.) overwrite on conflict; no deep-merge.
+        """
+        try:
+            forecast_data = {
+                "symbol_id": symbol_id,
+                "symbol": symbol.upper(),
+                "horizon": horizon,
+                "timeframe": timeframe,
+                "created_at": created_at_iso,
+                "overall_label": overall_label,
+                "confidence": confidence,
+                "target_price": target_price,
+                "current_price": current_price,
+                "supertrend_component": supertrend_component,
+                "sr_component": sr_component,
+                "ensemble_component": ensemble_component,
+                "supertrend_direction": supertrend_direction,
+                "ensemble_label": ensemble_label,
+                "layers_agreeing": layers_agreeing,
+                "expires_at": expires_at,
+            }
+            if points is not None:
+                forecast_data["points"] = points
+            if synthesis_data is not None:
+                forecast_data["synthesis_data"] = synthesis_data
+
+            response = self.client.table("ml_forecasts_intraday").upsert(
+                forecast_data,
+                on_conflict="symbol_id,horizon,created_at",
+            ).execute()
+
+            if response.data and len(response.data) > 0:
+                return response.data[0].get("id")
+            return None
+        except Exception as e:
+            logger.error(
+                "Error upserting intraday forecast for %s %s: %s",
+                symbol,
+                horizon,
                 e,
             )
             return None
@@ -2040,6 +2165,64 @@ class SupabaseDatabase:
         except Exception as e:
             logger.error("Error fetching pending intraday evaluations: %s", e)
             return []
+
+    def get_recent_intraday_residuals(
+        self,
+        symbol_id: str,
+        horizon: str,
+        limit: int = 20,
+    ) -> list[dict]:
+        """
+        Get recent intraday evaluation residuals for residual features (Option B).
+
+        Used to feed last K residuals into next inference (horizon+1 without retraining).
+        Returns rows with price_error, price_error_pct, direction_correct, evaluated_at.
+
+        Reads from ml_forecast_evaluations_intraday first; if empty, falls back to
+        forecast_evaluations (evaluation_date → evaluated_at) so the loop works
+        whether the evaluator writes to one or both tables.
+
+        Args:
+            symbol_id: UUID of the symbol
+            horizon: '15m' or '1h'
+            limit: Max number of recent evals to return (default 20)
+
+        Returns:
+            List of dicts with keys: price_error, price_error_pct, direction_correct, evaluated_at
+        """
+        out: list[dict] = []
+        try:
+            response = (
+                self.client.table("ml_forecast_evaluations_intraday")
+                .select("price_error, price_error_pct, direction_correct, evaluated_at")
+                .eq("symbol_id", symbol_id)
+                .eq("horizon", horizon)
+                .order("evaluated_at", desc=True)
+                .limit(max(1, min(limit, 100)))
+                .execute()
+            )
+            out = response.data or []
+            if not out:
+                # Fallback: forecast_evaluations (evaluator may only write here; columns: evaluation_date)
+                fe = (
+                    self.client.table("forecast_evaluations")
+                    .select("price_error, price_error_pct, direction_correct, evaluation_date")
+                    .eq("symbol_id", symbol_id)
+                    .eq("horizon", horizon)
+                    .order("evaluation_date", desc=True)
+                    .limit(max(1, min(limit, 100)))
+                    .execute()
+                )
+                for row in (fe.data or []):
+                    out.append({
+                        "price_error": row.get("price_error"),
+                        "price_error_pct": row.get("price_error_pct"),
+                        "direction_correct": row.get("direction_correct"),
+                        "evaluated_at": row.get("evaluation_date"),
+                    })
+        except Exception as e:
+            logger.debug("Error fetching recent intraday residuals for %s %s: %s", symbol_id, horizon, e)
+        return out[:limit]
 
     def save_intraday_evaluation(
         self,

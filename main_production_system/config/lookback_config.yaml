@@ -1,0 +1,23 @@
+lookback_windows:
+  "1h":
+    optimal_candles: 504  # 21 trading days * 24h = 504 hours
+    description: "21 trading days (3 weeks) of hourly data"
+    
+  "4h":
+    optimal_candles: 126  # 21 trading days * 6 = 126 4-hour candles
+    description: "21 trading days of 4-hour data"
+    
+  "1d":
+    optimal_candles: 252  # 1 full year of trading days
+    description: "252 trading days (1 year of data)"
+
+prediction_horizons:
+  "1h": 24    # Predict 24 hours ahead
+  "4h": 30    # Predict 30 * 4h = 5 days ahead
+  "1d": 60    # Predict 60 trading days ahead
+
+confidence_levels:
+  - 0.90  # Yellow (90% confident)
+  - 0.95  # Blue (95% confident - default)
+  - 0.99  # Green (99% confident)
+

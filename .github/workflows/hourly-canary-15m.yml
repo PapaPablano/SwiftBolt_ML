@@ -1,0 +1,118 @@
+name: Hourly Canary (15m->1h)
+
+on:
+  # CST schedule (winter): run 5 min after each :30 bar close so data is available.
+  # 08:35, 09:35, 10:35, 11:35, 12:35, 13:35 CST  => 14:35..19:35 UTC
+  # Summary after regular close known: 15:10 CST => 21:10 UTC
+  schedule:
+    - cron: "35 14-19 * * 1-5"
+    - cron: "10 21 * * 1-5"
+
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "predict = run intraday forecasts now; summary = compute realized-vs-predicted table"
+        required: true
+        type: choice
+        options:
+          - predict
+          - summary
+        default: predict
+      symbols:
+        description: "Comma-separated symbols"
+        required: false
+        type: string
+        default: "AAPL,MSFT,SPY"
+      date_cst:
+        description: "Date in CST for summary (YYYY-MM-DD). Leave empty = today."
+        required: false
+        type: string
+      targets_cst:
+        description: "Comma-separated CST targets (HH:MM). Default matches your hourly closes."
+        required: false
+        type: string
+        default: "09:30,10:30,11:30,12:30,13:30,14:30"
+
+concurrency:
+  group: hourly-canary-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+  ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup ML Environment
+        uses: ./.github/actions/setup-ml-env
+        with:
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          database-url: ${{ secrets.DATABASE_URL }}
+          alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
+          alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
+
+      - name: Decide mode (schedule vs dispatch)
+        id: mode
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=${{ inputs.mode }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Scheduled: 21:10 UTC = end-of-day summary; all other scheduled times = predict
+          UTC_HOUR=$(date -u +%H)
+          UTC_MIN=$(date -u +%M)
+          if [ "$UTC_HOUR" = "21" ] && [ "$UTC_MIN" -ge "5" ] && [ "$UTC_MIN" -le "20" ]; then
+            echo "mode=summary" >> $GITHUB_OUTPUT
+          else
+            echo "mode=predict" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Hourly predict (15m horizon, canary symbols)
+        if: steps.mode.outputs.mode == 'predict'
+        run: |
+          cd ml
+          SYMS="${{ github.event_name == 'workflow_dispatch' && inputs.symbols || 'AAPL,MSFT,SPY' }}"
+          IFS=',' read -ra ARR <<< "$SYMS"
+          for s in "${ARR[@]}"; do
+            sym="$(echo "$s" | xargs | tr '[:lower:]' '[:upper:]')"
+            if [ -z "$sym" ]; then
+              continue
+            fi
+            echo "Running intraday forecast for $sym (horizon=15m)"
+            python -m src.intraday_forecast_job --symbol "$sym" --horizon "15m"
+          done
+
+      - name: End-of-day summary (predicted vs realized)
+        if: steps.mode.outputs.mode == 'summary'
+        run: |
+          cd ml
+          SYMBOLS="${{ github.event_name == 'workflow_dispatch' && inputs.symbols || 'AAPL,MSFT,SPY' }}"
+          DATE_CST="${{ github.event_name == 'workflow_dispatch' && inputs.date_cst || '' }}"
+          TARGETS_CST="${{ github.event_name == 'workflow_dispatch' && inputs.targets_cst || '09:30,10:30,11:30,12:30,13:30,14:30' }}"
+
+          python scripts/hourly_canary_summary.py \
+            --symbols "$SYMBOLS" \
+            --date-cst "$DATE_CST" \
+            --targets-cst "$TARGETS_CST" \
+            --out "validation_results/hourly_canary_summary.csv"
+
+      - name: Upload summary artifact
+        if: steps.mode.outputs.mode == 'summary'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hourly-canary-summary
+          path: ml/validation_results/hourly_canary_summary.csv

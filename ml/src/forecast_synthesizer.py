@@ -132,6 +132,7 @@ class ForecastSynthesizer:
         horizon_days: float = 1.0,
         symbol: Optional[str] = None,
         timeframe: str = "d1",
+        recent_residuals: Optional[List[Dict]] = None,
     ) -> ForecastResult:
         """
         Generate forecast for any horizon length.
@@ -163,6 +164,7 @@ class ForecastSynthesizer:
             horizon_scale=horizon_scale,
             horizon_days=horizon_days,
             symbol=symbol,
+            recent_residuals=recent_residuals,
         )
         
         # Update horizon metadata
@@ -1203,6 +1205,7 @@ class ForecastSynthesizer:
         horizon_scale: float,
         horizon_days: float = 1.0,
         symbol: Optional[str] = None,
+        recent_residuals: Optional[List[Dict]] = None,
     ) -> ForecastResult:
         """
         Generate base forecast with horizon scaling applied.
@@ -1384,6 +1387,17 @@ class ForecastSynthesizer:
             direction=direction,
             horizon_days=horizon_days,
         )
+        # Option B: dampen confidence using recent intraday residuals (feed into next inference)
+        if recent_residuals:
+            pcts = [
+                abs(float(e.get("price_error_pct") or 0))
+                for e in recent_residuals
+                if e.get("price_error_pct") is not None
+            ]
+            if pcts:
+                mean_abs_pct = float(np.mean(pcts))
+                dampen = max(0.7, 1.0 - min(0.3, mean_abs_pct))
+                confidence = round(float(confidence) * dampen, 2)
 
         # Build reasoning
         drivers, reasoning = self._build_reasoning(

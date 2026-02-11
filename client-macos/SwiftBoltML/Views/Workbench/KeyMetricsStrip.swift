@@ -4,6 +4,10 @@ import SwiftUI
 /// Provides at-a-glance information without scrolling
 struct KeyMetricsStrip: View {
     let rank: OptionRank
+    var liveQuote: OptionContractQuote? = nil
+    /// True when provider had no quote (show "—" not $0.00)
+    var isMissingQuote: Bool = false
+    var providersTried: [String] = []
     
     // Layout configuration
     private let columns = [
@@ -18,14 +22,16 @@ struct KeyMetricsStrip: View {
             // Row 1: Pricing metrics
             MetricChip(
                 label: "Mark",
-                value: formatPrice(rank.derivedMark),
-                color: .primary
+                value: formatPrice(resolvedMark),
+                color: .primary,
+                help: isMissingQuote && !providersTried.isEmpty ? "No quote (illiquid/unsupported). Providers tried: \(providersTried.joined(separator: ", "))" : nil
             )
             
             MetricChip(
                 label: "Bid/Ask",
                 value: formatBidAsk(),
-                color: .secondary
+                color: .secondary,
+                help: isMissingQuote && !providersTried.isEmpty ? "No quote (illiquid/unsupported). Providers tried: \(providersTried.joined(separator: ", "))" : nil
             )
             
             MetricChip(
@@ -71,19 +77,37 @@ struct KeyMetricsStrip: View {
         }
     }
     
+    // MARK: - Resolved Values (live quote overrides rank when present)
+    
+    private var resolvedMark: Double? {
+        if isMissingQuote { return nil }
+        return liveQuote?.mark ?? liveQuote?.last ?? rank.derivedMark
+    }
+    
+    private var resolvedBid: Double? {
+        if isMissingQuote { return nil }
+        return liveQuote?.bid ?? rank.bid
+    }
+    
+    private var resolvedAsk: Double? {
+        if isMissingQuote { return nil }
+        return liveQuote?.ask ?? rank.ask
+    }
+    
     // MARK: - Formatting Helpers
     
     private func formatPrice(_ price: Double?) -> String {
-        guard let price = price else { return "—" }
+        guard let price = price, price != 0 else { return "—" }
         return String(format: "$%.2f", price)
     }
     
     private func formatBidAsk() -> String {
-        guard let bid = rank.bid, let ask = rank.ask else { return "—" }
+        guard let bid = resolvedBid, let ask = resolvedAsk, bid != 0 || ask != 0 else { return "—" }
         return "\(String(format: "$%.2f", bid)) / \(String(format: "$%.2f", ask))"
     }
     
     private func formatSpread() -> String {
+        if isMissingQuote { return "—" }
         guard let spreadPct = rank.spreadPctDisplay else { return "—" }
         return String(format: "%.1f%%", spreadPct)
     }

@@ -70,7 +70,7 @@ def _options_chain_cache_key(underlying: str, expiration: int | None) -> str:
 
 def _options_quotes_cache_key(symbol: str, contracts: list[str]) -> str:
     h = hashlib.sha256(",".join(sorted(c.upper() for c in contracts)).encode()).hexdigest()[:24]
-    return f"options_quotes:v1:{symbol}:{h}"
+    return f"options_quotes:v2:{symbol}:{h}"  # v2: includes missing_contracts + stubs
 
 
 def _get_options_chain_cached(underlying: str, expiration: int | None):
@@ -260,6 +260,23 @@ def _fetch_alpaca_options_chain(underlying: str, expiration_ts: int | None) -> d
     }
 
 
+def _occ_to_expiration_date(occ: str) -> str | None:
+    """Parse OCC symbol (ROOT+YYMMDD+C/P+STRIKE) to YYYY-MM-DD, or None if invalid."""
+    occ = (occ or "").strip().upper()
+    if len(occ) < 11:  # need ROOT(>=1)+YYMMDD(6)+C/P at least for date slice
+        return None
+    try:
+        yy = int(occ[-15:-13])  # YY from YYMMDD (last 15 chars = YYMMDD+C/P+STRIKE)
+        mm = int(occ[-13:-11])
+        dd = int(occ[-11:-9])
+        year = 2000 + yy if yy < 50 else 1900 + yy
+        if 1 <= mm <= 12 and 1 <= dd <= 31:
+            return f"{year:04d}-{mm:02d}-{dd:02d}"
+    except (ValueError, IndexError):
+        pass
+    return None
+
+
 def _fetch_alpaca_options_quotes(symbol: str, contracts: list[str]) -> dict | None:
     """Fetch quotes for given option symbols from Alpaca; return Edge-shaped quotes response or None."""
     try:
@@ -283,14 +300,38 @@ def _fetch_alpaca_options_quotes(symbol: str, contracts: list[str]) -> dict | No
                 },
             )
             if r.status_code != 200:
+                logger.warning(
+                    "options_quotes alpaca non-200",
+                    extra={
+                        "provider": "alpaca",
+                        "endpoint": "quotes/latest",
+                        "status_code": r.status_code,
+                        "requested_count": len(contracts),
+                    },
+                )
                 return None
             data = r.json()
-    except Exception:
+    except Exception as e:
+        logger.warning("options_quotes alpaca request failed: %s", e)
         return None
     quotes_dict = data.get("quotes") or {}
     if not isinstance(quotes_dict, dict):
         quotes_dict = {}
     contract_set = set(c.upper() for c in contracts)
+    returned_symbols = set((s or "").upper() for s in quotes_dict)
+    missing = contract_set - returned_symbols
+    if missing:
+        logger.info(
+            "options_quotes alpaca partial response",
+            extra={
+                "provider": "alpaca",
+                "endpoint": "quotes/latest",
+                "requested_count": len(contracts),
+                "returned_count": len(returned_symbols),
+                "missing_count": len(missing),
+                "missing_symbols": list(missing)[:10],
+            },
+        )
     now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     quotes = []
     for sym, q in quotes_dict.items():
@@ -314,12 +355,29 @@ def _fetch_alpaca_options_quotes(symbol: str, contracts: list[str]) -> dict | No
             "implied_vol": None,
             "updated_at": now_iso,
         })
+    # Stub entries for missing contracts (null bid/ask/mark so client shows "—")
+    for sym in sorted(missing):
+        quotes.append({
+            "contract_symbol": sym,
+            "bid": None,
+            "ask": None,
+            "mark": None,
+            "last": None,
+            "volume": None,
+            "open_interest": None,
+            "implied_vol": None,
+            "updated_at": now_iso,
+        })
+    num_returned = len(quotes) - len(missing)
     return {
         "symbol": symbol,
         "timestamp": now_iso,
         "chain_timestamp": now_iso,
         "total_requested": len(contracts),
-        "total_returned": len(quotes),
+        "total_returned": num_returned,
+        "missing_contracts": sorted(missing),
+        "providers_tried": ["alpaca"],
+        "provider_hit": ["alpaca"] if num_returned > 0 else None,
         "quotes": quotes,
     }
 
@@ -351,6 +409,124 @@ def _parse_expiration_to_unix(exp_date: str) -> int:
         return int(dt.timestamp())
     except (ValueError, TypeError):
         return 0
+
+
+def _row_to_quote_dict(row, sym: str, now_iso: str) -> dict:
+    """Convert Tradier chain row to Edge-style quote dict."""
+    bid = _json_safe_float(row.get("bid"))
+    ask = _json_safe_float(row.get("ask"))
+    last = _json_safe_float(row.get("last"))
+    mark = None
+    if bid is not None and ask is not None:
+        mark = _json_safe_float((bid + ask) / 2)
+    if mark is None and last is not None:
+        mark = last
+    try:
+        oi = int(row.get("open_interest") or 0)
+    except (TypeError, ValueError):
+        oi = None
+    iv = _json_safe_float(row.get("greek_mid_iv") or row.get("iv"))
+    try:
+        vol = int(row.get("volume") or 0)
+    except (TypeError, ValueError):
+        vol = None
+    return {
+        "contract_symbol": sym,
+        "bid": bid,
+        "ask": ask,
+        "mark": mark,
+        "last": last,
+        "volume": vol,
+        "open_interest": oi,
+        "implied_vol": iv,
+        "delta": _json_safe_float(row.get("greek_delta") or row.get("delta")),
+        "gamma": _json_safe_float(row.get("greek_gamma") or row.get("gamma")),
+        "theta": _json_safe_float(row.get("greek_theta") or row.get("theta")),
+        "vega": _json_safe_float(row.get("greek_vega") or row.get("vega")),
+        "rho": _json_safe_float(row.get("greek_rho") or row.get("rho")),
+        "updated_at": now_iso,
+    }
+
+
+def _fetch_tradier_quotes_for_contracts(
+    symbol: str, contracts: list[str], tradier, now_iso: str
+) -> list[dict]:
+    """Fetch Tradier quotes for specific contracts by parsing OCC→expiration and calling get_options_chain."""
+    contract_set = set(c.upper() for c in contracts)
+    exp_to_contracts: dict[str, list[str]] = {}
+    for occ in contracts:
+        exp = _occ_to_expiration_date(occ)
+        if exp:
+            exp_to_contracts.setdefault(exp, []).append(occ.upper())
+    quotes = []
+    for exp_date, occ_list in exp_to_contracts.items():
+        try:
+            chain_df = tradier.get_options_chain(symbol, exp_date, greeks=True)
+        except Exception as e:
+            logger.warning("Tradier chain fetch for %s %s failed: %s", symbol, exp_date, e)
+            continue
+        if chain_df is None or chain_df.empty:
+            continue
+        for _, row in chain_df.iterrows():
+            sym = str(row.get("symbol", "")).upper()
+            if sym in contract_set:
+                quotes.append(_row_to_quote_dict(row, sym, now_iso))
+    return quotes
+
+
+def _merge_supplemental_quotes(result: dict, supplemental: list[dict]) -> dict:
+    """Replace stub (null) entries in result with supplemental quotes; update missing_contracts."""
+    quotes_by_sym = {q["contract_symbol"]: q for q in result["quotes"]}
+    for q in supplemental:
+        quotes_by_sym[q["contract_symbol"]] = q
+    missing = result.get("missing_contracts") or []
+    found_syms = {q["contract_symbol"] for q in supplemental}
+    missing = [s for s in missing if s not in found_syms]
+    return {
+        "symbol": result["symbol"],
+        "timestamp": result["timestamp"],
+        "chain_timestamp": result["chain_timestamp"],
+        "total_requested": result["total_requested"],
+        "total_returned": result["total_returned"] + len(supplemental),
+        "missing_contracts": missing,
+        "providers_tried": ["alpaca", "tradier"],
+        "provider_hit": ["alpaca", "tradier"],
+        "quotes": list(quotes_by_sym.values()),
+    }
+
+
+def _fetch_tradier_options_quotes_targeted(
+    symbol: str, contracts: list[str], tradier, now_iso: str, providers_tried: list[str] | None = None
+) -> dict:
+    """Fetch Tradier quotes by expiration for each requested contract; add stubs for still-missing."""
+    providers_tried = providers_tried or ["tradier"]
+    supplemental = _fetch_tradier_quotes_for_contracts(symbol, contracts, tradier, now_iso)
+    found = {q["contract_symbol"] for q in supplemental}
+    missing = sorted(set(c.upper() for c in contracts) - found)
+    quotes = list(supplemental)
+    for sym in missing:
+        quotes.append({
+            "contract_symbol": sym,
+            "bid": None,
+            "ask": None,
+            "mark": None,
+            "last": None,
+            "volume": None,
+            "open_interest": None,
+            "implied_vol": None,
+            "updated_at": now_iso,
+        })
+    return {
+        "symbol": symbol,
+        "timestamp": now_iso,
+        "chain_timestamp": now_iso,
+        "total_requested": len(contracts),
+        "total_returned": len(supplemental),
+        "missing_contracts": missing,
+        "providers_tried": providers_tried,
+        "provider_hit": ["tradier"] if supplemental else None,
+        "quotes": quotes,
+    }
 
 
 def _row_to_contract(row, underlying: str) -> dict:
@@ -503,77 +679,31 @@ async def post_options_quotes(body: OptionsQuotesRequest):
     if cached is not None:
         return cached
 
+    now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
     # Try Alpaca first when credentials are set
     if _alpaca_configured():
         result = _fetch_alpaca_options_quotes(symbol, contracts)
         if result is not None:
+            missing = result.get("missing_contracts") or []
+            if missing:
+                try:
+                    tradier = _get_tradier()
+                    supplemental_quotes = _fetch_tradier_quotes_for_contracts(symbol, missing, tradier, now_iso)
+                    if supplemental_quotes:
+                        result = _merge_supplemental_quotes(result, supplemental_quotes)
+                except HTTPException:
+                    pass
             _set_options_quotes_cached(symbol, contracts, result)
             return result
 
-    # Fall back to Tradier: fetch full chain and filter to requested contracts
+    # Fall back to Tradier: targeted fetch by expiration for each contract's expiry
     try:
         tradier = _get_tradier()
+        providers_tried = ["alpaca", "tradier"] if _alpaca_configured() else ["tradier"]
+        result = _fetch_tradier_options_quotes_targeted(symbol, contracts, tradier, now_iso, providers_tried)
     except HTTPException:
         raise
-    try:
-        chain_df = tradier.get_all_chains(symbol, max_expirations=8, greeks=True)
-    except Exception as e:
-        logger.exception("Tradier chain fetch for quotes failed")
-        raise HTTPException(status_code=502, detail=f"Failed to fetch options: {e}") from e
-    contract_set = set(contracts)
-    quotes = []
-    now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    if chain_df is not None and not chain_df.empty:
-        for _, row in chain_df.iterrows():
-            sym = str(row.get("symbol", "")).upper()
-            if sym not in contract_set:
-                continue
-            bid = _json_safe_float(row.get("bid"))
-            ask = _json_safe_float(row.get("ask"))
-            last = _json_safe_float(row.get("last"))
-            mark = None
-            if bid is not None and ask is not None:
-                mark = _json_safe_float((bid + ask) / 2)
-            if mark is None and last is not None:
-                mark = last
-            try:
-                oi = int(row.get("open_interest") or 0)
-            except (TypeError, ValueError):
-                oi = None
-            iv = _json_safe_float(row.get("greek_mid_iv") or row.get("iv"))
-            try:
-                vol = int(row.get("volume") or 0)
-            except (TypeError, ValueError):
-                vol = None
-            delta = _json_safe_float(row.get("greek_delta") or row.get("delta"))
-            gamma = _json_safe_float(row.get("greek_gamma") or row.get("gamma"))
-            theta = _json_safe_float(row.get("greek_theta") or row.get("theta"))
-            vega = _json_safe_float(row.get("greek_vega") or row.get("vega"))
-            rho = _json_safe_float(row.get("greek_rho") or row.get("rho"))
-            quotes.append({
-                "contract_symbol": sym,
-                "bid": bid,
-                "ask": ask,
-                "mark": mark,
-                "last": last,
-                "volume": vol,
-                "open_interest": oi,
-                "implied_vol": iv,
-                "delta": delta,
-                "gamma": gamma,
-                "theta": theta,
-                "vega": vega,
-                "rho": rho,
-                "updated_at": now_iso,
-            })
-    result = {
-        "symbol": symbol,
-        "timestamp": now_iso,
-        "chain_timestamp": now_iso,
-        "total_requested": len(contracts),
-        "total_returned": len(quotes),
-        "quotes": quotes,
-    }
     _set_options_quotes_cached(symbol, contracts, result)
     return result
 
