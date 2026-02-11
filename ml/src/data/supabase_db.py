@@ -2007,7 +2007,32 @@ class SupabaseDatabase:
             if synthesis_data is not None:
                 forecast_data["synthesis_data"] = synthesis_data
 
-            response = self.client.table("ml_forecasts_intraday").insert(forecast_data).execute()
+            try:
+                response = self.client.table("ml_forecasts_intraday").insert(forecast_data).execute()
+            except Exception as insert_err:  # PGRST204 when synthesis_data column missing (schema rollout)
+                err_str = str(insert_err).lower()
+                err_code = getattr(insert_err, "code", None) or ""
+                _schema_cache_missing_col = (
+                    err_code == "PGRST204"
+                    or "pgrst204" in err_str
+                    or (
+                        "synthesis_data" in err_str
+                        and (
+                            "could not find" in err_str
+                            or "schema cache" in err_str
+                            or "not found" in err_str
+                        )
+                    )
+                )
+                if synthesis_data is not None and _schema_cache_missing_col:
+                    logger.warning(
+                        "PostgREST schema cache missing synthesis_data; retrying without it: %s",
+                        insert_err,
+                    )
+                    forecast_data.pop("synthesis_data", None)
+                    response = self.client.table("ml_forecasts_intraday").insert(forecast_data).execute()
+                else:
+                    raise
 
             if response.data:
                 forecast_id = response.data[0]["id"]
@@ -2081,10 +2106,38 @@ class SupabaseDatabase:
             if synthesis_data is not None:
                 forecast_data["synthesis_data"] = synthesis_data
 
-            response = self.client.table("ml_forecasts_intraday").upsert(
-                forecast_data,
-                on_conflict="symbol_id,horizon,created_at",
-            ).execute()
+            try:
+                response = self.client.table("ml_forecasts_intraday").upsert(
+                    forecast_data,
+                    on_conflict="symbol_id,horizon,created_at",
+                ).execute()
+            except Exception as upsert_err:  # PGRST204 when synthesis_data column missing
+                err_str = str(upsert_err).lower()
+                err_code = getattr(upsert_err, "code", None) or ""
+                _schema_cache_missing_col = (
+                    err_code == "PGRST204"
+                    or "pgrst204" in err_str
+                    or (
+                        "synthesis_data" in err_str
+                        and (
+                            "could not find" in err_str
+                            or "schema cache" in err_str
+                            or "not found" in err_str
+                        )
+                    )
+                )
+                if synthesis_data is not None and _schema_cache_missing_col:
+                    logger.warning(
+                        "PostgREST schema cache missing synthesis_data; retrying without it: %s",
+                        upsert_err,
+                    )
+                    forecast_data.pop("synthesis_data", None)
+                    response = self.client.table("ml_forecasts_intraday").upsert(
+                        forecast_data,
+                        on_conflict="symbol_id,horizon,created_at",
+                    ).execute()
+                else:
+                    raise
 
             if response.data and len(response.data) > 0:
                 return response.data[0].get("id")
