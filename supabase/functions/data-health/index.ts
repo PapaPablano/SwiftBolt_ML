@@ -176,30 +176,26 @@ serve(async (req: Request): Promise<Response> => {
       .in("ticker", symbolsToCheck);
     
     const symbolIdMap: Map<string, string> = new Map();
+    const symbolIdToTicker: Map<string, string> = new Map();
     (symbolRecords || []).forEach((s: { id: string; ticker: string }) => {
       symbolIdMap.set(s.ticker, s.id);
+      symbolIdToTicker.set(s.id, s.ticker);
     });
-    
+
+    // Batch lookup of latest bars per symbol/timeframe (replaces N+1 loop)
+    const symbolIds = symbolsToCheck.map((s) => symbolIdMap.get(s)).filter(Boolean) as string[];
     const latestBarsMap: Map<string, string> = new Map();
-    for (const symbol of symbolsToCheck) {
-      const symbolId = symbolIdMap.get(symbol);
-      if (!symbolId) continue;
-      
-      for (const tf of timeframesToCheck) {
-        const { data: latestBar } = await supabase
-          .from("ohlc_bars_v2")
-          .select("ts")
-          .eq("symbol_id", symbolId)
-          .eq("timeframe", tf)
-          .eq("is_forecast", false)
-          .order("ts", { ascending: false })
-          .limit(1)
-          .single();
-        
-        if (latestBar?.ts) {
-          latestBarsMap.set(`${symbol}:${tf}`, latestBar.ts);
+    if (symbolIds.length > 0) {
+      const { data: latestBars } = await supabase.rpc("get_latest_bars_batch", {
+        p_symbol_ids: symbolIds,
+        p_timeframes: timeframesToCheck,
+      });
+      (latestBars || []).forEach((row: { symbol_id: string; timeframe: string; latest_ts: string }) => {
+        const ticker = symbolIdToTicker.get(row.symbol_id);
+        if (ticker) {
+          latestBarsMap.set(`${ticker}:${row.timeframe}`, row.latest_ts);
         }
-      }
+      });
     }
     
     // Build health status for each symbol/timeframe combination

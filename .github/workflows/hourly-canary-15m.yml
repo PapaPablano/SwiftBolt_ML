@@ -1,22 +1,24 @@
 name: Hourly Canary (15m->1h)
 
 on:
-  # CST schedule (winter): run 5 min after each :30 bar close so data is available.
-  # 08:35, 09:35, 10:35, 11:35, 12:35, 13:35 CST  => 14:35..19:35 UTC
-  # Summary after regular close known: 15:10 CST => 21:10 UTC
+  # Predict: 5 min after each :30 bar close (CST). 14:35..19:35 UTC
+  # Hourly summary: 10 min after each :30 bar close so realized bar is available. 15:40..20:40 UTC => validate 09:30..14:30 CST
+  # EOD summary: after regular close. 21:10 UTC
   schedule:
     - cron: "35 14-19 * * 1-5"
+    - cron: "40 15-20 * * 1-5"
     - cron: "10 21 * * 1-5"
 
   workflow_dispatch:
     inputs:
       mode:
-        description: "predict = run intraday forecasts now; summary = compute realized-vs-predicted table"
+        description: "predict = run intraday forecasts; summary = EOD table; hourly_summary = single hour just closed"
         required: true
         type: choice
         options:
           - predict
           - summary
+          - hourly_summary
         default: predict
       symbols:
         description: "Comma-separated symbols"
@@ -72,11 +74,14 @@ jobs:
             exit 0
           fi
 
-          # Scheduled: 21:10 UTC = end-of-day summary; all other scheduled times = predict
-          UTC_HOUR=$(date -u +%H)
-          UTC_MIN=$(date -u +%M)
+          UTC_HOUR=$(date -u +%H | sed 's/^0//')
+          UTC_MIN=$(date -u +%M | sed 's/^0//')
+          # 21:10 UTC = end-of-day summary
           if [ "$UTC_HOUR" = "21" ] && [ "$UTC_MIN" -ge "5" ] && [ "$UTC_MIN" -le "20" ]; then
             echo "mode=summary" >> $GITHUB_OUTPUT
+          # 15:40..20:40 UTC = hourly summary (validate the single :30 bar that just closed; CST = UTC-6)
+          elif [ "$UTC_MIN" = "40" ] && [ "$UTC_HOUR" -ge 15 ] && [ "$UTC_HOUR" -le 20 ]; then
+            echo "mode=hourly_summary" >> $GITHUB_OUTPUT
           else
             echo "mode=predict" >> $GITHUB_OUTPUT
           fi
@@ -96,10 +101,29 @@ jobs:
             python -m src.intraday_forecast_job --symbol "$sym" --horizon "15m"
           done
 
+      - name: Hourly summary (single target just closed)
+        if: steps.mode.outputs.mode == 'hourly_summary'
+        run: |
+          cd ml
+          mkdir -p validation_results
+          SYMBOLS="${{ github.event_name == 'workflow_dispatch' && inputs.symbols || 'AAPL,MSFT,SPY' }}"
+          # CST = UTC-6 (winter). At 15:40 UTC we validate 09:30 CST; at 20:40 UTC we validate 14:30 CST.
+          UTC_HOUR=$(date -u +%H | sed 's/^0//')
+          CST_HOUR=$((UTC_HOUR - 6))
+          TARGET_CST=$(printf '%02d:30' "$CST_HOUR")
+          echo "Validating single target: $TARGET_CST CST (created_at <= target vs realized)"
+          python scripts/hourly_canary_summary.py \
+            --symbols "$SYMBOLS" \
+            --date-cst "" \
+            --targets-cst "$TARGET_CST" \
+            --forecast-source intraday \
+            --out "validation_results/hourly_canary_summary.csv"
+
       - name: End-of-day summary (predicted vs realized)
         if: steps.mode.outputs.mode == 'summary'
         run: |
           cd ml
+          mkdir -p validation_results
           SYMBOLS="${{ github.event_name == 'workflow_dispatch' && inputs.symbols || 'AAPL,MSFT,SPY' }}"
           DATE_CST="${{ github.event_name == 'workflow_dispatch' && inputs.date_cst || '' }}"
           TARGETS_CST="${{ github.event_name == 'workflow_dispatch' && inputs.targets_cst || '09:30,10:30,11:30,12:30,13:30,14:30' }}"
@@ -108,10 +132,11 @@ jobs:
             --symbols "$SYMBOLS" \
             --date-cst "$DATE_CST" \
             --targets-cst "$TARGETS_CST" \
+            --forecast-source intraday \
             --out "validation_results/hourly_canary_summary.csv"
 
       - name: Upload summary artifact
-        if: steps.mode.outputs.mode == 'summary'
+        if: steps.mode.outputs.mode == 'summary' || steps.mode.outputs.mode == 'hourly_summary'
         uses: actions/upload-artifact@v4
         with:
           name: hourly-canary-summary

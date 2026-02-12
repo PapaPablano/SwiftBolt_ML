@@ -6,6 +6,7 @@ to learn optimal layer weights for the main daily forecast system.
 
 import argparse
 import logging
+import os
 import sys
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
@@ -28,9 +29,12 @@ from src.features.technical_indicators import add_technical_features  # noqa: E4
 from src.forecast_synthesizer import ForecastSynthesizer  # noqa: E402
 from src.forecast_weights import get_default_weights  # noqa: E402
 from src.models.arima_garch_forecaster import ArimaGarchForecaster  # noqa: E402
-from src.models.baseline_forecaster import BaselineForecaster  # noqa: E402
+from src.models.baseline_forecaster import BASELINE_START_IDX, BaselineForecaster  # noqa: E402
 from src.models.ensemble_forecaster import EnsembleForecaster  # noqa: E402
 from src.models.xgboost_forecaster import XGBoostForecaster  # noqa: E402
+from src.models.state_space_kalman_forecaster import (  # noqa: E402
+    StateSpaceKalmanForecaster,
+)
 from src.services.forecast_bar_writer import (  # noqa: E402
     path_points_to_bars,
     upsert_forecast_bars,
@@ -58,11 +62,12 @@ HORIZON_CONFIG = {
         "timeframe": "m15",
         "bars_per_hour": 4,
         "forecast_bars": 4,  # L1 4-bar multi-step (1 hour ahead)
-        "min_training_bars": 60,  # ~1 trading day (reduced from 100)
+        "min_training_bars": 60,  # Fetcher adds +1 for return-based models (Kalman: 61 OHLC -> 60 returns)
         "indicator_scale": 0.25,  # Scale down indicator periods
         "use_advanced_ensemble": False,  # Keep basic for speed
         "use_walk_forward": False,  # Too short for walk-forward validation
         "horizon_days": 0.0417,  # 4 * 15m / 86400 (time_scale_days for synthesizer)
+        "kalman_weight": 0.15,  # Blend weight for StateSpaceKalmanForecaster (0 disables)
     },
     "1h": {
         "timeframe": "h1",
@@ -73,6 +78,7 @@ HORIZON_CONFIG = {
         "use_advanced_ensemble": False,  # Keep basic for speed
         "use_walk_forward": False,  # Too short for walk-forward validation
         "horizon_days": 0.0417,  # 1 * 1h / 86400
+        "kalman_weight": 0.15,  # Blend weight for StateSpaceKalmanForecaster (0 disables)
     },
     # Medium-term horizons with walk-forward validation (prevents overfitting)
     "4h": {
@@ -172,6 +178,73 @@ def _blend_xgb_into_ensemble_pred(
     }
     weights_dict = ensemble_pred.setdefault("weights", {})
     weights_dict["xgb"] = w
+
+    ensemble_pred["label"] = label
+    ensemble_pred["confidence"] = confidence
+    ensemble_pred["probabilities"] = P_blend
+    ensemble_pred["agreement"] = agreement_new
+    ensemble_pred["n_models"] = n_models_base + 1
+
+
+def _blend_kalman_into_ensemble_pred(
+    ensemble_pred: Dict,
+    kalman_pred: dict,
+    w: float,
+) -> None:
+    """Blend Kalman/SARIMAX directional probabilities into ensemble_pred.
+
+    kalman_pred is expected to contain:
+    - label: bullish|neutral|bearish
+    - confidence: float
+    - probabilities: dict(bullish, neutral, bearish)
+
+    This mirrors the XGB blending pattern but uses a full 3-class distribution.
+    """
+    if not kalman_pred:
+        return
+
+    Kp = (kalman_pred.get("probabilities") or {}).copy()
+    if not Kp:
+        # Fallback to 2-class mapping if only a label is provided
+        k_label = str(kalman_pred.get("label", "neutral")).lower()
+        if k_label == "bullish":
+            Kp = {"bullish": 0.70, "neutral": 0.20, "bearish": 0.10}
+        elif k_label == "bearish":
+            Kp = {"bullish": 0.10, "neutral": 0.20, "bearish": 0.70}
+        else:
+            Kp = {"bullish": 0.20, "neutral": 0.60, "bearish": 0.20}
+
+    E = ensemble_pred.get("probabilities") or {}
+    for k in ("bullish", "neutral", "bearish"):
+        E[k] = float(E.get(k, 0.0))
+        Kp[k] = float(Kp.get(k, 0.0))
+
+    P_blend = {k: (1.0 - w) * E[k] + w * Kp[k] for k in ("bullish", "neutral", "bearish")}
+    total = sum(P_blend.values())
+    if total <= 0:
+        return
+    for k in P_blend:
+        P_blend[k] /= total
+
+    label_key = max(P_blend, key=P_blend.get)
+    label = label_key.capitalize()
+    confidence = P_blend[label_key]
+
+    n_models_base = int(ensemble_pred.get("n_models", 2))
+    agreement_old = float(ensemble_pred.get("agreement", 0.0))
+
+    kalman_label = str(kalman_pred.get("label", "neutral")).lower()
+    kalman_label = "neutral" if kalman_label not in ("bullish", "bearish", "neutral") else kalman_label
+    kalman_agrees = 1.0 if kalman_label == label_key else 0.0
+    agreement_new = (agreement_old * n_models_base + kalman_agrees) / (n_models_base + 1)
+
+    comp = ensemble_pred.setdefault("component_predictions", {})
+    comp["kalman"] = {
+        "label": kalman_label.capitalize(),
+        "confidence": float(kalman_pred.get("confidence", 0.0) or 0.0),
+    }
+    weights_dict = ensemble_pred.setdefault("weights", {})
+    weights_dict["kalman"] = float(w)
 
     ensemble_pred["label"] = label
     ensemble_pred["confidence"] = confidence
@@ -703,12 +776,31 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
 
     timeframe = config["timeframe"]
     min_bars = config["min_training_bars"]
+    # Return-based models (Kalman) need len(returns)>=min_bars; returns=pct_change().dropna() -> len(df)-1
+    fetch_limit = min_bars + 1 if config.get("kalman_weight", 0) else min_bars
+
+    # Baseline uses start_idx and end_idx=len(df)-lookahead; need len(X)>=min_bars -> len(df)>=start+lookahead+min_bars
+    lookahead_bars = int(config.get("forecast_bars", 1))
+    baseline_required_ohlc = BASELINE_START_IDX + min_bars + lookahead_bars + 10  # buffer for NaNs
+    fetch_limit = max(fetch_limit, baseline_required_ohlc)
 
     logger.info("Processing %s intraday forecast for %s", horizon, symbol)
+    logger.info("%s %s: fetch_limit=%d (min_bars=%d, lookahead=%d)", symbol, timeframe, fetch_limit, min_bars, lookahead_bars)
 
     try:
         # Fetch intraday bars
-        df = db.fetch_ohlc_bars(symbol, timeframe=timeframe, limit=min_bars)
+        df = db.fetch_ohlc_bars(symbol, timeframe=timeframe, limit=fetch_limit)
+        n_ohlc = len(df)
+        n_returns = len(df["close"].pct_change().dropna()) if n_ohlc > 0 and "close" in df.columns else 0
+        logger.info(
+            "%s %s: OHLC rows=%d, post-pct_change returns=%d (min_bars=%d)",
+            symbol,
+            timeframe,
+            n_ohlc,
+            n_returns,
+            min_bars,
+        )
+        logger.info("%s %s: df.columns=%s", symbol, timeframe, list(df.columns))
 
         # Fallback: For h8 timeframe, try aggregating from h4 if no h8 data available
         if len(df) == 0 and timeframe == "h8":
@@ -936,7 +1028,6 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                                     wf_result.get("divergence", 0) * 100,
                                 )
                                 # Recreate ensemble with 2-model core only
-                                import os
                                 old_model_count = os.environ.get("ENSEMBLE_MODEL_COUNT", "2")
                                 os.environ["ENSEMBLE_MODEL_COUNT"] = "2"
                                 ensemble = get_production_ensemble(
@@ -1021,7 +1112,7 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                                 )
 
                 except Exception as e:
-                    logger.warning("Ensemble training failed for %s: %s", symbol, e)
+                    logger.warning("Ensemble training failed for %s: %s", symbol, e, exc_info=True)
         else:
             logger.warning(
                 "Insufficient training samples for %s: %d (need %d). Using fallback.",
@@ -1057,6 +1148,84 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                 label,
                 confidence * 100,
             )
+
+        # Kalman/SARIMAX blend (15m/1h only, before synthesizer so blend affects forecast)
+        kalman_debug = None
+        try:
+            kalman_weight = float(config.get("kalman_weight", 0.0) or 0.0)
+        except Exception:
+            kalman_weight = 0.0
+        enable_kalman = os.environ.get("ENABLE_KALMAN_INTRADAY", "true").strip().lower() in {"1", "true", "yes", "y", "on"}
+        if ensemble_pred and 0.0 < kalman_weight < 1.0 and enable_kalman:
+            try:
+                if "garch_vol_regime" in df.columns and df["garch_vol_regime"].notna().any():
+                    df["_kalman_vol_regime"] = df["garch_vol_regime"].astype(float)
+                elif "atr_normalized" in df.columns and df["atr_normalized"].notna().any():
+                    _atr = df["atr_normalized"].astype(float)
+                    p33 = float(_atr.dropna().quantile(0.33))
+                    p67 = float(_atr.dropna().quantile(0.67))
+                    regime = pd.Series(1.0, index=df.index)
+                    regime[_atr < p33] = 0.0
+                    regime[_atr > p67] = 2.0
+                    df["_kalman_vol_regime"] = regime
+                else:
+                    df["_kalman_vol_regime"] = 1.0
+
+                exog_cols = ["kdj_j_divergence", "supertrend_trend", "_kalman_vol_regime"]
+                # Kalman needs len(returns)>=min_bars; returns=pct_change().dropna() -> len(df)-1
+                # Fetcher already requests min_bars+1 when kalman_weight>0, so len(df)>=min_bars+1
+                kalman_min_bars = min_bars  # min_bars = required returns count
+                if all(c in df.columns for c in exog_cols) and len(df) >= fetch_limit:
+                    kalman = StateSpaceKalmanForecaster(
+                        horizon=horizon,
+                        arima_order=(1, 0, 1),
+                        bullish_threshold=0.002,
+                        bearish_threshold=-0.002,
+                        min_bars=kalman_min_bars,
+                    )
+                    kalman.train(df, exog_cols=exog_cols)
+                    kalman_pred = kalman.predict(df.tail(1), exog_cols=exog_cols)
+
+                    if kalman_pred:
+                        health = kalman_pred.get("kalman_health") or {}
+                        converged = bool(health.get("converged", False))
+                        exog_missing_rate = float(health.get("exog_missing_rate", 0.0))
+                        exog_ok = exog_missing_rate <= 0.20  # heavy ffill/bfill = stale exog
+                        effective_weight = kalman_weight if (converged and exog_ok) else 0.0
+                        if effective_weight > 0:
+                            _blend_kalman_into_ensemble_pred(ensemble_pred, kalman_pred, effective_weight)
+                        kalman_debug = {
+                            "drift": kalman_pred.get("kalman_drift"),
+                            "forecast_return": kalman_pred.get("forecast_return"),
+                            "exog_coeffs": kalman_pred.get("kalman_exog_coeffs"),
+                            "label": kalman_pred.get("label"),
+                            "confidence": kalman_pred.get("confidence"),
+                            "health": kalman_pred.get("kalman_health"),
+                        }
+                        if not converged:
+                            logger.debug(
+                                "%s %s: Kalman fit not converged, blend disabled (w=0)",
+                                symbol,
+                                horizon,
+                            )
+                        elif not exog_ok:
+                            logger.debug(
+                                "%s %s: Kalman exog_missing_rate=%.2f > 0.20, blend disabled (w=0)",
+                                symbol,
+                                horizon,
+                                exog_missing_rate,
+                            )
+                        else:
+                            logger.debug(
+                                "%s %s: Kalman blend w=%.2f -> %s (%.0f%%)",
+                                symbol,
+                                horizon,
+                                effective_weight,
+                                ensemble_pred.get("label"),
+                                ensemble_pred.get("confidence", 0) * 100,
+                            )
+            except Exception as e:
+                logger.warning("Kalman/SARIMAX component failed for %s %s: %s", symbol, horizon, e)
 
         # Option B: recent residuals as features for next inference (horizon+1 without retraining)
         recent_residuals = db.get_recent_intraday_residuals(symbol_id, horizon, limit=20)
@@ -1159,7 +1328,15 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
         # Storage contract: step 1 = first future bar. build_intraday_short_points emits anchor at i=0 then
         # future points; slice off the anchor so we only persist future steps (step 1, 2, ...).
         short_points_future = short_points[1:] if len(short_points) > 1 else []
-        synthesis_data = {"ensemble_result": ensemble_pred} if ensemble_pred else None
+
+        # Store synthesis details for auditing/debug.
+        if ensemble_pred:
+            synthesis_data = {"ensemble_result": ensemble_pred}
+            if kalman_debug:
+                synthesis_data["kalman"] = kalman_debug
+        else:
+            synthesis_data = None
+
         forecast_id = db.insert_intraday_forecast(
             symbol_id=symbol_id,
             symbol=symbol,
@@ -1263,6 +1440,34 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
         return False
 
 
+def _log_forecast_verification(horizon: str) -> None:
+    """Query ml_forecasts_intraday for recently created forecasts and log counts by symbol."""
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
+        resp = (
+            db.client.table("ml_forecasts_intraday")
+            .select("symbol")
+            .eq("horizon", horizon)
+            .gte("created_at", cutoff)
+            .execute()
+        )
+        rows = resp.data or []
+        from collections import Counter
+
+        counts = Counter(r.get("symbol", "") for r in rows if r.get("symbol"))
+        if counts:
+            logger.info(
+                "Post-write verification: %d forecasts in last 15m for %s (by symbol: %s)",
+                len(rows),
+                horizon,
+                dict(counts),
+            )
+        else:
+            logger.warning("Post-write verification: no ml_forecasts_intraday rows in last 15m for %s", horizon)
+    except Exception as e:
+        logger.debug("Forecast verification query failed: %s", e)
+
+
 def main() -> None:
     """Main entry point for intraday forecast job."""
     parser = argparse.ArgumentParser(description="Generate intraday forecasts")
@@ -1301,10 +1506,17 @@ def main() -> None:
     fail_count = 0
 
     for symbol in symbols:
-        if process_symbol_intraday(symbol, args.horizon, generate_paths=args.generate_paths):
-            success_count += 1
-        else:
+        try:
+            if process_symbol_intraday(symbol, args.horizon, generate_paths=args.generate_paths):
+                success_count += 1
+            else:
+                fail_count += 1
+        except Exception as e:
             fail_count += 1
+            logger.error("Per-symbol exception for %s: %s", symbol, e, exc_info=True)
+
+    # Post-write verification: verify forecasts were written
+    _log_forecast_verification(args.horizon)
 
     logger.info("=" * 60)
     logger.info("Intraday Forecast Job Complete")

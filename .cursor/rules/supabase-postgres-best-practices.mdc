@@ -1,0 +1,210 @@
+---
+description: Postgres performance optimization and best practices from Supabase. Use when writing SQL queries, designing schemas, implementing indexes, reviewing database performance, configuring connection pooling, or working with Row-Level Security (RLS).
+globs: "**/*.sql,**/migrations/**/*,ml/**/*.py"
+alwaysApply: false
+---
+# Supabase Postgres Best Practices
+
+Reference these guidelines when:
+- Writing SQL queries or designing schemas
+- Implementing indexes or query optimization
+- Reviewing database performance issues
+- Configuring connection pooling or scaling
+- Working with Row-Level Security (RLS)
+
+**Source:** [supabase/agent-skills](https://github.com/supabase/agent-skills) ( MIT License )
+
+---
+
+## Rule Categories by Priority
+
+| Priority | Category | Impact |
+|----------|----------|--------|
+| 1 | Query Performance | CRITICAL |
+| 2 | Connection Management | CRITICAL |
+| 3 | Security & RLS | CRITICAL |
+| 4 | Schema Design | HIGH |
+| 5 | Concurrency & Locking | MEDIUM-HIGH |
+| 6 | Data Access Patterns | MEDIUM |
+| 7 | Monitoring & Diagnostics | LOW-MEDIUM |
+| 8 | Advanced Features | LOW |
+
+---
+
+## 1. Query Performance (CRITICAL)
+
+### Add Indexes on WHERE and JOIN Columns
+
+Queries filtering or joining on unindexed columns cause full table scans.
+
+**Incorrect:**
+```sql
+select * from orders where customer_id = 123;
+-- Seq Scan on orders (cost=0.00..25000.00 rows=100 width=85)
+```
+
+**Correct:**
+```sql
+create index orders_customer_id_idx on orders (customer_id);
+select * from orders where customer_id = 123;
+-- Index Scan using orders_customer_id_idx
+```
+
+For JOINs, index the foreign key side:
+```sql
+create index orders_customer_id_idx on orders (customer_id);
+```
+
+### Create Composite Indexes for Multi-Column Queries
+
+Place equality columns first, range columns last.
+
+**Correct:**
+```sql
+create index orders_status_created_idx on orders (status, created_at);
+-- Works for: WHERE status = 'pending' AND created_at > '2024-01-01'
+-- Does NOT work for: WHERE created_at > '2024-01-01' (leftmost prefix rule)
+```
+
+### Choose the Right Index Type
+
+- **B-tree (default):** `=`, `<`, `>`, BETWEEN, IN, IS NULL
+- **GIN:** arrays, JSONB, full-text search (`@>`, `?`, `?&`, `?|`)
+- **GiST:** geometric data, range types, KNN queries
+- **BRIN:** large time-series tables (10-100x smaller)
+- **Hash:** equality-only (slightly faster than B-tree for `=`)
+
+```sql
+-- GIN for JSONB containment
+create index products_attrs_idx on products using gin (attributes);
+
+-- BRIN for time-series
+create index events_time_idx on events using brin (created_at);
+```
+
+### Use Partial Indexes for Filtered Queries
+
+```sql
+create index users_active_email_idx on users (email)
+where deleted_at is null;
+```
+
+---
+
+## 2. Connection Management (CRITICAL)
+
+### Use Connection Pooling
+
+Postgres connections are expensive (1-3MB RAM each). Use PgBouncer or Supabase pooler.
+
+- **Transaction mode:** connection returned after each transaction (best for most apps)
+- **Session mode:** needed for prepared statements, temp tables
+
+---
+
+## 3. Security & RLS (CRITICAL)
+
+### Enable Row Level Security for Multi-Tenant Data
+
+**Correct:**
+```sql
+alter table orders enable row level security;
+create policy orders_user_policy on orders
+ for all
+ to authenticated
+ using (user_id = auth.uid());
+alter table orders force row level security;
+```
+
+---
+
+## 4. Schema Design (HIGH)
+
+### Select Optimal Primary Key Strategy
+
+- Single database: `bigint identity` (sequential, SQL-standard)
+- Distributed/exposed IDs: UUIDv7 (time-ordered) or ULID
+- Avoid random UUIDs (v4) as PK on large tables (causes index fragmentation)
+
+**Correct:**
+```sql
+create table users (
+ id bigint generated always as identity primary key
+);
+
+-- For distributed: UUIDv7 (requires pg_uuidv7 extension)
+create table orders (
+ id uuid default uuid_generate_v7() primary key
+);
+```
+
+### Use Lowercase Identifiers
+
+PostgreSQL folds unquoted identifiers to lowercase. Use lowercase snake_case.
+
+**Correct:**
+```sql
+CREATE TABLE users (
+ user_id bigint PRIMARY KEY,
+ first_name text,
+ last_name text
+);
+```
+
+---
+
+## 5. Data Access Patterns (MEDIUM)
+
+### Batch INSERT for Bulk Data
+
+**Incorrect:** Individual inserts (1000 round trips)
+**Correct:** Multiple rows per statement or COPY
+
+```sql
+insert into events (user_id, action) values
+ (1, 'click'),
+ (1, 'view'),
+ (2, 'click');
+```
+
+### Use Cursor-Based Pagination Instead of OFFSET
+
+OFFSET scans all skipped rows. Cursor pagination is O(1).
+
+**Correct:**
+```sql
+-- Page 1
+select * from products order by id limit 20;
+-- Store last_id = 20
+
+-- Page 2
+select * from products where id > 20 order by id limit 20;
+```
+
+For multi-column sort:
+```sql
+where (created_at, id) > ('2024-01-15 10:00:00', 12345)
+order by created_at, id limit 20;
+```
+
+---
+
+## 6. Monitoring & Diagnostics
+
+### Use EXPLAIN ANALYZE to Diagnose Slow Queries
+
+```sql
+explain (analyze, buffers, format text)
+select * from orders where customer_id = 123 and status = 'pending';
+```
+
+Look for: Seq Scan on large tables, Rows Removed by Filter, Buffers read >> hit.
+
+---
+
+## References
+
+- [PostgreSQL Docs](https://www.postgresql.org/docs/current/)
+- [Supabase Docs](https://supabase.com/docs)
+- [Supabase Connection Pooling](https://supabase.com/docs/guides/database/connecting-to-postgres#connection-pooler)
+- [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)

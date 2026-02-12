@@ -4,6 +4,7 @@ Roundtrip integration test: ml_forecasts_intraday → /chart and /chart-data-v2.
 Inserts a canonical diagnostic row, calls both endpoints, asserts:
 - chart: ts remains ISO string; extended keys (ohlc, indicators) preserved.
 - chart-data-v2: ts is integer (unix seconds); extended keys preserved; 4h_trading → h4.
+- first stored point is strictly in the future vs current bar time (anchor-removal contract).
 
 Run with SUPABASE_URL and SUPABASE_ANON_KEY (or SERVICE_ROLE_KEY) set; uses symbols.ticker.
 Skips if env not set. Cleans up the inserted row after the test.
@@ -14,15 +15,20 @@ from __future__ import annotations
 import json
 import os
 import urllib.request
+from datetime import datetime
 
 import pytest
 
 # Mark as integration so CI can skip without env
 pytestmark = pytest.mark.integration
 
+# Current bar (anchor) time: 15:15 UTC. First stored point must be strictly after this (short-points path slices off anchor).
+CURRENT_BAR_TS_ISO = "2026-02-10T15:15:00Z"
+CURRENT_BAR_TS_SEC = int(datetime.fromisoformat(CURRENT_BAR_TS_ISO.replace("Z", "+00:00")).timestamp())
+
 DIAGNOSTIC_POINTS = [
     {
-        "ts": "2026-02-10T15:30:00Z",
+        "ts": "2026-02-10T15:30:00Z",  # first future bar (step 1); must be > CURRENT_BAR_TS
         "value": 246.123456,
         "lower": 244.0,
         "upper": 248.0,
@@ -166,6 +172,13 @@ def test_chart_roundtrip_iso_and_extended_fields():
         assert p0.get("value") == 246.123456, "chart must return diagnostic value"
         assert isinstance(p0.get("ts"), str), "chart must keep ts as ISO string"
         assert "ohlc" in p0 and "indicators" in p0, "chart must preserve ohlc and indicators (no truncation)"
+        # Anchor-removal contract: first stored point must be strictly after current bar time
+        first_ts_str = p0.get("ts")
+        first_ts_sec = int(datetime.fromisoformat(first_ts_str.replace("Z", "+00:00")).timestamp())
+        assert first_ts_sec > CURRENT_BAR_TS_SEC, (
+            "first stored point must be strictly in the future vs current bar (anchor not persisted); "
+            f"got first_ts={first_ts_str} ({first_ts_sec}), current_bar={CURRENT_BAR_TS_ISO} ({CURRENT_BAR_TS_SEC})"
+        )
 
         # chart-data-v2: ts is integer (unix seconds); extended keys; 4h_trading → h4
         v2_body = _call_chart_data_v2(base, key)
@@ -176,6 +189,12 @@ def test_chart_roundtrip_iso_and_extended_fields():
         assert v2_0.get("value") == 246.123456
         assert isinstance(v2_0.get("ts"), int), "chart-data-v2 must return ts as integer (unix seconds)"
         assert "ohlc" in v2_0 and "indicators" in v2_0, "chart-data-v2 must preserve extended fields"
+        # Same anchor-removal contract for v2 response
+        first_ts_int = v2_0.get("ts")
+        assert first_ts_int > CURRENT_BAR_TS_SEC, (
+            "first stored point must be strictly in the future vs current bar (anchor not persisted); "
+            f"got first_ts={first_ts_int}, current_bar_sec={CURRENT_BAR_TS_SEC}"
+        )
         if len(v2_pts) >= 2:
             assert v2_pts[1].get("timeframe") == "h4", "chart-data-v2 must normalize 4h_trading → h4"
     finally:

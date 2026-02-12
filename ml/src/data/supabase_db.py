@@ -139,10 +139,11 @@ class SupabaseDatabase:
                     }
                     effective_limit = default_caps.get(timeframe)
 
-                # Supabase caps at 1000 rows per request; paginate when limit > 1000
+                # Supabase caps at 1000 rows per request; paginate using cursor (O(1))
+                # instead of OFFSET (scans all skipped rows)
                 _SUPABASE_MAX_ROWS = 1000
                 all_rows: list[dict] = []
-                offset = 0
+                cursor_ts: str | None = None
                 while True:
                     chunk_size = min(
                         _SUPABASE_MAX_ROWS,
@@ -157,19 +158,21 @@ class SupabaseDatabase:
                         .eq("timeframe", timeframe)
                         .eq("is_forecast", False)
                         .order("ts", desc=True)
+                        .limit(chunk_size)
                     )
                     if end_ts is not None:
                         ts_iso = pd.to_datetime(end_ts).isoformat()
                         chunk_query = chunk_query.lt("ts", ts_iso)
                     if provider:
                         chunk_query = chunk_query.eq("provider", provider)
-                    chunk_query = chunk_query.range(offset, offset + chunk_size - 1)
+                    if cursor_ts is not None:
+                        chunk_query = chunk_query.lt("ts", cursor_ts)
                     response = chunk_query.execute()
                     chunk = response.data or []
                     all_rows.extend(chunk)
                     if len(chunk) < chunk_size:
                         break
-                    offset += chunk_size
+                    cursor_ts = chunk[-1]["ts"]
                     if effective_limit and len(all_rows) >= effective_limit:
                         break
 

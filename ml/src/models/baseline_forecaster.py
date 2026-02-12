@@ -22,6 +22,8 @@ from src.monitoring.confidence_calibrator import ConfidenceCalibrator
 
 logger = logging.getLogger(__name__)
 
+# Min lookback for lags/supertrend in prepare_training_data; must match start_idx below
+BASELINE_START_IDX = 50
 
 # Default label encoding (3-class); binary uses dynamic 0/1 from unique y
 LABEL_DECODE = {0: "bearish", 1: "neutral", 2: "bullish"}
@@ -94,8 +96,8 @@ class BaselineForecaster:
         valid_samples = 0
         nan_returns = 0
 
-        # Min lookback 50 bars (lags/supertrend); sma_200 uses min_periods=1 so valid from row 0
-        start_idx = 50
+        # Min lookback for lags/supertrend; sma_200 uses min_periods=1 so valid from row 0
+        start_idx = BASELINE_START_IDX
         end_idx = len(df) - horizon_days_int
         
         logger.debug(
@@ -187,8 +189,8 @@ class BaselineForecaster:
         X_list: list[dict[str, Any]] = []
         y_list: list[str] = []
 
-        # Min lookback 50 bars (lags/supertrend); sma_200 uses min_periods=1 so valid from row 0
-        start_idx = 50
+        # Min lookback for lags/supertrend; sma_200 uses min_periods=1 so valid from row 0
+        start_idx = BASELINE_START_IDX
         end_idx = len(df) - horizon_days_int
         filtered_out = 0
 
@@ -376,8 +378,9 @@ class BaselineForecaster:
         if not self.is_trained:
             raise ValueError("Model must be trained before prediction")
 
-        # Check if X is OHLC data (has 'close' column) or features
-        if X is not None and 'close' in X.columns:
+        # Check if X is OHLC data (has full open/high/low/close) or precomputed features
+        ohlc_cols = {"open", "high", "low", "close"}
+        if X is not None and ohlc_cols.issubset(X.columns):
             # OHLC data - run same pipeline as training so feature columns match
             df = compute_simplified_features(X.copy(), sentiment_series=None)
             engineer = TemporalFeatureEngineer()
@@ -390,8 +393,11 @@ class BaselineForecaster:
             if X_features is None:
                 raise ValueError("No features provided and no cached dataframe available")
 
-        # Ensure features match training
-        X_features = X_features[self.feature_columns]
+        # Ensure features match training; convert non-numeric (e.g. Timestamp) to avoid scaler float() errors
+        X_features = X_features[self.feature_columns].copy()
+        for col in X_features.columns:
+            if not np.issubdtype(X_features[col].dtype, np.number):
+                X_features[col] = pd.to_numeric(X_features[col], errors="coerce").fillna(0)
 
         # Scale features
         X_scaled = self.scaler.transform(X_features)

@@ -190,6 +190,10 @@ class EnsembleForecaster:
                 "Insufficient numeric training data for ensemble training"
             )
 
+        # Impute NaNs before SMOTE (SMOTE rejects missing values)
+        numeric_features = numeric_features.replace([np.inf, -np.inf], np.nan)
+        numeric_features = numeric_features.fillna(numeric_features.median(numeric_only=True)).fillna(0)
+
         # Dynamically set k_neighbors based on smallest class size
         min_class_count = labels_series.value_counts().min()
         k_neighbors = min(5, min_class_count - 1) if min_class_count > 1 else 0
@@ -207,16 +211,19 @@ class EnsembleForecaster:
             pd.Series(y_balanced).value_counts().to_dict(),
         )
 
-        # Train RF (expects string labels)
+        # Train RF (XGBClassifier expects integer labels 0,1,2 for multiclass)
         rf_labels = pd.Series(y_balanced)
-        if rf_labels.dtype in [np.int64, np.int32, int]:
-            label_map = {-1: "bearish", 0: "neutral", 1: "bullish"}
-            rf_labels = rf_labels.map(label_map)
+        if rf_labels.dtype == object or (rf_labels.dtype in [np.int64, np.int32] and rf_labels.min() < 0):
+            # Encode strings or -1/0/1 to 0,1,2 (bearish, neutral, bullish)
+            encode_map = {"bearish": 0, "neutral": 1, "bullish": 2, "Bearish": 0, "Neutral": 1, "Bullish": 2}
+            encode_map.update({-1: 0, 0: 1, 1: 2})
+            rf_labels = rf_labels.map(lambda x: encode_map.get(x, encode_map.get(str(x).lower(), 1)))
+        self.rf_model._label_decode = {0: "bearish", 1: "neutral", 2: "bullish"}
 
         self.rf_model.feature_columns = numeric_features.columns.tolist()
         self.scaler.fit(X_balanced)
         X_scaled = self.scaler.transform(X_balanced)
-        self.rf_model.model.fit(X_scaled, rf_labels)
+        self.rf_model.model.fit(X_scaled, rf_labels.values.astype(int))
         self.rf_model.is_trained = True
         rf_accuracy = self.rf_model.model.score(X_scaled, rf_labels)
         logger.info("  RF trained (accuracy: %.3f)", rf_accuracy)

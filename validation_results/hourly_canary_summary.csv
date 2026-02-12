@@ -1,0 +1,1 @@
+symbol,target_ts_utc,target_time_cst,predicted_close,realized_close,error_abs,error_pct,predicted_direction,realized_direction,direction_correct,turn_detected,pred_provider,real_provider

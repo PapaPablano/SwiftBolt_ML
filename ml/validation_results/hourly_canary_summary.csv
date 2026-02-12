@@ -1,7 +1,1 @@
-symbol,target_ts_utc,target_time_cst,predicted_close,realized_close,error_abs,error_pct,pred_provider,real_provider
-AAPL,2026-02-06T15:30:00+00:00,09:30,279.8859,279.53,0.35590000000001965,0.0012715896013340423,ml_forecast,alpaca
-AAPL,2026-02-06T16:30:00+00:00,10:30,279.9918,279.36,0.6317999999999984,0.002256494654486304,ml_forecast,alpaca
-AAPL,2026-02-06T17:30:00+00:00,11:30,280.0976,278.305,1.792599999999993,0.006399912030663572,ml_forecast,alpaca
-AAPL,2026-02-06T18:30:00+00:00,12:30,280.2035,277.615,2.5885000000000105,0.009237928862416101,ml_forecast,alpaca
-AAPL,2026-02-06T19:30:00+00:00,13:30,280.3094,277.295,3.0143999999999664,0.010753831302125318,ml_forecast,alpaca
-AAPL,2026-02-06T20:30:00+00:00,14:30,280.4153,278.11,2.3052999999999884,0.008221020750294255,ml_forecast,alpaca
+symbol,target_ts_utc,target_time_cst,predicted_close,realized_close,error_abs,error_pct,predicted_direction,realized_direction,direction_correct,turn_detected,pred_provider,real_provider,pred_source

@@ -48,12 +48,13 @@ gh workflow run daily-data-refresh.yml -f timeframe=d1
 
 ### 2. Intraday Ingestion (`intraday-ingestion.yml`)
 
-**Fetches fresh intraday OHLC data during market hours.**
+**Fetches fresh intraday OHLC data during market hours. Runs before forecast so data is fresh.**
 
 | Property | Value |
 |----------|-------|
-| Schedule | `*/15 13-22 * * 1-5` (every 15 min, market hours) |
-| Trigger | `schedule` + `workflow_dispatch` |
+| Schedule | `*/15 13-22 * * 1-5` (UTC): every 15 min at :00, :15, :30, :45 |
+| UTC window | 13:00–22:59 UTC ≈ 8:00–17:59 ET |
+| Concurrency | `intraday-ingestion-*`; forecast runs at :05,:20,:35,:50 to avoid overlap |
 
 #### Inputs
 
@@ -67,12 +68,15 @@ gh workflow run daily-data-refresh.yml -f timeframe=d1
 
 ### 3. Intraday Forecast (`intraday-forecast.yml`)
 
-**Generates intraday forecasts on schedule or manual trigger.**
+**Generates intraday forecasts on schedule or manual trigger. Writes to `ml_forecasts_intraday`.**
 
 | Property | Value |
 |----------|-------|
-| Schedule | `5,20,35,50 13-22 * * 1-5` (5 min offset) |
-| Trigger | `schedule` + `workflow_dispatch` |
+| Schedule | `5,20,35,50 13-22 * * 1-5` (UTC): 5 min after each quarter-hour, Mon–Fri |
+| UTC window | 13:00–22:59 UTC ≈ 8:00–17:59 ET (market + extended) |
+| Concurrency | `intraday-forecast-*`; does not overlap ingestion (ingestion at :00,:15,:30,:45) |
+| CLI (from `ml/`) | `python -m src.intraday_forecast_job --horizon 15m` (or 1h, 4h, 8h, 1D / all) |
+| Horizons | 15m (4-step = 1h ahead), 1h, 4h, 8h, 1D; manual can pass `--symbol SPY` for canary-only |
 
 ---
 
@@ -188,6 +192,7 @@ Shared setup for ML Python environment with caching.
 |-------|----------|
 | `ohlc_bars_v2` | Daily Data Refresh, Intraday Ingestion |
 | `indicator_values` | Intraday Forecast |
+| `ml_forecasts_intraday` | Intraday Forecast (15m/1h/4h/8h/1D points) |
 | `ml_forecasts` | ML Orchestration |
 | `forecast_evaluations` | ML Orchestration (model-health) |
 | `model_weights` | ML Orchestration (model-health) |
@@ -202,6 +207,35 @@ Shared setup for ML Python environment with caching.
 
 ---
 
+## Live market test (15m forecasts + hourly validation)
+
+**Pre-open wiring check**
+
+1. Run **Test Workflow Fixes** (`.github/workflows/test-workflow-fixes.yml`) with `test_type=integration` (or `all`) to confirm secrets, `setup-ml-env`, and DB connectivity.
+2. Required secrets: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `ALPACA_API_KEY`, `ALPACA_API_SECRET`.
+
+**Every 15 minutes (market hours)**
+
+- **Intraday Ingestion** runs at :00, :15, :30, :45 UTC (13–22 UTC Mon–Fri).
+- **Intraday Forecast** runs at :05, :20, :35, :50 UTC and calls (from `ml/`):
+  - `python -m src.intraday_forecast_job --horizon 15m` (and 1h, 4h, 8h, 1D when horizon=all).
+- 15m horizon uses 4-step multi-step (1 hour ahead) and writes to `ml_forecasts_intraday`. Manual run with a single symbol: `--symbol SPY`.
+
+**Hourly validation (“is it updating?”)**
+
+- **Hourly Canary (15m→1h)** (`.github/workflows/hourly-canary-15m.yml`):
+  - **Predict** (scheduled at 14:35–19:35 UTC): runs intraday forecast for canaries (AAPL, MSFT, SPY) with `--horizon 15m`.
+  - **Hourly summary** (scheduled at 15:40, 16:40, 17:40, 18:40, 19:40, 20:40 UTC): runs `hourly_canary_summary.py --forecast-source intraday` for the single :30 bar that just closed (09:30–14:30 CST). Confirms the latest `ml_forecasts_intraday` row (`created_at <= target`) vs realized closes; uploads artifact `hourly-canary-summary`.
+  - **EOD summary** (scheduled at 21:10 UTC): same script with all targets `09:30,10:30,...,14:30` CST for the full day.
+- Manual summary example (CST date, canaries):
+  ```bash
+  cd ml && python scripts/hourly_canary_summary.py \
+    --symbols SPY,AAPL,MSFT --date-cst 2026-02-12 \
+    --forecast-source intraday --out validation_results/hourly_canary_summary.csv
+  ```
+- The script reports whether it used `points_exact`, `points_nearest`, or `target_price` for a quick check that 15m points align with target timestamps.
+
+---
 ## Troubleshooting
 
 ### Common Issues

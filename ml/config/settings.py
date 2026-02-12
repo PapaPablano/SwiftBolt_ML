@@ -1,5 +1,6 @@
 """Configuration settings for SwiftBolt ML pipeline."""
 
+import os
 from pathlib import Path
 
 from pydantic import field_validator
@@ -27,12 +28,16 @@ class Settings(BaseSettings):
     supabase_service_role_key: str | None = None
     # Direct Postgres connection string (optional for backfill)
     database_url: str | None = None
+    # Supabase connection pooler URL (port 6543) - prefer over direct for pooling
+    # Env: SUPABASE_DB_POOLER_URL or DATABASE_POOLER_URL
+    database_pooler_url: str | None = None
 
     @field_validator(
         "supabase_url",
         "supabase_key",
         "supabase_service_role_key",
         "database_url",
+        "database_pooler_url",
         "tradier_api_key",
         "alpaca_api_key",
         "alpaca_api_secret",
@@ -47,8 +52,18 @@ class Settings(BaseSettings):
             return v.strip()
         return v
 
+    def effective_database_url(self) -> str | None:
+        """Preferred DB URL for direct Postgres: pooler (port 6543) when set, else database_url."""
+        return self.database_pooler_url or self.database_url
+
     def model_post_init(self, __context) -> None:
         """Set service_role_key alias after init."""
+        # Prefer SUPABASE_DB_POOLER_URL if database_pooler_url not set
+        if self.database_pooler_url is None:
+            pooler = os.environ.get("SUPABASE_DB_POOLER_URL") or os.environ.get("DATABASE_POOLER_URL")
+            if pooler:
+                object.__setattr__(self, "database_pooler_url", pooler.strip())
+
         key_missing = self.supabase_key is None
         service_key = self.supabase_service_role_key
         if key_missing and service_key is not None:
@@ -102,6 +117,8 @@ class Settings(BaseSettings):
     enable_intraday_calibration: bool = True
     intraday_symbols: list[str] = [
         "AAPL",
+        "MSFT",
+        "SPY",
         "NVDA",
         "AMD",
         "PLTR",

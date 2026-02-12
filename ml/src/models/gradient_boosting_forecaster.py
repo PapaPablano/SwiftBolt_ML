@@ -19,6 +19,20 @@ from xgboost import XGBClassifier
 logger = logging.getLogger(__name__)
 
 
+def _log_feature_drift(
+    forecaster: "GradientBoostingForecaster", got_columns: pd.Index
+) -> None:
+    """Log when predict-time columns differ from training to catch pipeline drift."""
+    if forecaster.feature_names is None:
+        return
+    got = set(got_columns)
+    want = set(forecaster.feature_names)
+    if got != want:
+        missing = sorted(want - got)
+        extra = sorted(got - want)
+        logger.debug("GB feature drift: missing=%s extra=%s", missing, extra)
+
+
 class GradientBoostingForecaster:
     """
     Gradient Boosting classifier for stock direction prediction.
@@ -56,6 +70,7 @@ class GradientBoostingForecaster:
         self.model: XGBClassifier | None = None
         self.is_trained = False
         self.feature_names: List[str] | None = None
+        self.feature_medians_: Dict[str, float] = {}  # per-column median for predict-time imputation
         self.training_stats: Dict = {}
 
     def _build_model(self) -> XGBClassifier:
@@ -129,9 +144,11 @@ class GradientBoostingForecaster:
                 "Insufficient training data: " f"{features_df.shape[0]} rows (need >= 100)"
             )
 
-        # Handle NaNs conservatively (forward-fill, then zero-fill)
-        features_clean = features_df.copy()
-        features_clean = features_clean.ffill().fillna(0)
+        # Impute: forward-fill (preserves time continuity), then median, then 0 for all-missing
+        features_clean = features_df.copy().ffill()
+        medians = features_clean.median(numeric_only=True)
+        features_clean = features_clean.fillna(medians).fillna(0)
+        self.feature_medians_ = medians.to_dict()
         labels_clean = labels_series.copy()
 
         # Convert external labels (-1, 0, 1) to internal (0, 1, 2) for XGBoost
@@ -243,9 +260,21 @@ class GradientBoostingForecaster:
         if not self.is_trained:
             raise RuntimeError("Model not trained. Call train() first.")
 
-        # Use last row if DataFrame
+        # Use last row if DataFrame; ensure numeric-only (XGBoost DMatrix rejects Timestamp)
         if isinstance(features_df, pd.DataFrame):
-            features = features_df.iloc[-1:].values
+            X = features_df.iloc[-1:].copy()
+            # Align to training feature order; missing cols filled 0 to avoid silent drift
+            if self.feature_names is not None:
+                _log_feature_drift(self, features_df.columns)
+                X = X.reindex(columns=self.feature_names, fill_value=0)
+            for c in X.columns:
+                if not pd.api.types.is_numeric_dtype(X[c]):
+                    X[c] = pd.to_numeric(X[c], errors="coerce").fillna(0)
+            # median then 0 (single row: no ffill)
+            X = X.replace([np.inf, -np.inf], np.nan)
+            medians = getattr(self, "feature_medians_", {})
+            X = X.fillna(pd.Series(medians)).fillna(0)
+            features = X.values
         else:
             features = features_df
 
@@ -284,8 +313,22 @@ class GradientBoostingForecaster:
         if not self.is_trained:
             raise RuntimeError("Model not trained. Call train() first.")
 
-        predictions_internal = self.model.predict(features_df)
-        probabilities = self.model.predict_proba(features_df)
+        # Align to training feature order; missing cols filled 0 to avoid silent drift
+        X = features_df.copy()
+        if self.feature_names is not None:
+            _log_feature_drift(self, features_df.columns)
+            X = X.reindex(columns=self.feature_names, fill_value=0)
+        # Ensure numeric-only (XGBoost DMatrix rejects Timestamp)
+        for c in X.columns:
+            if not pd.api.types.is_numeric_dtype(X[c]):
+                X[c] = pd.to_numeric(X[c], errors="coerce").fillna(0)
+        # ffill (batch is time-ordered), median, then 0
+        X = X.replace([np.inf, -np.inf], np.nan)
+        medians = getattr(self, "feature_medians_", {})
+        X = X.ffill().fillna(pd.Series(medians)).fillna(0)
+
+        predictions_internal = self.model.predict(X)
+        probabilities = self.model.predict_proba(X)
 
         # Convert internal predictions to external labels
         predictions_external = [
@@ -328,7 +371,11 @@ class GradientBoostingForecaster:
         """Save trained model to disk."""
         with open(filepath, "wb") as f:
             pickle.dump(
-                {"model": self.model, "feature_names": self.feature_names},
+                {
+                    "model": self.model,
+                    "feature_names": self.feature_names,
+                    "feature_medians_": getattr(self, "feature_medians_", {}),
+                },
                 f,
             )
         logger.info(f"Model saved to {filepath}")
@@ -339,6 +386,7 @@ class GradientBoostingForecaster:
             data = pickle.load(f)
             self.model = data["model"]
             self.feature_names = data["feature_names"]
+            self.feature_medians_ = data.get("feature_medians_", {})
             self.is_trained = True
         logger.info(f"Model loaded from {filepath}")
         return self

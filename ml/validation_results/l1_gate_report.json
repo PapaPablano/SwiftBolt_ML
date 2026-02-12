@@ -1,9 +1,15 @@
 {
   "symbols": [
+    "AAPL",
+    "MSFT",
+    "SPY",
     "INTC",
     "F"
   ],
   "skipped_symbols": {
+    "AAPL": "no valid origins",
+    "MSFT": "insufficient time coverage",
+    "SPY": "no valid origins",
     "INTC": "symbol not in symbols table",
     "F": "symbol not in symbols table"
   },

@@ -20,10 +20,13 @@ class Database:
 
     def __init__(self) -> None:
         """Initialize database connection pool."""
+        dsn = settings.effective_database_url
+        if not dsn:
+            raise ValueError("database_url or database_pooler_url required for direct Postgres")
         self.pool = psycopg2.pool.SimpleConnectionPool(
             minconn=1,
             maxconn=10,
-            dsn=settings.database_url,
+            dsn=dsn,
         )
         logger.info("Database connection pool initialized")
 
