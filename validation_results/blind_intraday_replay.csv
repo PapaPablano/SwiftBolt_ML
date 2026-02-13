@@ -1,0 +1,1 @@
+timestamp,symbol,predicted_close,realized_close,error_pct,direction_correct,missing_realized

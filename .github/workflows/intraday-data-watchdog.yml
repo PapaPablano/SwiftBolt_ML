@@ -1,0 +1,154 @@
+name: Intraday Data Watchdog
+
+# =============================================================================
+# SAFETY NET: LOW-FREQUENCY DATA WATCHDOG
+# =============================================================================
+# Primary backfill is event-driven: intraday-forecast.yml checks m15 staleness
+# before forecasting and backfills only stale symbols. This workflow is a
+# low-frequency safety net in case forecast runs are skipped or backfill fails.
+#
+# Runs every 30 minutes during market hours. Checks canary symbols; if stale,
+# runs forced backfill for those symbols only.
+# =============================================================================
+
+on:
+  schedule:
+    # Every 30 minutes during extended market hours (9:00 AM - 5:00 PM ET)
+    # Cron is in UTC: ET is UTC-5 (winter) or UTC-4 (DST)
+    - cron: '*/30 14-22 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      symbols:
+        description: 'Comma-separated canary symbols to check'
+        required: false
+        type: string
+        default: 'AAPL,MSFT,SPY'
+
+concurrency:
+  group: intraday-watchdog-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+  ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+
+jobs:
+  check-market:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.market.outputs.should_run }}
+    steps:
+      - name: Check Market Hours
+        id: market
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          day_of_week=$(TZ="America/New_York" date +%u)
+          if [ "$day_of_week" -gt 5 ]; then
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          current_minutes=$(($(TZ="America/New_York" date +%H) * 60 + $(TZ="America/New_York" date +%M)))
+          pre_market=540
+          post_market=1020
+          if [ "$current_minutes" -lt "$pre_market" ] || [ "$current_minutes" -gt "$post_market" ]; then
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          echo "should_run=true" >> $GITHUB_OUTPUT
+
+  watchdog:
+    needs: check-market
+    if: needs.check-market.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup ML Environment
+        uses: ./.github/actions/setup-ml-env
+        with:
+          supabase-url: ${{ secrets.SUPABASE_URL }}
+          supabase-key: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          database-url: ${{ secrets.DATABASE_URL }}
+          alpaca-api-key: ${{ secrets.ALPACA_API_KEY }}
+          alpaca-api-secret: ${{ secrets.ALPACA_API_SECRET }}
+
+      - name: Check m15 staleness and backfill if needed
+        id: backfill
+        env:
+          CANARY_SYMBOLS: ${{ github.event_name == 'workflow_dispatch' && inputs.symbols || 'AAPL,MSFT,SPY' }}
+        run: |
+          cd ml
+          python -c "
+          import os
+          import subprocess
+          import sys
+          from datetime import datetime, timezone
+          from src.data.supabase_db import db
+
+          symbols = [s.strip().upper() for s in os.environ.get('CANARY_SYMBOLS', 'AAPL,MSFT,SPY').split(',') if s.strip()]
+          now_utc = datetime.now(timezone.utc)
+          stale_minutes = 25
+          stale_symbols = []
+
+          for sym in symbols:
+            r = db.client.table('symbols').select('id').eq('ticker', sym).limit(1).execute()
+            if not r.data:
+              stale_symbols.append(sym)
+              print(f'  {sym}: no symbol row')
+              continue
+            sid = r.data[0]['id']
+            q = db.client.table('ohlc_bars_v2').select('ts').eq('symbol_id', sid).eq('timeframe', 'm15').eq('is_forecast', False).order('ts', desc=True).limit(1).execute()
+            ts = q.data[0]['ts'] if q.data else None
+            if ts is None:
+              stale_symbols.append(sym)
+              print(f'  {sym}/m15: no data')
+              continue
+            latest = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            if latest.tzinfo is None:
+              latest = latest.replace(tzinfo=timezone.utc)
+            age_min = (now_utc - latest).total_seconds() / 60
+            print(f'  {sym}/m15: latest={ts}, age_min={age_min:.1f}')
+            if age_min > stale_minutes:
+              stale_symbols.append(sym)
+
+          if not stale_symbols:
+            print('All canary symbols have fresh m15 data. No backfill needed.')
+            out = os.environ.get('GITHUB_OUTPUT')
+            if out:
+              with open(out, 'a') as f:
+                f.write('backfill_needed=false\n')
+            sys.exit(0)
+
+          print(f'Stale/missing m15 for: {stale_symbols}. Running forced backfill.')
+          out = os.environ.get('GITHUB_OUTPUT')
+          if out:
+            with open(out, 'a') as f:
+              f.write('backfill_needed=true\n')
+              f.write(f'stale_symbols={chr(44).join(stale_symbols)}\n')
+
+          # Run forced backfill for stale symbols only (cwd is ml/ from run step)
+          rc = subprocess.call(
+            ['python', 'src/scripts/alpaca_backfill_ohlc_v2.py', '--symbols'] + stale_symbols + ['--timeframe', 'm15', '--force'],
+            cwd=os.getcwd()
+          )
+          sys.exit(rc)
+          "
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## Intraday Data Watchdog" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Backfill needed**: ${{ steps.backfill.outputs.backfill_needed || 'unknown' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Stale symbols**: ${{ steps.backfill.outputs.stale_symbols || 'none' }}" >> $GITHUB_STEP_SUMMARY

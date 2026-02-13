@@ -1,11 +1,11 @@
 name: Hourly Canary (15m->1h)
 
 on:
-  # Predict: 5 min after each :30 bar close (CST). 14:35..19:35 UTC
-  # Hourly summary: 10 min after each :30 bar close so realized bar is available. 15:40..20:40 UTC => validate 09:30..14:30 CST
+  # Predict: 15-min cadence (5 min after each quarter-hour bar close). 15:05..22:50 UTC
+  # Hourly summary: 10 min after each :30 bar close. 15:40..20:40 UTC => validate 09:30..14:30 CST
   # EOD summary: after regular close. 21:10 UTC
   schedule:
-    - cron: "35 14-19 * * 1-5"
+    - cron: "5,20,35,50 15-22 * * 1-5"
     - cron: "40 15-20 * * 1-5"
     - cron: "10 21 * * 1-5"
 
@@ -34,6 +34,11 @@ on:
         required: false
         type: string
         default: "09:30,10:30,11:30,12:30,13:30,14:30"
+      include_missing_realized:
+        description: "Include forecast rows with missing realized (debugging); writes missing_realized=true."
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: hourly-canary-${{ github.ref }}
@@ -101,12 +106,35 @@ jobs:
             python -m src.intraday_forecast_job --symbol "$sym" --horizon "15m"
           done
 
+      - name: Print latest ohlc_bars_v2 timestamps (realized m15)
+        if: steps.mode.outputs.mode == 'summary' || steps.mode.outputs.mode == 'hourly_summary'
+        env:
+          CANARY_SYMBOLS: ${{ github.event_name == 'workflow_dispatch' && inputs.symbols || 'AAPL,MSFT,SPY' }}
+        run: |
+          cd ml
+          python -c "
+          import os
+          from src.data.supabase_db import db
+          symbols = [s.strip().upper() for s in os.environ.get('CANARY_SYMBOLS', 'AAPL,MSFT,SPY').split(',') if s.strip()]
+          for sym in symbols:
+            r = db.client.table('symbols').select('id').eq('ticker', sym).limit(1).execute()
+            if not r.data:
+              print('  ', sym, ': no symbol row')
+              continue
+            sid = r.data[0]['id']
+            q = db.client.table('ohlc_bars_v2').select('ts').eq('symbol_id', sid).eq('timeframe', 'm15').eq('is_forecast', False).order('ts', desc=True).limit(1).execute()
+            ts = q.data[0]['ts'] if q.data else None
+            print('  ', sym, '/m15 realized: latest_ts=', ts)
+          "
+
       - name: Hourly summary (single target just closed)
         if: steps.mode.outputs.mode == 'hourly_summary'
         run: |
           cd ml
           mkdir -p validation_results
           SYMBOLS="${{ github.event_name == 'workflow_dispatch' && inputs.symbols || 'AAPL,MSFT,SPY' }}"
+          # Scheduled runs: default to --include-missing-realized until ingestion is stable. Dispatch: respect input.
+          MISSING_FLAG="${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.include_missing_realized == 'true')) && '--include-missing-realized' || '' }}"
           # CST = UTC-6 (winter). At 15:40 UTC we validate 09:30 CST; at 20:40 UTC we validate 14:30 CST.
           UTC_HOUR=$(date -u +%H | sed 's/^0//')
           CST_HOUR=$((UTC_HOUR - 6))
@@ -117,6 +145,7 @@ jobs:
             --date-cst "" \
             --targets-cst "$TARGET_CST" \
             --forecast-source intraday \
+            $MISSING_FLAG \
             --out "validation_results/hourly_canary_summary.csv"
 
       - name: End-of-day summary (predicted vs realized)
@@ -127,12 +156,15 @@ jobs:
           SYMBOLS="${{ github.event_name == 'workflow_dispatch' && inputs.symbols || 'AAPL,MSFT,SPY' }}"
           DATE_CST="${{ github.event_name == 'workflow_dispatch' && inputs.date_cst || '' }}"
           TARGETS_CST="${{ github.event_name == 'workflow_dispatch' && inputs.targets_cst || '09:30,10:30,11:30,12:30,13:30,14:30' }}"
+          # Scheduled: default to --include-missing-realized until ingestion stable. Dispatch: respect input.
+          MISSING_FLAG="${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.include_missing_realized == 'true')) && '--include-missing-realized' || '' }}"
 
           python scripts/hourly_canary_summary.py \
             --symbols "$SYMBOLS" \
             --date-cst "$DATE_CST" \
             --targets-cst "$TARGETS_CST" \
             --forecast-source intraday \
+            $MISSING_FLAG \
             --out "validation_results/hourly_canary_summary.csv"
 
       - name: Upload summary artifact

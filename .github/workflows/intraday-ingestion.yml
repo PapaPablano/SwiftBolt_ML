@@ -37,9 +37,11 @@ on:
         type: boolean
         default: false
 
+# cancel-in-progress: false so long runs aren't killed when the next 15m trigger fires.
+# The intraday-data-watchdog recovers from gaps if ingestion falls behind.
 concurrency:
   group: intraday-ingestion-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -135,12 +137,59 @@ jobs:
           cd ml
           python -m src.scripts.resolve_universe --output env >> $GITHUB_ENV
 
+      - name: Check m15 staleness (auto --force when stale)
+        id: staleness
+        env:
+          PRINT_SYMBOLS: ${{ inputs.symbols }}
+        run: |
+          cd ml
+          python -c "
+          import os
+          from datetime import datetime, timezone
+          from src.data.supabase_db import db
+
+          symbols_env = os.environ.get('SWIFTBOLT_SYMBOLS') or os.environ.get('PRINT_SYMBOLS') or 'AAPL,MSFT,SPY'
+          symbols = [s.strip().upper() for s in symbols_env.split(',') if s.strip()][:20]
+          now_utc = datetime.now(timezone.utc)
+          stale_minutes = 25
+          any_stale = False
+          any_missing = False
+
+          for sym in symbols:
+            r = db.client.table('symbols').select('id').eq('ticker', sym).limit(1).execute()
+            if not r.data:
+              continue
+            sid = r.data[0]['id']
+            q = db.client.table('ohlc_bars_v2').select('ts').eq('symbol_id', sid).eq('timeframe', 'm15').eq('is_forecast', False).order('ts', desc=True).limit(1).execute()
+            ts = q.data[0]['ts'] if q.data else None
+            if ts is None:
+              any_missing = True
+              print(f'  {sym}/m15: no data')
+              continue
+            latest = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            if latest.tzinfo is None:
+              latest = latest.replace(tzinfo=timezone.utc)
+            age_min = (now_utc - latest).total_seconds() / 60
+            print(f'  {sym}/m15: latest={ts}, age_min={age_min:.1f}')
+            if age_min > stale_minutes:
+              any_stale = True
+
+          m15_stale = any_stale or any_missing
+          print(f'm15 staleness: {m15_stale} (any_stale={any_stale}, any_missing={any_missing})')
+          out = os.environ.get('GITHUB_OUTPUT')
+          if out:
+            with open(out, 'a') as f:
+              f.write(f'm15_stale={str(m15_stale).lower()}\n')
+          " || echo "m15_stale=false" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
       - name: Fetch intraday data
         id: fetch
         env:
           INPUT_TIMEFRAMES: ${{ inputs.timeframes || 'm15,h1' }}
           INPUT_SYMBOLS: ${{ inputs.symbols }}
           FORCE_REFRESH: ${{ inputs.force_refresh }}
+          M15_STALE: ${{ steps.staleness.outputs.m15_stale }}
         run: |
           cd ml
           
@@ -150,9 +199,14 @@ jobs:
             SYMBOL_FLAG="--symbols $SYMBOL_LIST"
           fi
           
+          # --force for m15 when data is stale (avoids "recently updated" skip)
           FORCE_FLAG=""
           if [ "$FORCE_REFRESH" = "true" ]; then
             FORCE_FLAG="--force"
+          fi
+          FORCE_M15=""
+          if [ "$FORCE_REFRESH" = "true" ] || [ "$M15_STALE" = "true" ]; then
+            FORCE_M15="--force"
           fi
           
           total_bars=0
@@ -168,9 +222,15 @@ jobs:
             
             echo "📊 Fetching $tf data..."
             
+            # Use FORCE_M15 for m15 when stale; FORCE_FLAG for others
+            TF_FORCE="$FORCE_FLAG"
+            if [ "$tf" = "m15" ]; then
+              TF_FORCE="$FORCE_M15"
+            fi
+            
             # Capture full output and exit code
             set +e
-            output=$(python src/scripts/alpaca_backfill_ohlc_v2.py $SYMBOL_FLAG --timeframe $tf $FORCE_FLAG 2>&1)
+            output=$(python src/scripts/alpaca_backfill_ohlc_v2.py $SYMBOL_FLAG --timeframe $tf $TF_FORCE 2>&1)
             exit_code=$?
             set -e
             
@@ -215,6 +275,31 @@ jobs:
           else
             echo "status=success" >> $GITHUB_OUTPUT
           fi
+
+      - name: Print latest ohlc_bars_v2 timestamps (realized)
+        env:
+          PRINT_SYMBOLS: ${{ inputs.symbols }}
+          PRINT_TIMEFRAMES: ${{ inputs.timeframes || 'm15,h1' }}
+        run: |
+          cd ml
+          python -c "
+          import os
+          from src.data.supabase_db import db
+          symbols_env = os.environ.get('SWIFTBOLT_SYMBOLS') or os.environ.get('PRINT_SYMBOLS') or 'AAPL,MSFT,SPY'
+          timeframes_env = os.environ.get('SWIFTBOLT_TIMEFRAMES') or os.environ.get('PRINT_TIMEFRAMES') or 'm15,h1'
+          symbols = [s.strip().upper() for s in symbols_env.split(',') if s.strip()][:5]
+          timeframes = [t.strip().lower() for t in timeframes_env.split(',') if t.strip()]
+          print('Latest realized ohlc_bars_v2 ts (per symbol/timeframe):')
+          for sym in symbols:
+            r = db.client.table('symbols').select('id').eq('ticker', sym).limit(1).execute()
+            if not r.data:
+              continue
+            sid = r.data[0]['id']
+            for tf in timeframes:
+              q = db.client.table('ohlc_bars_v2').select('ts').eq('symbol_id', sid).eq('timeframe', tf).eq('is_forecast', False).order('ts', desc=True).limit(1).execute()
+              ts = q.data[0]['ts'] if q.data else None
+              print(' ', sym, tf, ':', ts)
+          "
 
       - name: Validate OHLC integrity
         continue-on-error: true

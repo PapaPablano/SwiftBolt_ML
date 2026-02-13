@@ -7,6 +7,7 @@ This document describes the consolidated GitHub Actions workflow architecture fo
 ```
 Daily Data Refresh (data ingestion only)
 Intraday Ingestion (data ingestion only)
+Intraday Data Watchdog (staleness check + forced backfill)
 
 ML Orchestration (schedule/manual)
 Intraday Forecast (schedule/manual)
@@ -54,7 +55,7 @@ gh workflow run daily-data-refresh.yml -f timeframe=d1
 |----------|-------|
 | Schedule | `*/15 13-22 * * 1-5` (UTC): every 15 min at :00, :15, :30, :45 |
 | UTC window | 13:00–22:59 UTC ≈ 8:00–17:59 ET |
-| Concurrency | `intraday-ingestion-*`; forecast runs at :05,:20,:35,:50 to avoid overlap |
+| Concurrency | `intraday-ingestion-*`; `cancel-in-progress: false` so long runs aren't killed |
 
 #### Inputs
 
@@ -63,6 +64,27 @@ gh workflow run daily-data-refresh.yml -f timeframe=d1
 | `symbols` | Comma-separated symbols | All watchlist |
 | `timeframes` | Comma-separated timeframes | `m15,h1` |
 | `force_refresh` | Force refresh even if data exists | `false` |
+
+**Notes:** Before fetch, the workflow **checks m15 staleness** (latest realized bar vs now). If any symbol's m15 is >25 min old or missing, it automatically passes `--force` for m15 so the backfill won't hit the "<24h skip" path. After fetch, prints **latest realized `ohlc_bars_v2` timestamp** per symbol/timeframe. Scheduled runs are gated by market hours (9–17 ET); manual dispatch bypasses gating. The **Intraday Data Watchdog** recovers from gaps if ingestion falls behind.
+
+---
+
+### 2b. Intraday Data Watchdog (`intraday-data-watchdog.yml`)
+
+**Low-frequency safety net.** Primary backfill is **event-driven** in `intraday-forecast.yml` (checks staleness before forecasting, backfills only stale symbols). This workflow runs every 30 min as a backup.
+
+| Property | Value |
+|----------|-------|
+| Schedule | `*/30 14-22 * * 1-5` (UTC): every 30 min during market hours |
+| Concurrency | `intraday-watchdog-*`; `cancel-in-progress: false` |
+
+#### Behavior
+
+1. Queries Supabase for latest realized m15 bar per canary symbol (AAPL, MSFT, SPY).
+2. If any symbol has no data or latest bar is >25 min old, runs forced backfill for those symbols only.
+3. Only backfills **stale symbols**, not the full watchlist.
+
+**Use case:** Safety net when forecast runs are skipped or event-driven backfill fails.
 
 ---
 
@@ -74,9 +96,11 @@ gh workflow run daily-data-refresh.yml -f timeframe=d1
 |----------|-------|
 | Schedule | `5,20,35,50 13-22 * * 1-5` (UTC): 5 min after each quarter-hour, Mon–Fri |
 | UTC window | 13:00–22:59 UTC ≈ 8:00–17:59 ET (market + extended) |
-| Concurrency | `intraday-forecast-*`; does not overlap ingestion (ingestion at :00,:15,:30,:45) |
+| Concurrency | `intraday-forecast-*`; `cancel-in-progress: false` (backfill step can run long) |
 | CLI (from `ml/`) | `python -m src.intraday_forecast_job --horizon 15m` (or 1h, 4h, 8h, 1D / all) |
 | Horizons | 15m (4-step = 1h ahead), 1h, 4h, 8h, 1D; manual can pass `--symbol SPY` for canary-only |
+
+**Event-driven backfill:** Before forecasting, checks m15 staleness for symbols being forecast. If any symbol's latest m15 bar is >25 min old or missing, runs forced backfill for **only those symbols**, then proceeds with forecast. "Needs data → fill data → forecast" loop.
 
 ---
 
@@ -224,10 +248,11 @@ Shared setup for ML Python environment with caching.
 **Hourly validation (“is it updating?”)**
 
 - **Hourly Canary (15m→1h)** (`.github/workflows/hourly-canary-15m.yml`):
-  - **Predict** (scheduled at 14:35–19:35 UTC): runs intraday forecast for canaries (AAPL, MSFT, SPY) with `--horizon 15m`.
+  - **Predict** (scheduled at :05, :20, :35, :50 UTC, hours 15–22): 15-min cadence; runs intraday forecast for canaries (AAPL, MSFT, SPY) with `--horizon 15m`.
   - **Hourly summary** (scheduled at 15:40, 16:40, 17:40, 18:40, 19:40, 20:40 UTC): runs `hourly_canary_summary.py --forecast-source intraday` for the single :30 bar that just closed (09:30–14:30 CST). Confirms the latest `ml_forecasts_intraday` row (`created_at <= target`) vs realized closes; uploads artifact `hourly-canary-summary`.
   - **EOD summary** (scheduled at 21:10 UTC): same script with all targets `09:30,10:30,...,14:30` CST for the full day.
-- Manual summary example (CST date, canaries):
+- Before summary/hourly_summary, the workflow **prints latest realized `ohlc_bars_v2` (m15) timestamp** per symbol for debugging. **Scheduled** summary/hourly_summary runs default to **`--include-missing-realized`** so the CSV still has forecast rows (with `missing_realized=true`) when realized bars are absent; manual dispatch can turn this off via the **`include_missing_realized`** input.
+- Manual summary example (CST date, canaries; add `--include-missing-realized` to see forecast-only rows when realized is missing):
   ```bash
   cd ml && python scripts/hourly_canary_summary.py \
     --symbols SPY,AAPL,MSFT --date-cst 2026-02-12 \

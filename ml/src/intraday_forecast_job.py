@@ -758,6 +758,263 @@ def validate_ensemble_with_walk_forward(
         return {"overfitting_detected": False, "divergence": 0.0}
 
 
+def run_intraday_forecast_in_memory(
+    df_hist: pd.DataFrame,
+    symbol: str,
+    horizon: str,
+    cutoff_ts: datetime,
+    *,
+    dry_run: bool = True,
+    min_bars_override: int | None = None,
+) -> Dict | None:
+    """
+    Run intraday forecast logic in-memory with no DB writes.
+
+    For blind replay: slice df to data available at cutoff_ts, train on past only,
+    return forecast dict. Used by blind_intraday_replay_validation.py.
+
+    Args:
+        df_hist: Full historical m15 bars (caller preloads with adequate lookback)
+        symbol: Stock ticker
+        horizon: '15m' or '1h'
+        cutoff_ts: Decision timestamp; only bars with ts <= cutoff_ts are used
+        dry_run: If True, skip all DB writes and stub recent_residuals=[] (default True)
+
+    Returns:
+        Dict with current_price, target_price, confidence, direction; or None if insufficient data
+    """
+    config = HORIZON_CONFIG.get(horizon)
+    if not config:
+        logger.error("Invalid horizon: %s", horizon)
+        return None
+
+    timeframe = config["timeframe"]
+    min_bars = (
+        min_bars_override
+        if min_bars_override is not None
+        else config["min_training_bars"]
+    )
+    lookahead_bars = int(config.get("forecast_bars", 1))
+
+    # Slice to data available at cutoff_ts (no lookahead)
+    df = df_hist[df_hist["ts"] <= cutoff_ts].copy()
+    if len(df) < min_bars:
+        logger.debug(
+            "Insufficient bars for %s %s at %s: %d (need %d)",
+            symbol,
+            horizon,
+            cutoff_ts,
+            len(df),
+            min_bars,
+        )
+        return None
+
+    try:
+        symbol_id = db.get_symbol_id(symbol) if not dry_run else None
+        if symbol_id is None and not dry_run:
+            logger.error("Symbol not found: %s", symbol)
+            return None
+        # For dry_run / 15m/1h we use use_feedback=False, so symbol_id not needed for weights
+        symbol_id = symbol_id or "replay"
+
+        df = add_technical_features(df)
+        sr_detector = SupportResistanceDetector()
+        sr_levels = sr_detector.find_all_levels(df)
+        current_price = float(df["close"].iloc[-1])
+
+        st_info_raw = None
+        if getattr(settings, "enable_adaptive_supertrend", False):
+            adapter = get_adaptive_supertrend_adapter(
+                metric_objective=getattr(settings, "adaptive_st_metric_objective", "sharpe"),
+                cache_enabled=getattr(settings, "adaptive_st_caching", True),
+                cache_ttl_hours=getattr(settings, "adaptive_st_cache_ttl_hours", 24),
+                min_bars=getattr(settings, "adaptive_st_min_bars", 60),
+                enable_optimization=getattr(settings, "adaptive_st_optimization", True),
+            )
+            adaptive_signal = adapter.compute_signal(symbol, df, timeframe)
+            if adaptive_signal:
+                st_info_raw = {
+                    "current_trend": "BULL" if adaptive_signal["trend"] == 1 else "BEAR",
+                    "signal_strength": adaptive_signal["signal_strength"],
+                    "performance_index": adaptive_signal["performance_index"],
+                    "atr": adaptive_signal["distance_pct"] * current_price,
+                }
+        if st_info_raw is None:
+            try:
+                supertrend = SuperTrendAI(df)
+                _, st_info_raw = supertrend.calculate()
+            except Exception as e:
+                logger.debug("SuperTrend failed for %s: %s", symbol, e)
+                st_info_raw = {
+                    "current_trend": "NEUTRAL",
+                    "signal_strength": 5,
+                    "performance_index": 0.5,
+                    "atr": current_price * 0.01,
+                }
+
+        use_advanced = config.get("use_advanced_ensemble", False)
+        time_scale_days = config.get("horizon_days") or compute_time_scale_days(
+            timeframe, lookahead_bars
+        )
+
+        weights, _ = get_weight_source_for_intraday(
+            symbol=symbol,
+            symbol_id=symbol_id,
+            horizon=horizon,
+            use_feedback=use_advanced,
+        )
+
+        baseline = BaselineForecaster()
+        try:
+            X, y = baseline.prepare_training_data(df, horizon_days=float(lookahead_bars))
+        except Exception as e:
+            logger.debug("Training data prep failed for %s: %s", symbol, e)
+            X = pd.DataFrame()
+            y = pd.Series(dtype=str)
+
+        ensemble_pred = None
+        if len(X) >= min_bars:
+            unique_labels = y.unique() if hasattr(y, "unique") else np.unique(y)
+            if len(unique_labels) > 1:
+                try:
+                    if use_advanced:
+                        ensemble = get_production_ensemble(horizon=horizon, symbol_id=symbol_id)
+                        min_offset = 50 if len(df) >= 100 else (26 if len(df) >= 60 else 14)
+                        start_idx = max(min_offset, 14)
+                        end_idx = len(df) - max(1, lookahead_bars)
+                        ohlc_train = df.iloc[start_idx:end_idx].copy()
+                        ensemble.train(
+                            features_df=X,
+                            labels_series=y,
+                            ohlc_df=ohlc_train,
+                        )
+                        ensemble_pred = ensemble.predict(
+                            features_df=X.tail(1),
+                            ohlc_df=df.tail(1),
+                        )
+                    else:
+                        forecaster = EnsembleForecaster(horizon="1D", symbol_id=symbol_id)
+                        forecaster.train(X, y)
+                        ensemble_pred = forecaster.predict(X.tail(1))
+
+                        xgb_weight = config.get("xgb_weight", 0.2)
+                        min_xgb_per_class = config.get("min_xgb_samples_per_class", 5)
+                        if 0 < xgb_weight < 1 and min_xgb_per_class >= 1:
+                            try:
+                                y_binary = y.map(
+                                    lambda v: "bullish"
+                                    if str(v).lower() == "bullish"
+                                    else "bearish"
+                                )
+                                n_bull = int((y_binary == "bullish").sum())
+                                n_bear = int((y_binary == "bearish").sum())
+                                if (
+                                    n_bull >= min_xgb_per_class
+                                    and n_bear >= min_xgb_per_class
+                                    and len(X) >= min_bars
+                                ):
+                                    xgb_forecaster = XGBoostForecaster()
+                                    xgb_forecaster.train(X, y_binary, min_samples=min_bars)
+                                    proba = xgb_forecaster.predict_proba(X.tail(1))
+                                    if proba is not None and len(proba) > 0:
+                                        _blend_xgb_into_ensemble_pred(
+                                            ensemble_pred, float(proba[0]), xgb_weight
+                                        )
+                            except Exception:
+                                pass
+                except Exception as e:
+                    logger.debug("Ensemble failed for %s: %s", symbol, e)
+
+        if ensemble_pred is None:
+            returns = df["close"].pct_change().tail(20)
+            avg_return = returns.mean()
+            if avg_return > 0.002:
+                label, confidence = "bullish", min(0.7, 0.5 + abs(avg_return) * 10)
+            elif avg_return < -0.002:
+                label, confidence = "bearish", min(0.7, 0.5 + abs(avg_return) * 10)
+            else:
+                label, confidence = "neutral", 0.5
+            ensemble_pred = {
+                "label": label,
+                "confidence": confidence,
+                "agreement": True,
+                "probabilities": {label: confidence},
+            }
+
+        kalman_weight = float(config.get("kalman_weight", 0.0) or 0.0)
+        enable_kalman = (
+            os.environ.get("ENABLE_KALMAN_INTRADAY", "true").strip().lower()
+            in {"1", "true", "yes", "y", "on"}
+        )
+        if ensemble_pred and 0.0 < kalman_weight < 1.0 and enable_kalman:
+            try:
+                if "garch_vol_regime" in df.columns and df["garch_vol_regime"].notna().any():
+                    df["_kalman_vol_regime"] = df["garch_vol_regime"].astype(float)
+                elif "atr_normalized" in df.columns and df["atr_normalized"].notna().any():
+                    _atr = df["atr_normalized"].astype(float)
+                    p33 = float(_atr.dropna().quantile(0.33))
+                    p67 = float(_atr.dropna().quantile(0.67))
+                    regime = pd.Series(1.0, index=df.index)
+                    regime[_atr < p33] = 0.0
+                    regime[_atr > p67] = 2.0
+                    df["_kalman_vol_regime"] = regime
+                else:
+                    df["_kalman_vol_regime"] = 1.0
+
+                exog_cols = ["kdj_j_divergence", "supertrend_trend", "_kalman_vol_regime"]
+                if all(c in df.columns for c in exog_cols):
+                    kalman = StateSpaceKalmanForecaster(
+                        horizon=horizon,
+                        arima_order=(1, 0, 1),
+                        bullish_threshold=0.002,
+                        bearish_threshold=-0.002,
+                        min_bars=min_bars,
+                    )
+                    kalman.train(df, exog_cols=exog_cols)
+                    kalman_pred = kalman.predict(df.tail(1), exog_cols=exog_cols)
+                    if kalman_pred:
+                        health = kalman_pred.get("kalman_health") or {}
+                        converged = bool(health.get("converged", False))
+                        exog_missing_rate = float(health.get("exog_missing_rate", 0.0))
+                        if converged and exog_missing_rate <= 0.20:
+                            _blend_kalman_into_ensemble_pred(
+                                ensemble_pred, kalman_pred, kalman_weight
+                            )
+            except Exception:
+                pass
+
+        recent_residuals = [] if dry_run else db.get_recent_intraday_residuals(
+            symbol_id, horizon, limit=20
+        )
+
+        synthesizer = ForecastSynthesizer(weights=weights)
+        sr_response = convert_sr_to_synthesizer_format(sr_levels, current_price)
+        supertrend_for_synth = convert_supertrend_to_synthesizer_format(st_info_raw or {})
+
+        synth_result = synthesizer.generate_forecast(
+            current_price=current_price,
+            df=df,
+            supertrend_info=supertrend_for_synth,
+            sr_response=sr_response,
+            ensemble_result=ensemble_pred,
+            symbol=symbol,
+            horizon_days=time_scale_days,
+            timeframe=timeframe,
+            recent_residuals=recent_residuals,
+        )
+
+        return {
+            "current_price": current_price,
+            "target_price": float(synth_result.target),
+            "confidence": float(synth_result.confidence),
+            "direction": synth_result.direction,
+            "points": [],
+        }
+    except Exception as e:
+        logger.warning("run_intraday_forecast_in_memory failed for %s: %s", symbol, e)
+        return None
+
+
 def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) -> bool:
     """
     Generate an intraday forecast for a single symbol.

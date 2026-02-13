@@ -33,9 +33,10 @@ on:
           - '1D'
         default: 'all'
 
+# cancel-in-progress: false so backfill step (when stale) isn't killed by next run
 concurrency:
   group: intraday-forecast-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -141,6 +142,74 @@ jobs:
       - name: Install additional ML dependencies
         run: |
           pip install "imbalanced-learn>=0.12.0"
+
+      - name: Check m15 staleness and backfill if needed (event-driven)
+        id: backfill
+        env:
+          INPUT_SYMBOL: ${{ inputs.symbol }}
+        run: |
+          cd ml
+          python -c "
+          import os
+          import subprocess
+          import sys
+          from datetime import datetime, timezone
+          from src.data.supabase_db import db
+          from src.config.settings import settings
+
+          symbol_input = os.environ.get('INPUT_SYMBOL', '').strip().upper()
+          if symbol_input:
+            symbols = [symbol_input]
+          else:
+            symbols = settings.intraday_symbols[:20]
+
+          now_utc = datetime.now(timezone.utc)
+          stale_minutes = 25
+          stale_symbols = []
+
+          for sym in symbols:
+            r = db.client.table('symbols').select('id').eq('ticker', sym).limit(1).execute()
+            if not r.data:
+              stale_symbols.append(sym)
+              print(f'  {sym}: no symbol row')
+              continue
+            sid = r.data[0]['id']
+            q = db.client.table('ohlc_bars_v2').select('ts').eq('symbol_id', sid).eq('timeframe', 'm15').eq('is_forecast', False).order('ts', desc=True).limit(1).execute()
+            ts = q.data[0]['ts'] if q.data else None
+            if ts is None:
+              stale_symbols.append(sym)
+              print(f'  {sym}/m15: no data')
+              continue
+            latest = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            if latest.tzinfo is None:
+              latest = latest.replace(tzinfo=timezone.utc)
+            age_min = (now_utc - latest).total_seconds() / 60
+            print(f'  {sym}/m15: latest={ts}, age_min={age_min:.1f}')
+            if age_min > stale_minutes:
+              stale_symbols.append(sym)
+
+          if not stale_symbols:
+            print('All symbols have fresh m15 data. No backfill needed.')
+            out = os.environ.get('GITHUB_OUTPUT')
+            if out:
+              with open(out, 'a') as f:
+                f.write('backfill_needed=false\n')
+            sys.exit(0)
+
+          print(f'Stale/missing m15 for: {stale_symbols}. Running forced backfill before forecast.')
+          out = os.environ.get('GITHUB_OUTPUT')
+          if out:
+            with open(out, 'a') as f:
+              f.write('backfill_needed=true\n')
+              f.write(f'stale_symbols={chr(44).join(stale_symbols)}\n')
+
+          rc = subprocess.call(
+            ['python', 'src/scripts/alpaca_backfill_ohlc_v2.py', '--symbols'] + stale_symbols + ['--timeframe', 'm15', '--force'],
+            cwd=os.getcwd()
+          )
+          sys.exit(rc)
+          "
+        continue-on-error: true
 
       - name: Validate OHLC data quality before forecasting
         continue-on-error: true
