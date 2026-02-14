@@ -36,11 +36,19 @@ runs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ inputs.python-version }}
-        cache: 'pip'
-        cache-dependency-path: 'ml/requirements.txt'
+        # cache: pip disabled; 6GB+ restore was costing minutes; install from PyPI instead
 
-    - name: Install TA-Lib (Linux)
+    - name: Restore TA-Lib build cache (Linux)
       if: runner.os == 'Linux'
+      id: talib-cache
+      uses: actions/cache@v4
+      with:
+        path: ta-lib
+        # Key: distro, image revision, arch, TA-Lib version, install-script hash
+        key: talib-${{ env.ImageOS || runner.os }}-${{ env.ImageVersion || 'selfhosted' }}-${{ runner.arch }}-talib0.4.0-${{ hashFiles('.github/actions/setup-ml-env/action.yml') }}
+
+    - name: Install TA-Lib (Linux) - build from source
+      if: runner.os == 'Linux' && steps.talib-cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
         set -euo pipefail
@@ -49,11 +57,17 @@ runs:
         wget -q http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
         tar -xzf ta-lib-0.4.0-src.tar.gz
         cd ta-lib
-        # Clean in case of cache reuse
-        make clean || true
         ./configure --prefix=/usr
         make
+
+    - name: Install TA-Lib (Linux) - make install
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd ta-lib
         sudo make install
+        sudo ldconfig
 
     - name: Install dependencies
       shell: bash

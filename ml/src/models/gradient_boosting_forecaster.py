@@ -139,9 +139,10 @@ class GradientBoostingForecaster:
                 "Feature/label mismatch: " f"{features_df.shape[0]} vs {labels_series.shape[0]}"
             )
 
-        if features_df.shape[0] < 100:
+        min_required = 50  # Intraday (15m/1h) typically 70-90; scikit-learn: lower for small data
+        if features_df.shape[0] < min_required:
             raise ValueError(
-                "Insufficient training data: " f"{features_df.shape[0]} rows (need >= 100)"
+                "Insufficient training data: " f"{features_df.shape[0]} rows (need >= {min_required})"
             )
 
         # Impute: forward-fill (preserves time continuity), then median, then 0 for all-missing
@@ -180,10 +181,11 @@ class GradientBoostingForecaster:
         )
 
         # Check if we still have enough samples after filtering
-        if len(features_clean) < 50:
+        min_after_filter = 30  # Allow smaller valid set; XGBoost min_child_weight=1 handles it
+        if len(features_clean) < min_after_filter:
             raise ValueError(
                 "Insufficient training data after NaN filtering: "
-                f"{len(features_clean)} rows (need >= 50)"
+                f"{len(features_clean)} rows (need >= {min_after_filter})"
             )
 
         # Store feature names

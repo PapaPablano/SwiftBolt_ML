@@ -1039,6 +1039,9 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
     lookahead_bars = int(config.get("forecast_bars", 1))
     baseline_required_ohlc = BASELINE_START_IDX + min_bars + lookahead_bars + 10  # buffer for NaNs
     fetch_limit = max(fetch_limit, baseline_required_ohlc)
+    # Ensure enough bars for GB (needs ~50+ post-SMOTE); short horizons often yield 70-90
+    if horizon in ("15m", "1h"):
+        fetch_limit = max(fetch_limit, 160)  # ~106 valid samples (160 - start - lookahead)
 
     logger.info("Processing %s intraday forecast for %s", horizon, symbol)
     logger.info("%s %s: fetch_limit=%d (min_bars=%d, lookahead=%d)", symbol, timeframe, fetch_limit, min_bars, lookahead_bars)

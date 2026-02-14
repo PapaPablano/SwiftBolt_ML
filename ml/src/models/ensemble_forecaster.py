@@ -241,14 +241,18 @@ class EnsembleForecaster:
             }
             gb_labels = gb_labels.map(reverse_map)
 
-        if len(X_balanced) >= 100:
+        # Gate on actual training frame after GB's internal filtering (valid_mask drops NaN labels)
+        gb_internal = gb_labels.map({-1: 0, 0: 1, 1: 2})
+        n_valid_for_gb = int(gb_internal.notna().sum())
+        min_required_samples_for_gb = 50  # Intraday (15m/1h) typically has 70-90 post-SMOTE
+        if n_valid_for_gb >= min_required_samples_for_gb:
             try:
                 self.gb_model.train(
-                    pd.DataFrame(X_balanced, columns=features_df.columns),
+                    pd.DataFrame(X_balanced, columns=numeric_features.columns),
                     gb_labels,
                 )
                 gb_accuracy = self.gb_model.training_stats.get("training_accuracy", 0)
-                logger.info("  GB trained (accuracy: %.3f)", gb_accuracy)
+                logger.info("  GB trained (accuracy: %.3f)", gb_accuracy)  # in-sample only; weights from DB
             except ValueError as exc:
                 logger.warning("  GB training failed: %s. Using RF only.", exc)
                 self.rf_weight = 1.0
@@ -256,13 +260,15 @@ class EnsembleForecaster:
                 gb_accuracy = 0.0
         else:
             logger.warning(
-                "  GB skipped: insufficient data (%s < 100). Using RF only.",
-                len(X_balanced),
+                "  GB skipped: insufficient data (n_valid=%s < %s). Using RF only.",
+                n_valid_for_gb,
+                min_required_samples_for_gb,
             )
             self.rf_weight = 1.0
             self.gb_weight = 0.0
             gb_accuracy = 0.0
 
+        # training_accuracy is in-sample; do not use for weight decisions (weights from DB)
         self.training_stats = {
             "rf_accuracy": rf_accuracy,
             "gb_accuracy": gb_accuracy,

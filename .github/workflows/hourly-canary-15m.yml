@@ -91,6 +91,102 @@ jobs:
             echo "mode=predict" >> $GITHUB_OUTPUT
           fi
 
+      - name: Ensure realized m15 fresh (pre-predict backfill)
+        if: steps.mode.outputs.mode == 'predict'
+        env:
+          CANARY_SYMBOLS: ${{ github.event_name == 'workflow_dispatch' && inputs.symbols || 'AAPL,MSFT,SPY' }}
+        run: |
+          cd ml
+          python -c "
+          import os, subprocess, sys
+          from datetime import datetime, timezone
+          from src.data.supabase_db import db
+
+          symbols = [s.strip().upper() for s in os.environ.get('CANARY_SYMBOLS','AAPL,MSFT,SPY').split(',') if s.strip()]
+          now_utc = datetime.now(timezone.utc)
+          stale_minutes = 25
+          stale = []
+
+          for sym in symbols:
+            r = db.client.table('symbols').select('id').eq('ticker', sym).limit(1).execute()
+            if not r.data:
+              print(f'  {sym}: no symbol row -> treat stale')
+              stale.append(sym)
+              continue
+            sid = r.data[0]['id']
+            q = db.client.table('ohlc_bars_v2').select('ts').eq('symbol_id', sid).eq('timeframe','m15').eq('is_forecast', False).order('ts', desc=True).limit(1).execute()
+            ts = q.data[0]['ts'] if q.data else None
+            if ts is None:
+              print(f'  {sym}/m15: missing -> backfill')
+              stale.append(sym)
+              continue
+            latest = datetime.fromisoformat(ts.replace('Z','+00:00'))
+            if latest.tzinfo is None:
+              latest = latest.replace(tzinfo=timezone.utc)
+            age = (now_utc - latest).total_seconds()/60
+            print(f'  {sym}/m15: latest={ts}, age_min={age:.1f}')
+            if age > stale_minutes:
+              print(f'  {sym}/m15: stale (age {age:.1f} min > {stale_minutes}) -> backfill')
+              stale.append(sym)
+
+          if not stale:
+            print('All canary symbols have fresh realized m15. No backfill needed.')
+            sys.exit(0)
+
+          print('Backfilling stale/missing m15 symbols:', stale)
+          try:
+            rc = subprocess.run(
+              ['python','src/scripts/alpaca_backfill_ohlc_v2.py','--symbols'] + stale + ['--timeframe','m15','--force'],
+              timeout=600,
+            ).returncode
+          except subprocess.TimeoutExpired:
+            print('ERROR: Backfill timed out after 10 minutes')
+            sys.exit(1)
+          sys.exit(rc)
+          "
+
+      - name: Recheck m15 after backfill (fail fast if still missing or stale)
+        if: steps.mode.outputs.mode == 'predict'
+        env:
+          CANARY_SYMBOLS: ${{ github.event_name == 'workflow_dispatch' && inputs.symbols || 'AAPL,MSFT,SPY' }}
+        run: |
+          cd ml
+          python -c "
+          import os, sys
+          from datetime import datetime, timezone
+          from src.data.supabase_db import db
+
+          symbols = [s.strip().upper() for s in os.environ.get('CANARY_SYMBOLS','AAPL,MSFT,SPY').split(',') if s.strip()]
+          now_utc = datetime.now(timezone.utc)
+          stale_minutes = 25
+          bad = []
+
+          for sym in symbols:
+            r = db.client.table('symbols').select('id').eq('ticker', sym).limit(1).execute()
+            if not r.data:
+              bad.append((sym, 'no symbol row'))
+              continue
+            sid = r.data[0]['id']
+            q = db.client.table('ohlc_bars_v2').select('ts').eq('symbol_id', sid).eq('timeframe','m15').eq('is_forecast', False).order('ts', desc=True).limit(1).execute()
+            if not q.data:
+              bad.append((sym, 'missing m15'))
+              continue
+            ts = q.data[0]['ts']
+            latest = datetime.fromisoformat(ts.replace('Z','+00:00'))
+            if latest.tzinfo is None:
+              latest = latest.replace(tzinfo=timezone.utc)
+            age = (now_utc - latest).total_seconds()/60
+            if age > stale_minutes:
+              bad.append((sym, f'stale (age {age:.1f} min > {stale_minutes})'))
+
+          if bad:
+            print('ERROR: After backfill, cannot proceed:')
+            for sym, reason in bad:
+              print(f'  {sym}: {reason}')
+            sys.exit(1)
+          print('All canary symbols have fresh m15 data. Proceeding to predict.')
+          "
+
       - name: Hourly predict (15m horizon, canary symbols)
         if: steps.mode.outputs.mode == 'predict'
         run: |
