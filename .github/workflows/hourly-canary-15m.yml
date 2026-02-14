@@ -2,7 +2,7 @@ name: Hourly Canary (15m->1h)
 
 on:
   # Predict: 15-min cadence (5 min after each quarter-hour bar close). 15:05..22:50 UTC
-  # Hourly summary: 10 min after each :30 bar close. 15:40..20:40 UTC => validate 09:30..14:30 CST
+  # Hourly summary: 10 min after each :30 bar close. 15:40..20:40 UTC => validate :30 bar in ET (infer-target)
   # EOD summary: after regular close. 21:10 UTC
   schedule:
     - cron: "5,20,35,50 15-22 * * 1-5"
@@ -25,12 +25,12 @@ on:
         required: false
         type: string
         default: "AAPL,MSFT,SPY"
-      date_cst:
-        description: "Date in CST for summary (YYYY-MM-DD). Leave empty = today."
+      date_et:
+        description: "Date in ET for summary (YYYY-MM-DD). Leave empty = today ET."
         required: false
         type: string
-      targets_cst:
-        description: "Comma-separated CST targets (HH:MM). Default matches your hourly closes."
+      targets_et:
+        description: "Comma-separated ET targets (HH:MM). Default matches hourly closes."
         required: false
         type: string
         default: "09:30,10:30,11:30,12:30,13:30,14:30"
@@ -84,7 +84,7 @@ jobs:
           # 21:10 UTC = end-of-day summary
           if [ "$UTC_HOUR" = "21" ] && [ "$UTC_MIN" -ge "5" ] && [ "$UTC_MIN" -le "20" ]; then
             echo "mode=summary" >> $GITHUB_OUTPUT
-          # 15:40..20:40 UTC = hourly summary (validate the single :30 bar that just closed; CST = UTC-6)
+          # 15:40..20:40 UTC = hourly summary (validate :30 bar in ET via --infer-target-from-now)
           elif [ "$UTC_MIN" = "40" ] && [ "$UTC_HOUR" -ge 15 ] && [ "$UTC_HOUR" -le 20 ]; then
             echo "mode=hourly_summary" >> $GITHUB_OUTPUT
           else
@@ -135,15 +135,10 @@ jobs:
           SYMBOLS="${{ github.event_name == 'workflow_dispatch' && inputs.symbols || 'AAPL,MSFT,SPY' }}"
           # Scheduled runs: default to --include-missing-realized until ingestion is stable. Dispatch: respect input.
           MISSING_FLAG="${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.include_missing_realized == 'true')) && '--include-missing-realized' || '' }}"
-          # CST = UTC-6 (winter). At 15:40 UTC we validate 09:30 CST; at 20:40 UTC we validate 14:30 CST.
-          UTC_HOUR=$(date -u +%H | sed 's/^0//')
-          CST_HOUR=$((UTC_HOUR - 6))
-          TARGET_CST=$(printf '%02d:30' "$CST_HOUR")
-          echo "Validating single target: $TARGET_CST CST (created_at <= target vs realized)"
+          echo "Validating single target (ET, inferred from current UTC)"
           python scripts/hourly_canary_summary.py \
             --symbols "$SYMBOLS" \
-            --date-cst "" \
-            --targets-cst "$TARGET_CST" \
+            --infer-target-from-now \
             --forecast-source intraday \
             $MISSING_FLAG \
             --out "validation_results/hourly_canary_summary.csv"
@@ -154,15 +149,15 @@ jobs:
           cd ml
           mkdir -p validation_results
           SYMBOLS="${{ github.event_name == 'workflow_dispatch' && inputs.symbols || 'AAPL,MSFT,SPY' }}"
-          DATE_CST="${{ github.event_name == 'workflow_dispatch' && inputs.date_cst || '' }}"
-          TARGETS_CST="${{ github.event_name == 'workflow_dispatch' && inputs.targets_cst || '09:30,10:30,11:30,12:30,13:30,14:30' }}"
+          DATE_ET="${{ github.event_name == 'workflow_dispatch' && inputs.date_et || '' }}"
+          TARGETS_ET="${{ github.event_name == 'workflow_dispatch' && inputs.targets_et || '09:30,10:30,11:30,12:30,13:30,14:30' }}"
           # Scheduled: default to --include-missing-realized until ingestion stable. Dispatch: respect input.
           MISSING_FLAG="${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.include_missing_realized == 'true')) && '--include-missing-realized' || '' }}"
 
           python scripts/hourly_canary_summary.py \
             --symbols "$SYMBOLS" \
-            --date-cst "$DATE_CST" \
-            --targets-cst "$TARGETS_CST" \
+            --date-et "$DATE_ET" \
+            --targets-et "$TARGETS_ET" \
             --forecast-source intraday \
             $MISSING_FLAG \
             --out "validation_results/hourly_canary_summary.csv"

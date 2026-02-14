@@ -814,8 +814,7 @@ def run_intraday_forecast_in_memory(
         if symbol_id is None and not dry_run:
             logger.error("Symbol not found: %s", symbol)
             return None
-        # For dry_run / 15m/1h we use use_feedback=False, so symbol_id not needed for weights
-        symbol_id = symbol_id or "replay"
+        # For dry_run: keep symbol_id=None so weight lookup uses RPC fallback (no per-symbol UUID)
 
         df = add_technical_features(df)
         sr_detector = SupportResistanceDetector()

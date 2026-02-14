@@ -8,7 +8,7 @@ Forecast source (--forecast-source):
 
 Realized closes: always from ohlc_bars_v2 where is_forecast=false.
 
-Targets are specified in CST (America/Chicago) as HH:MM times for a given date.
+Targets are specified in ET (America/New_York, market-native, DST-safe) as HH:MM.
 """
 
 import argparse
@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.data.supabase_db import db  # noqa: E402
 
 
-CST = ZoneInfo("America/Chicago")
+ET = ZoneInfo("America/New_York")
 UTC = timezone.utc
 
 PAGE_SIZE = 1000
@@ -50,7 +50,7 @@ def _parse_symbols(s: str) -> list[str]:
     return [x.strip().upper() for x in (s or "").split(",") if x.strip()]
 
 
-def _parse_targets_cst(s: str) -> list[time]:
+def _parse_targets_et(s: str) -> list[time]:
     out: list[time] = []
     for part in (s or "").split(","):
         part = part.strip()
@@ -64,13 +64,22 @@ def _parse_targets_cst(s: str) -> list[time]:
 def _date_from_arg(s: str | None) -> date:
     if s and s.strip():
         return datetime.strptime(s.strip(), "%Y-%m-%d").date()
-    # default: "today" in CST
-    return datetime.now(CST).date()
+    return datetime.now(ET).date()
 
 
-def _target_dt_utc(d: date, t_cst: time) -> datetime:
-    dt_cst = datetime(d.year, d.month, d.day, t_cst.hour, t_cst.minute, tzinfo=CST)
-    return dt_cst.astimezone(UTC)
+def _target_dt_utc(d: date, t_et: time) -> datetime:
+    dt_et = datetime(d.year, d.month, d.day, t_et.hour, t_et.minute, tzinfo=ET)
+    return dt_et.astimezone(UTC)
+
+
+def _infer_target_from_utc_now() -> tuple[date, time]:
+    """Infer single target (date, HH:MM) from current UTC. For scheduled hourly_summary."""
+    now_utc = datetime.now(UTC)
+    now_et = now_utc.astimezone(ET)
+    d = now_et.date()
+    # At :40 ET we validate the :30 bar that just closed
+    t = time(hour=now_et.hour, minute=30)
+    return d, t
 
 
 def _get_symbol_id(ticker: str) -> str | None:
@@ -325,15 +334,15 @@ class BarPoint:
 
 
 def _fetch_m15_bars_for_date(symbol: str, d: date) -> pd.DataFrame:
-    """Fetch m15 realized bars for the trading day (CST)."""
-    end_cst = datetime(d.year, d.month, d.day, 16, 1, tzinfo=CST)
-    end_utc = end_cst.astimezone(UTC)
+    """Fetch m15 realized bars for the trading day (9:30-16:00 ET)."""
+    end_et = datetime(d.year, d.month, d.day, 16, 1, tzinfo=ET)
+    end_utc = end_et.astimezone(UTC)
     df = db.fetch_ohlc_bars(symbol, timeframe="m15", limit=50, end_ts=end_utc)
     if df.empty or "ts" not in df.columns or "close" not in df.columns:
         return pd.DataFrame()
     df["ts"] = pd.to_datetime(df["ts"], utc=True)
-    start_cst = datetime(d.year, d.month, d.day, 9, 30, tzinfo=CST)
-    start_utc = start_cst.astimezone(UTC)
+    start_et = datetime(d.year, d.month, d.day, 9, 30, tzinfo=ET)
+    start_utc = start_et.astimezone(UTC)
     df = df[df["ts"] >= start_utc].copy()
     return df.sort_values("ts").reset_index(drop=True)
 
@@ -378,7 +387,7 @@ def _compute_turn_metrics(rows_out: list[dict], d: date) -> list[dict]:
 
     result = []
     for sym, rows in by_sym.items():
-        rows = sorted(rows, key=lambda x: x["target_time_cst"])
+        rows = sorted(rows, key=lambda x: x["target_time_et"])
         flip_lags: list[int] = []
         post_turn_correct = 0
         post_turn_total = 0
@@ -431,17 +440,22 @@ def _compute_turn_metrics(rows_out: list[dict], d: date) -> list[dict]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--symbols", default="AAPL,MSFT,SPY")
-    ap.add_argument("--date-cst", default="", help="YYYY-MM-DD in CST (default: today CST)")
+    ap.add_argument("--date-et", default="", help="YYYY-MM-DD in ET (default: today ET)")
     ap.add_argument(
         "--days",
         type=int,
         default=1,
-        help="Run for N days ending at --date-cst (default: 1). Writes combined turn_metrics with date column.",
+        help="Run for N days ending at --date-et (default: 1). Writes combined turn_metrics with date column.",
     )
     ap.add_argument(
-        "--targets-cst",
+        "--targets-et",
         default="09:30,10:30,11:30,12:30,13:30,14:30",
-        help="Comma-separated HH:MM targets in CST",
+        help="Comma-separated HH:MM targets in ET (market-native)",
+    )
+    ap.add_argument(
+        "--infer-target-from-now",
+        action="store_true",
+        help="Infer single target from current UTC (for scheduled hourly_summary). Overrides --targets-et.",
     )
     ap.add_argument("--timeframe", default="m15")
     ap.add_argument(
@@ -468,10 +482,14 @@ def main() -> int:
     if not symbols:
         raise SystemExit("No symbols provided")
 
-    base_d = _date_from_arg(args.date_cst)
-    targets = _parse_targets_cst(args.targets_cst)
-    if not targets:
-        raise SystemExit("No targets provided")
+    if args.infer_target_from_now:
+        base_d, t_inferred = _infer_target_from_utc_now()
+        targets = [t_inferred]
+    else:
+        base_d = _date_from_arg(args.date_et)
+        targets = _parse_targets_et(args.targets_et)
+        if not targets:
+            raise SystemExit("No targets provided")
 
     dates = [base_d - timedelta(days=i) for i in range(args.days)]
     all_rows: list[dict] = []
@@ -510,8 +528,8 @@ def main() -> int:
 
             prev_realized: float | None = None
             prev_realized_direction: int | None = None
-            for t_cst in targets:
-                target_utc = _target_dt_utc(d, t_cst)
+            for t_et in targets:
+                target_utc = _target_dt_utc(d, t_et)
 
                 if args.forecast_source == "intraday":
                     pred, pred_source = _predicted_close_from_intraday(
@@ -553,7 +571,7 @@ def main() -> int:
                     row_dict = {
                         "symbol": sym,
                         "target_ts_utc": target_utc.isoformat(),
-                        "target_time_cst": f"{t_cst.hour:02d}:{t_cst.minute:02d}",
+                        "target_time_et": f"{t_et.hour:02d}:{t_et.minute:02d}",
                         "predicted_close": pred.close,
                         "realized_close": None,
                         "error_abs": None,
@@ -590,7 +608,7 @@ def main() -> int:
                 row_dict = {
                     "symbol": sym,
                     "target_ts_utc": target_utc.isoformat(),
-                    "target_time_cst": f"{t_cst.hour:02d}:{t_cst.minute:02d}",
+                    "target_time_et": f"{t_et.hour:02d}:{t_et.minute:02d}",
                     "predicted_close": pred.close,
                     "realized_close": real.close,
                     "error_abs": error_abs,
@@ -624,7 +642,7 @@ def main() -> int:
     fieldnames = [
         "symbol",
         "target_ts_utc",
-        "target_time_cst",
+        "target_time_et",
         "predicted_close",
         "realized_close",
         "error_abs",
@@ -665,12 +683,13 @@ def main() -> int:
 
     print("\nHourly Canary Summary")
     if args.days == 1:
-        print(f"Date (CST): {dates[0].isoformat()}")
+        print(f"Date (ET): {dates[0].isoformat()}")
     else:
-        print(f"Dates (CST): {dates[-1].isoformat()} ... {dates[0].isoformat()} ({args.days} days)")
+        print(f"Dates (ET): {dates[-1].isoformat()} ... {dates[0].isoformat()} ({args.days} days)")
     print(f"Symbols: {', '.join(symbols)}")
     print(f"Forecast source: {args.forecast_source}")
-    print(f"Targets (CST): {args.targets_cst}")
+    targets_str = f"{targets[0].hour:02d}:{targets[0].minute:02d}" if args.infer_target_from_now else args.targets_et
+    print(f"Targets (ET): {targets_str}")
     print(f"Rows: {len(rows_out)}")
     if args.forecast_source == "intraday" and any(pred_source_counts.values()):
         print(f"Pred source: points_exact={pred_source_counts.get('points_exact', 0)}, "

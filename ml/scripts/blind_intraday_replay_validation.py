@@ -6,9 +6,13 @@ Mimics live 15-minute updates for a replay day, scores 1-hour-ahead outcomes
 from realized m15 bars, with zero DB writes. Uses run_intraday_forecast_in_memory
 for in-memory forecasts.
 
+Session bounds use America/New_York (market-native). 1h-ahead target = close of
+the 4th m15 bar after decision time t, i.e. bar starting at t+45min. We only
+score timestamps where that target bar exists (t <= session_end - 1h).
+
 Usage:
-    python scripts/blind_intraday_replay_validation.py --symbols AAPL --date-cst 2025-02-11
-    python scripts/blind_intraday_replay_validation.py --symbols AAPL,MSFT,SPY --date-cst 2025-02-10 --fail-on-missing-realized
+    python scripts/blind_intraday_replay_validation.py --symbols AAPL --date-et 2025-02-11
+    python scripts/blind_intraday_replay_validation.py --symbols AAPL,MSFT,SPY --date-et 2025-02-10 --fail-on-missing-realized
 """
 
 import argparse
@@ -34,13 +38,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-CST = ZoneInfo("America/Chicago")
+ET = ZoneInfo("America/New_York")
 UTC = timezone.utc
 
-# Trading session: 9:30 - 16:00 CST
-MARKET_OPEN_CST = (9, 30)
-MARKET_CLOSE_CST = (16, 0)
+# US regular session: 9:30 - 16:00 ET (market-native, DST-safe)
+MARKET_OPEN_ET = (9, 30)
+MARKET_CLOSE_ET = (16, 0)
 BAR_INTERVAL_MINUTES = 15
+# 1h-ahead target = bar at t+45min; last scorable t = session_end - 1h
+HORIZON_MINUTES = 45
 
 # Historical lookback: need enough for indicators + min_training_bars (~60)
 FETCH_LIMIT = 3000
@@ -54,35 +60,42 @@ def _parse_symbols(s: str) -> list[str]:
 def _date_from_arg(s: str | None) -> date:
     if s and s.strip():
         return datetime.strptime(s.strip(), "%Y-%m-%d").date()
-    return datetime.now(CST).date()
+    return datetime.now(ET).date()
 
 
 def _replay_day_bounds(d: date) -> tuple[datetime, datetime]:
-    """Return (start_utc, end_utc) for replay day trading session (CST)."""
-    start_cst = datetime(
+    """Return (start_utc, end_utc) for replay day trading session (9:30-16:00 ET)."""
+    start_et = datetime(
         d.year, d.month, d.day,
-        MARKET_OPEN_CST[0], MARKET_OPEN_CST[1], 0, tzinfo=CST
+        MARKET_OPEN_ET[0], MARKET_OPEN_ET[1], 0, tzinfo=ET
     )
-    end_cst = datetime(
+    end_et = datetime(
         d.year, d.month, d.day,
-        MARKET_CLOSE_CST[0], MARKET_CLOSE_CST[1], 0, tzinfo=CST
+        MARKET_CLOSE_ET[0], MARKET_CLOSE_ET[1], 0, tzinfo=ET
     )
-    return start_cst.astimezone(UTC), end_cst.astimezone(UTC)
+    return start_et.astimezone(UTC), end_et.astimezone(UTC)
 
 
 def _replay_timestamps(d: date) -> list[datetime]:
-    """Generate m15 bar timestamps for the trading day (bar start times)."""
-    start_cst = datetime(
+    """
+    Generate m15 decision timestamps for the trading day (bar start times). Only
+    includes timestamps where the 1h-ahead target bar (t+45min) exists within the
+    session, so we don't penalize end-of-day inevitables.
+    """
+    start_et = datetime(
         d.year, d.month, d.day,
-        MARKET_OPEN_CST[0], MARKET_OPEN_CST[1], 0, tzinfo=CST
+        MARKET_OPEN_ET[0], MARKET_OPEN_ET[1], 0, tzinfo=ET
     )
-    end_cst = datetime(
+    end_et = datetime(
         d.year, d.month, d.day,
-        MARKET_CLOSE_CST[0], MARKET_CLOSE_CST[1], 0, tzinfo=CST
+        MARKET_CLOSE_ET[0], MARKET_CLOSE_ET[1], 0, tzinfo=ET
     )
+    # Last scorable t: target_bar_ts = t+45min must be <= last bar start (15:45 ET)
+    last_bar_start_et = end_et - timedelta(minutes=BAR_INTERVAL_MINUTES)
+    last_scorable_et = last_bar_start_et - timedelta(minutes=HORIZON_MINUTES)
     timestamps = []
-    t = start_cst
-    while t < end_cst:
+    t = start_et
+    while t <= last_scorable_et:
         timestamps.append(t.astimezone(UTC))
         t += timedelta(minutes=BAR_INTERVAL_MINUTES)
     return timestamps
@@ -120,7 +133,8 @@ def _preflight_check(
     min_bars: int = MIN_BARS_FOR_REPLAY,
 ) -> tuple[bool, str]:
     """
-    Assert we have realized m15 bars for replay date and T+1h targets.
+    Assert we have realized m15 bars for replay date and 1h-ahead target bars.
+    Target bar = t + 45min (4th bar's start; its close is the 1h-ahead outcome).
 
     Returns (ok, message).
     """
@@ -137,15 +151,15 @@ def _preflight_check(
             "Try a different date, backfill m15, or --skip-preflight.",
         )
 
-    # Warn if target bars missing (we'll still run; --fail-on-missing-realized checks at end)
+    # Warn if target bars missing (ingestion gaps; replay_ts_list already excludes EOD inevitables)
     missing = sum(
         1
         for t in replay_ts_list
-        if not (df["ts"] == (t + timedelta(minutes=45))).any()
+        if not (df["ts"] == (t + timedelta(minutes=HORIZON_MINUTES))).any()
     )
     if missing > 0:
         logger.warning(
-            "%s: %d/%d target bars (T+45m) missing - will mark missing_realized",
+            "%s: %d/%d target bars (t+45min) missing - ingestion gap, will mark missing_realized",
             symbol,
             missing,
             len(replay_ts_list),
@@ -176,9 +190,9 @@ def main() -> int:
         help="Comma-separated symbols (default: AAPL)",
     )
     parser.add_argument(
-        "--date-cst",
+        "--date-et",
         default="",
-        help="Replay date YYYY-MM-DD in CST (default: today CST)",
+        help="Replay date YYYY-MM-DD (default: today ET). Session bounds: 9:30-16:00 ET.",
     )
     parser.add_argument(
         "--source",
@@ -214,11 +228,11 @@ def main() -> int:
         logger.error("No symbols provided")
         return 1
 
-    replay_date = _date_from_arg(args.date_cst)
+    replay_date = _date_from_arg(args.date_et)
     replay_ts_list = _replay_timestamps(replay_date)
 
     logger.info("Blind Intraday Replay Validation")
-    logger.info("  Date (CST): %s", replay_date.isoformat())
+    logger.info("  Date: %s (session 9:30-16:00 ET)", replay_date.isoformat())
     logger.info("  Symbols: %s", ", ".join(symbols))
     logger.info("  Source: %s", args.source)
     logger.info("  Replay timestamps: %d", len(replay_ts_list))
@@ -268,8 +282,8 @@ def main() -> int:
                 continue
 
             predicted_close = forecast["target_price"]
-            # 1h ahead = close of 4th m15 bar; bar ts = T + 45min (bar 10:45-11:00 ends at 11:00)
-            target_bar_ts = t + timedelta(minutes=45)
+            # 1h ahead = close of 4th m15 bar; target bar starts at t+45min
+            target_bar_ts = t + timedelta(minutes=HORIZON_MINUTES)
             realized_close = _lookup_realized_close(df, target_bar_ts)
             missing_realized = realized_close is None
 

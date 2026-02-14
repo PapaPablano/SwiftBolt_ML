@@ -161,6 +161,7 @@ class StateSpaceKalmanForecaster:
         self._fit_converged = False
         self._fit_nobs = 0
         self._exog_missing_rate = 0.0
+        self._uses_range_index = False
 
     def train(
         self,
@@ -193,6 +194,18 @@ class StateSpaceKalmanForecaster:
             )
         endog = returns.loc[common]
         exog_aligned = exog_scaled.loc[common]
+
+        # statsmodels requires DatetimeIndex with freq or RangeIndex; avoid FutureWarning
+        idx = endog.index
+        has_freq = isinstance(idx, pd.DatetimeIndex) and getattr(idx, "freq", None) is not None
+        self._uses_range_index = not has_freq
+        if self._uses_range_index:
+            endog = pd.Series(endog.values, index=pd.RangeIndex(len(endog)))
+            exog_aligned = pd.DataFrame(
+                exog_aligned.values,
+                index=pd.RangeIndex(len(exog_aligned)),
+                columns=exog_aligned.columns,
+            )
 
         try:
             model = SARIMAX(
@@ -248,6 +261,9 @@ class StateSpaceKalmanForecaster:
             exog_future = exog.tail(1)
             if steps > 1:
                 exog_future = pd.concat([exog_future] * steps, ignore_index=True)
+            # Match fit-time index discipline: pass ndarray when we coerced to RangeIndex
+            if getattr(self, "_uses_range_index", False):
+                exog_future = np.asarray(exog_future)
             forecast = self._results.get_forecast(steps=steps, exog=exog_future)
             forecast_mean = forecast.predicted_mean
             if hasattr(forecast_mean, "values"):

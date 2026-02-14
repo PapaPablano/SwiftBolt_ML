@@ -261,6 +261,13 @@ Shared setup for ML Python environment with caching.
 - The script reports whether it used `points_exact`, `points_nearest`, or `target_price` for a quick check that 15m points align with target timestamps.
 
 ---
+## Timezone alignment
+
+- **Blind replay validator** (`blind_intraday_replay_validation.py`): Session bounds **9:30–16:00 ET** (America/New_York, market-native). Only scores decision timestamps where the 1h-ahead target bar exists (t ≤ 15:00 ET), so `--fail-on-missing-realized` reflects ingestion gaps, not EOD inevitables.
+- **Hourly canary summary** (`hourly_canary_summary.py`): Targets in **CST** (America/Chicago), e.g. `09:30,10:30,...,14:30` CST. In winter, 09:30 CST = 10:30 ET.
+- **Predict cron** (`5,20,35,50 15-22` UTC): 15:00 UTC = 9:00 AM ET (pre-open); 15:35 UTC = 9:35 AM ET (5 min after first bar).
+
+---
 ## Troubleshooting
 
 ### Common Issues
