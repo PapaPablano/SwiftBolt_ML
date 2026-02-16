@@ -1,6 +1,8 @@
 """Router for Yahoo Finance futures data endpoints."""
 
+import json
 import logging
+import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -17,6 +19,44 @@ from src.data.supabase_db import SupabaseDatabase
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+_redis_client = None
+
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+
+TTL_BY_TIMEFRAME = {
+    "1m": 30,
+    "15m": 60,
+    "1h": 120,
+    "4h": 300,
+    "1d": 900,
+    "1w": 1800,
+}
+
+
+def _get_redis():
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    try:
+        import redis
+
+        _redis_client = redis.Redis(
+            host=REDIS_HOST, port=REDIS_PORT, decode_responses=True
+        )
+        _redis_client.ping()
+        logger.info(f"Connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
+        return _redis_client
+    except Exception as e:
+        logger.warning(f"Redis not available: {e}")
+        return None
+
+
+def _cache_key(
+    symbol: str, mode: str, timeframe: str, start_date: str, end_date: str
+) -> str:
+    return f"futures:{symbol}:{mode}:{timeframe}:{start_date}:{end_date}"
 
 
 class FuturesBarResponse(BaseModel):
@@ -63,13 +103,24 @@ async def get_futures_bars(
 
     - mode='continuous': Use root symbol (ES, GC, NQ) - returns front-month continuous contract
     - mode='contract': Use full contract symbol (falls back to continuous)
+    - Results are cached in Redis with TTL by timeframe
     """
-    client = get_client()
-
     if end_date is None:
         end_date = datetime.now().strftime("%Y-%m-%d")
     if start_date is None:
         start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+
+    cache_key = _cache_key(symbol.upper(), mode, timeframe, start_date, end_date)
+    r = _get_redis()
+
+    if r:
+        cached = r.get(cache_key)
+        if cached:
+            logger.info(f"Cache hit for {cache_key}")
+            data = json.loads(cached)
+            return FuturesBarResponse(**data)
+
+    client = get_client()
 
     root = symbol.upper()
     if mode == "continuous":
@@ -110,13 +161,20 @@ async def get_futures_bars(
             }
         )
 
-    return FuturesBarResponse(
-        symbol=display_symbol,
-        mode=mode,
-        bars=bars,
-        start_date=start_date,
-        end_date=end_date,
-    )
+    response_data = {
+        "symbol": display_symbol,
+        "mode": mode,
+        "bars": bars,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+
+    if r:
+        ttl = TTL_BY_TIMEFRAME.get(timeframe, 120)
+        r.setex(cache_key, ttl, json.dumps(response_data))
+        logger.info(f"Cached {cache_key} with TTL {ttl}s")
+
+    return FuturesBarResponse(**response_data)
 
 
 @router.post("/futures/backfill")
