@@ -59,6 +59,98 @@ def _cache_key(
     return f"futures:{symbol}:{mode}:{timeframe}:{start_date}:{end_date}"
 
 
+SUPPORTED_ROOTS = {
+    "ES",
+    "NQ",
+    "GC",
+    "CL",
+    "ZC",
+    "ZS",
+    "ZW",
+    "HE",
+    "LE",
+    "HG",
+    "SI",
+    "PL",
+    "PA",
+}
+
+
+def _normalize_futures_symbol(symbol: str) -> tuple[str, str]:
+    """
+    Normalize futures symbol to root.
+
+    Handles:
+    - ES2!, ES1!, ES! -> ES (continuous)
+    - GCH6, GCZ4 -> GC
+    - ES -> ES (already normalized)
+
+    Returns: (root, original_symbol)
+    """
+    original = symbol.upper().strip()
+
+    if original in SUPPORTED_ROOTS:
+        return original, original
+
+    for root in SUPPORTED_ROOTS:
+        if original.startswith(root):
+            return root, original
+
+    import re
+
+    match = re.match(r"^([A-Z]+)", original)
+    if match:
+        potential_root = match.group(1)
+        if potential_root in SUPPORTED_ROOTS:
+            return potential_root, original
+
+    return original, original
+
+
+def _aggregate_to_4h(df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate 1h bars to 4h."""
+    if df.empty or "timestamp" not in df.columns:
+        return df
+    df = df.set_index("timestamp")
+    agg = (
+        df.resample("4h")
+        .agg(
+            {
+                "open": "first",
+                "high": "max",
+                "low": "min",
+                "close": "last",
+                "volume": "sum",
+            }
+        )
+        .dropna()
+    )
+    agg = agg.reset_index()
+    return agg
+
+
+def _aggregate_to_1w(df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate 1d bars to 1w."""
+    if df.empty or "timestamp" not in df.columns:
+        return df
+    df = df.set_index("timestamp")
+    agg = (
+        df.resample("1w")
+        .agg(
+            {
+                "open": "first",
+                "high": "max",
+                "low": "min",
+                "close": "last",
+                "volume": "sum",
+            }
+        )
+        .dropna()
+    )
+    agg = agg.reset_index()
+    return agg
+
+
 class FuturesBarResponse(BaseModel):
     symbol: str
     mode: str
@@ -104,13 +196,22 @@ async def get_futures_bars(
     - mode='continuous': Use root symbol (ES, GC, NQ) - returns front-month continuous contract
     - mode='contract': Use full contract symbol (falls back to continuous)
     - Results are cached in Redis with TTL by timeframe
+    - Automatically handles TradingView-style symbols (ES2! -> ES)
+    - 4h derived from 1h, 1w from 1d if not available directly
     """
     if end_date is None:
         end_date = datetime.now().strftime("%Y-%m-%d")
     if start_date is None:
         start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
 
-    cache_key = _cache_key(symbol.upper(), mode, timeframe, start_date, end_date)
+    root, original = _normalize_futures_symbol(symbol)
+    if root not in SUPPORTED_ROOTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown futures symbol: {symbol}. Supported: {', '.join(SUPPORTED_ROOTS)}",
+        )
+
+    cache_key = _cache_key(root, mode, timeframe, start_date, end_date)
     r = _get_redis()
 
     if r:
@@ -122,29 +223,43 @@ async def get_futures_bars(
 
     client = get_client()
 
-    root = symbol.upper()
+    resolution = timeframe
+    needs_derivation = False
+
+    if timeframe == "4h":
+        resolution = "1h"
+        needs_derivation = True
+    elif timeframe == "1w":
+        resolution = "1d"
+        needs_derivation = True
+
     if mode == "continuous":
         df = client.get_continuous_contract(
             root=root,
-            resolution=timeframe,
+            resolution=resolution,
             start_date=start_date,
             end_date=end_date,
         )
         display_symbol = f"{root}.v.0"
     else:
         df = client.get_expiry_contract(
-            symbol=symbol.upper(),
-            resolution=timeframe,
+            symbol=root,
+            resolution=resolution,
             start_date=start_date,
             end_date=end_date,
         )
-        display_symbol = symbol.upper()
+        display_symbol = f"{root}.v.0"
 
     if df.empty:
         raise HTTPException(
             status_code=404,
             detail=f"No data found for {display_symbol} from {start_date} to {end_date}",
         )
+
+    if needs_derivation and timeframe == "4h":
+        df = _aggregate_to_4h(df)
+    elif needs_derivation and timeframe == "1w":
+        df = _aggregate_to_1w(df)
 
     bars = []
     for _, row in df.iterrows():
@@ -183,9 +298,17 @@ async def backfill_futures_bars(request: BackfillRequest) -> BackfillResponse:
     Backfill futures OHLCV bars from Yahoo Finance into Supabase.
 
     Fetches historical data and upserts into ohlc_bars_v2 table.
+    - Supports TradingView-style symbols (ES2! -> ES)
+    - Supports timeframe derivation (4h from 1h, 1w from 1d)
     """
-    client = get_client()
+    root, original = _normalize_futures_symbol(request.symbol)
+    if root not in SUPPORTED_ROOTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown futures symbol: {request.symbol}. Supported: {', '.join(SUPPORTED_ROOTS)}",
+        )
 
+    client = get_client()
     db = SupabaseDatabase()
 
     end_date = request.end_date or datetime.now().strftime("%Y-%m-%d")
@@ -193,28 +316,39 @@ async def backfill_futures_bars(request: BackfillRequest) -> BackfillResponse:
         "%Y-%m-%d"
     )
 
+    resolution = request.timeframe
+    if request.timeframe == "4h":
+        resolution = "1h"
+    elif request.timeframe == "1w":
+        resolution = "1d"
+
     if request.mode == "continuous":
         df = client.get_continuous_contract(
-            root=request.symbol.upper(),
-            resolution=request.timeframe,
+            root=root,
+            resolution=resolution,
             start_date=start_date,
             end_date=end_date,
         )
-        db_symbol = f"{request.symbol.upper()}.v.0"
+        db_symbol = f"{root}.v.0"
     else:
         df = client.get_expiry_contract(
-            symbol=request.symbol.upper(),
-            resolution=request.timeframe,
+            symbol=root,
+            resolution=resolution,
             start_date=start_date,
             end_date=end_date,
         )
-        db_symbol = request.symbol.upper()
+        db_symbol = f"{root}.v.0"
 
     if df.empty:
         raise HTTPException(
             status_code=404,
             detail=f"No data found for {db_symbol}",
         )
+
+    if request.timeframe == "4h":
+        df = _aggregate_to_4h(df)
+    elif request.timeframe == "1w":
+        df = _aggregate_to_1w(df)
 
     records = []
     for _, row in df.iterrows():
