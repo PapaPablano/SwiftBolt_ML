@@ -7,7 +7,7 @@ import type {
   NewsRequest,
   OptionsChainRequest,
 } from "./abstraction.ts";
-import type { Bar, NewsItem, OptionContract, OptionsChain, OptionType, Quote } from "./types.ts";
+import type { Bar, NewsItem, OptionContract, OptionsChain, OptionType, Quote, FuturesRoot, FuturesContract, FuturesChain, FuturesSector } from "./types.ts";
 import {
   InvalidSymbolError,
   PermissionDeniedError,
@@ -266,6 +266,7 @@ export class MassiveClient implements DataProviderAbstraction {
       const data: PolygonAggregatesResponse = await response.json();
 
       if (data.status === "ERROR") {
+        console.error(`[Massive] Polygon ERROR for ${symbol}:`, data);
         throw new ProviderError(
           "Polygon returned error status",
           "massive",
@@ -425,6 +426,177 @@ export class MassiveClient implements DataProviderAbstraction {
       console.error(`[Massive] Error fetching options chain:`, error);
       throw this.mapError(error);
     }
+  }
+
+  // ============================================================================
+  // FUTURES METHODS
+  // ============================================================================
+
+  async getFuturesRoots(sector?: FuturesSector): Promise<FuturesRoot[]> {
+    const cacheKey = `futures_roots:massive:${sector || "all"}`;
+    const cached = await this.cache.get<FuturesRoot[]>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
+    await this.rateLimiter.acquire("massive");
+
+    try {
+      // Polygon/Massive doesn't have a dedicated futures roots endpoint
+      // We'll use a curated list for MVP and enhance with API data later
+      const roots: FuturesRoot[] = [
+        // US Index Futures
+        { symbol: "ES", name: "E-mini S&P 500", exchange: "CME", sector: "indices", tickSize: 0.25, pointValue: 50, currency: "USD" },
+        { symbol: "NQ", name: "E-mini NASDAQ-100", exchange: "CME", sector: "indices", tickSize: 0.25, pointValue: 20, currency: "USD" },
+        { symbol: "RTY", name: "E-mini Russell 2000", exchange: "CME", sector: "indices", tickSize: 0.1, pointValue: 50, currency: "USD" },
+        { symbol: "YM", name: "E-mini Dow ($5)", exchange: "CBOT", sector: "indices", tickSize: 1, pointValue: 5, currency: "USD" },
+        { symbol: "EMD", name: "E-mini S&P MidCap 400", exchange: "CME", sector: "indices", tickSize: 0.1, pointValue: 100, currency: "USD" },
+        // Metals Futures
+        { symbol: "GC", name: "Gold", exchange: "COMEX", sector: "metals", tickSize: 0.1, pointValue: 100, currency: "USD" },
+        { symbol: "SI", name: "Silver", exchange: "COMEX", sector: "metals", tickSize: 0.005, pointValue: 5000, currency: "USD" },
+        { symbol: "HG", name: "Copper", exchange: "COMEX", sector: "metals", tickSize: 0.0005, pointValue: 25000, currency: "USD" },
+      ];
+
+      const filtered = sector ? roots.filter(r => r.sector === sector) : roots;
+      
+      await this.cache.set(cacheKey, filtered, CACHE_TTL.bars, ["futures", "roots"]);
+      return filtered;
+    } catch (error) {
+      console.error(`[Massive] Error fetching futures roots:`, error);
+      throw this.mapError(error);
+    }
+  }
+
+  async getFuturesChain(root: string): Promise<FuturesChain> {
+    const cacheKey = `futures_chain:massive:${root}`;
+    const cached = await this.cache.get<FuturesChain>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
+    await this.rateLimiter.acquire("massive");
+
+    try {
+      // Get the root info
+      const roots = await this.getFuturesRoots();
+      const rootInfo = roots.find(r => r.symbol === root.toUpperCase());
+      
+      if (!rootInfo) {
+        throw new Error(`Unknown futures root: ${root}`);
+      }
+
+      // Generate contracts for the next 12 months
+      const contracts: FuturesContract[] = [];
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      
+      // CME standard contract months per product
+      const contractMonths = this.getContractMonths(root);
+      
+      for (let year = currentYear; year <= currentYear + 2; year++) {
+        for (const month of contractMonths) {
+          const expiryDate = this.calculateExpiryDate(root, year, month);
+          const contractCode = this.getMonthCode(month) + String(year).slice(-2);
+          
+          contracts.push({
+            symbol: `${root}${contractCode}`,
+            rootSymbol: root,
+            contractCode,
+            expiryMonth: month,
+            expiryYear: year,
+            lastTradeDate: expiryDate?.toISOString().split("T")[0],
+            isActive: expiryDate ? expiryDate > now : true,
+            isSpot: false, // Will be determined by volume/OI later
+          });
+        }
+      }
+
+      // Sort by expiry
+      contracts.sort((a, b) => {
+        if (a.expiryYear !== b.expiryYear) return a.expiryYear - b.expiryYear;
+        return a.expiryMonth - b.expiryMonth;
+      });
+
+      // Mark first active as spot
+      const firstActive = contracts.find(c => c.isActive);
+      if (firstActive) {
+        firstActive.isSpot = true;
+      }
+
+      // Generate continuous aliases
+      const continuousAliases = contracts
+        .filter(c => c.isActive)
+        .slice(0, 4)
+        .map((c, i) => ({
+          depth: i + 1,
+          alias: `${root}${i + 1}!`,
+          contract: c,
+        }));
+
+      const chain: FuturesChain = {
+        root: rootInfo,
+        contracts,
+        continuousAliases,
+      };
+
+      await this.cache.set(cacheKey, chain, CACHE_TTL.bars, [
+        `futures:${root}`,
+        "chain",
+      ]);
+
+      return chain;
+    } catch (error) {
+      console.error(`[Massive] Error fetching futures chain for ${root}:`, error);
+      throw this.mapError(error);
+    }
+  }
+
+  async getFuturesContract(contractSymbol: string): Promise<FuturesContract | null> {
+    // Extract root from contract symbol (e.g., "GCZ25" -> "GC")
+    const match = contractSymbol.match(/^([A-Z]{1,4})([FGHJKMNQUVXZ])(\d{2})$/);
+    if (!match) {
+      return null;
+    }
+
+    const [, root, monthCode, yearSuffix] = match;
+    const chain = await this.getFuturesChain(root);
+    return chain.contracts.find(c => c.symbol === contractSymbol) || null;
+  }
+
+  private getContractMonths(root: string): number[] {
+    // Standard CME contract months
+    const monthMap: Record<string, number[]> = {
+      "ES": [3, 6, 9, 12], // Quarterly
+      "NQ": [3, 6, 9, 12],
+      "RTY": [3, 6, 9, 12],
+      "YM": [3, 6, 9, 12],
+      "EMD": [3, 6, 9, 12],
+      "GC": [2, 4, 6, 8, 10, 12], // Feb, Apr, Jun, Aug, Oct, Dec
+      "SI": [3, 5, 7, 9, 12],
+      "HG": [3, 5, 7, 9, 12],
+    };
+    
+    return monthMap[root] || [3, 6, 9, 12];
+  }
+
+  private getMonthCode(month: number): string {
+    const codes = ["F", "G", "H", "J", "K", "M", "N", "Q", "U", "V", "X", "Z"];
+    return codes[month - 1];
+  }
+
+  private calculateExpiryDate(root: string, year: number, month: number): Date | null {
+    // Simplified expiry calculation - for production, use CME calendar data
+    const lastDay = new Date(year, month, 0);
+    
+    // Most CME contracts expire on the third Friday
+    // or have specific rules per product
+    const dayOfWeek = lastDay.getDay();
+    const offset = (dayOfWeek + 5) % 7; // Days since last Friday
+    const thirdFriday = new Date(year, month - 1, lastDay.getDate() - offset - 7);
+    
+    return thirdFriday;
   }
 
   async healthCheck(): Promise<boolean> {

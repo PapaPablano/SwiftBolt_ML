@@ -65,7 +65,8 @@ HORIZON_CONFIG = {
         "min_training_bars": 60,  # Fetcher adds +1 for return-based models (Kalman: 61 OHLC -> 60 returns)
         "indicator_scale": 0.25,  # Scale down indicator periods
         "use_advanced_ensemble": False,  # Keep basic for speed
-        "use_walk_forward": False,  # Too short for walk-forward validation
+        "use_walk_forward": True,  # Expanding-window CV + 4-bar purge + early stopping
+        "use_smote_for_gb": True,  # False = sample_weight baseline (compare vs SMOTE)
         "horizon_days": 0.0417,  # 4 * 15m / 86400 (time_scale_days for synthesizer)
         "kalman_weight": 0.15,  # Blend weight for StateSpaceKalmanForecaster (0 disables)
     },
@@ -892,7 +893,12 @@ def run_intraday_forecast_in_memory(
                             ohlc_df=df.tail(1),
                         )
                     else:
-                        forecaster = EnsembleForecaster(horizon="1D", symbol_id=symbol_id)
+                        forecaster = EnsembleForecaster(
+                            horizon=horizon,
+                            symbol_id=symbol_id,
+                            use_walk_forward=config.get("use_walk_forward", False),
+                            use_smote_for_gb=config.get("use_smote_for_gb", True),
+                        )
                         forecaster.train(X, y)
                         ensemble_pred = forecaster.predict(X.tail(1))
 
@@ -1040,8 +1046,9 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
     baseline_required_ohlc = BASELINE_START_IDX + min_bars + lookahead_bars + 10  # buffer for NaNs
     fetch_limit = max(fetch_limit, baseline_required_ohlc)
     # Ensure enough bars for GB (needs ~50+ post-SMOTE); short horizons often yield 70-90
+    # 240+ gives ~180 valid samples for more stable walk-forward folds (less noisy metrics)
     if horizon in ("15m", "1h"):
-        fetch_limit = max(fetch_limit, 160)  # ~106 valid samples (160 - start - lookahead)
+        fetch_limit = max(fetch_limit, 240)
 
     logger.info("Processing %s intraday forecast for %s", horizon, symbol)
     logger.info("%s %s: fetch_limit=%d (min_bars=%d, lookahead=%d)", symbol, timeframe, fetch_limit, min_bars, lookahead_bars)
@@ -1322,7 +1329,12 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                         )
                     else:
                         # BASIC ENSEMBLE: Existing 5-model for 15m/1h (fast)
-                        forecaster = EnsembleForecaster(horizon="1D", symbol_id=symbol_id)
+                        forecaster = EnsembleForecaster(
+                            horizon=horizon,
+                            symbol_id=symbol_id,
+                            use_walk_forward=config.get("use_walk_forward", False),
+                            use_smote_for_gb=config.get("use_smote_for_gb", True),
+                        )
                         forecaster.train(X, y)
                         last_features = X.tail(1)
                         ensemble_pred = forecaster.predict(last_features)

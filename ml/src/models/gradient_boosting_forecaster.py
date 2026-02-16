@@ -57,16 +57,29 @@ class GradientBoostingForecaster:
     EXTERNAL_TO_INTERNAL = {-1: 0, 0: 1, 1: 2}
     INTERNAL_TO_EXTERNAL = {0: -1, 1: 0, 2: 1}
 
-    def __init__(self, horizon: str = "1D", random_state: int = 42) -> None:
+    def __init__(
+        self,
+        horizon: str = "1D",
+        random_state: int = 42,
+        early_stopping_rounds: int | None = None,
+        n_estimators: int = 200,  # 2000 when using early stopping (caller overrides)
+        learning_rate: float = 0.05,  # 0.03 when using early stopping (caller overrides)
+    ) -> None:
         """
         Initialize Gradient Boosting Forecaster.
 
         Args:
             horizon: Forecast horizon ("1D" for 1 day, "1W" for 1 week)
             random_state: Random seed for reproducibility
+            early_stopping_rounds: If set, use eval_set for early stopping (requires eval_set in train)
+            n_estimators: Max boosting rounds (used with early stopping)
+            learning_rate: Learning rate
         """
         self.horizon = horizon
         self.random_state = random_state
+        self.early_stopping_rounds = early_stopping_rounds
+        self.n_estimators = n_estimators
+        self.learning_rate = learning_rate
         self.model: XGBClassifier | None = None
         self.is_trained = False
         self.feature_names: List[str] | None = None
@@ -95,28 +108,37 @@ class GradientBoostingForecaster:
         }
         params = {k: v for k, v in params.items() if v}
 
+        early_stop = {}
+        if self.early_stopping_rounds is not None:
+            early_stop["early_stopping_rounds"] = self.early_stopping_rounds
+
         return XGBClassifier(
-            n_estimators=200,  # More trees than RF (shallow trees)
-            max_depth=3,  # Shallow tree depth (prevents overfitting)
-            learning_rate=0.05,  # Conservative learning rate
+            n_estimators=self.n_estimators,
+            max_depth=2,  # Very shallow for small-data (reduces best_iter=0 / immediate overfit)
+            learning_rate=self.learning_rate,
             subsample=0.8,  # 80% of samples per tree (bagging)
             colsample_bytree=0.8,  # 80% of features per tree
             colsample_bylevel=0.8,  # 80% of features per tree level
-            min_child_weight=1,  # Minimum weight to split
-            gamma=0,  # No regularization penalty
-            reg_alpha=0.1,  # L1 regularization (light)
-            reg_lambda=1.0,  # L2 regularization (standard)
+            min_child_weight=3,  # Higher = more conservative splits (small-data)
+            gamma=0.1,  # Min loss reduction to split
+            reg_alpha=0.2,  # L1 (small-data)
+            reg_lambda=2.0,  # L2 (small-data)
             random_state=self.random_state,
-            objective="multi:softmax",  # Multiclass classification
+            objective="multi:softprob",  # For probability outputs (ensemble averaging)
             num_class=3,  # 3 classes (Bearish, Neutral, Bullish)
-            eval_metric="mlogloss",  # Evaluation metric
-            verbosity=0,  # No training output
-            n_jobs=n_jobs,  # Use all CPU cores (override via env)
+            eval_metric="mlogloss",
+            verbosity=0,
+            n_jobs=n_jobs,
+            **early_stop,
             **params,
         )
 
     def train(
-        self, features_df: pd.DataFrame, labels_series: pd.Series
+        self,
+        features_df: pd.DataFrame,
+        labels_series: pd.Series,
+        eval_set: tuple[np.ndarray, np.ndarray] | None = None,
+        sample_weight: np.ndarray | None = None,
     ) -> "GradientBoostingForecaster":
         """
         Train Gradient Boosting model on historical data.
@@ -126,6 +148,10 @@ class GradientBoostingForecaster:
                 (shape: [N, num_features])
             labels_series: Series with directional labels {-1, 0, 1}
                 (shape: [N])
+            eval_set: Optional (X_val, y_val) for early stopping.
+                y_val must be internal (0,1,2). Requires early_stopping_rounds.
+            sample_weight: Optional per-sample weights (e.g. balanced class weights).
+                Alternative to SMOTE for imbalanced data.
 
         Returns:
             self (for method chaining)
@@ -193,7 +219,17 @@ class GradientBoostingForecaster:
 
         # Build and train model
         self.model = self._build_model()
-        self.model.fit(X=features_clean, y=labels_internal)
+        fit_kwargs: dict = {"X": features_clean, "y": labels_internal}
+        if sample_weight is not None:
+            sw = np.asarray(sample_weight)
+            if len(sw) == len(valid_mask):
+                sw = sw[np.asarray(valid_mask)]
+            fit_kwargs["sample_weight"] = sw
+        if eval_set is not None and self.early_stopping_rounds is not None:
+            X_val, y_val = eval_set
+            fit_kwargs["eval_set"] = [(X_val, y_val)]
+            fit_kwargs["verbose"] = False
+        self.model.fit(**fit_kwargs)
 
         # Store training stats
         # Feature importance (may be gain-based depending on booster)
@@ -220,13 +256,37 @@ class GradientBoostingForecaster:
 
         top_features = importance_pairs[:10]
 
+        best_iter = getattr(self.model, "best_iteration", None)
+        evals_result = None
+        if eval_set is not None and hasattr(self.model, "evals_result"):
+            try:
+                er = self.model.evals_result
+                evals_result = er() if callable(er) else er
+            except Exception:  # noqa: BLE001
+                pass
+        eval_mlogloss_first5 = None
+        if evals_result and eval_set is not None:
+            for name, hist in evals_result.items():
+                if "mlogloss" in hist:
+                    vals = hist["mlogloss"]
+                    eval_mlogloss_first5 = vals[: min(5, len(vals))]
+                    logger.info(
+                        "GB eval mlogloss (first %d rounds): %s best_iter=%s",
+                        len(eval_mlogloss_first5),
+                        eval_mlogloss_first5,
+                        best_iter,
+                    )
+                    break
         self.training_stats = {
             "n_samples": len(features_clean),
             "n_features": features_clean.shape[1],
             "class_distribution": labels_internal.value_counts().to_dict(),
             "training_accuracy": self.model.score(features_clean, labels_internal),
             "top_features": top_features,
+            "best_iteration": best_iter,
         }
+        if eval_mlogloss_first5 is not None:
+            self.training_stats["eval_mlogloss_first5"] = eval_mlogloss_first5
 
         self.is_trained = True
         logger.info(

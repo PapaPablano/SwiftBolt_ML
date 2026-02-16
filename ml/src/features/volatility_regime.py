@@ -22,12 +22,17 @@ class GarchVolatility:
         self.model = None
         self.res = None
 
+    # Scale factor: arch recommends y in range 1-1000; intraday returns are tiny
+    # (e.g. 0.01% = 0.0001). * 1000 puts 0.1% at 1.0, reducing DataScaleWarning.
+    _SCALE = 1000
+
     def fit(self, returns: pd.Series) -> None:
         clean = returns.dropna()
         if len(clean) < 50:
             raise ValueError("Not enough data for GARCH fit (need >=50)")
+        scaled = clean * self._SCALE
         self.model = arch_model(
-            clean * 100,
+            scaled,
             p=1,
             q=1,
             mean="Zero",
@@ -42,7 +47,7 @@ class GarchVolatility:
             raise RuntimeError("GARCH model not fitted")
         forecast = self.res.forecast(horizon=steps)
         # Return next-step variance (convert back from percentage space)
-        variance = forecast.variance.values[-1, -1] / (100**2)
+        variance = forecast.variance.values[-1, -1] / (self._SCALE**2)
         return variance
 
     def in_sample_variance(self) -> pd.Series:
@@ -51,10 +56,10 @@ class GarchVolatility:
         cond_vol = self.res.conditional_volatility
         # Handle both numpy array and pandas Series returns
         if isinstance(cond_vol, pd.Series):
-            var = cond_vol**2 / (100**2)
+            var = cond_vol**2 / (self._SCALE**2)
         else:
             # numpy array case - convert to Series with proper index
-            var_values = cond_vol**2 / (100**2)
+            var_values = cond_vol**2 / (self._SCALE**2)
             var = pd.Series(var_values, index=self.res.model._y.index)
         return var
 

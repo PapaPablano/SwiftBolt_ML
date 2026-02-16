@@ -48,6 +48,57 @@ export interface Symbol {
 
 export type OptionType = "call" | "put";
 
+// ============================================================================
+// FUTURES TYPES
+// ============================================================================
+
+export type FuturesSector = "indices" | "metals" | "energy" | "rates" | "agriculture" | "softs";
+
+export interface FuturesRoot {
+  symbol: string; // Root symbol (e.g., "GC", "ES")
+  name: string; // Full name (e.g., "Gold")
+  exchange: string; // e.g., "COMEX", "CME"
+  sector: FuturesSector;
+  tickSize: number;
+  pointValue: number;
+  currency: string;
+  sessionTemplate?: string;
+}
+
+export interface FuturesContract {
+  symbol: string; // Full contract symbol (e.g., "GCZ25")
+  rootSymbol: string; // Root symbol (e.g., "GC")
+  contractCode: string; // Month code + year (e.g., "Z25")
+  expiryMonth: number;
+  expiryYear: number;
+  lastTradeDate?: string; // ISO date string
+  firstNoticeDate?: string; // For physically delivered
+  settlementDate?: string; // For cash-settled
+  isActive: boolean;
+  isSpot: boolean; // Is this the front month?
+  volume30d?: number;
+  openInterest?: number;
+}
+
+export interface FuturesChain {
+  root: FuturesRoot;
+  contracts: FuturesContract[];
+  continuousAliases: {
+    depth: number;
+    alias: string; // e.g., "GC1!"
+    contract: FuturesContract;
+  }[];
+}
+
+export interface FuturesContinuousMapping {
+  alias: string; // e.g., "GC1!"
+  rootSymbol: string;
+  depth: number;
+  contractSymbol: string;
+  validFrom: string; // ISO date
+  validUntil?: string; // ISO date, null if active
+}
+
 export interface OptionContract {
   symbol: string; // Option symbol (e.g., "AAPL250117C00150000")
   underlying: string; // Underlying symbol (e.g., "AAPL")

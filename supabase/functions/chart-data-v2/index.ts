@@ -557,16 +557,72 @@ serve(async (req: Request): Promise<Response> => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get symbol_id
+    // Resolve futures symbols (continuous aliases like GC1! or dated contracts like GCZ25)
+    const requestedSymbol = symbol.toUpperCase();
+    let resolvedSymbol = requestedSymbol;
+    let isContinuousFutures = false;
+    let resolutionSource: 'direct' | 'resolved' | 'continuous' = 'direct';
+    
+    // Check if this is a futures root (just "GC", "ES" without expiry)
+    const futuresRootPattern = /^[A-Z]{1,4}$/;
+    if (futuresRootPattern.test(requestedSymbol)) {
+      // Check if it's actually a futures root in the database
+      const { data: rootCheck } = await supabase
+        .from('futures_roots')
+        .select('symbol')
+        .eq('symbol', requestedSymbol)
+        .single();
+        
+      if (rootCheck) {
+        return new Response(
+          JSON.stringify({ 
+            error: `Futures root "${requestedSymbol}" requires expiry selection. Please select a specific contract (e.g., ${requestedSymbol}Z25) or continuous alias (e.g., ${requestedSymbol}1!).`,
+            requires_expiry_picker: true,
+            root_symbol: requestedSymbol
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+    
+    // Check if this is a futures symbol with expiry or continuous alias
+    // Pattern: GC1!, GCZ25, ES1!, ESZ25, etc.
+    const futuresPattern = /^([A-Z]{1,4})(\d{1,2}!|[FGHJKMNQUVXZ]\d{2})$/;
+    if (futuresPattern.test(requestedSymbol)) {
+      console.log(`[chart-data-v2] Detected futures symbol: ${requestedSymbol}`);
+      
+      try {
+        // Try to resolve using the SQL function
+        const { data: resolved, error: resolveError } = await supabase
+          .rpc('resolve_futures_symbol', { 
+            p_symbol: requestedSymbol,
+            p_as_of: new Date().toISOString().split('T')[0]
+          });
+        
+        if (!resolveError && resolved && resolved.length > 0) {
+          const result = resolved[0];
+          resolvedSymbol = result.resolved_symbol;
+          isContinuousFutures = result.is_continuous;
+          resolutionSource = isContinuousFutures ? 'continuous' : 'resolved';
+          console.log(`[chart-data-v2] Resolved ${requestedSymbol} → ${resolvedSymbol} (continuous: ${isContinuousFutures})`);
+        } else {
+          console.log(`[chart-data-v2] Could not resolve futures symbol ${requestedSymbol}, using as-is`);
+        }
+      } catch (err) {
+        console.error(`[chart-data-v2] Error resolving futures symbol:`, err);
+      }
+    }
+
+    // Get symbol_id using the resolved symbol
     const { data: symbolData, error: symbolError } = await supabase
       .from('symbols')
-      .select('id')
-      .eq('ticker', symbol.toUpperCase())
+      .select('id, ticker, asset_type, futures_root_id, is_continuous, expiry_month, expiry_year')
+      .eq('ticker', resolvedSymbol)
       .single();
 
     if (symbolError || !symbolData) {
       return new Response(
-        JSON.stringify({ error: `Symbol ${symbol} not found` }),
+        JSON.stringify({ error: `Symbol ${resolvedSymbol} not found` }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -1222,9 +1278,28 @@ serve(async (req: Request): Promise<Response> => {
       barCount: chartData?.length || 0,
     };
 
+    // Build futures metadata if applicable
+    let futuresMetadata = null;
+    if (symbolData?.asset_type === 'future') {
+      futuresMetadata = {
+        requested_symbol: requestedSymbol,
+        resolved_symbol: resolvedSymbol,
+        is_continuous: isContinuousFutures,
+        resolution_source: resolutionSource,
+        root_id: symbolData?.futures_root_id || null,
+        is_dated_contract: !isContinuousFutures && symbolData?.expiry_month != null,
+        expiry_info: symbolData?.expiry_month ? {
+          month: symbolData.expiry_month,
+          year: symbolData.expiry_year,
+          display: `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][symbolData.expiry_month - 1]} ${symbolData.expiry_year}`
+        } : null
+      };
+    }
+
     const response = {
-      symbol: symbol.toUpperCase(),
+      symbol: resolvedSymbol,
       symbol_id: symbolId,
+      asset_type: symbolData?.asset_type || 'unknown',
       timeframe,
       layers: {
         historical: {
@@ -1257,6 +1332,7 @@ serve(async (req: Request): Promise<Response> => {
         forecast_days: forecastDays,
         forecast_steps: typeof forecastSteps === 'number' ? Math.floor(forecastSteps) : null,
       },
+      futures: futuresMetadata,
       dataQuality,
       mlSummary,
       indicators,

@@ -205,7 +205,7 @@ async function searchFuturesSymbols(query: string, supabase: any): Promise<Symbo
   }
 }
 
-serve(async (req: Request): Promise<Response> {
+serve(async (req: Request): Promise<Response> => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return handleCorsOptions();

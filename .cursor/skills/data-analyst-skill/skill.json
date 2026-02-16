@@ -1,0 +1,14 @@
+{
+  "name": "data-analyst",
+  "description": "SQL, pandas, and statistical analysis expertise for data exploration and insights.",
+  "version": "1.0.0",
+  "author": "awesome-llm-apps",
+  "license": "MIT",
+  "entrypoint": "main.py",
+  "type": "skill",
+  "keywords": ["data-analysis", "sql", "pandas", "statistics"],
+  "metadata": {
+    "category": "data-science",
+    "difficulty": "intermediate"
+  }
+}

@@ -95,10 +95,10 @@ struct SearchResultsList: View {
                 ForEach(results) { symbol in
                     SearchResultRow(
                         symbol: symbol,
-                        onSelect: {
+                        onSelect: { selected in
                             print("[DEBUG] !!! BUTTON TAPPED IN SearchResultsList !!!")
-                            print("[DEBUG] !!! Symbol: \(symbol.ticker) !!!")
-                            onSelect(symbol)
+                            print("[DEBUG] !!! Symbol: \(selected.ticker) !!!")
+                            onSelect(selected)
                         }
                     )
                 }
@@ -112,8 +112,10 @@ struct SearchResultsList: View {
 
 struct SearchResultRow: View {
     let symbol: Symbol
-    let onSelect: () -> Void
+    let onSelect: (Symbol) -> Void
     @State private var isHovered = false
+    @State private var isExpanded = false
+    @State private var contracts: [FuturesContract] = []
     @EnvironmentObject var appViewModel: AppViewModel
 
     private var isWatched: Bool {
@@ -122,56 +124,136 @@ struct SearchResultRow: View {
 
     var body: some View {
         print("[DEBUG] 🟢 SearchResultRow.body rendering for: \(symbol.ticker)")
-        return Button {
-            print("[DEBUG] 🔵🔵🔵 SearchResultRow BUTTON PRESSED for \(symbol.ticker)")
-            onSelect()
-        } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(symbol.ticker)
-                        .font(.headline)
-                    Text(symbol.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                Text(symbol.assetType.capitalized)
-                    .font(.caption2)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(.blue.opacity(0.2))
-                    .clipShape(Capsule())
-
-                // Watchlist star button - use onTapGesture to prevent event propagation
-                Image(systemName: isWatched ? "star.fill" : "star")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .frame(width: 24, height: 24)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        print("[DEBUG] ⭐⭐⭐ Watchlist star tapped for \(symbol.ticker)")
-                        Task {
-                            await appViewModel.watchlistViewModel.toggleSymbol(symbol)
-                        }
+        
+        return VStack(alignment: .leading, spacing: 0) {
+            // Main row
+            Button {
+                print("[DEBUG] 🔵🔵🔵 SearchResultRow BUTTON PRESSED for \(symbol.ticker)")
+                handleTap()
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(symbol.ticker)
+                            .font(.headline)
+                        Text(symbol.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
-                    .help(isWatched ? "Remove from watchlist" : "Add to watchlist")
+
+                    Spacer()
+
+                    // Futures indicator
+                    if symbol.assetType == "future" {
+                        if symbol.isFuturesRoot {
+                            Text("[Select Expiry →]")
+                                .font(.caption)
+                                .foregroundColor(.accentColor)
+                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                                .foregroundColor(.secondary)
+                                .font(.caption)
+                        } else if symbol.isContinuous == true {
+                            Text("Continuous")
+                                .font(.caption2)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.blue.opacity(0.2))
+                                .clipShape(Capsule())
+                        } else {
+                            Text("Dated")
+                                .font(.caption2)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.green.opacity(0.2))
+                                .clipShape(Capsule())
+                        }
+                    } else {
+                        Text(symbol.assetType.capitalized)
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.blue.opacity(0.2))
+                            .clipShape(Capsule())
+                    }
+
+                    // Watchlist star button - use onTapGesture to prevent event propagation
+                    Image(systemName: isWatched ? "star.fill" : "star")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            print("[DEBUG] ⭐⭐⭐ Watchlist star tapped for \(symbol.ticker)")
+                            Task {
+                                await appViewModel.watchlistViewModel.toggleSymbol(symbol)
+                            }
+                        }
+                        .help(isWatched ? "Remove from watchlist" : "Add to watchlist")
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 12)
+                .background(isHovered ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
             }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
-            .background(isHovered ? Color.accentColor.opacity(0.2) : Color.primary.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                print("[DEBUG] 🟣 Hover state changed to: \(hovering) for \(symbol.ticker)")
+                isHovered = hovering
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            
+            // Inline expiry picker for futures roots
+            if isExpanded && symbol.isFuturesRoot {
+                FuturesExpiryPickerInline(
+                    rootSymbol: symbol.ticker,
+                    contracts: contracts,
+                    onSelect: { selectedSymbol in
+                        // Create a new symbol object for the selected contract
+                        let contractSymbol = Symbol(
+                            ticker: selectedSymbol,
+                            assetType: "future",
+                            description: "\(symbol.description) - \(selectedSymbol)",
+                            rootSymbol: symbol.ticker,
+                            isContinuous: selectedSymbol.contains("!")
+                        )
+                        onSelect(contractSymbol)
+                        isExpanded = false
+                    }
+                )
+                .padding(.leading, 16)
+                .padding(.vertical, 8)
+                .background(Color.secondary.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
         }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            print("[DEBUG] 🟣 Hover state changed to: \(hovering) for \(symbol.ticker)")
-            isHovered = hovering
-            if hovering {
-                NSCursor.pointingHand.push()
-            } else {
-                NSCursor.pop()
+    }
+    
+    private func handleTap() {
+        if symbol.isFuturesRoot {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isExpanded.toggle()
+                if isExpanded && contracts.isEmpty {
+                    loadContracts()
+                }
+            }
+        } else {
+            onSelect(symbol)
+        }
+    }
+    
+    private func loadContracts() {
+        Task {
+            do {
+                let fetchedContracts = try await APIClient.shared.fetchFuturesChain(root: symbol.ticker)
+                await MainActor.run {
+                    contracts = fetchedContracts
+                }
+            } catch {
+                print("[DEBUG] Failed to load futures contracts: \(error)")
             }
         }
     }

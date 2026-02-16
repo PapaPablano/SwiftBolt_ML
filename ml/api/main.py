@@ -14,6 +14,7 @@ from api.routers import (
     backtest,
     forecast_charts_realtime,
     forecast_quality,
+    futures,
     greeks_surface,
     model_training,
     multi_leg,
@@ -64,11 +65,18 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(technical_indicators.router, prefix="/api/v1", tags=["Technical Indicators"])
+app.include_router(
+    technical_indicators.router, prefix="/api/v1", tags=["Technical Indicators"]
+)
 app.include_router(news_sentiment.router, prefix="/api/v1", tags=["News Sentiment"])
-app.include_router(support_resistance.router, prefix="/api/v1", tags=["Support & Resistance"])
+app.include_router(
+    support_resistance.router, prefix="/api/v1", tags=["Support & Resistance"]
+)
+app.include_router(futures.router, prefix="/api/v1", tags=["Futures (Databento)"])
 app.include_router(backtest.router, prefix="/api/v1", tags=["Backtesting"])
-app.include_router(walk_forward.router, prefix="/api/v1", tags=["Walk-Forward Optimization"])
+app.include_router(
+    walk_forward.router, prefix="/api/v1", tags=["Walk-Forward Optimization"]
+)
 app.include_router(portfolio.router, prefix="/api/v1", tags=["Portfolio Optimization"])
 app.include_router(stress_test.router, prefix="/api/v1", tags=["Stress Testing"])
 app.include_router(model_training.router, prefix="/api/v1", tags=["Model Training"])
@@ -78,8 +86,12 @@ app.include_router(greeks_surface.router, prefix="/api/v1", tags=["Options Greek
 app.include_router(options.router, prefix="/api/v1", tags=["Options Chain & Quotes"])
 app.include_router(ranking.router, prefix="/api/v1", tags=["Options Ranking"])
 app.include_router(multi_leg.router, prefix="/api/v1", tags=["Multi-Leg Strategies"])
-app.include_router(volatility_surface.router, prefix="/api/v1", tags=["Volatility Surfaces"])
-app.include_router(forecast_charts_realtime.router, prefix="/api/v1", tags=["Real-time Charts"])
+app.include_router(
+    volatility_surface.router, prefix="/api/v1", tags=["Volatility Surfaces"]
+)
+app.include_router(
+    forecast_charts_realtime.router, prefix="/api/v1", tags=["Real-time Charts"]
+)
 
 
 @app.get("/")

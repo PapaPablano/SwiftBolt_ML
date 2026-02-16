@@ -85,6 +85,7 @@ final class ChartViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var indicatorConfig = IndicatorConfig()
     @Published var useV2API: Bool = true
+    private var v2UnsupportedSymbols: Set<String> = []
     
     // WebChart Advanced Features
     @Published var useHeikinAshi: Bool = true
@@ -953,8 +954,14 @@ final class ChartViewModel: ObservableObject {
 
         // Create new task
         loadTask = Task {
+            defer {
+                if currentLoadId == loadId {
+                    isLoading = false
+                }
+            }
+            
             do {
-                if useV2API {
+                if useV2API && !v2UnsupportedSymbols.contains(symbol.ticker) {
                     let response: ChartDataV2Response
                     do {
                         // Backend automatically separates today's bars into intraday layer
@@ -966,6 +973,11 @@ final class ChartViewModel: ObservableObject {
                         )
                     } catch {
                         print("[DEBUG] chart-data-v2 failed: \(error). Falling back to chart-read.")
+                        // Track that v2 doesn't support this symbol
+                        if error.localizedDescription.contains("404") || error.localizedDescription.contains("not found") {
+                            v2UnsupportedSymbols.insert(symbol.ticker)
+                            print("[DEBUG] Marked \(symbol.ticker) as v2-unsupported, will skip v2 on next load")
+                        }
                         let fallback = try await APIClient.shared.fetchChartRead(
                             symbol: symbol.ticker,
                             timeframe: timeframe.apiToken,
@@ -1172,12 +1184,7 @@ final class ChartViewModel: ObservableObject {
                 } else {
                     errorMessage = error.localizedDescription
                 }
-                isLoading = false
             }
-        }
-        
-        if currentLoadId == loadId {
-            isLoading = false
         }
         print("[DEBUG] ChartViewModel.loadChart() COMPLETED")
         print("[DEBUG] - Final state: chartData=\(chartData == nil ? "nil" : "non-nil"), isLoading=\(isLoading), errorMessage=\(errorMessage ?? "nil")")

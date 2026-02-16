@@ -590,6 +590,31 @@ final class APIClient {
         
         return try await performRequest(request)
     }
+    
+    // MARK: - Futures Chain
+    
+    /// Fetch futures contract chain for a given root symbol
+    /// - Parameter root: The futures root symbol (e.g., "GC", "ES")
+    /// - Returns: Array of futures contracts
+    func fetchFuturesChain(root: String) async throws -> [FuturesContract] {
+        guard var components = URLComponents(url: functionURL("futures-chain"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        components.queryItems = [URLQueryItem(name: "root", value: root)]
+        
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        let response: FuturesChainResponse = try await performRequest(request)
+        return response.contracts
+    }
 
     func fetchChart(symbol: String, timeframe: String) async throws -> ChartResponse {
         let request = try makeRequest(
