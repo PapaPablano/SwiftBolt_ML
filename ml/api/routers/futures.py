@@ -1,4 +1,4 @@
-"""Router for Databento futures data endpoints."""
+"""Router for Yahoo Finance futures data endpoints."""
 
 import logging
 import sys
@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.data.databento_client import DatabentoClient, get_client
+from src.data.yahoo_futures_client import get_client
 from src.data.supabase_db import SupabaseDatabase
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,7 @@ class FuturesBarResponse(BaseModel):
 class BackfillRequest(BaseModel):
     symbol: str
     mode: str
+    timeframe: str = "1d"
     start_date: Optional[str] = None
     end_date: Optional[str] = None
 
@@ -49,7 +50,7 @@ async def get_futures_bars(
         "continuous",
         description="Mode: 'continuous' for root (ES.v.0), 'contract' for specific expiry",
     ),
-    timeframe: str = Query("1d", description="Timeframe: 1s, 1m, 1h, 1d"),
+    timeframe: str = Query("1d", description="Timeframe: 1m, 15m, 1h, 4h, 1d, 1w"),
     start_date: Optional[str] = Query(
         None, description="Start date (YYYY-MM-DD), defaults to 1 year ago"
     ),
@@ -58,15 +59,12 @@ async def get_futures_bars(
     ),
 ) -> FuturesBarResponse:
     """
-    Get OHLCV bars for futures from Databento.
+    Get OHLCV bars for futures from Yahoo Finance.
 
     - mode='continuous': Use root symbol (ES, GC, NQ) - returns front-month continuous contract
-    - mode='contract': Use full contract symbol (GCZ4, ESH6)
+    - mode='contract': Use full contract symbol (falls back to continuous)
     """
-    try:
-        client = get_client()
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    client = get_client()
 
     if end_date is None:
         end_date = datetime.now().strftime("%Y-%m-%d")
@@ -124,14 +122,11 @@ async def get_futures_bars(
 @router.post("/futures/backfill")
 async def backfill_futures_bars(request: BackfillRequest) -> BackfillResponse:
     """
-    Backfill futures OHLCV bars from Databento into Supabase.
+    Backfill futures OHLCV bars from Yahoo Finance into Supabase.
 
     Fetches historical data and upserts into ohlc_bars_v2 table.
     """
-    try:
-        client = get_client()
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    client = get_client()
 
     db = SupabaseDatabase()
 
@@ -143,6 +138,7 @@ async def backfill_futures_bars(request: BackfillRequest) -> BackfillResponse:
     if request.mode == "continuous":
         df = client.get_continuous_contract(
             root=request.symbol.upper(),
+            resolution=request.timeframe,
             start_date=start_date,
             end_date=end_date,
         )
@@ -150,6 +146,7 @@ async def backfill_futures_bars(request: BackfillRequest) -> BackfillResponse:
     else:
         df = client.get_expiry_contract(
             symbol=request.symbol.upper(),
+            resolution=request.timeframe,
             start_date=start_date,
             end_date=end_date,
         )
@@ -177,7 +174,7 @@ async def backfill_futures_bars(request: BackfillRequest) -> BackfillResponse:
                 "low": float(row["low"]),
                 "close": float(row["close"]),
                 "volume": int(row["volume"]) if pd.notna(row["volume"]) else 0,
-                "timeframe": "1d",
+                "timeframe": request.timeframe,
             }
         )
 
@@ -202,10 +199,7 @@ async def backfill_futures_bars(request: BackfillRequest) -> BackfillResponse:
 @router.get("/futures/roots")
 async def get_futures_roots():
     """Get list of supported futures roots."""
-    try:
-        client = get_client()
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    client = get_client()
     return {"roots": client.get_futures_roots()}
 
 
@@ -214,6 +208,6 @@ async def futures_health():
     """Health check for futures endpoint."""
     try:
         client = get_client()
-        return {"status": "healthy", "databento": "connected"}
-    except ValueError as e:
+        return {"status": "healthy", "provider": "yahoo_finance"}
+    except Exception as e:
         return {"status": "unhealthy", "error": str(e)}

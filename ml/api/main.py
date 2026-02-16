@@ -72,7 +72,7 @@ app.include_router(news_sentiment.router, prefix="/api/v1", tags=["News Sentimen
 app.include_router(
     support_resistance.router, prefix="/api/v1", tags=["Support & Resistance"]
 )
-app.include_router(futures.router, prefix="/api/v1", tags=["Futures (Databento)"])
+app.include_router(futures.router, prefix="/api/v1", tags=["Futures (Yahoo Finance)"])
 app.include_router(backtest.router, prefix="/api/v1", tags=["Backtesting"])
 app.include_router(
     walk_forward.router, prefix="/api/v1", tags=["Walk-Forward Optimization"]
