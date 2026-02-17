@@ -5,6 +5,7 @@ enum SidebarSection: Hashable {
     case portfolio
     case multileg
     case predictions
+    case tradestation
     case devtools
 }
 
@@ -31,6 +32,9 @@ struct ContentView: View {
                         Text("Portfolio")
                     case .multileg:
                         MultiLegStrategyListView()
+                            .environmentObject(appViewModel)
+                    case .tradestation:
+                        TSStrategyBuilderView()
                             .environmentObject(appViewModel)
                     default:
                         DetailView()
@@ -91,6 +95,9 @@ struct SidebarView: View {
                     }
                     NavigationLink(value: SidebarSection.predictions) {
                         Label("Predictions", systemImage: "waveform.path.ecg")
+                    }
+                    NavigationLink(value: SidebarSection.tradestation) {
+                        Label("TradeStation", systemImage: "chart.line.uptrend.xyaxis")
                     }
                 }
 
