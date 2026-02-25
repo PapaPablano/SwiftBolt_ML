@@ -116,13 +116,6 @@ const StrategyUI: React.FC = () => {
     setIsEditing(false);
   };
 
-  const handleDeleteStrategy = (id: string) => {
-    setStrategies(strategies.filter(s => s.id !== id));
-    if (selectedStrategy && selectedStrategy.id === id) {
-      setSelectedStrategy(strategies.length > 1 ? strategies[0] : null);
-    }
-  };
-
   const handleBacktest = async () => {
     if (!selectedStrategy) return;
     

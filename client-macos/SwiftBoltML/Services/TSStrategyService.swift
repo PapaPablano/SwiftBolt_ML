@@ -4,18 +4,15 @@ import Foundation
 class TSStrategyService: ObservableObject {
     static let shared = TSStrategyService()
     
-    @Published var strategies: [TSStrategy] = []
+    @Published var strategies: [TSStrategyModel] = []
     @Published var indicators: [TSIndicator] = []
     @Published var isLoading = false
     @Published var error: String?
     @Published var isAuthenticated = false
     
-    private let baseURL: String
-    private let supabaseURL: String
-    
-    init() {
-        self.supabaseURL = Config.shared.supabaseURL
-        self.baseURL = "\(supabaseURL)/functions/v1/ts-strategies"
+    private var baseURL: String {
+        let supabaseURL = Config.shared.supabaseURL.absoluteString
+        return "\(supabaseURL)/functions/v1/ts-strategies"
     }
     
     private var authToken: String? {
@@ -60,7 +57,7 @@ class TSStrategyService: ObservableObject {
         
         do {
             let (data, _) = try await URLSession.shared.data(for: request)
-            strategies = try JSONDecoder().decode([TSStrategy].self, from: data)
+            strategies = try JSONDecoder().decode([TSStrategyModel].self, from: data)
         } catch {
             self.error = error.localizedDescription
         }
@@ -69,20 +66,19 @@ class TSStrategyService: ObservableObject {
     }
     
     func fetchIndicators() async {
-        // Indicators are predefined - load from local or fetch
         indicators = [
-            TSIndicator(id: "1", name: "RSI", description: "Relative Strength Index", parameters: ["period": AnyCodable(14), "overbought": AnyCodable(70), "oversold": AnyCodable(30)]),
-            TSIndicator(id: "2", name: "MACD", description: "Moving Average Convergence Divergence", parameters: ["fast_period": AnyCodable(12), "slow_period": AnyCodable(26), "signal_period": AnyCodable(9)]),
-            TSIndicator(id: "3", name: "SMA", description: "Simple Moving Average", parameters: ["period": AnyCodable(20)]),
-            TSIndicator(id: "4", name: "EMA", description: "Exponential Moving Average", parameters: ["period": AnyCodable(20)]),
-            TSIndicator(id: "5", name: "BB", description: "Bollinger Bands", parameters: ["period": AnyCodable(20), "std_dev": AnyCodable(2)]),
-            TSIndicator(id: "6", name: "ATR", description: "Average True Range", parameters: ["period": AnyCodable(14)]),
-            TSIndicator(id: "7", name: "STOCH", description: "Stochastic Oscillator", parameters: ["k_period": AnyCodable(14), "d_period": AnyCodable(3)]),
-            TSIndicator(id: "8", name: "VWAP", description: "Volume Weighted Average Price", parameters: [:])
+            TSIndicator(id: "1", name: "RSI", description: "Relative Strength Index", parameters: ["period": .int(14), "overbought": .int(70), "oversold": .int(30)]),
+            TSIndicator(id: "2", name: "MACD", description: "Moving Average Convergence Divergence", parameters: ["fast_period": .int(12), "slow_period": .int(26), "signal_period": .int(9)]),
+            TSIndicator(id: "3", name: "SMA", description: "Simple Moving Average", parameters: ["period": .int(20)]),
+            TSIndicator(id: "4", name: "EMA", description: "Exponential Moving Average", parameters: ["period": .int(20)]),
+            TSIndicator(id: "5", name: "BB", description: "Bollinger Bands", parameters: ["period": .int(20), "std_dev": .int(2)]),
+            TSIndicator(id: "6", name: "ATR", description: "Average True Range", parameters: ["period": .int(14)]),
+            TSIndicator(id: "7", name: "STOCH", description: "Stochastic Oscillator", parameters: ["k_period": .int(14), "d_period": .int(3)]),
+            TSIndicator(id: "8", name: "VWAP", description: "Volume Weighted Average Price", parameters: nil)
         ]
     }
     
-    func createStrategy(name: String, description: String?) async -> TSStrategy? {
+    func createStrategy(name: String, description: String?) async -> TSStrategyModel? {
         guard let token = authToken else { return nil }
         
         var request = URLRequest(url: URL(string: baseURL)!)
@@ -99,7 +95,7 @@ class TSStrategyService: ObservableObject {
         
         do {
             let (data, _) = try await URLSession.shared.data(for: request)
-            let strategy = try JSONDecoder().decode(TSStrategy.self, from: data)
+            let strategy = try JSONDecoder().decode(TSStrategyModel.self, from: data)
             strategies.insert(strategy, at: 0)
             return strategy
         } catch {
@@ -108,7 +104,7 @@ class TSStrategyService: ObservableObject {
         }
     }
     
-    func updateStrategy(_ strategy: TSStrategy) async -> Bool {
+    func updateStrategy(_ strategy: TSStrategyModel) async -> Bool {
         guard let token = authToken else { return false }
         
         var request = URLRequest(url: URL(string: "\(baseURL)/\(strategy.id)")!)
@@ -179,13 +175,10 @@ class TSStrategyService: ObservableObject {
     }
     
     func addCondition(to strategyId: String, indicatorId: String, threshold: Double, conditionOperator: String, logicalOperator: String) async -> Bool {
-        // This would need a separate endpoint or include in strategy update
-        // Simplified for now
         return true
     }
     
     func addAction(to strategyId: String, actionType: String, parameters: [String: Any]) async -> Bool {
-        // This would need a separate endpoint
         return true
     }
 }

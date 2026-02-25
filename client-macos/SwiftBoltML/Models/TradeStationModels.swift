@@ -1,5 +1,56 @@
 import Foundation
 
+// Consolidated TradeStation Models - Fixed to eliminate duplicates and ensure Codable conformance
+
+// Generic parameter value type that conforms to Codable
+enum ParameterValue: Codable {
+    case int(Int)
+    case double(Double)
+    case string(String)
+    case bool(Bool)
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let intVal = try? container.decode(Int.self) {
+            self = .int(intVal)
+        } else if let doubleVal = try? container.decode(Double.self) {
+            self = .double(doubleVal)
+        } else if let stringVal = try? container.decode(String.self) {
+            self = .string(stringVal)
+        } else if let boolVal = try? container.decode(Bool.self) {
+            self = .bool(boolVal)
+        } else {
+            throw DecodingError.typeMismatch(ParameterValue.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unsupported type"))
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .int(let val): try container.encode(val)
+        case .double(let val): try container.encode(val)
+        case .string(let val): try container.encode(val)
+        case .bool(let val): try container.encode(val)
+        }
+    }
+    
+    var intValue: Int? {
+        if case .int(let val) = self { return val }
+        return nil
+    }
+    
+    var doubleValue: Double? {
+        if case .double(let val) = self { return val }
+        return nil
+    }
+    
+    var stringValue: String? {
+        if case .string(let val) = self { return val }
+        return nil
+    }
+}
+
+// Strategy model
 struct TSStrategy: Codable, Identifiable {
     let id: String
     var name: String
@@ -19,6 +70,7 @@ struct TSStrategy: Codable, Identifiable {
     }
 }
 
+// Strategy condition
 struct TSStrategyCondition: Codable, Identifiable {
     let id: String
     var strategyId: String
@@ -39,11 +91,12 @@ struct TSStrategyCondition: Codable, Identifiable {
     }
 }
 
+// Trading action
 struct TSTradingAction: Codable, Identifiable {
     let id: String
     var strategyId: String
     var actionType: String
-    var parameters: [String: AnyCodable]
+    var parameters: [String: ParameterValue]
     var priority: Int
     
     enum CodingKeys: String, CodingKey {
@@ -54,71 +107,42 @@ struct TSTradingAction: Codable, Identifiable {
     }
 }
 
+// Indicator model
 struct TSIndicator: Codable, Identifiable {
     let id: String
     var name: String
     var description: String?
-    var parameters: [String: AnyCodable]?
+    var parameters: [String: ParameterValue]?
 }
 
-struct AnyCodable: Codable {
-    let value: Any
-    
-    init(_ value: Any) {
-        self.value = value
-    }
-    
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if let string = try? container.decode(String.self) {
-            value = string
-        } else if let int = try? container.decode(Int.self) {
-            value = int
-        } else if let double = try? container.decode(Double.self) {
-            value = double
-        } else if let bool = try? container.decode(Bool.self) {
-            value = bool
-        } else if let dict = try? container.decode([String: AnyCodable].self) {
-            value = dict.mapValues { $0.value }
-        } else if let array = try? container.decode([AnyCodable].self) {
-            value = array.map { $0.value }
-        } else {
-            value = NSNull()
-        }
-    }
-    
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        if let string = value as? String {
-            try container.encode(string)
-        } else if let int = value as? Int {
-            try container.encode(int)
-        } else if let double = value as? Double {
-            try container.encode(double)
-        } else if let bool = value as? Bool {
-            try container.encode(bool)
-        } else if let dict = value as? [String: Any] {
-            try container.encode(dict.mapValues { AnyCodable($0) })
-        } else if let array = value as? [Any] {
-            try container.encode(array.map { AnyCodable($0) })
-        } else {
-            try container.encodeNil()
-        }
-    }
-}
-
+// Execution result
 struct TSExecutionResult: Codable {
     let executed: Bool
     let reason: String?
     let results: [TSActionResult]?
 }
 
+// Action result
 struct TSActionResult: Codable {
     let action: String
-    let result: [String: AnyCodable]?
+    let result: [String: ParameterValue]?
 }
 
+// Credentials status
 struct TSCredentialsStatus: Codable {
     let connected: Bool
     let expired: Bool
+    let lastUpdated: Date
+    
+    enum CodingKeys: String, CodingKey {
+        case connected
+        case expired
+        case lastUpdated = "last_updated"
+    }
+    
+    init(connected: Bool, expired: Bool) {
+        self.connected = connected
+        self.expired = expired
+        self.lastUpdated = Date()
+    }
 }

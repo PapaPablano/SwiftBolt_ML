@@ -43,16 +43,19 @@ class AnalysisViewModel: ObservableObject {
 
         do {
             let response = try await APIClient.shared.scanWatchlist(symbols: [symbol])
-
-            // Filter alerts for the current symbol
-            alerts = response.alerts.filter { $0.symbol == symbol }
-            isLoadingAlerts = false
-
-            print("[Analysis] Loaded \(alerts.count) alerts for \(symbol)")
+            let filtered = response.alerts.filter { $0.symbol == symbol }
+            DispatchQueue.main.async { [weak self] in
+                self?.alerts = filtered
+                self?.isLoadingAlerts = false
+                print("[Analysis] Loaded \(filtered.count) alerts for \(symbol)")
+            }
         } catch {
-            alertsError = error.localizedDescription
-            isLoadingAlerts = false
-            print("[Analysis] Error loading alerts: \(error)")
+            let errMsg = error.localizedDescription
+            DispatchQueue.main.async { [weak self] in
+                self?.alertsError = errMsg
+                self?.isLoadingAlerts = false
+                print("[Analysis] Error loading alerts: \(error)")
+            }
         }
     }
 
@@ -70,13 +73,18 @@ class AnalysisViewModel: ObservableObject {
         
         do {
             let response = try await APIClient.shared.fetchSupportResistance(symbol: symbol)
-            supportResistance = response
-            isLoadingSR = false
-            print("[Analysis] Loaded S/R levels for \(symbol)")
+            DispatchQueue.main.async { [weak self] in
+                self?.supportResistance = response
+                self?.isLoadingSR = false
+                print("[Analysis] Loaded S/R levels for \(symbol)")
+            }
         } catch {
-            srError = error.localizedDescription
-            isLoadingSR = false
-            print("[Analysis] S/R levels not available: \(error.localizedDescription)")
+            let errMsg = error.localizedDescription
+            DispatchQueue.main.async { [weak self] in
+                self?.srError = errMsg
+                self?.isLoadingSR = false
+                print("[Analysis] S/R levels not available: \(errMsg)")
+            }
         }
     }
     
@@ -88,18 +96,23 @@ class AnalysisViewModel: ObservableObject {
         
         do {
             let response = try await APIClient.shared.fetchEnhancedPrediction(symbol: symbol)
-            
-            multiTimeframeConsensus = response.multiTimeframe
-            forecastExplanation = response.explanation
-            dataQuality = response.dataQuality
-            
-            isLoadingEnhancedInsights = false
-            print("[Analysis] Loaded enhanced insights for \(symbol)")
+            let mtf = response.multiTimeframe
+            let expl = response.explanation
+            let dq = response.dataQuality
+            DispatchQueue.main.async { [weak self] in
+                self?.multiTimeframeConsensus = mtf
+                self?.forecastExplanation = expl
+                self?.dataQuality = dq
+                self?.isLoadingEnhancedInsights = false
+                print("[Analysis] Loaded enhanced insights for \(symbol)")
+            }
         } catch {
-            // Log error - views will show empty state
-            enhancedInsightsError = error.localizedDescription
-            isLoadingEnhancedInsights = false
-            print("[Analysis] Enhanced insights not available: \(error.localizedDescription)")
+            let errMsg = error.localizedDescription
+            DispatchQueue.main.async { [weak self] in
+                self?.enhancedInsightsError = errMsg
+                self?.isLoadingEnhancedInsights = false
+                print("[Analysis] Enhanced insights not available: \(errMsg)")
+            }
         }
     }
 }

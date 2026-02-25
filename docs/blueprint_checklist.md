@@ -445,6 +445,98 @@ Status notation:
 
 ---
 
+## Phase: Backtest Engine & Integration
+
+**Goal:** Unify backend backtest API, job-based flow, and client data binding. All metrics and equity curve computed on backend; client displays and optionally polls for status.
+
+### B.1. API Endpoint Integration
+
+* [x] **Unified `backtest-strategy`** — Single Edge Function: POST queues job (returns job_id); GET ?id= returns status + result. Supports preset strategies (supertrend_ai, etc.) and builder strategies (strategy_id). Worker handles both.
+* [ ] **POST /api/v1/backtest-strategy** (Supabase `backtest-strategy`):
+  * [ ] Accepts: `symbol`, `timeframe`, `start_date`, `end_date`, `strategy_id` or `strategy`, `parameters`, `initial_capital`.
+  * [ ] Creates row in `strategy_backtest_jobs`, triggers backtest engine (worker or inline).
+  * [ ] Returns `job_id` and `status` (201); client must not expect immediate results.
+* [ ] **GET /api/v1/backtest-job-status** (or equivalent):
+  * [ ] Query param: `job_id`.
+  * [ ] Returns: `id`, `status`, `created_at`, `started_at`, `completed_at`, `error`, `progress` (optional).
+  * [ ] Client polls until `status in [completed, failed, cancelled]`.
+* [ ] **GET /api/v1/strategy-backtest-results**:
+  * [ ] Query param: `job_id`.
+  * [ ] Returns: performance metrics, equity curve, trade list.
+  * [ ] Only valid when `status = completed`.
+* [ ] Schema `strategy_backtest_jobs` includes: `id`, `status`, `created_at`, `started_at`, `completed_at`, `error` (or `error_message`), `progress` (optional). Add `progress` via migration if missing.
+
+### B.2. Data Flow (Client ↔ Backend)
+
+* [x] **ViewModel / Service (macOS):**
+  * [x] On run: call POST `backtest-strategy`; receive `job_id`.
+  * [x] Store `job_id` in state; UI shows "running backtest" via `isLoading` / `jobStatus`.
+* [x] **Background polling:**
+  * [x] Poll GET `backtest-strategy?id=...` every 2s until `status = completed` or `failed`.
+* [x] **Results fetch:**
+  * [x] Result included in GET response when completed; converted to `BacktestResponse` in ViewModel.
+* [ ] **Equity curve & trades:**
+  * [ ] Equity curve built from backend PnL series (`equity_curve` with `timestamp`/`equity`), not locally simulated.
+  * [ ] Trade list from `strategy_backtest_results.trades` (DB-backed); no mock data.
+
+### B.3. Performance Metrics Calculation (Backend)
+
+* [ ] Backend computes and exposes:
+  * [ ] Total Return: from initial vs final capital; optionally annualized.
+  * [ ] Win Rate: `winning_trades / total_trades`.
+  * [ ] Profit Factor: `gross_profit / gross_loss` with guard for zero loss.
+  * [ ] Max Drawdown: from equity curve peak-to-trough.
+  * [ ] Sharpe Ratio: `(mean(returns) - risk_free) / std(returns)` over period.
+  * [ ] Average Trade: `sum(PnL) / number_of_trades`.
+* [ ] Implement `/strategy-backtest-results` with full metrics block; add unit tests.
+* [ ] Client: display values from response; optional sanity checks only (e.g. win rate).
+
+### B.4. Equity Curve Implementation
+
+* [ ] Backend:
+  * [ ] Store or compute equity time series per job as `[{ timestamp, equity }]`.
+  * [ ] Return ordered array in `/strategy-backtest-results`.
+* [ ] Client:
+  * [ ] Map timestamps to chart x-axis (timezone, session gaps).
+  * [ ] Interactive chart (zoom, pan) using same charting approach as price data (Phase 3).
+  * [ ] Tooltip/hover: show P/L at point as `equity - initial_capital`.
+* [ ] Phase 3 chart plan: include second chart type or overlay for equity, not just price candles.
+
+### B.5. Trade History Integration
+
+* [ ] Backend:
+  * [ ] `strategy_backtest_results.trades` (or child table) holds: `entry_time`, `exit_time`, `entry_price`, `exit_price`, `quantity`, `side`, `fees`, `pnl`, `duration` (seconds/minutes/days).
+  * [ ] `/strategy-backtest-results` returns full trade list.
+* [ ] Client:
+  * [ ] `TradeHistoryViewModel`: `trades: [Trade]`, sortable by time, P/L, duration.
+  * [ ] UI table: real prices/timestamps from result; show duration and per-trade P/L if not provided.
+* [ ] Checklist: "Backtest: implement trade history endpoint + client table wiring."
+
+### B.6. Heatmap Data Sources
+
+* [ ] Define heatmap semantics: e.g. symbol vs timeframe P/L, or param vs param performance.
+* [ ] Backend:
+  * [ ] Endpoint `/api/v1/backtest-heatmap`: returns grid `{ x_value, y_value, metric }`.
+  * [ ] Data from real backtest runs (`strategy_backtest_jobs` + results) only.
+* [ ] Client:
+  * [ ] Render heatmap tiles from that dataset.
+  * [ ] No fabricated data.
+
+### B.7. Reference & OpenAPI-Style Spec
+
+* [ ] Gap review: compare `strategy_backtest_jobs`, `strategy_backtest_results`, Edge Functions (`strategy-backtest`, `backtest-strategy`), and `BacktestingViewModel` against spec below.
+
+**Endpoints (minimal contract):**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/backtest-strategy` | Queue job; returns `job_id` |
+| GET | `/api/v1/backtest-job-status?job_id=` | Poll status until completed/failed |
+| GET | `/api/v1/strategy-backtest-results?job_id=` | Full metrics, equity curve, trades |
+| GET | `/api/v1/backtest-heatmap` | Grid `{x_value, y_value, metric}` from real runs |
+
+---
+
 ## Phase 7.1 — Ensemble Canary & Validation (Feb 2026)
 
 **Goal:** Validate 2-model ensemble (LSTM + ARIMA-GARCH) via 6-day canary on AAPL, MSFT, SPY; walk-forward validation and divergence monitoring. See `1_27_Phase_7.1_Schedule.md`, `PHASE_7_CANARY_DEPLOYMENT_STATUS.md`.

@@ -20,84 +20,67 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { createChart, IChartApi, ISeriesApi, ColorType, LineStyle } from 'lightweight-charts';
-import axios from 'axios';
-import { ChartData, ForecastOverlay } from '../types/chart';
+import { createChart, IChartApi, ISeriesApi, ColorType } from 'lightweight-charts';
+import { createClient } from '@supabase/supabase-js';
+import { ForecastOverlay } from '../types/chart';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { SupportResistanceData } from '../hooks/useIndicators';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const SUPABASE_URL = 'https://cygflaemtmwiwaviclks.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5Z2ZsYWVtdG13aXdhdmljbGtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUyMTEzMzYsImV4cCI6MjA4MDc4NzMzNn0.51NE7weJk0PMXZJ26UgtcMZLejjPHDNoegcfpaImVJs';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+interface StrategySignal {
+  time: number;
+  price: number;
+  type: 'buy' | 'sell';
+  label?: string;
+}
+
+interface TradeMarker {
+  id: string;
+  entryTime: number;
+  entryPrice: number;
+  exitTime: number;
+  exitPrice: number;
+  pnl: number;
+  pnlPercent: number;
+  isWin: boolean;
+}
+
+interface ThresholdLine {
+  price: number;
+  color: string;
+  label: string;
+}
+
+interface IndicatorData {
+  type: 'rsi' | 'macd' | 'bb' | 'sma' | 'ema';
+  data: { time: number; value: number; upper?: number; lower?: number }[];
+}
+
+/** Backtest trades with string dates (from StrategyBacktestPanel / App). Shown as markers on the candle series. */
+export type BacktestTradeMarker = {
+  entryTime: string;
+  exitTime: string;
+  entryPrice: number;
+  exitPrice: number;
+  pnl: number;
+  pnlPercent: number;
+  isWin: boolean;
+};
 
 interface TradingViewChartProps {
   symbol: string;
   horizon: string;
   daysBack?: number;
   srData?: SupportResistanceData | null;
-}
-
-/**
- * Calculate polynomial regression values for chart plotting
- * Creates a smooth curve across all historical bars
- */
-function calculatePolynomialCurve(
-  bars: any[],
-  currentLevel: number,
-  slope: number,
-  extendForward: number = 10
-): any[] {
-  if (!bars || bars.length === 0) return [];
-
-  const curveData: any[] = [];
-  const totalPoints = bars.length + extendForward;
-  
-  // Plot curve backward from current bar
-  for (let i = 0; i < totalPoints; i++) {
-    const barIndex = bars.length - 1 - i;
-    
-    // Calculate polynomial value: y = currentLevel + slope * (x - currentBar)
-    // Negative i means going backward in time
-    const value = currentLevel + (slope * -i);
-    
-    // Use actual bar time for historical data
-    if (barIndex >= 0 && bars[barIndex]) {
-      curveData.push({
-        time: bars[barIndex].time,
-        value: value,
-      });
-    }
-    // Extend into future with estimated timestamps
-    else if (i >= bars.length && bars.length > 0) {
-      const lastBar = bars[bars.length - 1];
-      const timeIncrement = determineTimeIncrement(bars);
-      const futureTime = lastBar.time + (timeIncrement * (i - bars.length + 1));
-      
-      curveData.push({
-        time: futureTime,
-        value: value,
-      });
-    }
-  }
-  
-  // Reverse to get chronological order
-  return curveData.reverse();
-}
-
-/**
- * Determine time increment between bars (for extending into future)
- */
-function determineTimeIncrement(bars: any[]): number {
-  if (bars.length < 2) return 86400; // Default to 1 day
-  
-  // Calculate average time between bars
-  let totalDiff = 0;
-  let count = 0;
-  
-  for (let i = 1; i < Math.min(10, bars.length); i++) {
-    totalDiff += bars[i].time - bars[i - 1].time;
-    count++;
-  }
-  
-  return count > 0 ? Math.round(totalDiff / count) : 86400;
+  strategySignals?: StrategySignal[];
+  indicators?: IndicatorData[];
+  trades?: TradeMarker[];
+  /** Trades from backtest result (string dates). Markers are drawn on the candle series. */
+  backtestTrades?: BacktestTradeMarker[] | null;
+  thresholds?: ThresholdLine[];
 }
 
 export const TradingViewChart: React.FC<TradingViewChartProps> = ({
@@ -105,20 +88,24 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
   horizon,
   daysBack = 7,
   srData = null,
+  strategySignals = [],
+  indicators = [],
+  trades = [],
+  backtestTrades = null,
+  thresholds = [],
 }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const forecastSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const confidenceBandRef = useRef<ISeriesApi<'Area'> | null>(null);
-  const supportLineRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const resistanceLineRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const indicatorSeriesRefs = useRef<Map<string, ISeriesApi<any>>>(new Map());
+  const signalSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [latestPrice, setLatestPrice] = useState<number | null>(null);
   const [latestForecast, setLatestForecast] = useState<ForecastOverlay | null>(null);
-  const [chartBars, setChartBars] = useState<any[]>([]);
 
   // WebSocket for real-time updates
   const { isConnected, lastUpdate, error: wsError } = useWebSocket(symbol, horizon);
@@ -127,7 +114,12 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    const chart = createChart(chartContainerRef.current, {
+    // Wait for container to have dimensions
+    const container = chartContainerRef.current;
+    const initialWidth = container.clientWidth || 800;
+    const initialHeight = container.clientHeight || 500;
+
+    const chart = createChart(container, {
       layout: {
         background: { type: ColorType.Solid, color: '#1a1a1a' },
         textColor: '#e0e0e0',
@@ -136,8 +128,8 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
         vertLines: { color: '#2a2a2a' },
         horzLines: { color: '#2a2a2a' },
       },
-      width: chartContainerRef.current.clientWidth,
-      height: 500,
+      width: initialWidth,
+      height: initialHeight || 500,
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
@@ -202,37 +194,34 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
     });
     confidenceBandRef.current = confidenceBand;
 
-    // Add polynomial support line (smooth curve)
-    const supportLine = chart.addLineSeries({
-      color: '#2962ff',
-      lineWidth: 2,
-      lineStyle: LineStyle.Solid,
-      title: 'Polynomial Support',
+    // Add strategy signal line series placeholder
+    const signalSeries = chart.addLineSeries({
+      color: 'transparent',
+      lineWidth: 1,
       priceLineVisible: false,
-      lastValueVisible: true,
-      crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 4,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
     });
-    supportLineRef.current = supportLine;
+    signalSeriesRef.current = signalSeries;
 
-    // Add polynomial resistance line (smooth curve)
-    const resistanceLine = chart.addLineSeries({
-      color: '#f23645',
-      lineWidth: 2,
-      lineStyle: LineStyle.Solid,
-      title: 'Polynomial Resistance',
-      priceLineVisible: false,
-      lastValueVisible: true,
-      crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 4,
+    // Handle resize with ResizeObserver for better responsiveness
+    const resizeObserver = new ResizeObserver((entries) => {
+      if (chartRef.current && entries[0]) {
+        const { width, height } = entries[0].contentRect;
+        chartRef.current.applyOptions({
+          width: width || 800,
+          height: height || 500,
+        });
+      }
     });
-    resistanceLineRef.current = resistanceLine;
+    resizeObserver.observe(container);
 
-    // Handle window resize
+    // Handle window resize as fallback
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
         chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
+          width: chartContainerRef.current.clientWidth || 800,
+          height: chartContainerRef.current.clientHeight || 500,
         });
       }
     };
@@ -240,50 +229,84 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
     window.addEventListener('resize', handleResize);
 
     return () => {
+      resizeObserver.disconnect();
       window.removeEventListener('resize', handleResize);
       chart.remove();
     };
   }, []);
 
-  // Fetch initial chart data
+  // Fetch initial chart data from Supabase
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       setError(null);
 
-      try {
-        const response = await axios.get<ChartData>(
-          `${API_BASE_URL}/api/v1/chart-data/${symbol}/${horizon}`,
-          { params: { days_back: daysBack } }
-        );
+      // Map horizon to timeframe
+      const timeframeMap: Record<string, string> = {
+        '15m': 'm15',
+        '1h': 'h1',
+        '4h': 'h4',
+        '1D': 'd1'
+      };
+      const timeframe = timeframeMap[horizon] || 'd1';
 
-        const data = response.data;
-        console.log(`[Chart] Loaded ${data.bars.length} bars, ${data.forecasts.length} forecasts`);
+      try {
+        // Get symbol ID first
+        const { data: symbolData } = await supabase
+          .from('symbols')
+          .select('id')
+          .eq('ticker', symbol.toUpperCase())
+          .single();
+        
+        if (!symbolData) {
+          console.log('[Chart] Symbol not in Supabase, using mock data');
+          throw new Error('Symbol not found');
+        }
+
+        const symbolId = symbolData.id;
+        
+        // Calculate date range
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - daysBack);
+
+        console.log(`[Chart] Fetching ${symbol}/${timeframe} from Supabase, daysBack: ${daysBack}`);
+
+        // Fetch OHLC bars from Supabase with proper filters
+        const { data: bars, error: barsError } = await supabase
+          .from('ohlc_bars_v2')
+          .select('ts, open, high, low, close, volume')
+          .eq('symbol_id', symbolId)
+          .eq('timeframe', timeframe)
+          .eq('is_forecast', false)
+          .gte('ts', startDate.toISOString())
+          .lte('ts', endDate.toISOString())
+          .order('ts', { ascending: true });
+
+        if (barsError) {
+          console.log('[Chart] Supabase query error:', barsError);
+          throw barsError;
+        }
+
+        console.log(`[Chart] Loaded ${bars?.length || 0} bars from Supabase`);
+
+        // Format bars for TradingView
+        const formattedBars = bars?.map((bar: any) => ({
+          time: Math.floor(new Date(bar.ts).getTime() / 1000) as any,
+          open: bar.open,
+          high: bar.high,
+          low: bar.low,
+          close: bar.close,
+        })) || [];
 
         // Update candle series
-        if (candleSeriesRef.current && data.bars.length > 0) {
-          candleSeriesRef.current.setData(data.bars);
-          setLatestPrice(data.latest_price);
-          setChartBars(data.bars); // Store bars for polynomial curve calculation
-        }
-
-        // Update forecast series
-        if (forecastSeriesRef.current && data.forecasts.length > 0) {
-          const forecastData = data.forecasts.map((f) => ({
-            time: f.time,
-            value: f.price,
-          }));
-          forecastSeriesRef.current.setData(forecastData);
-          setLatestForecast(data.latest_forecast);
-        }
-
-        // Update confidence band
-        if (confidenceBandRef.current && data.forecasts.length > 0) {
-          const bandData = data.forecasts.map((f) => ({
-            time: f.time,
-            value: f.price * (1 + f.confidence * 0.02), // Upper bound (2% * confidence)
-          }));
-          confidenceBandRef.current.setData(bandData);
+        if (candleSeriesRef.current && formattedBars.length > 0) {
+          candleSeriesRef.current.setData(formattedBars);
+          const lastBar = formattedBars[formattedBars.length - 1];
+          setLatestPrice(lastBar.close);
+        } else {
+          console.log('[Chart] No bars returned from Supabase, using mock data');
+          throw new Error('No bars returned');
         }
 
         // Fit content to view
@@ -293,14 +316,43 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
 
         setLoading(false);
       } catch (err) {
-        console.error('[Chart] Error fetching ', err);
-        setError('Failed to load chart data');
+        console.log('[Chart] Supabase unavailable/empty, loading mock data:', err);
+        // Load mock data when Supabase unavailable or empty
+        const mockBars = generateMockData(symbol, daysBack);
+        if (candleSeriesRef.current && mockBars.length > 0) {
+          candleSeriesRef.current.setData(mockBars as any);
+          if (chartRef.current) {
+            chartRef.current.timeScale().fitContent();
+          }
+        }
         setLoading(false);
       }
     };
 
     fetchData();
   }, [symbol, horizon, daysBack]);
+
+  // Generate mock data for demo
+  const generateMockData = (sym: string, days: number) => {
+    const bars = [];
+    const now = Date.now() / 1000;
+    const daySeconds = 86400;
+    let basePrice = sym === 'AAPL' ? 180 : sym === 'NVDA' ? 500 : 100;
+    
+    for (let i = days; i >= 0; i--) {
+      const time = now - (i * daySeconds);
+      const volatility = 0.02;
+      const change = (Math.random() - 0.5) * volatility;
+      const open = basePrice * (1 + change * 0.5);
+      const close = basePrice * (1 + change);
+      const high = Math.max(open, close) * (1 + Math.random() * 0.01);
+      const low = Math.min(open, close) * (1 - Math.random() * 0.01);
+      
+      bars.push({ time, open, high, low, close });
+      basePrice = close;
+    }
+    return bars;
+  };
 
   // Handle real-time WebSocket updates
   useEffect(() => {
@@ -312,7 +364,7 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
       // Add new forecast point to line series
       if (forecastSeriesRef.current) {
         forecastSeriesRef.current.update({
-          time: data.time,
+          time: data.time as any,
           value: data.price,
         });
       }
@@ -320,7 +372,7 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
       // Update confidence band
       if (confidenceBandRef.current) {
         confidenceBandRef.current.update({
-          time: data.time,
+          time: data.time as any,
           value: data.price * (1 + data.confidence * 0.02),
         });
       }
@@ -330,55 +382,166 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
     }
   }, [lastUpdate]);
 
-  // Update S/R polynomial curves when indicator data arrives
+  // Handle strategy signals overlay
   useEffect(() => {
-    if (!srData || chartBars.length === 0) return;
-    if (!supportLineRef.current || !resistanceLineRef.current) return;
+    if (!chartRef.current || strategySignals.length === 0) return;
 
-    console.log('[Chart] Updating polynomial S/R curves...');
+    const series = chartRef.current.addLineSeries({
+      color: 'transparent',
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 8,
+    });
+    
+    series.setMarkers(strategySignals.map(sig => ({
+      time: sig.time as any,
+      position: sig.type === 'buy' ? 'belowBar' : 'aboveBar',
+      color: sig.type === 'buy' ? '#22c55e' : '#ef4444',
+      shape: sig.type === 'buy' ? 'arrowUp' : 'arrowDown',
+      text: sig.label || sig.type.toUpperCase(),
+    })));
 
-    // Plot polynomial support curve
-    if (srData.polynomial_support) {
-      const supportCurve = calculatePolynomialCurve(
-        chartBars,
-        srData.polynomial_support.level,
-        srData.polynomial_support.slope,
-        10 // Extend 10 bars into future
-      );
+    signalSeriesRef.current = series;
+  }, [strategySignals]);
 
-      if (supportCurve.length > 0) {
-        supportLineRef.current.setData(supportCurve);
-        console.log(
-          `[Chart] Plotted ${supportCurve.length} support points: ` +
-          `${srData.polynomial_support.level.toFixed(2)} (slope: ${srData.polynomial_support.slope.toFixed(4)})`
-        );
+  // Handle indicator overlays
+  useEffect(() => {
+    if (!chartRef.current || indicators.length === 0) return;
+
+    indicators.forEach(ind => {
+      if (ind.type === 'sma' || ind.type === 'ema') {
+        const existingSeries = indicatorSeriesRefs.current.get(ind.type);
+        if (existingSeries) {
+          existingSeries.setData(ind.data as any);
+        } else {
+          const series = chartRef.current!.addLineSeries({
+            color: ind.type === 'sma' ? '#f59e0b' : '#8b5cf6',
+            lineWidth: 2,
+            title: ind.type.toUpperCase(),
+            priceLineVisible: false,
+            lastValueVisible: true,
+          });
+          series.setData(ind.data as any);
+          indicatorSeriesRefs.current.set(ind.type, series);
+        }
+      } else if (ind.type === 'bb') {
+        const upperSeries = indicatorSeriesRefs.current.get('bb_upper');
+        const lowerSeries = indicatorSeriesRefs.current.get('bb_lower');
+        
+        if (upperSeries && lowerSeries) {
+          upperSeries.setData(ind.data.map(d => ({ time: d.time, value: d.upper || 0 })) as any);
+          lowerSeries.setData(ind.data.map(d => ({ time: d.time, value: d.lower || 0 })) as any);
+        } else {
+          const upper = chartRef.current!.addLineSeries({
+            color: '#a855f7',
+            lineWidth: 1,
+            lineStyle: 2,
+            title: 'BB Upper',
+            priceLineVisible: false,
+          });
+          const lower = chartRef.current!.addLineSeries({
+            color: '#a855f7',
+            lineWidth: 1,
+            lineStyle: 2,
+            title: 'BB Lower',
+            priceLineVisible: false,
+          });
+          upper.setData(ind.data.map(d => ({ time: d.time, value: d.upper || 0 })) as any);
+          lower.setData(ind.data.map(d => ({ time: d.time, value: d.lower || 0 })) as any);
+          indicatorSeriesRefs.current.set('bb_upper', upper);
+          indicatorSeriesRefs.current.set('bb_lower', lower);
+        }
       }
-    } else {
-      // Clear support line if no data
-      supportLineRef.current.setData([]);
-    }
+    });
+  }, [indicators]);
 
-    // Plot polynomial resistance curve
-    if (srData.polynomial_resistance) {
-      const resistanceCurve = calculatePolynomialCurve(
-        chartBars,
-        srData.polynomial_resistance.level,
-        srData.polynomial_resistance.slope,
-        10 // Extend 10 bars into future
-      );
+  // Handle trade markers (entry/exit points) — prefer backtest trades on candle series
+  useEffect(() => {
+    if (!chartRef.current || trades.length === 0) return;
+    if (backtestTrades && backtestTrades.length > 0) return; // use candle-series markers instead
 
-      if (resistanceCurve.length > 0) {
-        resistanceLineRef.current.setData(resistanceCurve);
-        console.log(
-          `[Chart] Plotted ${resistanceCurve.length} resistance points: ` +
-          `${srData.polynomial_resistance.level.toFixed(2)} (slope: ${srData.polynomial_resistance.slope.toFixed(4)})`
-        );
-      }
-    } else {
-      // Clear resistance line if no data
-      resistanceLineRef.current.setData([]);
+    const series = chartRef.current.addLineSeries({
+      color: 'transparent',
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 6,
+    });
+
+    const markers: any[] = [];
+    trades.forEach(trade => {
+      markers.push({
+        time: trade.entryTime as any,
+        position: 'belowBar',
+        color: trade.isWin ? '#22c55e' : '#ef4444',
+        shape: 'arrowUp',
+        text: `ENTRY $${trade.entryPrice.toFixed(2)}`,
+      });
+      markers.push({
+        time: trade.exitTime as any,
+        position: 'aboveBar',
+        color: trade.isWin ? '#22c55e' : '#ef4444',
+        shape: 'arrowDown',
+        text: `EXIT $${trade.exitPrice.toFixed(2)} (${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(0)})`,
+      });
+    });
+
+    series.setMarkers(markers);
+  }, [trades, backtestTrades]);
+
+  // Backtest trade markers on the price (candle) chart — setMarkers on candle series
+  // Defer one frame so markers apply after the render cycle that paints candle data (avoids race with loading → setData).
+  useEffect(() => {
+    if (!candleSeriesRef.current || !backtestTrades?.length) {
+      if (candleSeriesRef.current) candleSeriesRef.current.setMarkers([]);
+      return;
     }
-  }, [srData, chartBars]);
+    // Handles ISO (2024-01-15T…), space-separated (2024-01-15 10:30:00), plain date, or empty/null.
+    const toBusinessDay = (raw: string | number | null | undefined): string | null => {
+      if (raw == null) return null;
+      const m = String(raw).trim().match(/^(\d{4}-\d{2}-\d{2})/);
+      return m ? m[1] : null;
+    };
+    const rawMarkers = backtestTrades.flatMap(trade => [
+      { time: toBusinessDay(trade.entryTime), position: 'belowBar' as const, color: '#22c55e', shape: 'arrowUp' as const, text: `BUY $${trade.entryPrice.toFixed(2)}` },
+      { time: toBusinessDay(trade.exitTime), position: 'aboveBar' as const, color: '#ef4444', shape: 'arrowDown' as const, text: `SELL $${trade.exitPrice.toFixed(2)} (${trade.pnlPercent >= 0 ? '+' : ''}${trade.pnlPercent.toFixed(1)}%)` },
+    ]);
+    const markers = rawMarkers.filter((m): m is typeof m & { time: string } => m.time != null && m.time !== '');
+    markers.sort((a, b) => (a.time > b.time ? 1 : a.time < b.time ? -1 : 0));
+
+    const rafId = requestAnimationFrame(() => {
+      if (candleSeriesRef.current) candleSeriesRef.current.setMarkers(markers);
+    });
+    return () => {
+      cancelAnimationFrame(rafId);
+      try { candleSeriesRef.current?.setMarkers([]); } catch { /* chart may already be disposed on unmount/HMR */ }
+    };
+  }, [backtestTrades, symbol, loading]);
+
+  // Handle threshold lines (e.g., RSI overbought/oversold levels)
+  useEffect(() => {
+    if (!chartRef.current || thresholds.length === 0 || trades.length === 0) return;
+
+    const minTime = Math.min(...trades.map(t => Math.min(t.entryTime, t.exitTime)));
+    const maxTime = Math.max(...trades.map(t => Math.max(t.entryTime, t.exitTime)));
+
+    thresholds.forEach(threshold => {
+      chartRef.current!.addLineSeries({
+        color: threshold.color,
+        lineWidth: 1,
+        lineStyle: 2,
+        priceLineVisible: true,
+        lastValueVisible: true,
+        title: threshold.label,
+      }).setData([
+        { time: minTime as any, value: threshold.price },
+        { time: maxTime as any, value: threshold.price }
+      ]);
+    });
+  }, [thresholds, trades]);
 
   // Format direction emoji
   const getDirectionEmoji = (direction?: string) => {
@@ -481,10 +644,11 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
         </div>
       )}
 
-      {/* Chart container */}
+      {/* Chart container - always rendered but hidden when loading */}
       <div
         ref={chartContainerRef}
-        className={`rounded-lg ${loading || error ? 'hidden' : ''}`}
+        className={`rounded-lg ${loading || error ? 'invisible' : 'visible'}`}
+        style={{ height: '400px', width: '100%', minHeight: '400px' }}
       />
 
       {/* Legend */}
@@ -501,41 +665,47 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
           <div className="h-3 w-3 bg-blue-500 rounded" />
           <span>Forecast Target</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="h-3 w-3 bg-blue-300 opacity-30 rounded" />
-          <span>Confidence Band</span>
-        </div>
-        {srData?.polynomial_support && (
-          <div className="flex items-center gap-2">
-            <div className="h-3 w-3 bg-blue-400 rounded" />
-            <span>Polynomial Support ({srData.polynomial_support.trend})</span>
-          </div>
+        {strategySignals.length > 0 && (
+          <>
+            <div className="flex items-center gap-2">
+              <div className="h-3 w-3 bg-green-500 rounded" />
+              <span>Buy Signal ({strategySignals.filter(s => s.type === 'buy').length})</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="h-3 w-3 bg-red-500 rounded" />
+              <span>Sell Signal ({strategySignals.filter(s => s.type === 'sell').length})</span>
+            </div>
+          </>
         )}
-        {srData?.polynomial_resistance && (
-          <div className="flex items-center gap-2">
-            <div className="h-3 w-3 bg-red-400 rounded" />
-            <span>Polynomial Resistance ({srData.polynomial_resistance.trend})</span>
+        {indicators.map(ind => (
+          <div key={ind.type} className="flex items-center gap-2">
+            <div className={`h-3 w-3 rounded ${
+              ind.type === 'sma' ? 'bg-amber-500' : 
+              ind.type === 'ema' ? 'bg-purple-500' : 
+              ind.type === 'bb' ? 'bg-fuchsia-500' : 'bg-gray-500'
+            }`} />
+            <span>{ind.type.toUpperCase()}</span>
           </div>
+        ))}
+        {trades.length > 0 && (
+          <>
+            <div className="flex items-center gap-2">
+              <div className="h-3 w-3 bg-green-500 rounded" />
+              <span>Win ({trades.filter(t => t.isWin).length})</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="h-3 w-3 bg-red-500 rounded" />
+              <span>Loss ({trades.filter(t => !t.isWin).length})</span>
+            </div>
+          </>
         )}
+        {thresholds.map((t, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <div className="h-3 w-3 rounded" style={{ backgroundColor: t.color }} />
+            <span>{t.label} ({t.price})</span>
+          </div>
+        ))}
       </div>
-
-      {/* S/R Info Debug */}
-      {srData && (srData.polynomial_support || srData.polynomial_resistance) && (
-        <div className="mt-2 text-xs text-gray-500">
-          {srData.polynomial_support && (
-            <div>
-              Support: ${srData.polynomial_support.level.toFixed(2)} 
-              (slope: {srData.polynomial_support.slope > 0 ? '+' : ''}{srData.polynomial_support.slope.toFixed(6)})
-            </div>
-          )}
-          {srData.polynomial_resistance && (
-            <div>
-              Resistance: ${srData.polynomial_resistance.level.toFixed(2)} 
-              (slope: {srData.polynomial_resistance.slope > 0 ? '+' : ''}{srData.polynomial_resistance.slope.toFixed(6)})
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 };

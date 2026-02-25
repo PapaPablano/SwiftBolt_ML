@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 class TSStrategyViewModel: ObservableObject {
-    @Published var strategies: [TSStrategy] = []
+    @Published var strategies: [TSStrategyModel] = []
     @Published var indicators: [TSIndicator] = []
     @Published var isLoading = false
     @Published var error: String?
@@ -14,23 +14,43 @@ class TSStrategyViewModel: ObservableObject {
     
     init() {
         Task {
+            // Force simulation mode - always authenticated
+            self.isAuthenticated = true
             await fetchStrategies()
             await fetchIndicators()
-            await checkAuthStatus()
         }
     }
     
+    func isSimulationMode() -> Bool {
+        // Check for simulation environment - you might want to use a more robust method
+        // This could be reading from an environment variable or config file
+        let isSim = ProcessInfo.processInfo.environment["SIMULATION_MODE"] == "true"
+        print("[TSStrategy] isSimulationMode check: \(isSim)")
+        return isSim
+    }
+    
     func startOAuth() {
-        authService.startOAuthFlow()
+        // In simulation mode, skip OAuth completely
+        if isSimulationMode() {
+            self.isAuthenticated = true
+            return
+        }
         
-        // Observe auth changes
-        Task {
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            await checkAuthStatus()
+        authService.startOAuthFlow { [weak self] success in
+            Task { @MainActor in
+                // Update auth status after completion
+                await self?.checkAuthStatus()
+            }
         }
     }
     
     func checkAuthStatus() async {
+        // In simulation mode, we're always authenticated
+        if isSimulationMode() {
+            self.isAuthenticated = true
+            return
+        }
+        
         await strategyService.checkAuthStatus()
         isAuthenticated = strategyService.isAuthenticated
     }
@@ -48,7 +68,18 @@ class TSStrategyViewModel: ObservableObject {
         indicators = strategyService.indicators
     }
     
-    func createStrategy(name: String, description: String?) async -> TSStrategy? {
+    func createStrategy(name: String, description: String?) async -> TSStrategyModel? {
+        print("[TSStrategy] createStrategy called: \(name), simulationMode: \(isSimulationMode())")
+        
+        // For simulation mode, allow creation without auth check
+        if isSimulationMode() {
+            // Mock the creation in simulation mode
+            let strategy = TSStrategyModel(id: UUID().uuidString, name: name, description: description, enabled: true, createdAt: Date(), updatedAt: Date(), conditions: [], actions: [])
+            strategies.append(strategy)
+            print("[TSStrategy] Created mock strategy: \(strategy.name), total: \(strategies.count)")
+            return strategy
+        }
+        
         let strategy = await strategyService.createStrategy(name: name, description: description)
         if strategy != nil {
             await fetchStrategies()
@@ -56,7 +87,7 @@ class TSStrategyViewModel: ObservableObject {
         return strategy
     }
     
-    func updateStrategy(_ strategy: TSStrategy) async {
+    func updateStrategy(_ strategy: TSStrategyModel) async {
         let success = await strategyService.updateStrategy(strategy)
         if success {
             await fetchStrategies()
@@ -70,7 +101,7 @@ class TSStrategyViewModel: ObservableObject {
         }
     }
     
-    func toggleEnabled(_ strategy: TSStrategy) {
+    func toggleEnabled(_ strategy: TSStrategyModel) {
         var updated = strategy
         updated.enabled = !strategy.enabled
         Task {
@@ -80,7 +111,7 @@ class TSStrategyViewModel: ObservableObject {
     
     func executeStrategy(_ strategyId: String, symbol: String) async -> TSExecutionResult? {
         isLoading = true
-        let result = await strategyService.executeStrategy(strategyId, symbol: symbol)
+        let result = await strategyService.executeStrategy(strategyId, symbol: symbol, useSim: isSimulationMode())
         error = strategyService.error
         isLoading = false
         return result

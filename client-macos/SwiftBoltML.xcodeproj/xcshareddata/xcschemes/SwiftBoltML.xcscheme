@@ -4,8 +4,7 @@
    version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
-      buildImplicitDependencies = "YES"
-      buildArchitectures = "Automatic">
+      buildImplicitDependencies = "YES">
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
@@ -42,7 +41,6 @@
       allowLocationSimulation = "YES">
       <PathRunnable
          runnableDebuggingMode = "0"
-         BundleIdentifier = "com.swiftbolt.ml"
          FilePath = "/Users/ericpeterson/Library/Developer/Xcode/DerivedData/SwiftBoltML-fvczbmwpxtcqewgbpaecwhupjwxf/Build/Products/Debug/SwiftBoltML.app">
       </PathRunnable>
       <MacroExpansion>

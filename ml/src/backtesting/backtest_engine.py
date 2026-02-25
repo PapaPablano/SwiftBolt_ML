@@ -442,14 +442,13 @@ class BacktestEngine:
         # Calculate performance metrics
         equity_series = pd.Series(self.equity_curve, index=self.dates)
         
-        # Get trade returns
-        trade_history = self.trade_logger.get_trade_history()
-        if not trade_history.empty:
-            # Calculate per-trade returns (simplified)
-            trade_returns = pd.Series()
-        else:
-            trade_returns = None
-        
+        # Get trade returns from closed positions (for profit_factor, win_rate, avg_trade_return)
+        trade_returns = None
+        if self.trade_logger.closed_pnls:
+            trade_returns = pd.Series(
+                pnl / self.initial_capital for pnl in self.trade_logger.closed_pnls
+            )
+
         metrics = self.metrics.calculate_all(
             equity_curve=equity_series,
             risk_free_rate=self.risk_free_rate,
@@ -460,7 +459,8 @@ class BacktestEngine:
         current_prices = self.get_current_prices(self.dates[-1])
         pnl = self.trade_logger.calculate_pnl(current_prices)
         
-        # Compile results
+        trade_history = self.trade_logger.get_trade_history()
+        # Compile results (trade_history includes 'pnl' for SELL rows that closed)
         results = {
             'equity_curve': equity_series,
             'dates': self.dates,

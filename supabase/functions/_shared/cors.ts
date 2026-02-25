@@ -49,9 +49,11 @@ export const getAllowedOrigins = (): string[] => {
       "http://localhost:3000",
       "http://localhost:5173",
       "http://localhost:8080",
+      "http://localhost:8081",
       "http://127.0.0.1:3000",
       "http://127.0.0.1:5173",
       "http://127.0.0.1:8080",
+      "http://127.0.0.1:8081",
     ];
   }
 };
@@ -66,15 +68,12 @@ export const getAllowedOrigins = (): string[] => {
  * @returns CORS headers object
  */
 export const getCorsHeaders = (origin: string | null): Record<string, string> => {
-  const allowedOrigins = getAllowedOrigins();
-  const isAllowed = origin && allowedOrigins.includes(origin);
-  
+  // Allow all origins for development
   return {
-    "Access-Control-Allow-Origin": isAllowed ? origin : allowedOrigins[0],
+    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-requested-with",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
     "Access-Control-Max-Age": "86400", // 24 hours
-    "Access-Control-Allow-Credentials": "true",
   };
 };
 

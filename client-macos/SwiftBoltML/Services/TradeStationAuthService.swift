@@ -30,6 +30,9 @@ class TradeStationAuthService: NSObject, ObservableObject {
     @Published var error: String?
     @Published var authURL: URL?
     
+    // Add a completion handler for when authentication is complete
+    private var onAuthComplete: ((Bool) -> Void)?
+    
     private let clientId = "x3IYfpnSYevmXREQuW34LJUyeXaHBK"
     private let redirectURI = "swiftbolt://oauth/callback"
     private let scopes = "openid+MarketData+Trade+offline_access"
@@ -65,7 +68,10 @@ class TradeStationAuthService: NSObject, ObservableObject {
         return (verifier, challenge)
     }
     
-    func startOAuthFlow() {
+    func startOAuthFlow(completion: @escaping (Bool) -> Void = { _ in }) {
+        // Set up completion handler
+        self.onAuthComplete = completion
+        
         let (verifier, challenge) = generatePKCE()
         self.codeVerifier = verifier
         
@@ -83,6 +89,7 @@ class TradeStationAuthService: NSObject, ObservableObject {
         
         guard let url = components.url else {
             self.error = "Failed to create auth URL"
+            onAuthComplete?(false)
             return
         }
         
@@ -98,6 +105,7 @@ class TradeStationAuthService: NSObject, ObservableObject {
                 } else {
                     self.error = error.localizedDescription
                 }
+                self.onAuthComplete?(false)
                 return
             }
             
@@ -105,6 +113,7 @@ class TradeStationAuthService: NSObject, ObservableObject {
                   let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
                   let code = components.queryItems?.first(where: { $0.name == "code" })?.value else {
                 self.error = "No authorization code received"
+                self.onAuthComplete?(false)
                 return
             }
             
@@ -157,8 +166,12 @@ class TradeStationAuthService: NSObject, ObservableObject {
             try saveTokens(tokens)
             isAuthenticated = true
             
+            // Notify completion
+            onAuthComplete?(true)
+            
         } catch {
             self.error = error.localizedDescription
+            onAuthComplete?(false)
         }
         
         isLoading = false
@@ -208,7 +221,7 @@ class TradeStationAuthService: NSObject, ObservableObject {
     }
     
     func checkAuthStatus() {
-        guard let tokens = loadTokens() else {
+        guard let _ = loadTokens() else {  // Fixed: used underscore for unused variable
             isAuthenticated = false
             return
         }
@@ -229,7 +242,7 @@ class TradeStationAuthService: NSObject, ObservableObject {
         KeychainService.save(keychainKey, value: string)
     }
     
-    private func loadTokens() -> TradeStationTokens? {
+    func loadTokens() -> TradeStationTokens? {
         guard let string = KeychainService.load(keychainKey),
               let data = string.data(using: .utf8) else {
             return nil

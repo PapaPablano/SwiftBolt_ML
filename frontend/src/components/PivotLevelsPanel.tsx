@@ -18,7 +18,7 @@ interface PivotLevelsPanelProps {
   metrics: PivotMetrics | null;
   loading: boolean;
   error: string | null;
-  isConnected: boolean;
+  isConnected?: boolean;
 }
 
 // Map status to display text and color
@@ -124,9 +124,9 @@ export const PivotLevelsPanel: React.FC<PivotLevelsPanelProps> = ({
     <div className="space-y-4">
       {/* Status indicator */}
       <div className="flex items-center gap-2 pb-4 border-b border-gray-700">
-        <div className={`h-2.5 w-2.5 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+        <div className={`h-2.5 w-2.5 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`} />
         <span className="text-sm text-gray-400">
-          {isConnected ? 'Live Updates' : 'Offline'}
+          {isConnected ? 'Live Updates' : 'Polling (30s)'}
         </span>
       </div>
 

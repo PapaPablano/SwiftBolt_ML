@@ -323,13 +323,27 @@ def run_backtest(
         trades = []
         if not results['trade_history'].empty:
             for _, trade in results['trade_history'].iterrows():
+                date_val = trade.get('date', trade.get('timestamp', ''))
+                price_val = float(trade.get('price', 0))
+                action_str = str(trade.get('action', ''))
+                entry_price = price_val if action_str.upper() == "BUY" else None
+                exit_price = price_val if action_str.upper() == "SELL" else None
+                duration_val = float(trade["duration"]) if "duration" in trade and trade.get("duration") is not None else None
+                fees_val = float(trade["commission"]) if "commission" in trade else None
+                pnl_val = None
+                if 'pnl' in trade and trade.get('pnl') is not None:
+                    pnl_val = round(float(trade['pnl']), 2)
                 trades.append({
-                    "date": trade.get('date', '').isoformat() if hasattr(trade.get('date', ''), 'isoformat') else str(trade.get('date', '')),
+                    "date": date_val.isoformat() if hasattr(date_val, 'isoformat') else str(date_val),
                     "symbol": str(trade.get('symbol', '')),
-                    "action": str(trade.get('action', '')),
+                    "action": action_str,
                     "quantity": int(trade.get('quantity', 0)),
-                    "price": float(trade.get('price', 0)),
-                    "pnl": float(trade.get('pnl', 0)) if 'pnl' in trade else None
+                    "price": price_val,
+                    "pnl": pnl_val,
+                    "entryPrice": entry_price,
+                    "exitPrice": exit_price,
+                    "duration": duration_val,
+                    "fees": fees_val,
                 })
         
         return {
@@ -346,7 +360,10 @@ def run_backtest(
                 "sharpeRatio": float(results.get('sharpe_ratio', 0)) if 'sharpe_ratio' in results else None,
                 "maxDrawdown": float(results.get('max_drawdown', 0)) if 'max_drawdown' in results else None,
                 "winRate": float(results.get('win_rate', 0)) if 'win_rate' in results else None,
-                "totalTrades": int(results['pnl'].get('num_trades', 0)) if 'pnl' in results else 0
+                "totalTrades": int(results['pnl'].get('num_trades', 0)) if 'pnl' in results else 0,
+                "profitFactor": float(results['profit_factor']) if 'profit_factor' in results else None,
+                "averageTrade": float(results['avg_trade_return']) if 'avg_trade_return' in results else None,
+                "cagr": float(results['cagr']) if 'cagr' in results else None,
             },
             "equityCurve": equity_curve,
             "trades": trades,

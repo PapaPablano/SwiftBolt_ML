@@ -242,13 +242,13 @@ struct WebChartView: NSViewRepresentable {
             let bridge = parent.bridge
             let preservedRange = lastVisibleRange ?? bridge.visibleRange
             let forecastBars = data.layers.forecast.data
+            let allBars = data.allBars
             print("[WebChartView] Updating chart with V2 layered data")
             print("[WebChartView] - Historical: \(data.layers.historical.count) bars")
             print("[WebChartView] - Intraday: \(data.layers.intraday.count) bars")
             print("[WebChartView] - Forecast: \(forecastBars.count) bars")
             
             // Guard: only render if we have candles
-            let allBars = data.allBars
             guard !allBars.isEmpty else {
                 print("[WebChartView] ⚠️ No candles, clearing chart")
                 bridge.send(.clearAll)

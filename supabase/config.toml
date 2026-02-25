@@ -8,3 +8,25 @@ project_id = "cygflaemtmwiwaviclks"
 # Auth enforced inside function via X-SB-Gateway-Key (SB_GATEWAY_KEY).
 [functions.run-backfill-worker]
 verify_jwt = false
+
+# For iOS app to work correctly, we need to set up proper JWT verification for chart-data-v2
+[functions.chart-data-v2]
+verify_jwt = true
+
+[functions.ga-strategy]
+verify_jwt = false
+
+[functions.options-chain]
+verify_jwt = false
+
+[functions.get-unified-validation]
+verify_jwt = false
+
+[functions.strategies]
+verify_jwt = false
+
+[functions.strategy-backtest]
+verify_jwt = false
+
+[functions.strategy-backtest-worker]
+verify_jwt = false

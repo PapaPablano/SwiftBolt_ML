@@ -124,11 +124,6 @@ export const IndicatorPanel: React.FC<IndicatorPanelProps> = ({ data, loading, e
     );
   }
 
-  const supportColor =
-    (data.support_distance_pct || 0) < (data.resistance_distance_pct || 100) ? 'text-blue-400' : 'text-gray-400';
-  const resistanceColor =
-    (data.resistance_distance_pct || 0) < (data.support_distance_pct || 100) ? 'text-red-400' : 'text-gray-400';
-
   return (
     <div className="space-y-3">
       {/* Polynomial Support & Resistance */}

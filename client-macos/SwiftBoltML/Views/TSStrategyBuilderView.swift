@@ -25,6 +25,7 @@ struct TSStrategyBuilderView: View {
             }
             .sheet(isPresented: $showingNewStrategy) {
                 NewTStrategySheet(viewModel: viewModel)
+                    .frame(minWidth: 400, minHeight: 300)
             }
             .refreshable {
                 await viewModel.fetchStrategies()
@@ -93,14 +94,21 @@ struct TSStrategyBuilderView: View {
                         TSStrategyRow(strategy: strategy)
                     }
                 }
-                .onDelete(perform: viewModel.deleteStrategy)
+                .onDelete { indexSet in
+                    for index in indexSet {
+                        let strategy = viewModel.strategies[index]
+                        Task {
+                            await viewModel.deleteStrategy(strategy.id)
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 struct TSStrategyRow: View {
-    let strategy: TSStrategy
+    let strategy: TSStrategyModel
     
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -121,13 +129,13 @@ struct TSStrategyRow: View {
             }
             
             HStack {
-                if let conditions = strategy.conditions, !conditions.isEmpty {
-                    Label("\(conditions.count) conditions", systemImage: "function")
+                if !strategy.conditions.isEmpty {
+                    Label("\(strategy.conditions.count) conditions", systemImage: "function")
                         .font(.caption2)
                 }
                 Spacer()
-                if let actions = strategy.actions, !actions.isEmpty {
-                    Label("\(actions.count) actions", systemImage: "bolt.fill")
+                if !strategy.actions.isEmpty {
+                    Label("\(strategy.actions.count) actions", systemImage: "bolt.fill")
                         .font(.caption2)
                 }
             }
@@ -138,7 +146,7 @@ struct TSStrategyRow: View {
 }
 
 struct TSStrategyDetailView: View {
-    let strategy: TSStrategy
+    let strategy: TSStrategyModel
     @ObservedObject var viewModel: TSStrategyViewModel
     @State private var showingExecute = false
     @State private var symbol = ""
@@ -156,8 +164,8 @@ struct TSStrategyDetailView: View {
             }
             
             Section(header: Text("Conditions")) {
-                if let conditions = strategy.conditions, !conditions.isEmpty {
-                    ForEach(conditions) { condition in
+                if !strategy.conditions.isEmpty {
+                    ForEach(strategy.conditions) { condition in
                         ConditionRow(condition: condition)
                     }
                 } else {
@@ -170,8 +178,8 @@ struct TSStrategyDetailView: View {
             }
             
             Section(header: Text("Actions")) {
-                if let actions = strategy.actions, !actions.isEmpty {
-                    ForEach(actions) { action in
+                if !strategy.actions.isEmpty {
+                    ForEach(strategy.actions) { action in
                         ActionRow(action: action)
                     }
                 } else {
@@ -185,7 +193,6 @@ struct TSStrategyDetailView: View {
             
             Section(header: Text("Execute")) {
                 TextField("Symbol (e.g., AAPL)", text: $symbol)
-                    .textInputAutocapitalization(.characters)
                 
                 Button(action: { Task { executionResult = await viewModel.executeStrategy(strategy.id, symbol: symbol) } }) {
                     HStack {
@@ -223,19 +230,18 @@ struct TSStrategyDetailView: View {
 }
 
 struct ConditionRow: View {
-    let condition: TSStrategyCondition
+    let condition: TSCondition
     
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(condition.indicator?.name ?? "Unknown")
+            Text("Indicator")
                 .font(.subheadline)
                 .fontWeight(.medium)
             
             HStack {
                 Text("\(condition.threshold, specifier: "%.2f")")
-                Text(condition.conditionOperator)
-                Text(condition.logicalOperator)
-                    .foregroundColor(.secondary)
+                Text(condition.conditionOperator.rawValue)
+                Text(condition.logicalOperator.rawValue)
             }
             .font(.caption)
             .foregroundColor(.secondary)
@@ -244,19 +250,19 @@ struct ConditionRow: View {
 }
 
 struct ActionRow: View {
-    let action: TSTradingAction
+    let action: TSAction
     
     var body: some View {
         HStack {
-            Image(systemName: action.actionType == "BUY" ? "arrow.up.circle.fill" : (action.actionType == "SELL" ? "arrow.down.circle.fill" : "bolt.circle.fill"))
-                .foregroundColor(action.actionType == "BUY" ? .green : (action.actionType == "SELL" ? .red : .orange))
+            Image(systemName: action.actionType == .buy ? "arrow.up.circle.fill" : (action.actionType == .sell ? "arrow.down.circle.fill" : "bolt.circle.fill"))
+                .foregroundColor(action.actionType == .buy ? .green : (action.actionType == .sell ? .red : .orange))
             
             VStack(alignment: .leading) {
-                Text(action.actionType)
+                Text(action.actionType.rawValue)
                     .font(.subheadline)
                     .fontWeight(.medium)
                 
-                if let qty = action.parameters["quantity"]?.value as? Int {
+                if let qty = action.parameters["quantity"]?.intValue {
                     Text("Qty: \(qty)")
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -264,10 +270,6 @@ struct ActionRow: View {
             }
             
             Spacer()
-            
-            Text("Priority: \(action.priority)")
-                .font(.caption)
-                .foregroundColor(.secondary)
         }
     }
 }
@@ -289,15 +291,6 @@ struct ExecutionResultView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            
-            if let results = result.results {
-                ForEach(results.indices, id: \.self) { index in
-                    if let result = results[index] {
-                        Text("\(result.action): \(result.result?["OrderID"]?.value as? String ?? "Pending")")
-                            .font(.caption)
-                    }
-                }
-            }
         }
         .padding()
         .background(Color.secondary.opacity(0.1))
@@ -310,31 +303,42 @@ struct NewTStrategySheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var description = ""
+    @State private var isCreating = false
     
     var body: some View {
-        NavigationView {
-            Form {
-                Section(header: Text("Strategy Details")) {
-                    TextField("Name", text: $name)
-                    TextField("Description (optional)", text: $description)
+        VStack(spacing: 20) {
+            Text("Create New Strategy")
+                .font(.headline)
+            
+            TextField("Strategy Name", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 300)
+            
+            TextField("Description (optional)", text: $description)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 300)
+            
+            HStack(spacing: 20) {
+                Button("Cancel") {
+                    dismiss()
                 }
-            }
-            .navigationTitle("New Strategy")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        Task {
-                            _ = await viewModel.createStrategy(name: name, description: description.isEmpty ? nil : description)
-                            dismiss()
-                        }
+                .buttonStyle(.bordered)
+                
+                Button("Create") {
+                    isCreating = true
+                    print("[NewStrategySheet] Create tapped, name: '\(name)'")
+                    Task {
+                        print("[NewStrategySheet] Task started")
+                        let result = await viewModel.createStrategy(name: name, description: description.isEmpty ? nil : description)
+                        print("[NewStrategySheet] Result: \(String(describing: result)), strategies count: \(viewModel.strategies.count)")
+                        isCreating = false
+                        dismiss()
                     }
-                    .disabled(name.isEmpty)
                 }
+                .buttonStyle(.borderedProminent)
+                .disabled(name.isEmpty || isCreating)
             }
         }
+        .padding(40)
     }
 }

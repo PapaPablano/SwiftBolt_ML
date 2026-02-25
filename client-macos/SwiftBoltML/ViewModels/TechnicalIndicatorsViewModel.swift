@@ -85,15 +85,23 @@ final class TechnicalIndicatorsViewModel: ObservableObject {
             }
             
             guard myGeneration == loadGeneration else { return }
-            self.indicators = response
-            self.lastUpdated = Date()
-            self.isLoading = false
-            print("[TechnicalIndicators] Loaded \(response.indicators.count) indicators for \(symbol)/\(timeframe)")
+            let result = response
+            DispatchQueue.main.async { [weak self] in
+                guard let self, myGeneration == self.loadGeneration else { return }
+                self.indicators = result
+                self.lastUpdated = Date()
+                self.isLoading = false
+                print("[TechnicalIndicators] Loaded \(result.indicators.count) indicators for \(symbol)/\(timeframe)")
+            }
         } catch {
             guard myGeneration == loadGeneration else { return }
-            self.error = error.localizedDescription
-            self.isLoading = false
-            print("[TechnicalIndicators] Error loading indicators after retries: \(error)")
+            let errMsg = error.localizedDescription
+            DispatchQueue.main.async { [weak self] in
+                guard let self, myGeneration == self.loadGeneration else { return }
+                self.error = errMsg
+                self.isLoading = false
+                print("[TechnicalIndicators] Error loading indicators after retries: \(error)")
+            }
         }
     }
     

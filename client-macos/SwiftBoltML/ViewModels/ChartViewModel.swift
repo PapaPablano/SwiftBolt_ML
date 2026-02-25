@@ -1002,6 +1002,8 @@ final class ChartViewModel: ObservableObject {
                         } else {
                             chartDataV2 = nil
                         }
+                        // Set loading false immediately so UI shows chart before any refresh/async work
+                        if currentLoadId == loadId { isLoading = false }
 
                         ChartCache.saveBars(symbol: symbol.ticker, timeframe: timeframe, bars: fallbackBars)
                         scheduleIndicatorRecalculation()
@@ -1041,6 +1043,7 @@ final class ChartViewModel: ObservableObject {
                         refresh: nil
                     )
                     updateSelectedForecastHorizon(from: response.mlSummary)
+                    if currentLoadId == loadId { isLoading = false }
 
                     if indicatorConfig.useWebChart {
                         // For d1 timeframe, create a new response with aggregated bars instead of raw h1 bars
@@ -1118,6 +1121,7 @@ final class ChartViewModel: ObservableObject {
                     guard currentLoadId == loadId else { return }
                     chartData = response
                     updateSelectedForecastHorizon(from: response.mlSummary)
+                    if currentLoadId == loadId { isLoading = false }
                     print("[DEBUG] - chartData is now: \(chartData == nil ? "nil" : "non-nil with \(chartData!.bars.count) bars")")
 
                     // Save bars to cache
@@ -1179,10 +1183,12 @@ final class ChartViewModel: ObservableObject {
                     } else {
                         chartDataV2 = nil
                     }
+                    if currentLoadId == loadId { isLoading = false }
                     scheduleIndicatorRecalculation()
                     errorMessage = nil
                 } else {
                     errorMessage = error.localizedDescription
+                    if currentLoadId == loadId { isLoading = false }
                 }
             }
         }
