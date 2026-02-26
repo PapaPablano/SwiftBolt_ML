@@ -21,6 +21,16 @@
     "node_modules",
     ".git"
   ],
+  "lint": {
+    "rules": {
+      "tags": ["recommended"],
+      "exclude": [
+        "no-explicit-any",
+        "no-unused-vars",
+        "require-await"
+      ]
+    }
+  },
   "tasks": {
     "test": "deno test --allow-all",
     "fmt": "deno fmt",
