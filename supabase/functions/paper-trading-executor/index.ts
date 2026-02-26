@@ -289,9 +289,10 @@ function evaluateCondition(
         return indicatorValue >= value;
       case "<=":
         return indicatorValue <= value;
-      case "==":
+      case "==": {
         const epsilon = 0.0001;
         return Math.abs(indicatorValue - value) < epsilon;
+      }
       case "!=":
         return indicatorValue !== value;
       default:

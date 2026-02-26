@@ -248,11 +248,12 @@ function evaluateRange(
   switch (operator) {
     case "within_range":
       return value >= min && value <= max;
-    case "touches":
+    case "touches": {
       // Touches at min or max boundary
       const epsilon = 0.0001;
       return (Math.abs(value - min) < epsilon) ||
         (Math.abs(value - max) < epsilon);
+    }
     default:
       return false;
   }
