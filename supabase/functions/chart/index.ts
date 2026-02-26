@@ -11,7 +11,11 @@
 // The frontend should call this single endpoint to render charts without extra round trips.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import {
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
 // Market hours constants (UTC)
@@ -19,7 +23,7 @@ import { getSupabaseClient } from "../_shared/supabase-client.ts";
 const MARKET_OPEN_HOUR_UTC = 14;
 const MARKET_CLOSE_HOUR_UTC = 21;
 const MARKET_WEEKDAY_START = 1; // Monday
-const MARKET_WEEKDAY_END = 5;   // Friday
+const MARKET_WEEKDAY_END = 5; // Friday
 
 interface ChartBar {
   ts: string;
@@ -144,7 +148,21 @@ function mapForecastPoint(p: ForecastPointRow): ForecastPoint {
     upper: Number.isFinite(upper) ? upper : value * 1.05,
   };
   // Pass through extended fields (canonical ForecastPoint); normalize timeframe for API
-  const keysToSkip = new Set(["ts", "value", "lower", "upper", "time", "price", "mid", "lower_band", "upper_band", "min", "max", "lower_bound", "upper_bound"]);
+  const keysToSkip = new Set([
+    "ts",
+    "value",
+    "lower",
+    "upper",
+    "time",
+    "price",
+    "mid",
+    "lower_band",
+    "upper_band",
+    "min",
+    "max",
+    "lower_bound",
+    "upper_bound",
+  ]);
   for (const key of Object.keys(p)) {
     if (keysToSkip.has(key)) continue;
     const v = (p as Record<string, unknown>)[key];
@@ -160,16 +178,16 @@ function mapForecastPoint(p: ForecastPointRow): ForecastPoint {
 
 // SLA thresholds in minutes per timeframe
 const FRESHNESS_SLA_MINUTES: Record<string, number> = {
-  m15: 30,    // 15m bars should be < 30 min stale during market hours
-  h1: 120,    // 1h bars should be < 2 hours stale
-  h4: 480,    // 4h bars should be < 8 hours stale
-  d1: 1440,   // Daily bars should be < 24 hours stale
-  w1: 10080,  // Weekly bars should be < 1 week stale
+  m15: 30, // 15m bars should be < 30 min stale during market hours
+  h1: 120, // 1h bars should be < 2 hours stale
+  h4: 480, // 4h bars should be < 8 hours stale
+  d1: 1440, // Daily bars should be < 24 hours stale
+  w1: 10080, // Weekly bars should be < 1 week stale
 };
 
 serve(async (req: Request): Promise<Response> => {
   const origin = req.headers.get("origin");
-  
+
   if (req.method === "OPTIONS") {
     return handleCorsOptions(origin);
   }
@@ -187,7 +205,8 @@ serve(async (req: Request): Promise<Response> => {
     const startParam = url.searchParams.get("start");
     const endParam = url.searchParams.get("end");
     const includeOptions = url.searchParams.get("include_options") !== "false";
-    const includeForecast = url.searchParams.get("include_forecast") !== "false";
+    const includeForecast =
+      url.searchParams.get("include_forecast") !== "false";
     const fieldsParam = url.searchParams.get("fields");
     const barLimitParam = url.searchParams.get("bars_limit");
     const barOffsetParam = url.searchParams.get("bars_offset");
@@ -204,8 +223,8 @@ serve(async (req: Request): Promise<Response> => {
     // Calculate date range (default: last 1 year for d1, 30 days for intraday)
     const defaultDays = ["m15", "h1", "h4"].includes(timeframe) ? 30 : 365;
     const endDate = endParam ? new Date(endParam) : now;
-    const startDate = startParam 
-      ? new Date(startParam) 
+    const startDate = startParam
+      ? new Date(startParam)
       : new Date(endDate.getTime() - defaultDays * 24 * 60 * 60 * 1000);
 
     // 1. Get symbol ID
@@ -223,12 +242,15 @@ serve(async (req: Request): Promise<Response> => {
 
     // 2. Fetch bars using get_chart_data_v2 RPC (provider-aware)
     let barsData: ChartBarRow[] | null = null;
-    const { data: rpcData, error: barsError } = await supabase.rpc("get_chart_data_v2", {
-      p_symbol_id: symbolId,
-      p_timeframe: timeframe,
-      p_start_date: startDate.toISOString(),
-      p_end_date: endDate.toISOString(),
-    });
+    const { data: rpcData, error: barsError } = await supabase.rpc(
+      "get_chart_data_v2",
+      {
+        p_symbol_id: symbolId,
+        p_timeframe: timeframe,
+        p_start_date: startDate.toISOString(),
+        p_end_date: endDate.toISOString(),
+      },
+    );
 
     if (barsError) {
       console.error("[chart] Bars query error:", barsError);
@@ -263,7 +285,7 @@ serve(async (req: Request): Promise<Response> => {
     const barLimit = barLimitParam ? Number(barLimitParam) : allBars.length;
     const bars = allBars.slice(
       Math.max(0, barOffset),
-      Math.max(0, barOffset) + Math.max(0, barLimit)
+      Math.max(0, barOffset) + Math.max(0, barLimit),
     );
 
     // Get last bar timestamp
@@ -286,14 +308,22 @@ serve(async (req: Request): Promise<Response> => {
           .limit(1)
           .maybeSingle();
 
-        const row = intradayRow as { overall_label?: string | null; confidence?: number | null; horizon?: string | null; created_at?: string; points?: ForecastPointRow[] | null } | null;
+        const row = intradayRow as {
+          overall_label?: string | null;
+          confidence?: number | null;
+          horizon?: string | null;
+          created_at?: string;
+          points?: ForecastPointRow[] | null;
+        } | null;
         if (row?.points && Array.isArray(row.points) && row.points.length > 0) {
           forecastData = {
             label: row.overall_label || "neutral",
             confidence: Number(row.confidence) || 0,
             horizon: row.horizon || (timeframe === "m15" ? "15m" : "1h"),
             runAt: row.created_at || "",
-            points: (row.points as ForecastPointRow[]).map((p: ForecastPointRow) => mapForecastPoint(p)),
+            points: (row.points as ForecastPointRow[]).map((
+              p: ForecastPointRow,
+            ) => mapForecastPoint(p)),
           };
         }
       }
@@ -312,7 +342,9 @@ serve(async (req: Request): Promise<Response> => {
             confidence: Number(forecastRow.confidence) || 0,
             horizon: forecastRow.horizon || "1D",
             runAt: forecastRow.run_at || "",
-            points: (forecastRow.points || []).map((p: ForecastPointRow) => mapForecastPoint(p)),
+            points: (forecastRow.points || []).map((p: ForecastPointRow) =>
+              mapForecastPoint(p)
+            ),
           };
         }
       }
@@ -323,13 +355,15 @@ serve(async (req: Request): Promise<Response> => {
     if (includeOptions) {
       const { data: options } = await supabase
         .from("options_ranks")
-        .select("expiry, strike, side, ml_score, implied_vol, delta, gamma, theta, vega, open_interest, volume, run_at")
+        .select(
+          "expiry, strike, side, ml_score, implied_vol, delta, gamma, theta, vega, open_interest, volume, run_at",
+        )
         .eq("underlying_symbol_id", symbolId)
         .order("ml_score", { ascending: false })
         .range(
           Math.max(0, Number(optionsOffsetParam || 0)),
           Math.max(0, Number(optionsOffsetParam || 0)) +
-            Math.max(1, Number(optionsLimitParam || 10)) - 1
+            Math.max(1, Number(optionsLimitParam || 10)) - 1,
         );
 
       if (options) {
@@ -360,8 +394,9 @@ serve(async (req: Request): Promise<Response> => {
       const hour = now.getUTCHours();
       const dayOfWeek = now.getUTCDay();
       // Rough market hours check using constants
-      isMarketOpen = dayOfWeek >= MARKET_WEEKDAY_START && dayOfWeek <= MARKET_WEEKDAY_END && 
-                     hour >= MARKET_OPEN_HOUR_UTC && hour < MARKET_CLOSE_HOUR_UTC;
+      isMarketOpen = dayOfWeek >= MARKET_WEEKDAY_START &&
+        dayOfWeek <= MARKET_WEEKDAY_END &&
+        hour >= MARKET_OPEN_HOUR_UTC && hour < MARKET_CLOSE_HOUR_UTC;
     }
 
     // 6. Check for pending splits
@@ -376,7 +411,9 @@ serve(async (req: Request): Promise<Response> => {
 
     const hasPendingSplits = (pendingSplits?.length || 0) > 0;
     const pendingSplitInfo = hasPendingSplits && pendingSplits?.[0]
-      ? `${pendingSplits[0].action_type} ${pendingSplits[0].ratio}:1 on ${pendingSplits[0].ex_date}`
+      ? `${pendingSplits[0].action_type} ${pendingSplits[0].ratio}:1 on ${
+        pendingSplits[0].ex_date
+      }`
       : null;
 
     // 7. Calculate freshness metrics
@@ -386,7 +423,9 @@ serve(async (req: Request): Promise<Response> => {
 
     if (lastBarTs) {
       const lastBarDate = new Date(lastBarTs);
-      ageMinutes = Math.round((now.getTime() - lastBarDate.getTime()) / (1000 * 60));
+      ageMinutes = Math.round(
+        (now.getTime() - lastBarDate.getTime()) / (1000 * 60),
+      );
       // Only consider stale during market hours for intraday
       if (isMarketOpen || !["m15", "h1", "h4"].includes(timeframe)) {
         isWithinSla = ageMinutes <= slaMinutes;
@@ -420,8 +459,12 @@ serve(async (req: Request): Promise<Response> => {
       symbol,
       timeframe,
       bars: responseFields && !responseFields.has("bars") ? [] : bars,
-      forecast: responseFields && !responseFields.has("forecast") ? null : forecastData,
-      optionsRanks: responseFields && !responseFields.has("options") ? [] : optionsRanks,
+      forecast: responseFields && !responseFields.has("forecast")
+        ? null
+        : forecastData,
+      optionsRanks: responseFields && !responseFields.has("options")
+        ? []
+        : optionsRanks,
       meta: {
         lastBarTs,
         dataStatus,
@@ -469,16 +512,17 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[chart] ${symbol}/${timeframe}: ${bars.length} bars, ${duration}ms`);
+    console.log(
+      `[chart] ${symbol}/${timeframe}: ${bars.length} bars, ${duration}ms`,
+    );
 
     return jsonResponse(response, 200, req.headers);
-
   } catch (error) {
     console.error("[chart] Error:", error);
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
       500,
-      req.headers
+      req.headers,
     );
   }
 });

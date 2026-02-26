@@ -5,12 +5,19 @@
 // Does not update legs directly - use close-leg for that.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
-import { getSupabaseClientWithAuth, getSupabaseClient } from "../_shared/supabase-client.ts";
 import {
-  type UpdateStrategyRequest,
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
+import {
+  getSupabaseClient,
+  getSupabaseClientWithAuth,
+} from "../_shared/supabase-client.ts";
+import {
   type StrategyRow,
   strategyRowToModel,
+  type UpdateStrategyRequest,
 } from "../_shared/types/multileg.ts";
 
 interface UpdateRequestWithId extends UpdateStrategyRequest {
@@ -90,7 +97,9 @@ serve(async (req: Request): Promise<Response> => {
 
     if (userError || !user) {
       // For development/testing: use service role client which bypasses RLS
-      console.warn("[multi-leg-update] No authenticated user, using service role client");
+      console.warn(
+        "[multi-leg-update] No authenticated user, using service role client",
+      );
       supabase = getSupabaseClient();
       userId = "00000000-0000-0000-0000-000000000000";
     } else {
@@ -103,7 +112,7 @@ serve(async (req: Request): Promise<Response> => {
       .from("options_strategies")
       .update(updates)
       .eq("id", body.strategyId)
-      .eq("user_id", userId)  // Filter by user ID
+      .eq("user_id", userId) // Filter by user ID
       .select()
       .single();
 
@@ -122,7 +131,7 @@ serve(async (req: Request): Promise<Response> => {
     console.error("[multi-leg-update] Error:", error);
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
-      500
+      500,
     );
   }
 });

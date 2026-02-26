@@ -2,14 +2,19 @@
 // Evaluates strategies against market conditions and generates alerts
 
 import {
+  type AlertSeverity,
+  type AlertType,
+  type MultiLegAlert,
   type MultiLegStrategy,
   type OptionsLeg,
-  type MultiLegAlert,
-  type AlertType,
-  type AlertSeverity,
   type UserAlertPreferences,
 } from "../types/multileg.ts";
-import { calculateDTE, isLegITM, isLegDeepITM, isBreachingStrike } from "./pl-calculator.ts";
+import {
+  calculateDTE,
+  isBreachingStrike,
+  isLegDeepITM,
+  isLegITM,
+} from "./pl-calculator.ts";
 
 // ============================================================================
 // ALERT GENERATION TYPES
@@ -145,7 +150,8 @@ function checkExpirationAlerts(context: EvaluationContext): AlertInput[] {
         alertType: "expiration_soon",
         severity: dte <= 1 ? "critical" : "warning",
         title: `Leg ${leg.legNumber} expires in ${dte} day(s)`,
-        reason: `${leg.optionType.toUpperCase()} @ $${leg.strike} expires on ${leg.expiry}`,
+        reason:
+          `${leg.optionType.toUpperCase()} @ $${leg.strike} expires on ${leg.expiry}`,
         details: {
           legNumber: leg.legNumber,
           optionType: leg.optionType,
@@ -181,9 +187,16 @@ function checkStrikeBreachedAlerts(context: EvaluationContext): AlertInput[] {
 
       alerts.push({
         alertType: "strike_breached",
-        severity: leg.positionType === "short" && isITM ? "critical" : "warning",
-        title: `${leg.positionType.toUpperCase()} ${leg.optionType.toUpperCase()} strike $${leg.strike} ${isITM ? "breached" : "approaching"}`,
-        reason: `Underlying at $${underlyingPrice.toFixed(2)} is ${(distancePct * 100).toFixed(1)}% from strike`,
+        severity: leg.positionType === "short" && isITM
+          ? "critical"
+          : "warning",
+        title:
+          `${leg.positionType.toUpperCase()} ${leg.optionType.toUpperCase()} strike $${leg.strike} ${
+            isITM ? "breached" : "approaching"
+          }`,
+        reason: `Underlying at $${underlyingPrice.toFixed(2)} is ${
+          (distancePct * 100).toFixed(1)
+        }% from strike`,
         details: {
           legNumber: leg.legNumber,
           strike: leg.strike,
@@ -223,7 +236,9 @@ function checkAssignmentRiskAlerts(context: EvaluationContext): AlertInput[] {
         alertType: "assignment_risk",
         severity: "critical",
         title: `Assignment risk: $${leg.strike} short ${leg.optionType}`,
-        reason: `Contract is deep ITM ($${underlyingPrice.toFixed(2)} vs $${leg.strike}) with ${dte} DTE`,
+        reason: `Contract is deep ITM ($${
+          underlyingPrice.toFixed(2)
+        } vs $${leg.strike}) with ${dte} DTE`,
         details: {
           legNumber: leg.legNumber,
           strike: leg.strike,
@@ -260,17 +275,22 @@ function checkForecastFlipAlerts(context: EvaluationContext): AlertInput[] {
   }
 
   // Check alignment
-  const isAligned =
-    (strategyThesis === "bullish" && (forecastLabel === "bullish" || forecastLabel === "neutral")) ||
-    (strategyThesis === "bearish" && (forecastLabel === "bearish" || forecastLabel === "neutral")) ||
+  const isAligned = (strategyThesis === "bullish" &&
+    (forecastLabel === "bullish" || forecastLabel === "neutral")) ||
+    (strategyThesis === "bearish" &&
+      (forecastLabel === "bearish" || forecastLabel === "neutral")) ||
     (strategyThesis === "neutral" && forecastLabel === "neutral");
 
   if (!isAligned) {
     alerts.push({
       alertType: "forecast_flip",
       severity: "critical",
-      title: `Forecast misalignment: ${strategyThesis} strategy vs ${forecastLabel} forecast`,
-      reason: `Strategy assumes ${strategyThesis} outlook, but forecast shows ${forecastLabel} with ${(confidence * 100).toFixed(0)}% confidence`,
+      title:
+        `Forecast misalignment: ${strategyThesis} strategy vs ${forecastLabel} forecast`,
+      reason:
+        `Strategy assumes ${strategyThesis} outlook, but forecast shows ${forecastLabel} with ${
+          (confidence * 100).toFixed(0)
+        }% confidence`,
       details: {
         strategyThesis,
         forecastLabel,
@@ -298,7 +318,9 @@ function checkProfitTargetAlerts(context: EvaluationContext): AlertInput[] {
       alertType: "profit_target_hit",
       severity: "warning",
       title: `Profit target reached: ${(totalPLPct * 100).toFixed(1)}%`,
-      reason: `Position has gained ${(totalPLPct * 100).toFixed(1)}% (target ${(targetPct * 100).toFixed(0)}%)`,
+      reason: `Position has gained ${(totalPLPct * 100).toFixed(1)}% (target ${
+        (targetPct * 100).toFixed(0)
+      }%)`,
       details: {
         totalPL: context.strategy.totalPL,
         totalPLPct,
@@ -325,7 +347,9 @@ function checkStopLossAlerts(context: EvaluationContext): AlertInput[] {
       alertType: "stop_loss_hit",
       severity: "critical",
       title: `Stop loss triggered: ${(totalPLPct * 100).toFixed(1)}%`,
-      reason: `Position has lost ${Math.abs(totalPLPct * 100).toFixed(1)}% (stop ${Math.abs(stopPct * 100).toFixed(0)}%)`,
+      reason: `Position has lost ${
+        Math.abs(totalPLPct * 100).toFixed(1)
+      }% (stop ${Math.abs(stopPct * 100).toFixed(0)}%)`,
       details: {
         totalPL: context.strategy.totalPL,
         totalPLPct,
@@ -354,7 +378,7 @@ function checkVolatilityAlerts(context: EvaluationContext): AlertInput[] {
 
   const ivZScore = Math.abs(
     (context.currentIV - context.historicalIVMean) /
-    (context.historicalIVStd || 0.01)
+      (context.historicalIVStd || 0.01),
   );
 
   if (ivZScore > 2.0) {
@@ -369,7 +393,9 @@ function checkVolatilityAlerts(context: EvaluationContext): AlertInput[] {
       alertType: isShortVega ? "vega_squeeze" : "volatility_spike",
       severity: isShortVega ? "warning" : "info",
       title: `Implied volatility spike (${ivZScore.toFixed(1)} std dev)`,
-      reason: `IV is ${(context.currentIV * 100).toFixed(1)}%, historical mean ${(context.historicalIVMean * 100).toFixed(1)}%`,
+      reason: `IV is ${
+        (context.currentIV * 100).toFixed(1)
+      }%, historical mean ${(context.historicalIVMean * 100).toFixed(1)}%`,
       details: {
         currentIV: context.currentIV,
         historicalMean: context.historicalIVMean,
@@ -400,7 +426,9 @@ function checkThetaBenefitAlerts(context: EvaluationContext): AlertInput[] {
       alertType: "theta_decay_benefit",
       severity: "info",
       title: `Strong theta decay benefit: $${dailyTheta.toFixed(2)}/day`,
-      reason: `Short premium strategy collecting ~$${dailyTheta.toFixed(2)} per day from time decay`,
+      reason: `Short premium strategy collecting ~$${
+        dailyTheta.toFixed(2)
+      } per day from time decay`,
       details: {
         dailyTheta,
         totalTheta: context.strategy.combinedTheta,
@@ -430,8 +458,12 @@ function checkGammaRiskAlerts(context: EvaluationContext): AlertInput[] {
     alerts.push({
       alertType: "gamma_risk",
       severity: "warning",
-      title: `High gamma risk: delta could swing ${(gammaImpact * 100).toFixed(0)}%`,
-      reason: `Combined gamma of ${combinedGamma.toFixed(4)} suggests significant delta change on underlying moves`,
+      title: `High gamma risk: delta could swing ${
+        (gammaImpact * 100).toFixed(0)
+      }%`,
+      reason: `Combined gamma of ${
+        combinedGamma.toFixed(4)
+      } suggests significant delta change on underlying moves`,
       details: {
         gamma: combinedGamma,
         underlyingMove,
@@ -454,14 +486,14 @@ function checkGammaRiskAlerts(context: EvaluationContext): AlertInput[] {
  */
 export function isDuplicateAlert(
   newAlert: AlertInput,
-  existingAlerts: MultiLegAlert[]
+  existingAlerts: MultiLegAlert[],
 ): boolean {
   return existingAlerts.some(
     (existing) =>
       existing.alertType === newAlert.alertType &&
       existing.legId === newAlert.legId &&
       !existing.resolvedAt &&
-      isWithinDedupWindow(existing.createdAt)
+      isWithinDedupWindow(existing.createdAt),
   );
 }
 

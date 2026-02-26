@@ -5,7 +5,11 @@
 // Uses Alpaca API for maximum historical data (7+ years for daily).
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import {
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
 const ALPACA_API_KEY = Deno.env.get("ALPACA_API_KEY");
@@ -13,13 +17,14 @@ const ALPACA_API_SECRET = Deno.env.get("ALPACA_API_SECRET");
 const ALPACA_BASE_URL = "https://data.alpaca.markets/v2";
 
 // Timeframe configurations: how much history to fetch (Alpaca format)
-const TIMEFRAME_CONFIG: Record<string, { alpacaTf: string; maxDays: number }> = {
-  m15: { alpacaTf: "15Min", maxDays: 60 },
-  h1: { alpacaTf: "1Hour", maxDays: 180 },
-  h4: { alpacaTf: "4Hour", maxDays: 365 },
-  d1: { alpacaTf: "1Day", maxDays: 2555 },  // 7 years
-  w1: { alpacaTf: "1Week", maxDays: 2555 }, // 7 years
-};
+const TIMEFRAME_CONFIG: Record<string, { alpacaTf: string; maxDays: number }> =
+  {
+    m15: { alpacaTf: "15Min", maxDays: 60 },
+    h1: { alpacaTf: "1Hour", maxDays: 180 },
+    h4: { alpacaTf: "4Hour", maxDays: 365 },
+    d1: { alpacaTf: "1Day", maxDays: 2555 }, // 7 years
+    w1: { alpacaTf: "1Week", maxDays: 2555 }, // 7 years
+  };
 
 // Default timeframes to backfill (most important first)
 const DEFAULT_TIMEFRAMES = ["d1", "h1", "w1"];
@@ -60,8 +65,17 @@ async function fetchAlpacaBars(
   symbol: string,
   timeframe: string,
   startDate: Date,
-  endDate: Date
-): Promise<{ ts: string; open: number; high: number; low: number; close: number; volume: number }[]> {
+  endDate: Date,
+): Promise<
+  {
+    ts: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  }[]
+> {
   const config = TIMEFRAME_CONFIG[timeframe];
   if (!config) {
     throw new Error(`Invalid timeframe: ${timeframe}`);
@@ -73,9 +87,18 @@ async function fetchAlpacaBars(
   const startStr = startDate.toISOString();
   const endStr = endDate.toISOString();
 
-  console.log(`[SymbolBackfill] Fetching ${symbol} ${timeframe} from ${startStr} to ${endStr}`);
+  console.log(
+    `[SymbolBackfill] Fetching ${symbol} ${timeframe} from ${startStr} to ${endStr}`,
+  );
 
-  const allBars: { ts: string; open: number; high: number; low: number; close: number; volume: number }[] = [];
+  const allBars: {
+    ts: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  }[] = [];
   let pageToken: string | undefined;
   let pageCount = 0;
   const maxPages = 100; // Safety limit
@@ -108,7 +131,9 @@ async function fetchAlpacaBars(
     const barsData = data.bars?.[symbol.toUpperCase()] || [];
 
     if (barsData.length === 0 && pageCount === 0) {
-      console.log(`[SymbolBackfill] No data returned for ${symbol} ${timeframe}`);
+      console.log(
+        `[SymbolBackfill] No data returned for ${symbol} ${timeframe}`,
+      );
       return [];
     }
 
@@ -128,21 +153,25 @@ async function fetchAlpacaBars(
     pageCount++;
 
     if (pageToken) {
-      console.log(`[SymbolBackfill] Fetched page ${pageCount} with ${barsData.length} bars, continuing...`);
+      console.log(
+        `[SymbolBackfill] Fetched page ${pageCount} with ${barsData.length} bars, continuing...`,
+      );
       await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY));
     } else {
       break;
     }
   }
 
-  console.log(`[SymbolBackfill] Received ${allBars.length} bars for ${symbol} ${timeframe}`);
+  console.log(
+    `[SymbolBackfill] Received ${allBars.length} bars for ${symbol} ${timeframe}`,
+  );
   return allBars;
 }
 
 async function getExistingCoverage(
   supabase: ReturnType<typeof getSupabaseClient>,
   symbolId: string,
-  timeframe: string
+  timeframe: string,
 ): Promise<{ count: number; latest: Date | null }> {
   const { data, error } = await supabase
     .from("ohlc_bars_v2")
@@ -176,24 +205,34 @@ async function backfillTimeframe(
   symbol: string,
   symbolId: string,
   timeframe: string,
-  force: boolean
+  force: boolean,
 ): Promise<BackfillResult> {
   const config = TIMEFRAME_CONFIG[timeframe];
   if (!config) {
-    return { timeframe, barsInserted: 0, error: `Invalid timeframe: ${timeframe}` };
+    return {
+      timeframe,
+      barsInserted: 0,
+      error: `Invalid timeframe: ${timeframe}`,
+    };
   }
 
   try {
     // Check existing coverage
     const coverage = await getExistingCoverage(supabase, symbolId, timeframe);
-    console.log(`[SymbolBackfill] ${symbol} ${timeframe}: ${coverage.count} existing bars, latest=${coverage.latest?.toISOString()}`);
+    console.log(
+      `[SymbolBackfill] ${symbol} ${timeframe}: ${coverage.count} existing bars, latest=${coverage.latest?.toISOString()}`,
+    );
 
     // Skip if we have recent data and not forcing
     if (!force && coverage.latest) {
       const ageMs = Date.now() - coverage.latest.getTime();
-      const maxAgeMs = timeframe === "d1" ? 24 * 60 * 60 * 1000 : 4 * 60 * 60 * 1000;
+      const maxAgeMs = timeframe === "d1"
+        ? 24 * 60 * 60 * 1000
+        : 4 * 60 * 60 * 1000;
       if (ageMs < maxAgeMs && coverage.count >= 100) {
-        console.log(`[SymbolBackfill] ${symbol} ${timeframe}: Data is current, skipping`);
+        console.log(
+          `[SymbolBackfill] ${symbol} ${timeframe}: Data is current, skipping`,
+        );
         return {
           timeframe,
           barsInserted: 0,
@@ -205,13 +244,19 @@ async function backfillTimeframe(
 
     // Calculate date range
     const endDate = new Date();
-    const startDate = new Date(endDate.getTime() - config.maxDays * 24 * 60 * 60 * 1000);
+    const startDate = new Date(
+      endDate.getTime() - config.maxDays * 24 * 60 * 60 * 1000,
+    );
 
     // Fetch from Alpaca
     const bars = await fetchAlpacaBars(symbol, timeframe, startDate, endDate);
 
     if (bars.length === 0) {
-      return { timeframe, barsInserted: 0, error: "No data returned from Alpaca" };
+      return {
+        timeframe,
+        barsInserted: 0,
+        error: "No data returned from Alpaca",
+      };
     }
 
     // Upsert to database
@@ -236,11 +281,16 @@ async function backfillTimeframe(
       });
 
     if (upsertError) {
-      console.error(`[SymbolBackfill] Upsert error for ${symbol} ${timeframe}:`, upsertError);
+      console.error(
+        `[SymbolBackfill] Upsert error for ${symbol} ${timeframe}:`,
+        upsertError,
+      );
       return { timeframe, barsInserted: 0, error: upsertError.message };
     }
 
-    console.log(`[SymbolBackfill] Inserted ${bars.length} bars for ${symbol} ${timeframe}`);
+    console.log(
+      `[SymbolBackfill] Inserted ${bars.length} bars for ${symbol} ${timeframe}`,
+    );
 
     return {
       timeframe,
@@ -269,7 +319,10 @@ serve(async (req: Request): Promise<Response> => {
 
   // Check API key
   if (!ALPACA_API_KEY || !ALPACA_API_SECRET) {
-    return errorResponse("ALPACA_API_KEY or ALPACA_API_SECRET not configured", 500);
+    return errorResponse(
+      "ALPACA_API_KEY or ALPACA_API_SECRET not configured",
+      500,
+    );
   }
 
   const startTime = Date.now();
@@ -310,7 +363,9 @@ serve(async (req: Request): Promise<Response> => {
       }
 
       symbolId = newSymbol.id;
-      console.log(`[SymbolBackfill] Created new symbol: ${ticker} (${symbolId})`);
+      console.log(
+        `[SymbolBackfill] Created new symbol: ${ticker} (${symbolId})`,
+      );
     } else {
       symbolId = symbolData.id;
     }
@@ -321,18 +376,30 @@ serve(async (req: Request): Promise<Response> => {
 
     for (const tf of timeframes) {
       if (!TIMEFRAME_CONFIG[tf]) {
-        results.push({ timeframe: tf, barsInserted: 0, error: `Invalid timeframe: ${tf}` });
+        results.push({
+          timeframe: tf,
+          barsInserted: 0,
+          error: `Invalid timeframe: ${tf}`,
+        });
         continue;
       }
 
-      const result = await backfillTimeframe(supabase, ticker, symbolId, tf, force);
+      const result = await backfillTimeframe(
+        supabase,
+        ticker,
+        symbolId,
+        tf,
+        force,
+      );
       results.push(result);
       totalBars += result.barsInserted;
 
       // Rate limiting: Alpaca allows 200 req/min
       // Wait 0.3 seconds between timeframes
       if (timeframes.indexOf(tf) < timeframes.length - 1) {
-        console.log(`[SymbolBackfill] Rate limit delay (${RATE_LIMIT_DELAY}ms)...`);
+        console.log(
+          `[SymbolBackfill] Rate limit delay (${RATE_LIMIT_DELAY}ms)...`,
+        );
         await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY));
       }
     }
@@ -344,7 +411,9 @@ serve(async (req: Request): Promise<Response> => {
       durationMs: Date.now() - startTime,
     };
 
-    console.log(`[SymbolBackfill] Complete for ${ticker}: ${totalBars} total bars in ${response.durationMs}ms`);
+    console.log(
+      `[SymbolBackfill] Complete for ${ticker}: ${totalBars} total bars in ${response.durationMs}ms`,
+    );
 
     return jsonResponse(response);
   } catch (err) {

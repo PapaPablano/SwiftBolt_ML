@@ -4,7 +4,8 @@
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 Deno.serve(async (req: Request) => {
@@ -16,8 +17,7 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const gatewayKey =
-      Deno.env.get("SB_GATEWAY_KEY") ??
+    const gatewayKey = Deno.env.get("SB_GATEWAY_KEY") ??
       Deno.env.get("ANON_KEY") ??
       Deno.env.get("SUPABASE_ANON_KEY") ??
       supabaseServiceKey;
@@ -35,23 +35,26 @@ Deno.serve(async (req: Request) => {
         {
           status: 401,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
     console.log("[TriggerBackfill] Calling run-backfill-worker...");
 
     // Call the backfill worker (verify_jwt=false; auth via X-SB-Gateway-Key)
-    const response = await fetch(`${supabaseUrl}/functions/v1/run-backfill-worker`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${gatewayKey}`,
-        "apikey": gatewayKey,
-        "X-SB-Gateway-Key": gatewayKey,
+    const response = await fetch(
+      `${supabaseUrl}/functions/v1/run-backfill-worker`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${gatewayKey}`,
+          "apikey": gatewayKey,
+          "X-SB-Gateway-Key": gatewayKey,
+        },
+        body: "{}",
       },
-      body: "{}",
-    });
+    );
 
     const result = await response.json();
 
@@ -66,7 +69,7 @@ Deno.serve(async (req: Request) => {
       {
         status: response.ok ? 200 : 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   } catch (error: unknown) {
     console.error("[TriggerBackfill] Error:", error);
@@ -80,7 +83,7 @@ Deno.serve(async (req: Request) => {
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   }
 });

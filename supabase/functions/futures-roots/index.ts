@@ -2,7 +2,11 @@
 // Returns list of futures roots (ES, NQ, GC, etc.) with metadata
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { getCorsHeaders, handlePreflight, corsResponse } from "../_shared/cors.ts";
+import {
+  corsResponse,
+  getCorsHeaders,
+  handlePreflight,
+} from "../_shared/cors.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 interface FuturesRoot {
@@ -48,7 +52,7 @@ serve(async (req: Request): Promise<Response> => {
       return corsResponse(
         { error: "Server configuration error" },
         500,
-        origin
+        origin,
       );
     }
 
@@ -57,7 +61,9 @@ serve(async (req: Request): Promise<Response> => {
     // Build query
     let query = supabase
       .from("futures_roots")
-      .select("id, symbol, name, exchange, sector, tick_size, point_value, currency, session_template")
+      .select(
+        "id, symbol, name, exchange, sector, tick_size, point_value, currency, session_template",
+      )
       .order("symbol");
 
     if (sector) {
@@ -71,7 +77,7 @@ serve(async (req: Request): Promise<Response> => {
       return corsResponse(
         { error: "Database error", details: error.message },
         500,
-        origin
+        origin,
       );
     }
 
@@ -88,7 +94,7 @@ serve(async (req: Request): Promise<Response> => {
     return corsResponse(
       { error: "Internal server error" },
       500,
-      origin
+      origin,
     );
   }
 });

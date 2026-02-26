@@ -13,7 +13,12 @@
 // 4. Auto-save discovered symbols to database for future searches
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { corsHeaders, handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import {
+  corsHeaders,
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
 interface SymbolResult {
@@ -46,12 +51,16 @@ interface FinnhubSearchResponse {
 async function searchFinnhub(query: string): Promise<FinnhubSearchResult[]> {
   const apiKey = Deno.env.get("FINNHUB_API_KEY");
   if (!apiKey) {
-    console.warn("[Symbol Search] FINNHUB_API_KEY not set, skipping API search");
+    console.warn(
+      "[Symbol Search] FINNHUB_API_KEY not set, skipping API search",
+    );
     return [];
   }
 
   try {
-    const url = `https://finnhub.io/api/v1/search?q=${encodeURIComponent(query)}&token=${apiKey}`;
+    const url = `https://finnhub.io/api/v1/search?q=${
+      encodeURIComponent(query)
+    }&token=${apiKey}`;
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -60,7 +69,9 @@ async function searchFinnhub(query: string): Promise<FinnhubSearchResult[]> {
     }
 
     const data: FinnhubSearchResponse = await response.json();
-    console.log(`[Symbol Search] Finnhub returned ${data.count} results for "${query}"`);
+    console.log(
+      `[Symbol Search] Finnhub returned ${data.count} results for "${query}"`,
+    );
 
     return data.result || [];
   } catch (err) {
@@ -69,7 +80,10 @@ async function searchFinnhub(query: string): Promise<FinnhubSearchResult[]> {
   }
 }
 
-async function saveSymbolToDatabase(symbol: FinnhubSearchResult, supabase: any): Promise<string | null> {
+async function saveSymbolToDatabase(
+  symbol: FinnhubSearchResult,
+  supabase: any,
+): Promise<string | null> {
   try {
     // Map Finnhub type to our asset_type
     let assetType = "stock"; // default
@@ -109,7 +123,10 @@ async function saveSymbolToDatabase(symbol: FinnhubSearchResult, supabase: any):
 }
 
 // Check if a query matches a futures root
-async function getFuturesRoot(query: string, supabase: any): Promise<SymbolResult | null> {
+async function getFuturesRoot(
+  query: string,
+  supabase: any,
+): Promise<SymbolResult | null> {
   try {
     const { data: root, error } = await supabase
       .from("futures_roots")
@@ -137,7 +154,10 @@ async function getFuturesRoot(query: string, supabase: any): Promise<SymbolResul
 }
 
 // Search for futures contracts and continuous aliases
-async function searchFuturesSymbols(query: string, supabase: any): Promise<SymbolResult[]> {
+async function searchFuturesSymbols(
+  query: string,
+  supabase: any,
+): Promise<SymbolResult[]> {
   const results: SymbolResult[] = [];
 
   try {
@@ -173,7 +193,10 @@ async function searchFuturesSymbols(query: string, supabase: any): Promise<Symbo
 
     for (const sym of symbols || []) {
       // Skip if we already added the root
-      if (sym.ticker === query.toUpperCase() && sym.futures_roots?.symbol === sym.ticker) {
+      if (
+        sym.ticker === query.toUpperCase() &&
+        sym.futures_roots?.symbol === sym.ticker
+      ) {
         continue;
       }
 
@@ -234,7 +257,9 @@ serve(async (req: Request): Promise<Response> => {
     // STEP 1: Search for futures symbols (roots, contracts, continuous aliases)
     const futuresResults = await searchFuturesSymbols(searchTerm, supabase);
     if (futuresResults.length > 0) {
-      console.log(`[Symbol Search] Found ${futuresResults.length} futures results`);
+      console.log(
+        `[Symbol Search] Found ${futuresResults.length} futures results`,
+      );
       return jsonResponse(futuresResults);
     }
 
@@ -247,7 +272,9 @@ serve(async (req: Request): Promise<Response> => {
       .limit(20);
 
     if (!exactError && exactMatch && exactMatch.length > 0) {
-      console.log(`[Symbol Search] Found ${exactMatch.length} exact ticker match(es) in local DB`);
+      console.log(
+        `[Symbol Search] Found ${exactMatch.length} exact ticker match(es) in local DB`,
+      );
       return jsonResponse(exactMatch);
     }
 
@@ -264,11 +291,15 @@ serve(async (req: Request): Promise<Response> => {
         .limit(20);
 
       if (!dbError && dbResults && dbResults.length > 0) {
-        console.log(`[Symbol Search] Found ${dbResults.length} results in local DB (partial match)`);
+        console.log(
+          `[Symbol Search] Found ${dbResults.length} results in local DB (partial match)`,
+        );
         return jsonResponse(dbResults);
       }
     } else {
-      console.log(`[Symbol Search] Short query detected, skipping partial match`);
+      console.log(
+        `[Symbol Search] Short query detected, skipping partial match`,
+      );
     }
 
     // STEP 3: No local results - fallback to Finnhub API
@@ -290,9 +321,13 @@ serve(async (req: Request): Promise<Response> => {
         savedSymbols.push({
           id: symbolId,
           ticker: apiSymbol.symbol.toUpperCase(),
-          asset_type: apiSymbol.type.toLowerCase().includes("forex") ? "forex" :
-                     apiSymbol.type.toLowerCase().includes("crypto") ? "crypto" :
-                     apiSymbol.type.toLowerCase().includes("future") ? "future" : "stock",
+          asset_type: apiSymbol.type.toLowerCase().includes("forex")
+            ? "forex"
+            : apiSymbol.type.toLowerCase().includes("crypto")
+            ? "crypto"
+            : apiSymbol.type.toLowerCase().includes("future")
+            ? "future"
+            : "stock",
           description: apiSymbol.description,
         });
       } else {
@@ -306,7 +341,9 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    console.log(`[Symbol Search] Returning ${savedSymbols.length} results from Finnhub`);
+    console.log(
+      `[Symbol Search] Returning ${savedSymbols.length} results from Finnhub`,
+    );
     return jsonResponse(savedSymbols);
   } catch (err) {
     console.error("[Symbol Search] Unexpected error:", err);

@@ -7,7 +7,18 @@ import type {
   NewsRequest,
   OptionsChainRequest,
 } from "./abstraction.ts";
-import type { Bar, NewsItem, OptionContract, OptionsChain, OptionType, Quote, FuturesRoot, FuturesContract, FuturesChain, FuturesSector } from "./types.ts";
+import type {
+  Bar,
+  FuturesChain,
+  FuturesContract,
+  FuturesRoot,
+  FuturesSector,
+  NewsItem,
+  OptionContract,
+  OptionsChain,
+  OptionType,
+  Quote,
+} from "./types.ts";
 import {
   InvalidSymbolError,
   PermissionDeniedError,
@@ -140,7 +151,10 @@ interface PolygonOptionsChainResponse {
 }
 
 // Map our timeframes to Polygon multiplier + timespan
-const TIMEFRAME_CONFIG: Record<string, { multiplier: number; timespan: string }> = {
+const TIMEFRAME_CONFIG: Record<
+  string,
+  { multiplier: number; timespan: string }
+> = {
   m1: { multiplier: 1, timespan: "minute" },
   m5: { multiplier: 5, timespan: "minute" },
   m15: { multiplier: 15, timespan: "minute" },
@@ -162,7 +176,7 @@ export class MassiveClient implements DataProviderAbstraction {
     apiKey: string,
     rateLimiter: TokenBucketRateLimiter,
     cache: Cache,
-    baseURL: string = "https://api.polygon.io"
+    baseURL: string = "https://api.polygon.io",
   ) {
     this.apiKey = apiKey;
     this.baseURL = baseURL;
@@ -185,7 +199,9 @@ export class MassiveClient implements DataProviderAbstraction {
       // Acquire rate limit token (strict 5/min limit)
       await this.rateLimiter.acquire("massive");
 
-      const url = new URL(`${this.baseURL}/v2/snapshot/locale/us/markets/stocks/tickers/${symbol.toUpperCase()}`);
+      const url = new URL(
+        `${this.baseURL}/v2/snapshot/locale/us/markets/stocks/tickers/${symbol.toUpperCase()}`,
+      );
       url.searchParams.set("apiKey", this.apiKey);
 
       try {
@@ -236,7 +252,10 @@ export class MassiveClient implements DataProviderAbstraction {
 
     const config = TIMEFRAME_CONFIG[timeframe];
     if (!config) {
-      throw new InvalidSymbolError("massive", `Invalid timeframe: ${timeframe}`);
+      throw new InvalidSymbolError(
+        "massive",
+        `Invalid timeframe: ${timeframe}`,
+      );
     }
 
     const ticker = symbol.toUpperCase();
@@ -251,9 +270,11 @@ export class MassiveClient implements DataProviderAbstraction {
     };
 
     const url = new URL(
-      `${this.baseURL}/v2/aggs/ticker/${ticker}/range/${multiplier}/${timespan}/${formatTimestamp(start)}/${formatTimestamp(end)}`
+      `${this.baseURL}/v2/aggs/ticker/${ticker}/range/${multiplier}/${timespan}/${
+        formatTimestamp(start)
+      }/${formatTimestamp(end)}`,
     );
-    url.searchParams.set("adjusted", "false");  // ALWAYS use unadjusted prices
+    url.searchParams.set("adjusted", "false"); // ALWAYS use unadjusted prices
     url.searchParams.set("sort", "asc");
     url.searchParams.set("limit", "50000"); // Max limit
     url.searchParams.set("apiKey", this.apiKey);
@@ -270,7 +291,7 @@ export class MassiveClient implements DataProviderAbstraction {
         throw new ProviderError(
           "Polygon returned error status",
           "massive",
-          "API_ERROR"
+          "API_ERROR",
         );
       }
 
@@ -292,9 +313,11 @@ export class MassiveClient implements DataProviderAbstraction {
       console.log(`[Massive] Fetched ${bars.length} bars`);
 
       // Use shorter cache TTL for intraday timeframes
-      const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(timeframe);
+      const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(
+        timeframe,
+      );
       const cacheTTL = isIntraday ? 300 : CACHE_TTL.bars; // 5 min for intraday, 24h for daily+
-      
+
       await this.cache.set(cacheKey, bars, cacheTTL, [
         `symbol:${symbol}`,
         `timeframe:${timeframe}`,
@@ -312,7 +335,7 @@ export class MassiveClient implements DataProviderAbstraction {
     // Return empty array or throw PermissionDeniedError
     throw new PermissionDeniedError(
       "massive",
-      "News API not available on free tier"
+      "News API not available on free tier",
     );
   }
 
@@ -334,7 +357,8 @@ export class MassiveClient implements DataProviderAbstraction {
     // Add optional filters
     if (expiration) {
       // Convert Unix timestamp to YYYY-MM-DD format
-      const expirationDate = new Date(expiration * 1000).toISOString().split("T")[0];
+      const expirationDate =
+        new Date(expiration * 1000).toISOString().split("T")[0];
       url.searchParams.set("expiration_date", expirationDate);
     }
 
@@ -367,7 +391,7 @@ export class MassiveClient implements DataProviderAbstraction {
 
       for (const contract of data.results) {
         const expirationTimestamp = Math.floor(
-          new Date(contract.details.expiration_date).getTime() / 1000
+          new Date(contract.details.expiration_date).getTime() / 1000,
         );
         expirationSet.add(expirationTimestamp);
 
@@ -413,7 +437,7 @@ export class MassiveClient implements DataProviderAbstraction {
       };
 
       console.log(
-        `[Massive] Fetched ${calls.length} calls and ${puts.length} puts for ${underlying}`
+        `[Massive] Fetched ${calls.length} calls and ${puts.length} puts for ${underlying}`,
       );
 
       await this.cache.set(cacheKey, optionsChain, CACHE_TTL.quote, [
@@ -447,20 +471,89 @@ export class MassiveClient implements DataProviderAbstraction {
       // We'll use a curated list for MVP and enhance with API data later
       const roots: FuturesRoot[] = [
         // US Index Futures
-        { symbol: "ES", name: "E-mini S&P 500", exchange: "CME", sector: "indices", tickSize: 0.25, pointValue: 50, currency: "USD" },
-        { symbol: "NQ", name: "E-mini NASDAQ-100", exchange: "CME", sector: "indices", tickSize: 0.25, pointValue: 20, currency: "USD" },
-        { symbol: "RTY", name: "E-mini Russell 2000", exchange: "CME", sector: "indices", tickSize: 0.1, pointValue: 50, currency: "USD" },
-        { symbol: "YM", name: "E-mini Dow ($5)", exchange: "CBOT", sector: "indices", tickSize: 1, pointValue: 5, currency: "USD" },
-        { symbol: "EMD", name: "E-mini S&P MidCap 400", exchange: "CME", sector: "indices", tickSize: 0.1, pointValue: 100, currency: "USD" },
+        {
+          symbol: "ES",
+          name: "E-mini S&P 500",
+          exchange: "CME",
+          sector: "indices",
+          tickSize: 0.25,
+          pointValue: 50,
+          currency: "USD",
+        },
+        {
+          symbol: "NQ",
+          name: "E-mini NASDAQ-100",
+          exchange: "CME",
+          sector: "indices",
+          tickSize: 0.25,
+          pointValue: 20,
+          currency: "USD",
+        },
+        {
+          symbol: "RTY",
+          name: "E-mini Russell 2000",
+          exchange: "CME",
+          sector: "indices",
+          tickSize: 0.1,
+          pointValue: 50,
+          currency: "USD",
+        },
+        {
+          symbol: "YM",
+          name: "E-mini Dow ($5)",
+          exchange: "CBOT",
+          sector: "indices",
+          tickSize: 1,
+          pointValue: 5,
+          currency: "USD",
+        },
+        {
+          symbol: "EMD",
+          name: "E-mini S&P MidCap 400",
+          exchange: "CME",
+          sector: "indices",
+          tickSize: 0.1,
+          pointValue: 100,
+          currency: "USD",
+        },
         // Metals Futures
-        { symbol: "GC", name: "Gold", exchange: "COMEX", sector: "metals", tickSize: 0.1, pointValue: 100, currency: "USD" },
-        { symbol: "SI", name: "Silver", exchange: "COMEX", sector: "metals", tickSize: 0.005, pointValue: 5000, currency: "USD" },
-        { symbol: "HG", name: "Copper", exchange: "COMEX", sector: "metals", tickSize: 0.0005, pointValue: 25000, currency: "USD" },
+        {
+          symbol: "GC",
+          name: "Gold",
+          exchange: "COMEX",
+          sector: "metals",
+          tickSize: 0.1,
+          pointValue: 100,
+          currency: "USD",
+        },
+        {
+          symbol: "SI",
+          name: "Silver",
+          exchange: "COMEX",
+          sector: "metals",
+          tickSize: 0.005,
+          pointValue: 5000,
+          currency: "USD",
+        },
+        {
+          symbol: "HG",
+          name: "Copper",
+          exchange: "COMEX",
+          sector: "metals",
+          tickSize: 0.0005,
+          pointValue: 25000,
+          currency: "USD",
+        },
       ];
 
-      const filtered = sector ? roots.filter(r => r.sector === sector) : roots;
-      
-      await this.cache.set(cacheKey, filtered, CACHE_TTL.bars, ["futures", "roots"]);
+      const filtered = sector
+        ? roots.filter((r) => r.sector === sector)
+        : roots;
+
+      await this.cache.set(cacheKey, filtered, CACHE_TTL.bars, [
+        "futures",
+        "roots",
+      ]);
       return filtered;
     } catch (error) {
       console.error(`[Massive] Error fetching futures roots:`, error);
@@ -481,8 +574,8 @@ export class MassiveClient implements DataProviderAbstraction {
     try {
       // Get the root info
       const roots = await this.getFuturesRoots();
-      const rootInfo = roots.find(r => r.symbol === root.toUpperCase());
-      
+      const rootInfo = roots.find((r) => r.symbol === root.toUpperCase());
+
       if (!rootInfo) {
         throw new Error(`Unknown futures root: ${root}`);
       }
@@ -491,15 +584,16 @@ export class MassiveClient implements DataProviderAbstraction {
       const contracts: FuturesContract[] = [];
       const now = new Date();
       const currentYear = now.getFullYear();
-      
+
       // CME standard contract months per product
       const contractMonths = this.getContractMonths(root);
-      
+
       for (let year = currentYear; year <= currentYear + 2; year++) {
         for (const month of contractMonths) {
           const expiryDate = this.calculateExpiryDate(root, year, month);
-          const contractCode = this.getMonthCode(month) + String(year).slice(-2);
-          
+          const contractCode = this.getMonthCode(month) +
+            String(year).slice(-2);
+
           contracts.push({
             symbol: `${root}${contractCode}`,
             rootSymbol: root,
@@ -520,14 +614,14 @@ export class MassiveClient implements DataProviderAbstraction {
       });
 
       // Mark first active as spot
-      const firstActive = contracts.find(c => c.isActive);
+      const firstActive = contracts.find((c) => c.isActive);
       if (firstActive) {
         firstActive.isSpot = true;
       }
 
       // Generate continuous aliases
       const continuousAliases = contracts
-        .filter(c => c.isActive)
+        .filter((c) => c.isActive)
         .slice(0, 4)
         .map((c, i) => ({
           depth: i + 1,
@@ -548,12 +642,17 @@ export class MassiveClient implements DataProviderAbstraction {
 
       return chain;
     } catch (error) {
-      console.error(`[Massive] Error fetching futures chain for ${root}:`, error);
+      console.error(
+        `[Massive] Error fetching futures chain for ${root}:`,
+        error,
+      );
       throw this.mapError(error);
     }
   }
 
-  async getFuturesContract(contractSymbol: string): Promise<FuturesContract | null> {
+  async getFuturesContract(
+    contractSymbol: string,
+  ): Promise<FuturesContract | null> {
     // Extract root from contract symbol (e.g., "GCZ25" -> "GC")
     const match = contractSymbol.match(/^([A-Z]{1,4})([FGHJKMNQUVXZ])(\d{2})$/);
     if (!match) {
@@ -562,7 +661,7 @@ export class MassiveClient implements DataProviderAbstraction {
 
     const [, root, monthCode, yearSuffix] = match;
     const chain = await this.getFuturesChain(root);
-    return chain.contracts.find(c => c.symbol === contractSymbol) || null;
+    return chain.contracts.find((c) => c.symbol === contractSymbol) || null;
   }
 
   private getContractMonths(root: string): number[] {
@@ -577,7 +676,7 @@ export class MassiveClient implements DataProviderAbstraction {
       "SI": [3, 5, 7, 9, 12],
       "HG": [3, 5, 7, 9, 12],
     };
-    
+
     return monthMap[root] || [3, 6, 9, 12];
   }
 
@@ -586,16 +685,24 @@ export class MassiveClient implements DataProviderAbstraction {
     return codes[month - 1];
   }
 
-  private calculateExpiryDate(root: string, year: number, month: number): Date | null {
+  private calculateExpiryDate(
+    root: string,
+    year: number,
+    month: number,
+  ): Date | null {
     // Simplified expiry calculation - for production, use CME calendar data
     const lastDay = new Date(year, month, 0);
-    
+
     // Most CME contracts expire on the third Friday
     // or have specific rules per product
     const dayOfWeek = lastDay.getDay();
     const offset = (dayOfWeek + 5) % 7; // Days since last Friday
-    const thirdFriday = new Date(year, month - 1, lastDay.getDate() - offset - 7);
-    
+    const thirdFriday = new Date(
+      year,
+      month - 1,
+      lastDay.getDate() - offset - 7,
+    );
+
     return thirdFriday;
   }
 
@@ -618,12 +725,15 @@ export class MassiveClient implements DataProviderAbstraction {
       const retryAfter = response.headers.get("Retry-After");
       throw new RateLimitExceededError(
         "massive",
-        retryAfter ? parseInt(retryAfter, 10) : undefined
+        retryAfter ? parseInt(retryAfter, 10) : undefined,
       );
     }
 
     if (response.status === 401 || response.status === 403) {
-      throw new PermissionDeniedError("massive", text || "Authentication failed");
+      throw new PermissionDeniedError(
+        "massive",
+        text || "Authentication failed",
+      );
     }
 
     if (response.status >= 500) {
@@ -634,7 +744,7 @@ export class MassiveClient implements DataProviderAbstraction {
       text || "Unknown error",
       "massive",
       "HTTP_ERROR",
-      response.status
+      response.status,
     );
   }
 
@@ -650,7 +760,7 @@ export class MassiveClient implements DataProviderAbstraction {
     return new ProviderError(
       String(error),
       "massive",
-      "UNKNOWN_ERROR"
+      "UNKNOWN_ERROR",
     );
   }
 }

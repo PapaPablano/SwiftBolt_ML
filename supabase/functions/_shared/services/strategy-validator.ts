@@ -2,11 +2,11 @@
 // Validates strategy creation and update requests
 
 import {
-  type CreateStrategyRequest,
   type CreateLegInput,
-  type StrategyType,
-  type OptionsLeg,
+  type CreateStrategyRequest,
   getExpectedLegCount,
+  type OptionsLeg,
+  type StrategyType,
 } from "../types/multileg.ts";
 
 // ============================================================================
@@ -39,7 +39,7 @@ export interface ValidationWarning {
  * Validate a strategy creation request
  */
 export function validateStrategyCreation(
-  request: CreateStrategyRequest
+  request: CreateStrategyRequest,
 ): ValidationResult {
   const errors: ValidationError[] = [];
   const warnings: ValidationWarning[] = [];
@@ -91,7 +91,8 @@ export function validateStrategyCreation(
   if (expectedLegCount !== null && request.legs.length !== expectedLegCount) {
     errors.push({
       field: "legs",
-      message: `Strategy type ${request.strategyType} requires ${expectedLegCount} legs, got ${request.legs.length}`,
+      message:
+        `Strategy type ${request.strategyType} requires ${expectedLegCount} legs, got ${request.legs.length}`,
       code: "INVALID_LEG_COUNT",
     });
   }
@@ -118,7 +119,10 @@ export function validateStrategyCreation(
 /**
  * Validate individual legs
  */
-function validateLegs(legs: CreateLegInput[], strategyType: StrategyType): ValidationError[] {
+function validateLegs(
+  legs: CreateLegInput[],
+  strategyType: StrategyType,
+): ValidationError[] {
   const errors: ValidationError[] = [];
 
   for (let i = 0; i < legs.length; i++) {
@@ -186,7 +190,9 @@ function validateLegs(legs: CreateLegInput[], strategyType: StrategyType): Valid
       });
     }
 
-    if (!leg.contracts || leg.contracts < 1 || !Number.isInteger(leg.contracts)) {
+    if (
+      !leg.contracts || leg.contracts < 1 || !Number.isInteger(leg.contracts)
+    ) {
       errors.push({
         field: `${prefix}.contracts`,
         message: "Contracts must be a positive integer",
@@ -212,7 +218,9 @@ function validateLegs(legs: CreateLegInput[], strategyType: StrategyType): Valid
 /**
  * Validate strategy-specific structure
  */
-function validateStrategyStructure(request: CreateStrategyRequest): ValidationError[] {
+function validateStrategyStructure(
+  request: CreateStrategyRequest,
+): ValidationError[] {
   const errors: ValidationError[] = [];
   const legs = request.legs;
 
@@ -267,7 +275,7 @@ function validateStrategyStructure(request: CreateStrategyRequest): ValidationEr
     case "diagonal_spread":
       errors.push(...validateCalendarOrDiagonal(legs, request.strategyType));
       break;
-    // Custom and other types don't have specific validation
+      // Custom and other types don't have specific validation
   }
 
   return errors;
@@ -280,14 +288,15 @@ function validateStrategyStructure(request: CreateStrategyRequest): ValidationEr
 function validateSingleLeg(
   legs: CreateLegInput[],
   expectedPosition: "long" | "short",
-  expectedOptionType: "call" | "put"
+  expectedOptionType: "call" | "put",
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
   if (legs.length !== 1) {
     errors.push({
       field: "legs",
-      message: `Single-option strategy requires exactly 1 leg, got ${legs.length}`,
+      message:
+        `Single-option strategy requires exactly 1 leg, got ${legs.length}`,
       code: "INVALID_LEG_COUNT",
     });
     return errors;
@@ -496,7 +505,7 @@ function validateBearPutSpread(legs: CreateLegInput[]): ValidationError[] {
 
 function validateStraddle(
   legs: CreateLegInput[],
-  strategyType: "long_straddle" | "short_straddle"
+  strategyType: "long_straddle" | "short_straddle",
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
@@ -514,7 +523,10 @@ function validateStraddle(
 
   // Check position types match strategy
   const expectedPosition = strategyType === "long_straddle" ? "long" : "short";
-  if (callLeg.positionType !== expectedPosition || putLeg.positionType !== expectedPosition) {
+  if (
+    callLeg.positionType !== expectedPosition ||
+    putLeg.positionType !== expectedPosition
+  ) {
     errors.push({
       field: "legs",
       message: `${strategyType} requires both legs to be ${expectedPosition}`,
@@ -545,7 +557,7 @@ function validateStraddle(
 
 function validateStrangle(
   legs: CreateLegInput[],
-  strategyType: "long_strangle" | "short_strangle"
+  strategyType: "long_strangle" | "short_strangle",
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
@@ -563,7 +575,10 @@ function validateStrangle(
 
   // Check position types match strategy
   const expectedPosition = strategyType === "long_strangle" ? "long" : "short";
-  if (callLeg.positionType !== expectedPosition || putLeg.positionType !== expectedPosition) {
+  if (
+    callLeg.positionType !== expectedPosition ||
+    putLeg.positionType !== expectedPosition
+  ) {
     errors.push({
       field: "legs",
       message: `${strategyType} requires both legs to be ${expectedPosition}`,
@@ -681,7 +696,7 @@ function validateIronButterfly(legs: CreateLegInput[]): ValidationError[] {
 
 function validateCalendarOrDiagonal(
   legs: CreateLegInput[],
-  strategyType: "calendar_spread" | "diagonal_spread"
+  strategyType: "calendar_spread" | "diagonal_spread",
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
@@ -742,7 +757,8 @@ function generateWarnings(request: CreateStrategyRequest): ValidationWarning[] {
     if (dte <= 7) {
       warnings.push({
         field: `legs`,
-        message: `Leg ${leg.legNumber} expires in ${dte} days - consider longer-dated contracts`,
+        message:
+          `Leg ${leg.legNumber} expires in ${dte} days - consider longer-dated contracts`,
         code: "NEAR_EXPIRATION",
       });
     }
@@ -755,7 +771,8 @@ function generateWarnings(request: CreateStrategyRequest): ValidationWarning[] {
   if (maxContracts !== minContracts) {
     warnings.push({
       field: "legs",
-      message: "Legs have different contract quantities - verify this is intentional",
+      message:
+        "Legs have different contract quantities - verify this is intentional",
       code: "UNEQUAL_CONTRACTS",
     });
   }
@@ -788,7 +805,7 @@ export interface CloseLegValidation {
  */
 export function validateLegClosure(
   leg: OptionsLeg,
-  exitPrice: number
+  exitPrice: number,
 ): CloseLegValidation {
   const errors: ValidationError[] = [];
 
@@ -819,7 +836,7 @@ export function validateLegClosure(
  */
 export function validateStrategyClosure(
   legs: OptionsLeg[],
-  exitPrices: { legId: string; exitPrice: number }[]
+  exitPrices: { legId: string; exitPrice: number }[],
 ): CloseLegValidation {
   const errors: ValidationError[] = [];
 

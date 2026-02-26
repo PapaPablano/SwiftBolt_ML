@@ -5,14 +5,21 @@
 // Calculates total realized P&L and marks strategy as closed.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
-import { getSupabaseClientWithAuth, getSupabaseClient } from "../_shared/supabase-client.ts";
+import {
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
+import {
+  getSupabaseClient,
+  getSupabaseClientWithAuth,
+} from "../_shared/supabase-client.ts";
 import {
   type CloseStrategyRequest,
-  type StrategyRow,
   type LegRow,
-  strategyRowToModel,
   legRowToModel,
+  type StrategyRow,
+  strategyRowToModel,
 } from "../_shared/types/multileg.ts";
 import { validateStrategyClosure } from "../_shared/services/strategy-validator.ts";
 
@@ -58,7 +65,9 @@ serve(async (req: Request): Promise<Response> => {
 
     if (userError || !user) {
       // For development/testing: use service role client which bypasses RLS
-      console.warn("[multi-leg-close-strategy] No authenticated user, using service role client");
+      console.warn(
+        "[multi-leg-close-strategy] No authenticated user, using service role client",
+      );
       supabase = getSupabaseClient();
       userId = "00000000-0000-0000-0000-000000000000";
     } else {
@@ -71,15 +80,21 @@ serve(async (req: Request): Promise<Response> => {
       .from("options_strategies")
       .select("*")
       .eq("id", body.strategyId)
-      .eq("user_id", userId)  // Filter by user ID
+      .eq("user_id", userId) // Filter by user ID
       .single();
 
     if (strategyError) {
       if (strategyError.code === "PGRST116") {
         return errorResponse("Strategy not found", 404);
       }
-      console.error("[multi-leg-close-strategy] Strategy fetch error:", strategyError);
-      return errorResponse(`Failed to fetch strategy: ${strategyError.message}`, 500);
+      console.error(
+        "[multi-leg-close-strategy] Strategy fetch error:",
+        strategyError,
+      );
+      return errorResponse(
+        `Failed to fetch strategy: ${strategyError.message}`,
+        500,
+      );
     }
 
     if ((strategyData as StrategyRow).status === "closed") {
@@ -102,11 +117,16 @@ serve(async (req: Request): Promise<Response> => {
     // Validate closure
     const validation = validateStrategyClosure(legs, body.exitPrices);
     if (!validation.isValid) {
-      return jsonResponse({ error: "Validation failed", errors: validation.errors }, 400);
+      return jsonResponse({
+        error: "Validation failed",
+        errors: validation.errors,
+      }, 400);
     }
 
     // Create exit price map
-    const exitPriceMap = new Map(body.exitPrices.map((p) => [p.legId, p.exitPrice]));
+    const exitPriceMap = new Map(
+      body.exitPrices.map((p) => [p.legId, p.exitPrice]),
+    );
 
     // Close each open leg
     let totalRealizedPL = 0;
@@ -152,7 +172,10 @@ serve(async (req: Request): Promise<Response> => {
         .single();
 
       if (updateError) {
-        console.error(`[multi-leg-close-strategy] Failed to close leg ${leg.id}:`, updateError);
+        console.error(
+          `[multi-leg-close-strategy] Failed to close leg ${leg.id}:`,
+          updateError,
+        );
         // Continue with other legs
       } else {
         closedLegs.push(legRowToModel(updatedLeg as LegRow));
@@ -167,7 +190,9 @@ serve(async (req: Request): Promise<Response> => {
         closed_at: new Date().toISOString(),
         realized_pl: totalRealizedPL,
         notes: body.notes
-          ? `${(strategyData as StrategyRow).notes ?? ""}\n\nClosed: ${body.notes}`.trim()
+          ? `${
+            (strategyData as StrategyRow).notes ?? ""
+          }\n\nClosed: ${body.notes}`.trim()
           : (strategyData as StrategyRow).notes,
         updated_at: new Date().toISOString(),
       })
@@ -176,8 +201,14 @@ serve(async (req: Request): Promise<Response> => {
       .single();
 
     if (strategyUpdateError) {
-      console.error("[multi-leg-close-strategy] Strategy update error:", strategyUpdateError);
-      return errorResponse(`Failed to close strategy: ${strategyUpdateError.message}`, 500);
+      console.error(
+        "[multi-leg-close-strategy] Strategy update error:",
+        strategyUpdateError,
+      );
+      return errorResponse(
+        `Failed to close strategy: ${strategyUpdateError.message}`,
+        500,
+      );
     }
 
     const strategy = strategyRowToModel(updatedStrategy as StrategyRow);
@@ -192,7 +223,7 @@ serve(async (req: Request): Promise<Response> => {
     console.error("[multi-leg-close-strategy] Error:", error);
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
-      500
+      500,
     );
   }
 });

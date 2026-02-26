@@ -3,7 +3,16 @@
 
 export type ProviderId = "finnhub" | "massive" | "yahoo" | "alpaca" | "tradier";
 
-export type Timeframe = "m1" | "m5" | "m15" | "m30" | "h1" | "h4" | "d1" | "w1" | "mn1";
+export type Timeframe =
+  | "m1"
+  | "m5"
+  | "m15"
+  | "m30"
+  | "h1"
+  | "h4"
+  | "d1"
+  | "w1"
+  | "mn1";
 
 export interface Quote {
   symbol: string;
@@ -52,7 +61,13 @@ export type OptionType = "call" | "put";
 // FUTURES TYPES
 // ============================================================================
 
-export type FuturesSector = "indices" | "metals" | "energy" | "rates" | "agriculture" | "softs";
+export type FuturesSector =
+  | "indices"
+  | "metals"
+  | "energy"
+  | "rates"
+  | "agriculture"
+  | "softs";
 
 export interface FuturesRoot {
   symbol: string; // Root symbol (e.g., "GC", "ES")
@@ -146,7 +161,7 @@ export class ProviderError extends Error {
     message: string,
     public readonly provider: ProviderId,
     public readonly code: string,
-    public readonly statusCode?: number
+    public readonly statusCode?: number,
   ) {
     super(message);
     this.name = "ProviderError";
@@ -159,7 +174,7 @@ export class RateLimitExceededError extends ProviderError {
       `Rate limit exceeded for ${provider}`,
       provider,
       "RATE_LIMIT_EXCEEDED",
-      429
+      429,
     );
     this.name = "RateLimitExceededError";
     this.retryAfter = retryAfter;
@@ -173,7 +188,7 @@ export class ProviderUnavailableError extends ProviderError {
       `Provider ${provider} is unavailable`,
       provider,
       "PROVIDER_UNAVAILABLE",
-      503
+      503,
     );
     this.name = "ProviderUnavailableError";
     this.cause = cause;
@@ -186,7 +201,7 @@ export class InvalidSymbolError extends ProviderError {
       `Invalid symbol: ${symbol}`,
       provider,
       "INVALID_SYMBOL",
-      400
+      400,
     );
     this.name = "InvalidSymbolError";
   }
@@ -198,7 +213,7 @@ export class PermissionDeniedError extends ProviderError {
       message,
       provider,
       "PERMISSION_DENIED",
-      403
+      403,
     );
     this.name = "PermissionDeniedError";
   }
@@ -210,7 +225,7 @@ export class AuthenticationError extends ProviderError {
       message,
       provider,
       "AUTHENTICATION_ERROR",
-      401
+      401,
     );
     this.name = "AuthenticationError";
   }
@@ -222,7 +237,7 @@ export class ValidationError extends ProviderError {
       message,
       provider,
       "VALIDATION_ERROR",
-      400
+      400,
     );
     this.name = "ValidationError";
   }
@@ -234,7 +249,7 @@ export class ServiceUnavailableError extends ProviderError {
       message,
       provider,
       "SERVICE_UNAVAILABLE",
-      503
+      503,
     );
     this.name = "ServiceUnavailableError";
   }

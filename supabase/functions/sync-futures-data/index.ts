@@ -3,7 +3,11 @@
 // Should be called daily via cron or on-demand
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { getCorsHeaders, handlePreflight, corsResponse } from "../_shared/cors.ts";
+import {
+  corsResponse,
+  getCorsHeaders,
+  handlePreflight,
+} from "../_shared/cors.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { MassiveClient } from "../_shared/providers/massive-client.ts";
 import { MemoryCache } from "../_shared/cache/memory-cache.ts";
@@ -46,7 +50,7 @@ serve(async (req: Request): Promise<Response> => {
       return corsResponse(
         { error: "Missing Supabase credentials" },
         500,
-        origin
+        origin,
       );
     }
 
@@ -54,7 +58,7 @@ serve(async (req: Request): Promise<Response> => {
       return corsResponse(
         { error: "Missing MASSIVE_API_KEY" },
         500,
-        origin
+        origin,
       );
     }
 
@@ -71,20 +75,20 @@ serve(async (req: Request): Promise<Response> => {
     // Determine which roots to sync
     let rootsToSync: string[] = [];
     if (roots && roots.length > 0) {
-      rootsToSync = roots.map(r => r.toUpperCase());
+      rootsToSync = roots.map((r) => r.toUpperCase());
     } else {
       // Get all roots from database
       const { data: rootData } = await supabase
         .from("futures_roots")
         .select("symbol");
-      rootsToSync = rootData?.map(r => r.symbol) || [];
+      rootsToSync = rootData?.map((r) => r.symbol) || [];
     }
 
     if (rootsToSync.length === 0) {
       return corsResponse(
         { error: "No futures roots configured" },
         400,
-        origin
+        origin,
       );
     }
 
@@ -139,7 +143,9 @@ serve(async (req: Request): Promise<Response> => {
               .eq("id", existingContract.id);
 
             if (updateError) {
-              result.errors.push(`Update ${contract.symbol}: ${updateError.message}`);
+              result.errors.push(
+                `Update ${contract.symbol}: ${updateError.message}`,
+              );
             } else {
               result.contracts_updated++;
               // Also update symbols table
@@ -160,17 +166,19 @@ serve(async (req: Request): Promise<Response> => {
                 is_spot: contract.isSpot,
               });
 
-          if (insertError) {
-              result.errors.push(`Insert ${contract.symbol}: ${insertError.message}`);
+            if (insertError) {
+              result.errors.push(
+                `Insert ${contract.symbol}: ${insertError.message}`,
+              );
             } else {
               result.contracts_added++;
             }
-            
+
             // Also insert/update in symbols table (for both new and existing)
             await upsertFuturesSymbol(supabase, rootSymbol, contract);
           }
         }
-        
+
         // Also upsert root symbol in symbols table (if not exists)
         await upsertFuturesRootSymbol(supabase, rootSymbol);
 
@@ -184,7 +192,9 @@ serve(async (req: Request): Promise<Response> => {
             .single();
 
           if (!contractData) {
-            result.errors.push(`Contract not found for mapping: ${mapping.contract.symbol}`);
+            result.errors.push(
+              `Contract not found for mapping: ${mapping.contract.symbol}`,
+            );
             continue;
           }
 
@@ -242,28 +252,38 @@ serve(async (req: Request): Promise<Response> => {
               });
           }
         }
-
       } catch (error) {
-        console.error(`[sync-futures-data] Error syncing ${rootSymbol}:`, error);
-        result.errors.push(error instanceof Error ? error.message : String(error));
+        console.error(
+          `[sync-futures-data] Error syncing ${rootSymbol}:`,
+          error,
+        );
+        result.errors.push(
+          error instanceof Error ? error.message : String(error),
+        );
       }
 
       results.push(result);
     }
 
-    return corsResponse({
-      success: true,
-      timestamp: new Date().toISOString(),
-      roots_processed: rootsToSync.length,
-      results,
-    }, 200, origin);
-
+    return corsResponse(
+      {
+        success: true,
+        timestamp: new Date().toISOString(),
+        roots_processed: rootsToSync.length,
+        results,
+      },
+      200,
+      origin,
+    );
   } catch (error) {
     console.error("[sync-futures-data] Error:", error);
     return corsResponse(
-      { error: "Internal server error", details: error instanceof Error ? error.message : String(error) },
+      {
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : String(error),
+      },
       500,
-      origin
+      origin,
     );
   }
 });
@@ -277,12 +297,23 @@ interface Contract {
   isSpot: boolean;
 }
 
-async function upsertFuturesSymbol(supabase: any, rootSymbol: string, contract: Contract) {
+async function upsertFuturesSymbol(
+  supabase: any,
+  rootSymbol: string,
+  contract: Contract,
+) {
   try {
-    console.log(`[sync-futures-data] upsertFuturesSymbol called for ${contract.symbol}`);
-    
-    const expiryDate = new Date(contract.expiryYear, contract.expiryMonth - 1, 1);
-    const monthStr = expiryDate.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+    console.log(
+      `[sync-futures-data] upsertFuturesSymbol called for ${contract.symbol}`,
+    );
+
+    const expiryDate = new Date(
+      contract.expiryYear,
+      contract.expiryMonth - 1,
+      1,
+    );
+    const monthStr = expiryDate.toLocaleString("en-US", { month: "short" })
+      .toUpperCase();
 
     // Check if symbol already exists
     const { data: existing, error: selectError } = await supabase
@@ -291,7 +322,11 @@ async function upsertFuturesSymbol(supabase: any, rootSymbol: string, contract: 
       .eq("ticker", contract.symbol)
       .single();
 
-    console.log(`[sync-futures-data] Select result for ${contract.symbol}: data=${!!existing}, error=${selectError?.message || 'none'}`);
+    console.log(
+      `[sync-futures-data] Select result for ${contract.symbol}: data=${!!existing}, error=${
+        selectError?.message || "none"
+      }`,
+    );
 
     // PGRST116 means no rows found - that's not an error, it means symbol doesn't exist
     const symbolExists = existing !== null && selectError === null;
@@ -311,27 +346,38 @@ async function upsertFuturesSymbol(supabase: any, rootSymbol: string, contract: 
         .from("symbols")
         .update(symbolData)
         .eq("ticker", contract.symbol);
-      
+
       if (updateError) {
-        console.error(`[sync-futures-data] Error updating symbol ${contract.symbol}:`, updateError);
+        console.error(
+          `[sync-futures-data] Error updating symbol ${contract.symbol}:`,
+          updateError,
+        );
       } else {
         console.log(`[sync-futures-data] Updated symbol ${contract.symbol}`);
       }
     } else {
-      console.log(`[sync-futures-data] Inserting new symbol ${contract.symbol}`);
+      console.log(
+        `[sync-futures-data] Inserting new symbol ${contract.symbol}`,
+      );
       symbolData.created_at = new Date().toISOString();
       const { error: insertError } = await supabase
         .from("symbols")
         .insert(symbolData);
-      
+
       if (insertError) {
-        console.error(`[sync-futures-data] Error inserting symbol ${contract.symbol}:`, insertError);
+        console.error(
+          `[sync-futures-data] Error inserting symbol ${contract.symbol}:`,
+          insertError,
+        );
       } else {
         console.log(`[sync-futures-data] Inserted symbol ${contract.symbol}`);
       }
     }
   } catch (error) {
-    console.error(`[sync-futures-data] Error upserting symbol ${contract.symbol}:`, error);
+    console.error(
+      `[sync-futures-data] Error upserting symbol ${contract.symbol}:`,
+      error,
+    );
   }
 }
 
@@ -367,6 +413,9 @@ async function upsertFuturesRootSymbol(supabase: any, rootSymbol: string) {
         });
     }
   } catch (error) {
-    console.error(`[sync-futures-data] Error upserting root symbol ${rootSymbol}:`, error);
+    console.error(
+      `[sync-futures-data] Error upserting root symbol ${rootSymbol}:`,
+      error,
+    );
   }
 }

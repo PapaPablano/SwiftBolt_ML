@@ -6,26 +6,30 @@
 // Should be scheduled to run every 15 minutes during market hours.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import {
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 import {
-  type StrategyRow,
-  type LegRow,
   type AlertRow,
-  strategyRowToModel,
-  legRowToModel,
   alertRowToModel,
+  type LegRow,
+  legRowToModel,
+  type StrategyRow,
+  strategyRowToModel,
 } from "../_shared/types/multileg.ts";
 import {
-  evaluateStrategy,
-  isDuplicateAlert,
-  DEFAULT_PREFERENCES,
-  type EvaluationContext,
   type AlertInput,
+  DEFAULT_PREFERENCES,
+  evaluateStrategy,
+  type EvaluationContext,
+  isDuplicateAlert,
 } from "../_shared/services/alert-evaluator.ts";
 import {
-  calculateStrategyPL,
   calculateDTE,
+  calculateStrategyPL,
   type LegPriceData,
 } from "../_shared/services/pl-calculator.ts";
 
@@ -41,7 +45,11 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   const startTime = Date.now();
-  console.log(`[multi-leg-evaluate] Starting evaluation job at ${new Date().toISOString()}`);
+  console.log(
+    `[multi-leg-evaluate] Starting evaluation job at ${
+      new Date().toISOString()
+    }`,
+  );
 
   try {
     // Get Supabase client with service role (bypasses RLS)
@@ -54,12 +62,22 @@ serve(async (req: Request): Promise<Response> => {
       .eq("status", "open");
 
     if (strategiesError) {
-      console.error("[multi-leg-evaluate] Failed to fetch strategies:", strategiesError);
-      return errorResponse(`Failed to fetch strategies: ${strategiesError.message}`, 500);
+      console.error(
+        "[multi-leg-evaluate] Failed to fetch strategies:",
+        strategiesError,
+      );
+      return errorResponse(
+        `Failed to fetch strategies: ${strategiesError.message}`,
+        500,
+      );
     }
 
-    const strategies = (strategiesData as StrategyRow[]).map(strategyRowToModel);
-    console.log(`[multi-leg-evaluate] Found ${strategies.length} open strategies to evaluate`);
+    const strategies = (strategiesData as StrategyRow[]).map(
+      strategyRowToModel,
+    );
+    console.log(
+      `[multi-leg-evaluate] Found ${strategies.length} open strategies to evaluate`,
+    );
 
     // Track results
     let strategiesEvaluated = 0;
@@ -73,14 +91,17 @@ serve(async (req: Request): Promise<Response> => {
         strategiesEvaluated++;
         alertsGenerated += result.alertsGenerated;
       } catch (error) {
-        console.error(`[multi-leg-evaluate] Error evaluating strategy ${strategy.id}:`, error);
+        console.error(
+          `[multi-leg-evaluate] Error evaluating strategy ${strategy.id}:`,
+          error,
+        );
         errors++;
       }
     }
 
     const duration = Date.now() - startTime;
     console.log(
-      `[multi-leg-evaluate] Completed: ${strategiesEvaluated} strategies, ${alertsGenerated} alerts, ${errors} errors in ${duration}ms`
+      `[multi-leg-evaluate] Completed: ${strategiesEvaluated} strategies, ${alertsGenerated} alerts, ${errors} errors in ${duration}ms`,
     );
 
     return jsonResponse({
@@ -94,7 +115,7 @@ serve(async (req: Request): Promise<Response> => {
     console.error("[multi-leg-evaluate] Error:", error);
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
-      500
+      500,
     );
   }
 });
@@ -105,7 +126,7 @@ interface EvaluationResult {
 
 async function evaluateSingleStrategy(
   supabase: any,
-  strategy: ReturnType<typeof strategyRowToModel>
+  strategy: ReturnType<typeof strategyRowToModel>,
 ): Promise<EvaluationResult> {
   // Fetch legs
   const { data: legsData, error: legsError } = await supabase
@@ -134,7 +155,9 @@ async function evaluateSingleStrategy(
   // Note: We continue even if underlyingPrice is 0 to update Greeks
   // P&L calculations will be skipped but leg Greeks will still be updated
   if (underlyingPrice === 0) {
-    console.log(`[multi-leg-evaluate] No quote for ${strategy.underlyingTicker}, will update Greeks only`);
+    console.log(
+      `[multi-leg-evaluate] No quote for ${strategy.underlyingTicker}, will update Greeks only`,
+    );
   }
 
   // Fetch forecast if linked
@@ -164,9 +187,9 @@ async function evaluateSingleStrategy(
 
   const preferences = prefsData
     ? {
-        ...DEFAULT_PREFERENCES,
-        ...transformPrefsRow(prefsData),
-      }
+      ...DEFAULT_PREFERENCES,
+      ...transformPrefsRow(prefsData),
+    }
     : DEFAULT_PREFERENCES;
 
   // Calculate P&L
@@ -174,7 +197,7 @@ async function evaluateSingleStrategy(
     strategy,
     legs,
     underlyingPrice,
-    legPrices
+    legPrices,
   );
 
   // Update legs with current prices and DTE
@@ -197,7 +220,9 @@ async function evaluateSingleStrategy(
         is_near_expiration: dte <= 3,
         is_itm: priceData ? isITM(leg, underlyingPrice) : null,
         is_deep_itm: priceData ? isDeepITM(leg, underlyingPrice) : null,
-        is_breaching_strike: priceData ? isBreaching(leg.strike, underlyingPrice) : null,
+        is_breaching_strike: priceData
+          ? isBreaching(leg.strike, underlyingPrice)
+          : null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", leg.id);
@@ -216,7 +241,9 @@ async function evaluateSingleStrategy(
       combined_vega: plSnapshot.vega,
       combined_rho: plSnapshot.rho,
       greeks_updated_at: new Date().toISOString(),
-      min_dte: Math.min(...legs.filter((l) => !l.isClosed).map((l) => calculateDTE(l.expiry))),
+      min_dte: Math.min(
+        ...legs.filter((l) => !l.isClosed).map((l) => calculateDTE(l.expiry)),
+      ),
       updated_at: new Date().toISOString(),
     })
     .eq("id", strategy.id);
@@ -258,7 +285,9 @@ async function evaluateSingleStrategy(
     .eq("strategy_id", strategy.id)
     .is("resolved_at", null);
 
-  const existingAlertModels = (existingAlerts as AlertRow[] ?? []).map(alertRowToModel);
+  const existingAlertModels = (existingAlerts as AlertRow[] ?? []).map(
+    alertRowToModel,
+  );
 
   // Write new alerts (deduplicated)
   let alertsGenerated = 0;
@@ -339,7 +368,7 @@ async function evaluateSingleStrategy(
 async function fetchCurrentPrices(
   supabase: any,
   strategy: ReturnType<typeof strategyRowToModel>,
-  legs: ReturnType<typeof legRowToModel>[]
+  legs: ReturnType<typeof legRowToModel>[],
 ): Promise<LegPriceData[]> {
   const prices: LegPriceData[] = [];
 
@@ -374,7 +403,9 @@ async function fetchCurrentPrices(
   return prices;
 }
 
-function transformPrefsRow(row: any): Partial<ReturnType<typeof DEFAULT_PREFERENCES>> {
+function transformPrefsRow(
+  row: any,
+): Partial<ReturnType<typeof DEFAULT_PREFERENCES>> {
   return {
     enableExpirationAlerts: row.enable_expiration_alerts,
     expirationAlertDTE: row.expiration_alert_dte,
@@ -397,14 +428,20 @@ function transformPrefsRow(row: any): Partial<ReturnType<typeof DEFAULT_PREFEREN
   };
 }
 
-function isITM(leg: { optionType: string; strike: number }, underlyingPrice: number): boolean {
+function isITM(
+  leg: { optionType: string; strike: number },
+  underlyingPrice: number,
+): boolean {
   return (
     (leg.optionType === "call" && underlyingPrice > leg.strike) ||
     (leg.optionType === "put" && underlyingPrice < leg.strike)
   );
 }
 
-function isDeepITM(leg: { optionType: string; strike: number }, underlyingPrice: number): boolean {
+function isDeepITM(
+  leg: { optionType: string; strike: number },
+  underlyingPrice: number,
+): boolean {
   return (
     (leg.optionType === "call" && underlyingPrice > leg.strike + 2) ||
     (leg.optionType === "put" && underlyingPrice < leg.strike - 2)

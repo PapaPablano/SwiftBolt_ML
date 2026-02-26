@@ -1,8 +1,12 @@
 // Tradier Client: Real-time intraday market data provider
 // Provides live quotes and intraday bars (m15, h1) for active trading
 
-import type { DataProviderAbstraction, HistoricalBarsRequest, NewsRequest } from "./abstraction.ts";
-import type { Bar, Quote, NewsItem, Timeframe } from "./types.ts";
+import type {
+  DataProviderAbstraction,
+  HistoricalBarsRequest,
+  NewsRequest,
+} from "./abstraction.ts";
+import type { Bar, NewsItem, Quote, Timeframe } from "./types.ts";
 
 export class TradierClient implements DataProviderAbstraction {
   private apiKey: string;
@@ -28,7 +32,9 @@ export class TradierClient implements DataProviderAbstraction {
     }
 
     const data = await response.json();
-    const quotes = Array.isArray(data.quotes.quote) ? data.quotes.quote : [data.quotes.quote];
+    const quotes = Array.isArray(data.quotes.quote)
+      ? data.quotes.quote
+      : [data.quotes.quote];
 
     return quotes.map((q: any) => ({
       symbol: q.symbol,
@@ -51,12 +57,13 @@ export class TradierClient implements DataProviderAbstraction {
 
     // Convert timeframe to Tradier interval
     const interval = this.convertTimeframe(timeframe);
-    
+
     // Tradier uses dates in YYYY-MM-DD format
     const startDate = new Date(start * 1000).toISOString().split("T")[0];
     const endDate = new Date(end * 1000).toISOString().split("T")[0];
 
-    const url = `${this.baseUrl}/markets/timesales?symbol=${symbol}&interval=${interval}&start=${startDate}&end=${endDate}`;
+    const url =
+      `${this.baseUrl}/markets/timesales?symbol=${symbol}&interval=${interval}&start=${startDate}&end=${endDate}`;
 
     const response = await fetch(url, {
       headers: {
@@ -70,12 +77,14 @@ export class TradierClient implements DataProviderAbstraction {
     }
 
     const data = await response.json();
-    
+
     if (!data.series || !data.series.data) {
       return [];
     }
 
-    const bars = Array.isArray(data.series.data) ? data.series.data : [data.series.data];
+    const bars = Array.isArray(data.series.data)
+      ? data.series.data
+      : [data.series.data];
 
     return bars.map((bar: any) => ({
       timestamp: new Date(bar.time).getTime(),

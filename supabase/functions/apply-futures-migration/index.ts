@@ -23,7 +23,7 @@ serve(async (req: Request): Promise<Response> => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Step 1: Add columns
-    const { error: alterError } = await supabase.rpc('exec_sql', { 
+    const { error: alterError } = await supabase.rpc("exec_sql", {
       sql: `
         ALTER TABLE symbols 
         ADD COLUMN IF NOT EXISTS futures_root_id UUID REFERENCES futures_roots(id),
@@ -34,7 +34,7 @@ serve(async (req: Request): Promise<Response> => {
         
         CREATE INDEX IF NOT EXISTS idx_symbols_futures_root ON symbols(futures_root_id);
         CREATE INDEX IF NOT EXISTS idx_symbols_is_continuous ON symbols(is_continuous) WHERE is_continuous = TRUE;
-      `
+      `,
     });
 
     if (alterError) {
@@ -42,15 +42,20 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     // Step 2: Insert futures contracts into symbols
-    const { error: insertError } = await supabase.rpc('insert_futures_contracts_into_symbols', {});
+    const { error: insertError } = await supabase.rpc(
+      "insert_futures_contracts_into_symbols",
+      {},
+    );
 
     if (insertError) {
       console.log("Insert error:", insertError);
-      
+
       // Try manual insert
       const { data: contracts, error: contractsError } = await supabase
         .from("futures_contracts")
-        .select("symbol, contract_code, expiry_month, expiry_year, last_trade_date, futures_roots(symbol)")
+        .select(
+          "symbol, contract_code, expiry_month, expiry_year, last_trade_date, futures_roots(symbol)",
+        )
         .limit(20);
 
       if (!contractsError && contracts) {
@@ -87,17 +92,20 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    return corsResponse({
-      success: true,
-      message: "Futures migration applied",
-    }, 200, origin);
-
+    return corsResponse(
+      {
+        success: true,
+        message: "Futures migration applied",
+      },
+      200,
+      origin,
+    );
   } catch (error) {
     console.error("[apply-futures-migration] Error:", error);
     return corsResponse(
       { error: error instanceof Error ? error.message : "Unknown error" },
       500,
-      origin
+      origin,
     );
   }
 });

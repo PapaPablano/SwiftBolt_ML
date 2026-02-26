@@ -58,7 +58,9 @@ interface WalkForwardResponse {
 /**
  * Call FastAPI to run walk-forward optimization
  */
-async function runWalkForward(request: WalkForwardRequest): Promise<WalkForwardResponse> {
+async function runWalkForward(
+  request: WalkForwardRequest,
+): Promise<WalkForwardResponse> {
   return await callFastApi<WalkForwardResponse>(
     "/api/v1/walk-forward-optimize",
     {
@@ -73,7 +75,7 @@ async function runWalkForward(request: WalkForwardRequest): Promise<WalkForwardR
         stepSize: request.windows?.stepSize,
       }),
     },
-    120000 // 2 minute timeout for walk-forward optimization
+    120000, // 2 minute timeout for walk-forward optimization
   );
 }
 
@@ -89,7 +91,7 @@ serve(async (req: Request) => {
     return corsResponse(
       { error: "Method not allowed. Use POST." },
       405,
-      origin
+      origin,
     );
   }
 
@@ -103,7 +105,7 @@ serve(async (req: Request) => {
           error: "Missing required fields: symbol, horizon",
         },
         400,
-        origin
+        origin,
       );
     }
 
@@ -112,10 +114,12 @@ serve(async (req: Request) => {
     if (!validHorizons.includes(body.horizon)) {
       return corsResponse(
         {
-          error: `Invalid horizon: ${body.horizon}. Valid: ${validHorizons.join(", ")}`,
+          error: `Invalid horizon: ${body.horizon}. Valid: ${
+            validHorizons.join(", ")
+          }`,
         },
         400,
-        origin
+        origin,
       );
     }
 
@@ -124,15 +128,19 @@ serve(async (req: Request) => {
     if (body.forecaster && !validForecasters.includes(body.forecaster)) {
       return corsResponse(
         {
-          error: `Invalid forecaster: ${body.forecaster}. Valid: ${validForecasters.join(", ")}`,
+          error: `Invalid forecaster: ${body.forecaster}. Valid: ${
+            validForecasters.join(", ")
+          }`,
         },
         400,
-        origin
+        origin,
       );
     }
 
     console.log(
-      `[WalkForwardOptimize] Running ${body.forecaster || "baseline"} for ${body.symbol} with horizon ${body.horizon}`
+      `[WalkForwardOptimize] Running ${
+        body.forecaster || "baseline"
+      } for ${body.symbol} with horizon ${body.horizon}`,
     );
 
     // Run walk-forward optimization
@@ -142,12 +150,14 @@ serve(async (req: Request) => {
       return corsResponse(
         { error: result.error, symbol: body.symbol, horizon: body.horizon },
         500,
-        origin
+        origin,
       );
     }
 
     console.log(
-      `[WalkForwardOptimize] Complete: ${(result.metrics.accuracy * 100).toFixed(2)}% accuracy, ${result.metrics.totalTrades} trades`
+      `[WalkForwardOptimize] Complete: ${
+        (result.metrics.accuracy * 100).toFixed(2)
+      }% accuracy, ${result.metrics.totalTrades} trades`,
     );
 
     return corsResponse(result, 200, origin);
@@ -155,11 +165,10 @@ serve(async (req: Request) => {
     console.error("[WalkForwardOptimize] Error:", error);
     return corsResponse(
       {
-        error:
-          error instanceof Error ? error.message : "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
       },
       500,
-      origin
+      origin,
     );
   }
 });

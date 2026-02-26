@@ -1,0 +1,29 @@
+{
+  "version": "3",
+  "imports": {
+    "std/": "https://deno.land/std@0.208.0/",
+    "@supabase/": "https://esm.sh/@supabase/",
+    "node:": "https://deno.land/std@0.208.0/node/"
+  },
+  "compilerOptions": {
+    "lib": [
+      "deno.window",
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "jsx": "react-jsx",
+    "jsxImportSource": "react"
+  },
+  "exclude": [
+    "**/*.test.ts",
+    "**/*_test.ts",
+    "node_modules",
+    ".git"
+  ],
+  "tasks": {
+    "test": "deno test --allow-all",
+    "fmt": "deno fmt",
+    "lint": "deno lint"
+  }
+}

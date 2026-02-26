@@ -37,7 +37,9 @@ interface StressTestResponse {
 /**
  * Call FastAPI to run stress test
  */
-async function runStressTest(request: StressTestRequest): Promise<StressTestResponse> {
+async function runStressTest(
+  request: StressTestRequest,
+): Promise<StressTestResponse> {
   return await callFastApi<StressTestResponse>(
     "/api/v1/stress-test",
     {
@@ -50,7 +52,7 @@ async function runStressTest(request: StressTestRequest): Promise<StressTestResp
         varLevel: request.varLevel,
       }),
     },
-    30000 // 30 second timeout for stress tests
+    30000, // 30 second timeout for stress tests
   );
 }
 
@@ -66,7 +68,7 @@ serve(async (req: Request) => {
     return corsResponse(
       { error: "Method not allowed. Use POST." },
       405,
-      origin
+      origin,
     );
   }
 
@@ -80,7 +82,7 @@ serve(async (req: Request) => {
           error: "Missing or empty positions dictionary",
         },
         400,
-        origin
+        origin,
       );
     }
 
@@ -90,13 +92,13 @@ serve(async (req: Request) => {
           error: "Missing or empty prices dictionary",
         },
         400,
-        origin
+        origin,
       );
     }
 
     // Validate that all positions have prices
     const missingPrices = Object.keys(body.positions).filter(
-      (symbol) => !(symbol in body.prices)
+      (symbol) => !(symbol in body.prices),
     );
     if (missingPrices.length > 0) {
       return corsResponse(
@@ -104,7 +106,7 @@ serve(async (req: Request) => {
           error: `Missing prices for symbols: ${missingPrices.join(", ")}`,
         },
         400,
-        origin
+        origin,
       );
     }
 
@@ -115,7 +117,7 @@ serve(async (req: Request) => {
           error: "Either scenario or customShocks must be provided",
         },
         400,
-        origin
+        origin,
       );
     }
 
@@ -130,16 +132,20 @@ serve(async (req: Request) => {
     if (body.scenario && !validScenarios.includes(body.scenario)) {
       return corsResponse(
         {
-          error: `Invalid scenario: ${body.scenario}. Valid: ${validScenarios.join(", ")}`,
+          error: `Invalid scenario: ${body.scenario}. Valid: ${
+            validScenarios.join(", ")
+          }`,
         },
         400,
-        origin
+        origin,
       );
     }
 
     const scenarioName = body.scenario || "custom";
     console.log(
-      `[StressTest] Running ${scenarioName} scenario for ${Object.keys(body.positions).length} positions`
+      `[StressTest] Running ${scenarioName} scenario for ${
+        Object.keys(body.positions).length
+      } positions`,
     );
 
     // Run stress test
@@ -149,12 +155,14 @@ serve(async (req: Request) => {
       return corsResponse(
         { error: result.error, scenario: scenarioName },
         500,
-        origin
+        origin,
       );
     }
 
     console.log(
-      `[StressTest] Complete: ${result.portfolio.changePercent.toFixed(2)}% impact, ${result.risk.severity} severity`
+      `[StressTest] Complete: ${
+        result.portfolio.changePercent.toFixed(2)
+      }% impact, ${result.risk.severity} severity`,
     );
 
     return corsResponse(result, 200, origin);
@@ -162,11 +170,10 @@ serve(async (req: Request) => {
     console.error("[StressTest] Error:", error);
     return corsResponse(
       {
-        error:
-          error instanceof Error ? error.message : "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
       },
       500,
-      origin
+      origin,
     );
   }
 });

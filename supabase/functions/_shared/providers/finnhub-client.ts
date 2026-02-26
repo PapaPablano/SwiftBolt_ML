@@ -74,7 +74,7 @@ export class FinnhubClient implements DataProviderAbstraction {
     apiKey: string,
     rateLimiter: TokenBucketRateLimiter,
     cache: Cache,
-    baseURL: string = "https://finnhub.io/api/v1"
+    baseURL: string = "https://finnhub.io/api/v1",
   ) {
     this.apiKey = apiKey;
     this.baseURL = baseURL;
@@ -147,7 +147,10 @@ export class FinnhubClient implements DataProviderAbstraction {
 
     const resolution = TIMEFRAME_TO_RESOLUTION[timeframe];
     if (!resolution) {
-      throw new InvalidSymbolError("finnhub", `Invalid timeframe: ${timeframe}`);
+      throw new InvalidSymbolError(
+        "finnhub",
+        `Invalid timeframe: ${timeframe}`,
+      );
     }
 
     const url = new URL(`${this.baseURL}/stock/candle`);
@@ -173,7 +176,7 @@ export class FinnhubClient implements DataProviderAbstraction {
         throw new ProviderError(
           `Unexpected status: ${data.s}`,
           "finnhub",
-          "UNEXPECTED_STATUS"
+          "UNEXPECTED_STATUS",
         );
       }
 
@@ -195,9 +198,11 @@ export class FinnhubClient implements DataProviderAbstraction {
       console.log(`[Finnhub] Fetched ${bars.length} bars`);
 
       // Use shorter cache TTL for intraday timeframes to get fresh data
-      const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(timeframe);
+      const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(
+        timeframe,
+      );
       const cacheTTL = isIntraday ? 60 : CACHE_TTL.bars; // 1 min for intraday, 24h for daily+
-      
+
       await this.cache.set(cacheKey, bars, cacheTTL, [
         `symbol:${symbol}`,
         `timeframe:${timeframe}`,
@@ -246,7 +251,7 @@ export class FinnhubClient implements DataProviderAbstraction {
   private async fetchCompanyNews(
     symbol: string,
     from?: number,
-    to?: number
+    to?: number,
   ): Promise<NewsItem[]> {
     const toDate = to ? new Date(to * 1000) : new Date();
     const fromDate = from
@@ -278,7 +283,10 @@ export class FinnhubClient implements DataProviderAbstraction {
     }));
   }
 
-  private async fetchMarketNews(from?: number, to?: number): Promise<NewsItem[]> {
+  private async fetchMarketNews(
+    from?: number,
+    to?: number,
+  ): Promise<NewsItem[]> {
     const url = new URL(`${this.baseURL}/news`);
     url.searchParams.set("category", "general");
     url.searchParams.set("token", this.apiKey);
@@ -330,12 +338,15 @@ export class FinnhubClient implements DataProviderAbstraction {
       const retryAfter = response.headers.get("Retry-After");
       throw new RateLimitExceededError(
         "finnhub",
-        retryAfter ? parseInt(retryAfter, 10) : undefined
+        retryAfter ? parseInt(retryAfter, 10) : undefined,
       );
     }
 
     if (response.status === 401 || response.status === 403) {
-      throw new PermissionDeniedError("finnhub", text || "Authentication failed");
+      throw new PermissionDeniedError(
+        "finnhub",
+        text || "Authentication failed",
+      );
     }
 
     if (response.status >= 500) {
@@ -346,7 +357,7 @@ export class FinnhubClient implements DataProviderAbstraction {
       text || "Unknown error",
       "finnhub",
       "HTTP_ERROR",
-      response.status
+      response.status,
     );
   }
 
@@ -362,7 +373,7 @@ export class FinnhubClient implements DataProviderAbstraction {
     return new ProviderError(
       String(error),
       "finnhub",
-      "UNKNOWN_ERROR"
+      "UNKNOWN_ERROR",
     );
   }
 }

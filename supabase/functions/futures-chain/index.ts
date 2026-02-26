@@ -2,7 +2,11 @@
 // Returns full contract chain for a futures root with all expiries
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { getCorsHeaders, handlePreflight, corsResponse } from "../_shared/cors.ts";
+import {
+  corsResponse,
+  getCorsHeaders,
+  handlePreflight,
+} from "../_shared/cors.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 interface FuturesContract {
@@ -54,13 +58,14 @@ serve(async (req: Request): Promise<Response> => {
   try {
     const url = new URL(req.url);
     const root = url.searchParams.get("root");
-    const asOf = url.searchParams.get("asOf") || new Date().toISOString().split("T")[0];
+    const asOf = url.searchParams.get("asOf") ||
+      new Date().toISOString().split("T")[0];
 
     if (!root) {
       return corsResponse(
         { error: "Missing required parameter: root" },
         400,
-        origin
+        origin,
       );
     }
 
@@ -72,7 +77,7 @@ serve(async (req: Request): Promise<Response> => {
       return corsResponse(
         { error: "Server configuration error" },
         500,
-        origin
+        origin,
       );
     }
 
@@ -89,7 +94,7 @@ serve(async (req: Request): Promise<Response> => {
       return corsResponse(
         { error: `Futures root not found: ${root}` },
         404,
-        origin
+        origin,
       );
     }
 
@@ -122,7 +127,7 @@ serve(async (req: Request): Promise<Response> => {
       return corsResponse(
         { error: "Database error", details: contractsError.message },
         500,
-        origin
+        origin,
       );
     }
 
@@ -142,7 +147,9 @@ serve(async (req: Request): Promise<Response> => {
     const continuousAliases = (continuousData || []).map((c: any) => ({
       alias: c.continuous_alias,
       depth: c.depth,
-      contract_symbol: contractsData?.find((contract: any) => contract.id === c.contract_id)?.symbol || "",
+      contract_symbol: contractsData?.find((contract: any) =>
+        contract.id === c.contract_id
+      )?.symbol || "",
     }));
 
     // Transform contracts
@@ -188,7 +195,7 @@ serve(async (req: Request): Promise<Response> => {
     return corsResponse(
       { error: "Internal server error" },
       500,
-      origin
+      origin,
     );
   }
 });

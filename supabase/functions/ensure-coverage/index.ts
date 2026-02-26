@@ -28,13 +28,15 @@ serve(async (req) => {
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
     const body = (await req.json()) as RequestBody;
     const { symbol, timeframe, fromTs, toTs } = body;
 
-    console.log(`[EnsureCoverage] Request for ${symbol} ${timeframe} from ${fromTs} to ${toTs}`);
+    console.log(
+      `[EnsureCoverage] Request for ${symbol} ${timeframe} from ${fromTs} to ${toTs}`,
+    );
 
     // 1) Check existing coverage
     const { data: cov, error: covErr } = await supabase.rpc("get_coverage", {
@@ -51,15 +53,16 @@ serve(async (req) => {
     }
 
     // Check if we have full coverage
-    const hasCoverage =
-      cov &&
+    const hasCoverage = cov &&
       cov.from_ts &&
       cov.to_ts &&
       new Date(cov.from_ts) <= new Date(fromTs) &&
       new Date(cov.to_ts) >= new Date(toTs);
 
     if (hasCoverage) {
-      console.log(`[EnsureCoverage] Full coverage exists for ${symbol} ${timeframe}`);
+      console.log(
+        `[EnsureCoverage] Full coverage exists for ${symbol} ${timeframe}`,
+      );
       const response: ResponseBody = {
         hasCoverage: true,
         coverageFrom: cov.from_ts,
@@ -82,7 +85,7 @@ serve(async (req) => {
           to_ts: toTs,
           status: "pending",
         },
-        { onConflict: "symbol,timeframe,from_ts,to_ts" }
+        { onConflict: "symbol,timeframe,from_ts,to_ts" },
       )
       .select()
       .single();
@@ -118,7 +121,9 @@ serve(async (req) => {
       });
     }
 
-    console.log(`[EnsureCoverage] Seeded ${days.length} chunks for job ${job.id}`);
+    console.log(
+      `[EnsureCoverage] Seeded ${days.length} chunks for job ${job.id}`,
+    );
 
     const response: ResponseBody = {
       hasCoverage: false,
@@ -134,11 +139,13 @@ serve(async (req) => {
   } catch (error) {
     console.error("[EnsureCoverage] Unexpected error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+      JSON.stringify({
+        error: error instanceof Error ? error.message : String(error),
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   }
 });
@@ -147,7 +154,9 @@ function enumerateDays(fromIso: string, toIso: string): string[] {
   const out: string[] = [];
   const start = new Date(fromIso);
   const end = new Date(toIso);
-  const d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+  const d = new Date(
+    Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()),
+  );
 
   while (d <= end) {
     out.push(d.toISOString().slice(0, 10));
