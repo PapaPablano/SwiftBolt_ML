@@ -5,8 +5,15 @@
 // Use with caution - this cannot be undone.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
-import { getSupabaseClientWithAuth, getSupabaseClient } from "../_shared/supabase-client.ts";
+import {
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
+import {
+  getSupabaseClient,
+  getSupabaseClientWithAuth,
+} from "../_shared/supabase-client.ts";
 
 serve(async (req: Request): Promise<Response> => {
   // Handle CORS preflight
@@ -59,7 +66,9 @@ serve(async (req: Request): Promise<Response> => {
 
     if (userError || !user) {
       // For development/testing: use service role client which bypasses RLS
-      console.warn("[multi-leg-delete] No authenticated user, using service role client");
+      console.warn(
+        "[multi-leg-delete] No authenticated user, using service role client",
+      );
       supabase = getSupabaseClient();
       userId = "00000000-0000-0000-0000-000000000000";
     } else {
@@ -80,7 +89,10 @@ serve(async (req: Request): Promise<Response> => {
         return errorResponse("Strategy not found", 404);
       }
       console.error("[multi-leg-delete] Fetch error:", fetchError);
-      return errorResponse(`Failed to fetch strategy: ${fetchError.message}`, 500);
+      return errorResponse(
+        `Failed to fetch strategy: ${fetchError.message}`,
+        500,
+      );
     }
 
     // Delete associated legs first (if no CASCADE constraint)
@@ -101,7 +113,10 @@ serve(async (req: Request): Promise<Response> => {
       .eq("strategy_id", strategyId);
 
     if (alertsDeleteError) {
-      console.error("[multi-leg-delete] Alerts delete error:", alertsDeleteError);
+      console.error(
+        "[multi-leg-delete] Alerts delete error:",
+        alertsDeleteError,
+      );
       // Continue anyway
     }
 
@@ -112,7 +127,10 @@ serve(async (req: Request): Promise<Response> => {
       .eq("strategy_id", strategyId);
 
     if (metricsDeleteError) {
-      console.error("[multi-leg-delete] Metrics delete error:", metricsDeleteError);
+      console.error(
+        "[multi-leg-delete] Metrics delete error:",
+        metricsDeleteError,
+      );
       // Continue anyway
     }
 
@@ -125,10 +143,15 @@ serve(async (req: Request): Promise<Response> => {
 
     if (deleteError) {
       console.error("[multi-leg-delete] Strategy delete error:", deleteError);
-      return errorResponse(`Failed to delete strategy: ${deleteError.message}`, 500);
+      return errorResponse(
+        `Failed to delete strategy: ${deleteError.message}`,
+        500,
+      );
     }
 
-    console.log(`[multi-leg-delete] Successfully deleted strategy ${strategyId} (${strategyData.name})`);
+    console.log(
+      `[multi-leg-delete] Successfully deleted strategy ${strategyId} (${strategyData.name})`,
+    );
 
     return jsonResponse({
       success: true,
@@ -139,7 +162,7 @@ serve(async (req: Request): Promise<Response> => {
     console.error("[multi-leg-delete] Error:", error);
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
-      500
+      500,
     );
   }
 });

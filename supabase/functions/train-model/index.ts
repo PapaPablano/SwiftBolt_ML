@@ -51,7 +51,7 @@ serve(async (req) => {
     if (!request.symbol) {
       return corsResponse(
         { error: "symbol is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -65,7 +65,7 @@ serve(async (req) => {
           timeframe: request.timeframe || "d1",
           lookbackDays: request.lookbackDays || 90,
         }),
-      }
+      },
     );
 
     return corsResponse(response);
@@ -75,7 +75,7 @@ serve(async (req) => {
       {
         error: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 });

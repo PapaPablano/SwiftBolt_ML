@@ -8,7 +8,11 @@
 // Works synchronously - no external Python worker needed.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import {
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 import { getProviderRouter } from "../_shared/providers/factory.ts";
 
@@ -19,10 +23,10 @@ interface TriggerRankingRequest {
 // ML Forecast data for directional bias
 interface MLForecast {
   forecast_id: string;
-  overall_label: string;  // "Bullish", "Neutral", "Bearish"
-  confidence: number;     // 0-1
-  ensemble_type: string | null;  // "RF+GB" or "Enhanced5"
-  model_agreement: number | null;  // 0-1
+  overall_label: string; // "Bullish", "Neutral", "Bearish"
+  confidence: number; // 0-1
+  ensemble_type: string | null; // "RF+GB" or "Enhanced5"
+  model_agreement: number | null; // 0-1
   forecast_return: number | null;
   forecast_volatility: number | null;
   n_models: number | null;
@@ -69,7 +73,10 @@ function toString(value: unknown, fallback = ""): string {
   return fallback;
 }
 
-function normalizeContract(raw: RawOptionContract, type: "call" | "put"): OptionContract {
+function normalizeContract(
+  raw: RawOptionContract,
+  type: "call" | "put",
+): OptionContract {
   const bid = toNumber(raw.bid, 0);
   const ask = toNumber(raw.ask, 0);
   const mark = toNumber(raw.mark, (bid + ask) / 2);
@@ -127,12 +134,12 @@ interface RankedOption {
 // Ranking weights (matching Python implementation)
 // Framework weights - standardized 2026-01-23
 const MOMENTUM_WEIGHT = 0.40; // 40% - price action and activity
-const VALUE_WEIGHT = 0.35;     // 35% - entry quality (IV + spread)
-const GREEKS_WEIGHT = 0.25;    // 25% - directional alignment
+const VALUE_WEIGHT = 0.35; // 35% - entry quality (IV + spread)
+const GREEKS_WEIGHT = 0.25; // 25% - directional alignment
 
 // Forecast integration weights
-const FORECAST_DIRECTIONAL_BOOST = 15;  // Points to add/subtract based on direction alignment
-const FORECAST_CONFIDENCE_MULTIPLIER = 1.5;  // Scale boost by confidence
+const FORECAST_DIRECTIONAL_BOOST = 15; // Points to add/subtract based on direction alignment
+const FORECAST_CONFIDENCE_MULTIPLIER = 1.5; // Scale boost by confidence
 
 // Thresholds
 const OPTIMAL_DELTA_TARGET = 0.55;
@@ -156,7 +163,12 @@ function calculateSpreadPct(bid: number, ask: number): number {
   return ((ask - bid) / mid) * 100;
 }
 
-function calculateValueScore(iv: number, ivMin: number, ivMax: number, spreadPct: number): { valueScore: number; ivRank: number } {
+function calculateValueScore(
+  iv: number,
+  ivMin: number,
+  ivMax: number,
+  spreadPct: number,
+): { valueScore: number; ivRank: number } {
   // IV Rank: (current - min) / (max - min) * 100
   const ivRange = ivMax - ivMin;
   const ivRank = ivRange > 0 ? ((iv - ivMin) / ivRange) * 100 : 50;
@@ -169,12 +181,19 @@ function calculateValueScore(iv: number, ivMin: number, ivMax: number, spreadPct
   const spreadScore = 100 - spreadPenalty;
 
   // Combined: 60% IV, 40% spread (cap to prevent domination)
-  const valueScore = Math.max(0, Math.min(100, ivValueScore * 0.60 + spreadScore * 0.40));
+  const valueScore = Math.max(
+    0,
+    Math.min(100, ivValueScore * 0.60 + spreadScore * 0.40),
+  );
 
   return { valueScore, ivRank };
 }
 
-function calculateMomentumScore(volume: number, openInterest: number, price: number): { momentumScore: number; volOiRatio: number; liquidityConfidence: number } {
+function calculateMomentumScore(
+  volume: number,
+  openInterest: number,
+  price: number,
+): { momentumScore: number; volOiRatio: number; liquidityConfidence: number } {
   // Volume/OI ratio
   const volOiRatio = openInterest > 0 ? volume / openInterest : 0;
   const volOiScore = Math.min((volOiRatio / VOLUME_OI_STRONG) * 100, 100);
@@ -184,7 +203,7 @@ function calculateMomentumScore(volume: number, openInterest: number, price: num
   const volConf = Math.min(minConf + (1 - minConf) * volume / 100, 1.0);
   const oiConf = Math.min(minConf + (1 - minConf) * openInterest / 500, 1.0);
   const priceConf = Math.min(minConf + (1 - minConf) * price / 5.0, 1.0);
-  const liquidityConfidence = Math.pow(volConf * oiConf * priceConf, 1/3);
+  const liquidityConfidence = Math.pow(volConf * oiConf * priceConf, 1 / 3);
 
   // Without historical data, use volume-based proxy
   const volumeNormalized = Math.min(volume / 1000, 1.0);
@@ -196,7 +215,11 @@ function calculateMomentumScore(volume: number, openInterest: number, price: num
   // Apply liquidity dampening
   const momentumScore = 50 + (rawMomentum - 50) * liquidityConfidence;
 
-  return { momentumScore: Math.max(0, Math.min(100, momentumScore)), volOiRatio, liquidityConfidence };
+  return {
+    momentumScore: Math.max(0, Math.min(100, momentumScore)),
+    volOiRatio,
+    liquidityConfidence,
+  };
 }
 
 function calculateGreeksScore(
@@ -205,7 +228,7 @@ function calculateGreeksScore(
   theta: number,
   vega: number,
   side: "call" | "put",
-  midPrice: number
+  midPrice: number,
 ): number {
   // Delta score: target 0.55 for calls, -0.55 for puts
   const target = side === "call" ? OPTIMAL_DELTA_TARGET : -OPTIMAL_DELTA_TARGET;
@@ -223,7 +246,8 @@ function calculateGreeksScore(
   const thetaPenalty = Math.min(thetaPct * 10, 40);
 
   // Combined: 50% delta, 35% gamma, 10% vega, minus theta penalty
-  const greeksScore = deltaScore * 0.50 + gammaScore * 0.35 + vegaScore * 0.10 - thetaPenalty;
+  const greeksScore = deltaScore * 0.50 + gammaScore * 0.35 + vegaScore * 0.10 -
+    thetaPenalty;
 
   return Math.max(0, Math.min(100, greeksScore));
 }
@@ -231,10 +255,10 @@ function calculateGreeksScore(
 // Calculate forecast-based directional adjustment
 function calculateForecastAdjustment(
   side: "call" | "put",
-  forecast: MLForecast | null
+  forecast: MLForecast | null,
 ): number {
   if (!forecast || !forecast.is_fresh) {
-    return 0;  // No adjustment if forecast is stale or missing
+    return 0; // No adjustment if forecast is stale or missing
   }
 
   const label = forecast.overall_label.toLowerCase();
@@ -243,7 +267,8 @@ function calculateForecastAdjustment(
 
   // Scale boost by confidence and agreement
   const effectiveStrength = confidence * (0.5 + 0.5 * agreement);
-  const baseBoost = FORECAST_DIRECTIONAL_BOOST * effectiveStrength * FORECAST_CONFIDENCE_MULTIPLIER;
+  const baseBoost = FORECAST_DIRECTIONAL_BOOST * effectiveStrength *
+    FORECAST_CONFIDENCE_MULTIPLIER;
 
   if (label === "bullish") {
     // Boost calls, penalize puts
@@ -257,62 +282,82 @@ function calculateForecastAdjustment(
   return 0;
 }
 
-function rankOptions(calls: OptionContract[], puts: OptionContract[], forecast: MLForecast | null = null): RankedOption[] {
+function rankOptions(
+  calls: OptionContract[],
+  puts: OptionContract[],
+  forecast: MLForecast | null = null,
+): RankedOption[] {
   const allContracts = [
-    ...calls.map(c => ({ ...c, side: "call" as const })),
-    ...puts.map(p => ({ ...p, side: "put" as const })),
+    ...calls.map((c) => ({ ...c, side: "call" as const })),
+    ...puts.map((p) => ({ ...p, side: "put" as const })),
   ];
 
   if (allContracts.length === 0) return [];
 
   // Calculate IV range for IV Rank
-  const allIVs = allContracts.map(c => c.impliedVolatility).filter(iv => iv > 0);
+  const allIVs = allContracts.map((c) => c.impliedVolatility).filter((iv) =>
+    iv > 0
+  );
   const ivMin = allIVs.length > 0 ? Math.min(...allIVs) : 0.2;
   const ivMax = allIVs.length > 0 ? Math.max(...allIVs) : 0.5;
 
-  const ranked: RankedOption[] = allContracts.map(contract => {
+  const ranked: RankedOption[] = allContracts.map((contract) => {
     const spreadPct = calculateSpreadPct(contract.bid, contract.ask);
     const { valueScore, ivRank } = calculateValueScore(
-      contract.impliedVolatility, ivMin, ivMax, spreadPct
+      contract.impliedVolatility,
+      ivMin,
+      ivMax,
+      spreadPct,
     );
-    const { momentumScore, volOiRatio, liquidityConfidence: _liquidityConfidence } = calculateMomentumScore(
-      contract.volume, contract.openInterest, contract.mark
+    const {
+      momentumScore,
+      volOiRatio,
+      liquidityConfidence: _liquidityConfidence,
+    } = calculateMomentumScore(
+      contract.volume,
+      contract.openInterest,
+      contract.mark,
     );
     const greeksScore = calculateGreeksScore(
-      contract.delta, contract.gamma, contract.theta, contract.vega,
-      contract.side, contract.mark
+      contract.delta,
+      contract.gamma,
+      contract.theta,
+      contract.vega,
+      contract.side,
+      contract.mark,
     );
 
     // Composite rank with forecast adjustment
-    const baseCompositeRank =
-      momentumScore * MOMENTUM_WEIGHT +
+    const baseCompositeRank = momentumScore * MOMENTUM_WEIGHT +
       valueScore * VALUE_WEIGHT +
       greeksScore * GREEKS_WEIGHT;
 
     // Apply forecast directional boost/penalty
-    const forecastAdjustment = calculateForecastAdjustment(contract.side, forecast);
-    const compositeRank = Math.max(0, Math.min(100, baseCompositeRank + forecastAdjustment));
+    const forecastAdjustment = calculateForecastAdjustment(
+      contract.side,
+      forecast,
+    );
+    const compositeRank = Math.max(
+      0,
+      Math.min(100, baseCompositeRank + forecastAdjustment),
+    );
 
     // Generate signals
-    const signalDiscount =
-      ivRank < DISCOUNT_IV_RANK_THRESHOLD &&
+    const signalDiscount = ivRank < DISCOUNT_IV_RANK_THRESHOLD &&
       momentumScore > DISCOUNT_MOMENTUM_THRESHOLD &&
       spreadPct < DISCOUNT_SPREAD_THRESHOLD;
 
-    const signalRunner =
-      momentumScore > RUNNER_MOMENTUM_THRESHOLD &&
+    const signalRunner = momentumScore > RUNNER_MOMENTUM_THRESHOLD &&
       contract.volume > RUNNER_VOLUME_THRESHOLD &&
       volOiRatio > RUNNER_VOL_OI_THRESHOLD &&
       spreadPct < RUNNER_SPREAD_THRESHOLD;
 
-    const signalGreeks =
-      Math.abs(contract.delta) >= 0.40 &&
+    const signalGreeks = Math.abs(contract.delta) >= 0.40 &&
       Math.abs(contract.delta) <= 0.70 &&
       contract.gamma > 0.02 &&
       spreadPct < GREEKS_SPREAD_THRESHOLD;
 
-    const signalBuy =
-      compositeRank > BUY_COMPOSITE_THRESHOLD &&
+    const signalBuy = compositeRank > BUY_COMPOSITE_THRESHOLD &&
       (signalDiscount || signalRunner || signalGreeks);
 
     const signals: string[] = [];
@@ -322,7 +367,8 @@ function rankOptions(calls: OptionContract[], puts: OptionContract[], forecast: 
     if (signalBuy) signals.push("BUY");
 
     // Convert expiration timestamp to date string
-    const expiryDate = new Date(contract.expiration * 1000).toISOString().split('T')[0];
+    const expiryDate =
+      new Date(contract.expiration * 1000).toISOString().split("T")[0];
 
     return {
       contract_symbol: contract.symbol,
@@ -413,13 +459,17 @@ serve(async (req: Request): Promise<Response> => {
       .single();
 
     if (jobInsertError) {
-      console.warn(`[Ranking Job] Failed to log ranking_jobs row: ${jobInsertError.message}`);
+      console.warn(
+        `[Ranking Job] Failed to log ranking_jobs row: ${jobInsertError.message}`,
+      );
     } else {
       jobId = jobInsert?.id ?? null;
     }
 
     // Fetch options chain directly via ProviderRouter
-    console.log(`[Ranking Job] Fetching options chain for ${symbol} via ProviderRouter`);
+    console.log(
+      `[Ranking Job] Fetching options chain for ${symbol} via ProviderRouter`,
+    );
     const router = getProviderRouter();
 
     let optionsData;
@@ -437,7 +487,12 @@ serve(async (req: Request): Promise<Response> => {
           })
           .eq("id", jobId);
       }
-      return errorResponse(`Failed to fetch options chain: ${err instanceof Error ? err.message : String(err)}`, 500);
+      return errorResponse(
+        `Failed to fetch options chain: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        500,
+      );
     }
 
     const rawCalls: RawOptionContract[] = Array.isArray(optionsData.calls)
@@ -446,10 +501,16 @@ serve(async (req: Request): Promise<Response> => {
     const rawPuts: RawOptionContract[] = Array.isArray(optionsData.puts)
       ? (optionsData.puts as unknown as RawOptionContract[])
       : [];
-    const calls: OptionContract[] = rawCalls.map((c: RawOptionContract) => normalizeContract(c, "call"));
-    const puts: OptionContract[] = rawPuts.map((p: RawOptionContract) => normalizeContract(p, "put"));
+    const calls: OptionContract[] = rawCalls.map((c: RawOptionContract) =>
+      normalizeContract(c, "call")
+    );
+    const puts: OptionContract[] = rawPuts.map((p: RawOptionContract) =>
+      normalizeContract(p, "put")
+    );
 
-    console.log(`[Ranking Job] Fetched ${calls.length} calls, ${puts.length} puts for ${symbol}`);
+    console.log(
+      `[Ranking Job] Fetched ${calls.length} calls, ${puts.length} puts for ${symbol}`,
+    );
 
     if (calls.length === 0 && puts.length === 0) {
       if (jobId) {
@@ -468,12 +529,12 @@ serve(async (req: Request): Promise<Response> => {
     // Save options snapshots for historical tracking (non-blocking)
     const snapshotTime = new Date().toISOString();
     const allContracts = [...calls, ...puts];
-    const snapshotRecords = allContracts.map(c => ({
+    const snapshotRecords = allContracts.map((c) => ({
       underlying_symbol_id: symbolId,
       contract_symbol: c.symbol,
       option_type: c.type === "call" ? "call" : "put",
       strike: c.strike,
-      expiration: new Date(c.expiration * 1000).toISOString().split('T')[0],
+      expiration: new Date(c.expiration * 1000).toISOString().split("T")[0],
       bid: c.bid,
       ask: c.ask,
       last: c.last,
@@ -502,12 +563,17 @@ serve(async (req: Request): Promise<Response> => {
           });
 
         if (snapshotError) {
-          console.warn(`[Ranking Job] Snapshot batch ${i / BATCH_SIZE + 1} warning:`, snapshotError.message);
+          console.warn(
+            `[Ranking Job] Snapshot batch ${i / BATCH_SIZE + 1} warning:`,
+            snapshotError.message,
+          );
         } else {
           snapshotsSaved += batch.length;
         }
       }
-      console.log(`[Ranking Job] Saved ${snapshotsSaved} snapshots for ${symbol}`);
+      console.log(
+        `[Ranking Job] Saved ${snapshotsSaved} snapshots for ${symbol}`,
+      );
     } catch (snapErr) {
       console.warn(`[Ranking Job] Snapshot save failed (non-fatal):`, snapErr);
     }
@@ -522,20 +588,25 @@ serve(async (req: Request): Promise<Response> => {
         mlForecast = forecastData[0] as MLForecast;
         console.log(
           `[Ranking Job] Using ML forecast: ${mlForecast.overall_label} ` +
-          `(conf=${(mlForecast.confidence * 100).toFixed(0)}%, ` +
-          `fresh=${mlForecast.is_fresh}, ` +
-          `type=${mlForecast.ensemble_type || "RF+GB"})`
+            `(conf=${(mlForecast.confidence * 100).toFixed(0)}%, ` +
+            `fresh=${mlForecast.is_fresh}, ` +
+            `type=${mlForecast.ensemble_type || "RF+GB"})`,
         );
       } else {
         console.log(`[Ranking Job] No ML forecast available for ${symbol}`);
       }
     } catch (forecastErr) {
-      console.warn(`[Ranking Job] Failed to fetch ML forecast (non-fatal):`, forecastErr);
+      console.warn(
+        `[Ranking Job] Failed to fetch ML forecast (non-fatal):`,
+        forecastErr,
+      );
     }
 
     // Rank the options with forecast integration
     const rankedOptions = rankOptions(calls, puts, mlForecast);
-    console.log(`[Ranking Job] Ranked ${rankedOptions.length} options for ${symbol}`);
+    console.log(
+      `[Ranking Job] Ranked ${rankedOptions.length} options for ${symbol}`,
+    );
 
     if (rankedOptions.length === 0) {
       if (jobId) {
@@ -557,10 +628,10 @@ serve(async (req: Request): Promise<Response> => {
 
     // Build records for upsert
     const runAt = new Date().toISOString();
-    const records = rankedOptions.map(opt => ({
+    const records = rankedOptions.map((opt) => ({
       underlying_symbol_id: symbolId,
-      ranking_mode: "monitor",  // Legacy inline ranking uses monitor mode
-      strategy_intent: "long_premium",  // Must match unique constraint
+      ranking_mode: "monitor", // Legacy inline ranking uses monitor mode
+      strategy_intent: "long_premium", // Must match unique constraint
       contract_symbol: opt.contract_symbol,
       expiry: opt.expiry,
       strike: opt.strike,
@@ -604,10 +675,16 @@ serve(async (req: Request): Promise<Response> => {
       const { error: upsertError } = await supabase
         .from("options_ranks")
         .upsert(batch, {
-          onConflict: "underlying_symbol_id,ranking_mode,strategy_intent,expiry,strike,side",
+          onConflict:
+            "underlying_symbol_id,ranking_mode,strategy_intent,expiry,strike,side",
         });
       if (upsertError) {
-        console.error(`[Ranking Job] Upsert error (batch ${Math.floor(i / RANKS_BATCH_SIZE) + 1}):`, upsertError);
+        console.error(
+          `[Ranking Job] Upsert error (batch ${
+            Math.floor(i / RANKS_BATCH_SIZE) + 1
+          }):`,
+          upsertError,
+        );
         if (jobId) {
           await supabase
             .from("ranking_jobs")
@@ -618,17 +695,26 @@ serve(async (req: Request): Promise<Response> => {
             })
             .eq("id", jobId);
         }
-        return errorResponse(`Failed to save rankings: ${upsertError.message}`, 500);
+        return errorResponse(
+          `Failed to save rankings: ${upsertError.message}`,
+          500,
+        );
       }
     }
 
     const durationMs = Date.now() - startTime;
-    console.log(`[Ranking Job] Saved ${records.length} ranks for ${symbol} in ${durationMs}ms`);
+    console.log(
+      `[Ranking Job] Saved ${records.length} ranks for ${symbol} in ${durationMs}ms`,
+    );
 
     // Log top 3
     const top3 = rankedOptions.slice(0, 3);
     for (const opt of top3) {
-      console.log(`  ${opt.contract_symbol}: rank=${opt.composite_rank.toFixed(1)}, signals=[${opt.signals}]`);
+      console.log(
+        `  ${opt.contract_symbol}: rank=${
+          opt.composite_rank.toFixed(1)
+        }, signals=[${opt.signals}]`,
+      );
     }
 
     if (jobId) {
@@ -651,28 +737,31 @@ serve(async (req: Request): Promise<Response> => {
       ranksInserted: records.length,
       snapshotsSaved,
       durationMs,
-      topRanks: top3.map(o => ({
+      topRanks: top3.map((o) => ({
         contract: o.contract_symbol,
         rank: Math.round(o.composite_rank * 10) / 10,
         signals: o.signals,
       })),
       // ML Forecast integration metadata
-      mlForecast: mlForecast ? {
-        label: mlForecast.overall_label,
-        confidence: mlForecast.confidence,
-        ensembleType: mlForecast.ensemble_type,
-        modelAgreement: mlForecast.model_agreement,
-        nModels: mlForecast.n_models,
-        isFresh: mlForecast.is_fresh,
-        forecastAgeHours: Math.round(mlForecast.forecast_age_hours * 10) / 10,
-      } : null,
+      mlForecast: mlForecast
+        ? {
+          label: mlForecast.overall_label,
+          confidence: mlForecast.confidence,
+          ensembleType: mlForecast.ensemble_type,
+          modelAgreement: mlForecast.model_agreement,
+          nModels: mlForecast.n_models,
+          isFresh: mlForecast.is_fresh,
+          forecastAgeHours: Math.round(mlForecast.forecast_age_hours * 10) / 10,
+        }
+        : null,
     });
-
   } catch (err) {
     console.error("[Ranking Job] Unexpected error:", err);
     return errorResponse(
-      `Internal server error: ${err instanceof Error ? err.message : String(err)}`,
-      500
+      `Internal server error: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      500,
     );
   }
 });

@@ -1,19 +1,16 @@
 /**
  * Hook to fetch pivot levels from the API
- * Handles real-time streaming via WebSocket
+ * Uses support-resistance endpoint with polling for updates
  *
  * Features:
  * - Multi-period pivot detection
- * - Real-time updates via WebSocket
- * - Caching and memoization
  * - Automatic refresh intervals
- * - Confluence zone detection
+ * - Falls back gracefully on errors
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
 
 export interface PivotLevelData {
   period: number;
@@ -61,15 +58,10 @@ const PERIOD_COLORS: Record<number, string> = {
 };
 
 export const usePivotLevels = (symbol: string, timeframe: string) => {
-  const [data, setData] = useState<PivotLevelsResponse | null>(null);
   const [pivotLevels, setPivotLevels] = useState<PivotLevelData[]>([]);
   const [metrics, setMetrics] = useState<PivotMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Fetch pivot levels from REST API
   const fetchPivotLevels = useCallback(async () => {
@@ -79,23 +71,47 @@ export const usePivotLevels = (symbol: string, timeframe: string) => {
     setError(null);
 
     try {
+      // Map horizon to timeframe format expected by backend
+      const timeframeMap: Record<string, string> = {
+        '15m': 'm15',
+        '1h': 'h1',
+        '4h': 'h4',
+        '1D': 'd1'
+      };
+      const mappedTimeframe = timeframeMap[timeframe] || timeframe;
+      
+      // Use the existing support-resistance endpoint which includes pivot levels
       const response = await fetch(
-        `${API_BASE_URL}/api/pivot-levels?symbol=${symbol}&timeframe=${timeframe}`
+        `${API_BASE_URL}/api/v1/support-resistance?symbol=${symbol}&timeframe=${mappedTimeframe}`
       );
 
       if (!response.ok) {
         throw new Error(`API error: ${response.statusText}`);
       }
 
-      const result: PivotLevelsResponse = await response.json();
-      setData(result);
+      const result = await response.json();
+      
+      // Extract pivot levels from the support-resistance response
+      const pivotData = result.pivot_levels || [];
       setPivotLevels(
-        result.pivot_levels.map((level) => ({
+        pivotData.map((level: any) => ({
           ...level,
+          label: `P${level.period}`,
           color: PERIOD_COLORS[level.period] || '#808080',
         }))
       );
-      setMetrics(result.metrics);
+      
+      // Build metrics from available data
+      if (result.nearest_support || result.nearest_resistance) {
+        setMetrics({
+          overall_strength: 0.5,
+          pivot_count: pivotData.length,
+          confidence: result.confidence || 0.5,
+          high_pivot_count: pivotData.filter((l: any) => l.level_high).length,
+          low_pivot_count: pivotData.filter((l: any) => l.level_low).length,
+          period_effectiveness: [],
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch pivot levels');
       console.error('Error fetching pivot levels:', err);
@@ -104,89 +120,23 @@ export const usePivotLevels = (symbol: string, timeframe: string) => {
     }
   }, [symbol, timeframe]);
 
-  // WebSocket connection for real-time updates
-  const connectWebSocket = useCallback(() => {
-    if (!symbol) return;
-
-    try {
-      const wsUrl = `${WS_BASE_URL}/ws/pivot/${symbol}`;
-      const ws = new WebSocket(wsUrl);
-
-      ws.onopen = () => {
-        console.log(`[Pivot WS] Connected for ${symbol}`);
-        setIsConnected(true);
-        setError(null);
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-
-          if (message.pivot_levels) {
-            setPivotLevels(
-              message.pivot_levels.map((level: PivotLevelData) => ({
-                ...level,
-                color: PERIOD_COLORS[level.period] || '#808080',
-              }))
-            );
-          }
-
-          if (message.metrics) {
-            setMetrics(message.metrics);
-          }
-        } catch (e) {
-          console.error('[Pivot WS] Parse error:', e);
-        }
-      };
-
-      ws.onerror = (event) => {
-        console.error('[Pivot WS] Error:', event);
-        setError('WebSocket connection error');
-        setIsConnected(false);
-      };
-
-      ws.onclose = () => {
-        console.log(`[Pivot WS] Disconnected for ${symbol}`);
-        setIsConnected(false);
-
-        // Attempt to reconnect after 3 seconds
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connectWebSocket();
-        }, 3000);
-      };
-
-      wsRef.current = ws;
-    } catch (err) {
-      console.error('[Pivot WS] Connection error:', err);
-      setError('Failed to connect WebSocket');
-    }
-  }, [symbol]);
-
   // Initial fetch and setup
   useEffect(() => {
     fetchPivotLevels();
-    connectWebSocket();
 
-    // Refresh every 30 seconds
+    // Refresh every 30 seconds (polling instead of WebSocket)
     const interval = setInterval(fetchPivotLevels, 30000);
 
     return () => {
       clearInterval(interval);
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
     };
-  }, [symbol, timeframe, fetchPivotLevels, connectWebSocket]);
+  }, [symbol, timeframe, fetchPivotLevels]);
 
   return {
     pivotLevels,
     metrics,
     loading,
     error,
-    isConnected,
     refetch: fetchPivotLevels,
   };
 };

@@ -64,6 +64,7 @@
 		A1B3C4D5E6F708192A3B4C60 /* IndicatorsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F708192A3B4C5F /* IndicatorsViewModel.swift */; };
 		A66084CE5A41ABCA72B26DB6 /* OptionsRankingResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C341141BD25E1C4A72A109 /* OptionsRankingResponse.swift */; };
 		A8052D8012DDF9B50B591DA6 /* AnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 310341ABEED26BABB738BEF2 /* AnalysisView.swift */; };
+		A9C7BE76FE341CF77B5F8B47 /* StrategyBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9452CCC41C1DE30AB2FC973E /* StrategyBuilderView.swift */; };
 		AE84055563B44B634DC4CA59 /* SuperTrendChartData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78170FE468AE321CB9A91BD5 /* SuperTrendChartData.swift */; };
 		BBF26E749EE9864119C5E5C3 /* MultiLegStrategyDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0FBC98DD5D3AA21FD643B9B /* MultiLegStrategyDetailView.swift */; };
 		BD25768D5DDFD833E346DDB5 /* DataHealthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33A7027FA21F544B41C22B1F /* DataHealthView.swift */; };
@@ -99,6 +100,7 @@
 		F63BBA122F22EFF2003EE3B0 /* TechnicalIndicatorsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA0F2F22EFF2003EE3B0 /* TechnicalIndicatorsModels.swift */; };
 		F63BBA132F22EFF2003EE3B0 /* PortfolioOptimizationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA0D2F22EFF2003EE3B0 /* PortfolioOptimizationModels.swift */; };
 		F63BBA142F22EFF2003EE3B0 /* BacktestingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA0C2F22EFF2003EE3B0 /* BacktestingModels.swift */; };
+		DRP0001012345678900000001 /* DateRangePresets.swift in Sources */ = {isa = PBXBuildFile; fileRef = DRP0002012345678900000001 /* DateRangePresets.swift */; };
 		F63BBA152F22EFF2003EE3B0 /* StressTestingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA0E2F22EFF2003EE3B0 /* StressTestingModels.swift */; };
 		F63BBA1B2F22F047003EE3B0 /* WalkForwardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA1A2F22F047003EE3B0 /* WalkForwardViewModel.swift */; };
 		F63BBA1C2F22F047003EE3B0 /* BacktestingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63BBA162F22F047003EE3B0 /* BacktestingViewModel.swift */; };
@@ -127,6 +129,9 @@
 		F67ABD242F2AB14800916110 /* PivotPeriodManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD202F2AB14800916110 /* PivotPeriodManager.swift */; };
 		F67ABD272F2BE32600916110 /* PivotChartDrawing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD262F2BE32600916110 /* PivotChartDrawing.swift */; };
 		F67ABD292F2C619A00916110 /* IndicatorFavoritesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F67ABD282F2C619A00916110 /* IndicatorFavoritesStore.swift */; };
+		F68AFA972F492420003E6F4F /* TradeStationAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F68AFA952F492420003E6F4F /* TradeStationAPIService.swift */; };
+		F68AFA982F492420003E6F4F /* TradeStationStrategyExecutionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F68AFA962F492420003E6F4F /* TradeStationStrategyExecutionService.swift */; };
+		F68AFA9E2F492435003E6F4F /* TSStrategy.swift in Sources */ = {isa = PBXBuildFile; fileRef = F68AFA9B2F492435003E6F4F /* TSStrategy.swift */; };
 		F6A123460123456789ABCDEF /* ForecastHorizonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */; };
 		F6EBEFB92F23DD2C001C6A4D /* SelectedContractState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFB82F23DD2C001C6A4D /* SelectedContractState.swift */; };
 		F6EBEFBB2F23DD3D001C6A4D /* MarketDataService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFBA2F23DD3D001C6A4D /* MarketDataService.swift */; };
@@ -137,6 +142,16 @@
 		F6EBEFC82F23DD7D001C6A4D /* ContractWorkbenchHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFBF2F23DD7D001C6A4D /* ContractWorkbenchHeader.swift */; };
 		F6EBEFC92F23DD7D001C6A4D /* ContractTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFBE2F23DD7D001C6A4D /* ContractTabView.swift */; };
 		F6EBEFCA2F23DD7D001C6A4D /* OverviewTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6EBEFC12F23DD7D001C6A4D /* OverviewTabView.swift */; };
+		F6F0D7E02F44B14A00047DB3 /* TSStrategyBuilderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F0D7DF2F44B14A00047DB3 /* TSStrategyBuilderView.swift */; };
+		WEB000022F44B14A00047DB3 /* StrategyBuilderWebStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = WEB000012F44B14A00047DB3 /* StrategyBuilderWebStyle.swift */; };
+		INT000032F44B14A00047DB3 /* IntegratedStrategyBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = INT000012F44B14A00047DB3 /* IntegratedStrategyBuilder.swift */; };
+		INT000042F44B14A00047DB3 /* StrategyEditorIntegrated.swift in Sources */ = {isa = PBXBuildFile; fileRef = INT000022F44B14A00047DB3 /* StrategyEditorIntegrated.swift */; };
+		UNI000022F44B14A00047DB3 /* UnifiedIndicatorsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = UNI000012F44B14A00047DB3 /* UnifiedIndicatorsService.swift */; };
+		F6F0D7E22F44B15900047DB3 /* TSStrategyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F0D7E12F44B15900047DB3 /* TSStrategyViewModel.swift */; };
+		F6F0D7E52F44B16A00047DB3 /* FuturesConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F0D7E32F44B16A00047DB3 /* FuturesConstants.swift */; };
+		F6F0D7E62F44B16A00047DB3 /* TradeStationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F0D7E42F44B16A00047DB3 /* TradeStationModels.swift */; };
+		F6F0D7E92F44B17C00047DB3 /* TSStrategyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F0D7E82F44B17C00047DB3 /* TSStrategyService.swift */; };
+		F6F0D7EA2F44B17C00047DB3 /* TradeStationAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F0D7E72F44B17C00047DB3 /* TradeStationAuthService.swift */; };
 		F6F972F42F0F72670010C828 /* ChartCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F972F32F0F72670010C828 /* ChartCache.swift */; };
 		F6FD04842F0D8B0C00AF337E /* Timeframe.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6FD04832F0D8B0C00AF337E /* Timeframe.swift */; };
 		F768A2A036F22E169CA9E8AC /* ReloadWatchlistResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B11ECAF44D603B49B6D931 /* ReloadWatchlistResponse.swift */; };
@@ -181,12 +196,15 @@
 		10E36986FAE84774B166FF52 /* EnsureCoverageResponse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnsureCoverageResponse.swift; sourceTree = "<group>"; };
 		13B11ECAF44D603B49B6D931 /* ReloadWatchlistResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReloadWatchlistResponse.swift; sourceTree = "<group>"; };
 		144206D7859B6361AEFE13D9 /* MultiTimeframeConsensusView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MultiTimeframeConsensusView.swift; sourceTree = "<group>"; };
+		1850D87F11ED7CF80101307C /* TSStrategyViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TSStrategyViewModel.swift; path = ViewModels/TSStrategyViewModel.swift; sourceTree = "<group>"; };
 		248D34C92FA787119F3187CE /* PivotLevelsIndicator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PivotLevelsIndicator.swift; sourceTree = "<group>"; };
 		2FB6D0158AE11968F0D3B3C2 /* AnalysisViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AnalysisViewModel.swift; sourceTree = "<group>"; };
 		310341ABEED26BABB738BEF2 /* AnalysisView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AnalysisView.swift; sourceTree = "<group>"; };
 		33A7027FA21F544B41C22B1F /* DataHealthView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DataHealthView.swift; sourceTree = "<group>"; };
 		36F40CF767C45A1B6E4592C5 /* MultiLegViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MultiLegViewModel.swift; sourceTree = "<group>"; };
 		495F16DC7FC5729654ADE6C7 /* MLDashboardModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MLDashboardModels.swift; sourceTree = "<group>"; };
+		5C2428BA2D00B5E02C47CE1D /* TradeStationModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TradeStationModels.swift; path = Models/TradeStationModels.swift; sourceTree = "<group>"; };
+		600B4DA6E1D5A21C28EEF437 /* TSStrategyBuilderView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TSStrategyBuilderView.swift; path = Views/TSStrategyBuilderView.swift; sourceTree = "<group>"; };
 		6BED859934C91510459C2BF0 /* ScannerResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ScannerResponse.swift; sourceTree = "<group>"; };
 		7156051C39BF4F2F832E38AA /* HydrationBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HydrationBanner.swift; sourceTree = "<group>"; };
 		73AD50F0BE1D403ABA5D67BA /* tooltip-enhanced.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "tooltip-enhanced.js"; sourceTree = "<group>"; };
@@ -195,6 +213,7 @@
 		848DB246B70C854F2FE0A63C /* ForecastExplainerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ForecastExplainerView.swift; sourceTree = "<group>"; };
 		893B3E6634F63C82006BBA70 /* AddToStrategySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddToStrategySheet.swift; sourceTree = "<group>"; };
 		91C341141BD25E1C4A72A109 /* OptionsRankingResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OptionsRankingResponse.swift; sourceTree = "<group>"; };
+		9452CCC41C1DE30AB2FC973E /* StrategyBuilderView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StrategyBuilderView.swift; sourceTree = "<group>"; };
 		9956271A37FA42982A5F0DDC /* PredictionsViewModel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PredictionsViewModel.swift; sourceTree = "<group>"; };
 		9A702F82DACC8241B3B9A8BA /* PolynomialRegressionIndicator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PolynomialRegressionIndicator.swift; sourceTree = "<group>"; };
 		9CE2E34EE4D81F3060BC9AF1 /* PivotLevel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PivotLevel.swift; sourceTree = "<group>"; };
@@ -237,6 +256,7 @@
 		BAEC8C02158A22493B1B2537 /* MultiLegStrategyListView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MultiLegStrategyListView.swift; sourceTree = "<group>"; };
 		BC81FDA448EE43BF7946EB61 /* MLAccuracyModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MLAccuracyModels.swift; sourceTree = "<group>"; };
 		C4B15838B1E6488AF66CA162 /* MultiLegCreateStrategyView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MultiLegCreateStrategyView.swift; sourceTree = "<group>"; };
+		CD3298761E15BCBA2A849F93 /* TradeStationAuthService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TradeStationAuthService.swift; path = Services/TradeStationAuthService.swift; sourceTree = "<group>"; };
 		CDC622175EEC874C2B9768AB /* ChartDataV2Response.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartDataV2Response.swift; sourceTree = "<group>"; };
 		D16118E869A5401A364A0832 /* index.html */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.html; path = index.html; sourceTree = "<group>"; };
 		D2105D896E918ACDCE342EFA /* ForecastAccuracyTabView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ForecastAccuracyTabView.swift; sourceTree = "<group>"; };
@@ -258,6 +278,7 @@
 		F62F2ECC2F42B38100F3C9BF /* FuturesPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuturesPreferences.swift; sourceTree = "<group>"; };
 		F6370B202F13723F00011F78 /* DataQualityBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataQualityBadge.swift; sourceTree = "<group>"; };
 		F63BBA0C2F22EFF2003EE3B0 /* BacktestingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BacktestingModels.swift; sourceTree = "<group>"; };
+		DRP0002012345678900000001 /* DateRangePresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateRangePresets.swift; sourceTree = "<group>"; };
 		F63BBA0D2F22EFF2003EE3B0 /* PortfolioOptimizationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortfolioOptimizationModels.swift; sourceTree = "<group>"; };
 		F63BBA0E2F22EFF2003EE3B0 /* StressTestingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressTestingModels.swift; sourceTree = "<group>"; };
 		F63BBA0F2F22EFF2003EE3B0 /* TechnicalIndicatorsModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TechnicalIndicatorsModels.swift; sourceTree = "<group>"; };
@@ -293,6 +314,9 @@
 		F67ABD212F2AB14800916110 /* PivotStatisticalMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PivotStatisticalMetrics.swift; sourceTree = "<group>"; };
 		F67ABD262F2BE32600916110 /* PivotChartDrawing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PivotChartDrawing.swift; sourceTree = "<group>"; };
 		F67ABD282F2C619A00916110 /* IndicatorFavoritesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IndicatorFavoritesStore.swift; sourceTree = "<group>"; };
+		F68AFA952F492420003E6F4F /* TradeStationAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TradeStationAPIService.swift; sourceTree = "<group>"; };
+		F68AFA962F492420003E6F4F /* TradeStationStrategyExecutionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TradeStationStrategyExecutionService.swift; sourceTree = "<group>"; };
+		F68AFA9B2F492435003E6F4F /* TSStrategy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TSStrategy.swift; sourceTree = "<group>"; };
 		F6A123450123456789ABCDEF /* ForecastHorizonsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ForecastHorizonsView.swift; sourceTree = "<group>"; };
 		F6EBEFB82F23DD2C001C6A4D /* SelectedContractState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectedContractState.swift; sourceTree = "<group>"; };
 		F6EBEFBA2F23DD3D001C6A4D /* MarketDataService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketDataService.swift; sourceTree = "<group>"; };
@@ -303,8 +327,19 @@
 		F6EBEFC02F23DD7D001C6A4D /* KeyMetricsStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyMetricsStrip.swift; sourceTree = "<group>"; };
 		F6EBEFC12F23DD7D001C6A4D /* OverviewTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewTabView.swift; sourceTree = "<group>"; };
 		F6EBEFC22F23DD7D001C6A4D /* WhyRankedTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhyRankedTabView.swift; sourceTree = "<group>"; };
+		F6F0D7DF2F44B14A00047DB3 /* TSStrategyBuilderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TSStrategyBuilderView.swift; sourceTree = "<group>"; };
+		WEB000012F44B14A00047DB3 /* StrategyBuilderWebStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrategyBuilderWebStyle.swift; sourceTree = "<group>"; };
+		INT000012F44B14A00047DB3 /* IntegratedStrategyBuilder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IntegratedStrategyBuilder.swift; sourceTree = "<group>"; };
+		INT000022F44B14A00047DB3 /* StrategyEditorIntegrated.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = StrategyEditorIntegrated.swift; sourceTree = "<group>"; };
+		UNI000012F44B14A00047DB3 /* UnifiedIndicatorsService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UnifiedIndicatorsService.swift; sourceTree = "<group>"; };
+		F6F0D7E12F44B15900047DB3 /* TSStrategyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TSStrategyViewModel.swift; sourceTree = "<group>"; };
+		F6F0D7E32F44B16A00047DB3 /* FuturesConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FuturesConstants.swift; sourceTree = "<group>"; };
+		F6F0D7E42F44B16A00047DB3 /* TradeStationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TradeStationModels.swift; sourceTree = "<group>"; };
+		F6F0D7E72F44B17C00047DB3 /* TradeStationAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TradeStationAuthService.swift; sourceTree = "<group>"; };
+		F6F0D7E82F44B17C00047DB3 /* TSStrategyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TSStrategyService.swift; sourceTree = "<group>"; };
 		F6F972F32F0F72670010C828 /* ChartCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartCache.swift; sourceTree = "<group>"; };
 		F6FD04832F0D8B0C00AF337E /* Timeframe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Timeframe.swift; sourceTree = "<group>"; };
+		F80EF3AD54003857DC0F7A2A /* TSStrategyService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TSStrategyService.swift; path = Services/TSStrategyService.swift; sourceTree = "<group>"; };
 		F857540C973ADC971FC52E92 /* SupportResistanceOverlayView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SupportResistanceOverlayView.swift; sourceTree = "<group>"; };
 		F903565D8F0B0D702A53E8B0 /* lightweight-charts.standalone.production.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = "lightweight-charts.standalone.production.js"; sourceTree = "<group>"; };
 		F91ACF2F4CD1323E2B106D55 /* MultiLegModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MultiLegModels.swift; sourceTree = "<group>"; };
@@ -395,6 +430,10 @@
 		A5000004233456780000004 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				F6F0D7DF2F44B14A00047DB3 /* TSStrategyBuilderView.swift */,
+				WEB000012F44B14A00047DB3 /* StrategyBuilderWebStyle.swift */,
+				INT000012F44B14A00047DB3 /* IntegratedStrategyBuilder.swift */,
+				INT000022F44B14A00047DB3 /* StrategyEditorIntegrated.swift */,
 				F62F2ECA2F42B36600F3C9BF /* FuturesExpiryPickerInline.swift */,
 				F67ABD142F2982B200916110 /* RealtimeForecastToggle.swift */,
 				F6EBEFBC2F23DD7D001C6A4D /* ContractWorkbenchView.swift */,
@@ -447,6 +486,8 @@
 				F63BBA2E2F22F047003EE3B0 /* ForecastQualityView.swift */,
 				GS0000012345678900000010 /* GreeksSurfaceView.swift */,
 				GS0000012345678900000012 /* VolatilitySurfaceView.swift */,
+				600B4DA6E1D5A21C28EEF437 /* TSStrategyBuilderView.swift */,
+				9452CCC41C1DE30AB2FC973E /* StrategyBuilderView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -454,6 +495,7 @@
 		A5000005233456780000005 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
+				F6F0D7E12F44B15900047DB3 /* TSStrategyViewModel.swift */,
 				F67ABD282F2C619A00916110 /* IndicatorFavoritesStore.swift */,
 				F67ABD162F29885500916110 /* ChartViewModel+RealtimeForecasts.swift */,
 				F67ABD122F2982A600916110 /* ChartViewModel+RealtimeForecasts.swift */,
@@ -479,6 +521,7 @@
 				F60BB96E2EF036FA0044BE7E /* OptionsChainViewModel.swift */,
 				36F40CF767C45A1B6E4592C5 /* MultiLegViewModel.swift */,
 				FEAA00002F4444440000003 /* ValidationViewModel.swift */,
+				1850D87F11ED7CF80101307C /* TSStrategyViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -486,10 +529,14 @@
 		A5000006233456780000006 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				F68AFA9B2F492435003E6F4F /* TSStrategy.swift */,
+				F6F0D7E32F44B16A00047DB3 /* FuturesConstants.swift */,
+				F6F0D7E42F44B16A00047DB3 /* TradeStationModels.swift */,
 				F67ABD182F29887700916110 /* RealtimeForecastModels.swift */,
 				F67ABD0E2F29826A00916110 /* RealtimeForecastModels.swift */,
 				F6EBEFB82F23DD2C001C6A4D /* SelectedContractState.swift */,
 				F63BBA0C2F22EFF2003EE3B0 /* BacktestingModels.swift */,
+				DRP0002012345678900000001 /* DateRangePresets.swift */,
 				F63BBA0D2F22EFF2003EE3B0 /* PortfolioOptimizationModels.swift */,
 				F63BBA0E2F22EFF2003EE3B0 /* StressTestingModels.swift */,
 				F63BBA0F2F22EFF2003EE3B0 /* TechnicalIndicatorsModels.swift */,
@@ -522,6 +569,7 @@
 				13B11ECAF44D603B49B6D931 /* ReloadWatchlistResponse.swift */,
 				F91ACF2F4CD1323E2B106D55 /* MultiLegModels.swift */,
 				FEAA00002F4444440000002 /* UnifiedValidator.swift */,
+				5C2428BA2D00B5E02C47CE1D /* TradeStationModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -529,6 +577,10 @@
 		A5000007233456780000007 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				F68AFA952F492420003E6F4F /* TradeStationAPIService.swift */,
+				F68AFA962F492420003E6F4F /* TradeStationStrategyExecutionService.swift */,
+				F6F0D7E72F44B17C00047DB3 /* TradeStationAuthService.swift */,
+				F6F0D7E82F44B17C00047DB3 /* TSStrategyService.swift */,
 				F62F2ECC2F42B38100F3C9BF /* FuturesPreferences.swift */,
 				F67ABD262F2BE32600916110 /* PivotChartDrawing.swift */,
 				F67ABD1E2F2AB14800916110 /* OptimizedPivotDetector.swift */,
@@ -540,6 +592,7 @@
 				F6EBEFBA2F23DD3D001C6A4D /* MarketDataService.swift */,
 				A2000013233456780000013 /* APIClient.swift */,
 				MF0002012345678900000001 /* BackfillService.swift */,
+				UNI000012F44B14A00047DB3 /* UnifiedIndicatorsService.swift */,
 				A2000014233456780000014 /* Config.swift */,
 				E2A2B3C4D5E6F708192A3B4C /* SupabaseConnectivity.swift */,
 				MF0002012345678900000004 /* DataValidator.swift */,
@@ -554,6 +607,8 @@
 				B73A321AD0316BC1B2434132 /* SuperTrendAIIndicator.swift */,
 				B29181F82545367180388B23 /* ChartBridge.swift */,
 				F6F972F32F0F72670010C828 /* ChartCache.swift */,
+				F80EF3AD54003857DC0F7A2A /* TSStrategyService.swift */,
+				CD3298761E15BCBA2A849F93 /* TradeStationAuthService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -644,6 +699,7 @@
 				A7000001233456780000001 /* Sources */,
 				A4000001233456780000001 /* Frameworks */,
 				A4000002233456780000002 /* Resources */,
+				PERM0000123456780000001 /* Permanent Build Location */,
 			);
 			buildRules = (
 			);
@@ -705,6 +761,29 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		PERM0000123456780000001 /* Permanent Build Location */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(FULL_PRODUCT_NAME)",
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"/Users/ericpeterson/SwiftBolt_ML/build/Products/$(CONFIGURATION)/$(FULL_PRODUCT_NAME)",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Copy to permanent location that survives Clean Build Folder\nPERM_DIR=\"/Users/ericpeterson/SwiftBolt_ML/build/Products/${CONFIGURATION}\"\nSOURCE_APP=\"${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME}\"\nDEST_APP=\"$PERM_DIR/${FULL_PRODUCT_NAME}\"\n\nmkdir -p \"$PERM_DIR\"\nrm -rf \"$DEST_APP\"\n\n# Use tar to preserve permissions and bypass extended attribute issues\ntar -cf - -C \"$(dirname \"$SOURCE_APP\")\" \"$(basename \"$SOURCE_APP\")\" | tar -xf - -C \"$PERM_DIR\"\n\necho \"Copied to permanent location: $DEST_APP\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		A7000001233456780000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -713,6 +792,8 @@
 				A1000001233456780000001 /* SwiftBoltMLApp.swift in Sources */,
 				A1000002233456780000002 /* ContentView.swift in Sources */,
 				A1000003233456780000003 /* DevToolsView.swift in Sources */,
+				F68AFA972F492420003E6F4F /* TradeStationAPIService.swift in Sources */,
+				F68AFA982F492420003E6F4F /* TradeStationStrategyExecutionService.swift in Sources */,
 				A1000004233456780000004 /* SymbolSearchView.swift in Sources */,
 				F6EBEFC42F23DD7D001C6A4D /* KeyMetricsStrip.swift in Sources */,
 				F6EBEFC52F23DD7D001C6A4D /* WhyRankedTabView.swift in Sources */,
@@ -748,6 +829,7 @@
 				F63BBA122F22EFF2003EE3B0 /* TechnicalIndicatorsModels.swift in Sources */,
 				F63BBA132F22EFF2003EE3B0 /* PortfolioOptimizationModels.swift in Sources */,
 				F63BBA142F22EFF2003EE3B0 /* BacktestingModels.swift in Sources */,
+				DRP0001012345678900000001 /* DateRangePresets.swift in Sources */,
 				F63BBA152F22EFF2003EE3B0 /* StressTestingModels.swift in Sources */,
 				A1000018233456780000018 /* NewsViewModel.swift in Sources */,
 				F60BB96F2EF0371A0044BE7E /* OptionsChainViewModel.swift in Sources */,
@@ -766,6 +848,7 @@
 				731BC29C18688AD83AF0A16E /* StrikePriceComparisonView.swift in Sources */,
 				OHC10001233456780000001 /* OptionHistoryChartView.swift in Sources */,
 				1B3F554CCC5B9C65482F52FA /* WatchlistModels.swift in Sources */,
+				F6F0D7E22F44B15900047DB3 /* TSStrategyViewModel.swift in Sources */,
 				F670CAD92F1C882A00B4A7C2 /* MultiTimeframeForecastView.swift in Sources */,
 				A1000028233456780000028 /* IndicatorPanelViews.swift in Sources */,
 				A1000029233456780000029 /* SuperTrendPanelView.swift in Sources */,
@@ -791,6 +874,8 @@
 				29A803E54D93C7BF1DAAF99A /* ForecastAccuracyTabView.swift in Sources */,
 				1469ED89052E948868C57E9E /* PivotLevel.swift in Sources */,
 				186379F7E02CD3F395A86D0E /* PivotLevelsIndicator.swift in Sources */,
+				F6F0D7E92F44B17C00047DB3 /* TSStrategyService.swift in Sources */,
+				F6F0D7EA2F44B17C00047DB3 /* TradeStationAuthService.swift in Sources */,
 				E2C1E2A5492FE1CCBEFC9CCD /* PolynomialRegressionIndicator.swift in Sources */,
 				DB5DC3A92A28C05E8315D9E8 /* LogisticRegressionIndicator.swift in Sources */,
 				7CA2B280BFC9ADD0E5544234 /* SupportResistanceOverlayView.swift in Sources */,
@@ -830,6 +915,12 @@
 				F63BBA272F22F047003EE3B0 /* ModelTrainingViewModel.swift in Sources */,
 				F63BBA282F22F047003EE3B0 /* ForecastQualityViewModel.swift in Sources */,
 				GS0000012345678900000005 /* GreeksSurfaceViewModel.swift in Sources */,
+				F6F0D7E02F44B14A00047DB3 /* TSStrategyBuilderView.swift in Sources */,
+				WEB000022F44B14A00047DB3 /* StrategyBuilderWebStyle.swift in Sources */,
+				INT000032F44B14A00047DB3 /* IntegratedStrategyBuilder.swift in Sources */,
+				INT000042F44B14A00047DB3 /* StrategyEditorIntegrated.swift in Sources */,
+				UNI000022F44B14A00047DB3 /* UnifiedIndicatorsService.swift in Sources */,
+				F68AFA9E2F492435003E6F4F /* TSStrategy.swift in Sources */,
 				F67ABD132F2982A600916110 /* ChartViewModel+RealtimeForecasts.swift in Sources */,
 				GS0000012345678900000007 /* VolatilitySurfaceViewModel.swift in Sources */,
 				F63BBA292F22F047003EE3B0 /* ModelTrainingView.swift in Sources */,
@@ -841,6 +932,8 @@
 				56BCC553C667467C9F9DE1FA /* HydrationBanner.swift in Sources */,
 				F768A2A036F22E169CA9E8AC /* ReloadWatchlistResponse.swift in Sources */,
 				MF0001012345678900000001 /* BackfillService.swift in Sources */,
+				F6F0D7E52F44B16A00047DB3 /* FuturesConstants.swift in Sources */,
+				F6F0D7E62F44B16A00047DB3 /* TradeStationModels.swift in Sources */,
 				MF0001012345678900000002 /* BackfillStatusView.swift in Sources */,
 				DEFB00012345678900000001 /* DeferredBinding.swift in Sources */,
 				MF0001012345678900000003 /* CacheManager.swift in Sources */,
@@ -863,6 +956,7 @@
 				9A481B5659E62F5F2C7EC5EB /* MultiLegCreateStrategyView.swift in Sources */,
 				F6EBEFBB2F23DD3D001C6A4D /* MarketDataService.swift in Sources */,
 				893B3E6734F63C82006BBA70 /* AddToStrategySheet.swift in Sources */,
+				A9C7BE76FE341CF77B5F8B47 /* StrategyBuilderView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

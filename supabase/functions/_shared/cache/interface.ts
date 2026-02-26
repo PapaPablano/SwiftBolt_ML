@@ -17,7 +17,12 @@ export interface Cache {
   /**
    * Set a value in the cache with TTL (in seconds)
    */
-  set<T>(key: string, value: T, ttlSeconds: number, tags?: string[]): Promise<void>;
+  set<T>(
+    key: string,
+    value: T,
+    ttlSeconds: number,
+    tags?: string[],
+  ): Promise<void>;
 
   /**
    * Delete a specific key from the cache

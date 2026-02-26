@@ -43,7 +43,7 @@ serve(async (req) => {
     if (!request.symbol) {
       return corsResponse(
         { error: "symbol is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -57,7 +57,7 @@ serve(async (req) => {
           horizon: request.horizon || "1D",
           timeframe: request.timeframe || "d1",
         }),
-      }
+      },
     );
 
     return corsResponse(response);
@@ -67,7 +67,7 @@ serve(async (req) => {
       {
         error: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 });

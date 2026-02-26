@@ -5,6 +5,7 @@ enum SidebarSection: Hashable {
     case portfolio
     case multileg
     case predictions
+    case tradestation
     case devtools
 }
 
@@ -32,6 +33,8 @@ struct ContentView: View {
                     case .multileg:
                         MultiLegStrategyListView()
                             .environmentObject(appViewModel)
+                    case .tradestation:
+                        IntegratedStrategyBuilder()
                     default:
                         DetailView()
                             .environmentObject(appViewModel)
@@ -82,6 +85,14 @@ struct SidebarView: View {
             Divider()
 
             List(selection: $activeSection) {
+                Section {
+                    NavigationLink(value: SidebarSection.tradestation) {
+                        Label("Strategy Builder", systemImage: "chart.line.uptrend.xyaxis")
+                    }
+                } header: {
+                    Text("Strategy")
+                }
+
                 Section("Navigation") {
                     NavigationLink(value: SidebarSection.portfolio) {
                         Label("Portfolio", systemImage: "chart.pie.fill")
@@ -103,6 +114,7 @@ struct SidebarView: View {
                 #endif
             }
             .listStyle(.sidebar)
+            .frame(minHeight: 180)
         }
         .navigationTitle("SwiftBolt ML")
     }
@@ -125,10 +137,11 @@ struct DetailView: View {
                             Text("News").tag(0)
                             Text("Options").tag(1)
                             Text("Analysis").tag(2)
+                            Text("Strategy Builder").tag(3)
                         }
-                        .pickerStyle(.segmented)
+                        .pickerStyle(.menu)
                         .padding()
-                        .frame(maxWidth: 300)
+                        .frame(minWidth: 160)
 
                         if appViewModel.selectedDetailTab == 0 {
                             NewsListView()
@@ -136,13 +149,15 @@ struct DetailView: View {
                         } else if appViewModel.selectedDetailTab == 1 {
                             OptionsChainView()
                                 .environmentObject(appViewModel)
-                        } else {
+                        } else if appViewModel.selectedDetailTab == 2 {
                             AnalysisView()
                                 .environmentObject(appViewModel)
+                        } else {
+                            IntegratedStrategyBuilder()
                         }
                     }
                 }
-                .frame(minWidth: 300, idealWidth: 400, maxWidth: 600)
+                .frame(minWidth: 320, idealWidth: 420, maxWidth: 600)
             }
         } else {
             EmptyStateView()

@@ -4,15 +4,22 @@
 // Returns the strategy with all legs, alerts, and recent metrics.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
-import { getSupabaseClientWithAuth, getSupabaseClient } from "../_shared/supabase-client.ts";
 import {
-  type StrategyRow,
-  type LegRow,
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
+import {
+  getSupabaseClient,
+  getSupabaseClientWithAuth,
+} from "../_shared/supabase-client.ts";
+import {
   type AlertRow,
-  strategyRowToModel,
-  legRowToModel,
   alertRowToModel,
+  type LegRow,
+  legRowToModel,
+  type StrategyRow,
+  strategyRowToModel,
 } from "../_shared/types/multileg.ts";
 
 serve(async (req: Request): Promise<Response> => {
@@ -54,7 +61,9 @@ serve(async (req: Request): Promise<Response> => {
 
     if (userError || !user) {
       // For development/testing: use service role client which bypasses RLS
-      console.warn("[multi-leg-detail] No authenticated user, using service role client");
+      console.warn(
+        "[multi-leg-detail] No authenticated user, using service role client",
+      );
       supabase = getSupabaseClient();
       userId = "00000000-0000-0000-0000-000000000000";
     } else {
@@ -67,7 +76,7 @@ serve(async (req: Request): Promise<Response> => {
       .from("options_strategies")
       .select("*")
       .eq("id", strategyId)
-      .eq("user_id", userId)  // Filter by user ID (needed when using service role)
+      .eq("user_id", userId) // Filter by user ID (needed when using service role)
       .single();
 
     if (strategyError) {
@@ -75,7 +84,10 @@ serve(async (req: Request): Promise<Response> => {
         return errorResponse("Strategy not found", 404);
       }
       console.error("[multi-leg-detail] Strategy fetch error:", strategyError);
-      return errorResponse(`Failed to fetch strategy: ${strategyError.message}`, 500);
+      return errorResponse(
+        `Failed to fetch strategy: ${strategyError.message}`,
+        500,
+      );
     }
 
     // Fetch legs
@@ -180,7 +192,7 @@ serve(async (req: Request): Promise<Response> => {
 
     return jsonResponse({
       strategy,
-      legs,  // Also at top level for client decoding
+      legs, // Also at top level for client decoding
       alerts,
       metrics,
     });
@@ -188,7 +200,7 @@ serve(async (req: Request): Promise<Response> => {
     console.error("[multi-leg-detail] Error:", error);
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
-      500
+      500,
     );
   }
 });

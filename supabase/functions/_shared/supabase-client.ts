@@ -1,7 +1,10 @@
 // Shared Supabase client for Edge Functions
 // Uses Deno environment variables for configuration
 
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  createClient,
+  SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
  * Gets or creates a Supabase client using service role credentials.
@@ -14,7 +17,7 @@ export function getSupabaseClient(): SupabaseClient {
 
   if (!supabaseUrl || !supabaseServiceKey) {
     throw new Error(
-      "Missing required environment variables: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY"
+      "Missing required environment variables: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
     );
   }
 
@@ -31,14 +34,14 @@ export function getSupabaseClient(): SupabaseClient {
  * Respects RLS policies for user-specific operations.
  */
 export function getSupabaseClientWithAuth(
-  authHeader: string | null
+  authHeader: string | null,
 ): SupabaseClient {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
 
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error(
-      "Missing required environment variables: SUPABASE_URL or SUPABASE_ANON_KEY"
+      "Missing required environment variables: SUPABASE_URL or SUPABASE_ANON_KEY",
     );
   }
 

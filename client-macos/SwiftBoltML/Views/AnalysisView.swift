@@ -936,7 +936,7 @@ struct BacktestingSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: "chart.line.uptrend.xyaxis.circle")
+                Image(systemName: "chart.line.uptrend.xyaxis")
                     .font(.title3)
                     .foregroundStyle(.purple)
                 Text("Backtesting")
@@ -981,7 +981,7 @@ struct WalkForwardSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: "arrow.triangle.2.circlepath.circle")
+                Image(systemName: "arrow.triangle.2.circlepath")
                     .font(.title3)
                     .foregroundStyle(.indigo)
                 Text("Walk-Forward Optimization")
@@ -1204,7 +1204,7 @@ private struct GreeksSurfaceSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Image(systemName: "square.stack.3d.up")
+                Image(systemName: "square.stack.3d.up.fill")
                     .font(.title3)
                     .foregroundStyle(.orange)
                 Text("Greeks Surface")

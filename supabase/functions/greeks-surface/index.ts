@@ -47,7 +47,7 @@ serve(async (req) => {
     if (!request.symbol || !request.underlyingPrice || !request.volatility) {
       return corsResponse(
         { error: "symbol, underlyingPrice, and volatility are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -68,7 +68,7 @@ serve(async (req) => {
           nTimes: request.nTimes || 50,
           greek: request.greek,
         }),
-      }
+      },
     );
 
     return corsResponse(response);
@@ -78,7 +78,7 @@ serve(async (req) => {
       {
         error: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 });

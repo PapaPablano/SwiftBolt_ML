@@ -25,9 +25,16 @@ SwiftBolt_ML/
 ├── backend/          # Supabase Edge Functions
 ├── client-macos/     # SwiftUI macOS app
 ├── ml/               # Python ML pipeline
-├── infra/            # Docker, deployment configs
 ├── docs/             # Architecture documentation
-├── CLAUDE.md         # Claude Code instructions
+│   ├── deployment/   # Phase 7, canary, deployment guides
+│   ├── features/     # Feature implementation docs
+│   ├── fixes/        # Bug fix reports
+│   └── archived/     # Status summaries, action items
+├── scripts/          # Utilities and one-off scripts
+│   ├── ml/           # ML diagnostics, AAPL analysis
+│   ├── validation/   # Test and validation scripts
+│   ├── deployment/   # Deployment scripts
+│   └── legacy/       # Deprecated/demo scripts
 └── README.md
 ```
 
@@ -59,6 +66,8 @@ npx supabase start
 npx supabase functions serve
 ```
 
+Or use the convenience script: `./scripts/start-backend.sh [start|stop|restart|logs|status]`
+
 ### ML Pipeline
 
 ```bash
@@ -69,8 +78,8 @@ pip install -e .
 ```
 
 **Recent Updates (Jan–Feb 2026)**:
-- **ML consolidation**: Unified forecast processor (`unified_forecast_job.py`), split evaluation jobs (daily/intraday), Redis feature caching (4–6x improvement). See `CONSOLIDATION_COMPLETE_SUMMARY.md`.
-- **Phase 7 canary (Feb 2026)**: 2-model ensemble (LSTM + ARIMA-GARCH) in 6-day canary on AAPL, MSFT, SPY; walk-forward validation and divergence monitoring. Transformer disabled in production workflow. See `1_27_Phase_7.1_Schedule.md` and `PHASE_7_CANARY_DEPLOYMENT_STATUS.md`.
+- **ML consolidation**: Unified forecast processor (`unified_forecast_job.py`), split evaluation jobs (daily/intraday), Redis feature caching (4–6x improvement). See `docs/CONSOLIDATION_COMPLETE_SUMMARY.md`.
+- **Phase 7 canary (Feb 2026)**: 2-model ensemble (LSTM + ARIMA-GARCH) in 6-day canary on AAPL, MSFT, SPY; walk-forward validation and divergence monitoring. Transformer disabled in production workflow. See `docs/deployment/1_27_Phase_7.1_Schedule.md` and `docs/deployment/PHASE_7_CANARY_DEPLOYMENT_STATUS.md`.
 - **Sentiment**: Temporarily disabled in features (zero-variance fix); backfill and `validate_sentiment_variance` before re-enable. See `docs/technicalsummary.md`.
 
 **Running Forecasts**:
@@ -100,13 +109,13 @@ Open `client-macos/SwiftBolt.xcodeproj` in Xcode and run.
 - [Implementation Checklist](docs/blueprint_checklist.md) - Phase-based progress tracker
 
 ### Phase 7 & ML (Feb 2026)
-- [Phase 7.1 Schedule](1_27_Phase_7.1_Schedule.md) - Canary plan, GO/NO-GO criteria
-- [Phase 7 Canary Status](PHASE_7_CANARY_DEPLOYMENT_STATUS.md) - Deployment readiness, 2-model ensemble
+- [Phase 7.1 Schedule](docs/deployment/1_27_Phase_7.1_Schedule.md) - Canary plan, GO/NO-GO criteria
+- [Phase 7 Canary Status](docs/deployment/PHASE_7_CANARY_DEPLOYMENT_STATUS.md) - Deployment readiness, 2-model ensemble
 
 ### ML Pipeline Consolidation (Jan 2026)
-- [Consolidation Summary](CONSOLIDATION_COMPLETE_SUMMARY.md) - Complete overview of Phases 1-4
-- [Implementation Plan](CONSOLIDATION_IMPLEMENTATION_PLAN.md) - Detailed consolidation roadmap
-- [Dependency Analysis](DEPENDENCY_ANALYSIS.md) - Original dependency mapping
+- [Consolidation Summary](docs/CONSOLIDATION_COMPLETE_SUMMARY.md) - Complete overview of Phases 1-4
+- [Implementation Plan](docs/CONSOLIDATION_IMPLEMENTATION_PLAN.md) - Detailed consolidation roadmap
+- [Dependency Analysis](docs/DEPENDENCY_ANALYSIS.md) - Original dependency mapping
 - [Test Suite](tests/audit_tests/README_PHASE3.md) - Testing documentation
 - [Legacy Scripts](ml/src/_legacy/README.md) - Archived code reference
 

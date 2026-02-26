@@ -5,8 +5,15 @@
 // If all legs are closed, marks the strategy as closed.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
-import { getSupabaseClientWithAuth, getSupabaseClient } from "../_shared/supabase-client.ts";
+import {
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
+import {
+  getSupabaseClient,
+  getSupabaseClientWithAuth,
+} from "../_shared/supabase-client.ts";
 import {
   type CloseLegRequest,
   type LegRow,
@@ -56,7 +63,9 @@ serve(async (req: Request): Promise<Response> => {
 
     if (userError || !user) {
       // For development/testing: use service role client which bypasses RLS
-      console.warn("[multi-leg-close-leg] No authenticated user, using service role client");
+      console.warn(
+        "[multi-leg-close-leg] No authenticated user, using service role client",
+      );
       supabase = getSupabaseClient();
       userId = "00000000-0000-0000-0000-000000000000";
     } else {
@@ -69,7 +78,7 @@ serve(async (req: Request): Promise<Response> => {
       .from("options_legs")
       .select("*, options_strategies!inner(id, user_id, status)")
       .eq("id", body.legId)
-      .eq("options_strategies.user_id", userId)  // Filter by user ID
+      .eq("options_strategies.user_id", userId) // Filter by user ID
       .single();
 
     if (legError) {
@@ -85,7 +94,10 @@ serve(async (req: Request): Promise<Response> => {
     // Validate closure
     const validation = validateLegClosure(leg, body.exitPrice);
     if (!validation.isValid) {
-      return jsonResponse({ error: "Validation failed", errors: validation.errors }, 400);
+      return jsonResponse({
+        error: "Validation failed",
+        errors: validation.errors,
+      }, 400);
     }
 
     // Calculate realized P&L
@@ -109,7 +121,9 @@ serve(async (req: Request): Promise<Response> => {
         exit_price: body.exitPrice,
         exit_timestamp: new Date().toISOString(),
         realized_pl: realizedPL,
-        notes: body.notes ? `${leg.notes ?? ""}\n${body.notes}`.trim() : leg.notes,
+        notes: body.notes
+          ? `${leg.notes ?? ""}\n${body.notes}`.trim()
+          : leg.notes,
         updated_at: new Date().toISOString(),
       })
       .eq("id", body.legId);
@@ -135,7 +149,7 @@ serve(async (req: Request): Promise<Response> => {
 
       const totalRealizedPL = (allLegs ?? []).reduce(
         (sum, l) => sum + (l.realized_pl ?? 0),
-        0
+        0,
       );
 
       await supabase
@@ -164,13 +178,14 @@ serve(async (req: Request): Promise<Response> => {
     return jsonResponse({
       leg: legRowToModel(updatedLeg as LegRow),
       realizedPL,
-      allLegsClosed: !remainingError && remainingLegs && remainingLegs.length === 0,
+      allLegsClosed: !remainingError && remainingLegs &&
+        remainingLegs.length === 0,
     });
   } catch (error) {
     console.error("[multi-leg-close-leg] Error:", error);
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
-      500
+      500,
     );
   }
 });

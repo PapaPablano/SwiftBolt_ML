@@ -42,7 +42,7 @@ serve(async (req) => {
     if (!request.symbol || !request.slices || request.slices.length === 0) {
       return corsResponse(
         { error: "symbol and slices are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -57,7 +57,7 @@ serve(async (req) => {
           nStrikes: request.nStrikes || 50,
           nMaturities: request.nMaturities || 30,
         }),
-      }
+      },
     );
 
     return corsResponse(response);
@@ -67,7 +67,7 @@ serve(async (req) => {
       {
         error: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 });

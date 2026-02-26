@@ -134,7 +134,8 @@ struct ChartView: View {
 
             // Simplified conditional logic - check data directly
             // Show loading only when isLoading AND there's no data yet
-            if chartViewModel.isLoading && chartViewModel.chartData == nil && chartViewModel.chartDataV2 == nil {
+            let showLoading = chartViewModel.isLoading && chartViewModel.chartData == nil && chartViewModel.chartDataV2 == nil
+            if showLoading {
                 LoadingChartView()
             } else if let error = chartViewModel.errorMessage {
                 ChartErrorView(message: error) {

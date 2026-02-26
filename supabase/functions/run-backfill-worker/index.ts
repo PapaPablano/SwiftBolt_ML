@@ -4,11 +4,15 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { fetchIntradayForDay, type BackfillBar } from "../_shared/backfill-adapter.ts";
+import {
+  type BackfillBar,
+  fetchIntradayForDay,
+} from "../_shared/backfill-adapter.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-sb-gateway-key",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-sb-gateway-key",
 };
 
 interface BackfillChunk {
@@ -33,15 +37,22 @@ serve(async (req) => {
     console.error("[BackfillWorker] SB_GATEWAY_KEY is not set");
     return new Response(
       JSON.stringify({ error: "Gateway key not configured" }),
-      { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
-  const providedKey = req.headers.get("x-sb-gateway-key") ?? req.headers.get("X-SB-Gateway-Key") ?? "";
+  const providedKey = req.headers.get("x-sb-gateway-key") ??
+    req.headers.get("X-SB-Gateway-Key") ?? "";
   if (providedKey !== expectedKey) {
     console.warn("[BackfillWorker] Invalid or missing X-SB-Gateway-Key");
     return new Response(
       JSON.stringify({ error: "Unauthorized" }),
-      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 
@@ -51,27 +62,36 @@ serve(async (req) => {
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
     // 1) Claim a batch of pending chunks (bounded parallelism)
-    const { data: chunks, error: claimErr } = await supabase.rpc("claim_backfill_chunks", {
-      p_limit: 4,
-    });
+    const { data: chunks, error: claimErr } = await supabase.rpc(
+      "claim_backfill_chunks",
+      {
+        p_limit: 4,
+      },
+    );
 
     if (claimErr) {
       console.error("[BackfillWorker] Claim error:", claimErr);
       return new Response(
-        JSON.stringify({ error: claimErr.message }), 
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: claimErr.message }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 
     if (!chunks || chunks.length === 0) {
       console.log("[BackfillWorker] No work available");
       return new Response(
-        JSON.stringify({ message: "no work", processed: 0 }), 
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ message: "no work", processed: 0 }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 
@@ -79,14 +99,16 @@ serve(async (req) => {
 
     // 2) Process chunks in parallel
     const results = await Promise.allSettled(
-      chunks.map((chunk: BackfillChunk) => processChunk(supabase, chunk))
+      chunks.map((chunk: BackfillChunk) => processChunk(supabase, chunk)),
     );
 
     // 3) Count successes and failures
     const succeeded = results.filter((r) => r.status === "fulfilled").length;
     const failed = results.filter((r) => r.status === "rejected").length;
 
-    console.log(`[BackfillWorker] Processed ${succeeded} succeeded, ${failed} failed`);
+    console.log(
+      `[BackfillWorker] Processed ${succeeded} succeeded, ${failed} failed`,
+    );
 
     // 4) Update job progress for all affected jobs
     await supabase.rpc("update_job_progress");
@@ -102,38 +124,59 @@ serve(async (req) => {
         failed,
         elapsed,
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   } catch (error) {
     console.error("[BackfillWorker] Unexpected error:", error);
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: error instanceof Error ? error.message : String(error),
         duration_ms: Date.now() - startTime,
       }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 });
 
-async function processChunk(supabase: any, chunk: BackfillChunk): Promise<void> {
+async function processChunk(
+  supabase: any,
+  chunk: BackfillChunk,
+): Promise<void> {
   const { id, symbol, timeframe, day, try_count } = chunk;
 
-  console.log(`[BackfillWorker] Processing chunk ${id}: ${symbol} ${timeframe} ${day}`);
+  console.log(
+    `[BackfillWorker] Processing chunk ${id}: ${symbol} ${timeframe} ${day}`,
+  );
 
   try {
     // Fetch bars for this day (pass supabase for symbol_id lookup)
-    const bars = await fetchIntradayForDay({ symbol, timeframe, day, supabase });
+    const bars = await fetchIntradayForDay({
+      symbol,
+      timeframe,
+      day,
+      supabase,
+    });
 
     if (bars.length === 0) {
-      console.warn(`[BackfillWorker] No bars returned for ${symbol} ${timeframe} ${day}`);
+      console.warn(
+        `[BackfillWorker] No bars returned for ${symbol} ${timeframe} ${day}`,
+      );
     }
 
     // Upsert bars to database (batched for large datasets)
     await upsertBars(supabase, bars);
 
     // Mark chunk as done
-    await supabase.from("backfill_chunks").update({ status: "done" }).eq("id", id);
+    await supabase.from("backfill_chunks").update({ status: "done" }).eq(
+      "id",
+      id,
+    );
 
     console.log(`[BackfillWorker] Chunk ${id} completed: ${bars.length} bars`);
   } catch (error) {
@@ -169,7 +212,10 @@ async function upsertBars(supabase: any, bars: BackfillBar[]): Promise<void> {
     });
 
     if (error) {
-      console.error(`[BackfillWorker] Upsert error (batch ${i / batchSize}):`, error);
+      console.error(
+        `[BackfillWorker] Upsert error (batch ${i / batchSize}):`,
+        error,
+      );
       throw error;
     }
   }

@@ -42,7 +42,9 @@ interface PortfolioOptimizeResponse {
 /**
  * Call FastAPI to optimize portfolio
  */
-async function optimizePortfolio(request: PortfolioOptimizeRequest): Promise<PortfolioOptimizeResponse> {
+async function optimizePortfolio(
+  request: PortfolioOptimizeRequest,
+): Promise<PortfolioOptimizeResponse> {
   return await callFastApi<PortfolioOptimizeResponse>(
     "/api/v1/portfolio-optimize",
     {
@@ -57,7 +59,7 @@ async function optimizePortfolio(request: PortfolioOptimizeRequest): Promise<Por
         maxWeight: request.maxWeight,
       }),
     },
-    60000 // 60 second timeout for portfolio optimization
+    60000, // 60 second timeout for portfolio optimization
   );
 }
 
@@ -73,7 +75,7 @@ serve(async (req: Request) => {
     return corsResponse(
       { error: "Method not allowed. Use POST." },
       405,
-      origin
+      origin,
     );
   }
 
@@ -81,13 +83,15 @@ serve(async (req: Request) => {
     const body = await req.json() as PortfolioOptimizeRequest;
 
     // Validate required fields
-    if (!body.symbols || !Array.isArray(body.symbols) || body.symbols.length === 0) {
+    if (
+      !body.symbols || !Array.isArray(body.symbols) || body.symbols.length === 0
+    ) {
       return corsResponse(
         {
           error: "Missing or invalid symbols array",
         },
         400,
-        origin
+        origin,
       );
     }
 
@@ -97,19 +101,26 @@ serve(async (req: Request) => {
           error: "Missing required field: method",
         },
         400,
-        origin
+        origin,
       );
     }
 
     // Validate method
-    const validMethods = ["max_sharpe", "min_variance", "risk_parity", "efficient"];
+    const validMethods = [
+      "max_sharpe",
+      "min_variance",
+      "risk_parity",
+      "efficient",
+    ];
     if (!validMethods.includes(body.method)) {
       return corsResponse(
         {
-          error: `Invalid method: ${body.method}. Valid: ${validMethods.join(", ")}`,
+          error: `Invalid method: ${body.method}. Valid: ${
+            validMethods.join(", ")
+          }`,
         },
         400,
-        origin
+        origin,
       );
     }
 
@@ -120,12 +131,12 @@ serve(async (req: Request) => {
           error: "targetReturn required for efficient portfolio method",
         },
         400,
-        origin
+        origin,
       );
     }
 
     console.log(
-      `[PortfolioOptimize] Optimizing ${body.symbols.length} symbols using ${body.method}`
+      `[PortfolioOptimize] Optimizing ${body.symbols.length} symbols using ${body.method}`,
     );
 
     // Optimize portfolio
@@ -135,12 +146,14 @@ serve(async (req: Request) => {
       return corsResponse(
         { error: result.error, symbols: body.symbols, method: body.method },
         500,
-        origin
+        origin,
       );
     }
 
     console.log(
-      `[PortfolioOptimize] Complete: ${result.allocation.sharpeRatio.toFixed(2)} Sharpe, ${result.allocation.expectedReturn.toFixed(2)}% return`
+      `[PortfolioOptimize] Complete: ${
+        result.allocation.sharpeRatio.toFixed(2)
+      } Sharpe, ${result.allocation.expectedReturn.toFixed(2)}% return`,
     );
 
     return corsResponse(result, 200, origin);
@@ -148,11 +161,10 @@ serve(async (req: Request) => {
     console.error("[PortfolioOptimize] Error:", error);
     return corsResponse(
       {
-        error:
-          error instanceof Error ? error.message : "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
       },
       500,
-      origin
+      origin,
     );
   }
 });

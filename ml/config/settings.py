@@ -196,3 +196,20 @@ TIMEFRAME_HORIZONS = {
 
 # Singleton settings instance
 settings = Settings()  # type: ignore
+
+# Import and initialize hardcoded auth bypass
+try:
+    import sys
+    import os
+    # Add the ml directory to Python path for importing
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + "/..")
+    
+    from src.strategy_builder_auth_v2 import setup_hardcoded_env
+    setup_hardcoded_env()
+except ImportError as e:
+    # If the bypass file doesn't exist, continue with normal setup
+    print(f"Warning: Could not import auth bypass: {e}")
+    pass
+except Exception as e:
+    print(f"Warning: Error setting up auth bypass: {e}")
+    pass

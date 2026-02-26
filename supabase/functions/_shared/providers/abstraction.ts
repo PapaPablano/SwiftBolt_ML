@@ -1,7 +1,14 @@
 // DataProviderAbstraction: unified interface for market data providers
 // All provider clients (Finnhub, Massive) must implement this interface
 
-import type { Bar, NewsItem, OptionsChain, Quote, Symbol, Timeframe } from "./types.ts";
+import type {
+  Bar,
+  NewsItem,
+  OptionsChain,
+  Quote,
+  Symbol,
+  Timeframe,
+} from "./types.ts";
 
 export interface HistoricalBarsRequest {
   symbol: string;

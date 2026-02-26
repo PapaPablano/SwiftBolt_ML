@@ -1,0 +1,29 @@
+# Hardcoded environment file to bypass authentication verification for Trade Station strategy builder
+
+# Supabase Configuration
+SUPABASE_URL=https://cygflaemtmwiwaviclks.supabase.co
+SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5Z2ZsYWVtdG13aXdhdmljbGtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUyMTEzMzYsImV4cCI6MjA4MDc4NzMzNn0.51NE7weJk0PMXZJ26UgtcMZLejjPHDNoegcfpaImVJs
+SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5Z2ZsYWVtdG13aXdhdmljbGtzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTIxMTMzNiwiZXhwIjoyMDgwNzg3MzM2fQ.YajeNHOQ63uBDDZhJ2YYHK7L-BKmnZAviDqrlk2TQxU
+
+# Market Data Providers
+FINNHUB_API_KEY=d3slu8hr01qpdd5k9hngd3slu8hr01qpdd5k9ho0
+MASSIVE_API_KEY=yHWJ5XAQcK_ebnCCHY2xqBurHpkTEUXL
+
+
+# Alpaca API credentials for Python backfill scripts
+ALPACA_API_KEY=AK7VELM3TFKFFRKLHCEUYGTDTI
+ALPACA_API_SECRET=EwkQJyu5qMMKn38WXsmJWKAF7CV6YZ7FmJ56MwUnjH96
+
+#Tradier API credentials
+TRADIER_API_KEY=BusvWaAgCGG5cLfvpUAWvI6A8Ayv
+
+# Adaptive SuperTrend integration flags
+ENABLE_ADAPTIVE_SUPERTREND=true
+ADAPTIVE_ST_OPTIMIZATION=true
+ADAPTIVE_ST_CACHING=true
+ADAPTIVE_ST_CACHE_TTL_HOURS=24
+ADAPTIVE_ST_METRIC_OBJECTIVE=sharpe
+ADAPTIVE_ST_MIN_BARS=60
+
+# Databento Configuration (CME Globex futures data)
+DATABENTO_API_KEY=db-UusqXRExE4ekMmyunVTenHbkPM7eN

@@ -1766,24 +1766,22 @@ final class APIClient {
         }
     }
     
-    // MARK: - Backtesting
-    
-    /// Run backtest for a trading strategy
-    func runBacktest(request: BacktestRequest) async throws -> BacktestResponse {
+    // MARK: - Backtesting (unified job-based API)
+
+    /// Queue a backtest job; returns job_id for polling
+    func queueBacktestJob(request: BacktestRequest) async throws -> BacktestJobQueuedResponse {
         var urlRequest = URLRequest(url: functionURL("backtest-strategy"))
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        // Manually build JSON to handle [String: Any] params
+
         var jsonDict: [String: Any] = [
             "symbol": request.symbol,
             "strategy": request.strategy,
             "startDate": request.startDate,
             "endDate": request.endDate
         ]
-        
         if let timeframe = request.timeframe {
             jsonDict["timeframe"] = timeframe
         }
@@ -1793,9 +1791,23 @@ final class APIClient {
         if let params = request.params {
             jsonDict["params"] = params
         }
-        
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
-        
+
+        return try await performRequest(urlRequest)
+    }
+
+    /// Get backtest job status and result (when completed)
+    func getBacktestJobStatus(jobId: String) async throws -> BacktestJobStatusResponse {
+        guard var components = URLComponents(url: functionURL("backtest-strategy"), resolvingAgainstBaseURL: false) else {
+            throw APIError.invalidURL
+        }
+        components.queryItems = [URLQueryItem(name: "id", value: jobId)]
+
+        var urlRequest = URLRequest(url: components.url!)
+        urlRequest.httpMethod = "GET"
+        urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+
         return try await performRequest(urlRequest)
     }
     

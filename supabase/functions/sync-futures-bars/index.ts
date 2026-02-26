@@ -25,7 +25,10 @@ serve(async (req: Request): Promise<Response> => {
   const origin = req.headers.get("origin");
 
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": origin || "*" } });
+    return new Response(null, {
+      status: 204,
+      headers: { "Access-Control-Allow-Origin": origin || "*" },
+    });
   }
 
   if (req.method !== "POST") {
@@ -34,16 +37,20 @@ serve(async (req: Request): Promise<Response> => {
 
   try {
     const body: SyncBarsRequest = await req.json().catch(() => ({}));
-    const { 
-      root, 
-      timeframe = "d1", 
-      years_back = 2, 
+    const {
+      root,
+      timeframe = "d1",
+      years_back = 2,
       days_back = 90,
-      contracts 
+      contracts,
     } = body;
 
     if (!root) {
-      return corsResponse({ error: "Missing required parameter: root" }, 400, origin);
+      return corsResponse(
+        { error: "Missing required parameter: root" },
+        400,
+        origin,
+      );
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -51,7 +58,11 @@ serve(async (req: Request): Promise<Response> => {
     const polygonApiKey = Deno.env.get("MASSIVE_API_KEY");
 
     if (!supabaseUrl || !supabaseServiceKey) {
-      return corsResponse({ error: "Missing Supabase credentials" }, 500, origin);
+      return corsResponse(
+        { error: "Missing Supabase credentials" },
+        500,
+        origin,
+      );
     }
 
     if (!polygonApiKey) {
@@ -62,9 +73,9 @@ serve(async (req: Request): Promise<Response> => {
 
     // Determine which contracts to sync
     let contractsToSync: string[] = [];
-    
+
     if (contracts && contracts.length > 0) {
-      contractsToSync = contracts.map(c => c.toUpperCase());
+      contractsToSync = contracts.map((c) => c.toUpperCase());
     } else {
       const { data: rootData } = await supabase
         .from("futures_roots")
@@ -86,16 +97,21 @@ serve(async (req: Request): Promise<Response> => {
         .limit(10);
 
       if (!contractData || contractData.length === 0) {
-        return corsResponse({ error: `No active contracts for root: ${root}` }, 404, origin);
+        return corsResponse(
+          { error: `No active contracts for root: ${root}` },
+          404,
+          origin,
+        );
       }
 
       contractData.sort((a, b) => {
         if (a.is_spot && !b.is_spot) return -1;
         if (!a.is_spot && b.is_spot) return 1;
-        return (b.expiry_year * 12 + b.expiry_month) - (a.expiry_year * 12 + a.expiry_month);
+        return (b.expiry_year * 12 + b.expiry_month) -
+          (a.expiry_year * 12 + a.expiry_month);
       });
-      
-      contractsToSync = contractData.slice(0, 4).map(c => c.symbol);
+
+      contractsToSync = contractData.slice(0, 4).map((c) => c.symbol);
     }
 
     // Calculate date range
@@ -104,7 +120,9 @@ serve(async (req: Request): Promise<Response> => {
     if (["m15", "m30", "h1", "h4"].includes(timeframe)) {
       startDate = new Date(now.getTime() - days_back * 24 * 60 * 60 * 1000);
     } else {
-      startDate = new Date(now.getTime() - years_back * 365 * 24 * 60 * 60 * 1000);
+      startDate = new Date(
+        now.getTime() - years_back * 365 * 24 * 60 * 60 * 1000,
+      );
     }
 
     const startStr = startDate.toISOString().split("T")[0];
@@ -118,7 +136,11 @@ serve(async (req: Request): Promise<Response> => {
       .single();
 
     if (!symbolData) {
-      return corsResponse({ error: `Root symbol not found: ${root}` }, 404, origin);
+      return corsResponse(
+        { error: `Root symbol not found: ${root}` },
+        404,
+        origin,
+      );
     }
 
     const symbolId = symbolData.id;
@@ -139,15 +161,16 @@ serve(async (req: Request): Promise<Response> => {
           contractSymbol,
           `${contractSymbol}:XCME`,
         ];
-        
+
         let bars: any[] = [];
-        
+
         for (const ticker of tickerFormats) {
           try {
-            const url = `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/day/${startStr}/${endStr}?adjusted=false&sort=asc&limit=50000&apiKey=${polygonApiKey}`;
+            const url =
+              `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/1/day/${startStr}/${endStr}?adjusted=false&sort=asc&limit=50000&apiKey=${polygonApiKey}`;
             const response = await fetch(url);
             const data = await response.json();
-            
+
             if (data.results && data.results.length > 0) {
               bars = data.results;
               break;
@@ -156,7 +179,7 @@ serve(async (req: Request): Promise<Response> => {
             // Try next format
           }
         }
-        
+
         result.bars_fetched = bars.length;
 
         if (bars.length === 0) {
@@ -166,7 +189,7 @@ serve(async (req: Request): Promise<Response> => {
         }
 
         // Transform and upsert bars
-        const rows = bars.map(bar => ({
+        const rows = bars.map((bar) => ({
           symbol_id: symbolId,
           timeframe,
           ts: new Date(bar.t).toISOString(),
@@ -193,30 +216,37 @@ serve(async (req: Request): Promise<Response> => {
         } else {
           result.bars_inserted = rows.length;
         }
-
       } catch (error) {
-        result.errors.push(error instanceof Error ? error.message : String(error));
+        result.errors.push(
+          error instanceof Error ? error.message : String(error),
+        );
       }
 
       results.push(result);
     }
 
-    return corsResponse({
-      success: true,
-      timestamp: new Date().toISOString(),
-      root,
-      timeframe,
-      contracts_processed: contractsToSync.length,
-      total_bars_fetched: results.reduce((sum, r) => sum + r.bars_fetched, 0),
-      total_bars_inserted: results.reduce((sum, r) => sum + r.bars_inserted, 0),
-      results,
-    }, 200, origin);
-
+    return corsResponse(
+      {
+        success: true,
+        timestamp: new Date().toISOString(),
+        root,
+        timeframe,
+        contracts_processed: contractsToSync.length,
+        total_bars_fetched: results.reduce((sum, r) => sum + r.bars_fetched, 0),
+        total_bars_inserted: results.reduce(
+          (sum, r) => sum + r.bars_inserted,
+          0,
+        ),
+        results,
+      },
+      200,
+      origin,
+    );
   } catch (error) {
     return corsResponse(
       { error: error instanceof Error ? error.message : "Unknown error" },
       500,
-      origin
+      origin,
     );
   }
 });

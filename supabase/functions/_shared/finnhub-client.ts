@@ -10,11 +10,11 @@ interface FinnhubCandleResponse {
   o: number[]; // Open prices
   t: number[]; // Timestamps (Unix seconds)
   v: number[]; // Volume
-  s: string;   // Status: "ok" or "no_data"
+  s: string; // Status: "ok" or "no_data"
 }
 
 export interface OHLCBar {
-  ts: string;      // ISO8601 timestamp
+  ts: string; // ISO8601 timestamp
   open: number;
   high: number;
   low: number;
@@ -26,7 +26,7 @@ export interface OHLCBar {
 const TIMEFRAME_TO_RESOLUTION: Record<Timeframe, string> = {
   m15: "15",
   h1: "60",
-  h4: "240",  // Note: Finnhub uses "240" for 4-hour, not all plans support this
+  h4: "240", // Note: Finnhub uses "240" for 4-hour, not all plans support this
   d1: "D",
   w1: "W",
 };
@@ -46,7 +46,7 @@ const TIMEFRAME_SECONDS: Record<Timeframe, number> = {
 export async function fetchCandles(
   symbol: string,
   timeframe: Timeframe,
-  barCount = 100
+  barCount = 100,
 ): Promise<OHLCBar[]> {
   const apiKey = Deno.env.get("FINNHUB_API_KEY");
   if (!apiKey) {
@@ -75,7 +75,9 @@ export async function fetchCandles(
   const response = await fetch(url.toString());
 
   if (!response.ok) {
-    throw new Error(`Finnhub API error: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `Finnhub API error: ${response.status} ${response.statusText}`,
+    );
   }
 
   const data: FinnhubCandleResponse = await response.json();
@@ -121,11 +123,11 @@ export function isValidTimeframe(value: string): value is Timeframe {
 
 interface FinnhubNewsItem {
   category: string;
-  datetime: number;      // Unix timestamp
+  datetime: number; // Unix timestamp
   headline: string;
   id: number;
   image: string;
-  related: string;       // Ticker symbols
+  related: string; // Ticker symbols
   source: string;
   summary: string;
   url: string;
@@ -136,7 +138,7 @@ export interface NewsItem {
   title: string;
   source: string;
   url: string;
-  publishedAt: string;   // ISO8601
+  publishedAt: string; // ISO8601
   summary?: string;
 }
 
@@ -146,7 +148,7 @@ export interface NewsItem {
  */
 export async function fetchCompanyNews(
   symbol: string,
-  daysBack = 7
+  daysBack = 7,
 ): Promise<NewsItem[]> {
   const apiKey = Deno.env.get("FINNHUB_API_KEY");
   if (!apiKey) {
@@ -171,7 +173,9 @@ export async function fetchCompanyNews(
   const response = await fetch(url.toString());
 
   if (!response.ok) {
-    throw new Error(`Finnhub API error: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `Finnhub API error: ${response.status} ${response.statusText}`,
+    );
   }
 
   const data: FinnhubNewsItem[] = await response.json();
@@ -195,7 +199,7 @@ export async function fetchCompanyNews(
  * Docs: https://finnhub.io/docs/api/market-news
  */
 export async function fetchMarketNews(
-  category: "general" | "forex" | "crypto" | "merger" = "general"
+  category: "general" | "forex" | "crypto" | "merger" = "general",
 ): Promise<NewsItem[]> {
   const apiKey = Deno.env.get("FINNHUB_API_KEY");
   if (!apiKey) {
@@ -211,7 +215,9 @@ export async function fetchMarketNews(
   const response = await fetch(url.toString());
 
   if (!response.ok) {
-    throw new Error(`Finnhub API error: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `Finnhub API error: ${response.status} ${response.statusText}`,
+    );
   }
 
   const data: FinnhubNewsItem[] = await response.json();

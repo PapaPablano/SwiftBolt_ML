@@ -209,15 +209,17 @@ class TradeLogger:
         self.trades: List[Trade] = []
         self.positions: Dict[str, Position] = {}
         self.closed_positions: List[Position] = []
-    
+        self.closed_pnls: List[float] = []  # Realized P&L per closed trade
+        self._pnl_by_trade_id: Dict[str, float] = {}  # trade_id -> realized P&L for SELLs that closed
+
     def log_trade(self, trade: Trade):
         """Log a trade and update positions.
-        
+
         Args:
             trade: Trade object to log
         """
         self.trades.append(trade)
-        
+
         # Update or create position
         if trade.symbol not in self.positions:
             # New position
@@ -232,8 +234,13 @@ class TradeLogger:
         else:
             # Update existing position
             position = self.positions[trade.symbol]
+            # Capture realized P&L before update zeros total_cost; attach to this trade for API
+            if trade.action == "SELL" and position.quantity == trade.quantity:
+                realized_pnl = -position.total_cost - trade.total_cost()
+                self.closed_pnls.append(realized_pnl)
+                self._pnl_by_trade_id[trade.trade_id] = realized_pnl
             position.update(trade)
-            
+
             # Move to closed if position is fully closed
             if position.is_closed():
                 self.closed_positions.append(position)
@@ -243,21 +250,22 @@ class TradeLogger:
     
     def get_trade_history(self, symbol: Optional[str] = None) -> pd.DataFrame:
         """Get trade history as DataFrame.
-        
-        Args:
-            symbol: Filter by symbol (optional)
-        
-        Returns:
-            DataFrame with trade history
+
+        Includes 'pnl' column for SELL rows that closed a position (realized P&L).
         """
         if not self.trades:
             return pd.DataFrame()
-        
-        df = pd.DataFrame([t.to_dict() for t in self.trades])
-        
+
+        rows = []
+        for t in self.trades:
+            row = t.to_dict()
+            row['pnl'] = self._pnl_by_trade_id.get(t.trade_id)
+            rows.append(row)
+        df = pd.DataFrame(rows)
+
         if symbol:
             df = df[df['symbol'] == symbol]
-        
+
         return df
     
     def get_positions(self) -> pd.DataFrame:
@@ -350,6 +358,8 @@ class TradeLogger:
         self.trades = []
         self.positions = {}
         self.closed_positions = []
+        self.closed_pnls = []
+        self._pnl_by_trade_id = {}
         logger.info("Trade logger reset")
 
 

@@ -47,7 +47,10 @@ serve(async (req: Request) => {
       .maybeSingle();
 
     if (symbolError) {
-      console.error("[get-unified-validation] symbol lookup error", symbolError);
+      console.error(
+        "[get-unified-validation] symbol lookup error",
+        symbolError,
+      );
       return new Response(
         JSON.stringify({ error: "Failed to resolve symbol" }),
         { status: 500, headers: { "Content-Type": "application/json" } },
@@ -67,11 +70,17 @@ serve(async (req: Request) => {
       .from("model_validation_stats")
       .select("validation_type, accuracy, created_at")
       .eq("symbol_id", symbolId)
-      .in("validation_type", ["backtest", "walkforward"] satisfies ValidationType[])
+      .in(
+        "validation_type",
+        ["backtest", "walkforward"] satisfies ValidationType[],
+      )
       .order("created_at", { ascending: false });
 
     if (validationError) {
-      console.error("[get-unified-validation] validation stats error", validationError);
+      console.error(
+        "[get-unified-validation] validation stats error",
+        validationError,
+      );
       return new Response(
         JSON.stringify({ error: "Failed to fetch validation stats" }),
         { status: 500, headers: { "Content-Type": "application/json" } },
@@ -116,7 +125,10 @@ serve(async (req: Request) => {
         .maybeSingle();
 
       if (tfError) {
-        console.error(`[get-unified-validation] ${timeframe} signal error`, tfError);
+        console.error(
+          `[get-unified-validation] ${timeframe} signal error`,
+          tfError,
+        );
         return new Response(
           JSON.stringify({ error: "Failed to fetch timeframe signals" }),
           { status: 500, headers: { "Content-Type": "application/json" } },

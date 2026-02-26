@@ -16,7 +16,8 @@ import type { Timeframe } from "../_shared/providers/types.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 interface UserRefreshRequest {
@@ -67,7 +68,7 @@ serve(async (req: Request): Promise<Response> => {
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
     const body: UserRefreshRequest = await req.json();
@@ -105,17 +106,20 @@ serve(async (req: Request): Promise<Response> => {
         status: "failed",
         message: `Symbol not found: ${symbol}`,
       });
-      return new Response(JSON.stringify({
-        symbol,
-        success: false,
-        steps,
-        summary,
-        message: "Symbol not found",
-        durationMs: Date.now() - startTime,
-      }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          symbol,
+          success: false,
+          steps,
+          summary,
+          message: "Symbol not found",
+          durationMs: Date.now() - startTime,
+        }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     const symbolId = symbolRecord.id;
@@ -175,7 +179,8 @@ serve(async (req: Request): Promise<Response> => {
           steps.push({
             step: "queue_backfill",
             status: "completed",
-            message: `Queued deep backfill (${barCount} d1 bars < 100 threshold)`,
+            message:
+              `Queued deep backfill (${barCount} d1 bars < 100 threshold)`,
             details: { d1Bars: barCount, threshold: 100 },
           });
         }
@@ -209,7 +214,9 @@ serve(async (req: Request): Promise<Response> => {
           .single();
 
         const now = Math.floor(Date.now() / 1000);
-        const latestTs = latestBar?.ts ? new Date(latestBar.ts).getTime() / 1000 : now - 86400 * 30;
+        const latestTs = latestBar?.ts
+          ? new Date(latestBar.ts).getTime() / 1000
+          : now - 86400 * 30;
 
         // Fetch new bars
         const freshBars = await router.getHistoricalBars({
@@ -236,7 +243,9 @@ serve(async (req: Request): Promise<Response> => {
 
           await supabase
             .from("ohlc_bars_v2")
-            .upsert(barsToInsert, { onConflict: "symbol_id,timeframe,ts,provider,is_forecast" });
+            .upsert(barsToInsert, {
+              onConflict: "symbol_id,timeframe,ts,provider,is_forecast",
+            });
 
           totalNewBars += freshBars.length;
         }
@@ -246,7 +255,9 @@ serve(async (req: Request): Promise<Response> => {
       steps.push({
         step: "fetch_bars",
         status: "completed",
-        message: totalNewBars > 0 ? `Updated ${totalNewBars} bars` : "Data is current",
+        message: totalNewBars > 0
+          ? `Updated ${totalNewBars} bars`
+          : "Data is current",
         details: { newBars: totalNewBars, timeframes },
       });
     } catch (barError) {
@@ -324,7 +335,9 @@ serve(async (req: Request): Promise<Response> => {
       steps.push({
         step: "queue_options_job",
         status: "failed",
-        message: optionsError instanceof Error ? optionsError.message : "Unknown error",
+        message: optionsError instanceof Error
+          ? optionsError.message
+          : "Unknown error",
       });
     }
 
@@ -385,7 +398,9 @@ serve(async (req: Request): Promise<Response> => {
         steps.push({
           step: "calculate_sr",
           status: "skipped",
-          message: `Insufficient data for S/R (${recentBars?.length || 0} bars)`,
+          message: `Insufficient data for S/R (${
+            recentBars?.length || 0
+          } bars)`,
         });
       }
     } catch (srError) {
@@ -401,7 +416,9 @@ serve(async (req: Request): Promise<Response> => {
     const success = failedSteps.length === 0;
 
     const messageParts: string[] = [];
-    if (summary.barsUpdated > 0) messageParts.push(`${summary.barsUpdated} bars updated`);
+    if (summary.barsUpdated > 0) {
+      messageParts.push(`${summary.barsUpdated} bars updated`);
+    }
     if (summary.backfillQueued) messageParts.push("backfill queued");
     if (summary.mlJobQueued) messageParts.push("ML job queued");
     if (summary.optionsJobQueued) messageParts.push("options job queued");
@@ -424,7 +441,7 @@ serve(async (req: Request): Promise<Response> => {
     const hour = now.getUTCHours();
     const dayOfWeek = now.getUTCDay();
     let nextExpectedUpdate: string | null = null;
-    
+
     // During market hours (roughly 14:00-21:00 UTC = 9:00-4:00 ET), expect update in 15-30 min
     if (dayOfWeek >= 1 && dayOfWeek <= 5 && hour >= 14 && hour < 21) {
       const nextUpdate = new Date(now.getTime() + 15 * 60 * 1000);
@@ -439,17 +456,20 @@ serve(async (req: Request): Promise<Response> => {
       queuedJobs,
       warnings,
       nextExpectedUpdate,
-      message: messageParts.length > 0 ? messageParts.join(", ") : "Data is current",
+      message: messageParts.length > 0
+        ? messageParts.join(", ")
+        : "Data is current",
       durationMs: Date.now() - startTime,
     };
 
-    console.log(`[user-refresh] Completed for ${symbol}: ${response.message} (${response.durationMs}ms)`);
+    console.log(
+      `[user-refresh] Completed for ${symbol}: ${response.message} (${response.durationMs}ms)`,
+    );
 
     return new Response(JSON.stringify(response), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-
   } catch (error) {
     console.error("[user-refresh] Error:", error);
     return new Response(
@@ -460,7 +480,7 @@ serve(async (req: Request): Promise<Response> => {
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   }
 });

@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { getCorsHeaders, handlePreflight, corsResponse } from "../_shared/cors.ts";
+import {
+  corsResponse,
+  getCorsHeaders,
+  handlePreflight,
+} from "../_shared/cors.ts";
 
 declare const Deno: {
   env: {
@@ -7,7 +11,11 @@ declare const Deno: {
   };
 };
 
-function jsonResponse(data: unknown, status = 200, origin: string | null = null): Response {
+function jsonResponse(
+  data: unknown,
+  status = 200,
+  origin: string | null = null,
+): Response {
   const corsHeaders = getCorsHeaders(origin);
   return new Response(JSON.stringify(data), {
     status,
@@ -21,7 +29,11 @@ function jsonResponse(data: unknown, status = 200, origin: string | null = null)
   });
 }
 
-function errorResponse(message: string, status = 400, origin: string | null = null): Response {
+function errorResponse(
+  message: string,
+  status = 400,
+  origin: string | null = null,
+): Response {
   return jsonResponse({ error: message }, status, origin);
 }
 
@@ -33,16 +45,37 @@ type AlpacaSnapshotsResponse = Record<
   {
     latestTrade?: { t: string; p: number };
     latestQuote?: { bp: number; ap: number };
-    minuteBar?: { t: string; o: number; h: number; l: number; c: number; v: number };
-    dailyBar?: { t: string; o: number; h: number; l: number; c: number; v: number };
-    prevDailyBar?: { t: string; o: number; h: number; l: number; c: number; v: number };
+    minuteBar?: {
+      t: string;
+      o: number;
+      h: number;
+      l: number;
+      c: number;
+      v: number;
+    };
+    dailyBar?: {
+      t: string;
+      o: number;
+      h: number;
+      l: number;
+      c: number;
+      v: number;
+    };
+    prevDailyBar?: {
+      t: string;
+      o: number;
+      h: number;
+      l: number;
+      c: number;
+      v: number;
+    };
   }
 >;
 
 async function fetchAlpacaJson<T>(
   url: string,
   apiKey: string,
-  apiSecret: string
+  apiSecret: string,
 ): Promise<T> {
   const res = await fetch(url, {
     headers: {
@@ -78,7 +111,9 @@ interface QuoteData {
   last_trade_time: string;
 }
 
-function buildMarketState(isOpen: boolean): { market_state: string; market_description: string } {
+function buildMarketState(
+  isOpen: boolean,
+): { market_state: string; market_description: string } {
   if (isOpen) {
     return { market_state: "open", market_description: "Market is open" };
   }
@@ -87,7 +122,7 @@ function buildMarketState(isOpen: boolean): { market_state: string; market_descr
 
 serve(async (req: Request): Promise<Response> => {
   const origin = req.headers.get("origin");
-  
+
   if (req.method === "OPTIONS") {
     return handlePreflight(origin);
   }
@@ -101,7 +136,11 @@ serve(async (req: Request): Promise<Response> => {
     const alpacaApiSecret = Deno.env.get("ALPACA_API_SECRET");
 
     if (!alpacaApiKey || !alpacaApiSecret) {
-      return errorResponse("ALPACA_API_KEY/ALPACA_API_SECRET not configured", 500, origin);
+      return errorResponse(
+        "ALPACA_API_KEY/ALPACA_API_SECRET not configured",
+        500,
+        origin,
+      );
     }
 
     let symbolsToFetch: string[] = [];
@@ -124,14 +163,18 @@ serve(async (req: Request): Promise<Response> => {
       }
 
       const bodyObj: Record<string, unknown> =
-        typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+        typeof body === "object" && body !== null
+          ? (body as Record<string, unknown>)
+          : {};
 
       if (Array.isArray(bodyObj.symbols)) {
         symbolsToFetch = bodyObj.symbols
           .map((s) => String(s).trim().toUpperCase())
           .filter((s) => s.length > 0);
       } else if (typeof bodyObj.symbol === "string") {
-        symbolsToFetch = [bodyObj.symbol.trim().toUpperCase()].filter((s) => s.length > 0);
+        symbolsToFetch = [bodyObj.symbol.trim().toUpperCase()].filter((s) =>
+          s.length > 0
+        );
       }
     }
 
@@ -145,12 +188,22 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const symbolsParam = symbolsToFetch.join(",");
-    const snapshotsUrl = `${ALPACA_DATA_BASE}/stocks/snapshots?symbols=${encodeURIComponent(symbolsParam)}&feed=iex`;
+    const snapshotsUrl = `${ALPACA_DATA_BASE}/stocks/snapshots?symbols=${
+      encodeURIComponent(symbolsParam)
+    }&feed=iex`;
     const clockUrl = `${ALPACA_TRADING_BASE}/clock`;
 
     const [snapshots, clock] = await Promise.all([
-      fetchAlpacaJson<AlpacaSnapshotsResponse>(snapshotsUrl, alpacaApiKey, alpacaApiSecret),
-      fetchAlpacaJson<{ is_open: boolean }>(clockUrl, alpacaApiKey, alpacaApiSecret),
+      fetchAlpacaJson<AlpacaSnapshotsResponse>(
+        snapshotsUrl,
+        alpacaApiKey,
+        alpacaApiSecret,
+      ),
+      fetchAlpacaJson<{ is_open: boolean }>(
+        clockUrl,
+        alpacaApiKey,
+        alpacaApiSecret,
+      ),
     ]);
 
     const market = buildMarketState(!!clock.is_open);
@@ -169,7 +222,9 @@ serve(async (req: Request): Promise<Response> => {
         const high = snapshot.dailyBar?.h ?? 0;
         const low = snapshot.dailyBar?.l ?? 0;
         const prevClose = snapshot.prevDailyBar?.c;
-        const close = (typeof prevClose === "number" && prevClose > 0) ? prevClose : last;
+        const close = (typeof prevClose === "number" && prevClose > 0)
+          ? prevClose
+          : last;
         const volume = snapshot.dailyBar?.v ?? 0;
         const change = last - close;
         const changePct = close ? (change / close) * 100 : 0;
@@ -190,18 +245,24 @@ serve(async (req: Request): Promise<Response> => {
           average_volume: 0,
           week_52_high: 0,
           week_52_low: 0,
-          last_trade_time: typeof lastTradeTime === "string" ? lastTradeTime : new Date().toISOString(),
+          last_trade_time: typeof lastTradeTime === "string"
+            ? lastTradeTime
+            : new Date().toISOString(),
         };
       })
       .filter((q): q is QuoteData => q !== null);
 
-    return jsonResponse({
-      success: true,
-      ...market,
-      timestamp: new Date().toISOString(),
-      count: quoteData.length,
-      quotes: quoteData,
-    }, 200, origin);
+    return jsonResponse(
+      {
+        success: true,
+        ...market,
+        timestamp: new Date().toISOString(),
+        count: quoteData.length,
+        quotes: quoteData,
+      },
+      200,
+      origin,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[quotes] Error:", error);

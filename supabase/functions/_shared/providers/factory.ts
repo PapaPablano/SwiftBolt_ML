@@ -19,7 +19,7 @@ let cacheInstance: MemoryCache | null = null;
 /**
  * Initialize the provider system with rate limiting and caching
  * Call this once at application startup
- * 
+ *
  * Alpaca-only strategy:
  * - Alpaca: PRIMARY provider for all OHLCV data (historical + real-time)
  * - Finnhub: News only
@@ -30,7 +30,9 @@ export function initializeProviders(): ProviderRouter {
     return routerInstance;
   }
 
-  console.log("[Provider Factory] Initializing provider system (Alpaca-only strategy)...");
+  console.log(
+    "[Provider Factory] Initializing provider system (Alpaca-only strategy)...",
+  );
 
   // Initialize rate limiter
   const rateLimits = getRateLimits();
@@ -51,24 +53,26 @@ export function initializeProviders(): ProviderRouter {
   }
 
   if (!alpacaApiKey || !alpacaApiSecret) {
-    throw new Error("Missing required API keys: ALPACA_API_KEY and ALPACA_API_SECRET are required for Alpaca-only strategy");
+    throw new Error(
+      "Missing required API keys: ALPACA_API_KEY and ALPACA_API_SECRET are required for Alpaca-only strategy",
+    );
   }
 
   const finnhubClient = new FinnhubClient(
     finnhubApiKey,
     rateLimiterInstance,
-    cacheInstance
+    cacheInstance,
   );
 
   const yahooFinanceClient = new YahooFinanceClient(
-    cacheInstance
+    cacheInstance,
   );
 
   const alpacaClient = new AlpacaClient(
     alpacaApiKey,
     alpacaApiSecret,
     rateLimiterInstance,
-    cacheInstance
+    cacheInstance,
   );
 
   // Warm Alpaca assets cache on startup to avoid validation delays
@@ -79,12 +83,17 @@ export function initializeProviders(): ProviderRouter {
   console.log(`  apiSecretLength: ${alpacaApiSecret?.length}`);
   console.log("}");
 
-  console.log("[Provider Factory] Alpaca client status: { initialized: true, willUsePrimary: \"alpaca\" }");
+  console.log(
+    '[Provider Factory] Alpaca client status: { initialized: true, willUsePrimary: "alpaca" }',
+  );
 
   alpacaClient.getAssets().then(() => {
     console.log("[Provider Factory] Alpaca assets cache warmed successfully");
   }).catch((error) => {
-    console.warn("[Provider Factory] Failed to warm Alpaca assets cache:", error);
+    console.warn(
+      "[Provider Factory] Failed to warm Alpaca assets cache:",
+      error,
+    );
   });
 
   console.log("[Provider Factory] Provider clients initialized");
@@ -119,7 +128,9 @@ export function initializeProviders(): ProviderRouter {
 
   routerInstance = new ProviderRouter(providers, policy);
 
-  console.log("[Provider Factory] Provider router initialized (Alpaca-only strategy)");
+  console.log(
+    "[Provider Factory] Provider router initialized (Alpaca-only strategy)",
+  );
 
   return routerInstance;
 }
@@ -146,7 +157,9 @@ export function injectSupabaseClient(_supabase: any): void {
 
   // Note: With Alpaca-only strategy, we don't need to inject Supabase client
   // into Massive/Polygon provider since it's no longer used
-  console.log("[Provider Factory] Supabase client injection not needed for Alpaca-only strategy");
+  console.log(
+    "[Provider Factory] Supabase client injection not needed for Alpaca-only strategy",
+  );
 }
 
 /**

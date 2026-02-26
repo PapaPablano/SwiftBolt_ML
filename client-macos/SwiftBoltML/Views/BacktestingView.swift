@@ -70,8 +70,72 @@ struct BacktestingView: View {
                     Text("Date Range")
                         .font(.headline)
                     
+                    // Quick Presets
+                    Text("Quick Settings")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    
+                    // Recent Presets
+                    ForEach(PresetCategory.recent.presets) { preset in
+                        presetButton(preset)
+                    }
+                    
+                    Text("Market Regimes")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 8)
+                    
+                    // Market Regime Presets
+                    ForEach(PresetCategory.dotCom.presets) { preset in
+                        presetButton(preset)
+                    }
+                    ForEach(PresetCategory.financialCrisis.presets) { preset in
+                        presetButton(preset)
+                    }
+                    ForEach(PresetCategory.pandemic.presets) { preset in
+                        presetButton(preset)
+                    }
+                    ForEach(PresetCategory.modern.presets) { preset in
+                        presetButton(preset)
+                    }
+                    
+                    if let preset = viewModel.selectedPreset {
+                        HStack {
+                            Image(systemName: preset.icon)
+                                .font(.caption)
+                            Text(preset.description)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    
+                    Divider()
+                        .padding(.vertical, 4)
+                    
+                    // Custom Date Pickers
+                    HStack {
+                        Text("Custom Range")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if viewModel.selectedPreset != nil {
+                            Button("Clear") {
+                                viewModel.clearPreset()
+                            }
+                            .font(.caption)
+                            .buttonStyle(.link)
+                        }
+                    }
+                    
                     DatePicker("Start Date", selection: $viewModel.startDate, displayedComponents: .date)
+                        .onChange(of: viewModel.startDate) { _, _ in
+                            viewModel.clearPreset()
+                        }
                     DatePicker("End Date", selection: $viewModel.endDate, displayedComponents: .date)
+                        .onChange(of: viewModel.endDate) { _, _ in
+                            viewModel.clearPreset()
+                        }
                 }
                 
                 Divider()
@@ -97,6 +161,23 @@ struct BacktestingView: View {
                 
                 Spacer()
                 
+                // Job status (when jobId is set)
+                if viewModel.jobId != nil || viewModel.jobStatus != .idle {
+                    HStack(spacing: 8) {
+                        Text(viewModel.jobStatus.displayLabel)
+                            .font(.caption)
+                            .foregroundStyle(viewModel.jobStatus == .failed ? .red : .secondary)
+                        if let id = viewModel.jobId, viewModel.jobStatus.isPolling {
+                            Text("·")
+                                .foregroundStyle(.secondary)
+                            Text(String(id.prefix(8)) + "…")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
                 // Run Button
                 Button(action: {
                     Task {
@@ -110,7 +191,7 @@ struct BacktestingView: View {
                         } else {
                             Image(systemName: "play.fill")
                         }
-                        Text(viewModel.isLoading ? "Running..." : "Run Backtest")
+                        Text(viewModel.isLoading ? viewModel.jobStatus.displayLabel : "Run Backtest")
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -225,6 +306,39 @@ struct BacktestingView: View {
         }
     }
     
+    private func presetButton(_ preset: DateRangePreset) -> some View {
+        Button(action: {
+            viewModel.applyPreset(preset)
+        }) {
+            HStack {
+                Image(systemName: preset.icon)
+                    .font(.caption)
+                    .foregroundStyle(viewModel.selectedPreset == preset ? Color.accentColor : Color.secondary)
+                    .frame(width: 16)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(preset.displayName)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                    Text(preset.description)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if viewModel.selectedPreset == preset {
+                    Image(systemName: "checkmark")
+                        .font(.caption)
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+            .padding(.vertical, 4)
+            .padding(.horizontal, 8)
+            .background(viewModel.selectedPreset == preset ? Color.accentColor.opacity(0.1) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+    }
+    
+    // MARK: - Results Panel
     // MARK: - Results Panel
     
     private var resultsPanel: some View {

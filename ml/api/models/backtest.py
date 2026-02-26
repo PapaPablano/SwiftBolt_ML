@@ -33,6 +33,10 @@ class Trade(BaseModel):
     quantity: int
     price: float
     pnl: Optional[float] = None
+    entryPrice: Optional[float] = None
+    exitPrice: Optional[float] = None
+    duration: Optional[float] = None  # e.g. bars or days
+    fees: Optional[float] = None
 
 
 class BacktestMetrics(BaseModel):
@@ -42,6 +46,9 @@ class BacktestMetrics(BaseModel):
     maxDrawdown: Optional[float] = None
     winRate: Optional[float] = None
     totalTrades: int
+    profitFactor: Optional[float] = None
+    averageTrade: Optional[float] = None
+    cagr: Optional[float] = None
 
 
 class BacktestResponse(BaseModel):
@@ -57,4 +64,18 @@ class BacktestResponse(BaseModel):
     equityCurve: List[EquityPoint]
     trades: List[Trade]
     barsUsed: int
+    error: Optional[str] = None
+
+
+class StrategyBacktestResultsResponse(BaseModel):
+    """Response for GET /strategy-backtest-results (stored job result from DB)."""
+
+    jobId: str
+    status: str
+    symbol: Optional[str] = None
+    startDate: Optional[str] = None
+    endDate: Optional[str] = None
+    metrics: Dict[str, Any]
+    trades: List[Dict[str, Any]]
+    equityCurve: List[Dict[str, Any]]
     error: Optional[str] = None

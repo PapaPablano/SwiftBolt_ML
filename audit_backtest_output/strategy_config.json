@@ -1,0 +1,32 @@
+{
+  "exitConditions": [
+    {
+      "type": "supertrend_trend",
+      "value": 0,
+      "params": {},
+      "operator": "=="
+    }
+  ],
+  "positionSizing": {
+    "type": "percent_of_equity",
+    "value": 2
+  },
+  "riskManagement": {
+    "stopLoss": {
+      "type": "percent",
+      "value": 7
+    },
+    "takeProfit": {
+      "type": "percent",
+      "value": 20
+    }
+  },
+  "entryConditions": [
+    {
+      "type": "supertrend_trend",
+      "value": 1,
+      "params": {},
+      "operator": "=="
+    }
+  ]
+}

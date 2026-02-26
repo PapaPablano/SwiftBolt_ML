@@ -76,7 +76,9 @@ function validatePayload(payload: Partial<AuditPayload>): string | null {
     return "symbol is required";
   }
 
-  if (typeof payload.confidence !== "number" || Number.isNaN(payload.confidence)) {
+  if (
+    typeof payload.confidence !== "number" || Number.isNaN(payload.confidence)
+  ) {
     return "confidence must be a number";
   }
 
@@ -84,7 +86,9 @@ function validatePayload(payload: Partial<AuditPayload>): string | null {
     return "confidence must be between 0 and 1";
   }
 
-  if (typeof payload.timestamp !== "number" || !Number.isFinite(payload.timestamp)) {
+  if (
+    typeof payload.timestamp !== "number" || !Number.isFinite(payload.timestamp)
+  ) {
     return "timestamp must be a Unix epoch second";
   }
 

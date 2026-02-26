@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Strategy Builder</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <h1>Strategy Builder</h1>
+      <button id="new-strategy-btn" class="btn btn-primary">+ New Strategy</button>
+    </header>
+
+    <main class="main-content">
+      <aside class="sidebar">
+        <h2>My Strategies</h2>
+        <div id="strategy-list" class="strategy-list">
+          <p class="empty-state">No strategies yet</p>
+        </div>
+      </aside>
+
+      <section class="content">
+        <div id="welcome-panel" class="panel">
+          <h2>Welcome to Strategy Builder</h2>
+          <p>Create and test custom trading strategies using technical indicators and conditions.</p>
+          <button id="create-first-btn" class="btn btn-primary">Create Your First Strategy</button>
+        </div>
+
+        <div id="strategy-editor" class="panel hidden">
+          <div class="editor-header">
+            <input type="text" id="strategy-name" placeholder="Strategy Name" class="strategy-name-input">
+            <div class="editor-actions">
+              <button id="save-strategy-btn" class="btn btn-primary">Save</button>
+              <button id="delete-strategy-btn" class="btn btn-danger">Delete</button>
+            </div>
+          </div>
+
+          <div class="editor-body">
+            <div class="config-section">
+              <h3>Description</h3>
+              <textarea id="strategy-description" placeholder="Describe your strategy..."></textarea>
+            </div>
+
+            <div class="config-section">
+              <h3>Entry Conditions</h3>
+              <div class="conditions-list" id="entry-conditions"></div>
+              <button class="btn btn-secondary add-condition-btn" data-type="entry">+ Add Entry Condition</button>
+            </div>
+
+            <div class="config-section">
+              <h3>Exit Conditions</h3>
+              <div class="conditions-list" id="exit-conditions"></div>
+              <button class="btn btn-secondary add-condition-btn" data-type="exit">+ Add Exit Condition</button>
+            </div>
+
+            <div class="config-section">
+              <h3>Visual Strategy Map</h3>
+              <p class="section-hint">Drag to move nodes. Double-click to remove.</p>
+              <div class="strategy-map-container">
+                <div class="map-legend">
+                  <span class="legend-item"><span class="legend-dot entry"></span> Entry</span>
+                  <span class="legend-item"><span class="legend-dot exit"></span> Exit</span>
+                </div>
+                <canvas id="strategy-canvas" width="600" height="300"></canvas>
+              </div>
+            </div>
+
+            <div class="config-section">
+              <h3>Parameters</h3>
+              <div class="parameters-grid">
+                <div class="param">
+                  <label>Position Size (% of capital)</label>
+                  <input type="number" id="param-position-size" value="10" min="1" max="100">
+                </div>
+                <div class="param">
+                  <label>Stop Loss (%)</label>
+                  <input type="number" id="param-stop-loss" value="2" min="0.1" max="50" step="0.1">
+                </div>
+                <div class="param">
+                  <label>Take Profit (%)</label>
+                  <input type="number" id="param-take-profit" value="4" min="0.1" max="100" step="0.1">
+                </div>
+              </div>
+            </div>
+
+            <div class="config-section">
+              <h3>Strategy Summary</h3>
+              <div id="strategy-summary" class="strategy-summary">
+                <div class="summary-empty">No conditions defined yet</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="backtest-panel" class="panel hidden">
+          <div class="backtest-header">
+            <h2>Backtest Results</h2>
+            <div class="backtest-controls">
+              <select id="backtest-history" class="backtest-history">
+                <option value="">-- Select Previous Backtest --</option>
+              </select>
+              <button id="load-history-btn" class="btn btn-secondary">Load</button>
+              <select id="backtest-symbol">
+                <option value="AAPL">AAPL</option>
+                <option value="MSFT">MSFT</option>
+                <option value="GOOGL">GOOGL</option>
+                <option value="TSLA">TSLA</option>
+                <option value="SPY">SPY</option>
+                <option value="QQQ">QQQ</option>
+              </select>
+              <select id="backtest-timeframe">
+                <option value="1D">1 Day</option>
+                <option value="4H">4 Hours</option>
+                <option value="1H" selected>1 Hour</option>
+                <option value="30m">30 Minutes</option>
+                <option value="15m">15 Minutes</option>
+                <option value="5m">5 Minutes</option>
+              </select>
+              <input type="date" id="backtest-start">
+              <input type="date" id="backtest-end">
+              <button id="run-backtest-btn" class="btn btn-primary">Run Backtest</button>
+            </div>
+          </div>
+
+          <div id="backtest-status" class="backtest-status hidden">
+            <div class="spinner"></div>
+            <span>Running backtest...</span>
+          </div>
+
+          <div id="backtest-results" class="backtest-results hidden">
+            <div class="metrics-grid">
+              <div class="metric-card">
+                <span class="metric-label">Total Trades</span>
+                <span class="metric-value" id="metric-trades">-</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Win Rate</span>
+                <span class="metric-value" id="metric-winrate">-</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Total Return</span>
+                <span class="metric-value" id="metric-return">-</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Max Drawdown</span>
+                <span class="metric-value" id="metric-drawdown">-</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Profit Factor</span>
+                <span class="metric-value" id="metric-profit-factor">-</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Avg Win</span>
+                <span class="metric-value" id="metric-avg-win">-</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Avg Loss</span>
+                <span class="metric-value" id="metric-avg-loss">-</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Sharpe Ratio</span>
+                <span class="metric-value" id="metric-sharpe">-</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Sortino Ratio</span>
+                <span class="metric-value" id="metric-sortino">-</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Calmar Ratio</span>
+                <span class="metric-value" id="metric-calmar">-</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Expectancy</span>
+                <span class="metric-value" id="metric-expectancy">-</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Recovery Factor</span>
+                <span class="metric-value" id="metric-recovery">-</span>
+              </div>
+            </div>
+
+            <div class="charts-row">
+              <div class="equity-curve">
+                <div class="chart-header">
+                  <h3>Equity Curve</h3>
+                  <div class="chart-controls">
+                    <button class="chart-btn active" data-chart="equity">Equity</button>
+                    <button class="chart-btn" data-chart="drawdown">Drawdown</button>
+                    <button class="chart-btn" data-chart="both">Both</button>
+                  </div>
+                </div>
+                <canvas id="equity-chart" width="800" height="300"></canvas>
+              </div>
+              
+              <div class="secondary-charts">
+                <div class="chart-card">
+                  <h3>Win/Loss Distribution</h3>
+                  <canvas id="winloss-chart" width="200" height="150"></canvas>
+                </div>
+                <div class="chart-card">
+                  <h3>Trade Duration</h3>
+                  <canvas id="duration-chart" width="200" height="150"></canvas>
+                </div>
+                <div class="chart-card">
+                  <h3>Monthly Returns</h3>
+                  <canvas id="monthly-chart" width="200" height="150"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <div class="trades-list">
+              <h3>Trades</h3>
+              <table id="trades-table">
+                <thead>
+                  <tr>
+                    <th>Entry Date</th>
+                    <th>Exit Date</th>
+                    <th>Entry Price</th>
+                    <th>Exit Price</th>
+                    <th>P&L</th>
+                    <th>P&L %</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="condition-modal" class="modal hidden">
+      <div class="modal-content">
+        <h3>Add Condition</h3>
+        <div class="form-group">
+          <label for="condition-indicator">Indicator</label>
+          <select id="condition-indicator">
+            <optgroup label="SuperTrend AI (Your Library)">
+              <option value="supertrend_ai">SuperTrend AI</option>
+              <option value="supertrend_trend">SuperTrend Trend</option>
+              <option value="supertrend_signal">SuperTrend Signal</option>
+              <option value="supertrend_factor">SuperTrend Factor</option>
+              <option value="supertrend_strength">SuperTrend Strength</option>
+            </optgroup>
+            <optgroup label="Momentum">
+              <option value="rsi">RSI</option>
+              <option value="stochastic">Stochastic</option>
+              <option value="stochastic_k">K (Fast %K)</option>
+              <option value="stochastic_d">D (Slow %D)</option>
+              <option value="kdj_k">K Line</option>
+              <option value="kdj_d">D Line</option>
+              <option value="kdj_j">J Line</option>
+              <option value="williams_r">Williams %R</option>
+              <option value="cci">CCI</option>
+              <option value="momentum">Momentum</option>
+              <option value="roc">Rate of Change (ROC)</option>
+              <option value="mfi">Money Flow Index (MFI)</option>
+              <option value="vroc">Volume ROC</option>
+            </optgroup>
+            <optgroup label="Trend">
+              <option value="macd">MACD</option>
+              <option value="macd_signal">MACD Signal</option>
+              <option value="macd_hist">MACD Histogram</option>
+              <option value="sma">SMA</option>
+              <option value="ema">EMA</option>
+              <option value="adx">ADX</option>
+              <option value="adx_di_plus">DI+</option>
+              <option value="adx_di_minus">DI-</option>
+              <option value="parabolic_sar">Parabolic SAR</option>
+              <option value="zigzag">ZigZag</option>
+            </optgroup>
+            <optgroup label="Volatility">
+              <option value="bollinger">Bollinger Bands</option>
+              <option value="atr">ATR</option>
+              <option value="bb_width">Bollinger Band Width</option>
+              <option value="bb_percent">Bollinger %B</option>
+              <option value="keltner_upper">Keltner Upper</option>
+              <option value="keltner_lower">Keltner Lower</option>
+              <option value="atr_percent">ATR %</option>
+            </optgroup>
+            <optgroup label="Volume">
+              <option value="volume">Volume</option>
+              <option value="volume_sma">Volume SMA</option>
+              <option value="vwap">VWAP</option>
+              <option value="obv">OBV</option>
+              <option value="vwap_anchor">VWAP (Session)</option>
+            </optgroup>
+            <optgroup label="Price">
+              <option value="price">Price</option>
+              <option value="price_above_sma">Price vs SMA</option>
+              <option value="price_above_ema">Price vs EMA</option>
+              <option value="high">High</option>
+              <option value="low">Low</option>
+              <option value="close">Close</option>
+              <option value="open">Open</option>
+            </optgroup>
+            <optgroup label="Divergence">
+              <option value="rsi_divergence">RSI Divergence</option>
+              <option value="macd_divergence">MACD Divergence</option>
+              <option value="price_divergence">Price Divergence</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="condition-operator">Operator</label>
+          <select id="condition-operator">
+            <option value="above">Above</option>
+            <option value="below">Below</option>
+            <option value="crosses_above">Crosses Above</option>
+            <option value="crosses_below">Crosses Below</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="condition-value" id="condition-value-label">Value</label>
+          <input type="number" id="condition-value" value="30" step="any">
+        </div>
+        <div class="form-group">
+          <label for="condition-params">Parameters (JSON)</label>
+          <input type="text" id="condition-params" placeholder='{"period": 14}'>
+        </div>
+        <div class="modal-actions">
+          <button id="cancel-condition-btn" class="btn btn-secondary">Cancel</button>
+          <button id="add-condition-btn" class="btn btn-primary">Add Condition</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="canvas-node-editor.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
