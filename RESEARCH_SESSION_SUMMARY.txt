@@ -1,0 +1,251 @@
+================================================================================
+SWIFTBOLT ML CODEBASE EXPLORATION - RESEARCH SUMMARY
+Session Date: February 25, 2026
+================================================================================
+
+OBJECTIVE
+---------
+Explore the SwiftBolt ML codebase to understand:
+1. Current indicator/technical analysis implementation
+2. Strategy system architecture
+3. Trading bot/execution capabilities
+4. UI for strategy building
+5. Backtesting infrastructure
+
+================================================================================
+KEY FINDINGS
+================================================================================
+
+1. TECHNICAL INDICATORS - COMPREHENSIVE & PRODUCTION-READY ✅
+   
+   Location: /ml/src/features/
+   
+   TradingView-Validated Indicators:
+   - SuperTrend (period=7, multiplier=2.0)
+   - KDJ/Stochastic (n=9, m1=5, m2=5)
+   - ADX (period=14, Wilder's smoothing)
+   - ATR (multiple periods)
+   
+   Custom/Advanced Indicators:
+   - Adaptive SuperTrend (K-means clustering for optimal factor)
+   - Support/Resistance detection (polynomial & logistic)
+   - Market Regime classification
+   - Volatility analysis & surface
+   - Multi-timeframe consensus
+   
+   Status: Used in ML feature engineering, backtest framework, client charts
+
+2. STRATEGY SYSTEM - PARTIALLY BUILT ⚠️
+   
+   Database (Supabase):
+   - strategy_user_strategies (definition storage)
+   - strategy_backtest_jobs (job queue)
+   - strategy_backtest_results (results storage)
+   - RLS policies for multi-tenant isolation
+   
+   REST API (Supabase Edge Function):
+   - GET /strategies, POST /strategies, PUT, DELETE
+   - Full CRUD + duplicate capability
+   - JSON config schema for entry/exit/filters/parameters
+   
+   Frontend UI (React):
+   - StrategyUI.tsx: Strategy list, editor, parameter form
+   - IndicatorSelector: Multi-select with enable/disable
+   - Parameter editor: number/string/boolean types
+   - Create/Edit/Delete workflow (functional)
+   
+   Status: Strategy definition & storage works; visual condition builder missing
+
+3. TRADING BOT / LIVE EXECUTION - NOT IMPLEMENTED ❌
+   
+   What's Missing:
+   - No order execution code
+   - No Alpaca order placement
+   - No position tracking
+   - No risk management enforcement
+   - No paper trading
+   - No real-time signal generation
+   
+   Current Architecture Separates:
+   - Data ingestion → Postgres
+   - Forecasting → Python jobs
+   - Analysis → Frontend charts
+   - Trading → [NOT IMPLEMENTED]
+   
+   Status: Research platform, not a trading platform
+
+4. UI FOR STRATEGY BUILDING - PARTIAL ⚠️
+   
+   React Web Dashboard:
+   ✅ Strategy list/editor with parameters
+   ✅ Indicator selector
+   ✅ Signal filter (Buy/Sell/Both)
+   ✅ Backtest runner and results display
+   ❌ Visual condition builder (drag-drop not implemented)
+   ❌ Template library
+   
+   SwiftUI macOS Client:
+   ❌ NO strategy building UI (web-only feature)
+   ✅ Chart viewing, indicator display
+   ✅ Backtest viewing
+   
+   Status: Basic form-based builder works; advanced features missing
+
+5. BACKTESTING INFRASTRUCTURE - PRODUCTION-GRADE ✅
+   
+   Walk-Forward Framework:
+   - Zero lookahead bias (time-series only)
+   - Configurable train/test/step windows
+   - Horizon-aware configuration (1D/1W/1M/etc.)
+   - Metrics: Sharpe, Sortino, Max DD, Win Rate, Profit Factor
+   
+   Production Framework:
+   - Transaction costs (commission + slippage)
+   - Position sizing (max % per position)
+   - Trade logging (entry/exit/P&L/duration)
+   - Equity curve tracking
+   - Walk-forward optimization (prevents overfitting)
+   
+   Validation:
+   - Indicators validated against TradingView exports
+   - Lookahead guards (STRICT_LOOKAHEAD_CHECK env flag)
+   - Error handling for insufficient data
+   
+   Status: Production-ready for backtesting; papers trading not implemented
+
+================================================================================
+WHAT'S ALREADY BUILT
+================================================================================
+
+✅ Indicators (TradingView-validated + adaptive)
+✅ Strategy persistence (Postgres + API)
+✅ Strategy UI (React form builder)
+✅ Backtest execution (walk-forward with zero lookahead)
+✅ Trade logging (full history with metrics)
+✅ Equity curve tracking
+✅ Multi-timeframe features
+✅ Options analysis integration
+✅ Client-side charts & indicators
+
+================================================================================
+WHAT'S MISSING (CRITICAL PATH)
+================================================================================
+
+❌ Real-time signal generation (only in backtest context)
+❌ Live order execution (Alpaca API integration)
+❌ Position tracking (for live trades)
+❌ Risk management enforcement (rules exist, not enforced)
+❌ Paper trading simulator (extend backtest to live data)
+❌ Visual condition builder (drag-drop UI)
+❌ Strategy template library
+❌ Alert system (email/SMS when conditions met)
+
+================================================================================
+NATURAL NEXT STEPS (PRIORITY)
+================================================================================
+
+1. Paper Trading (Low effort, high value)
+   - Extend backtest framework to accept live data
+   - Track simulated positions in Postgres
+   - Compare live performance vs. backtest
+
+2. Visual Condition Builder (Medium effort)
+   - Drag-drop UI for entry/exit conditions
+   - Live chart preview showing signals
+   - Use existing condition schema, add frontend
+
+3. Real-Time Signal Generation (Medium effort)
+   - Parallel indicator computation job
+   - Evaluate active strategy conditions
+   - Send alerts when conditions met
+
+4. Live Order Execution (High effort, future)
+   - Alpaca API integration
+   - Order state management
+   - Position P&L tracking
+   - Pre-execution risk checks
+
+================================================================================
+KEY FILES & LOCATIONS
+================================================================================
+
+Database:
+  /supabase/migrations/20260221100000_strategy_builder_v2.sql
+
+Backend API:
+  /backend/supabase/functions/strategies/index.ts
+
+Frontend:
+  /frontend/src/components/StrategyUI.tsx
+  /frontend/src/components/StrategyBacktestPanel.tsx
+
+Python Backtesting:
+  /ml/src/backtesting/walk_forward_tester.py
+  /ml/src/testing/backtest_framework.py
+
+Indicators:
+  /ml/src/features/technical_indicators_tradingview.py
+  /ml/src/strategies/supertrend_ai.py
+
+API Router:
+  /ml/api/routers/backtest.py
+
+================================================================================
+DOCUMENTATION CREATED
+================================================================================
+
+This research session generated four comprehensive documents:
+
+1. REPOSITORY_RESEARCH_SUMMARY.md
+   - Complete overview of what's built vs. missing
+   - Architectural insights and design patterns
+   - Recommendations for expansion
+   - Key files with line numbers
+
+2. STRATEGY_SYSTEM_TECHNICAL_GUIDE.md
+   - Code paths and file locations (absolute paths)
+   - API specifications with examples
+   - Data structures (JSON schemas)
+   - Integration points and execution flow
+   - Configuration details
+
+3. QUICK_REFERENCE.md
+   - At-a-glance summary for quick lookup
+   - Key API endpoints
+   - Configuration & environment variables
+   - Troubleshooting guide
+   - Status assessment
+
+4. ARCHITECTURE_OVERVIEW.md
+   - System architecture diagram (ASCII art)
+   - Data flow diagrams
+   - Feature engineering pipeline
+   - Technology stack
+   - Performance characteristics
+   - Scalability notes
+
+================================================================================
+CONCLUSION
+================================================================================
+
+SwiftBolt ML is a SOPHISTICATED RESEARCH PLATFORM with:
+✅ Production-grade indicators (TradingView-validated)
+✅ Comprehensive backtesting (walk-forward with zero lookahead)
+✅ Strategy persistence & management
+✅ ML ensemble forecasting
+✅ Multi-tenant architecture
+
+But is NOT a trading platform yet:
+❌ No order execution
+❌ No position tracking
+❌ No real-time signals
+❌ No risk enforcement
+
+RECOMMENDATION:
+Next logical step = PAPER TRADING (not live execution)
+This validates strategies in simulated real-time before risking capital.
+
+The codebase provides an excellent foundation for expansion.
+All necessary infrastructure is in place; gaps are additive features.
+
+================================================================================
