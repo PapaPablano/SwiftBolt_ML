@@ -42,7 +42,10 @@ function App() {
     equityChartInstanceRef.current = chart;
     const lineSeries = chart.addLineSeries({ color: '#3b82f6', lineWidth: 2 });
     const deduped = dedupeEquityCurve(backtestResult.equityCurve);
-    lineSeries.setData(deduped.map((p) => ({ time: p.time, value: p.value })));
+    lineSeries.setData(deduped.map((p) => ({
+      time: (typeof p.time === 'string' ? Math.floor(new Date(p.time).getTime() / 1000) : p.time) as any,
+      value: p.value
+    })));
     chart.timeScale().fitContent();
     return () => {
       chart.remove();

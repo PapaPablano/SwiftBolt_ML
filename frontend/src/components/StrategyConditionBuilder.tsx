@@ -81,19 +81,22 @@ function generateId(): string {
 function validateCondition(condition: Condition): string | null {
   const indicatorRange = INDICATOR_RANGES[condition.indicator];
 
-  if ('value' in condition) {
-    if (condition.operator === 'cross_up' || condition.operator === 'cross_down') {
-      if (!('crossWith' in condition) || !condition.crossWith) {
-        return `${condition.operator} requires a cross target`;
-      }
+  // Validate cross operators
+  if ('crossWith' in condition) {
+    if (!condition.crossWith) {
+      return `${condition.operator} requires a cross target`;
     }
+  }
 
+  // Validate comparison operators with value
+  if ('value' in condition) {
     // Check if value is within reasonable range for known indicators
     if (indicatorRange && (condition.value < indicatorRange.min || condition.value > indicatorRange.max)) {
       return `${condition.indicator} value should be between ${indicatorRange.min} and ${indicatorRange.max}`;
     }
   }
 
+  // Validate range operators
   if ('minValue' in condition && 'maxValue' in condition) {
     if (condition.minValue >= condition.maxValue) {
       return `Min value must be less than max value`;
@@ -153,11 +156,39 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
   );
 
   const handleOperatorChange = (op: string) => {
-    const newFormData = { ...formData, operator: op as any };
+    let newFormData: Condition;
 
-    // If switching to cross operator, add crossWith field
-    if ((op === 'cross_up' || op === 'cross_down') && !('crossWith' in newFormData)) {
-      newFormData.crossWith = availableIndicators[1] || 'Signal';
+    if (op === 'cross_up' || op === 'cross_down') {
+      // Create cross variant
+      newFormData = {
+        id: formData.id,
+        indicator: formData.indicator,
+        operator: op as CrossOperator,
+        crossWith: availableIndicators[1] || 'Signal',
+        logicalOp: formData.logicalOp,
+        parentId: formData.parentId,
+      };
+    } else if (op === 'touches' || op === 'within_range') {
+      // Create range variant
+      newFormData = {
+        id: formData.id,
+        indicator: formData.indicator,
+        operator: op as RangeOperator,
+        minValue: 'minValue' in formData ? formData.minValue : 0,
+        maxValue: 'maxValue' in formData ? formData.maxValue : 100,
+        logicalOp: formData.logicalOp,
+        parentId: formData.parentId,
+      };
+    } else {
+      // Create comparison variant
+      newFormData = {
+        id: formData.id,
+        indicator: formData.indicator,
+        operator: op as ComparisonOperator,
+        value: 'value' in formData ? formData.value : 50,
+        logicalOp: formData.logicalOp,
+        parentId: formData.parentId,
+      };
     }
 
     setFormData(newFormData);
