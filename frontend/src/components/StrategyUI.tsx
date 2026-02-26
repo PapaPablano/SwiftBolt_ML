@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { StrategyConditionBuilder, Condition } from './StrategyConditionBuilder';
 
 // Type definitions for our strategy components
 interface StrategyParameter {
@@ -14,17 +15,31 @@ interface StrategyIndicator {
   enabled: boolean;
 }
 
+interface StrategyConditions {
+  entry: Condition[];
+  exit: Condition[];
+  stoploss?: Condition[];
+  takeprofit?: Condition[];
+}
+
 interface Strategy {
   id: string;
   name: string;
   description: string;
   parameters: StrategyParameter[];
   indicators: StrategyIndicator[];
+  conditions?: StrategyConditions;
   signalFilter: 'buy' | 'sell' | 'both';
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
+// Available indicators for condition builder
+const AVAILABLE_INDICATORS = [
+  'RSI', 'MACD', 'Stochastic', 'Bollinger Bands', 'ATR',
+  'ADX', 'SuperTrend', 'Volume', 'Close', 'Open', 'High', 'Low'
+];
 
 // Mock data for demonstration
 const mockStrategies: Strategy[] = [
@@ -41,6 +56,10 @@ const mockStrategies: Strategy[] = [
       { name: 'RSI', description: 'Relative Strength Index', enabled: true },
       { name: 'MACD', description: 'Moving Average Convergence Divergence', enabled: false }
     ],
+    conditions: {
+      entry: [],
+      exit: []
+    },
     signalFilter: 'both',
     isActive: true,
     createdAt: '2023-01-01T00:00:00Z',
@@ -59,6 +78,10 @@ const mockStrategies: Strategy[] = [
       { name: 'RSI', description: 'Relative Strength Index', enabled: true },
       { name: 'BBands', description: 'Bollinger Bands', enabled: true }
     ],
+    conditions: {
+      entry: [],
+      exit: []
+    },
     signalFilter: 'buy',
     isActive: true,
     createdAt: '2023-01-01T00:00:00Z',
@@ -75,6 +98,10 @@ const StrategyUI: React.FC = () => {
     description: '',
     parameters: [],
     indicators: [],
+    conditions: {
+      entry: [],
+      exit: []
+    },
     signalFilter: 'both',
     isActive: true
   });
@@ -296,7 +323,7 @@ const StrategyUI: React.FC = () => {
                   </div>
                 ) : null}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <div>
                     <h3 className="font-medium text-gray-900 mb-3">Parameters</h3>
                     {selectedStrategy.parameters.map((param, index) => (
@@ -352,6 +379,45 @@ const StrategyUI: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Condition Builders */}
+                {selectedStrategy.conditions && (
+                  <div className="space-y-4 mb-6">
+                    <div className="border-t border-gray-200 pt-6">
+                      <h3 className="font-medium text-gray-900 mb-4">Strategy Conditions</h3>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <StrategyConditionBuilder
+                          signalType="entry"
+                          initialConditions={selectedStrategy.conditions.entry}
+                          onConditionsChange={(conditions) => {
+                            setSelectedStrategy({
+                              ...selectedStrategy,
+                              conditions: {
+                                ...selectedStrategy.conditions!,
+                                entry: conditions
+                              }
+                            });
+                          }}
+                          availableIndicators={AVAILABLE_INDICATORS}
+                        />
+                        <StrategyConditionBuilder
+                          signalType="exit"
+                          initialConditions={selectedStrategy.conditions.exit}
+                          onConditionsChange={(conditions) => {
+                            setSelectedStrategy({
+                              ...selectedStrategy,
+                              conditions: {
+                                ...selectedStrategy.conditions!,
+                                exit: conditions
+                              }
+                            });
+                          }}
+                          availableIndicators={AVAILABLE_INDICATORS}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-6 flex justify-end space-x-3">
                   <button
