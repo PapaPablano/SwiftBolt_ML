@@ -6,17 +6,27 @@
 // Returns the created strategy with legs.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
-import { getSupabaseClientWithAuth, getSupabaseClient } from "../_shared/supabase-client.ts";
+import {
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
+import {
+  getSupabaseClient,
+  getSupabaseClientWithAuth,
+} from "../_shared/supabase-client.ts";
 import {
   type CreateStrategyRequest,
-  type StrategyRow,
   type LegRow,
-  strategyRowToModel,
   legRowToModel,
+  type StrategyRow,
+  strategyRowToModel,
 } from "../_shared/types/multileg.ts";
 import { validateStrategyCreation } from "../_shared/services/strategy-validator.ts";
-import { calculateMaxRiskReward, calculateDTE } from "../_shared/services/pl-calculator.ts";
+import {
+  calculateDTE,
+  calculateMaxRiskReward,
+} from "../_shared/services/pl-calculator.ts";
 
 serve(async (req: Request): Promise<Response> => {
   // Handle CORS preflight
@@ -48,7 +58,7 @@ serve(async (req: Request): Promise<Response> => {
           errors: validation.errors,
           warnings: validation.warnings,
         },
-        400
+        400,
       );
     }
 
@@ -66,7 +76,9 @@ serve(async (req: Request): Promise<Response> => {
     if (userError || !user) {
       // For development/testing: use service role client which bypasses RLS
       // In production, you should require authentication
-      console.warn("[multi-leg-create] No authenticated user, using service role client");
+      console.warn(
+        "[multi-leg-create] No authenticated user, using service role client",
+      );
       supabase = getSupabaseClient();
       // Use a placeholder UUID for anonymous strategies
       userId = "00000000-0000-0000-0000-000000000000";
@@ -88,7 +100,9 @@ serve(async (req: Request): Promise<Response> => {
 
     if (existingSymbol) {
       symbolId = existingSymbol.id;
-      console.log(`[multi-leg-create] Found symbol ID for ${ticker}: ${symbolId}`);
+      console.log(
+        `[multi-leg-create] Found symbol ID for ${ticker}: ${symbolId}`,
+      );
     } else {
       // Symbol doesn't exist, create it
       console.log(`[multi-leg-create] Symbol ${ticker} not found, creating...`);
@@ -104,11 +118,16 @@ serve(async (req: Request): Promise<Response> => {
 
       if (createError || !newSymbol) {
         console.error("[multi-leg-create] Symbol create error:", createError);
-        return errorResponse(`Failed to create symbol for ${ticker}: ${createError?.message}`, 500);
+        return errorResponse(
+          `Failed to create symbol for ${ticker}: ${createError?.message}`,
+          500,
+        );
       }
 
       symbolId = newSymbol.id;
-      console.log(`[multi-leg-create] Created symbol ID for ${ticker}: ${symbolId}`);
+      console.log(
+        `[multi-leg-create] Created symbol ID for ${ticker}: ${symbolId}`,
+      );
     }
 
     // Calculate max risk/reward and breakevens
@@ -164,7 +183,9 @@ serve(async (req: Request): Promise<Response> => {
       net_premium: netPremium,
       num_contracts: body.legs[0]?.contracts ?? 1,
       max_risk: riskReward.maxRisk === Infinity ? null : riskReward.maxRisk,
-      max_reward: riskReward.maxReward === Infinity ? null : riskReward.maxReward,
+      max_reward: riskReward.maxReward === Infinity
+        ? null
+        : riskReward.maxReward,
       breakeven_points: riskReward.breakevenPoints,
       profit_zones: riskReward.profitZones ?? null,
       forecast_id: body.forecastId ?? null,
@@ -183,7 +204,10 @@ serve(async (req: Request): Promise<Response> => {
 
     if (strategyError) {
       console.error("[multi-leg-create] Strategy insert error:", strategyError);
-      return errorResponse(`Failed to create strategy: ${strategyError.message}`, 500);
+      return errorResponse(
+        `Failed to create strategy: ${strategyError.message}`,
+        500,
+      );
     }
 
     const strategyId = strategyData.id;
@@ -290,16 +314,16 @@ serve(async (req: Request): Promise<Response> => {
     return jsonResponse(
       {
         strategy,
-        legs,  // Also include legs at top level for client compatibility
+        legs, // Also include legs at top level for client compatibility
         warnings: validation.warnings,
       },
-      201
+      201,
     );
   } catch (error) {
     console.error("[multi-leg-create] Error:", error);
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
-      500
+      500,
     );
   }
 });

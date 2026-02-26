@@ -5,7 +5,11 @@
 // Returns optimized entry/exit thresholds from genetic algorithm
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import {
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
 // Strategy genes from GA optimization
@@ -86,25 +90,36 @@ interface TriggerOptimizationResponse {
 function snakeToCamel(obj: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
-    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    const camelKey = key.replace(
+      /_([a-z])/g,
+      (_, letter) => letter.toUpperCase(),
+    );
     result[camelKey] = value;
   }
   return result;
 }
 
 // Generate human-readable recommendations from genes
-function generateRecommendations(genes: StrategyGenes): GAStrategyResponse["recommendation"] {
+function generateRecommendations(
+  genes: StrategyGenes,
+): GAStrategyResponse["recommendation"] {
   const entry: string[] = [];
   const exit: string[] = [];
   const risk: string[] = [];
 
   // Entry conditions
   entry.push(`Require composite rank ≥ ${genes.minCompositeRank.toFixed(0)}`);
-  entry.push(`Trade only between ${genes.entryHourMin}:00 - ${genes.entryHourMax}:00 EST`);
+  entry.push(
+    `Trade only between ${genes.entryHourMin}:00 - ${genes.entryHourMax}:00 EST`,
+  );
   if (genes.signalFilter !== "any") {
     entry.push(`Filter for ${genes.signalFilter.toUpperCase()} signal only`);
   }
-  entry.push(`IV Rank between ${genes.ivRankMin.toFixed(0)}-${genes.ivRankMax.toFixed(0)}`);
+  entry.push(
+    `IV Rank between ${genes.ivRankMin.toFixed(0)}-${
+      genes.ivRankMax.toFixed(0)
+    }`,
+  );
   entry.push(`Theta must be ≥ ${genes.thetaMin.toFixed(2)}`);
 
   // Exit conditions
@@ -216,7 +231,9 @@ serve(async (req: Request): Promise<Response> => {
       // Parse stored genes and fitness
       const row = data[0];
       const genes = snakeToCamel(row.genes || {}) as unknown as StrategyGenes;
-      const fitness = snakeToCamel(row.fitness || {}) as unknown as StrategyFitness;
+      const fitness = snakeToCamel(
+        row.fitness || {},
+      ) as unknown as StrategyFitness;
 
       const response: GAStrategyResponse = {
         symbol,
@@ -277,7 +294,9 @@ serve(async (req: Request): Promise<Response> => {
         estimatedMinutes,
       };
 
-      console.log(`[GA Strategy] Queued optimization for ${symbol}: ${runData.id}`);
+      console.log(
+        `[GA Strategy] Queued optimization for ${symbol}: ${runData.id}`,
+      );
       return jsonResponse(response);
     }
 
@@ -285,8 +304,10 @@ serve(async (req: Request): Promise<Response> => {
   } catch (err) {
     console.error("[GA Strategy] Unexpected error:", err);
     return errorResponse(
-      `Internal server error: ${err instanceof Error ? err.message : String(err)}`,
-      500
+      `Internal server error: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      500,
     );
   }
 });

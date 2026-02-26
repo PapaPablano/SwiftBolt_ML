@@ -10,7 +10,12 @@
 // - latest options snapshot time
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { corsHeaders, handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import {
+  corsHeaders,
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
 // Constants
@@ -68,15 +73,15 @@ interface HealthStatus {
 
 // Freshness SLA thresholds in hours per timeframe
 const FRESHNESS_SLA: Record<string, number> = {
-  m15: 0.5,   // 30 minutes during market hours
-  h1: 2,     // 2 hours
-  h4: 8,     // 8 hours
-  d1: 24,    // 24 hours
-  w1: 168,   // 1 week
+  m15: 0.5, // 30 minutes during market hours
+  h1: 2, // 2 hours
+  h4: 8, // 8 hours
+  d1: 24, // 24 hours
+  w1: 168, // 1 week
 };
 
 const FORECAST_SLA_HOURS = 24; // Forecasts should be < 24h old
-const OPTIONS_SLA_HOURS = 4;  // Options snapshots should be < 4h old during market hours
+const OPTIONS_SLA_HOURS = 4; // Options snapshots should be < 4h old during market hours
 
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
@@ -91,13 +96,13 @@ serve(async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
     const symbolParam = url.searchParams.get("symbol")?.toUpperCase();
     const timeframeParam = url.searchParams.get("timeframe");
-    
+
     const supabase = getSupabaseClient();
     const now = new Date();
-    
+
     // Build health statuses
     const healthStatuses: HealthStatus[] = [];
-    
+
     // Get coverage status data
     let coverageQuery = supabase.from("coverage_status").select("*");
     if (symbolParam) {
@@ -107,20 +112,20 @@ serve(async (req: Request): Promise<Response> => {
       coverageQuery = coverageQuery.eq("timeframe", timeframeParam);
     }
     const { data: coverageData, error: coverageError } = await coverageQuery;
-    
+
     if (coverageError) {
       console.error("[data-health] Coverage query error:", coverageError);
     }
-    
+
     // Get symbols for the query
-    const symbolsToCheck = symbolParam 
-      ? [symbolParam] 
-      : [...new Set(coverageData?.map(c => c.symbol) || [])];
-    
-    const timeframesToCheck = timeframeParam 
-      ? [timeframeParam] 
+    const symbolsToCheck = symbolParam
+      ? [symbolParam]
+      : [...new Set(coverageData?.map((c) => c.symbol) || [])];
+
+    const timeframesToCheck = timeframeParam
+      ? [timeframeParam]
       : ["m15", "h1", "h4", "d1", "w1"];
-    
+
     // Get latest job runs for these symbols
     const { data: jobRunsData } = await supabase
       .from("job_runs")
@@ -128,53 +133,54 @@ serve(async (req: Request): Promise<Response> => {
       .in("symbol", symbolsToCheck)
       .order("created_at", { ascending: false })
       .limit(100);
-    
+
     // Get pending and failed job counts
     const { data: pendingJobs } = await supabase
       .from("job_runs")
       .select("symbol, timeframe")
       .in("symbol", symbolsToCheck)
       .in("status", ["queued", "running"]);
-    
-    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+      .toISOString();
     const { data: failedJobs } = await supabase
       .from("job_runs")
       .select("symbol, timeframe")
       .in("symbol", symbolsToCheck)
       .eq("status", "failed")
       .gte("created_at", twentyFourHoursAgo);
-    
+
     // Get latest forecast run_at per symbol
     const { data: forecastData } = await supabase
       .from("ml_forecasts")
       .select("symbol_id, run_at, symbols!inner(ticker)")
       .order("run_at", { ascending: false });
-    
+
     // Get latest options snapshot per symbol
     const { data: optionsData } = await supabase
       .from("options_snapshots")
       .select("underlying_symbol, snapshot_at")
       .in("underlying_symbol", symbolsToCheck)
       .order("snapshot_at", { ascending: false });
-    
+
     // Get pending corporate actions (splits)
     const { data: pendingSplits } = await supabase
       .from("corporate_actions")
       .select("symbol")
       .eq("bars_adjusted", false)
       .in("action_type", ["stock_split", "reverse_split"]);
-    
+
     // Check market status
     const { data: marketStatus } = await supabase.rpc("is_market_open");
     const isMarketOpen = marketStatus ?? false;
-    
+
     // Get latest bars per symbol/timeframe
     // First, get symbol IDs for all symbols we're checking
     const { data: symbolRecords } = await supabase
       .from("symbols")
       .select("id, ticker")
       .in("ticker", symbolsToCheck);
-    
+
     const symbolIdMap: Map<string, string> = new Map();
     const symbolIdToTicker: Map<string, string> = new Map();
     (symbolRecords || []).forEach((s: { id: string; ticker: string }) => {
@@ -183,33 +189,41 @@ serve(async (req: Request): Promise<Response> => {
     });
 
     // Batch lookup of latest bars per symbol/timeframe (replaces N+1 loop)
-    const symbolIds = symbolsToCheck.map((s) => symbolIdMap.get(s)).filter(Boolean) as string[];
+    const symbolIds = symbolsToCheck.map((s) => symbolIdMap.get(s)).filter(
+      Boolean,
+    ) as string[];
     const latestBarsMap: Map<string, string> = new Map();
     if (symbolIds.length > 0) {
       const { data: latestBars } = await supabase.rpc("get_latest_bars_batch", {
         p_symbol_ids: symbolIds,
         p_timeframes: timeframesToCheck,
       });
-      (latestBars || []).forEach((row: { symbol_id: string; timeframe: string; latest_ts: string }) => {
-        const ticker = symbolIdToTicker.get(row.symbol_id);
-        if (ticker) {
-          latestBarsMap.set(`${ticker}:${row.timeframe}`, row.latest_ts);
-        }
-      });
+      (latestBars || []).forEach(
+        (row: { symbol_id: string; timeframe: string; latest_ts: string }) => {
+          const ticker = symbolIdToTicker.get(row.symbol_id);
+          if (ticker) {
+            latestBarsMap.set(`${ticker}:${row.timeframe}`, row.latest_ts);
+          }
+        },
+      );
     }
-    
+
     // Build health status for each symbol/timeframe combination
     for (const symbol of symbolsToCheck) {
       for (const tf of timeframesToCheck) {
-        const coverage = coverageData?.find(c => c.symbol === symbol && c.timeframe === tf);
-        const latestJob = jobRunsData?.find(j => j.symbol === symbol && j.timeframe === tf);
+        const coverage = coverageData?.find((c) =>
+          c.symbol === symbol && c.timeframe === tf
+        );
+        const latestJob = jobRunsData?.find((j) =>
+          j.symbol === symbol && j.timeframe === tf
+        );
         const latestBarTs = latestBarsMap.get(`${symbol}:${tf}`);
-        
+
         // Calculate freshness
         const slaHours = FRESHNESS_SLA[tf] || 24;
         let ageHours: number | null = null;
         let isStale = false;
-        
+
         if (latestBarTs) {
           const barDate = new Date(latestBarTs);
           ageHours = (now.getTime() - barDate.getTime()) / (1000 * 60 * 60);
@@ -217,34 +231,46 @@ serve(async (req: Request): Promise<Response> => {
         } else {
           isStale = true;
         }
-        
+
         // Get forecast info
-        const forecast = forecastData?.find((f: any) => f.symbols?.ticker === symbol);
+        const forecast = forecastData?.find((f: any) =>
+          f.symbols?.ticker === symbol
+        );
         let forecastAgeHours: number | null = null;
         let forecastIsStale = true;
         if (forecast?.run_at) {
           const forecastDate = new Date(forecast.run_at);
-          forecastAgeHours = (now.getTime() - forecastDate.getTime()) / (1000 * 60 * 60);
+          forecastAgeHours = (now.getTime() - forecastDate.getTime()) /
+            (1000 * 60 * 60);
           forecastIsStale = forecastAgeHours > FORECAST_SLA_HOURS;
         }
-        
+
         // Get options info
-        const optionsSnapshot = optionsData?.find(o => o.underlying_symbol === symbol);
+        const optionsSnapshot = optionsData?.find((o) =>
+          o.underlying_symbol === symbol
+        );
         let optionsAgeHours: number | null = null;
         let optionsIsStale = true;
         if (optionsSnapshot?.snapshot_at) {
           const optionsDate = new Date(optionsSnapshot.snapshot_at);
-          optionsAgeHours = (now.getTime() - optionsDate.getTime()) / (1000 * 60 * 60);
+          optionsAgeHours = (now.getTime() - optionsDate.getTime()) /
+            (1000 * 60 * 60);
           optionsIsStale = isMarketOpen && optionsAgeHours > OPTIONS_SLA_HOURS;
         }
-        
+
         // Count pending/failed jobs for this symbol/timeframe
-        const pendingCount = pendingJobs?.filter(j => j.symbol === symbol && j.timeframe === tf).length || 0;
-        const failedCount = failedJobs?.filter(j => j.symbol === symbol && j.timeframe === tf).length || 0;
-        
+        const pendingCount = pendingJobs?.filter((j) =>
+          j.symbol === symbol && j.timeframe === tf
+        ).length || 0;
+        const failedCount = failedJobs?.filter((j) =>
+          j.symbol === symbol && j.timeframe === tf
+        ).length || 0;
+
         // Check for pending splits
-        const symbolPendingSplits = pendingSplits?.filter(s => s.symbol === symbol) || [];
-        
+        const symbolPendingSplits = pendingSplits?.filter((s) =>
+          s.symbol === symbol
+        ) || [];
+
         // Determine overall health
         let overallHealth: "healthy" | "warning" | "critical" = "healthy";
         if (isStale && isMarketOpen) {
@@ -253,10 +279,14 @@ serve(async (req: Request): Promise<Response> => {
         if (failedCount > 0 || symbolPendingSplits.length > 0) {
           overallHealth = "warning";
         }
-        if ((isStale && ageHours && ageHours > slaHours * CRITICAL_STALENESS_MULTIPLIER) || failedCount >= CRITICAL_FAILURE_THRESHOLD) {
+        if (
+          (isStale && ageHours &&
+            ageHours > slaHours * CRITICAL_STALENESS_MULTIPLIER) ||
+          failedCount >= CRITICAL_FAILURE_THRESHOLD
+        ) {
           overallHealth = "critical";
         }
-        
+
         healthStatuses.push({
           symbol,
           timeframe: tf,
@@ -300,32 +330,45 @@ serve(async (req: Request): Promise<Response> => {
         });
       }
     }
-    
+
     // Calculate summary metrics
     const summary = {
       totalChecks: healthStatuses.length,
-      healthy: healthStatuses.filter(h => h.overallHealth === "healthy").length,
-      warning: healthStatuses.filter(h => h.overallHealth === "warning").length,
-      critical: healthStatuses.filter(h => h.overallHealth === "critical").length,
-      staleData: healthStatuses.filter(h => h.freshness.isStale).length,
-      staleForecast: healthStatuses.filter(h => h.forecast.isStale).length,
-      staleOptions: healthStatuses.filter(h => h.options.isStale).length,
-      pendingSplits: [...new Set(healthStatuses.filter(h => h.market.hasPendingSplits).map(h => h.symbol))].length,
+      healthy: healthStatuses.filter((h) =>
+        h.overallHealth === "healthy"
+      ).length,
+      warning: healthStatuses.filter((h) =>
+        h.overallHealth === "warning"
+      ).length,
+      critical: healthStatuses.filter((h) =>
+        h.overallHealth === "critical"
+      ).length,
+      staleData: healthStatuses.filter((h) => h.freshness.isStale).length,
+      staleForecast: healthStatuses.filter((h) => h.forecast.isStale).length,
+      staleOptions: healthStatuses.filter((h) => h.options.isStale).length,
+      pendingSplits: [
+        ...new Set(
+          healthStatuses.filter((h) => h.market.hasPendingSplits).map((h) =>
+            h.symbol
+          ),
+        ),
+      ].length,
       marketOpen: isMarketOpen,
       checkedAt: now.toISOString(),
     };
-    
+
     return jsonResponse({
       success: true,
       summary,
-      healthStatuses: symbolParam || timeframeParam ? healthStatuses : healthStatuses.slice(0, DEFAULT_RESULTS_LIMIT),
+      healthStatuses: symbolParam || timeframeParam
+        ? healthStatuses
+        : healthStatuses.slice(0, DEFAULT_RESULTS_LIMIT),
     });
-    
   } catch (error) {
     console.error("[data-health] Error:", error);
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
-      500
+      500,
     );
   }
 });

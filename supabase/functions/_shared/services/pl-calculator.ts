@@ -2,14 +2,14 @@
 // Calculates P&L, Greeks, max risk/reward for various strategy types
 
 import {
+  type LegPLSnapshot,
+  type MaxRiskReward,
   type MultiLegStrategy,
   type OptionsLeg,
   type PLSnapshot,
-  type LegPLSnapshot,
-  type MaxRiskReward,
+  type PositionType,
   type ProfitZone,
   type StrategyType,
-  type PositionType,
 } from "../types/multileg.ts";
 
 // ============================================================================
@@ -33,7 +33,7 @@ export function calculateStrategyPL(
   strategy: MultiLegStrategy,
   legs: OptionsLeg[],
   underlyingPrice: number,
-  currentPrices: LegPriceData[]
+  currentPrices: LegPriceData[],
 ): PLSnapshot {
   const timestamp = new Date().toISOString();
   const priceMap = new Map(currentPrices.map((p) => [p.legId, p]));
@@ -53,7 +53,12 @@ export function calculateStrategyPL(
     const priceData = priceMap.get(leg.id);
     const currentPrice = priceData?.price ?? leg.currentPrice ?? 0;
 
-    const legSnapshot = calculateLegPL(leg, underlyingPrice, currentPrice, priceData);
+    const legSnapshot = calculateLegPL(
+      leg,
+      underlyingPrice,
+      currentPrice,
+      priceData,
+    );
     legSnapshots.push(legSnapshot);
 
     // Sum costs and values
@@ -71,8 +76,9 @@ export function calculateStrategyPL(
 
   // Calculate net P&L
   const totalUnrealizedPL = totalCurrentValue - totalEntryCost;
-  const totalUnrealizedPLPct =
-    totalEntryCost !== 0 ? totalUnrealizedPL / Math.abs(totalEntryCost) : 0;
+  const totalUnrealizedPLPct = totalEntryCost !== 0
+    ? totalUnrealizedPL / Math.abs(totalEntryCost)
+    : 0;
 
   return {
     underlyingPrice,
@@ -97,7 +103,7 @@ export function calculateLegPL(
   leg: OptionsLeg,
   underlyingPrice: number,
   currentPrice: number,
-  priceData?: LegPriceData
+  priceData?: LegPriceData,
 ): LegPLSnapshot {
   const contracts = leg.contracts;
   const entryPrice = leg.entryPrice;
@@ -108,7 +114,9 @@ export function calculateLegPL(
 
   // Calculate P&L (unsigned first)
   const unrealizedPL = currentValue - entryCost;
-  const unrealizedPLPct = entryCost !== 0 ? unrealizedPL / Math.abs(entryCost) : 0;
+  const unrealizedPLPct = entryCost !== 0
+    ? unrealizedPL / Math.abs(entryCost)
+    : 0;
 
   // Apply position sign
   const positionSign = leg.positionType === "long" ? 1 : -1;
@@ -123,8 +131,7 @@ export function calculateLegPL(
 
   // Determine ITM status
   const strike = leg.strike;
-  const isITM =
-    (leg.optionType === "call" && underlyingPrice > strike) ||
+  const isITM = (leg.optionType === "call" && underlyingPrice > strike) ||
     (leg.optionType === "put" && underlyingPrice < strike);
 
   const isDeepITM =
@@ -133,7 +140,8 @@ export function calculateLegPL(
 
   // Breaching = within 0.5% of strike
   const breachThreshold = Math.abs(strike) * 0.005;
-  const isBreachingStrike = Math.abs(underlyingPrice - strike) <= breachThreshold;
+  const isBreachingStrike =
+    Math.abs(underlyingPrice - strike) <= breachThreshold;
 
   return {
     legId: leg.id,
@@ -165,7 +173,7 @@ export function calculateLegPL(
  */
 export function calculateMaxRiskReward(
   strategyType: StrategyType,
-  legs: OptionsLeg[]
+  legs: OptionsLeg[],
 ): MaxRiskReward {
   switch (strategyType) {
     case "bull_call_spread":
@@ -209,8 +217,12 @@ export function calculateMaxRiskReward(
  * Breakeven = K1 + Net Debit
  */
 function calcBullCallSpread(legs: OptionsLeg[]): MaxRiskReward {
-  const longLeg = legs.find((l) => l.positionType === "long" && l.optionType === "call");
-  const shortLeg = legs.find((l) => l.positionType === "short" && l.optionType === "call");
+  const longLeg = legs.find((l) =>
+    l.positionType === "long" && l.optionType === "call"
+  );
+  const shortLeg = legs.find((l) =>
+    l.positionType === "short" && l.optionType === "call"
+  );
 
   if (!longLeg || !shortLeg) {
     return { maxRisk: 0, maxReward: 0, breakevenPoints: [] };
@@ -239,8 +251,12 @@ function calcBullCallSpread(legs: OptionsLeg[]): MaxRiskReward {
  * Breakeven = K1 + Net Credit
  */
 function calcBearCallSpread(legs: OptionsLeg[]): MaxRiskReward {
-  const shortLeg = legs.find((l) => l.positionType === "short" && l.optionType === "call");
-  const longLeg = legs.find((l) => l.positionType === "long" && l.optionType === "call");
+  const shortLeg = legs.find((l) =>
+    l.positionType === "short" && l.optionType === "call"
+  );
+  const longLeg = legs.find((l) =>
+    l.positionType === "long" && l.optionType === "call"
+  );
 
   if (!shortLeg || !longLeg) {
     return { maxRisk: 0, maxReward: 0, breakevenPoints: [] };
@@ -269,8 +285,12 @@ function calcBearCallSpread(legs: OptionsLeg[]): MaxRiskReward {
  * Breakeven = K2 - Net Credit
  */
 function calcBullPutSpread(legs: OptionsLeg[]): MaxRiskReward {
-  const shortLeg = legs.find((l) => l.positionType === "short" && l.optionType === "put");
-  const longLeg = legs.find((l) => l.positionType === "long" && l.optionType === "put");
+  const shortLeg = legs.find((l) =>
+    l.positionType === "short" && l.optionType === "put"
+  );
+  const longLeg = legs.find((l) =>
+    l.positionType === "long" && l.optionType === "put"
+  );
 
   if (!shortLeg || !longLeg) {
     return { maxRisk: 0, maxReward: 0, breakevenPoints: [] };
@@ -299,8 +319,12 @@ function calcBullPutSpread(legs: OptionsLeg[]): MaxRiskReward {
  * Breakeven = K2 - Net Debit
  */
 function calcBearPutSpread(legs: OptionsLeg[]): MaxRiskReward {
-  const longLeg = legs.find((l) => l.positionType === "long" && l.optionType === "put");
-  const shortLeg = legs.find((l) => l.positionType === "short" && l.optionType === "put");
+  const longLeg = legs.find((l) =>
+    l.positionType === "long" && l.optionType === "put"
+  );
+  const shortLeg = legs.find((l) =>
+    l.positionType === "short" && l.optionType === "put"
+  );
 
   if (!longLeg || !shortLeg) {
     return { maxRisk: 0, maxReward: 0, breakevenPoints: [] };
@@ -338,7 +362,8 @@ function calcLongStraddle(legs: OptionsLeg[]): MaxRiskReward {
 
   const strike = callLeg.strike;
   const contracts = callLeg.contracts;
-  const totalPremium = (callLeg.entryPrice + putLeg.entryPrice) * 100 * contracts;
+  const totalPremium = (callLeg.entryPrice + putLeg.entryPrice) * 100 *
+    contracts;
 
   const maxRisk = totalPremium;
   const maxReward = Infinity; // Unlimited upside
@@ -364,7 +389,8 @@ function calcShortStraddle(legs: OptionsLeg[]): MaxRiskReward {
 
   const strike = callLeg.strike;
   const contracts = callLeg.contracts;
-  const totalPremium = (callLeg.entryPrice + putLeg.entryPrice) * 100 * contracts;
+  const totalPremium = (callLeg.entryPrice + putLeg.entryPrice) * 100 *
+    contracts;
 
   const maxReward = totalPremium;
   const maxRisk = Infinity; // Unlimited risk
@@ -389,7 +415,8 @@ function calcLongStrangle(legs: OptionsLeg[]): MaxRiskReward {
   }
 
   const contracts = callLeg.contracts;
-  const totalPremium = (callLeg.entryPrice + putLeg.entryPrice) * 100 * contracts;
+  const totalPremium = (callLeg.entryPrice + putLeg.entryPrice) * 100 *
+    contracts;
 
   const maxRisk = totalPremium;
   const maxReward = Infinity;
@@ -413,7 +440,8 @@ function calcShortStrangle(legs: OptionsLeg[]): MaxRiskReward {
   }
 
   const contracts = callLeg.contracts;
-  const totalPremium = (callLeg.entryPrice + putLeg.entryPrice) * 100 * contracts;
+  const totalPremium = (callLeg.entryPrice + putLeg.entryPrice) * 100 *
+    contracts;
 
   const maxReward = totalPremium;
   const maxRisk = Infinity;
@@ -454,7 +482,8 @@ function calcIronCondor(legs: OptionsLeg[]): MaxRiskReward {
   const netCredit = (totalCredit - totalDebit) * 100 * contracts;
 
   // Width is typically the same for both spreads
-  const putSpreadWidth = (sortedLegs[1].strike - sortedLegs[0].strike) * 100 * contracts;
+  const putSpreadWidth = (sortedLegs[1].strike - sortedLegs[0].strike) * 100 *
+    contracts;
 
   const maxReward = netCredit;
   const maxRisk = putSpreadWidth - netCredit;
@@ -533,7 +562,8 @@ function calcButterflySpread(legs: OptionsLeg[]): MaxRiskReward {
 
   const middleStrike = sortedLegs[1].strike;
   const beDown = sortedLegs[0].strike + (maxRisk / (100 * contracts));
-  const beUp = sortedLegs[sortedLegs.length - 1].strike - (maxRisk / (100 * contracts));
+  const beUp = sortedLegs[sortedLegs.length - 1].strike -
+    (maxRisk / (100 * contracts));
 
   return { maxRisk, maxReward, breakevenPoints: [beDown, beUp] };
 }
@@ -543,7 +573,7 @@ function calcButterflySpread(legs: OptionsLeg[]): MaxRiskReward {
  */
 function calcRatioBackspread(
   legs: OptionsLeg[],
-  type: "call_ratio_backspread" | "put_ratio_backspread"
+  type: "call_ratio_backspread" | "put_ratio_backspread",
 ): MaxRiskReward {
   const shortLegs = legs.filter((l) => l.positionType === "short");
   const longLegs = legs.filter((l) => l.positionType === "long");
@@ -555,8 +585,14 @@ function calcRatioBackspread(
   const shortContracts = shortLegs.reduce((sum, l) => sum + l.contracts, 0);
   const longContracts = longLegs.reduce((sum, l) => sum + l.contracts, 0);
 
-  const shortPremium = shortLegs.reduce((sum, l) => sum + l.entryPrice * l.contracts * 100, 0);
-  const longPremium = longLegs.reduce((sum, l) => sum + l.entryPrice * l.contracts * 100, 0);
+  const shortPremium = shortLegs.reduce(
+    (sum, l) => sum + l.entryPrice * l.contracts * 100,
+    0,
+  );
+  const longPremium = longLegs.reduce(
+    (sum, l) => sum + l.entryPrice * l.contracts * 100,
+    0,
+  );
 
   const netCredit = shortPremium - longPremium;
 
@@ -564,10 +600,9 @@ function calcRatioBackspread(
   const shortStrike = shortLegs[0].strike;
   const longStrike = longLegs[0].strike;
 
-  const maxRisk =
-    type === "call_ratio_backspread"
-      ? Math.abs(longStrike - shortStrike) * 100 * shortContracts - netCredit
-      : Math.abs(shortStrike - longStrike) * 100 * shortContracts - netCredit;
+  const maxRisk = type === "call_ratio_backspread"
+    ? Math.abs(longStrike - shortStrike) * 100 * shortContracts - netCredit
+    : Math.abs(shortStrike - longStrike) * 100 * shortContracts - netCredit;
 
   // Unlimited profit potential
   const maxReward = Infinity;
@@ -648,7 +683,7 @@ export function updateAllDTE(legs: OptionsLeg[]): OptionsLeg[] {
  */
 export function isLegITM(
   leg: OptionsLeg,
-  underlyingPrice: number
+  underlyingPrice: number,
 ): boolean {
   return (
     (leg.optionType === "call" && underlyingPrice > leg.strike) ||
@@ -661,7 +696,7 @@ export function isLegITM(
  */
 export function isLegDeepITM(
   leg: OptionsLeg,
-  underlyingPrice: number
+  underlyingPrice: number,
 ): boolean {
   return (
     (leg.optionType === "call" && underlyingPrice > leg.strike + 2) ||
@@ -674,7 +709,7 @@ export function isLegDeepITM(
  */
 export function isBreachingStrike(
   strike: number,
-  underlyingPrice: number
+  underlyingPrice: number,
 ): boolean {
   const threshold = Math.abs(strike) * 0.005;
   return Math.abs(underlyingPrice - strike) <= threshold;

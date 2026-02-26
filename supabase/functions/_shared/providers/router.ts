@@ -7,11 +7,14 @@ import type {
   NewsRequest,
   OptionsChainRequest,
 } from "./abstraction.ts";
-import type { Bar, NewsItem, OptionsChain, Quote, ProviderId } from "./types.ts";
-import {
-  ProviderUnavailableError,
-  RateLimitExceededError,
+import type {
+  Bar,
+  NewsItem,
+  OptionsChain,
+  ProviderId,
+  Quote,
 } from "./types.ts";
+import { ProviderUnavailableError, RateLimitExceededError } from "./types.ts";
 
 export interface ProviderHealth {
   provider: ProviderId;
@@ -69,9 +72,11 @@ export class ProviderRouter {
 
   constructor(
     providers: Record<ProviderId, DataProviderAbstraction>,
-    policy: RouterPolicy = DEFAULT_POLICY
+    policy: RouterPolicy = DEFAULT_POLICY,
   ) {
-    this.providers = new Map(Object.entries(providers) as [ProviderId, DataProviderAbstraction][]);
+    this.providers = new Map(
+      Object.entries(providers) as [ProviderId, DataProviderAbstraction][],
+    );
     this.policy = policy;
     this.health = new Map();
 
@@ -125,7 +130,9 @@ export class ProviderRouter {
     // Alpaca-only strategy: Use Alpaca for all OHLCV data
     const { primary, fallback } = this.policy.historicalBars;
 
-    console.log(`[Router] Using Alpaca for ${request.timeframe} (Alpaca-only strategy)`);
+    console.log(
+      `[Router] Using Alpaca for ${request.timeframe} (Alpaca-only strategy)`,
+    );
 
     try {
       const provider = await this.selectProvider(primary, fallback);
@@ -218,7 +225,7 @@ export class ProviderRouter {
    */
   private async selectProvider(
     primary: ProviderId,
-    fallback?: ProviderId
+    fallback?: ProviderId,
   ): Promise<DataProviderAbstraction> {
     const primaryHealth = this.health.get(primary);
     const now = Date.now();
@@ -229,7 +236,9 @@ export class ProviderRouter {
       !primaryHealth.isHealthy &&
       now - primaryHealth.lastCheck < this.cooldownPeriod
     ) {
-      console.log(`[Router] Primary provider ${primary} is in cooldown, using fallback`);
+      console.log(
+        `[Router] Primary provider ${primary} is in cooldown, using fallback`,
+      );
 
       if (fallback) {
         const fallbackHealth = this.health.get(fallback);
@@ -289,9 +298,16 @@ export class ProviderRouter {
               health.consecutiveFailures = 0;
             }
           }
-          console.log(`[Router] Health check for ${providerId}: ${isHealthy ? "healthy" : "unhealthy"}`);
+          console.log(
+            `[Router] Health check for ${providerId}: ${
+              isHealthy ? "healthy" : "unhealthy"
+            }`,
+          );
         } catch (error) {
-          console.error(`[Router] Health check failed for ${providerId}:`, error);
+          console.error(
+            `[Router] Health check failed for ${providerId}:`,
+            error,
+          );
           this.recordFailure(providerId);
         }
       }

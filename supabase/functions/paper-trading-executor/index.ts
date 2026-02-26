@@ -4,7 +4,7 @@
 // Purpose: Evaluate strategies, execute trades, manage positions with race prevention
 // ============================================================================
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.97.0';
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.97.0";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -41,11 +41,11 @@ interface PaperPosition {
   user_id: string | null;
   strategy_id: string;
   symbol_id: string;
-  status: 'open' | 'closed';
+  status: "open" | "closed";
   entry_price: number;
   entry_time: string;
   quantity: number;
-  direction: 'long' | 'short';
+  direction: "long" | "short";
   stop_loss_price: number;
   take_profit_price: number;
   exit_price?: number;
@@ -56,15 +56,19 @@ interface PaperPosition {
 
 // Type-safe execution result with discriminated unions
 type ExecutionResult =
-  | { success: true; action: 'entry_created' | 'position_closed' | 'no_action'; positionId?: string }
+  | {
+    success: true;
+    action: "entry_created" | "position_closed" | "no_action";
+    positionId?: string;
+  }
   | { success: false; error: ExecutionError };
 
 type ExecutionError =
-  | { type: 'condition_eval_failed'; indicator: string; reason: string }
-  | { type: 'position_locked'; reason: 'concurrent_close_detected' }
-  | { type: 'invalid_market_data'; reason: string }
-  | { type: 'position_constraints_violated'; violations: string[] }
-  | { type: 'database_error'; reason: string };
+  | { type: "condition_eval_failed"; indicator: string; reason: string }
+  | { type: "position_locked"; reason: "concurrent_close_detected" }
+  | { type: "invalid_market_data"; reason: string }
+  | { type: "position_constraints_violated"; violations: string[] }
+  | { type: "database_error"; reason: string };
 
 // Semaphore for concurrency limiting
 class Semaphore {
@@ -103,9 +107,9 @@ class Semaphore {
 }
 
 // Discriminated union for operator types
-type ComparisonOperator = '>' | '<' | '>=' | '<=' | '==' | '!=';
-type CrossOperator = 'cross_up' | 'cross_down';
-type RangeOperator = 'touches' | 'within_range';
+type ComparisonOperator = ">" | "<" | ">=" | "<=" | "==" | "!=";
+type CrossOperator = "cross_up" | "cross_down";
+type RangeOperator = "touches" | "within_range";
 
 type ConditionOperator = ComparisonOperator | CrossOperator | RangeOperator;
 
@@ -117,7 +121,7 @@ interface Condition {
   crossWith?: string;
   minValue?: number;
   maxValue?: number;
-  logicalOp: 'AND' | 'OR';
+  logicalOp: "AND" | "OR";
   parentId?: string;
 }
 
@@ -149,28 +153,32 @@ function validateMarketData(bars: Bar[]): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
   if (!bars || bars.length === 0) {
-    errors.push('No market data provided');
+    errors.push("No market data provided");
     return { valid: false, errors };
   }
 
   const latestBar = bars[bars.length - 1];
 
-  if (!latestBar.open || !latestBar.high || !latestBar.low || !latestBar.close) {
-    errors.push('Null OHLC values detected');
+  if (
+    !latestBar.open || !latestBar.high || !latestBar.low || !latestBar.close
+  ) {
+    errors.push("Null OHLC values detected");
   }
 
   if (latestBar.high < latestBar.low) {
-    errors.push('High < Low (invalid bar)');
+    errors.push("High < Low (invalid bar)");
   }
 
   if (latestBar.close < latestBar.low || latestBar.close > latestBar.high) {
-    errors.push('Close outside high/low range');
+    errors.push("Close outside high/low range");
   }
 
   // Check for gaps (>10% move)
   if (bars.length > 1) {
     const previousBar = bars[bars.length - 2];
-    const gap = Math.abs((latestBar.open - previousBar.close) / previousBar.close);
+    const gap = Math.abs(
+      (latestBar.open - previousBar.close) / previousBar.close,
+    );
     if (gap > 0.1) {
       errors.push(`Gap detected: ${(gap * 100).toFixed(2)}% (>10%)`);
     }
@@ -184,28 +192,38 @@ function validatePositionConstraints(
   quantity: number,
   slPct: number,
   tpPct: number,
-  direction: 'long' | 'short'
+  direction: "long" | "short",
 ): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
-  if (entryPrice <= 0) errors.push('Entry price must be positive');
-  if (quantity <= 0 || quantity > 1000) errors.push('Quantity out of bounds [1, 1000]');
-  if (slPct < 0.1 || slPct > 20) errors.push('SL must be 0.1%-20%');
-  if (tpPct < 0.1 || tpPct > 100) errors.push('TP must be 0.1%-100%');
+  if (entryPrice <= 0) errors.push("Entry price must be positive");
+  if (quantity <= 0 || quantity > 1000) {
+    errors.push("Quantity out of bounds [1, 1000]");
+  }
+  if (slPct < 0.1 || slPct > 20) errors.push("SL must be 0.1%-20%");
+  if (tpPct < 0.1 || tpPct > 100) errors.push("TP must be 0.1%-100%");
 
   // Check SL/TP ordering based on direction
-  if (direction === 'long') {
+  if (direction === "long") {
     // For long: SL should be below entry, TP should be above
     const slPrice = entryPrice * (1 - slPct / 100);
     const tpPrice = entryPrice * (1 + tpPct / 100);
-    if (slPrice >= entryPrice) errors.push('Long: SL must be below entry price');
-    if (tpPrice <= entryPrice) errors.push('Long: TP must be above entry price');
+    if (slPrice >= entryPrice) {
+      errors.push("Long: SL must be below entry price");
+    }
+    if (tpPrice <= entryPrice) {
+      errors.push("Long: TP must be above entry price");
+    }
   } else {
     // For short: SL should be above entry, TP should be below
     const slPrice = entryPrice * (1 + slPct / 100);
     const tpPrice = entryPrice * (1 - tpPct / 100);
-    if (slPrice <= entryPrice) errors.push('Short: SL must be above entry price');
-    if (tpPrice >= entryPrice) errors.push('Short: TP must be below entry price');
+    if (slPrice <= entryPrice) {
+      errors.push("Short: SL must be above entry price");
+    }
+    if (tpPrice >= entryPrice) {
+      errors.push("Short: TP must be below entry price");
+    }
   }
 
   return { valid: errors.length === 0, errors };
@@ -218,7 +236,7 @@ function validatePositionConstraints(
 function evaluateCondition(
   condition: Condition,
   bars: Bar[],
-  indicatorCache: Map<string, number>
+  indicatorCache: Map<string, number>,
 ): boolean {
   if (!bars || bars.length === 0) return false;
 
@@ -229,19 +247,19 @@ function evaluateCondition(
 
   // Built-in OHLCV indicators
   switch (condition.indicator) {
-    case 'Close':
+    case "Close":
       indicatorValue = latestBar.close;
       break;
-    case 'Open':
+    case "Open":
       indicatorValue = latestBar.open;
       break;
-    case 'High':
+    case "High":
       indicatorValue = latestBar.high;
       break;
-    case 'Low':
+    case "Low":
       indicatorValue = latestBar.low;
       break;
-    case 'Volume':
+    case "Volume":
       indicatorValue = latestBar.volume;
       break;
     default:
@@ -250,26 +268,31 @@ function evaluateCondition(
   }
 
   if (indicatorValue === undefined) {
-    console.log(`[WARN] Indicator ${condition.indicator} not found in cache or OHLCV`);
+    console.log(
+      `[WARN] Indicator ${condition.indicator} not found in cache or OHLCV`,
+    );
     return false;
   }
 
   // Evaluate based on operator
-  if ('value' in condition && condition.operator !== 'cross_up' && condition.operator !== 'cross_down') {
+  if (
+    "value" in condition && condition.operator !== "cross_up" &&
+    condition.operator !== "cross_down"
+  ) {
     const value = condition.value!;
     switch (condition.operator as ComparisonOperator) {
-      case '>':
+      case ">":
         return indicatorValue > value;
-      case '<':
+      case "<":
         return indicatorValue < value;
-      case '>=':
+      case ">=":
         return indicatorValue >= value;
-      case '<=':
+      case "<=":
         return indicatorValue <= value;
-      case '==':
+      case "==":
         const epsilon = 0.0001;
         return Math.abs(indicatorValue - value) < epsilon;
-      case '!=':
+      case "!=":
         return indicatorValue !== value;
       default:
         return false;
@@ -277,15 +300,20 @@ function evaluateCondition(
   }
 
   // Cross operators (simplified: would need historical data for true cross detection)
-  if (condition.operator === 'cross_up' || condition.operator === 'cross_down') {
+  if (
+    condition.operator === "cross_up" || condition.operator === "cross_down"
+  ) {
     // In production, this would compare against crossWith indicator
     // For now, simplified logic: check if indicator > threshold
-    return condition.operator === 'cross_up' ? indicatorValue > 50 : indicatorValue < 50;
+    return condition.operator === "cross_up"
+      ? indicatorValue > 50
+      : indicatorValue < 50;
   }
 
   // Range operators
-  if ('minValue' in condition && 'maxValue' in condition) {
-    return indicatorValue >= condition.minValue! && indicatorValue <= condition.maxValue!;
+  if ("minValue" in condition && "maxValue" in condition) {
+    return indicatorValue >= condition.minValue! &&
+      indicatorValue <= condition.maxValue!;
   }
 
   return false;
@@ -294,7 +322,7 @@ function evaluateCondition(
 function evaluateConditionList(
   conditions: Condition[],
   bars: Bar[],
-  indicatorCache: Map<string, number>
+  indicatorCache: Map<string, number>,
 ): boolean {
   if (!conditions || conditions.length === 0) return false;
 
@@ -314,18 +342,18 @@ function evaluateConditionList(
 
 async function getOpenPosition(
   supabase: any,
-  strategyId: string
+  strategyId: string,
 ): Promise<{ data: PaperPosition | null; error?: string }> {
   try {
     const { data, error } = await supabase
-      .from('paper_trading_positions')
-      .select('*')
-      .eq('strategy_id', strategyId)
-      .eq('status', 'open')
+      .from("paper_trading_positions")
+      .select("*")
+      .eq("strategy_id", strategyId)
+      .eq("status", "open")
       .single();
 
     if (error) {
-      if (error.code === 'PGRST116') {
+      if (error.code === "PGRST116") {
         // No rows returned - this is expected, not an error
         return { data: null };
       }
@@ -343,28 +371,34 @@ async function createPosition(
   strategy: Strategy,
   entryPrice: number,
   quantity: number,
-  direction: 'long' | 'short',
+  direction: "long" | "short",
   slPrice: number,
-  tpPrice: number
+  tpPrice: number,
 ): Promise<ExecutionResult> {
   try {
     // Validate first
     const slPct = Math.abs((entryPrice - slPrice) / entryPrice) * 100;
     const tpPct = Math.abs((tpPrice - entryPrice) / entryPrice) * 100;
 
-    const validation = validatePositionConstraints(entryPrice, quantity, slPct, tpPct, direction);
+    const validation = validatePositionConstraints(
+      entryPrice,
+      quantity,
+      slPct,
+      tpPct,
+      direction,
+    );
     if (!validation.valid) {
       return {
         success: false,
         error: {
-          type: 'position_constraints_violated',
+          type: "position_constraints_violated",
           violations: validation.errors,
         },
       };
     }
 
     const { data, error } = await supabase
-      .from('paper_trading_positions')
+      .from("paper_trading_positions")
       .insert({
         user_id: strategy.user_id,
         strategy_id: strategy.id,
@@ -376,7 +410,7 @@ async function createPosition(
         direction,
         stop_loss_price: slPrice,
         take_profit_price: tpPrice,
-        status: 'open',
+        status: "open",
       })
       .select()
       .single();
@@ -385,7 +419,7 @@ async function createPosition(
       return {
         success: false,
         error: {
-          type: 'database_error',
+          type: "database_error",
           reason: error.message,
         },
       };
@@ -393,14 +427,14 @@ async function createPosition(
 
     return {
       success: true,
-      action: 'entry_created',
+      action: "entry_created",
       positionId: data.id,
     };
   } catch (err: any) {
     return {
       success: false,
       error: {
-        type: 'database_error',
+        type: "database_error",
         reason: err.message,
       },
     };
@@ -411,21 +445,21 @@ function determineCloseReason(
   position: PaperPosition,
   currentPrice: number,
   exitSignal: boolean,
-  bars: Bar[]
-): 'SL_HIT' | 'TP_HIT' | 'EXIT_SIGNAL' | 'GAP_FORCED_CLOSE' | null {
+  bars: Bar[],
+): "SL_HIT" | "TP_HIT" | "EXIT_SIGNAL" | "GAP_FORCED_CLOSE" | null {
   // Check for gaps (>10% move)
   if (bars.length > 1) {
     const previousClose = bars[bars.length - 2].close;
     const gap = Math.abs((currentPrice - previousClose) / previousClose);
     if (gap > 0.1) {
-      return 'GAP_FORCED_CLOSE';
+      return "GAP_FORCED_CLOSE";
     }
   }
 
   // Check stop loss and take profit
-  if (currentPrice <= position.stop_loss_price) return 'SL_HIT';
-  if (currentPrice >= position.take_profit_price) return 'TP_HIT';
-  if (exitSignal) return 'EXIT_SIGNAL';
+  if (currentPrice <= position.stop_loss_price) return "SL_HIT";
+  if (currentPrice >= position.take_profit_price) return "TP_HIT";
+  if (exitSignal) return "EXIT_SIGNAL";
 
   return null;
 }
@@ -434,12 +468,12 @@ async function closePosition(
   supabase: any,
   position: PaperPosition,
   exitPrice: number,
-  closeReason: string
+  closeReason: string,
 ): Promise<ExecutionResult> {
   try {
     // Calculate P&L
     let pnl: number;
-    if (position.direction === 'long') {
+    if (position.direction === "long") {
       pnl = (exitPrice - position.entry_price) * position.quantity;
     } else {
       pnl = (position.entry_price - exitPrice) * position.quantity;
@@ -447,16 +481,16 @@ async function closePosition(
 
     // Use optimistic locking: only update if status is still 'open'
     const { data, error } = await supabase
-      .from('paper_trading_positions')
+      .from("paper_trading_positions")
       .update({
-        status: 'closed',
+        status: "closed",
         exit_price: exitPrice,
         exit_time: new Date().toISOString(),
         pnl,
         close_reason: closeReason,
       })
-      .eq('id', position.id)
-      .eq('status', 'open') // Race condition prevention!
+      .eq("id", position.id)
+      .eq("status", "open") // Race condition prevention!
       .select()
       .single();
 
@@ -465,22 +499,22 @@ async function closePosition(
       return {
         success: false,
         error: {
-          type: 'position_locked',
-          reason: 'concurrent_close_detected',
+          type: "position_locked",
+          reason: "concurrent_close_detected",
         },
       };
     }
 
     return {
       success: true,
-      action: 'position_closed',
+      action: "position_closed",
       positionId: position.id,
     };
   } catch (err: any) {
     return {
       success: false,
       error: {
-        type: 'database_error',
+        type: "database_error",
         reason: err.message,
       },
     };
@@ -494,24 +528,24 @@ async function closePosition(
 async function executePaperTradingCycle(
   supabase: any,
   symbol: string,
-  timeframe: string
+  timeframe: string,
 ): Promise<ExecutionResult[]> {
   try {
     // 1. Fetch active strategies for this symbol/timeframe
     const { data: strategies, error: stratError } = await supabase
-      .from('strategy_user_strategies')
-      .select('*')
-      .eq('symbol_id', symbol)
-      .eq('timeframe', timeframe)
-      .eq('paper_trading_enabled', true);
+      .from("strategy_user_strategies")
+      .select("*")
+      .eq("symbol_id", symbol)
+      .eq("timeframe", timeframe)
+      .eq("paper_trading_enabled", true);
 
     if (stratError) {
-      console.error('Failed to fetch strategies:', stratError);
+      console.error("Failed to fetch strategies:", stratError);
       return [
         {
           success: false,
           error: {
-            type: 'database_error',
+            type: "database_error",
             reason: stratError.message,
           },
         },
@@ -522,28 +556,28 @@ async function executePaperTradingCycle(
       return [
         {
           success: true,
-          action: 'no_action',
+          action: "no_action",
         },
       ];
     }
 
     // 2. Fetch latest market data (ONCE - reuse for all strategies)
     const { data: bars, error: barError } = await supabase
-      .from('ohlc_bars_v2')
-      .select('*')
-      .eq('symbol_id', symbol)
-      .eq('timeframe', timeframe)
-      .order('ts', { ascending: false })
+      .from("ohlc_bars_v2")
+      .select("*")
+      .eq("symbol_id", symbol)
+      .eq("timeframe", timeframe)
+      .order("ts", { ascending: false })
       .limit(100);
 
     if (barError || !bars) {
-      console.error('Failed to fetch market data:', barError);
+      console.error("Failed to fetch market data:", barError);
       return [
         {
           success: false,
           error: {
-            type: 'invalid_market_data',
-            reason: barError?.message || 'No bars found',
+            type: "invalid_market_data",
+            reason: barError?.message || "No bars found",
           },
         },
       ];
@@ -564,16 +598,16 @@ async function executePaperTradingCycle(
     // Validate market data
     const validation = validateMarketData(sortedBars);
     if (!validation.valid) {
-      console.warn('Market data validation warnings:', validation.errors);
+      console.warn("Market data validation warnings:", validation.errors);
     }
 
     // 3. Pre-calculate indicators (shared cache)
     const indicatorCache = new Map<string, number>();
     // In production, calculate RSI, MACD, etc. here
     // For now, mock some indicator values
-    indicatorCache.set('RSI', 55);
-    indicatorCache.set('MACD', 0.5);
-    indicatorCache.set('Volume_MA', 1000000);
+    indicatorCache.set("RSI", 55);
+    indicatorCache.set("MACD", 0.5);
+    indicatorCache.set("Volume_MA", 1000000);
 
     // 4. Execute strategies with concurrency limiting
     const results: ExecutionResult[] = [];
@@ -587,7 +621,7 @@ async function executePaperTradingCycle(
           supabase,
           strategy,
           sortedBars,
-          indicatorCache
+          indicatorCache,
         );
         results.push(result);
       } finally {
@@ -597,13 +631,13 @@ async function executePaperTradingCycle(
 
     return results;
   } catch (error: any) {
-    console.error('Executor error:', error);
+    console.error("Executor error:", error);
     return [
       {
         success: false,
         error: {
-          type: 'condition_eval_failed',
-          indicator: 'unknown',
+          type: "condition_eval_failed",
+          indicator: "unknown",
           reason: error.message,
         },
       },
@@ -615,7 +649,7 @@ async function executeStrategy(
   supabase: any,
   strategy: Strategy,
   bars: Bar[],
-  indicatorCache: Map<string, number>
+  indicatorCache: Map<string, number>,
 ): Promise<ExecutionResult> {
   try {
     const latestPrice = bars[bars.length - 1].close;
@@ -628,28 +662,33 @@ async function executeStrategy(
       const exitSignal = evaluateConditionList(
         strategy.exit_conditions,
         bars,
-        indicatorCache
+        indicatorCache,
       );
 
       const closeReason = determineCloseReason(
         openPosition,
         latestPrice,
         exitSignal,
-        bars
+        bars,
       );
 
       if (closeReason) {
-        const result = await closePosition(supabase, openPosition, latestPrice, closeReason);
+        const result = await closePosition(
+          supabase,
+          openPosition,
+          latestPrice,
+          closeReason,
+        );
         return result;
       }
 
-      return { success: true, action: 'no_action' };
+      return { success: true, action: "no_action" };
     } else {
       // No open position - check for entry signal
       const entrySignal = evaluateConditionList(
         strategy.entry_conditions,
         bars,
-        indicatorCache
+        indicatorCache,
       );
 
       if (entrySignal) {
@@ -663,22 +702,22 @@ async function executeStrategy(
           strategy,
           latestPrice,
           quantity,
-          'long',
+          "long",
           slPrice,
-          tpPrice
+          tpPrice,
         );
 
         return result;
       }
 
-      return { success: true, action: 'no_action' };
+      return { success: true, action: "no_action" };
     }
   } catch (error: any) {
     return {
       success: false,
       error: {
-        type: 'condition_eval_failed',
-        indicator: 'unknown',
+        type: "condition_eval_failed",
+        indicator: "unknown",
         reason: error.message,
       },
     };
@@ -692,20 +731,20 @@ async function executeStrategy(
 Deno.serve(async (req) => {
   try {
     // CORS headers
-    if (req.method === 'OPTIONS') {
+    if (req.method === "OPTIONS") {
       return new Response(null, {
         headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
         },
       });
     }
 
     // Initialize Supabase client
     const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_KEY')!
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_KEY")!,
     );
 
     // Parse request
@@ -714,11 +753,11 @@ Deno.serve(async (req) => {
 
     if (!symbol || !timeframe) {
       return new Response(
-        JSON.stringify({ error: 'symbol and timeframe are required' }),
+        JSON.stringify({ error: "symbol and timeframe are required" }),
         {
           status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        }
+          headers: { "Content-Type": "application/json" },
+        },
       );
     }
 
@@ -741,11 +780,11 @@ Deno.serve(async (req) => {
         results,
       }),
       {
-        headers: { 'Content-Type': 'application/json' },
-      }
+        headers: { "Content-Type": "application/json" },
+      },
     );
   } catch (error: any) {
-    console.error('Edge function error:', error);
+    console.error("Edge function error:", error);
     return new Response(
       JSON.stringify({
         success: false,
@@ -753,8 +792,8 @@ Deno.serve(async (req) => {
       }),
       {
         status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      }
+        headers: { "Content-Type": "application/json" },
+      },
     );
   }
 });

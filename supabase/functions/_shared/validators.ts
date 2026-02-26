@@ -27,21 +27,24 @@ export interface ValidationResult<T = void> {
  * Checks for: null values, negative prices, data integrity
  */
 export function validateMarketData(
-  bars: Bar[] | null | undefined
+  bars: Bar[] | null | undefined,
 ): ValidationResult {
   const errors: string[] = [];
 
   // Check if bars exist
   if (!bars || !Array.isArray(bars)) {
-    return { valid: false, errors: ['No market data provided'] };
+    return { valid: false, errors: ["No market data provided"] };
   }
 
   if (bars.length === 0) {
-    return { valid: false, errors: ['Market data is empty'] };
+    return { valid: false, errors: ["Market data is empty"] };
   }
 
   if (bars.length < 2) {
-    return { valid: false, errors: ['Need at least 2 bars for indicator calculation'] };
+    return {
+      valid: false,
+      errors: ["Need at least 2 bars for indicator calculation"],
+    };
   }
 
   // Validate each bar
@@ -50,7 +53,7 @@ export function validateMarketData(
     const barIndex = i + 1;
 
     // Check required fields
-    if (!bar || typeof bar !== 'object') {
+    if (!bar || typeof bar !== "object") {
       errors.push(`Bar ${barIndex}: Invalid structure`);
       continue;
     }
@@ -94,7 +97,9 @@ export function validateMarketData(
     }
 
     if (close < low || close > high) {
-      errors.push(`Bar ${barIndex}: Close (${close}) outside [Low=${low}, High=${high}]`);
+      errors.push(
+        `Bar ${barIndex}: Close (${close}) outside [Low=${low}, High=${high}]`,
+      );
     }
 
     // Check for extreme gaps (>10% move from previous close)
@@ -104,7 +109,9 @@ export function validateMarketData(
 
       if (gapPct > 15) {
         errors.push(
-          `Bar ${barIndex}: Gap detected (${gapPct.toFixed(1)}%) - may trigger forced closes`
+          `Bar ${barIndex}: Gap detected (${
+            gapPct.toFixed(1)
+          }%) - may trigger forced closes`,
         );
       }
     }
@@ -125,7 +132,7 @@ export interface PositionConstraints {
   quantity: number;
   slPct: number;
   tpPct: number;
-  direction: 'long' | 'short';
+  direction: "long" | "short";
 }
 
 /**
@@ -133,7 +140,7 @@ export interface PositionConstraints {
  * Ensures entry price > 0, qty bounds, SL < entry < TP
  */
 export function validatePositionConstraints(
-  constraints: PositionConstraints
+  constraints: PositionConstraints,
 ): ValidationResult {
   const errors: string[] = [];
   const {
@@ -157,7 +164,7 @@ export function validatePositionConstraints(
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1000) {
     errors.push(
       `Quantity out of bounds [1, 1000] (got: ${quantity}). ` +
-      `Common mistake: Don't set qty > 1000 (causes P&L overflow)`
+        `Common mistake: Don't set qty > 1000 (causes P&L overflow)`,
     );
   }
 
@@ -165,7 +172,7 @@ export function validatePositionConstraints(
   if (slPct < 0.1 || slPct > 20) {
     errors.push(
       `Stop loss must be 0.1%-20% (got: ${slPct}%). ` +
-      `Typical: 2%. Too small = whipsawed, Too large = unlimited risk`
+        `Typical: 2%. Too small = whipsawed, Too large = unlimited risk`,
     );
   }
 
@@ -173,7 +180,7 @@ export function validatePositionConstraints(
   if (tpPct < 0.1 || tpPct > 100) {
     errors.push(
       `Take profit must be 0.1%-100% (got: ${tpPct}%). ` +
-      `Typical: 5-10%. Too large = unrealistic targets`
+        `Typical: 5-10%. Too large = unrealistic targets`,
     );
   }
 
@@ -181,7 +188,7 @@ export function validatePositionConstraints(
   let slPrice: number;
   let tpPrice: number;
 
-  if (direction === 'long') {
+  if (direction === "long") {
     slPrice = entryPrice * (1 - slPct / 100);
     tpPrice = entryPrice * (1 + tpPct / 100);
   } else {
@@ -191,19 +198,35 @@ export function validatePositionConstraints(
   }
 
   // Validate SL < entry < TP (for longs) or entry < SL, TP < entry (for shorts)
-  if (direction === 'long') {
+  if (direction === "long") {
     if (slPrice >= entryPrice) {
-      errors.push(`Long SL price (${slPrice.toFixed(2)}) >= entry (${entryPrice.toFixed(2)})`);
+      errors.push(
+        `Long SL price (${slPrice.toFixed(2)}) >= entry (${
+          entryPrice.toFixed(2)
+        })`,
+      );
     }
     if (tpPrice <= entryPrice) {
-      errors.push(`Long TP price (${tpPrice.toFixed(2)}) <= entry (${entryPrice.toFixed(2)})`);
+      errors.push(
+        `Long TP price (${tpPrice.toFixed(2)}) <= entry (${
+          entryPrice.toFixed(2)
+        })`,
+      );
     }
   } else {
     if (slPrice <= entryPrice) {
-      errors.push(`Short SL price (${slPrice.toFixed(2)}) <= entry (${entryPrice.toFixed(2)})`);
+      errors.push(
+        `Short SL price (${slPrice.toFixed(2)}) <= entry (${
+          entryPrice.toFixed(2)
+        })`,
+      );
     }
     if (tpPrice >= entryPrice) {
-      errors.push(`Short TP price (${tpPrice.toFixed(2)}) >= entry (${entryPrice.toFixed(2)})`);
+      errors.push(
+        `Short TP price (${tpPrice.toFixed(2)}) >= entry (${
+          entryPrice.toFixed(2)
+        })`,
+      );
     }
   }
 
@@ -234,14 +257,14 @@ export function validateSlippage(slippagePct: number): ValidationResult {
   if (slippagePct < 0.01) {
     errors.push(
       `Slippage too small: ${slippagePct}%. Minimum realistic: 0.01% ` +
-      `(liquid assets like SPY have 0.01-0.1% spreads)`
+        `(liquid assets like SPY have 0.01-0.1% spreads)`,
     );
   }
 
   if (slippagePct > 5.0) {
     errors.push(
       `Slippage too large: ${slippagePct}%. Maximum allowed: 5%. ` +
-      `Prevent P&L inflation: 5% is extreme even for illiquid stocks`
+        `Prevent P&L inflation: 5% is extreme even for illiquid stocks`,
     );
   }
 
@@ -249,14 +272,14 @@ export function validateSlippage(slippagePct: number): ValidationResult {
   if (slippagePct < 0.05) {
     console.warn(
       `[BACKTEST WARNING] Slippage ${slippagePct}% is very tight. ` +
-      `Markets don't have spreads this narrow. Consider 0.1-0.2% for equities`
+        `Markets don't have spreads this narrow. Consider 0.1-0.2% for equities`,
     );
   }
 
   if (slippagePct > 2.0) {
     console.warn(
       `[BACKTEST WARNING] Slippage ${slippagePct}% is very wide. ` +
-      `Most equities have spreads <1%. Only junk stocks/microcaps >2%`
+        `Most equities have spreads <1%. Only junk stocks/microcaps >2%`,
     );
   }
 
@@ -287,7 +310,9 @@ export function validateSLTPBounds(bounds: SLTPBounds): ValidationResult {
     errors.push(`SL too small: ${slPct}%. Minimum: 0.1% (prevents whipsaws)`);
   }
   if (slPct > 20) {
-    errors.push(`SL too large: ${slPct}%. Maximum: 20% (prevents unlimited risk)`);
+    errors.push(
+      `SL too large: ${slPct}%. Maximum: 20% (prevents unlimited risk)`,
+    );
   }
 
   // TP bounds: 0.1% to 100%
@@ -302,7 +327,7 @@ export function validateSLTPBounds(bounds: SLTPBounds): ValidationResult {
   if (tpPct <= slPct) {
     errors.push(
       `TP (${tpPct}%) must be > SL (${slPct}%) ` +
-      `(profit target should be larger than loss limit)`
+        `(profit target should be larger than loss limit)`,
     );
   }
 
@@ -317,15 +342,15 @@ export function validateSLTPBounds(bounds: SLTPBounds): ValidationResult {
 // ============================================================================
 
 export type ConditionOperator =
-  | '>'
-  | '<'
-  | '>='
-  | '<='
-  | '=='
-  | 'cross_up'
-  | 'cross_down'
-  | 'touches'
-  | 'within_range';
+  | ">"
+  | "<"
+  | ">="
+  | "<="
+  | "=="
+  | "cross_up"
+  | "cross_down"
+  | "touches"
+  | "within_range";
 
 /**
  * Validates condition operator and required fields
@@ -334,20 +359,20 @@ export type ConditionOperator =
 export function validateOperator(
   operator: ConditionOperator,
   value: number | string,
-  crossWith?: string
+  crossWith?: string,
 ): ValidationResult {
   const errors: string[] = [];
 
   const validOperators: ConditionOperator[] = [
-    '>',
-    '<',
-    '>=',
-    '<=',
-    '==',
-    'cross_up',
-    'cross_down',
-    'touches',
-    'within_range',
+    ">",
+    "<",
+    ">=",
+    "<=",
+    "==",
+    "cross_up",
+    "cross_down",
+    "touches",
+    "within_range",
   ];
 
   if (!validOperators.includes(operator)) {
@@ -356,14 +381,14 @@ export function validateOperator(
   }
 
   // Discriminated union: cross_up/cross_down require crossWith
-  if ((operator === 'cross_up' || operator === 'cross_down') && !crossWith) {
+  if ((operator === "cross_up" || operator === "cross_down") && !crossWith) {
     errors.push(
-      `Operator '${operator}' requires 'crossWith' field (e.g., 'cross_up' with MA50)`
+      `Operator '${operator}' requires 'crossWith' field (e.g., 'cross_up' with MA50)`,
     );
   }
 
   // Validate value
-  if (typeof value === 'number') {
+  if (typeof value === "number") {
     if (!Number.isFinite(value)) {
       errors.push(`Value must be a valid number (got: ${value})`);
     }
@@ -385,7 +410,7 @@ export function validateOperator(
 export function validateBeforeExecution(
   bars: Bar[],
   positionConstraints: PositionConstraints,
-  slippage: number
+  slippage: number,
 ): ValidationResult {
   const errors: string[] = [];
 

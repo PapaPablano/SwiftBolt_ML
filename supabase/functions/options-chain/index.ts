@@ -5,7 +5,11 @@
 // DB persistence is used for long-term storage; ProviderRouter handles live fetching.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import {
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 import { getProviderRouter } from "../_shared/providers/factory.ts";
 
@@ -93,11 +97,15 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const persistParam = url.searchParams.get("persist");
-    const persistChains =
-      persistParam !== "0" && Deno.env.get("OPTIONS_CHAIN_PERSIST") !== "0";
+    const persistChains = persistParam !== "0" &&
+      Deno.env.get("OPTIONS_CHAIN_PERSIST") !== "0";
 
     // Fetch fresh options chain via ProviderRouter
-    console.log(`Fetching options chain for ${underlying}, expiration: ${expiration || "all"}`);
+    console.log(
+      `Fetching options chain for ${underlying}, expiration: ${
+        expiration || "all"
+      }`,
+    );
     try {
       console.log("[Options Chain] Initializing provider router...");
       const router = getProviderRouter();
@@ -109,7 +117,9 @@ serve(async (req: Request): Promise<Response> => {
         expiration,
       });
 
-      console.log(`[Options Chain] Successfully fetched ${optionsChain.calls.length} calls and ${optionsChain.puts.length} puts`);
+      console.log(
+        `[Options Chain] Successfully fetched ${optionsChain.calls.length} calls and ${optionsChain.puts.length} puts`,
+      );
 
       const response: OptionsChainResponse = {
         underlying: optionsChain.underlying,
@@ -208,13 +218,32 @@ serve(async (req: Request): Promise<Response> => {
       return jsonResponse(response);
     } catch (fetchError) {
       console.error("[Options Chain] Provider router fetch error:", fetchError);
-      console.error("[Options Chain] Error stack:", fetchError instanceof Error ? fetchError.stack : "No stack trace");
-      console.error("[Options Chain] Error message:", fetchError instanceof Error ? fetchError.message : String(fetchError));
-      return errorResponse(`Failed to fetch options chain: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`, 502);
+      console.error(
+        "[Options Chain] Error stack:",
+        fetchError instanceof Error ? fetchError.stack : "No stack trace",
+      );
+      console.error(
+        "[Options Chain] Error message:",
+        fetchError instanceof Error ? fetchError.message : String(fetchError),
+      );
+      return errorResponse(
+        `Failed to fetch options chain: ${
+          fetchError instanceof Error ? fetchError.message : String(fetchError)
+        }`,
+        502,
+      );
     }
   } catch (err) {
     console.error("[Options Chain] Unexpected error:", err);
-    console.error("[Options Chain] Error stack:", err instanceof Error ? err.stack : "No stack trace");
-    return errorResponse(`Internal server error: ${err instanceof Error ? err.message : String(err)}`, 500);
+    console.error(
+      "[Options Chain] Error stack:",
+      err instanceof Error ? err.stack : "No stack trace",
+    );
+    return errorResponse(
+      `Internal server error: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      500,
+    );
   }
 });

@@ -20,9 +20,9 @@ export interface Bar {
 // ============================================================================
 
 // Discriminated union: ensures cross_up/cross_down require crossWith field
-export type ComparisonOperator = '>' | '<' | '>=' | '<=' | '==';
-export type CrossOperator = 'cross_up' | 'cross_down';
-export type RangeOperator = 'touches' | 'within_range';
+export type ComparisonOperator = ">" | "<" | ">=" | "<=" | "==";
+export type CrossOperator = "cross_up" | "cross_down";
+export type RangeOperator = "touches" | "within_range";
 
 export type Operator = ComparisonOperator | CrossOperator | RangeOperator;
 
@@ -34,30 +34,30 @@ export type Operator = ComparisonOperator | CrossOperator | RangeOperator;
  */
 export type Condition =
   | {
-      id: string;
-      indicator: string;
-      operator: ComparisonOperator;
-      value: number;
-      logicalOp?: 'AND' | 'OR';
-      parentId?: string;
-    }
+    id: string;
+    indicator: string;
+    operator: ComparisonOperator;
+    value: number;
+    logicalOp?: "AND" | "OR";
+    parentId?: string;
+  }
   | {
-      id: string;
-      indicator: string;
-      operator: CrossOperator;
-      crossWith: string; // REQUIRED for cross_up/cross_down
-      logicalOp?: 'AND' | 'OR';
-      parentId?: string;
-    }
+    id: string;
+    indicator: string;
+    operator: CrossOperator;
+    crossWith: string; // REQUIRED for cross_up/cross_down
+    logicalOp?: "AND" | "OR";
+    parentId?: string;
+  }
   | {
-      id: string;
-      indicator: string;
-      operator: RangeOperator;
-      minValue: number;
-      maxValue: number;
-      logicalOp?: 'AND' | 'OR';
-      parentId?: string;
-    };
+    id: string;
+    indicator: string;
+    operator: RangeOperator;
+    minValue: number;
+    maxValue: number;
+    logicalOp?: "AND" | "OR";
+    parentId?: string;
+  };
 
 /**
  * ConditionTree represents the hierarchical AND/OR structure
@@ -66,7 +66,7 @@ export interface ConditionTree {
   id: string;
   condition: Condition;
   children: ConditionTree[];
-  logicalOp: 'AND' | 'OR';
+  logicalOp: "AND" | "OR";
 }
 
 // ============================================================================
@@ -130,7 +130,7 @@ export class IndicatorCache {
 export function evaluateCondition(
   condition: Condition,
   bars: Bar[],
-  cache: IndicatorCache
+  cache: IndicatorCache,
 ): boolean {
   if (bars.length === 0) return false;
 
@@ -151,16 +151,30 @@ export function evaluateCondition(
   }
 
   // Evaluate based on operator type
-  if ('value' in condition) {
+  if ("value" in condition) {
     // ComparisonOperator
-    return evaluateComparison(indicatorValue, condition.operator as ComparisonOperator, condition.value);
-  } else if ('crossWith' in condition) {
+    return evaluateComparison(
+      indicatorValue,
+      condition.operator as ComparisonOperator,
+      condition.value,
+    );
+  } else if ("crossWith" in condition) {
     // CrossOperator
     const crossWithValue = calculateIndicator(condition.crossWith, bars);
-    return evaluateCross(indicatorValue, crossWithValue, condition.operator as CrossOperator, bars);
-  } else if ('minValue' in condition) {
+    return evaluateCross(
+      indicatorValue,
+      crossWithValue,
+      condition.operator as CrossOperator,
+      bars,
+    );
+  } else if ("minValue" in condition) {
     // RangeOperator
-    return evaluateRange(indicatorValue, condition.minValue, condition.maxValue, condition.operator as RangeOperator);
+    return evaluateRange(
+      indicatorValue,
+      condition.minValue,
+      condition.maxValue,
+      condition.operator as RangeOperator,
+    );
   }
 
   return false;
@@ -169,17 +183,21 @@ export function evaluateCondition(
 /**
  * Evaluate comparison operators: >, <, >=, <=, ==
  */
-function evaluateComparison(value: number, operator: ComparisonOperator, target: number): boolean {
+function evaluateComparison(
+  value: number,
+  operator: ComparisonOperator,
+  target: number,
+): boolean {
   switch (operator) {
-    case '>':
+    case ">":
       return value > target;
-    case '<':
+    case "<":
       return value < target;
-    case '>=':
+    case ">=":
       return value >= target;
-    case '<=':
+    case "<=":
       return value <= target;
-    case '==':
+    case "==":
       return Math.abs(value - target) < 0.0001; // Float comparison with epsilon
     default:
       return false;
@@ -194,7 +212,7 @@ function evaluateCross(
   currentValue: number,
   currentCross: number,
   operator: CrossOperator,
-  bars: Bar[]
+  bars: Bar[],
 ): boolean {
   if (bars.length < 2) return false;
 
@@ -206,11 +224,11 @@ function evaluateCross(
   // In production, you'd calculate previous bar's indicator values
 
   switch (operator) {
-    case 'cross_up':
+    case "cross_up":
       // Previous value was below, current value is above
       // This is a simplified check; full implementation would track previous values
       return currentValue > currentCross;
-    case 'cross_down':
+    case "cross_down":
       // Previous value was above, current value is below
       return currentValue < currentCross;
     default:
@@ -221,14 +239,20 @@ function evaluateCross(
 /**
  * Evaluate range operators: touches, within_range
  */
-function evaluateRange(value: number, min: number, max: number, operator: RangeOperator): boolean {
+function evaluateRange(
+  value: number,
+  min: number,
+  max: number,
+  operator: RangeOperator,
+): boolean {
   switch (operator) {
-    case 'within_range':
+    case "within_range":
       return value >= min && value <= max;
-    case 'touches':
+    case "touches":
       // Touches at min or max boundary
       const epsilon = 0.0001;
-      return (Math.abs(value - min) < epsilon) || (Math.abs(value - max) < epsilon);
+      return (Math.abs(value - min) < epsilon) ||
+        (Math.abs(value - max) < epsilon);
     default:
       return false;
   }
@@ -244,7 +268,7 @@ function evaluateRange(value: number, min: number, max: number, operator: RangeO
 export function evaluateConditionTree(
   tree: ConditionTree | null,
   bars: Bar[],
-  cache: IndicatorCache
+  cache: IndicatorCache,
 ): boolean {
   if (!tree) return false;
 
@@ -257,13 +281,15 @@ export function evaluateConditionTree(
   }
 
   // Evaluate children
-  const childResults = tree.children.map(child => evaluateConditionTree(child, bars, cache));
+  const childResults = tree.children.map((child) =>
+    evaluateConditionTree(child, bars, cache)
+  );
 
   // Combine with logical operator
-  if (tree.logicalOp === 'AND') {
-    return nodeResult && childResults.every(r => r);
+  if (tree.logicalOp === "AND") {
+    return nodeResult && childResults.every((r) => r);
   } else {
-    return nodeResult || childResults.some(r => r);
+    return nodeResult || childResults.some((r) => r);
   }
 }
 
@@ -280,17 +306,17 @@ function calculateIndicator(name: string, bars: Bar[]): number {
   const lowerName = name.toLowerCase();
 
   switch (lowerName) {
-    case 'rsi':
+    case "rsi":
       return calculateRSI(bars, 14);
-    case 'close':
+    case "close":
       return bars[bars.length - 1].close;
-    case 'open':
+    case "open":
       return bars[bars.length - 1].open;
-    case 'high':
+    case "high":
       return bars[bars.length - 1].high;
-    case 'low':
+    case "low":
       return bars[bars.length - 1].low;
-    case 'volume':
+    case "volume":
       return bars[bars.length - 1].volume;
     default:
       // Return last close as fallback
@@ -309,8 +335,10 @@ function calculateRSI(bars: Bar[], period: number = 14): number {
     changes.push(bars[i].close - bars[i - 1].close);
   }
 
-  const gains = changes.filter(c => c > 0).reduce((a, b) => a + b, 0) / period;
-  const losses = Math.abs(changes.filter(c => c < 0).reduce((a, b) => a + b, 0)) / period;
+  const gains = changes.filter((c) => c > 0).reduce((a, b) => a + b, 0) /
+    period;
+  const losses =
+    Math.abs(changes.filter((c) => c < 0).reduce((a, b) => a + b, 0)) / period;
 
   if (losses === 0) return 100;
   const rs = gains / losses;
@@ -325,15 +353,17 @@ function calculateRSI(bars: Bar[], period: number = 14): number {
  * Build condition tree from flat list of conditions
  * Used to reconstruct AND/OR hierarchy from database
  */
-export function buildConditionTree(conditions: Condition[]): ConditionTree | null {
+export function buildConditionTree(
+  conditions: Condition[],
+): ConditionTree | null {
   if (!conditions || conditions.length === 0) return null;
 
   // Create map of conditions by ID for easy lookup
   const conditionMap = new Map<string, Condition>();
-  conditions.forEach(c => conditionMap.set(c.id, c));
+  conditions.forEach((c) => conditionMap.set(c.id, c));
 
   // Find root conditions (those without parentId)
-  const rootConditions = conditions.filter(c => !c.parentId);
+  const rootConditions = conditions.filter((c) => !c.parentId);
 
   if (rootConditions.length === 0) {
     // Fallback: treat first condition as root
@@ -341,7 +371,7 @@ export function buildConditionTree(conditions: Condition[]): ConditionTree | nul
       id: conditions[0].id,
       condition: conditions[0],
       children: [],
-      logicalOp: 'AND',
+      logicalOp: "AND",
     };
   }
 
@@ -352,17 +382,24 @@ export function buildConditionTree(conditions: Condition[]): ConditionTree | nul
 /**
  * Recursively build tree node and its children
  */
-function buildTreeNode(condition: Condition, conditionMap: Map<string, Condition>): ConditionTree {
+function buildTreeNode(
+  condition: Condition,
+  conditionMap: Map<string, Condition>,
+): ConditionTree {
   // Find children of this condition
-  const children = Array.from(conditionMap.values()).filter(c => c.parentId === condition.id);
+  const children = Array.from(conditionMap.values()).filter((c) =>
+    c.parentId === condition.id
+  );
 
-  const childNodes = children.map(child => buildTreeNode(child, conditionMap));
+  const childNodes = children.map((child) =>
+    buildTreeNode(child, conditionMap)
+  );
 
   return {
     id: condition.id,
     condition,
     children: childNodes,
-    logicalOp: condition.logicalOp || 'AND',
+    logicalOp: condition.logicalOp || "AND",
   };
 }
 
@@ -377,7 +414,7 @@ function buildTreeNode(condition: Condition, conditionMap: Map<string, Condition
 export function evaluateStrategySignals(
   entryConditions: Condition[],
   exitConditions: Condition[],
-  bars: Bar[]
+  bars: Bar[],
 ): { entry: boolean; exit: boolean } {
   const cache = new IndicatorCache();
 

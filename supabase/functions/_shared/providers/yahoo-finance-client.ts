@@ -4,8 +4,8 @@
 // Greeks calculated from Black-Scholes model
 
 import type {
-  OptionsChainRequest,
   HistoricalBarsRequest,
+  OptionsChainRequest,
 } from "./abstraction.ts";
 import type { Bar, OptionContract, OptionsChain, OptionType } from "./types.ts";
 import type { Cache } from "../cache/interface.ts";
@@ -54,12 +54,12 @@ const TIMEFRAME_TO_YAHOO_INTERVAL: Record<string, string> = {
 
 // Yahoo Finance range limits by interval
 const YAHOO_RANGE_LIMITS: Record<string, string> = {
-  "1m": "7d",   // 1-minute data available for last 7 days
-  "5m": "60d",  // 5-minute data available for last 60 days
+  "1m": "7d", // 1-minute data available for last 7 days
+  "5m": "60d", // 5-minute data available for last 60 days
   "15m": "60d", // 15-minute data available for last 60 days
   "30m": "60d", // 30-minute data available for last 60 days
   "1h": "730d", // 1-hour data available for last 2 years
-  "1d": "max",  // Daily data available for max history
+  "1d": "max", // Daily data available for max history
   "1wk": "max", // Weekly data available for max history
   "1mo": "max", // Monthly data available for max history
 };
@@ -111,7 +111,7 @@ export class YahooFinanceClient {
 
   constructor(
     cache: Cache,
-    baseURL: string = "https://query2.finance.yahoo.com"
+    baseURL: string = "https://query2.finance.yahoo.com",
   ) {
     this.cache = cache;
     this.baseURL = baseURL;
@@ -123,13 +123,15 @@ export class YahooFinanceClient {
    */
   async getHistoricalBars(request: HistoricalBarsRequest): Promise<Bar[]> {
     const { symbol, timeframe, start, end } = request;
-    
+
     // Use shorter cache key without timestamps for intraday to get fresh data
-    const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(timeframe);
-    const cacheKey = isIntraday 
+    const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(
+      timeframe,
+    );
+    const cacheKey = isIntraday
       ? `bars:yahoo:${symbol}:${timeframe}:recent`
       : `bars:yahoo:${symbol}:${timeframe}:${start}:${end}`;
-    
+
     const cached = await this.cache.get<Bar[]>(cacheKey);
     if (cached && !isIntraday) {
       console.log(`[Yahoo Finance] Cache hit for ${symbol} ${timeframe}`);
@@ -138,7 +140,7 @@ export class YahooFinanceClient {
 
     const ticker = symbol.toUpperCase();
     const interval = TIMEFRAME_TO_YAHOO_INTERVAL[timeframe];
-    
+
     if (!interval) {
       console.error(`[Yahoo Finance] Unsupported timeframe: ${timeframe}`);
       return [];
@@ -150,35 +152,46 @@ export class YahooFinanceClient {
 
     try {
       // Yahoo Finance chart API - no authentication needed for basic data
-      const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}`);
+      const url = new URL(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}`,
+      );
       url.searchParams.set("interval", actualInterval);
       url.searchParams.set("range", range);
       url.searchParams.set("includePrePost", "false"); // Only regular market hours
 
-      console.log(`[Yahoo Finance] Fetching bars: ${ticker} ${timeframe} (interval=${actualInterval}, range=${range})`);
-      
+      console.log(
+        `[Yahoo Finance] Fetching bars: ${ticker} ${timeframe} (interval=${actualInterval}, range=${range})`,
+      );
+
       const response = await fetch(url.toString(), {
         headers: {
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
           "Accept": "application/json",
         },
       });
 
       if (!response.ok) {
-        console.error(`[Yahoo Finance] API error: ${response.status} ${response.statusText}`);
+        console.error(
+          `[Yahoo Finance] API error: ${response.status} ${response.statusText}`,
+        );
         return [];
       }
 
       const data: YahooChartResponse = await response.json();
-      
+
       if (data.chart.error) {
-        console.error(`[Yahoo Finance] Chart error: ${data.chart.error.description}`);
+        console.error(
+          `[Yahoo Finance] Chart error: ${data.chart.error.description}`,
+        );
         return [];
       }
 
       const result = data.chart.result?.[0];
       if (!result || !result.timestamp || result.timestamp.length === 0) {
-        console.log(`[Yahoo Finance] No data available for ${ticker} ${timeframe}`);
+        console.log(
+          `[Yahoo Finance] No data available for ${ticker} ${timeframe}`,
+        );
         return [];
       }
 
@@ -188,9 +201,9 @@ export class YahooFinanceClient {
       for (let i = 0; i < result.timestamp.length; i++) {
         // Skip bars with null values
         if (quotes.open[i] == null || quotes.close[i] == null) continue;
-        
+
         const timestamp = result.timestamp[i] * 1000; // Convert to milliseconds
-        
+
         // Filter by requested time range
         if (timestamp < start * 1000 || timestamp > end * 1000) continue;
 
@@ -210,7 +223,9 @@ export class YahooFinanceClient {
         finalBars = this.aggregateBars(bars, 4);
       }
 
-      console.log(`[Yahoo Finance] Fetched ${finalBars.length} bars for ${ticker} ${timeframe}`);
+      console.log(
+        `[Yahoo Finance] Fetched ${finalBars.length} bars for ${ticker} ${timeframe}`,
+      );
 
       // Use shorter cache TTL for intraday (1 min) vs daily (24h)
       const cacheTTL = isIntraday ? 60 : CACHE_TTL.bars;
@@ -232,23 +247,23 @@ export class YahooFinanceClient {
    */
   private aggregateBars(bars: Bar[], factor: number): Bar[] {
     if (bars.length === 0) return [];
-    
+
     const aggregated: Bar[] = [];
-    
+
     for (let i = 0; i < bars.length; i += factor) {
       const chunk = bars.slice(i, i + factor);
       if (chunk.length === 0) continue;
-      
+
       aggregated.push({
         timestamp: chunk[0].timestamp,
         open: chunk[0].open,
-        high: Math.max(...chunk.map(b => b.high)),
-        low: Math.min(...chunk.map(b => b.low)),
+        high: Math.max(...chunk.map((b) => b.high)),
+        low: Math.min(...chunk.map((b) => b.low)),
         close: chunk[chunk.length - 1].close,
         volume: chunk.reduce((sum, b) => sum + b.volume, 0),
       });
     }
-    
+
     return aggregated;
   }
 
@@ -270,7 +285,8 @@ export class YahooFinanceClient {
       // First, get a cookie by visiting the consent page
       const consentResponse = await fetch("https://fc.yahoo.com", {
         headers: {
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         },
         redirect: "manual",
       });
@@ -290,16 +306,22 @@ export class YahooFinanceClient {
       console.log("[Yahoo Finance] Received cookies");
 
       // Now fetch the crumb using the cookies
-      const crumbResponse = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Cookie": this.cookie,
-          "Accept": "*/*",
+      const crumbResponse = await fetch(
+        "https://query2.finance.yahoo.com/v1/test/getcrumb",
+        {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Cookie": this.cookie,
+            "Accept": "*/*",
+          },
         },
-      });
+      );
 
       if (!crumbResponse.ok) {
-        throw new Error(`Failed to fetch crumb: ${crumbResponse.status} ${crumbResponse.statusText}`);
+        throw new Error(
+          `Failed to fetch crumb: ${crumbResponse.status} ${crumbResponse.statusText}`,
+        );
       }
 
       this.crumb = await crumbResponse.text();
@@ -338,17 +360,23 @@ export class YahooFinanceClient {
   /**
    * Fetch options for a single expiration date
    */
-  private async fetchSingleExpiration(ticker: string, expiration: number): Promise<OptionsChain> {
+  private async fetchSingleExpiration(
+    ticker: string,
+    expiration: number,
+  ): Promise<OptionsChain> {
     const { cookie, crumb } = await this.getCrumb();
     const url = new URL(`${this.baseURL}/v7/finance/options/${ticker}`);
     url.searchParams.set("crumb", crumb);
     url.searchParams.set("date", expiration.toString());
 
     try {
-      console.log(`[Yahoo Finance] Fetching options chain: ${ticker} (expiration: ${expiration})`);
+      console.log(
+        `[Yahoo Finance] Fetching options chain: ${ticker} (expiration: ${expiration})`,
+      );
       const response = await fetch(url.toString(), {
         headers: {
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
           "Accept": "application/json",
           "Accept-Language": "en-US,en;q=0.9",
           "Referer": "https://finance.yahoo.com/",
@@ -357,14 +385,18 @@ export class YahooFinanceClient {
       });
 
       if (!response.ok) {
-        throw new Error(`Yahoo Finance API error: ${response.status} ${response.statusText}`);
+        throw new Error(
+          `Yahoo Finance API error: ${response.status} ${response.statusText}`,
+        );
       }
 
       const data = await response.json();
       const result = data.optionChain?.result?.[0] as YahooOptionsChainResponse;
 
       if (!result || !result.options || result.options.length === 0) {
-        console.log(`[Yahoo Finance] No options data for ${ticker} expiration ${expiration}`);
+        console.log(
+          `[Yahoo Finance] No options data for ${ticker} expiration ${expiration}`,
+        );
         return {
           underlying: ticker,
           timestamp: Date.now(),
@@ -375,7 +407,11 @@ export class YahooFinanceClient {
       }
 
       const underlyingPrice = result.quote?.regularMarketPrice || 0;
-      const { calls, puts } = this.processOptionsData(result.options, ticker, underlyingPrice);
+      const { calls, puts } = this.processOptionsData(
+        result.options,
+        ticker,
+        underlyingPrice,
+      );
 
       const optionsChain: OptionsChain = {
         underlying: ticker,
@@ -415,7 +451,8 @@ export class YahooFinanceClient {
 
       const baseResponse = await fetch(baseUrl.toString(), {
         headers: {
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
           "Accept": "application/json",
           "Accept-Language": "en-US,en;q=0.9",
           "Referer": "https://finance.yahoo.com/",
@@ -424,14 +461,22 @@ export class YahooFinanceClient {
       });
 
       if (!baseResponse.ok) {
-        throw new Error(`Yahoo Finance API error: ${baseResponse.status} ${baseResponse.statusText}`);
+        throw new Error(
+          `Yahoo Finance API error: ${baseResponse.status} ${baseResponse.statusText}`,
+        );
       }
 
       const baseData = await baseResponse.json();
-      const baseResult = baseData.optionChain?.result?.[0] as YahooOptionsChainResponse;
+      const baseResult = baseData.optionChain?.result
+        ?.[0] as YahooOptionsChainResponse;
 
-      if (!baseResult || !baseResult.expirationDates || baseResult.expirationDates.length === 0) {
-        console.log(`[Yahoo Finance] No expiration dates available for ${ticker}`);
+      if (
+        !baseResult || !baseResult.expirationDates ||
+        baseResult.expirationDates.length === 0
+      ) {
+        console.log(
+          `[Yahoo Finance] No expiration dates available for ${ticker}`,
+        );
         return {
           underlying: ticker,
           timestamp: Date.now(),
@@ -444,7 +489,9 @@ export class YahooFinanceClient {
       const allExpirations = baseResult.expirationDates;
       const underlyingPrice = baseResult.quote?.regularMarketPrice || 0;
 
-      console.log(`[Yahoo Finance] Found ${allExpirations.length} expirations for ${ticker}, fetching all...`);
+      console.log(
+        `[Yahoo Finance] Found ${allExpirations.length} expirations for ${ticker}, fetching all...`,
+      );
 
       // Fetch options for each expiration date
       // To avoid rate limiting, we'll fetch them sequentially with a small delay
@@ -455,13 +502,16 @@ export class YahooFinanceClient {
         const exp = allExpirations[i];
 
         try {
-          const expUrl = new URL(`${this.baseURL}/v7/finance/options/${ticker}`);
+          const expUrl = new URL(
+            `${this.baseURL}/v7/finance/options/${ticker}`,
+          );
           expUrl.searchParams.set("crumb", crumb);
           expUrl.searchParams.set("date", exp.toString());
 
           const expResponse = await fetch(expUrl.toString(), {
             headers: {
-              "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "User-Agent":
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
               "Accept": "application/json",
               "Accept-Language": "en-US,en;q=0.9",
               "Referer": "https://finance.yahoo.com/",
@@ -471,10 +521,17 @@ export class YahooFinanceClient {
 
           if (expResponse.ok) {
             const expData = await expResponse.json();
-            const expResult = expData.optionChain?.result?.[0] as YahooOptionsChainResponse;
+            const expResult = expData.optionChain?.result
+              ?.[0] as YahooOptionsChainResponse;
 
-            if (expResult && expResult.options && expResult.options.length > 0) {
-              const { calls, puts } = this.processOptionsData(expResult.options, ticker, underlyingPrice);
+            if (
+              expResult && expResult.options && expResult.options.length > 0
+            ) {
+              const { calls, puts } = this.processOptionsData(
+                expResult.options,
+                ticker,
+                underlyingPrice,
+              );
               allCalls.push(...calls);
               allPuts.push(...puts);
             }
@@ -482,10 +539,13 @@ export class YahooFinanceClient {
 
           // Small delay to avoid rate limiting (100ms between requests)
           if (i < allExpirations.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise((resolve) => setTimeout(resolve, 100));
           }
         } catch (expError) {
-          console.error(`[Yahoo Finance] Error fetching expiration ${exp}:`, expError);
+          console.error(
+            `[Yahoo Finance] Error fetching expiration ${exp}:`,
+            expError,
+          );
           // Continue with other expirations
         }
       }
@@ -499,7 +559,7 @@ export class YahooFinanceClient {
       };
 
       console.log(
-        `[Yahoo Finance] Fetched ${allCalls.length} calls and ${allPuts.length} puts across ${allExpirations.length} expirations for ${ticker}`
+        `[Yahoo Finance] Fetched ${allCalls.length} calls and ${allPuts.length} puts across ${allExpirations.length} expirations for ${ticker}`,
       );
 
       // Cache for 15 minutes
@@ -522,7 +582,7 @@ export class YahooFinanceClient {
   private processOptionsData(
     optionsData: any[],
     ticker: string,
-    underlyingPrice: number
+    underlyingPrice: number,
   ): { calls: OptionContract[]; puts: OptionContract[] } {
     const calls: OptionContract[] = [];
     const puts: OptionContract[] = [];
@@ -535,7 +595,7 @@ export class YahooFinanceClient {
           call.strike,
           call.expiration,
           call.impliedVolatility,
-          "call"
+          "call",
         );
 
         calls.push({
@@ -547,7 +607,9 @@ export class YahooFinanceClient {
           bid: call.bid || 0,
           ask: call.ask || 0,
           last: call.lastPrice || 0,
-          mark: call.bid && call.ask ? (call.bid + call.ask) / 2 : call.lastPrice || 0,
+          mark: call.bid && call.ask
+            ? (call.bid + call.ask) / 2
+            : call.lastPrice || 0,
           volume: call.volume || 0,
           openInterest: call.openInterest || 0,
           delta: greeks.delta,
@@ -556,7 +618,9 @@ export class YahooFinanceClient {
           vega: greeks.vega,
           rho: greeks.rho,
           impliedVolatility: call.impliedVolatility,
-          lastTradeTime: call.lastTradeDate ? call.lastTradeDate * 1000 : undefined,
+          lastTradeTime: call.lastTradeDate
+            ? call.lastTradeDate * 1000
+            : undefined,
           changePercent: call.percentChange,
           change: call.change,
         });
@@ -569,7 +633,7 @@ export class YahooFinanceClient {
           put.strike,
           put.expiration,
           put.impliedVolatility,
-          "put"
+          "put",
         );
 
         puts.push({
@@ -581,7 +645,9 @@ export class YahooFinanceClient {
           bid: put.bid || 0,
           ask: put.ask || 0,
           last: put.lastPrice || 0,
-          mark: put.bid && put.ask ? (put.bid + put.ask) / 2 : put.lastPrice || 0,
+          mark: put.bid && put.ask
+            ? (put.bid + put.ask) / 2
+            : put.lastPrice || 0,
           volume: put.volume || 0,
           openInterest: put.openInterest || 0,
           delta: greeks.delta,
@@ -590,7 +656,9 @@ export class YahooFinanceClient {
           vega: greeks.vega,
           rho: greeks.rho,
           impliedVolatility: put.impliedVolatility,
-          lastTradeTime: put.lastTradeDate ? put.lastTradeDate * 1000 : undefined,
+          lastTradeTime: put.lastTradeDate
+            ? put.lastTradeDate * 1000
+            : undefined,
           changePercent: put.percentChange,
           change: put.change,
         });
@@ -609,7 +677,7 @@ export class YahooFinanceClient {
     strikePrice: number,
     expirationTimestamp: number,
     impliedVolatility: number,
-    optionType: OptionType
+    optionType: OptionType,
   ): {
     delta: number;
     gamma: number;
@@ -619,7 +687,10 @@ export class YahooFinanceClient {
   } {
     // Time to expiration in years
     const now = Date.now() / 1000; // Current time in seconds
-    const timeToExpiry = Math.max((expirationTimestamp - now) / (365.25 * 24 * 60 * 60), 0.0001);
+    const timeToExpiry = Math.max(
+      (expirationTimestamp - now) / (365.25 * 24 * 60 * 60),
+      0.0001,
+    );
 
     // Risk-free rate (approximation - using 5% annual)
     const riskFreeRate = 0.05;
@@ -628,15 +699,18 @@ export class YahooFinanceClient {
     const sigma = impliedVolatility;
 
     // Black-Scholes intermediate calculations
-    const d1 = (Math.log(spotPrice / strikePrice) + (riskFreeRate + 0.5 * sigma * sigma) * timeToExpiry) /
-               (sigma * Math.sqrt(timeToExpiry));
+    const d1 = (Math.log(spotPrice / strikePrice) +
+      (riskFreeRate + 0.5 * sigma * sigma) * timeToExpiry) /
+      (sigma * Math.sqrt(timeToExpiry));
     const d2 = d1 - sigma * Math.sqrt(timeToExpiry);
 
     // Standard normal CDF approximation
     const N = (x: number): number => {
       const t = 1 / (1 + 0.2316419 * Math.abs(x));
       const d = 0.3989423 * Math.exp(-x * x / 2);
-      const probability = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+      const probability = d * t *
+        (0.3193815 +
+          t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
       return x > 0 ? 1 - probability : probability;
     };
 
@@ -653,13 +727,17 @@ export class YahooFinanceClient {
     if (optionType === "call") {
       delta = N(d1);
       theta = -(spotPrice * n(d1) * sigma) / (2 * Math.sqrt(timeToExpiry)) -
-              riskFreeRate * strikePrice * Math.exp(-riskFreeRate * timeToExpiry) * N(d2);
-      rho = strikePrice * timeToExpiry * Math.exp(-riskFreeRate * timeToExpiry) * N(d2) / 100;
+        riskFreeRate * strikePrice * Math.exp(-riskFreeRate * timeToExpiry) *
+          N(d2);
+      rho = strikePrice * timeToExpiry *
+        Math.exp(-riskFreeRate * timeToExpiry) * N(d2) / 100;
     } else {
       delta = N(d1) - 1;
       theta = -(spotPrice * n(d1) * sigma) / (2 * Math.sqrt(timeToExpiry)) +
-              riskFreeRate * strikePrice * Math.exp(-riskFreeRate * timeToExpiry) * N(-d2);
-      rho = -strikePrice * timeToExpiry * Math.exp(-riskFreeRate * timeToExpiry) * N(-d2) / 100;
+        riskFreeRate * strikePrice * Math.exp(-riskFreeRate * timeToExpiry) *
+          N(-d2);
+      rho = -strikePrice * timeToExpiry *
+        Math.exp(-riskFreeRate * timeToExpiry) * N(-d2) / 100;
     }
 
     // Gamma and Vega are same for calls and puts

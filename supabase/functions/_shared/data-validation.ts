@@ -17,10 +17,10 @@ export interface OHLCBarWrite {
   low?: number;
   close?: number;
   volume?: number;
-  provider: 'polygon' | 'tradier' | 'ml_forecast' | 'alpaca' | 'yfinance';
+  provider: "polygon" | "tradier" | "ml_forecast" | "alpaca" | "yfinance";
   is_intraday: boolean;
   is_forecast: boolean;
-  data_status?: 'verified' | 'live' | 'provisional';
+  data_status?: "verified" | "live" | "provisional";
   confidence_score?: number;
   upper_band?: number;
   lower_band?: number;
@@ -38,12 +38,12 @@ abstract class WriteValidationRule {
  * - Status: "verified"
  */
 class PolygonHistoricalRule extends WriteValidationRule {
-  provider = 'polygon';
+  provider = "polygon";
 
   validate(bar: OHLCBarWrite): WriteValidationResult {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const barDate = new Date(bar.ts);
     barDate.setHours(0, 0, 0, 0);
 
@@ -51,7 +51,8 @@ class PolygonHistoricalRule extends WriteValidationRule {
     if (barDate >= today) {
       return {
         valid: false,
-        reason: `Polygon historical cannot write to today or future. Bar: ${barDate.toISOString()}, Today: ${today.toISOString()}`,
+        reason:
+          `Polygon historical cannot write to today or future. Bar: ${barDate.toISOString()}, Today: ${today.toISOString()}`,
       };
     }
 
@@ -59,7 +60,7 @@ class PolygonHistoricalRule extends WriteValidationRule {
     if (bar.is_intraday) {
       return {
         valid: false,
-        reason: 'Polygon historical data cannot be marked as intraday',
+        reason: "Polygon historical data cannot be marked as intraday",
       };
     }
 
@@ -67,12 +68,12 @@ class PolygonHistoricalRule extends WriteValidationRule {
     if (bar.is_forecast) {
       return {
         valid: false,
-        reason: 'Polygon historical data cannot be marked as forecast',
+        reason: "Polygon historical data cannot be marked as forecast",
       };
     }
 
     // Rule: Should be verified
-    if (bar.data_status && bar.data_status !== 'verified') {
+    if (bar.data_status && bar.data_status !== "verified") {
       return {
         valid: false,
         reason: 'Polygon historical data must have status "verified"',
@@ -90,13 +91,13 @@ class PolygonHistoricalRule extends WriteValidationRule {
  * - Locks 5 minutes after market close (4:05 PM ET)
  */
 class TradierIntradayRule extends WriteValidationRule {
-  provider = 'tradier';
+  provider = "tradier";
 
   validate(bar: OHLCBarWrite): WriteValidationResult {
     const now = new Date();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const barDate = new Date(bar.ts);
     barDate.setHours(0, 0, 0, 0);
 
@@ -104,7 +105,8 @@ class TradierIntradayRule extends WriteValidationRule {
     if (barDate.getTime() !== today.getTime()) {
       return {
         valid: false,
-        reason: `Tradier intraday must be for today only. Bar: ${barDate.toISOString()}, Today: ${today.toISOString()}`,
+        reason:
+          `Tradier intraday must be for today only. Bar: ${barDate.toISOString()}, Today: ${today.toISOString()}`,
       };
     }
 
@@ -112,7 +114,7 @@ class TradierIntradayRule extends WriteValidationRule {
     if (!bar.is_intraday) {
       return {
         valid: false,
-        reason: 'Tradier data must be marked as intraday',
+        reason: "Tradier data must be marked as intraday",
       };
     }
 
@@ -120,7 +122,7 @@ class TradierIntradayRule extends WriteValidationRule {
     if (bar.is_forecast) {
       return {
         valid: false,
-        reason: 'Tradier intraday data cannot be marked as forecast',
+        reason: "Tradier intraday data cannot be marked as forecast",
       };
     }
 
@@ -129,16 +131,17 @@ class TradierIntradayRule extends WriteValidationRule {
     if (now > lockTime) {
       return {
         valid: false,
-        reason: `Today's data locked after 4:05 PM ET. Current time: ${now.toISOString()}, Lock time: ${lockTime.toISOString()}`,
+        reason:
+          `Today's data locked after 4:05 PM ET. Current time: ${now.toISOString()}, Lock time: ${lockTime.toISOString()}`,
       };
     }
 
     // Rule: Status should be "live" during market hours or "verified" after close
     const marketClose = this.getMarketCloseTime();
-    const expectedStatus = now > marketClose ? 'verified' : 'live';
+    const expectedStatus = now > marketClose ? "verified" : "live";
     if (bar.data_status && bar.data_status !== expectedStatus) {
       console.warn(
-        `Tradier data status mismatch. Expected: ${expectedStatus}, Got: ${bar.data_status}`
+        `Tradier data status mismatch. Expected: ${expectedStatus}, Got: ${bar.data_status}`,
       );
     }
 
@@ -167,12 +170,12 @@ class TradierIntradayRule extends WriteValidationRule {
  * - Must include confidence bands
  */
 class MLForecastRule extends WriteValidationRule {
-  provider = 'ml_forecast';
+  provider = "ml_forecast";
 
   validate(bar: OHLCBarWrite): WriteValidationResult {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     const barDate = new Date(bar.ts);
     barDate.setHours(0, 0, 0, 0);
 
@@ -180,7 +183,8 @@ class MLForecastRule extends WriteValidationRule {
     if (barDate <= today) {
       return {
         valid: false,
-        reason: `ML forecasts must be for future dates only. Bar: ${barDate.toISOString()}, Today: ${today.toISOString()}`,
+        reason:
+          `ML forecasts must be for future dates only. Bar: ${barDate.toISOString()}, Today: ${today.toISOString()}`,
       };
     }
 
@@ -189,7 +193,8 @@ class MLForecastRule extends WriteValidationRule {
     if (barDate > maxFuture) {
       return {
         valid: false,
-        reason: `Forecasts cannot exceed 10 days ahead. Bar: ${barDate.toISOString()}, Max: ${maxFuture.toISOString()}`,
+        reason:
+          `Forecasts cannot exceed 10 days ahead. Bar: ${barDate.toISOString()}, Max: ${maxFuture.toISOString()}`,
       };
     }
 
@@ -197,7 +202,7 @@ class MLForecastRule extends WriteValidationRule {
     if (!bar.is_forecast) {
       return {
         valid: false,
-        reason: 'ML forecast data must be marked as forecast',
+        reason: "ML forecast data must be marked as forecast",
       };
     }
 
@@ -205,7 +210,7 @@ class MLForecastRule extends WriteValidationRule {
     if (bar.is_intraday) {
       return {
         valid: false,
-        reason: 'ML forecast data cannot be marked as intraday',
+        reason: "ML forecast data cannot be marked as intraday",
       };
     }
 
@@ -213,7 +218,7 @@ class MLForecastRule extends WriteValidationRule {
     if (bar.upper_band === undefined || bar.lower_band === undefined) {
       return {
         valid: false,
-        reason: 'ML forecasts must include upper_band and lower_band',
+        reason: "ML forecasts must include upper_band and lower_band",
       };
     }
 
@@ -222,15 +227,16 @@ class MLForecastRule extends WriteValidationRule {
       if (bar.confidence_score < 0 || bar.confidence_score > 1) {
         return {
           valid: false,
-          reason: `Confidence score must be between 0 and 1. Got: ${bar.confidence_score}`,
+          reason:
+            `Confidence score must be between 0 and 1. Got: ${bar.confidence_score}`,
         };
       }
     }
 
     // Rule: Status should be "provisional"
-    if (bar.data_status && bar.data_status !== 'provisional') {
+    if (bar.data_status && bar.data_status !== "provisional") {
       console.warn(
-        `ML forecast status should be "provisional". Got: ${bar.data_status}`
+        `ML forecast status should be "provisional". Got: ${bar.data_status}`,
       );
     }
 
@@ -244,7 +250,7 @@ class MLForecastRule extends WriteValidationRule {
  * - Status: "verified"
  */
 class AlpacaHistoricalRule extends WriteValidationRule {
-  provider = 'alpaca';
+  provider = "alpaca";
 
   validate(bar: OHLCBarWrite): WriteValidationResult {
     // Alpaca can write both historical and intraday data
@@ -254,12 +260,12 @@ class AlpacaHistoricalRule extends WriteValidationRule {
     if (bar.is_forecast) {
       return {
         valid: false,
-        reason: 'Alpaca data cannot be marked as forecast',
+        reason: "Alpaca data cannot be marked as forecast",
       };
     }
 
     // Rule: Should be verified
-    if (bar.data_status && bar.data_status !== 'verified') {
+    if (bar.data_status && bar.data_status !== "verified") {
       return {
         valid: false,
         reason: 'Alpaca data must have status "verified"',
@@ -277,7 +283,7 @@ class AlpacaHistoricalRule extends WriteValidationRule {
  * - Status: "verified"
  */
 class YFinanceHistoricalRule extends WriteValidationRule {
-  provider = 'yfinance';
+  provider = "yfinance";
 
   validate(bar: OHLCBarWrite): WriteValidationResult {
     const today = new Date();
@@ -290,7 +296,8 @@ class YFinanceHistoricalRule extends WriteValidationRule {
     if (barDate >= today) {
       return {
         valid: false,
-        reason: `YFinance historical cannot write to today or future. Bar: ${barDate.toISOString()}, Today: ${today.toISOString()}`,
+        reason:
+          `YFinance historical cannot write to today or future. Bar: ${barDate.toISOString()}, Today: ${today.toISOString()}`,
       };
     }
 
@@ -298,7 +305,7 @@ class YFinanceHistoricalRule extends WriteValidationRule {
     if (bar.is_intraday) {
       return {
         valid: false,
-        reason: 'YFinance historical data cannot be marked as intraday',
+        reason: "YFinance historical data cannot be marked as intraday",
       };
     }
 
@@ -306,12 +313,12 @@ class YFinanceHistoricalRule extends WriteValidationRule {
     if (bar.is_forecast) {
       return {
         valid: false,
-        reason: 'YFinance historical data cannot be marked as forecast',
+        reason: "YFinance historical data cannot be marked as forecast",
       };
     }
 
     // Rule: Should be verified
-    if (bar.data_status && bar.data_status !== 'verified') {
+    if (bar.data_status && bar.data_status !== "verified") {
       return {
         valid: false,
         reason: 'YFinance historical data must have status "verified"',
@@ -330,11 +337,11 @@ export class DataValidator {
 
   constructor() {
     this.rules = new Map([
-      ['polygon', new PolygonHistoricalRule()],
-      ['tradier', new TradierIntradayRule()],
-      ['ml_forecast', new MLForecastRule()],
-      ['alpaca', new AlpacaHistoricalRule()],
-      ['yfinance', new YFinanceHistoricalRule()],
+      ["polygon", new PolygonHistoricalRule()],
+      ["tradier", new TradierIntradayRule()],
+      ["ml_forecast", new MLForecastRule()],
+      ["alpaca", new AlpacaHistoricalRule()],
+      ["yfinance", new YFinanceHistoricalRule()],
     ]);
   }
 
@@ -343,11 +350,12 @@ export class DataValidator {
    */
   validateWrite(bar: OHLCBarWrite): WriteValidationResult {
     const rule = this.rules.get(bar.provider);
-    
+
     if (!rule) {
       return {
         valid: false,
-        reason: `Unknown provider: ${bar.provider}. Must be one of: polygon, tradier, ml_forecast, alpaca, yfinance`,
+        reason:
+          `Unknown provider: ${bar.provider}. Must be one of: polygon, tradier, ml_forecast, alpaca, yfinance`,
       };
     }
 
@@ -361,7 +369,8 @@ export class DataValidator {
     valid: boolean;
     errors: Array<{ index: number; bar: OHLCBarWrite; reason: string }>;
   } {
-    const errors: Array<{ index: number; bar: OHLCBarWrite; reason: string }> = [];
+    const errors: Array<{ index: number; bar: OHLCBarWrite; reason: string }> =
+      [];
 
     bars.forEach((bar, index) => {
       const result = this.validateWrite(bar);
@@ -369,7 +378,7 @@ export class DataValidator {
         errors.push({
           index,
           bar,
-          reason: result.reason || 'Unknown validation error',
+          reason: result.reason || "Unknown validation error",
         });
       }
     });
@@ -393,7 +402,7 @@ export class DataValidator {
       } else {
         console.warn(
           `[DataValidator] Filtered invalid bar at index ${index}: ${result.reason}`,
-          { bar }
+          { bar },
         );
       }
     });
@@ -410,7 +419,7 @@ export const dataValidator = new DataValidator();
  */
 export function prepareBarForInsert(
   bar: OHLCBarWrite,
-  validate = true
+  validate = true,
 ): OHLCBarWrite | null {
   if (validate) {
     const result = dataValidator.validateWrite(bar);

@@ -493,7 +493,15 @@ export interface MaxRiskReward {
 export interface CalculatePLRequest {
   strategyId: string;
   underlyingPrice: number;
-  legPrices: { legId: string; price: number; delta?: number; gamma?: number; theta?: number; vega?: number; rho?: number }[];
+  legPrices: {
+    legId: string;
+    price: number;
+    delta?: number;
+    gamma?: number;
+    theta?: number;
+    vega?: number;
+    rho?: number;
+  }[];
 }
 
 // ============================================================================

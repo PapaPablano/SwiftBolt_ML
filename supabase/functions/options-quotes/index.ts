@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import {
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
 import { getProviderRouter } from "../_shared/providers/factory.ts";
 
 interface OptionsQuotesRequest {
@@ -117,8 +121,12 @@ serve(async (req: Request): Promise<Response> => {
         mark: typeof match.mark === "number" ? match.mark : null,
         last: typeof match.last === "number" ? match.last : null,
         volume: typeof match.volume === "number" ? match.volume : null,
-        open_interest: typeof match.openInterest === "number" ? match.openInterest : null,
-        implied_vol: typeof match.impliedVolatility === "number" ? match.impliedVolatility : null,
+        open_interest: typeof match.openInterest === "number"
+          ? match.openInterest
+          : null,
+        implied_vol: typeof match.impliedVolatility === "number"
+          ? match.impliedVolatility
+          : null,
         delta: typeof match.delta === "number" ? match.delta : null,
         gamma: typeof match.gamma === "number" ? match.gamma : null,
         theta: typeof match.theta === "number" ? match.theta : null,

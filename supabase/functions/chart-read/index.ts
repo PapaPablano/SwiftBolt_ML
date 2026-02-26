@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 
-import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import {
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
 interface ChartReadRequest {
@@ -13,50 +17,53 @@ interface ChartReadRequest {
 }
 
 function normalizeTimeframe(timeframe: string): string {
-  const tf = (timeframe ?? '').trim();
+  const tf = (timeframe ?? "").trim();
   switch (tf) {
-    case '15m':
-      return 'm15';
-    case '1h':
-      return 'h1';
-    case '4h':
-      return 'h4';
-    case '1d':
-      return 'd1';
-    case '1w':
-      return 'w1';
+    case "15m":
+      return "m15";
+    case "1h":
+      return "h1";
+    case "4h":
+      return "h4";
+    case "1d":
+      return "d1";
+    case "1w":
+      return "w1";
     default:
       return tf;
   }
 }
 
 function etDateString(date: Date): string {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/New_York',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
   });
   return formatter.format(date);
 }
 
 function alpacaTimeframe(timeframe: CanonicalTimeframe): string {
   switch (timeframe) {
-    case 'm15':
-      return '15Min';
-    case 'h1':
-      return '1Hour';
-    case 'h4':
-      return '4Hour';
-    case 'd1':
-      return '1Day';
-    case 'w1':
-      return '1Week';
+    case "m15":
+      return "15Min";
+    case "h1":
+      return "1Hour";
+    case "h4":
+      return "4Hour";
+    case "d1":
+      return "1Day";
+    case "w1":
+      return "1Week";
   }
 }
 
 type AlpacaBarsResponse = {
-  bars?: Record<string, Array<{ t: string; o: number; h: number; l: number; c: number; v: number }>>;
+  bars?: Record<
+    string,
+    Array<{ t: string; o: number; h: number; l: number; c: number; v: number }>
+  >;
   next_page_token?: string;
 };
 
@@ -67,8 +74,10 @@ async function fetchAlpacaBars(params: {
   endIso: string;
   apiKey: string;
   apiSecret: string;
-  feed: 'iex' | 'sip';
-}): Promise<Array<{ t: string; o: number; h: number; l: number; c: number; v: number }>> {
+  feed: "iex" | "sip";
+}): Promise<
+  Array<{ t: string; o: number; h: number; l: number; c: number; v: number }>
+> {
   const tf = alpacaTimeframe(params.timeframe);
   const url = `https://data.alpaca.markets/v2/stocks/bars?` +
     `symbols=${encodeURIComponent(params.symbol)}&` +
@@ -82,9 +91,9 @@ async function fetchAlpacaBars(params: {
 
   const res = await fetch(url, {
     headers: {
-      'APCA-API-KEY-ID': params.apiKey,
-      'APCA-API-SECRET-KEY': params.apiSecret,
-      Accept: 'application/json',
+      "APCA-API-KEY-ID": params.apiKey,
+      "APCA-API-SECRET-KEY": params.apiSecret,
+      Accept: "application/json",
     },
   });
 
@@ -98,7 +107,7 @@ async function fetchAlpacaBars(params: {
   return Array.isArray(bars) ? bars : [];
 }
 
-const CANONICAL_TIMEFRAMES = ['m15', 'h1', 'h4', 'd1', 'w1'] as const;
+const CANONICAL_TIMEFRAMES = ["m15", "h1", "h4", "d1", "w1"] as const;
 type CanonicalTimeframe = typeof CANONICAL_TIMEFRAMES[number];
 
 function isCanonicalTimeframe(value: string): value is CanonicalTimeframe {
@@ -109,19 +118,19 @@ function alignedSliceTo(now: Date, timeframe: CanonicalTimeframe): Date {
   const d = new Date(now);
   d.setUTCSeconds(0, 0);
 
-  if (timeframe === 'm15') {
+  if (timeframe === "m15") {
     const minutes = d.getUTCMinutes();
     const aligned = minutes - (minutes % 15);
     d.setUTCMinutes(aligned);
     return d;
   }
 
-  if (timeframe === 'h1') {
+  if (timeframe === "h1") {
     d.setUTCMinutes(0);
     return d;
   }
 
-  if (timeframe === 'h4') {
+  if (timeframe === "h4") {
     d.setUTCMinutes(0);
     const hours = d.getUTCHours();
     d.setUTCHours(hours - (hours % 4));
@@ -134,15 +143,15 @@ function alignedSliceTo(now: Date, timeframe: CanonicalTimeframe): Date {
 
 function refreshWindowMs(timeframe: CanonicalTimeframe): number {
   switch (timeframe) {
-    case 'm15':
+    case "m15":
       return 2 * 60 * 60 * 1000;
-    case 'h1':
+    case "h1":
       return 6 * 60 * 60 * 1000;
-    case 'h4':
+    case "h4":
       return 24 * 60 * 60 * 1000;
-    case 'd1':
+    case "d1":
       return 45 * 24 * 60 * 60 * 1000;
-    case 'w1':
+    case "w1":
       return 365 * 24 * 60 * 60 * 1000;
   }
 }
@@ -187,24 +196,39 @@ function toUnixSeconds(value: unknown): number {
   return Math.floor(Date.now() / 1000);
 }
 
-function normalizeForecastPoint(point: Record<string, unknown>): { ts: number; value: number; lower: number; upper: number } {
+function normalizeForecastPoint(
+  point: Record<string, unknown>,
+): { ts: number; value: number; lower: number; upper: number } {
   return {
     ...point,
     ts: toUnixSeconds(point["ts"] ?? point["time"]),
     value: Number(point["value"] ?? point["mid"] ?? point["midpoint"] ?? 0),
-    lower: Number(point["lower"] ?? point["min"] ?? point["lower_bound"] ?? point["value"] ?? 0),
-    upper: Number(point["upper"] ?? point["max"] ?? point["upper_bound"] ?? point["value"] ?? 0),
+    lower: Number(
+      point["lower"] ?? point["min"] ?? point["lower_bound"] ??
+        point["value"] ?? 0,
+    ),
+    upper: Number(
+      point["upper"] ?? point["max"] ?? point["upper_bound"] ??
+        point["value"] ?? 0,
+    ),
   };
 }
 
-function normalizeForecastPoints(points: unknown): Array<{ ts: number; value: number; lower: number; upper: number }> {
+function normalizeForecastPoints(
+  points: unknown,
+): Array<{ ts: number; value: number; lower: number; upper: number }> {
   if (!Array.isArray(points)) {
     return [];
   }
-  return points.map((point) => normalizeForecastPoint(isRecord(point) ? point : {}));
+  return points.map((point) =>
+    normalizeForecastPoint(isRecord(point) ? point : {})
+  );
 }
 
-function sampleForecastPoints<T extends { ts: number }>(points: T[], maxPoints: number): T[] {
+function sampleForecastPoints<T extends { ts: number }>(
+  points: T[],
+  maxPoints: number,
+): T[] {
   if (!Array.isArray(points) || points.length === 0) {
     return [];
   }
@@ -253,7 +277,9 @@ const POSTGREST_MAX_ROWS = 1000;
 const SOFT_MAX_ROWS = 950;
 
 function isMarketHoursApprox(now: Date): boolean {
-  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const et = new Date(
+    now.toLocaleString("en-US", { timeZone: "America/New_York" }),
+  );
   const day = et.getDay();
   if (day === 0 || day === 6) return false;
   const minutes = et.getHours() * 60 + et.getMinutes();
@@ -263,7 +289,9 @@ function isMarketHoursApprox(now: Date): boolean {
 }
 
 function lastMarketCloseApprox(now: Date): Date {
-  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const et = new Date(
+    now.toLocaleString("en-US", { timeZone: "America/New_York" }),
+  );
   const close = new Date(et);
   close.setHours(16, 0, 0, 0);
 
@@ -292,7 +320,9 @@ function lastMarketCloseApprox(now: Date): Date {
 }
 
 function weekStartEtApprox(now: Date): Date {
-  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const et = new Date(
+    now.toLocaleString("en-US", { timeZone: "America/New_York" }),
+  );
   const start = new Date(et);
   start.setHours(0, 0, 0, 0);
 
@@ -302,9 +332,12 @@ function weekStartEtApprox(now: Date): Date {
   return start;
 }
 
-function effectiveTimeframeMaxAgeMs(timeframe: CanonicalTimeframe, now: Date): number {
+function effectiveTimeframeMaxAgeMs(
+  timeframe: CanonicalTimeframe,
+  now: Date,
+): number {
   const base = timeframeMaxAgeMs(timeframe);
-  if (timeframe === 'm15' || timeframe === 'h1' || timeframe === 'h4') {
+  if (timeframe === "m15" || timeframe === "h1" || timeframe === "h4") {
     if (!isMarketHoursApprox(now)) {
       const lastClose = lastMarketCloseApprox(now);
       const overnightAllowance = now.getTime() - lastClose.getTime() + base;
@@ -337,37 +370,37 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    let symbol = '';
-    let timeframe = 'd1';
+    let symbol = "";
+    let timeframe = "d1";
     let days: number | null = null;
     let includeMLData = true;
     let before: string | number | null = null;
     let pageSize: number | null = null;
 
-    if (req.method === 'GET') {
+    if (req.method === "GET") {
       const url = new URL(req.url);
-      symbol = (url.searchParams.get('symbol') ?? '').trim().toUpperCase();
-      timeframe = normalizeTimeframe(url.searchParams.get('timeframe') ?? 'd1');
-      const daysRaw = url.searchParams.get('days');
-      if (daysRaw != null && daysRaw !== '') {
+      symbol = (url.searchParams.get("symbol") ?? "").trim().toUpperCase();
+      timeframe = normalizeTimeframe(url.searchParams.get("timeframe") ?? "d1");
+      const daysRaw = url.searchParams.get("days");
+      if (daysRaw != null && daysRaw !== "") {
         const parsed = Number(daysRaw);
         if (Number.isFinite(parsed)) {
           days = Math.max(1, Math.min(36500, Math.floor(parsed)));
         }
       }
-      const includeRaw = url.searchParams.get('includeMLData');
+      const includeRaw = url.searchParams.get("includeMLData");
       if (includeRaw != null) {
-        includeMLData = includeRaw !== 'false' && includeRaw !== '0';
+        includeMLData = includeRaw !== "false" && includeRaw !== "0";
       }
 
-      const beforeRaw = url.searchParams.get('before');
-      if (beforeRaw != null && beforeRaw !== '') {
+      const beforeRaw = url.searchParams.get("before");
+      if (beforeRaw != null && beforeRaw !== "") {
         const parsed = Number(beforeRaw);
         before = Number.isFinite(parsed) ? parsed : beforeRaw;
       }
 
-      const pageSizeRaw = url.searchParams.get('pageSize');
-      if (pageSizeRaw != null && pageSizeRaw !== '') {
+      const pageSizeRaw = url.searchParams.get("pageSize");
+      if (pageSizeRaw != null && pageSizeRaw !== "") {
         const parsed = Number(pageSizeRaw);
         if (Number.isFinite(parsed)) {
           pageSize = Math.max(1, Math.min(SOFT_MAX_ROWS, Math.floor(parsed)));
@@ -375,15 +408,18 @@ serve(async (req: Request): Promise<Response> => {
       }
     } else {
       const body = (await req.json()) as ChartReadRequest;
-      symbol = (body.symbol ?? '').trim().toUpperCase();
-      timeframe = normalizeTimeframe(body.timeframe ?? 'd1');
-      if (typeof body.days === 'number' && Number.isFinite(body.days)) {
+      symbol = (body.symbol ?? "").trim().toUpperCase();
+      timeframe = normalizeTimeframe(body.timeframe ?? "d1");
+      if (typeof body.days === "number" && Number.isFinite(body.days)) {
         days = Math.max(1, Math.min(36500, Math.floor(body.days)));
       }
       includeMLData = body.includeMLData !== false;
       before = body.before ?? null;
-      if (typeof body.pageSize === 'number' && Number.isFinite(body.pageSize)) {
-        pageSize = Math.max(1, Math.min(SOFT_MAX_ROWS, Math.floor(body.pageSize)));
+      if (typeof body.pageSize === "number" && Number.isFinite(body.pageSize)) {
+        pageSize = Math.max(
+          1,
+          Math.min(SOFT_MAX_ROWS, Math.floor(body.pageSize)),
+        );
       }
     }
 
@@ -418,7 +454,9 @@ serve(async (req: Request): Promise<Response> => {
 
       const { data: dbRows, error: dbError } = await supabase
         .from("ohlc_bars_v2")
-        .select("ts, open, high, low, close, volume, upper_band, lower_band, confidence_score")
+        .select(
+          "ts, open, high, low, close, volume, upper_band, lower_band, confidence_score",
+        )
         .eq("symbol_id", symbolId)
         .eq("timeframe", timeframe)
         .eq("is_forecast", false)
@@ -429,7 +467,10 @@ serve(async (req: Request): Promise<Response> => {
 
       if (dbError) {
         console.error("[chart-read] DB page read error:", dbError);
-        return jsonResponse({ error: "Failed to fetch chart data", details: dbError.message }, 500);
+        return jsonResponse({
+          error: "Failed to fetch chart data",
+          details: dbError.message,
+        }, 500);
       }
 
       const safeRows = Array.isArray(dbRows) ? dbRows : [];
@@ -438,13 +479,23 @@ serve(async (req: Request): Promise<Response> => {
         .reverse()
         .map((r) => {
           const record = r as Record<string, unknown>;
-          const close = typeof record.close === "number" ? (record.close as number) : 0;
-          const open = typeof record.open === "number" ? (record.open as number) : close;
-          const high = typeof record.high === "number" ? (record.high as number) : close;
-          const low = typeof record.low === "number" ? (record.low as number) : close;
-          const volume = typeof record.volume === "number" ? (record.volume as number) : 0;
+          const close = typeof record.close === "number"
+            ? (record.close as number)
+            : 0;
+          const open = typeof record.open === "number"
+            ? (record.open as number)
+            : close;
+          const high = typeof record.high === "number"
+            ? (record.high as number)
+            : close;
+          const low = typeof record.low === "number"
+            ? (record.low as number)
+            : close;
+          const volume = typeof record.volume === "number"
+            ? (record.volume as number)
+            : 0;
           return {
-            ts: String(record.ts ?? ''),
+            ts: String(record.ts ?? ""),
             open,
             high,
             low,
@@ -452,7 +503,8 @@ serve(async (req: Request): Promise<Response> => {
             volume,
             upper_band: (record.upper_band as number | null) ?? null,
             lower_band: (record.lower_band as number | null) ?? null,
-            confidence_score: (record.confidence_score as number | null) ?? null,
+            confidence_score: (record.confidence_score as number | null) ??
+              null,
           };
         });
 
@@ -479,16 +531,16 @@ serve(async (req: Request): Promise<Response> => {
       diagnostics: null as unknown,
     };
 
-    const isIntradayTf = ['m15', 'h1', 'h4'].includes(timeframe);
-    const isDailyWeeklyTf = ['d1', 'w1'].includes(timeframe);
+    const isIntradayTf = ["m15", "h1", "h4"].includes(timeframe);
+    const isDailyWeeklyTf = ["d1", "w1"].includes(timeframe);
     const rangeDays = days ?? (isDailyWeeklyTf ? TWO_YEARS_DAYS : 60);
 
     // Direct refresh (Alpaca) for requested timeframe.
     // For daily/weekly, we refresh both together since they're closely related and low volume.
     if (isCanonicalTimeframe(timeframe)) {
       try {
-        const alpacaApiKey = Deno.env.get('ALPACA_API_KEY');
-        const alpacaApiSecret = Deno.env.get('ALPACA_API_SECRET');
+        const alpacaApiKey = Deno.env.get("ALPACA_API_KEY");
+        const alpacaApiSecret = Deno.env.get("ALPACA_API_SECRET");
 
         const now = new Date();
         const expectedDailyEt = etDateString(lastMarketCloseApprox(now));
@@ -502,14 +554,15 @@ serve(async (req: Request): Promise<Response> => {
         };
 
         if (alpacaApiKey && alpacaApiSecret) {
-          const feedEnv = (Deno.env.get('ALPACA_DATA_FEED') ?? 'iex').toLowerCase();
-          const feed = feedEnv === 'sip' ? 'sip' : 'iex';
+          const feedEnv = (Deno.env.get("ALPACA_DATA_FEED") ?? "iex")
+            .toLowerCase();
+          const feed = feedEnv === "sip" ? "sip" : "iex";
 
-          const refreshTfs: CanonicalTimeframe[] = (timeframe === 'd1')
-            ? ['d1', 'w1']
-            : (timeframe === 'w1')
-              ? ['w1', 'd1']
-              : [timeframe];
+          const refreshTfs: CanonicalTimeframe[] = (timeframe === "d1")
+            ? ["d1", "w1"]
+            : (timeframe === "w1")
+            ? ["w1", "d1"]
+            : [timeframe];
           diag.attempted = true;
 
           for (const tf of refreshTfs) {
@@ -524,41 +577,56 @@ serve(async (req: Request): Promise<Response> => {
             };
 
             const { data: latestRow } = await supabase
-              .from('ohlc_bars_v2')
-              .select('ts')
-              .eq('symbol_id', symbolId)
-              .eq('timeframe', tf)
-              .eq('provider', 'alpaca')
-              .eq('is_forecast', false)
-              .order('ts', { ascending: false })
+              .from("ohlc_bars_v2")
+              .select("ts")
+              .eq("symbol_id", symbolId)
+              .eq("timeframe", tf)
+              .eq("provider", "alpaca")
+              .eq("is_forecast", false)
+              .order("ts", { ascending: false })
               .limit(1)
               .maybeSingle();
 
-            const latestIso = latestRow?.ts ? new Date(latestRow.ts).toISOString() : null;
+            const latestIso = latestRow?.ts
+              ? new Date(latestRow.ts).toISOString()
+              : null;
             tfDiag.latestDbTsBefore = latestIso;
-            const latestAgeMs = latestIso ? (Date.now() - new Date(latestIso).getTime()) : Number.POSITIVE_INFINITY;
+            const latestAgeMs = latestIso
+              ? (Date.now() - new Date(latestIso).getTime())
+              : Number.POSITIVE_INFINITY;
 
-            const shouldRefresh = tf === 'd1'
-              ? (latestIso == null || etDateString(new Date(latestIso)) < etDateString(lastMarketCloseApprox(now)))
-              : tf === 'w1'
-                ? (latestIso == null || etDateString(new Date(latestIso)) < expectedWeeklyEt)
-                : (!Number.isFinite(latestAgeMs) || latestAgeMs > effectiveTimeframeMaxAgeMs(tf, now));
+            const shouldRefresh = tf === "d1"
+              ? (latestIso == null ||
+                etDateString(new Date(latestIso)) <
+                  etDateString(lastMarketCloseApprox(now)))
+              : tf === "w1"
+              ? (latestIso == null ||
+                etDateString(new Date(latestIso)) < expectedWeeklyEt)
+              : (!Number.isFinite(latestAgeMs) ||
+                latestAgeMs > effectiveTimeframeMaxAgeMs(tf, now));
 
             tfDiag.shouldRefresh = shouldRefresh;
 
             if (shouldRefresh) {
-              const fallbackDays = tf === 'm15'
+              const fallbackDays = tf === "m15"
                 ? 3
-                : tf === 'h1'
-                  ? 14
-                  : tf === 'h4'
-                    ? 90
-                    : tf === 'd1'
-                      ? 90
-                      : 365;
+                : tf === "h1"
+                ? 14
+                : tf === "h4"
+                ? 90
+                : tf === "d1"
+                ? 90
+                : 365;
               const startIso = latestIso
-                ? new Date(Math.max(new Date(latestIso).getTime() - (fallbackDays * 24 * 60 * 60 * 1000), Date.now() - (fallbackDays * 24 * 60 * 60 * 1000))).toISOString()
-                : new Date(Date.now() - fallbackDays * 24 * 60 * 60 * 1000).toISOString();
+                ? new Date(
+                  Math.max(
+                    new Date(latestIso).getTime() -
+                      (fallbackDays * 24 * 60 * 60 * 1000),
+                    Date.now() - (fallbackDays * 24 * 60 * 60 * 1000),
+                  ),
+                ).toISOString()
+                : new Date(Date.now() - fallbackDays * 24 * 60 * 60 * 1000)
+                  .toISOString();
               const endIso = now.toISOString();
 
               try {
@@ -575,7 +643,7 @@ serve(async (req: Request): Promise<Response> => {
                 tfDiag.barsFetched = alpacaBars.length;
 
                 if (alpacaBars.length > 0) {
-                  const todayStr = new Date().toISOString().split('T')[0];
+                  const todayStr = new Date().toISOString().split("T")[0];
                   const rows = alpacaBars.map((bar) => ({
                     // Note: keep this consistent with fetch-bars / fetch-bars-batch behavior.
                     // is_intraday is true only for today's bars for intraday timeframes.
@@ -587,20 +655,25 @@ serve(async (req: Request): Promise<Response> => {
                     low: bar.l,
                     close: bar.c,
                     volume: bar.v,
-                    provider: 'alpaca',
+                    provider: "alpaca",
                     is_intraday: (() => {
-                      const barDateStr = new Date(bar.t).toISOString().split('T')[0];
+                      const barDateStr =
+                        new Date(bar.t).toISOString().split("T")[0];
                       const isToday = barDateStr === todayStr;
-                      const isIntradayTimeframe = ['m15', 'h1', 'h4'].includes(tf);
+                      const isIntradayTimeframe = ["m15", "h1", "h4"].includes(
+                        tf,
+                      );
                       return isToday && isIntradayTimeframe;
                     })(),
                     is_forecast: false,
-                    data_status: 'provisional',
+                    data_status: "provisional",
                   }));
 
                   const { error: upsertError } = await supabase
-                    .from('ohlc_bars_v2')
-                    .upsert(rows, { onConflict: 'symbol_id,timeframe,ts,provider,is_forecast' });
+                    .from("ohlc_bars_v2")
+                    .upsert(rows, {
+                      onConflict: "symbol_id,timeframe,ts,provider,is_forecast",
+                    });
 
                   if (upsertError) {
                     tfDiag.error = upsertError;
@@ -610,19 +683,23 @@ serve(async (req: Request): Promise<Response> => {
                 }
 
                 const { data: latestAfter } = await supabase
-                  .from('ohlc_bars_v2')
-                  .select('ts')
-                  .eq('symbol_id', symbolId)
-                  .eq('timeframe', tf)
-                  .eq('provider', 'alpaca')
-                  .eq('is_forecast', false)
-                  .order('ts', { ascending: false })
+                  .from("ohlc_bars_v2")
+                  .select("ts")
+                  .eq("symbol_id", symbolId)
+                  .eq("timeframe", tf)
+                  .eq("provider", "alpaca")
+                  .eq("is_forecast", false)
+                  .order("ts", { ascending: false })
                   .limit(1)
                   .maybeSingle();
 
-                tfDiag.latestDbTsAfter = latestAfter?.ts ? new Date(latestAfter.ts).toISOString() : null;
+                tfDiag.latestDbTsAfter = latestAfter?.ts
+                  ? new Date(latestAfter.ts).toISOString()
+                  : null;
               } catch (fetchErr) {
-                tfDiag.error = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+                tfDiag.error = fetchErr instanceof Error
+                  ? fetchErr.message
+                  : String(fetchErr);
               }
             }
 
@@ -632,7 +709,10 @@ serve(async (req: Request): Promise<Response> => {
 
         refresh.diagnostics = diag;
       } catch (directRefreshErr) {
-        console.error('[chart-read] Direct daily/weekly refresh failed:', directRefreshErr);
+        console.error(
+          "[chart-read] Direct daily/weekly refresh failed:",
+          directRefreshErr,
+        );
       }
     }
 
@@ -640,15 +720,31 @@ serve(async (req: Request): Promise<Response> => {
       const now = new Date();
       const enqueueTimeframes: CanonicalTimeframe[] = [...CANONICAL_TIMEFRAMES];
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/c38aa5cd-6eb1-473a-b1f0-0fdd8c2a440d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chart-read/index.ts:641',message:'enqueue loop entry',data:{symbol,timeframe,tfCount:enqueueTimeframes.length},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1,H4'})}).catch(()=>{});
+      fetch(
+        "http://127.0.0.1:7242/ingest/c38aa5cd-6eb1-473a-b1f0-0fdd8c2a440d",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            location: "chart-read/index.ts:641",
+            message: "enqueue loop entry",
+            data: { symbol, timeframe, tfCount: enqueueTimeframes.length },
+            timestamp: Date.now(),
+            sessionId: "debug-session",
+            hypothesisId: "H1,H4",
+          }),
+        },
+      ).catch(() => {});
       // #endregion
 
       for (const tf of enqueueTimeframes) {
-        const jobType = (tf === 'm15' || tf === 'h1' || tf === 'h4') ? 'fetch_intraday' : 'fetch_historical';
-        const windowDays = jobType === 'fetch_intraday' ? 7 : 730;
+        const jobType = (tf === "m15" || tf === "h1" || tf === "h4")
+          ? "fetch_intraday"
+          : "fetch_historical";
+        const windowDays = jobType === "fetch_intraday" ? 7 : 730;
 
         const { data: jobDefRow, error: jobDefError } = await supabase
-          .from('job_definitions')
+          .from("job_definitions")
           .upsert(
             {
               job_type: jobType,
@@ -660,15 +756,19 @@ serve(async (req: Request): Promise<Response> => {
               enabled: true,
             },
             {
-              onConflict: 'symbol,timeframe,job_type,batch_version',
+              onConflict: "symbol,timeframe,job_type,batch_version",
               ignoreDuplicates: false,
             },
           )
-          .select('id')
+          .select("id")
           .single();
 
         if (jobDefError || !jobDefRow?.id) {
-          throw new Error(`Failed to upsert job_definition for ${symbol}/${tf}: ${jobDefError?.message ?? 'unknown error'}`);
+          throw new Error(
+            `Failed to upsert job_definition for ${symbol}/${tf}: ${
+              jobDefError?.message ?? "unknown error"
+            }`,
+          );
         }
 
         const sliceTo = alignedSliceTo(now, tf);
@@ -676,11 +776,25 @@ serve(async (req: Request): Promise<Response> => {
 
         // #region agent log
         const _enqStart = Date.now();
-        fetch('http://127.0.0.1:7242/ingest/c38aa5cd-6eb1-473a-b1f0-0fdd8c2a440d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chart-read/index.ts:before-rpc',message:'before enqueue_job_slices',data:{symbol,tf,jobType,sliceCount:1},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1,H2,H4'})}).catch(()=>{});
+        fetch(
+          "http://127.0.0.1:7242/ingest/c38aa5cd-6eb1-473a-b1f0-0fdd8c2a440d",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              location: "chart-read/index.ts:before-rpc",
+              message: "before enqueue_job_slices",
+              data: { symbol, tf, jobType, sliceCount: 1 },
+              timestamp: Date.now(),
+              sessionId: "debug-session",
+              hypothesisId: "H1,H2,H4",
+            }),
+          },
+        ).catch(() => {});
         // #endregion
 
         const { data: enqueueResult, error: enqueueError } = await supabase
-          .rpc('enqueue_job_slices', {
+          .rpc("enqueue_job_slices", {
             p_job_def_id: jobDefRow.id,
             p_symbol: symbol,
             p_timeframe: tf,
@@ -689,31 +803,82 @@ serve(async (req: Request): Promise<Response> => {
               slice_from: sliceFrom.toISOString(),
               slice_to: sliceTo.toISOString(),
             }],
-            p_triggered_by: 'chart-read',
+            p_triggered_by: "chart-read",
           });
 
         // #region agent log
         const _enqDur = Date.now() - _enqStart;
-        fetch('http://127.0.0.1:7242/ingest/c38aa5cd-6eb1-473a-b1f0-0fdd8c2a440d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chart-read/index.ts:after-rpc',message:'after enqueue_job_slices',data:{symbol,tf,durationMs:_enqDur,success:!enqueueError,errorMsg:enqueueError?.message,errorCode:enqueueError?.code,errorDetails:enqueueError?.details},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1,H2,H3,H4,H5'})}).catch(()=>{});
+        fetch(
+          "http://127.0.0.1:7242/ingest/c38aa5cd-6eb1-473a-b1f0-0fdd8c2a440d",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              location: "chart-read/index.ts:after-rpc",
+              message: "after enqueue_job_slices",
+              data: {
+                symbol,
+                tf,
+                durationMs: _enqDur,
+                success: !enqueueError,
+                errorMsg: enqueueError?.message,
+                errorCode: enqueueError?.code,
+                errorDetails: enqueueError?.details,
+              },
+              timestamp: Date.now(),
+              sessionId: "debug-session",
+              hypothesisId: "H1,H2,H3,H4,H5",
+            }),
+          },
+        ).catch(() => {});
         // #endregion
 
         if (enqueueError) {
-          throw new Error(`Failed to enqueue slice for ${symbol}/${tf}: ${enqueueError.message}`);
+          throw new Error(
+            `Failed to enqueue slice for ${symbol}/${tf}: ${enqueueError.message}`,
+          );
         }
 
         const insertedCount = Array.isArray(enqueueResult)
           ? Number(enqueueResult?.[0]?.inserted_count ?? 0)
-          : Number((enqueueResult as { inserted_count?: unknown } | null)?.inserted_count ?? 0);
+          : Number(
+            (enqueueResult as { inserted_count?: unknown } | null)
+              ?.inserted_count ?? 0,
+          );
 
         refresh.enqueuedTimeframes.push(tf);
         refresh.insertedSlices += insertedCount;
       }
     } catch (enqueueErr) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/c38aa5cd-6eb1-473a-b1f0-0fdd8c2a440d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'chart-read/index.ts:catch',message:'enqueue catch',data:{symbol,errorMsg:enqueueErr instanceof Error?enqueueErr.message:String(enqueueErr),errorStack:enqueueErr instanceof Error?enqueueErr.stack:undefined},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
+      fetch(
+        "http://127.0.0.1:7242/ingest/c38aa5cd-6eb1-473a-b1f0-0fdd8c2a440d",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            location: "chart-read/index.ts:catch",
+            message: "enqueue catch",
+            data: {
+              symbol,
+              errorMsg: enqueueErr instanceof Error
+                ? enqueueErr.message
+                : String(enqueueErr),
+              errorStack: enqueueErr instanceof Error
+                ? enqueueErr.stack
+                : undefined,
+            },
+            timestamp: Date.now(),
+            sessionId: "debug-session",
+            hypothesisId: "H5",
+          }),
+        },
+      ).catch(() => {});
       // #endregion
-      console.error('[chart-read] Refresh enqueue failed:', enqueueErr);
-      refresh.error = enqueueErr instanceof Error ? enqueueErr.message : 'Refresh enqueue failed';
+      console.error("[chart-read] Refresh enqueue failed:", enqueueErr);
+      refresh.error = enqueueErr instanceof Error
+        ? enqueueErr.message
+        : "Refresh enqueue failed";
     }
 
     // Read path: intraday uses latest-N (250); daily/weekly uses last 2 years range.
@@ -730,18 +895,30 @@ serve(async (req: Request): Promise<Response> => {
     }> = [];
 
     if (isIntradayTf) {
-      const requestedMaxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ?? INTRADAY_TARGET_BARS;
-      const maxBars = Math.min(requestedMaxBars, POSTGREST_MAX_ROWS, SOFT_MAX_ROWS);
-      const { data: rows, error: chartError } = await supabase.rpc("get_chart_data_v2_dynamic", {
-        p_symbol_id: symbolId,
-        p_timeframe: timeframe,
-        p_max_bars: maxBars,
-        p_include_forecast: false,
-      });
+      const requestedMaxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ??
+        INTRADAY_TARGET_BARS;
+      const maxBars = Math.min(
+        requestedMaxBars,
+        POSTGREST_MAX_ROWS,
+        SOFT_MAX_ROWS,
+      );
+      const { data: rows, error: chartError } = await supabase.rpc(
+        "get_chart_data_v2_dynamic",
+        {
+          p_symbol_id: symbolId,
+          p_timeframe: timeframe,
+          p_max_bars: maxBars,
+          p_include_forecast: false,
+        },
+      );
 
       if (chartError) {
         console.error("[chart-read] RPC error:", chartError);
-        return jsonResponse({ error: "Failed to fetch chart data", details: chartError.message, code: chartError.code ?? null }, 500);
+        return jsonResponse({
+          error: "Failed to fetch chart data",
+          details: chartError.message,
+          code: chartError.code ?? null,
+        }, 500);
       }
 
       const chartRows = Array.isArray(rows) ? (rows as ChartBarRow[]) : [];
@@ -767,13 +944,21 @@ serve(async (req: Request): Promise<Response> => {
           };
         });
     } else {
-      const requestedMaxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ?? SOFT_MAX_ROWS;
-      const maxBars = Math.min(requestedMaxBars, POSTGREST_MAX_ROWS, SOFT_MAX_ROWS);
-      const startIso2y = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000).toISOString();
+      const requestedMaxBars = MAX_BARS_BY_TIMEFRAME[timeframe] ??
+        SOFT_MAX_ROWS;
+      const maxBars = Math.min(
+        requestedMaxBars,
+        POSTGREST_MAX_ROWS,
+        SOFT_MAX_ROWS,
+      );
+      const startIso2y = new Date(Date.now() - rangeDays * 24 * 60 * 60 * 1000)
+        .toISOString();
 
       const { data: dbRows, error: dbError } = await supabase
         .from("ohlc_bars_v2")
-        .select("ts, open, high, low, close, volume, upper_band, lower_band, confidence_score")
+        .select(
+          "ts, open, high, low, close, volume, upper_band, lower_band, confidence_score",
+        )
         .eq("symbol_id", symbolId)
         .eq("timeframe", timeframe)
         .eq("provider", "alpaca")
@@ -784,17 +969,30 @@ serve(async (req: Request): Promise<Response> => {
 
       if (dbError) {
         console.error("[chart-read] DB read error:", dbError);
-        return jsonResponse({ error: "Failed to fetch chart data", details: dbError.message }, 500);
+        return jsonResponse({
+          error: "Failed to fetch chart data",
+          details: dbError.message,
+        }, 500);
       }
 
       const safeRows = Array.isArray(dbRows) ? dbRows : [];
       bars = safeRows.map((r) => {
         const record = r as Record<string, unknown>;
-        const close = typeof record.close === "number" ? (record.close as number) : 0;
-        const open = typeof record.open === "number" ? (record.open as number) : close;
-        const high = typeof record.high === "number" ? (record.high as number) : close;
-        const low = typeof record.low === "number" ? (record.low as number) : close;
-        const volume = typeof record.volume === "number" ? (record.volume as number) : 0;
+        const close = typeof record.close === "number"
+          ? (record.close as number)
+          : 0;
+        const open = typeof record.open === "number"
+          ? (record.open as number)
+          : close;
+        const high = typeof record.high === "number"
+          ? (record.high as number)
+          : close;
+        const low = typeof record.low === "number"
+          ? (record.low as number)
+          : close;
+        const volume = typeof record.volume === "number"
+          ? (record.volume as number)
+          : 0;
         return {
           ts: String(record.ts ?? ""),
           open,
@@ -802,9 +1000,15 @@ serve(async (req: Request): Promise<Response> => {
           low,
           close,
           volume,
-          upper_band: typeof record.upper_band === "number" ? (record.upper_band as number) : null,
-          lower_band: typeof record.lower_band === "number" ? (record.lower_band as number) : null,
-          confidence_score: typeof record.confidence_score === "number" ? (record.confidence_score as number) : null,
+          upper_band: typeof record.upper_band === "number"
+            ? (record.upper_band as number)
+            : null,
+          lower_band: typeof record.lower_band === "number"
+            ? (record.lower_band as number)
+            : null,
+          confidence_score: typeof record.confidence_score === "number"
+            ? (record.confidence_score as number)
+            : null,
         };
       }).filter((b) => b.ts);
     }
@@ -814,16 +1018,22 @@ serve(async (req: Request): Promise<Response> => {
 
     const dataQuality = {
       dataAgeHours: newestBar
-        ? Math.round((Date.now() - new Date(newestBar).getTime()) / (1000 * 60 * 60))
+        ? Math.round(
+          (Date.now() - new Date(newestBar).getTime()) / (1000 * 60 * 60),
+        )
         : null,
       isStale: newestBar
-        ? (Date.now() - new Date(newestBar).getTime()) > effectiveTimeframeMaxAgeMs(timeframe, new Date())
+        ? (Date.now() - new Date(newestBar).getTime()) >
+          effectiveTimeframeMaxAgeMs(timeframe, new Date())
         : true,
       hasRecentData: newestBar
         ? (Date.now() - new Date(newestBar).getTime()) < (4 * 60 * 60 * 1000)
         : false,
       historicalDepthDays: oldestBar && newestBar
-        ? Math.round((new Date(newestBar).getTime() - new Date(oldestBar).getTime()) / (1000 * 60 * 60 * 24))
+        ? Math.round(
+          (new Date(newestBar).getTime() - new Date(oldestBar).getTime()) /
+            (1000 * 60 * 60 * 24),
+        )
         : 0,
       sufficientForML: bars.length >= 250,
       barCount: bars.length,
@@ -844,7 +1054,9 @@ serve(async (req: Request): Promise<Response> => {
           };
 
           const horizon = horizonMap[timeframe] ?? "1h";
-          const expiryCutoffIso = new Date(Date.now() - INTRADAY_FORECAST_EXPIRY_GRACE_SECONDS * 1000).toISOString();
+          const expiryCutoffIso = new Date(
+            Date.now() - INTRADAY_FORECAST_EXPIRY_GRACE_SECONDS * 1000,
+          ).toISOString();
 
           const pathHorizon = "7d";
           const { data: intradayPathFresh } = await supabase
@@ -890,14 +1102,30 @@ serve(async (req: Request): Promise<Response> => {
             .single()).data;
 
           if (intradayForecast || intradayPath) {
-            const confidenceBase = intradayForecast?.confidence ?? intradayPath?.confidence ?? 0.5;
+            const confidenceBase = intradayForecast?.confidence ??
+              intradayPath?.confidence ?? 0.5;
             const conf = clampNumber(confidenceBase, 0.5);
 
-            const horizons: Array<{ horizon: string; points: Array<{ ts: number; value: number; lower: number; upper: number }> }> = [];
+            const horizons: Array<
+              {
+                horizon: string;
+                points: Array<
+                  { ts: number; value: number; lower: number; upper: number }
+                >;
+              }
+            > = [];
 
-            if (intradayPath && Array.isArray(intradayPath.points) && intradayPath.points.length > 0) {
-              const normalizedPathPoints = normalizeForecastPoints(intradayPath.points);
-              const sampledPathPoints = sampleForecastPoints(normalizedPathPoints, INTRADAY_FORECAST_MAX_POINTS);
+            if (
+              intradayPath && Array.isArray(intradayPath.points) &&
+              intradayPath.points.length > 0
+            ) {
+              const normalizedPathPoints = normalizeForecastPoints(
+                intradayPath.points,
+              );
+              const sampledPathPoints = sampleForecastPoints(
+                normalizedPathPoints,
+                INTRADAY_FORECAST_MAX_POINTS,
+              );
               if (sampledPathPoints.length > 0) {
                 horizons.push({
                   horizon: pathHorizon,
@@ -906,9 +1134,17 @@ serve(async (req: Request): Promise<Response> => {
               }
             }
 
-            if (intradayForecast && Array.isArray(intradayForecast.points) && intradayForecast.points.length > 0) {
-              const normalizedForecastPoints = normalizeForecastPoints(intradayForecast.points);
-              const sampledForecastPoints = sampleForecastPoints(normalizedForecastPoints, INTRADAY_FORECAST_MAX_POINTS);
+            if (
+              intradayForecast && Array.isArray(intradayForecast.points) &&
+              intradayForecast.points.length > 0
+            ) {
+              const normalizedForecastPoints = normalizeForecastPoints(
+                intradayForecast.points,
+              );
+              const sampledForecastPoints = sampleForecastPoints(
+                normalizedForecastPoints,
+                INTRADAY_FORECAST_MAX_POINTS,
+              );
               if (sampledForecastPoints.length > 0) {
                 horizons.push({
                   horizon,
@@ -918,7 +1154,8 @@ serve(async (req: Request): Promise<Response> => {
             }
 
             mlSummary = {
-              overallLabel: intradayForecast?.overall_label ?? intradayPath?.overall_label ?? null,
+              overallLabel: intradayForecast?.overall_label ??
+                intradayPath?.overall_label ?? null,
               confidence: conf,
               horizons,
               srLevels: null,
@@ -928,9 +1165,14 @@ serve(async (req: Request): Promise<Response> => {
             indicators = {
               supertrendFactor: null,
               supertrendPerformance: null,
-              supertrendSignal: intradayForecast?.supertrend_direction === "BULLISH" ? 1 :
-                intradayForecast?.supertrend_direction === "BEARISH" ? -1 : 0,
-              trendLabel: intradayPath?.overall_label ?? intradayForecast?.overall_label ?? null,
+              supertrendSignal:
+                intradayForecast?.supertrend_direction === "BULLISH"
+                  ? 1
+                  : intradayForecast?.supertrend_direction === "BEARISH"
+                  ? -1
+                  : 0,
+              trendLabel: intradayPath?.overall_label ??
+                intradayForecast?.overall_label ?? null,
               trendConfidence: Math.round(conf * 10),
               stopLevel: null,
               trendDurationBars: null,
@@ -950,8 +1192,13 @@ serve(async (req: Request): Promise<Response> => {
             .single();
 
           if (dailyForecast && dailyForecast.points) {
-            const normalizedPoints = normalizeForecastPoints(dailyForecast.points);
-            const sampledPoints = sampleForecastPoints(normalizedPoints, DAILY_FORECAST_MAX_POINTS);
+            const normalizedPoints = normalizeForecastPoints(
+              dailyForecast.points,
+            );
+            const sampledPoints = sampleForecastPoints(
+              normalizedPoints,
+              DAILY_FORECAST_MAX_POINTS,
+            );
 
             mlSummary = {
               overallLabel: dailyForecast.overall_label,
@@ -995,7 +1242,11 @@ serve(async (req: Request): Promise<Response> => {
       metadata: {
         total_bars: bars.length,
         requested_days: rangeDays,
-        max_bars: Math.min((MAX_BARS_BY_TIMEFRAME[timeframe] ?? SOFT_MAX_ROWS), POSTGREST_MAX_ROWS, SOFT_MAX_ROWS),
+        max_bars: Math.min(
+          MAX_BARS_BY_TIMEFRAME[timeframe] ?? SOFT_MAX_ROWS,
+          POSTGREST_MAX_ROWS,
+          SOFT_MAX_ROWS,
+        ),
       },
       dataQuality,
       refresh,
@@ -1005,6 +1256,9 @@ serve(async (req: Request): Promise<Response> => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[chart-read] Error:", error);
-    return jsonResponse({ error: "Internal server error", details: message }, 500);
+    return jsonResponse(
+      { error: "Internal server error", details: message },
+      500,
+    );
   }
 });

@@ -1,6 +1,6 @@
 /**
  * FastAPI Client Helper
- * 
+ *
  * Provides utilities for calling FastAPI endpoints from Edge Functions.
  */
 
@@ -10,7 +10,7 @@
 export async function fetchWithTimeout(
   url: string,
   options: RequestInit,
-  timeout = 30000
+  timeout = 30000,
 ): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -38,7 +38,7 @@ export function getFastApiUrl(): string {
   const url = Deno.env.get("FASTAPI_URL");
   if (!url) {
     throw new Error(
-      "FASTAPI_URL environment variable not set. Set it in Supabase Dashboard → Edge Functions → Environment Variables"
+      "FASTAPI_URL environment variable not set. Set it in Supabase Dashboard → Edge Functions → Environment Variables",
     );
   }
   return url;
@@ -50,7 +50,7 @@ export function getFastApiUrl(): string {
 export async function callFastApi<T>(
   endpoint: string,
   options: RequestInit = {},
-  timeout = 30000
+  timeout = 30000,
 ): Promise<T> {
   const baseUrl = getFastApiUrl();
   const url = `${baseUrl}${endpoint}`;
@@ -67,7 +67,7 @@ export async function callFastApi<T>(
           ...options.headers,
         },
       },
-      timeout
+      timeout,
     );
 
     if (!response.ok) {

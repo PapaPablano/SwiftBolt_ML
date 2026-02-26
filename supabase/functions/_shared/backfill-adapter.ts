@@ -89,7 +89,7 @@ async function getSymbolId(supabase: any, ticker: string): Promise<string> {
  * Returns normalized bars ready for ohlc_bars_v2 upsert
  */
 export async function fetchIntradayForDay(
-  request: BackfillRequest
+  request: BackfillRequest,
 ): Promise<BackfillBar[]> {
   const { symbol, timeframe, day, supabase } = request;
 
@@ -104,7 +104,7 @@ export async function fetchIntradayForDay(
   const toTs = Math.floor(end.getTime() / 1000);
 
   console.log(
-    `[BackfillAdapter] Fetching ${symbol} ${timeframe} for ${day} (${fromTs} - ${toTs})`
+    `[BackfillAdapter] Fetching ${symbol} ${timeframe} for ${day} (${fromTs} - ${toTs})`,
   );
 
   // Lookup symbol_id first
@@ -126,7 +126,9 @@ export async function fetchIntradayForDay(
     // Alpaca is primary for all data when available, otherwise fallback to Yahoo/Tradier
     const provider = isIntraday ? "alpaca" : "yfinance";
 
-    console.log(`[BackfillAdapter] Received ${bars.length} bars for ${symbol} ${day} (provider: ${provider})`);
+    console.log(
+      `[BackfillAdapter] Received ${bars.length} bars for ${symbol} ${day} (provider: ${provider})`,
+    );
 
     // Normalize to ohlc_bars_v2 schema
     return bars.map((bar: Bar) => ({
@@ -144,7 +146,10 @@ export async function fetchIntradayForDay(
       data_status: "verified", // Historical data is verified
     }));
   } catch (error) {
-    console.error(`[BackfillAdapter] Error fetching ${symbol} ${timeframe} ${day}:`, error);
+    console.error(
+      `[BackfillAdapter] Error fetching ${symbol} ${timeframe} ${day}:`,
+      error,
+    );
     throw error;
   }
 }
@@ -157,7 +162,7 @@ export async function fetchIntradayBatch(
   symbol: string,
   timeframe: string,
   days: string[],
-  supabase: any
+  supabase: any,
 ): Promise<BackfillBar[]> {
   if (!supabase) {
     throw new Error("Supabase client is required for symbol_id lookup");

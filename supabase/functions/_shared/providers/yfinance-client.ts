@@ -1,8 +1,11 @@
 // Yahoo Finance Client: Free historical data provider (no API key required)
 // Used primarily for backfilling historical data
 
-import type { DataProviderAbstraction, HistoricalBarsRequest } from "./abstraction.ts";
-import type { Bar, Quote, NewsItem } from "./types.ts";
+import type {
+  DataProviderAbstraction,
+  HistoricalBarsRequest,
+} from "./abstraction.ts";
+import type { Bar, NewsItem, Quote } from "./types.ts";
 
 export class YFinanceClient implements DataProviderAbstraction {
   private baseUrl = "https://query1.finance.yahoo.com/v8/finance/chart";
@@ -18,9 +21,12 @@ export class YFinanceClient implements DataProviderAbstraction {
     const interval = this.convertTimeframe(timeframe);
 
     // Build URL
-    const url = `${this.baseUrl}/${symbol}?interval=${interval}&period1=${start}&period2=${end}`;
+    const url =
+      `${this.baseUrl}/${symbol}?interval=${interval}&period1=${start}&period2=${end}`;
 
-    console.log(`[YFinance] Fetching historical bars: ${symbol} ${timeframe} (${interval})`);
+    console.log(
+      `[YFinance] Fetching historical bars: ${symbol} ${timeframe} (${interval})`,
+    );
 
     try {
       const response = await fetch(url, {
@@ -30,7 +36,9 @@ export class YFinanceClient implements DataProviderAbstraction {
       });
 
       if (!response.ok) {
-        throw new Error(`YFinance API error: ${response.status} ${response.statusText}`);
+        throw new Error(
+          `YFinance API error: ${response.status} ${response.statusText}`,
+        );
       }
 
       const data = await response.json();
@@ -74,8 +82,11 @@ export class YFinanceClient implements DataProviderAbstraction {
 
       if (bars.length > 0) {
         const firstDate = new Date(bars[0].timestamp * 1000).toISOString();
-        const lastDate = new Date(bars[bars.length - 1].timestamp * 1000).toISOString();
-        console.log(`[YFinance] Retrieved ${bars.length} bars for ${symbol} ${timeframe} (${firstDate} to ${lastDate})`);
+        const lastDate = new Date(bars[bars.length - 1].timestamp * 1000)
+          .toISOString();
+        console.log(
+          `[YFinance] Retrieved ${bars.length} bars for ${symbol} ${timeframe} (${firstDate} to ${lastDate})`,
+        );
       } else {
         console.log(`[YFinance] No bars retrieved for ${symbol} ${timeframe}`);
       }
@@ -86,7 +97,9 @@ export class YFinanceClient implements DataProviderAbstraction {
     }
   }
 
-  async getNews(_request: { symbol: string; limit?: number }): Promise<NewsItem[]> {
+  async getNews(
+    _request: { symbol: string; limit?: number },
+  ): Promise<NewsItem[]> {
     throw new Error("YFinance client does not support news");
   }
 

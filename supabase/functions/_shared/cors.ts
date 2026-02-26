@@ -1,16 +1,16 @@
 /**
  * Secure CORS Configuration for Edge Functions
- * 
+ *
  * Implements environment-specific origin whitelisting to prevent
  * unauthorized cross-origin requests.
- * 
+ *
  * Usage:
  *   import { getCorsHeaders } from "../_shared/cors.ts";
- *   
+ *
  *   serve(async (req: Request) => {
  *     const origin = req.headers.get("origin");
  *     const corsHeaders = getCorsHeaders(origin);
- *     
+ *
  *     if (req.method === "OPTIONS") {
  *       return new Response(null, { status: 204, headers: corsHeaders });
  *     }
@@ -20,7 +20,7 @@
 
 /**
  * Get allowed origins based on environment.
- * 
+ *
  * Environment is determined by ENVIRONMENT variable:
  * - "production": Only production domains
  * - "staging": Staging + localhost
@@ -28,7 +28,7 @@
  */
 export const getAllowedOrigins = (): string[] => {
   const env = Deno.env.get("ENVIRONMENT") || "development";
-  
+
   if (env === "production") {
     return [
       "https://swiftbolt.app",
@@ -60,18 +60,21 @@ export const getAllowedOrigins = (): string[] => {
 
 /**
  * Get CORS headers for the given origin.
- * 
+ *
  * If origin is in the allowlist, it's returned in Access-Control-Allow-Origin.
  * Otherwise, the first allowed origin is returned (prevents breaking existing requests).
- * 
+ *
  * @param origin - The origin header from the request
  * @returns CORS headers object
  */
-export const getCorsHeaders = (origin: string | null): Record<string, string> => {
+export const getCorsHeaders = (
+  origin: string | null,
+): Record<string, string> => {
   // Allow all origins for development
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-requested-with",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type, x-requested-with",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
     "Access-Control-Max-Age": "86400", // 24 hours
   };
@@ -79,7 +82,7 @@ export const getCorsHeaders = (origin: string | null): Record<string, string> =>
 
 /**
  * Check if an origin is allowed.
- * 
+ *
  * @param origin - The origin to check
  * @returns true if origin is in allowlist
  */
@@ -91,9 +94,9 @@ export const isOriginAllowed = (origin: string | null): boolean => {
 
 /**
  * Create a CORS-enabled Response.
- * 
+ *
  * Helper function to create responses with proper CORS headers.
- * 
+ *
  * @param body - Response body (JSON will be stringified)
  * @param status - HTTP status code (default: 200)
  * @param origin - Origin header from request
@@ -104,14 +107,12 @@ export const corsResponse = (
   body: unknown,
   status: number = 200,
   origin: string | null = null,
-  additionalHeaders: Record<string, string> = {}
+  additionalHeaders: Record<string, string> = {},
 ): Response => {
   const corsHeaders = getCorsHeaders(origin);
-  
-  const bodyString = typeof body === "string" 
-    ? body 
-    : JSON.stringify(body);
-  
+
+  const bodyString = typeof body === "string" ? body : JSON.stringify(body);
+
   return new Response(bodyString, {
     status,
     headers: {
@@ -124,7 +125,7 @@ export const corsResponse = (
 
 /**
  * Handle OPTIONS preflight request.
- * 
+ *
  * @param origin - Origin header from request
  * @returns 204 No Content with CORS headers
  */
@@ -151,7 +152,7 @@ export const handleCorsOptions = (origin: string | null = null): Response => {
 export const jsonResponse = (
   data: unknown,
   status: number = 200,
-  requestHeaders?: Headers
+  requestHeaders?: Headers,
 ): Response => {
   const origin = requestHeaders?.get("origin") ?? null;
   return corsResponse(data, status, origin);
@@ -164,7 +165,7 @@ export const jsonResponse = (
 export const errorResponse = (
   message: string,
   status: number = 400,
-  requestHeaders?: Headers
+  requestHeaders?: Headers,
 ): Response => {
   const origin = requestHeaders?.get("origin") ?? null;
   return corsResponse({ error: message }, status, origin);

@@ -2,18 +2,21 @@
 // Provides historical and real-time market data via Alpaca's Market Data API v2
 // Documentation: https://docs.alpaca.markets/docs/getting-started-with-alpaca-market-data
 
-import type { DataProviderAbstraction, HistoricalBarsRequest } from "./abstraction.ts";
-import type { Bar, Quote, NewsItem } from "./types.ts";
+import type {
+  DataProviderAbstraction,
+  HistoricalBarsRequest,
+} from "./abstraction.ts";
+import type { Bar, NewsItem, Quote } from "./types.ts";
 import type { TokenBucketRateLimiter } from "../rate-limiter/token-bucket.ts";
 import type { Cache } from "../cache/interface.ts";
 import { CACHE_TTL } from "../config/rate-limits.ts";
 import {
+  AuthenticationError,
+  InvalidSymbolError,
   ProviderError,
   RateLimitExceededError,
-  AuthenticationError,
-  ValidationError,
   ServiceUnavailableError,
-  InvalidSymbolError
+  ValidationError,
 } from "./types.ts";
 
 interface AlpacaBar {
@@ -129,7 +132,7 @@ export class AlpacaClient implements DataProviderAbstraction {
     apiKey: string,
     apiSecret: string,
     rateLimiter: TokenBucketRateLimiter,
-    cache: Cache
+    cache: Cache,
   ) {
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
@@ -166,7 +169,8 @@ export class AlpacaClient implements DataProviderAbstraction {
 
       // Use snapshots endpoint for latest data
       const symbolsParam = symbols.join(",");
-      const url = `${this.baseUrl}/stocks/snapshots?symbols=${symbolsParam}&feed=iex`;
+      const url =
+        `${this.baseUrl}/stocks/snapshots?symbols=${symbolsParam}&feed=iex`;
 
       const response = await fetch(url, {
         headers: this.getHeaders(),
@@ -198,7 +202,9 @@ export class AlpacaClient implements DataProviderAbstraction {
           open: snapshot.dailyBar?.o,
           previousClose: prevClose,
           change: prevClose ? trade.p - prevClose : undefined,
-          changePercent: prevClose ? ((trade.p - prevClose) / prevClose) * 100 : undefined,
+          changePercent: prevClose
+            ? ((trade.p - prevClose) / prevClose) * 100
+            : undefined,
         });
       }
 
@@ -220,8 +226,10 @@ export class AlpacaClient implements DataProviderAbstraction {
 
     // Convert timeframe to Alpaca format
     const alpacaTimeframe = this.convertTimeframe(timeframe);
-    
-    console.log(`[Alpaca] Fetching historical bars: ${symbol} ${timeframe} (${alpacaTimeframe})`);
+
+    console.log(
+      `[Alpaca] Fetching historical bars: ${symbol} ${timeframe} (${alpacaTimeframe})`,
+    );
 
     try {
       // Validate symbol before making API call
@@ -287,20 +295,27 @@ export class AlpacaClient implements DataProviderAbstraction {
         pageCount++;
 
         if (nextPageToken) {
-          console.log(`[Alpaca] Fetched page ${pageCount} with ${pageBars.length} bars, continuing...`);
+          console.log(
+            `[Alpaca] Fetched page ${pageCount} with ${pageBars.length} bars, continuing...`,
+          );
         }
 
         // Safety check
         if (pageCount >= maxPages) {
-          console.warn(`[Alpaca] Reached maximum page limit (${maxPages}) for ${symbol}`);
+          console.warn(
+            `[Alpaca] Reached maximum page limit (${maxPages}) for ${symbol}`,
+          );
           break;
         }
       } while (nextPageToken);
 
       if (allBars.length > 0) {
         const firstDate = new Date(allBars[0].timestamp * 1000).toISOString();
-        const lastDate = new Date(allBars[allBars.length - 1].timestamp * 1000).toISOString();
-        console.log(`[Alpaca] Retrieved ${allBars.length} bars for ${symbol} ${timeframe} across ${pageCount} page(s) (${firstDate} to ${lastDate})`);
+        const lastDate = new Date(allBars[allBars.length - 1].timestamp * 1000)
+          .toISOString();
+        console.log(
+          `[Alpaca] Retrieved ${allBars.length} bars for ${symbol} ${timeframe} across ${pageCount} page(s) (${firstDate} to ${lastDate})`,
+        );
       }
 
       return allBars;
@@ -314,7 +329,9 @@ export class AlpacaClient implements DataProviderAbstraction {
    * Get news for a symbol
    * Alpaca provides news from multiple sources
    */
-  async getNews(request: { symbol: string; limit?: number }): Promise<NewsItem[]> {
+  async getNews(
+    request: { symbol: string; limit?: number },
+  ): Promise<NewsItem[]> {
     const { symbol, limit = 50 } = request;
 
     console.log(`[Alpaca] Fetching news for ${symbol}`);
@@ -323,7 +340,8 @@ export class AlpacaClient implements DataProviderAbstraction {
       // Acquire rate limit token
       await this.rateLimiter.acquire("alpaca");
 
-      const url = `${this.baseUrl}/news?symbols=${symbol}&limit=${limit}&sort=desc`;
+      const url =
+        `${this.baseUrl}/news?symbols=${symbol}&limit=${limit}&sort=desc`;
 
       const response = await fetch(url, {
         headers: this.getHeaders(),
@@ -378,9 +396,11 @@ export class AlpacaClient implements DataProviderAbstraction {
    * Get all tradable assets
    * Results are cached for 1 hour to minimize API calls
    */
-  async getAssets(assetClass: "us_equity" | "crypto" = "us_equity"): Promise<AlpacaAsset[]> {
+  async getAssets(
+    assetClass: "us_equity" | "crypto" = "us_equity",
+  ): Promise<AlpacaAsset[]> {
     const now = Date.now();
-    
+
     // Return cached results if still valid
     if (this.assetsCache && now < this.assetsCacheExpiry) {
       return Array.from(this.assetsCache.values());
@@ -392,7 +412,8 @@ export class AlpacaClient implements DataProviderAbstraction {
       // Acquire rate limit token
       await this.rateLimiter.acquire("alpaca");
 
-      const url = `${this.tradingBaseUrl}/assets?asset_class=${assetClass}&status=active`;
+      const url =
+        `${this.tradingBaseUrl}/assets?asset_class=${assetClass}&status=active`;
       const response = await this.fetchWithRetry(url);
 
       if (!response.ok) {
@@ -400,7 +421,7 @@ export class AlpacaClient implements DataProviderAbstraction {
       }
 
       const assets = await response.json() as AlpacaAsset[];
-      
+
       // Update cache
       this.assetsCache = new Map();
       for (const asset of assets) {
@@ -426,7 +447,10 @@ export class AlpacaClient implements DataProviderAbstraction {
       return this.assetsCache?.has(symbol) ?? false;
     } catch (error) {
       // If assets endpoint fails, assume symbol is valid (fail open)
-      console.warn(`[Alpaca] Could not validate symbol ${symbol}, assuming valid:`, error);
+      console.warn(
+        `[Alpaca] Could not validate symbol ${symbol}, assuming valid:`,
+        error,
+      );
       return true;
     }
   }
@@ -462,9 +486,11 @@ export class AlpacaClient implements DataProviderAbstraction {
   /**
    * Map Alpaca sentiment to our format
    */
-  private mapSentiment(sentiment?: string): "positive" | "negative" | "neutral" {
+  private mapSentiment(
+    sentiment?: string,
+  ): "positive" | "negative" | "neutral" {
     if (!sentiment) return "neutral";
-    
+
     const s = sentiment.toLowerCase();
     if (s === "positive" || s === "bullish") return "positive";
     if (s === "negative" || s === "bearish") return "negative";
@@ -477,7 +503,7 @@ export class AlpacaClient implements DataProviderAbstraction {
   private async fetchWithRetry(
     url: string,
     maxRetries = 3,
-    initialDelayMs = 1000
+    initialDelayMs = 1000,
   ): Promise<Response> {
     let lastError: Error | null = null;
 
@@ -488,7 +514,10 @@ export class AlpacaClient implements DataProviderAbstraction {
         });
 
         // Don't retry on client errors (4xx except 429)
-        if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+        if (
+          response.status >= 400 && response.status < 500 &&
+          response.status !== 429
+        ) {
           return response;
         }
 
@@ -496,11 +525,15 @@ export class AlpacaClient implements DataProviderAbstraction {
         if (response.status === 429 || response.status >= 500) {
           if (attempt < maxRetries) {
             const retryAfter = response.headers.get("Retry-After");
-            const delayMs = retryAfter 
-              ? parseInt(retryAfter) * 1000 
+            const delayMs = retryAfter
+              ? parseInt(retryAfter) * 1000
               : initialDelayMs * Math.pow(2, attempt);
-            
-            console.log(`[Alpaca] Status ${response.status}, retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+
+            console.log(
+              `[Alpaca] Status ${response.status}, retrying in ${delayMs}ms (attempt ${
+                attempt + 1
+              }/${maxRetries})`,
+            );
             await this.sleep(delayMs);
             continue;
           }
@@ -511,7 +544,12 @@ export class AlpacaClient implements DataProviderAbstraction {
         lastError = error as Error;
         if (attempt < maxRetries) {
           const delayMs = initialDelayMs * Math.pow(2, attempt);
-          console.log(`[Alpaca] Network error, retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries}):`, error);
+          console.log(
+            `[Alpaca] Network error, retrying in ${delayMs}ms (attempt ${
+              attempt + 1
+            }/${maxRetries}):`,
+            error,
+          );
           await this.sleep(delayMs);
         }
       }
@@ -519,7 +557,9 @@ export class AlpacaClient implements DataProviderAbstraction {
 
     throw new ServiceUnavailableError(
       "alpaca",
-      `Failed after ${maxRetries} retries: ${lastError?.message || 'Unknown error'}`
+      `Failed after ${maxRetries} retries: ${
+        lastError?.message || "Unknown error"
+      }`,
     );
   }
 
@@ -540,22 +580,35 @@ export class AlpacaClient implements DataProviderAbstraction {
 
     // Handle authentication errors
     if (status === 401) {
-      throw new AuthenticationError("alpaca", "Invalid or expired API credentials. Check ALPACA_API_KEY and ALPACA_API_SECRET.");
+      throw new AuthenticationError(
+        "alpaca",
+        "Invalid or expired API credentials. Check ALPACA_API_KEY and ALPACA_API_SECRET.",
+      );
     }
 
     // Handle permission errors
     if (status === 403) {
-      throw new AuthenticationError("alpaca", errorMessage || "Insufficient permissions. Check your API key permissions.");
+      throw new AuthenticationError(
+        "alpaca",
+        errorMessage ||
+          "Insufficient permissions. Check your API key permissions.",
+      );
     }
 
     // Handle not found (invalid symbol)
     if (status === 404) {
-      throw new InvalidSymbolError("alpaca", errorMessage || "Symbol not found");
+      throw new InvalidSymbolError(
+        "alpaca",
+        errorMessage || "Symbol not found",
+      );
     }
 
     // Handle validation errors
     if (status === 400 || status === 422) {
-      throw new ValidationError("alpaca", errorMessage || "Invalid request parameters");
+      throw new ValidationError(
+        "alpaca",
+        errorMessage || "Invalid request parameters",
+      );
     }
 
     // Handle rate limiting
@@ -567,7 +620,10 @@ export class AlpacaClient implements DataProviderAbstraction {
 
     // Handle server errors
     if (status >= 500) {
-      throw new ServiceUnavailableError("alpaca", errorMessage || "Alpaca API temporarily unavailable");
+      throw new ServiceUnavailableError(
+        "alpaca",
+        errorMessage || "Alpaca API temporarily unavailable",
+      );
     }
 
     // Handle other errors
@@ -600,7 +656,7 @@ export class AlpacaClient implements DataProviderAbstraction {
       }
 
       const clock = await response.json() as AlpacaClock;
-      console.log(`[Alpaca] Market is ${clock.is_open ? 'OPEN' : 'CLOSED'}`);
+      console.log(`[Alpaca] Market is ${clock.is_open ? "OPEN" : "CLOSED"}`);
       return clock;
     } catch (error) {
       console.error(`[Alpaca] Error fetching market clock:`, error);
@@ -612,7 +668,9 @@ export class AlpacaClient implements DataProviderAbstraction {
    * Get market calendar
    * Returns trading days with open/close times for a date range
    */
-  async queryMarketCalendar(params: { start: string; end: string }): Promise<AlpacaCalendarDay[]> {
+  async queryMarketCalendar(
+    params: { start: string; end: string },
+  ): Promise<AlpacaCalendarDay[]> {
     const { start, end } = params;
     console.log(`[Alpaca] Fetching market calendar: ${start} to ${end}`);
 
@@ -677,6 +735,6 @@ export class AlpacaClient implements DataProviderAbstraction {
    * Sleep utility for retry delays
    */
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

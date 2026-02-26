@@ -1,24 +1,30 @@
 # Strategy Management Function
 
-This Supabase function provides a REST API for managing trading strategies in the SwiftBolt_ML project.
+This Supabase function provides a REST API for managing trading strategies in
+the SwiftBolt_ML project.
 
 ## Endpoints
 
 ### GET /strategy
+
 Fetch all strategies
 
 ### POST /strategy
+
 Create a new strategy
 
 ### PUT /strategy
+
 Update an existing strategy
 
 ### DELETE /strategy
+
 Delete a strategy
 
 ## Data Model
 
 ### Strategy Fields
+
 - `id`: Unique identifier
 - `name`: Strategy name
 - `description`: Description of the strategy
@@ -30,6 +36,7 @@ Delete a strategy
 ## Usage Examples
 
 ### Create Strategy
+
 ```bash
 curl -X POST https://your-supabase-url.supabase.co/functions/v1/strategy \
   -H "Content-Type: application/json" \
@@ -45,6 +52,7 @@ curl -X POST https://your-supabase-url.supabase.co/functions/v1/strategy \
 ```
 
 ### Get Strategies
+
 ```bash
 curl https://your-supabase-url.supabase.co/functions/v1/strategy
 ```

@@ -42,14 +42,22 @@ interface FrontendCondition {
   params?: Record<string, unknown>;
 }
 
-function normalizeConfig(raw: StrategyConfig): { entry_conditions: Condition[]; exit_conditions: Condition[] } {
+function normalizeConfig(
+  raw: StrategyConfig,
+): { entry_conditions: Condition[]; exit_conditions: Condition[] } {
   const entry = raw.entry_conditions ?? [];
   const exit = raw.exit_conditions ?? [];
-  if (entry.length > 0 || exit.length > 0) return { entry_conditions: entry, exit_conditions: exit };
+  if (entry.length > 0 || exit.length > 0) {
+    return { entry_conditions: entry, exit_conditions: exit };
+  }
   const mapOne = (c: FrontendCondition): Condition => ({
     type: "indicator",
     name: c.type,
-    operator: c.operator === ">" || c.operator === ">=" ? "above" : c.operator === "==" ? "equals" : "below",
+    operator: c.operator === ">" || c.operator === ">="
+      ? "above"
+      : c.operator === "=="
+      ? "equals"
+      : "below",
     value: c.value ?? 0,
   });
   return {
@@ -58,20 +66,22 @@ function normalizeConfig(raw: StrategyConfig): { entry_conditions: Condition[]; 
   };
 }
 
-async function claimJob(supabase: ReturnType<typeof getSupabaseClient>): Promise<BacktestJob | null> {
+async function claimJob(
+  supabase: ReturnType<typeof getSupabaseClient>,
+): Promise<BacktestJob | null> {
   const { data, error } = await supabase.rpc("claim_pending_backtest_job");
-  
+
   if (error || !data) {
     console.log("No pending jobs or error:", error?.message);
     return null;
   }
-  
+
   const { data: job } = await supabase
     .from("strategy_backtest_jobs")
     .select("*")
     .eq("id", data)
     .single();
-  
+
   return job as BacktestJob;
 }
 
@@ -81,7 +91,7 @@ async function fetchMarketData(
   symbol: string,
   startDate: string,
   endDate: string,
-  timeframe: string
+  timeframe: string,
 ): Promise<{
   dates: string[];
   opens: number[];
@@ -103,7 +113,9 @@ async function fetchMarketData(
     });
 
     if (!bars || bars.length === 0) {
-      console.warn(`[BacktestWorker] No Yahoo Finance data for ${symbol} ${tf}; using mock fallback`);
+      console.warn(
+        `[BacktestWorker] No Yahoo Finance data for ${symbol} ${tf}; using mock fallback`,
+      );
       return generateMockData(startDate, endDate);
     }
 
@@ -119,10 +131,15 @@ async function fetchMarketData(
     const closes = bars.map((b) => b.close);
     const volumes = bars.map((b) => b.volume);
 
-    console.log(`[BacktestWorker] Fetched ${bars.length} bars for ${symbol} from Yahoo Finance`);
+    console.log(
+      `[BacktestWorker] Fetched ${bars.length} bars for ${symbol} from Yahoo Finance`,
+    );
     return { dates, opens, highs, lows, closes, volumes };
   } catch (e) {
-    console.error(`[BacktestWorker] Yahoo Finance fetch failed for ${symbol}:`, e);
+    console.error(
+      `[BacktestWorker] Yahoo Finance fetch failed for ${symbol}:`,
+      e,
+    );
     return generateMockData(startDate, endDate);
   }
 }
@@ -133,14 +150,14 @@ function generateMockData(startDate: string, endDate: string) {
   const highs: number[] = [];
   const lows: number[] = [];
   const volumes: number[] = [];
-  
+
   let price = 100;
   const currentDate = new Date(startDate);
   const end = new Date(endDate);
-  
+
   while (currentDate <= end) {
     if (currentDate.getDay() !== 0 && currentDate.getDay() !== 6) {
-      dates.push(currentDate.toISOString().split('T')[0]);
+      dates.push(currentDate.toISOString().split("T")[0]);
       const change = (Math.random() - 0.48) * 0.03;
       price = price * (1 + change);
       closes.push(price);
@@ -150,11 +167,16 @@ function generateMockData(startDate: string, endDate: string) {
     }
     currentDate.setDate(currentDate.getDate() + 1);
   }
-  
+
   return { dates, opens: closes, highs, lows, closes, volumes };
 }
 
-function calculateIndicators(closes: number[], highs: number[], lows: number[], volumes: number[]) {
+function calculateIndicators(
+  closes: number[],
+  highs: number[],
+  lows: number[],
+  volumes: number[],
+) {
   const sma20: (number | null)[] = [];
   const ema12: (number | null)[] = [];
   const ema26: (number | null)[] = [];
@@ -164,7 +186,7 @@ function calculateIndicators(closes: number[], highs: number[], lows: number[], 
   const atr: (number | null)[] = [];
   const stochasticK: (number | null)[] = [];
   const adx: (number | null)[] = [];
-  
+
   for (let i = 0; i < closes.length; i++) {
     // SMA 20
     if (i < 19) {
@@ -174,7 +196,7 @@ function calculateIndicators(closes: number[], highs: number[], lows: number[], 
       for (let j = i - 19; j <= i; j++) sum += closes[j];
       sma20.push(sum / 20);
     }
-    
+
     // EMA 12
     if (i === 0) {
       ema12.push(closes[0]);
@@ -182,7 +204,7 @@ function calculateIndicators(closes: number[], highs: number[], lows: number[], 
       const prev = ema12[i - 1] ?? closes[0];
       ema12.push((closes[i] - prev) * (2 / 13) + prev);
     }
-    
+
     // EMA 26
     if (i === 0) {
       ema26.push(closes[0]);
@@ -190,7 +212,7 @@ function calculateIndicators(closes: number[], highs: number[], lows: number[], 
       const prev = ema26[i - 1] ?? closes[0];
       ema26.push((closes[i] - prev) * (2 / 27) + prev);
     }
-    
+
     // MACD
     const ema12Val = ema12[i];
     const ema26Val = ema26[i];
@@ -199,7 +221,7 @@ function calculateIndicators(closes: number[], highs: number[], lows: number[], 
     } else {
       macd.push(null);
     }
-    
+
     // MACD Signal (9-period EMA of MACD)
     if (i === 0 || macd[i] === null) {
       macdSignal.push(null);
@@ -207,7 +229,7 @@ function calculateIndicators(closes: number[], highs: number[], lows: number[], 
       const prev = macdSignal[i - 1] ?? macd[i];
       macdSignal.push((macd[i]! - prev) * (2 / 10) + prev);
     }
-    
+
     // RSI 14
     if (i < 14) {
       rsi.push(50);
@@ -223,7 +245,7 @@ function calculateIndicators(closes: number[], highs: number[], lows: number[], 
       const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
       rsi.push(100 - (100 / (1 + rs)));
     }
-    
+
     // ATR 14
     if (i < 14) {
       atr.push(null);
@@ -233,13 +255,13 @@ function calculateIndicators(closes: number[], highs: number[], lows: number[], 
         const tr = Math.max(
           highs[j] - lows[j],
           Math.abs(highs[j] - closes[j - 1]),
-          Math.abs(lows[j] - closes[j - 1])
+          Math.abs(lows[j] - closes[j - 1]),
         );
         trSum += tr;
       }
       atr.push(trSum / 14);
     }
-    
+
     // Stochastic
     if (i < 13) {
       stochasticK.push(null);
@@ -248,11 +270,11 @@ function calculateIndicators(closes: number[], highs: number[], lows: number[], 
       const high14 = Math.max(...highs.slice(i - 13, i + 1));
       stochasticK.push(100 * (closes[i] - low14) / (high14 - low14));
     }
-    
+
     // ADX (simplified)
     adx.push(25);
   }
-  
+
   return { sma20, ema12, ema26, macd, macdSignal, rsi, atr, stochasticK, adx };
 }
 
@@ -262,7 +284,7 @@ function calculateSuperTrend(
   lows: number[],
   closes: number[],
   period: number = 7,
-  multiplier: number = 2.0
+  multiplier: number = 2.0,
 ): { trend: number[]; signal: number[] } {
   const n = closes.length;
   const trend: number[] = [];
@@ -280,8 +302,8 @@ function calculateSuperTrend(
         Math.max(
           highs[i] - lows[i],
           Math.abs(highs[i] - closes[i - 1]),
-          Math.abs(lows[i] - closes[i - 1])
-        )
+          Math.abs(lows[i] - closes[i - 1]),
+        ),
       );
     }
   }
@@ -313,13 +335,17 @@ function calculateSuperTrend(
   for (let i = 1; i < n; i++) {
     let fu: number, fl: number;
     // Adjust lower band (TradingView: basic_lower vs prev close vs prev final_lower)
-    if (basicLower[i] > basicLower[i - 1]! || closes[i - 1] < finalLower[i - 1]!) {
+    if (
+      basicLower[i] > basicLower[i - 1]! || closes[i - 1] < finalLower[i - 1]!
+    ) {
       fl = basicLower[i];
     } else {
       fl = finalLower[i - 1]!;
     }
     // Adjust upper band
-    if (basicUpper[i] < basicUpper[i - 1]! || closes[i - 1] > finalUpper[i - 1]!) {
+    if (
+      basicUpper[i] < basicUpper[i - 1]! || closes[i - 1] > finalUpper[i - 1]!
+    ) {
       fu = basicUpper[i];
     } else {
       fu = finalUpper[i - 1]!;
@@ -368,22 +394,42 @@ async function runBacktest(job: BacktestJob, config: StrategyConfig): Promise<{
     job.symbol,
     job.start_date,
     job.end_date,
-    timeframe
+    timeframe,
   );
-  
-  if (closes.length === 0) {
-    return { metrics: { total_trades: 0, winning_trades: 0, losing_trades: 0, win_rate: 0, total_return_pct: 0, final_value: initialCapital, max_drawdown_pct: 0, avg_win: 0, avg_loss: 0, profit_factor: 0 }, trades: [], equity_curve: [] };
-  }
-  
-  // Calculate indicators
-  const { sma20, ema12, ema26, macd, macdSignal, rsi, atr, stochasticK, adx } = calculateIndicators(closes, highs, lows, volumes);
-  const { trend: supertrendTrend, signal: supertrendSignal } = calculateSuperTrend(highs, lows, closes, 7, 2.0);
 
-  function evaluateConditions(conditions: Condition[] | undefined, i: number): boolean {
+  if (closes.length === 0) {
+    return {
+      metrics: {
+        total_trades: 0,
+        winning_trades: 0,
+        losing_trades: 0,
+        win_rate: 0,
+        total_return_pct: 0,
+        final_value: initialCapital,
+        max_drawdown_pct: 0,
+        avg_win: 0,
+        avg_loss: 0,
+        profit_factor: 0,
+      },
+      trades: [],
+      equity_curve: [],
+    };
+  }
+
+  // Calculate indicators
+  const { sma20, ema12, ema26, macd, macdSignal, rsi, atr, stochasticK, adx } =
+    calculateIndicators(closes, highs, lows, volumes);
+  const { trend: supertrendTrend, signal: supertrendSignal } =
+    calculateSuperTrend(highs, lows, closes, 7, 2.0);
+
+  function evaluateConditions(
+    conditions: Condition[] | undefined,
+    i: number,
+  ): boolean {
     if (!conditions || conditions.length === 0) return true;
 
     for (const cond of conditions) {
-      if (cond.type !== 'indicator') continue;
+      if (cond.type !== "indicator") continue;
 
       const name = cond.name;
       const op = cond.operator;
@@ -391,44 +437,49 @@ async function runBacktest(job: BacktestJob, config: StrategyConfig): Promise<{
 
       let indicatorValue: number | null = null;
 
-      if (name === 'rsi') indicatorValue = rsi[i] ?? 50;
-      else if (name === 'sma') indicatorValue = sma20[i] ?? 0;
-      else if (name === 'ema') indicatorValue = ema12[i] ?? 0;
-      else if (name === 'price_above_sma') indicatorValue = (sma20[i] !== null && closes[i] > sma20[i]!) ? 1 : 0;
-      else if (name === 'price_above_ema') indicatorValue = (ema12[i] !== null && closes[i] > ema12[i]!) ? 1 : 0;
-      else if (name === 'macd') indicatorValue = macd[i] ?? 0;
-      else if (name === 'macd_signal') indicatorValue = macdSignal[i] ?? 0;
-      else if (name === 'stochastic' || name === 'stochastic_k') indicatorValue = stochasticK[i] ?? 50;
-      else if (name === 'adx') indicatorValue = adx[i] ?? 25;
-      else if (name === 'atr') indicatorValue = atr[i] ?? 0;
-      else if (name === 'close' || name === 'price') indicatorValue = closes[i];
-      else if (name === 'high') indicatorValue = highs[i];
-      else if (name === 'low') indicatorValue = lows[i];
-      else if (name === 'volume') indicatorValue = volumes[i];
-      else if (name === 'supertrend_trend') indicatorValue = supertrendTrend[i] ?? 1;
-      else if (name === 'supertrend_signal') indicatorValue = supertrendSignal[i] ?? 0;
-      else if (name === 'supertrend_factor') indicatorValue = 2.0;
-      
+      if (name === "rsi") indicatorValue = rsi[i] ?? 50;
+      else if (name === "sma") indicatorValue = sma20[i] ?? 0;
+      else if (name === "ema") indicatorValue = ema12[i] ?? 0;
+      else if (name === "price_above_sma") {
+        indicatorValue = (sma20[i] !== null && closes[i] > sma20[i]!) ? 1 : 0;
+      } else if (name === "price_above_ema") {
+        indicatorValue = (ema12[i] !== null && closes[i] > ema12[i]!) ? 1 : 0;
+      } else if (name === "macd") indicatorValue = macd[i] ?? 0;
+      else if (name === "macd_signal") indicatorValue = macdSignal[i] ?? 0;
+      else if (name === "stochastic" || name === "stochastic_k") {
+        indicatorValue = stochasticK[i] ?? 50;
+      } else if (name === "adx") indicatorValue = adx[i] ?? 25;
+      else if (name === "atr") indicatorValue = atr[i] ?? 0;
+      else if (name === "close" || name === "price") indicatorValue = closes[i];
+      else if (name === "high") indicatorValue = highs[i];
+      else if (name === "low") indicatorValue = lows[i];
+      else if (name === "volume") indicatorValue = volumes[i];
+      else if (name === "supertrend_trend") {
+        indicatorValue = supertrendTrend[i] ?? 1;
+      } else if (name === "supertrend_signal") {
+        indicatorValue = supertrendSignal[i] ?? 0;
+      } else if (name === "supertrend_factor") indicatorValue = 2.0;
+
       if (indicatorValue === null) continue;
-      
-      if (op === 'below') { if (!(indicatorValue < val)) return false; }
-      else if (op === 'above') { if (!(indicatorValue > val)) return false; }
-      else if (op === 'equals') { if (indicatorValue !== val) return false; }
+
+      if (op === "below") { if (!(indicatorValue < val)) return false; }
+      else if (op === "above") { if (!(indicatorValue > val)) return false; }
+      else if (op === "equals") { if (indicatorValue !== val) return false; }
     }
     return true;
   }
-  
+
   // Run backtest
   let cash = initialCapital;
   let shares = 0;
   let entryPrice = 0;
   const trades: Record<string, unknown>[] = [];
   const equityCurve: Record<string, number>[] = [];
-  
+
   for (let i = 30; i < closes.length; i++) {
     const entryConds = config.entry_conditions || [];
     const exitConds = config.exit_conditions || [];
-    
+
     if (shares === 0 && evaluateConditions(entryConds, i)) {
       shares = Math.min(positionSize, Math.floor(cash / closes[i]));
       cash -= shares * closes[i];
@@ -437,7 +488,7 @@ async function runBacktest(job: BacktestJob, config: StrategyConfig): Promise<{
       const pnlPct = (closes[i] - entryPrice) / entryPrice;
       const exitByCondition = evaluateConditions(exitConds, i);
       const exitByRisk = pnlPct >= takeProfit || pnlPct <= -stopLoss;
-      
+
       if (exitByCondition || exitByRisk) {
         cash += shares * closes[i];
         trades.push({
@@ -446,21 +497,25 @@ async function runBacktest(job: BacktestJob, config: StrategyConfig): Promise<{
           entry_price: entryPrice,
           exit_price: closes[i],
           pnl: (closes[i] - entryPrice) * shares,
-          pnl_pct: pnlPct * 100
+          pnl_pct: pnlPct * 100,
         });
         shares = 0;
       }
     }
-    
+
     equityCurve.push({ date: dates[i], value: cash + (shares * closes[i]) });
   }
-  
+
   // Calculate metrics
-  const winning = trades.filter((t: Record<string, unknown>) => (t.pnl as number) > 0);
-  const losing = trades.filter((t: Record<string, unknown>) => (t.pnl as number) <= 0);
+  const winning = trades.filter((t: Record<string, unknown>) =>
+    (t.pnl as number) > 0
+  );
+  const losing = trades.filter((t: Record<string, unknown>) =>
+    (t.pnl as number) <= 0
+  );
   const finalValue = cash;
   const totalReturn = ((finalValue - initialCapital) / initialCapital) * 100;
-  
+
   let peak = initialCapital;
   let maxDrawdown = 0;
   for (const eq of equityCurve) {
@@ -468,20 +523,32 @@ async function runBacktest(job: BacktestJob, config: StrategyConfig): Promise<{
     const dd = (peak - eq.value) / peak;
     if (dd > maxDrawdown) maxDrawdown = dd;
   }
-  
-  const avgWin = winning.length ? winning.reduce((s: number, t: Record<string, unknown>) => s + (t.pnl as number), 0) / winning.length : 0;
-  const avgLoss = losing.length ? Math.abs(losing.reduce((s: number, t: Record<string, unknown>) => s + (t.pnl as number), 0) / losing.length) : 0;
+
+  const avgWin = winning.length
+    ? winning.reduce(
+      (s: number, t: Record<string, unknown>) => s + (t.pnl as number),
+      0,
+    ) / winning.length
+    : 0;
+  const avgLoss = losing.length
+    ? Math.abs(
+      losing.reduce(
+        (s: number, t: Record<string, unknown>) => s + (t.pnl as number),
+        0,
+      ) / losing.length,
+    )
+    : 0;
   const profitFactor = avgLoss !== 0 ? avgWin / avgLoss : 0;
-  
-  const avgTrade =
-    trades.length > 0
-      ? ((finalValue - initialCapital) / initialCapital / trades.length) * 100
-      : null;
-  const years = (new Date(job.end_date).getTime() - new Date(job.start_date).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
-  const cagr =
-    years > 0 && initialCapital > 0
-      ? (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100
-      : null;
+
+  const avgTrade = trades.length > 0
+    ? ((finalValue - initialCapital) / initialCapital / trades.length) * 100
+    : null;
+  const years =
+    (new Date(job.end_date).getTime() - new Date(job.start_date).getTime()) /
+    (365.25 * 24 * 60 * 60 * 1000);
+  const cagr = years > 0 && initialCapital > 0
+    ? (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100
+    : null;
 
   return {
     metrics: {
@@ -562,7 +629,7 @@ async function runPresetViaFastApi(job: BacktestJob): Promise<{
         params,
       }),
     },
-    90000
+    90000,
   );
 
   if (apiResult.error) {
@@ -577,7 +644,9 @@ async function runPresetViaFastApi(job: BacktestJob): Promise<{
       total_trades: apiResult.metrics.totalTrades,
       winning_trades: winning,
       losing_trades: losing,
-      win_rate: apiResult.metrics.totalTrades ? (winning / apiResult.metrics.totalTrades) * 100 : 0,
+      win_rate: apiResult.metrics.totalTrades
+        ? (winning / apiResult.metrics.totalTrades) * 100
+        : 0,
       total_return_pct: apiResult.totalReturn,
       final_value: apiResult.finalValue,
       max_drawdown_pct: apiResult.metrics.maxDrawdown ?? 0,
@@ -598,7 +667,10 @@ async function runPresetViaFastApi(job: BacktestJob): Promise<{
       duration: t.duration ?? null,
       fees: t.fees ?? null,
     })),
-    equity_curve: apiResult.equityCurve.map((p) => ({ date: p.date, value: p.value })),
+    equity_curve: apiResult.equityCurve.map((p) => ({
+      date: p.date,
+      value: p.value,
+    })),
   };
 }
 
@@ -619,7 +691,11 @@ serve(async (): Promise<Response> => {
       console.log(`Processing job ${job.id} for ${job.symbol}`);
 
       try {
-        let result: { metrics: Record<string, unknown>; trades: Record<string, unknown>[]; equity_curve: Record<string, unknown>[] };
+        let result: {
+          metrics: Record<string, unknown>;
+          trades: Record<string, unknown>[];
+          equity_curve: Record<string, unknown>[];
+        };
 
         if (!job.strategy_id && job.parameters?.strategy) {
           // Preset strategy: call FastAPI
@@ -633,8 +709,14 @@ serve(async (): Promise<Response> => {
             .single();
 
           const rawConfig = (strategy?.config || {}) as StrategyConfig;
-          const { entry_conditions, exit_conditions } = normalizeConfig(rawConfig);
-          const config: StrategyConfig = { ...rawConfig, entry_conditions, exit_conditions };
+          const { entry_conditions, exit_conditions } = normalizeConfig(
+            rawConfig,
+          );
+          const config: StrategyConfig = {
+            ...rawConfig,
+            entry_conditions,
+            exit_conditions,
+          };
           result = await runBacktest(job, config);
         } else {
           throw new Error("Job must have strategy_id or parameters.strategy");
@@ -662,7 +744,11 @@ serve(async (): Promise<Response> => {
           })
           .eq("id", job.id);
 
-        console.log(`Job ${job.id} completed with ${(result.metrics.total_trades as number) ?? 0} trades`);
+        console.log(
+          `Job ${job.id} completed with ${
+            (result.metrics.total_trades as number) ?? 0
+          } trades`,
+        );
       } catch (err) {
         console.error(`Job ${job.id} failed:`, err);
 
@@ -676,16 +762,18 @@ serve(async (): Promise<Response> => {
           .eq("id", job.id);
       }
     }
-    
+
     return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json" },
     });
-    
   } catch (err) {
     console.error("Worker error:", err);
-    return new Response(JSON.stringify({ error: err?.message || "Worker failed" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" }
-    });
+    return new Response(
+      JSON.stringify({ error: err?.message || "Worker failed" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 });

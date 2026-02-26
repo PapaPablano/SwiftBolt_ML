@@ -4,14 +4,14 @@
 export type Timeframe = "m15" | "h1" | "h4" | "d1" | "w1";
 
 interface PolygonAggregateResult {
-  v: number;   // Volume
-  vw: number;  // Volume weighted average price
-  o: number;   // Open
-  c: number;   // Close
-  h: number;   // High
-  l: number;   // Low
-  t: number;   // Timestamp (Unix ms)
-  n: number;   // Number of transactions
+  v: number; // Volume
+  vw: number; // Volume weighted average price
+  o: number; // Open
+  c: number; // Close
+  h: number; // High
+  l: number; // Low
+  t: number; // Timestamp (Unix ms)
+  n: number; // Number of transactions
 }
 
 interface PolygonAggregatesResponse {
@@ -27,7 +27,7 @@ interface PolygonAggregatesResponse {
 }
 
 export interface OHLCBar {
-  ts: string;      // ISO8601 timestamp
+  ts: string; // ISO8601 timestamp
   open: number;
   high: number;
   low: number;
@@ -36,21 +36,24 @@ export interface OHLCBar {
 }
 
 // Map our timeframes to Polygon multiplier + timespan
-const TIMEFRAME_CONFIG: Record<Timeframe, { multiplier: number; timespan: string }> = {
+const TIMEFRAME_CONFIG: Record<
+  Timeframe,
+  { multiplier: number; timespan: string }
+> = {
   m15: { multiplier: 15, timespan: "minute" },
-  h1:  { multiplier: 1,  timespan: "hour" },
-  h4:  { multiplier: 4,  timespan: "hour" },
-  d1:  { multiplier: 1,  timespan: "day" },
-  w1:  { multiplier: 1,  timespan: "week" },
+  h1: { multiplier: 1, timespan: "hour" },
+  h4: { multiplier: 4, timespan: "hour" },
+  d1: { multiplier: 1, timespan: "day" },
+  w1: { multiplier: 1, timespan: "week" },
 };
 
 // Calculate milliseconds per bar for each timeframe
 const TIMEFRAME_MS: Record<Timeframe, number> = {
   m15: 15 * 60 * 1000,
-  h1:  60 * 60 * 1000,
-  h4:  4 * 60 * 60 * 1000,
-  d1:  24 * 60 * 60 * 1000,
-  w1:  7 * 24 * 60 * 60 * 1000,
+  h1: 60 * 60 * 1000,
+  h4: 4 * 60 * 60 * 1000,
+  d1: 24 * 60 * 60 * 1000,
+  w1: 7 * 24 * 60 * 60 * 1000,
 };
 
 /**
@@ -62,7 +65,7 @@ const TIMEFRAME_MS: Record<Timeframe, number> = {
 export async function fetchCandles(
   symbol: string,
   timeframe: Timeframe,
-  barCount = 100
+  barCount = 100,
 ): Promise<OHLCBar[]> {
   const apiKey = Deno.env.get("MASSIVE_API_KEY");
   if (!apiKey) {
@@ -93,9 +96,11 @@ export async function fetchCandles(
   // Build Polygon aggregates URL
   // /v2/aggs/ticker/{stocksTicker}/range/{multiplier}/{timespan}/{from}/{to}
   const url = new URL(
-    `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/${multiplier}/${timespan}/${formatDate(from)}/${formatDate(now)}`
+    `https://api.polygon.io/v2/aggs/ticker/${ticker}/range/${multiplier}/${timespan}/${
+      formatDate(from)
+    }/${formatDate(now)}`,
   );
-  url.searchParams.set("adjusted", "false");  // ALWAYS use unadjusted prices
+  url.searchParams.set("adjusted", "false"); // ALWAYS use unadjusted prices
   url.searchParams.set("sort", "asc");
   url.searchParams.set("limit", barCount.toString());
   url.searchParams.set("apiKey", apiKey);
@@ -107,7 +112,9 @@ export async function fetchCandles(
   if (!response.ok) {
     const errorText = await response.text();
     console.error(`Polygon API error: ${response.status} - ${errorText}`);
-    throw new Error(`Polygon API error: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `Polygon API error: ${response.status} ${response.statusText}`,
+    );
   }
 
   const data: PolygonAggregatesResponse = await response.json();

@@ -48,9 +48,11 @@ function getCacheKey(symbol: string, timeframe: string): string {
  */
 async function calculateIndicators(
   symbol: string,
-  timeframe: string
+  timeframe: string,
 ): Promise<TechnicalIndicatorsResponse> {
-  const endpoint = `/api/v1/technical-indicators?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&lookback=500`;
+  const endpoint = `/api/v1/technical-indicators?symbol=${
+    encodeURIComponent(symbol)
+  }&timeframe=${encodeURIComponent(timeframe)}&lookback=500`;
   return await callFastApi<TechnicalIndicatorsResponse>(endpoint, {
     method: "GET",
   });
@@ -62,7 +64,7 @@ async function calculateIndicators(
 async function getCachedIndicators(
   supabase: ReturnType<typeof getSupabaseClient>,
   symbol: string,
-  timeframe: string
+  timeframe: string,
 ): Promise<TechnicalIndicatorsResponse | null> {
   const cacheKey = getCacheKey(symbol, timeframe);
   const cacheDuration = isIntraday(timeframe)
@@ -91,7 +93,7 @@ serve(async (req: Request) => {
       return corsResponse(
         { error: "Missing required parameter: symbol" },
         400,
-        origin
+        origin,
       );
     }
 
@@ -100,21 +102,27 @@ serve(async (req: Request) => {
     if (!validTimeframes.includes(timeframe)) {
       return corsResponse(
         {
-          error: `Invalid timeframe: ${timeframe}. Valid: ${validTimeframes.join(", ")}`,
+          error: `Invalid timeframe: ${timeframe}. Valid: ${
+            validTimeframes.join(", ")
+          }`,
         },
         400,
-        origin
+        origin,
       );
     }
 
-    console.log(`[TechnicalIndicators] Fetching indicators for ${symbol}/${timeframe}`);
+    console.log(
+      `[TechnicalIndicators] Fetching indicators for ${symbol}/${timeframe}`,
+    );
 
     // Try to get from cache first
     const supabase = getSupabaseClient();
     const cached = await getCachedIndicators(supabase, symbol, timeframe);
 
     if (cached) {
-      console.log(`[TechnicalIndicators] Returning cached result for ${symbol}/${timeframe}`);
+      console.log(
+        `[TechnicalIndicators] Returning cached result for ${symbol}/${timeframe}`,
+      );
       return corsResponse({ ...cached, cached: true }, 200, origin);
     }
 
@@ -125,12 +133,14 @@ serve(async (req: Request) => {
       return corsResponse(
         { error: result.error, symbol, timeframe },
         500,
-        origin
+        origin,
       );
     }
 
     console.log(
-      `[TechnicalIndicators] Calculated ${Object.keys(result.indicators).length} indicators for ${symbol}/${timeframe}`
+      `[TechnicalIndicators] Calculated ${
+        Object.keys(result.indicators).length
+      } indicators for ${symbol}/${timeframe}`,
     );
 
     return corsResponse(result, 200, origin);
@@ -141,7 +151,7 @@ serve(async (req: Request) => {
         error: error instanceof Error ? error.message : "Internal server error",
       },
       500,
-      origin
+      origin,
     );
   }
 });

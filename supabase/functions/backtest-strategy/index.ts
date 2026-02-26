@@ -10,7 +10,11 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { corsResponse, handlePreflight } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
-const VALID_PRESET_STRATEGIES = ["supertrend_ai", "sma_crossover", "buy_and_hold"];
+const VALID_PRESET_STRATEGIES = [
+  "supertrend_ai",
+  "sma_crossover",
+  "buy_and_hold",
+];
 
 function getUserIdFromRequest(req: Request): string | null {
   const authHeader = req.headers.get("Authorization");
@@ -53,7 +57,7 @@ serve(async (req: Request) => {
       return corsResponse(
         { error: "Missing query param: id (job_id)" },
         400,
-        origin
+        origin,
       );
     }
     return corsResponse({ error: "Method not allowed" }, 405, origin);
@@ -64,7 +68,7 @@ serve(async (req: Request) => {
         error: err instanceof Error ? err.message : "Internal server error",
       },
       500,
-      origin
+      origin,
     );
   }
 });
@@ -73,7 +77,7 @@ async function handleQueueBacktest(
   supabase: ReturnType<typeof getSupabaseClient>,
   userId: string,
   req: Request,
-  origin: string | null
+  origin: string | null,
 ): Promise<Response> {
   const body = (await req.json()) as Record<string, unknown>;
 
@@ -84,13 +88,14 @@ async function handleQueueBacktest(
   const strategyPreset = body.strategy as string | undefined;
   const timeframe = (body.timeframe as string) || "d1";
   const initialCapital = (body.initialCapital as number) ?? 10000;
-  const params = (body.params as Record<string, unknown>) || (body.parameters as Record<string, unknown>) || {};
+  const params = (body.params as Record<string, unknown>) ||
+    (body.parameters as Record<string, unknown>) || {};
 
   if (!startDate || !endDate) {
     return corsResponse(
       { error: "Missing required fields: startDate and endDate (YYYY-MM-DD)" },
       400,
-      origin
+      origin,
     );
   }
 
@@ -111,27 +116,37 @@ async function handleQueueBacktest(
     if (!VALID_PRESET_STRATEGIES.includes(strategyPreset)) {
       return corsResponse(
         {
-          error: `Invalid strategy: ${strategyPreset}. Valid: ${VALID_PRESET_STRATEGIES.join(", ")}`,
+          error: `Invalid strategy: ${strategyPreset}. Valid: ${
+            VALID_PRESET_STRATEGIES.join(", ")
+          }`,
         },
         400,
-        origin
+        origin,
       );
     }
   } else {
     return corsResponse(
       { error: "Provide either strategy_id (UUID) or strategy (preset name)" },
       400,
-      origin
+      origin,
     );
   }
 
   const start = new Date(startDate);
   const end = new Date(endDate);
   if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-    return corsResponse({ error: "Invalid date format. Use YYYY-MM-DD" }, 400, origin);
+    return corsResponse(
+      { error: "Invalid date format. Use YYYY-MM-DD" },
+      400,
+      origin,
+    );
   }
   if (start >= end) {
-    return corsResponse({ error: "Start date must be before end date" }, 400, origin);
+    return corsResponse(
+      { error: "Start date must be before end date" },
+      400,
+      origin,
+    );
   }
 
   const parameters: Record<string, unknown> = {
@@ -144,7 +159,10 @@ async function handleQueueBacktest(
   }
   // Builder strategy: merge riskManagement from config so worker uses your stop loss / take profit
   if (strategyId && strategyConfig?.riskManagement) {
-    const rm = strategyConfig.riskManagement as Record<string, { type?: string; value?: number }>;
+    const rm = strategyConfig.riskManagement as Record<
+      string,
+      { type?: string; value?: number }
+    >;
     const sl = rm?.stopLoss;
     const tp = rm?.takeProfit;
     if (sl?.type === "percent" && typeof sl.value === "number") {
@@ -175,26 +193,34 @@ async function handleQueueBacktest(
   }
 
   console.log(
-    `[BacktestStrategy] Queued job ${job.id} for ${symbol} (${strategyPreset || strategyId})`
+    `[BacktestStrategy] Queued job ${job.id} for ${symbol} (${
+      strategyPreset || strategyId
+    })`,
   );
 
   // Trigger the worker immediately (fire-and-forget) so the job is processed
   // without requiring an external cron. Uses the service-role key so the worker
   // can update job status even with RLS enabled.
-  const workerUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/strategy-backtest-worker`;
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const workerUrl = `${
+    Deno.env.get("SUPABASE_URL")
+  }/functions/v1/strategy-backtest-worker`;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   if (workerUrl && serviceKey) {
     fetch(workerUrl, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${serviceKey}`,
-        'Content-Type': 'application/json',
-        'x-trigger-source': 'backtest-strategy',
+        "Authorization": `Bearer ${serviceKey}`,
+        "Content-Type": "application/json",
+        "x-trigger-source": "backtest-strategy",
       },
       body: JSON.stringify({ triggered_job_id: job.id }),
-    }).catch(e => console.warn('[BacktestStrategy] Worker trigger warning:', e));
+    }).catch((e) =>
+      console.warn("[BacktestStrategy] Worker trigger warning:", e)
+    );
   } else {
-    console.warn('[BacktestStrategy] SUPABASE_SERVICE_ROLE_KEY not set — worker not triggered automatically');
+    console.warn(
+      "[BacktestStrategy] SUPABASE_SERVICE_ROLE_KEY not set — worker not triggered automatically",
+    );
   }
 
   return corsResponse(
@@ -204,7 +230,7 @@ async function handleQueueBacktest(
       created_at: job.created_at,
     },
     201,
-    origin
+    origin,
   );
 }
 
@@ -212,7 +238,7 @@ async function handleGetJobStatus(
   supabase: ReturnType<typeof getSupabaseClient>,
   userId: string,
   jobId: string,
-  origin: string | null
+  origin: string | null,
 ): Promise<Response> {
   const { data: job, error } = await supabase
     .from("strategy_backtest_jobs")
@@ -246,6 +272,6 @@ async function handleGetJobStatus(
       result,
     },
     200,
-    origin
+    origin,
   );
 }

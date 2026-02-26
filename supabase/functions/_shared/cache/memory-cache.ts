@@ -43,7 +43,7 @@ export class MemoryCache implements Cache {
     key: string,
     value: T,
     ttlSeconds: number,
-    tags?: string[]
+    tags?: string[],
   ): Promise<void> {
     // Evict oldest entry if at capacity
     if (this.cache.size >= this.maxSize && !this.cache.has(key)) {

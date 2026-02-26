@@ -3,31 +3,32 @@
  * This updates get_chart_data_v2 to query ohlc_bars_v2 for historical h1 data
  */
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('[apply-h1-fix] Dropping old function...');
+    console.log("[apply-h1-fix] Dropping old function...");
 
-    await supabase.rpc('exec_sql', {
-      sql: 'DROP FUNCTION IF EXISTS get_chart_data_v2 CASCADE;'
+    await supabase.rpc("exec_sql", {
+      sql: "DROP FUNCTION IF EXISTS get_chart_data_v2 CASCADE;",
     }).throwOnError();
 
-    console.log('[apply-h1-fix] Creating new function...');
+    console.log("[apply-h1-fix] Creating new function...");
 
     const createFunctionSQL = `
 CREATE FUNCTION get_chart_data_v2(
@@ -162,28 +163,35 @@ END;
 $$ LANGUAGE plpgsql;
 `;
 
-    await supabase.rpc('exec_sql', { sql: createFunctionSQL }).throwOnError();
+    await supabase.rpc("exec_sql", { sql: createFunctionSQL }).throwOnError();
 
-    console.log('[apply-h1-fix] Migration applied successfully!');
+    console.log("[apply-h1-fix] Migration applied successfully!");
 
     return new Response(
       JSON.stringify({
-        message: 'Migration applied successfully',
-        details: 'get_chart_data_v2 now queries ohlc_bars_v2 for historical h1 data'
+        message: "Migration applied successfully",
+        details:
+          "get_chart_data_v2 now queries ohlc_bars_v2 for historical h1 data",
       }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
-
   } catch (error) {
-    console.error('[apply-h1-fix] Error:', error);
+    console.error("[apply-h1-fix] Error:", error);
     const details = error instanceof Error ? error.message : String(error);
     return new Response(
       JSON.stringify({
-        error: 'Failed to apply migration',
+        error: "Failed to apply migration",
         details,
-        help: 'You may need to apply the migration manually via Supabase Dashboard SQL Editor'
+        help:
+          "You may need to apply the migration manually via Supabase Dashboard SQL Editor",
       }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 });

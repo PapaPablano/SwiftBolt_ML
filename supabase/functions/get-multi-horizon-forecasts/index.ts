@@ -137,25 +137,38 @@ serve(async (req) => {
     const mode = modeParam ?? DEFAULT_MODE;
 
     if (mode === "timeframe" && horizonParam) {
-      return jsonResponse({ error: "horizon parameter is not valid for timeframe mode" }, 400);
+      return jsonResponse({
+        error: "horizon parameter is not valid for timeframe mode",
+      }, 400);
     }
 
     if (mode === "horizon" && timeframeParam) {
-      return jsonResponse({ error: "timeframe parameter is not valid for horizon mode" }, 400);
+      return jsonResponse({
+        error: "timeframe parameter is not valid for horizon mode",
+      }, 400);
     }
 
     const supabase = getSupabaseClient();
 
     let timeframeRows: TimeframeForecastRow[] = [];
     if (!(mode === "consensus" && !timeframeParam)) {
-      const { data, error } = await supabase.rpc("get_multi_horizon_forecasts", {
-        p_symbol: symbol,
-        p_timeframe: timeframeParam,
-      });
+      const { data, error } = await supabase.rpc(
+        "get_multi_horizon_forecasts",
+        {
+          p_symbol: symbol,
+          p_timeframe: timeframeParam,
+        },
+      );
 
       if (error) {
-        console.error("[get-multi-horizon-forecasts] timeframe query failed", error);
-        return jsonResponse({ error: "Failed to load timeframe forecasts" }, 500);
+        console.error(
+          "[get-multi-horizon-forecasts] timeframe query failed",
+          error,
+        );
+        return jsonResponse(
+          { error: "Failed to load timeframe forecasts" },
+          500,
+        );
       }
 
       timeframeRows = (data ?? []) as TimeframeForecastRow[];
@@ -168,8 +181,14 @@ serve(async (req) => {
       });
 
       if (error) {
-        console.error("[get-multi-horizon-forecasts] consensus query failed", error);
-        return jsonResponse({ error: "Failed to load consensus forecasts" }, 500);
+        console.error(
+          "[get-multi-horizon-forecasts] consensus query failed",
+          error,
+        );
+        return jsonResponse(
+          { error: "Failed to load consensus forecasts" },
+          500,
+        );
       }
       consensusRows = (data ?? []) as ConsensusForecastRow[];
     }
@@ -182,16 +201,25 @@ serve(async (req) => {
       consensusRows,
     );
     if (cascadeRows.error) {
-      console.error("[get-multi-horizon-forecasts] cascade query failed", cascadeRows.error);
+      console.error(
+        "[get-multi-horizon-forecasts] cascade query failed",
+        cascadeRows.error,
+      );
       return jsonResponse({ error: "Failed to load forecast cascade" }, 500);
     }
     const cascades = cascadeRows.data;
 
     if (timeframeRows.length === 0 && consensusRows.length === 0) {
-      return jsonResponse({ error: `No multi-horizon data available for ${symbol}` }, 404);
+      return jsonResponse({
+        error: `No multi-horizon data available for ${symbol}`,
+      }, 404);
     }
 
-    const latestTimestamp = getLatestTimestamp(timeframeRows, consensusRows, cascades);
+    const latestTimestamp = getLatestTimestamp(
+      timeframeRows,
+      consensusRows,
+      cascades,
+    );
 
     const response: MultiHorizonResponse = {
       symbol,
@@ -249,7 +277,9 @@ function buildTimeframeGroups(rows: TimeframeForecastRow[]): TimeframeGroup[] {
   }
 
   const sorted = Array.from(grouped.values());
-  sorted.sort((a, b) => timeframeIndex(a.timeframe) - timeframeIndex(b.timeframe));
+  sorted.sort((a, b) =>
+    timeframeIndex(a.timeframe) - timeframeIndex(b.timeframe)
+  );
 
   for (const group of sorted) {
     group.forecasts.sort((a, b) => compareHorizon(a.horizon, b.horizon));
@@ -288,7 +318,9 @@ function buildHorizonGroups(rows: TimeframeForecastRow[]): HorizonGroup[] {
   sorted.sort((a, b) => compareHorizon(a.horizon, b.horizon));
 
   for (const group of sorted) {
-    group.forecasts.sort((a, b) => timeframeIndex(a.timeframe) - timeframeIndex(b.timeframe));
+    group.forecasts.sort((a, b) =>
+      timeframeIndex(a.timeframe) - timeframeIndex(b.timeframe)
+    );
   }
 
   return sorted;

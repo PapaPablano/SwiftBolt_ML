@@ -21,16 +21,21 @@ export interface TokenBucket {
  * Both buckets must have capacity for a request to proceed
  */
 export class TokenBucketRateLimiter {
-  private buckets: Map<ProviderId, { second: TokenBucket; minute: TokenBucket }>;
+  private buckets: Map<
+    ProviderId,
+    { second: TokenBucket; minute: TokenBucket }
+  >;
   private config: Map<ProviderId, RateLimitConfig>;
   private readonly maxWaitMs: number;
 
   constructor(
     configs: Record<ProviderId, RateLimitConfig>,
-    maxWaitMs: number = 5000
+    maxWaitMs: number = 5000,
   ) {
     this.buckets = new Map();
-    this.config = new Map(Object.entries(configs) as [ProviderId, RateLimitConfig][]);
+    this.config = new Map(
+      Object.entries(configs) as [ProviderId, RateLimitConfig][],
+    );
     this.maxWaitMs = maxWaitMs;
 
     // Initialize buckets for each provider
@@ -108,7 +113,7 @@ export class TokenBucketRateLimiter {
    */
   private calculateWaitTime(
     buckets: { second: TokenBucket; minute: TokenBucket },
-    cost: number
+    cost: number,
   ): number {
     const secondWait = buckets.second.tokens < cost
       ? (cost - buckets.second.tokens) / buckets.second.refillRate
@@ -125,10 +130,16 @@ export class TokenBucketRateLimiter {
    * Calculate retry-after time in seconds
    */
   private calculateRetryAfter(
-    buckets: { second: TokenBucket; minute: TokenBucket }
+    buckets: { second: TokenBucket; minute: TokenBucket },
   ): number {
-    const secondRetry = Math.ceil((buckets.second.capacity - buckets.second.tokens) / buckets.second.refillRate / 1000);
-    const minuteRetry = Math.ceil((buckets.minute.capacity - buckets.minute.tokens) / buckets.minute.refillRate / 1000);
+    const secondRetry = Math.ceil(
+      (buckets.second.capacity - buckets.second.tokens) /
+        buckets.second.refillRate / 1000,
+    );
+    const minuteRetry = Math.ceil(
+      (buckets.minute.capacity - buckets.minute.tokens) /
+        buckets.minute.refillRate / 1000,
+    );
     return Math.max(secondRetry, minuteRetry);
   }
 
