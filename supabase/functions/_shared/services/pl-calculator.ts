@@ -7,8 +7,6 @@ import {
   type MultiLegStrategy,
   type OptionsLeg,
   type PLSnapshot,
-  type PositionType,
-  type ProfitZone,
   type StrategyType,
 } from "../types/multileg.ts";
 
@@ -30,7 +28,7 @@ export interface LegPriceData {
  * Calculate P&L snapshot for a multi-leg strategy
  */
 export function calculateStrategyPL(
-  strategy: MultiLegStrategy,
+  _strategy: MultiLegStrategy,
   legs: OptionsLeg[],
   underlyingPrice: number,
   currentPrices: LegPriceData[],
@@ -560,7 +558,7 @@ function calcButterflySpread(legs: OptionsLeg[]): MaxRiskReward {
   const maxReward = width * 100 * contracts - Math.abs(netCost);
   const maxRisk = Math.abs(netCost);
 
-  const middleStrike = sortedLegs[1].strike;
+  const _middleStrike = sortedLegs[1].strike;
   const beDown = sortedLegs[0].strike + (maxRisk / (100 * contracts));
   const beUp = sortedLegs[sortedLegs.length - 1].strike -
     (maxRisk / (100 * contracts));
@@ -583,7 +581,7 @@ function calcRatioBackspread(
   }
 
   const shortContracts = shortLegs.reduce((sum, l) => sum + l.contracts, 0);
-  const longContracts = longLegs.reduce((sum, l) => sum + l.contracts, 0);
+  const _longContracts = longLegs.reduce((sum, l) => sum + l.contracts, 0);
 
   const shortPremium = shortLegs.reduce(
     (sum, l) => sum + l.entryPrice * l.contracts * 100,

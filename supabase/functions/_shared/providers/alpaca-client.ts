@@ -9,7 +9,6 @@ import type {
 import type { Bar, NewsItem, Quote } from "./types.ts";
 import type { TokenBucketRateLimiter } from "../rate-limiter/token-bucket.ts";
 import type { Cache } from "../cache/interface.ts";
-import { CACHE_TTL } from "../config/rate-limits.ts";
 import {
   AuthenticationError,
   InvalidSymbolError,

@@ -10,8 +10,10 @@ import type { Bar, NewsItem, Quote } from "./types.ts";
 export class YFinanceClient implements DataProviderAbstraction {
   private baseUrl = "https://query1.finance.yahoo.com/v8/finance/chart";
 
-  async getQuote(_symbols: string[]): Promise<Quote[]> {
-    throw new Error("YFinance client only supports historical data");
+  getQuote(_symbols: string[]): Promise<Quote[]> {
+    return Promise.reject(
+      new Error("YFinance client only supports historical data"),
+    );
   }
 
   async getHistoricalBars(request: HistoricalBarsRequest): Promise<Bar[]> {
@@ -97,10 +99,12 @@ export class YFinanceClient implements DataProviderAbstraction {
     }
   }
 
-  async getNews(
+  getNews(
     _request: { symbol: string; limit?: number },
   ): Promise<NewsItem[]> {
-    throw new Error("YFinance client does not support news");
+    return Promise.reject(
+      new Error("YFinance client does not support news"),
+    );
   }
 
   private convertTimeframe(timeframe: string): string {

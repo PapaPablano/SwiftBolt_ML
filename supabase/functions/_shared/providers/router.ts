@@ -223,10 +223,10 @@ export class ProviderRouter {
    * Select the best provider based on health status
    * If primary is unhealthy and in cooldown, use fallback
    */
-  private async selectProvider(
+  private selectProvider(
     primary: ProviderId,
     fallback?: ProviderId,
-  ): Promise<DataProviderAbstraction> {
+  ): DataProviderAbstraction {
     const primaryHealth = this.health.get(primary);
     const now = Date.now();
 
