@@ -1,11 +1,18 @@
 import SwiftUI
 
+enum StrategyPlatformSection: Hashable {
+    case builder
+    case paperTrading
+    case backtesting
+}
+
 enum SidebarSection: Hashable {
     case stocks
     case portfolio
     case multileg
     case predictions
     case tradestation
+    case strategyPlatform(StrategyPlatformSection)
     case devtools
 }
 
@@ -35,6 +42,12 @@ struct ContentView: View {
                             .environmentObject(appViewModel)
                     case .tradestation:
                         IntegratedStrategyBuilder()
+                    case .strategyPlatform(.builder):
+                        StrategyBuilderWebView(symbol: appViewModel.selectedSymbol?.ticker)
+                    case .strategyPlatform(.paperTrading):
+                        PaperTradingDashboardView()
+                    case .strategyPlatform(.backtesting):
+                        BacktestResultsWebView(symbol: appViewModel.selectedSymbol?.ticker)
                     default:
                         DetailView()
                             .environmentObject(appViewModel)
@@ -91,6 +104,20 @@ struct SidebarView: View {
                     }
                 } header: {
                     Text("Strategy")
+                }
+
+                Section {
+                    NavigationLink(value: SidebarSection.strategyPlatform(.builder)) {
+                        Label("Condition Builder", systemImage: "checklist")
+                    }
+                    NavigationLink(value: SidebarSection.strategyPlatform(.paperTrading)) {
+                        Label("Paper Trading", systemImage: "dollarsign.circle")
+                    }
+                    NavigationLink(value: SidebarSection.strategyPlatform(.backtesting)) {
+                        Label("Backtesting", systemImage: "clock.arrow.2.circlepath")
+                    }
+                } header: {
+                    Text("Strategy Platform")
                 }
 
                 Section("Navigation") {
