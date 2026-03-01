@@ -190,25 +190,28 @@ private struct FrontendWebViewRepresentable: NSViewRepresentable {
             _ controller: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
-            guard let body = message.body as? [String: Any],
-                  let eventType = body["type"] as? String else { return }
-            let logger = Logger(subsystem: "com.swiftbolt.ml", category: "WebView.bridge")
-            logger.debug("Received JS event: \(eventType, privacy: .public)")
+            // WKWebView delivers script messages on the main thread — safe to assume isolation.
+            MainActor.assumeIsolated {
+                guard let body = message.body as? [String: Any],
+                      let eventType = body["type"] as? String else { return }
+                let logger = Logger(subsystem: "com.swiftbolt.ml", category: "WebView.bridge")
+                logger.debug("Received JS event: \(eventType, privacy: .public)")
 
-            switch eventType {
-            case "conditionUpdated":
-                // Strategy conditions changed in React — notify native layer
-                NotificationCenter.default.post(name: .strategyConditionsUpdated, object: nil)
-            case "backtestRequested":
-                if let strategyId = body["strategyId"] as? String {
-                    NotificationCenter.default.post(
-                        name: .backtestRequested,
-                        object: nil,
-                        userInfo: ["strategyId": strategyId]
-                    )
+                switch eventType {
+                case "conditionUpdated":
+                    // Strategy conditions changed in React — notify native layer
+                    NotificationCenter.default.post(name: .strategyConditionsUpdated, object: nil)
+                case "backtestRequested":
+                    if let strategyId = body["strategyId"] as? String {
+                        NotificationCenter.default.post(
+                            name: .backtestRequested,
+                            object: nil,
+                            userInfo: ["strategyId": strategyId]
+                        )
+                    }
+                default:
+                    break
                 }
-            default:
-                break
             }
         }
     }

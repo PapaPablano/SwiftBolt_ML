@@ -13,6 +13,6 @@ final class SupabaseService {
         // The Config struct already exposes the URL and anon key via environment or Keychain.
         let url = Config.supabaseURL
         let anonKey = Config.supabaseAnonKey
-        client = SupabaseClient(url: url, anonKey: anonKey)
+        client = SupabaseClient(supabaseURL: url, supabaseKey: anonKey)
     }
 }

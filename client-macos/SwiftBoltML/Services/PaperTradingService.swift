@@ -148,7 +148,11 @@ final class PaperTradingService: ObservableObject {
             table: "paper_trading_positions",
             filter: filter
         )
-        await channel.subscribe()
+        do {
+            try await channel.subscribeWithError()
+        } catch {
+            self.error = error.localizedDescription
+        }
 
         subscriptionTask = Task { [weak self] in
             for await _ in changes {
@@ -170,18 +174,20 @@ final class PaperTradingService: ObservableObject {
     // MARK: - Private
 
     private func fetchOpenPositions() async throws -> [PaperPosition] {
+        // Build filter chain first (eq must precede order/limit on the builder)
         var query = supabase
             .from("paper_trading_positions")
             .select("id,user_id,strategy_id,symbol_id,ticker,timeframe,entry_price,current_price,quantity,entry_time,direction,stop_loss_price,take_profit_price,status")
             .eq("status", value: "open")
-            .order("entry_time", ascending: false)
 
         // Client-side user scoping (defense-in-depth alongside RLS)
         if let userId = supabase.auth.currentUser?.id {
             query = query.eq("user_id", value: userId)
         }
 
-        let response: [PaperPosition] = try await query.execute().value
+        let response: [PaperPosition] = try await query
+            .order("entry_time", ascending: false)
+            .execute().value
         return response
     }
 
@@ -189,14 +195,15 @@ final class PaperTradingService: ObservableObject {
         var query = supabase
             .from("paper_trading_trades")
             .select("id,user_id,strategy_id,symbol_id,ticker,timeframe,entry_price,exit_price,quantity,direction,entry_time,exit_time,pnl,pnl_pct,trade_reason,created_at")
-            .order("exit_time", ascending: false)
-            .limit(100)
 
         if let userId = supabase.auth.currentUser?.id {
             query = query.eq("user_id", value: userId)
         }
 
-        let response: [PaperTrade] = try await query.execute().value
+        let response: [PaperTrade] = try await query
+            .order("exit_time", ascending: false)
+            .limit(100)
+            .execute().value
         return response
     }
 
