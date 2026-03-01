@@ -373,7 +373,14 @@ serve(async (req: Request): Promise<Response> => {
     }
     const symbol = rawSymbol.toUpperCase().trim();
 
-    const timeframe = (url.searchParams.get("timeframe") || "d1") as Timeframe;
+    const rawTimeframe = url.searchParams.get("timeframe");
+    if (!rawTimeframe) {
+      return new Response(JSON.stringify({ error: "timeframe is required (m15, h1, h4, d1, w1)" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const timeframe = rawTimeframe as Timeframe;
     if (!(VALID_TIMEFRAMES as readonly string[]).includes(timeframe)) {
       return new Response(
         JSON.stringify({ error: `Invalid timeframe: ${timeframe}. Must be one of: ${VALID_TIMEFRAMES.join(", ")}` }),
