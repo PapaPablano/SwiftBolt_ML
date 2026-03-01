@@ -28,7 +28,7 @@ import { SupportResistanceData } from '../hooks/useIndicators';
 
 const SUPABASE_URL = 'https://cygflaemtmwiwaviclks.supabase.co';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 interface StrategySignal {
   time: number;
@@ -251,6 +251,7 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
       const timeframe = timeframeMap[horizon] || 'd1';
 
       try {
+        if (!supabase) throw new Error('Supabase not configured');
         // Get symbol ID first
         const { data: symbolData } = await supabase
           .from('symbols')

@@ -330,9 +330,9 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
   };
 
   return (
-    <div className="space-y-2 text-white">
+    <div className="space-y-1.5 text-white overflow-y-auto max-h-[calc(100vh-200px)]">
       {/* Builder Section */}
-      <div className="space-y-1.5">
+      <div className="space-y-1">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium text-gray-400">Strategies</span>
           <div className="flex gap-2">
@@ -351,22 +351,22 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
         </div>
 
         {/* Strategy List */}
-        <div className="space-y-0.5 max-h-[120px] overflow-y-auto">
+        <div className="space-y-0.5 max-h-[80px] overflow-y-auto">
           {strategies.length === 0 ? (
-            <div className="py-1 text-xs text-gray-500">No strategies - create one</div>
+            <div className="py-0.5 text-[10px] text-gray-500">No strategies - create one</div>
           ) : (
             strategies.map((strategy) => (
               <div
                 key={strategy.id}
-                className={`py-1 px-2 rounded cursor-pointer text-xs border ${
+                className={`py-0.5 px-1.5 rounded cursor-pointer text-[11px] border ${
                   selectedStrategy?.id === strategy.id
                     ? 'border-blue-500 bg-blue-500/10'
                     : 'border-gray-700 bg-gray-800 hover:border-gray-600'
                 }`}
                 onClick={() => setSelectedStrategy(strategy)}
               >
-                <div className="text-white font-medium truncate">{strategy.name}</div>
-                <div className="text-gray-500 text-[10px] truncate">{strategy.description}</div>
+                <span className="text-white font-medium truncate">{strategy.name}</span>
+                <span className="text-gray-500 text-[9px] ml-1">{strategy.description}</span>
               </div>
             ))
           )}
@@ -374,26 +374,22 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
 
         {/* Create / Edit Form */}
         {(isCreating || isEditing) && (
-          <div className="flex flex-col p-2.5 bg-gray-800 rounded border border-gray-600 space-y-1.5">
-            <span className="text-[11px] font-medium text-gray-400">
-              {isEditing ? 'Edit strategy' : 'New strategy'}
-            </span>
+          <div className="flex flex-col p-1.5 bg-gray-800 rounded border border-gray-600 space-y-1">
             <input
               type="text"
               placeholder="Strategy name"
               value={newStrategyName}
               onChange={(e) => setNewStrategyName(e.target.value)}
-              className="w-full px-2 py-1.5 bg-gray-900 border border-gray-700 rounded text-xs text-white shrink-0"
+              className="w-full px-1.5 py-1 bg-gray-900 border border-gray-700 rounded text-[11px] text-white shrink-0"
             />
-            <div className="flex flex-col sm:flex-row gap-3 min-h-0">
+            <div className="flex gap-1.5 min-h-0">
               {renderConditionBuilder(true)}
               {renderConditionBuilder(false)}
             </div>
-            {/* Risk Management */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 bg-gray-700/50 rounded border border-gray-600">
-              <span className="sm:col-span-2 text-[11px] font-medium text-gray-400">Risk management</span>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <label className="text-[11px] text-gray-400 shrink-0">Stop loss</label>
+            {/* Risk Management - single row */}
+            <div className="flex items-center gap-2 px-1.5 py-1 bg-gray-700/50 rounded border border-gray-600">
+              <div className="flex items-center gap-1">
+                <label className="text-[10px] text-gray-400">SL</label>
                 <select
                   value={newConfig.riskManagement.stopLoss.type}
                   onChange={(e) =>
@@ -408,7 +404,7 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
                       },
                     })
                   }
-                  className="px-1.5 py-0.5 bg-gray-800 border border-gray-600 rounded text-white text-[11px]"
+                  className="px-1 py-0 bg-gray-800 border border-gray-600 rounded text-white text-[10px]"
                 >
                   <option value="percent">%</option>
                   <option value="fixed">$</option>
@@ -430,11 +426,11 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
                       },
                     })
                   }
-                  className="w-14 px-1.5 py-0.5 bg-gray-800 border border-gray-600 rounded text-white text-[11px] text-right"
+                  className="w-10 px-1 py-0 bg-gray-800 border border-gray-600 rounded text-white text-[10px] text-right"
                 />
               </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <label className="text-[11px] text-gray-400 shrink-0">Take profit</label>
+              <div className="flex items-center gap-1">
+                <label className="text-[10px] text-gray-400">TP</label>
                 <select
                   value={newConfig.riskManagement.takeProfit.type}
                   onChange={(e) =>
@@ -449,7 +445,7 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
                       },
                     })
                   }
-                  className="px-1.5 py-0.5 bg-gray-800 border border-gray-600 rounded text-white text-[11px]"
+                  className="px-1 py-0 bg-gray-800 border border-gray-600 rounded text-white text-[10px]"
                 >
                   <option value="percent">%</option>
                   <option value="fixed">$</option>
@@ -471,14 +467,12 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
                       },
                     })
                   }
-                  className="w-14 px-1.5 py-0.5 bg-gray-800 border border-gray-600 rounded text-white text-[11px] text-right"
+                  className="w-10 px-1 py-0 bg-gray-800 border border-gray-600 rounded text-white text-[10px] text-right"
                 />
               </div>
-            </div>
-            <div className="shrink-0 pt-0.5 flex gap-1">
               <button
                 onClick={isEditing ? handleSaveStrategy : handleCreateStrategy}
-                className="flex-1 py-1.5 bg-blue-600 text-white text-xs rounded font-medium"
+                className="ml-auto px-3 py-0.5 bg-blue-600 text-white text-[10px] rounded font-medium"
               >
                 {isEditing ? 'Save' : 'Create'}
               </button>
@@ -488,57 +482,45 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
       </div>
 
       {/* Backtest Controls */}
-      <div className="space-y-1.5 pt-2 border-t border-gray-700">
-        {selectedStrategy && (
-          <div className="text-xs space-y-0.5">
-            <div>
-              <span className="text-gray-400">Strategy: </span>
-              <span className="text-white font-medium">{selectedStrategy.name}</span>
-            </div>
-            <div className="text-[11px] text-gray-500">
-              Stop loss:{' '}
-              {selectedStrategy.config.riskManagement.stopLoss.type === 'percent'
-                ? `${selectedStrategy.config.riskManagement.stopLoss.value}%`
-                : `$${selectedStrategy.config.riskManagement.stopLoss.value}`}
-              {' · '}
-              Take profit:{' '}
-              {selectedStrategy.config.riskManagement.takeProfit.type === 'percent'
-                ? `${selectedStrategy.config.riskManagement.takeProfit.value}%`
-                : `$${selectedStrategy.config.riskManagement.takeProfit.value}`}
-            </div>
+      <div className="space-y-1 pt-1.5 border-t border-gray-700">
+        {selectedStrategy && !isCreating && !isEditing && (
+          <div className="text-[10px] text-gray-500">
+            <span className="text-white font-medium text-[11px]">{selectedStrategy.name}</span>
+            {' · SL '}
+            {selectedStrategy.config.riskManagement.stopLoss.type === 'percent'
+              ? `${selectedStrategy.config.riskManagement.stopLoss.value}%`
+              : `$${selectedStrategy.config.riskManagement.stopLoss.value}`}
+            {' · TP '}
+            {selectedStrategy.config.riskManagement.takeProfit.type === 'percent'
+              ? `${selectedStrategy.config.riskManagement.takeProfit.value}%`
+              : `$${selectedStrategy.config.riskManagement.takeProfit.value}`}
           </div>
         )}
 
-        <div>
-          <span className="text-xs text-gray-400">Period:</span>
-          <div className="flex flex-wrap gap-1 mt-1">
-            {datePresets.map((preset) => (
-              <button
-                key={preset.id}
-                onClick={() => {
-                  setSelectedPreset(preset.id);
-                  const { start, end } = getPresetDates(preset.id);
-                  onDateRangeChange?.(start, end);
-                }}
-                className={`px-2 py-0.5 text-xs rounded ${
-                  selectedPreset === preset.id ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'
-                }`}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="text-xs text-gray-400">
-          Symbol: <span className="text-white">{symbol}</span>
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-[10px] text-gray-400">{symbol}</span>
+          {datePresets.map((preset) => (
+            <button
+              key={preset.id}
+              onClick={() => {
+                setSelectedPreset(preset.id);
+                const { start, end } = getPresetDates(preset.id);
+                onDateRangeChange?.(start, end);
+              }}
+              className={`px-1.5 py-0 text-[10px] rounded ${
+                selectedPreset === preset.id ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
         </div>
 
         <button
           onClick={handleRunBacktest}
           disabled={isRunning || !selectedStrategy}
           className={`w-full py-1.5 rounded text-xs font-medium ${
-            isRunning || !selectedStrategy ? 'bg-gray-600 text-gray-400' : 'bg-green-600 text-white'
+            isRunning || !selectedStrategy ? 'bg-gray-600 text-gray-400' : 'bg-green-600 text-white hover:bg-green-500'
           }`}
         >
           {isRunning ? 'Running...' : '▶ Run Backtest'}
