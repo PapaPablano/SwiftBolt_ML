@@ -674,7 +674,13 @@ serve(async (req: Request): Promise<Response> => {
     // Apply pagination (offset + limit, both capped)
     const paginatedBars = allBars.slice(barOffset, barOffset + barLimit);
 
-    // Freshness should use the full dataset, not the paginated slice
+    // Freshness must use ACTUAL bars only — forecast bars extend into the future
+    // and would make stale data look "fresh", preventing refresh jobs from firing.
+    const actualBars = allBars.filter((b) => !b.is_forecast);
+    const lastActualBarTs = actualBars.length > 0
+      ? actualBars[actualBars.length - 1].ts
+      : null;
+    // lastBarTs includes forecasts (for meta.lastBarTs display)
     const lastBarTs = allBars.length > 0
       ? allBars[allBars.length - 1].ts
       : null;
@@ -683,8 +689,8 @@ serve(async (req: Request): Promise<Response> => {
     // Step 5 — Freshness check + fire-and-forget stale refresh
     // -------------------------------------------------------------------------
     const slaMinutes = FRESHNESS_SLA_MINUTES[timeframe] ?? 1440;
-    const ageMinutes = lastBarTs
-      ? (Date.now() - new Date(lastBarTs).getTime()) / 60_000
+    const ageMinutes = lastActualBarTs
+      ? (Date.now() - new Date(lastActualBarTs).getTime()) / 60_000
       : null;
     const isStale = ageMinutes !== null && ageMinutes > slaMinutes;
     const hasActiveJob = (activeJobsResult.data?.length ?? 0) > 0;
@@ -1115,20 +1121,23 @@ serve(async (req: Request): Promise<Response> => {
     // -------------------------------------------------------------------------
     // Step 11 — DataQuality block (from chart-read)
     // -------------------------------------------------------------------------
-    const _oldestBarTs = bars.length > 0 ? bars[0].ts : null;
-    const newestBarTs = bars.length > 0 ? bars[bars.length - 1].ts : null;
+    const paginatedActualBars = bars.filter((b) => !b.is_forecast);
+    const newestActualBarTs = paginatedActualBars.length > 0
+      ? paginatedActualBars[paginatedActualBars.length - 1].ts
+      : null;
     const slaHours = slaMinutes / 60;
 
     const dataQuality: DataQuality = {
-      dataAgeHours: newestBarTs
+      dataAgeHours: newestActualBarTs
         ? Math.round(
-          (Date.now() - new Date(newestBarTs).getTime()) / (1000 * 60 * 60),
+          (Date.now() - new Date(newestActualBarTs).getTime()) /
+            (1000 * 60 * 60),
         )
         : null,
       isStale,
       slaHours,
-      sufficientForML: bars.filter((b) => !b.is_forecast).length >= 250,
-      barCount: bars.filter((b) => !b.is_forecast).length,
+      sufficientForML: paginatedActualBars.length >= 250,
+      barCount: paginatedActualBars.length,
     };
 
     // -------------------------------------------------------------------------
@@ -1145,7 +1154,7 @@ serve(async (req: Request): Promise<Response> => {
     // Step 13 — Meta block
     // -------------------------------------------------------------------------
     const meta: ChartMeta = {
-      lastBarTs,
+      lastBarTs: lastActualBarTs,
       dataStatus,
       isMarketOpen,
       totalBars: bars.length,
