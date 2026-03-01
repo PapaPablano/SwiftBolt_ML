@@ -86,15 +86,19 @@ serve(async (req) => {
         },
       );
     }
-  } catch (err) {
+  } catch (err: unknown) {
     // Fall through — use UTC time check as backup
+    // NOTE: UTC fallback assumes EDT (13:30-21:00). During EST (Nov-Mar),
+    // market opens at 14:30 UTC. The is_market_open() RPC handles DST
+    // correctly; this is only a last-resort fallback.
+    const msg = err instanceof Error ? err.message : String(err);
     console.warn(
       "[intraday-live-refresh] is_market_open RPC failed, using UTC check:",
-      err,
+      msg,
     );
     const now = new Date();
     const nowMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-    // 13:30 UTC = 810 min, 21:00 UTC = 1260 min
+    // 13:30 UTC = 810 min, 21:00 UTC = 1260 min (EDT only)
     if (nowMinutes < 810 || nowMinutes > 1260) {
       return new Response(
         JSON.stringify({ skipped: true, reason: "market_closed_utc_check" }),
@@ -250,6 +254,7 @@ serve(async (req) => {
     totalUpserted,
     errors: errors.length,
     errorDetails: errors.slice(0, 10),
+    errorsTruncated: errors.length > 10,
   };
 
   console.log(
