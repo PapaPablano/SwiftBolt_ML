@@ -122,12 +122,14 @@ struct IntegratedStrategyBuilder: View {
                     }
                 
                 Picker("", selection: $indicatorsService.selectedTimeframe) {
-                    ForEach(["1D", "4H", "1H", "30m", "15m", "5m"], id: \.self) { tf in
+                    // Tag "1D" as "d1" to match selectedTimeframe's apiToken default.
+                    Text("1D").tag("d1")
+                    ForEach(["4H", "1H", "30m", "15m", "5m"], id: \.self) { tf in
                         Text(tf).tag(tf)
                     }
                 }
                 .frame(width: 80)
-                .onChange(of: indicatorsService.selectedTimeframe) { _ in
+                .onChange(of: indicatorsService.selectedTimeframe) {
                     Task {
                         try? await indicatorsService.fetchIndicators(
                             symbol: indicatorsService.selectedSymbol,
@@ -320,22 +322,32 @@ struct ConditionFromIndicatorSheet: View {
     let onSave: (StrategyCondition) -> Void
     @Environment(\.dismiss) private var dismiss
     
+    @State private var selectedIndicator: IndicatorRegistryItem
     @State private var selectedConditionIndex = 0
     @State private var customValue: Double
     @State private var useCustomValue = false
+    @State private var selectedCategory: StrategyIndicatorCategory = .momentum
+    
+    private let allIndicators = UnifiedIndicatorsService.shared.indicatorRegistry
     
     init(registryItem: IndicatorRegistryItem, currentValue: Double?, onSave: @escaping (StrategyCondition) -> Void) {
         self.registryItem = registryItem
         self.currentValue = currentValue
         self.onSave = onSave
+        _selectedIndicator = State(initialValue: registryItem)
         _customValue = State(initialValue: currentValue ?? registryItem.defaultCondition.value)
+        _selectedCategory = State(initialValue: registryItem.category)
+    }
+    
+    var filteredIndicators: [IndicatorRegistryItem] {
+        allIndicators.filter { $0.category == selectedCategory }
     }
     
     var body: some View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("Add Condition from \(registryItem.name)")
+                Text("Condition")
                     .font(.headline)
                 Spacer()
                 Button("Cancel") { dismiss() }
@@ -346,93 +358,160 @@ struct ConditionFromIndicatorSheet: View {
             
             Divider()
             
-            ScrollView {
-                VStack(spacing: 20) {
-                    // Current Value Display
-                    if let currentValue = currentValue {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Current Value")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            
-                            HStack {
-                                Text(String(format: "%.4f", currentValue))
-                                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                                    .foregroundColor(.accentColor)
-                                
-                                Spacer()
-                                
-                                Toggle("Use Custom", isOn: $useCustomValue)
+            // Category selector
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(StrategyIndicatorCategory.allCases) { category in
+                        CategoryChip(
+                            title: category.rawValue,
+                            isSelected: selectedCategory == category
+                        ) {
+                            selectedCategory = category
+                            // Auto-select first indicator in new category
+                            if let first = allIndicators.first(where: { $0.category == category }) {
+                                selectIndicator(first)
                             }
                         }
-                        .padding()
-                        .background(Color(.windowBackgroundColor))
-                        .cornerRadius(8)
                     }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            }
+            .background(Color(.windowBackgroundColor))
+            
+            Divider()
+            
+            // Two-column layout: Indicators on left, Conditions on right
+            HStack(spacing: 0) {
+                // Left column: Indicator selector
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Indicator")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
                     
-                    // Preset Conditions
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Select Condition")
-                            .font(.headline)
-                        
-                        ForEach(Array(registryItem.allConditions.enumerated()), id: \.offset) { index, condition in
-                            ConditionPresetButton(
-                                condition: condition,
-                                isSelected: selectedConditionIndex == index
-                            ) {
-                                selectedConditionIndex = index
-                                if !useCustomValue {
+                    Divider()
+                    
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(filteredIndicators) { indicator in
+                                Button(action: { selectIndicator(indicator) }) {
+                                    IndicatorRow(
+                                        name: indicator.name,
+                                        isSelected: selectedIndicator.id == indicator.id
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+                .frame(width: 200)
+                .background(Color(.windowBackgroundColor))
+                
+                Divider()
+                
+                // Right column: Condition selector
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Select Condition")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                    
+                    Divider()
+                    
+                    ScrollView {
+                        VStack(spacing: 12) {
+                            // Current value display for selected indicator
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(selectedIndicator.name)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Text(String(format: "%.4f", customValue))
+                                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                                        .foregroundColor(.accentColor)
+                                }
+                                Spacer()
+                            }
+                            .padding()
+                            .background(Color(.controlBackgroundColor))
+                            .cornerRadius(8)
+                            
+                            // Condition presets
+                            ForEach(Array(selectedIndicator.allConditions.enumerated()), id: \.offset) { index, condition in
+                                ConditionPresetRow(
+                                    condition: condition,
+                                    isSelected: selectedConditionIndex == index
+                                ) {
+                                    selectedConditionIndex = index
+                                    useCustomValue = false
                                     customValue = condition.value
                                 }
                             }
-                        }
-                    }
-                    
-                    // Custom Value (if enabled)
-                    if useCustomValue {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Custom Value")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
                             
-                            HStack {
-                                TextField("Value", value: $customValue, format: .number)
-                                    .textFieldStyle(.roundedBorder)
-                                
-                                Slider(value: $customValue, in: (customValue * 0.5)...(customValue * 1.5))
-                                    .frame(width: 150)
+                            // Custom value toggle
+                            Button(action: { 
+                                useCustomValue.toggle()
+                                if useCustomValue {
+                                    // Keep current value when switching to custom
+                                } else {
+                                    // Reset to selected preset value
+                                    customValue = selectedIndicator.allConditions[selectedConditionIndex].value
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: useCustomValue ? "checkmark.circle.fill" : "circle")
+                                        .foregroundColor(useCustomValue ? .accentColor : .secondary)
+                                    Text("Use Custom Value")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.primary)
+                                    Spacer()
+                                }
+                                .padding()
+                                .background(useCustomValue ? Color.accentColor.opacity(0.1) : Color.clear)
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
+                            
+                            // Custom value input
+                            if useCustomValue {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Custom Value")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    
+                                    HStack {
+                                        TextField("Value", value: $customValue, format: .number)
+                                            .textFieldStyle(.roundedBorder)
+                                        
+                                        let sliderRange: ClosedRange<Double> = {
+                                            let current = customValue
+                                            if current > 0 {
+                                                return 0...(current * 2)
+                                            } else if current < 0 {
+                                                return (current * 2)...0
+                                            } else {
+                                                return -100...100
+                                            }
+                                        }()
+                                        
+                                        Slider(value: $customValue, in: sliderRange)
+                                            .frame(width: 120)
+                                    }
+                                }
+                                .padding()
+                                .background(Color(.controlBackgroundColor))
+                                .cornerRadius(8)
                             }
                         }
                         .padding()
-                        .background(Color(.windowBackgroundColor))
-                        .cornerRadius(8)
-                    }
-                    
-                    // Preview
-                    let selectedCondition = registryItem.allConditions[selectedConditionIndex]
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Condition Preview")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        HStack(spacing: 8) {
-                            Text(registryItem.name)
-                                .font(.system(size: 16, weight: .medium))
-                            
-                            Text(selectedCondition.op)
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(.accentColor)
-                            
-                            Text(String(format: "%.2f", customValue))
-                                .font(.system(size: 16, weight: .bold))
-                        }
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .background(Color.accentColor.opacity(0.1))
-                        .cornerRadius(8)
                     }
                 }
-                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.controlBackgroundColor).opacity(0.3))
             }
             
             Divider()
@@ -443,13 +522,13 @@ struct ConditionFromIndicatorSheet: View {
                 Button("Cancel") { dismiss() }
                     .buttonStyle(.bordered)
                 Button("Add Condition") {
-                    let selectedCondition = registryItem.allConditions[selectedConditionIndex]
+                    let selectedCondition = selectedIndicator.allConditions[selectedConditionIndex]
                     let condition = StrategyCondition(
                         id: UUID(),
-                        indicator: registryItem.name,
-                        operator: selectedCondition.op,
+                        indicator: selectedIndicator.name,
+                        operator: useCustomValue ? ">" : selectedCondition.op,
                         value: customValue,
-                        parameters: ["source_key": registryItem.technicalKey, "preset": selectedCondition.label]
+                        parameters: ["source_key": selectedIndicator.technicalKey, "preset": selectedCondition.label]
                     )
                     onSave(condition)
                 }
@@ -458,44 +537,100 @@ struct ConditionFromIndicatorSheet: View {
             .padding()
             .background(Color(.controlBackgroundColor))
         }
-        .frame(width: 500, height: 550)
+        .frame(minWidth: 650, idealWidth: 700, maxWidth: 750, minHeight: 550, idealHeight: 600, maxHeight: 650)
+    }
+    
+    private func selectIndicator(_ indicator: IndicatorRegistryItem) {
+        selectedIndicator = indicator
+        selectedConditionIndex = 0
+        useCustomValue = false
+        customValue = indicator.defaultCondition.value
     }
 }
 
-struct ConditionPresetButton: View {
+// MARK: - Category Chip
+
+struct CategoryChip: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: isSelected ? .medium : .regular))
+                .foregroundColor(isSelected ? .white : .primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(isSelected ? Color.accentColor : Color(.controlBackgroundColor))
+                .cornerRadius(6)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Indicator Row
+
+struct IndicatorRow: View {
+    let name: String
+    let isSelected: Bool
+    
+    var body: some View {
+        HStack {
+            Text(name)
+                .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
+                .foregroundColor(isSelected ? .accentColor : .primary)
+            Spacer()
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(.caption)
+                    .foregroundColor(.accentColor)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Condition Preset Row
+
+struct ConditionPresetRow: View {
     let condition: ConditionPreset
     let isSelected: Bool
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    .font(.system(size: 16))
+                    .foregroundColor(isSelected ? .accentColor : .secondary)
+                
+                VStack(alignment: .leading, spacing: 2) {
                     Text(condition.label)
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 14, weight: isSelected ? .medium : .regular))
+                        .foregroundColor(.primary)
                     
                     HStack(spacing: 4) {
                         Text(condition.op)
+                            .font(.caption)
                             .foregroundColor(.accentColor)
                         Text(String(format: "%.2f", condition.value))
+                            .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                    .font(.caption)
                 }
                 
                 Spacer()
-                
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.accentColor)
-                }
             }
             .padding()
-            .background(isSelected ? Color.accentColor.opacity(0.1) : Color(.windowBackgroundColor))
+            .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+                    .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
