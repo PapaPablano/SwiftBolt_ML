@@ -566,11 +566,14 @@ serve(async (req: Request): Promise<Response> => {
       activeJobsResult,
     ] = await Promise.all([
       // 1. OHLC bars via get_chart_data_v2 RPC (provider-aware)
+      // The RPC now accepts p_limit to enforce the cap inside Postgres,
+      // bypassing the PostgREST default 1000-row limit on RPC results.
       supabase.rpc("get_chart_data_v2", {
         p_symbol_id: symbolId,
         p_timeframe: timeframe === "w1" ? "d1" : timeframe, // weekly: fetch d1 then aggregate
         p_start_date: startDate.toISOString(),
         p_end_date: endDate.toISOString(),
+        p_limit: barLimit,
       }),
 
       // 2. Options ranks
@@ -647,7 +650,8 @@ serve(async (req: Request): Promise<Response> => {
         .eq("is_forecast", false)
         .gte("ts", startDate.toISOString())
         .lte("ts", endDate.toISOString())
-        .order("ts", { ascending: true });
+        .order("ts", { ascending: true })
+        .limit(MAX_BAR_LIMIT);
       barsData = (fallbackBars ?? []) as BarRow[];
     } else {
       barsData = (barsResult.data ?? []) as BarRow[];
