@@ -833,6 +833,7 @@ struct AdvancedChartView: View {
                             updateSelection(at: location, proxy: proxy, geometry: geometry)
                         case .ended:
                             selectedBar = nil
+                            selectedIndex = nil
                         }
                     }
             }

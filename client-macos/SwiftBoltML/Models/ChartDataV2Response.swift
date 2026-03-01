@@ -317,13 +317,12 @@ struct UnifiedChartResponse: Codable {
 
     /// Return only the non-forecast bars (historical + intraday).
     var historicalBars: [OHLCBar] {
-        // OHLCBar does not carry is_forecast — forecast bars were appended by the backend
-        // with provider="ml_forecast". Use layers when present; otherwise return all bars
-        // (the unified endpoint already filters them when includeForecast=false).
+        // Prefer layers structure (explicit separation by the server).
         if let layers {
             return layers.historical.data + layers.intraday.data
         }
-        return bars
+        // Fallback: filter using the is_forecast flag decoded from the flat bars array.
+        return bars.filter { !$0.isForecast }
     }
 
     /// Convert to the existing ChartResponse type so the rest of the view model works unchanged.

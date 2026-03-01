@@ -667,6 +667,7 @@ struct WebChartView: NSViewRepresentable {
                     low: min(point.value, point.upper, point.lower),
                     close: point.value,
                     volume: 0,
+                    isForecast: true,
                     upperBand: point.upper,
                     lowerBand: point.lower,
                     confidenceScore: nil

@@ -452,6 +452,7 @@ final class ChartViewModel: ObservableObject {
                     low: clampedLower,
                     close: value,
                     volume: 0,
+                    isForecast: true,
                     upperBand: clampedUpper,
                     lowerBand: clampedLower,
                     confidenceScore: summary.confidence
@@ -476,6 +477,7 @@ final class ChartViewModel: ObservableObject {
                     low: clampedLower,
                     close: value,
                     volume: 0,
+                    isForecast: true,
                     upperBand: clampedUpper,
                     lowerBand: clampedLower,
                     confidenceScore: summary.confidence
@@ -958,7 +960,8 @@ final class ChartViewModel: ObservableObject {
                     symbol: symbol.ticker,
                     timeframe: timeframe.apiToken,
                     days: timeframe.chartDefaultDays,
-                    includeForecast: true
+                    includeForecast: true,
+                    useLayers: true
                 )
 
                 guard !Task.isCancelled else {
@@ -1553,6 +1556,7 @@ final class ChartViewModel: ObservableObject {
                 low: low ?? c,
                 close: c,
                 volume: volume ?? 0,
+                isForecast: isForecast,
                 upperBand: upperBand,
                 lowerBand: lowerBand,
                 confidenceScore: confidenceScore
