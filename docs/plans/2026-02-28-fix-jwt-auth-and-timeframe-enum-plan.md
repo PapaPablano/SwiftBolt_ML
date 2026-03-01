@@ -1,7 +1,7 @@
 ---
 title: "fix: JWT 401 cascade and timeframe enum mismatch"
 type: fix
-status: active
+status: completed
 date: 2026-02-28
 deepened: 2026-02-28
 ---
