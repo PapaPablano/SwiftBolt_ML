@@ -219,7 +219,7 @@ serve(async (req) => {
               provider: "alpaca",
               is_forecast: false,
               is_intraday: true,
-              data_status: "verified",
+              data_status: "live",
             });
           }
         }
