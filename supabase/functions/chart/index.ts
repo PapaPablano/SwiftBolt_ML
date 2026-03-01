@@ -436,9 +436,16 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const daysParam = url.searchParams.get("days");
+    const TIMEFRAME_DEFAULT_DAYS: Record<string, number> = {
+      m15: 60,
+      h1: 180,
+      h4: 365,
+      d1: 1825, // 5 years
+      w1: 1825, // 5 years
+    };
     const rawDays = daysParam
       ? Math.min(3650, Math.max(1, Number(daysParam)))
-      : 180;
+      : (TIMEFRAME_DEFAULT_DAYS[timeframe] ?? 1825);
     const startParam = url.searchParams.get("start");
     const endParam = url.searchParams.get("end");
 

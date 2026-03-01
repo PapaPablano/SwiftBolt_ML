@@ -34,3 +34,8 @@ verify_jwt = false
 # verify_jwt = false allows anon-key requests through the gateway.
 [functions.chart]
 verify_jwt = false
+
+# intraday-live-refresh: Called by pg_cron every 15 min during market hours.
+# Auth enforced inside function via X-SB-Gateway-Key (SB_GATEWAY_KEY).
+[functions.intraday-live-refresh]
+verify_jwt = false

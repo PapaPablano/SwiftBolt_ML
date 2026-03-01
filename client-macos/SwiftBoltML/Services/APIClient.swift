@@ -764,13 +764,13 @@ final class APIClient {
     /// - Parameters:
     ///   - symbol: Ticker symbol (e.g. "AAPL", "/ES", "AAPL240119C00150000")
     ///   - timeframe: Bar interval API token (e.g. "d1", "h1", "m15", "w1")
-    ///   - days: Number of calendar days of history to return (default 180)
+    ///   - days: Number of calendar days of history to return (default 1825)
     ///   - includeForecast: Whether to append ML forecast bars (default true)
     ///   - useLayers: Whether to include optional `layers` field (default false)
     func fetchUnifiedChart(
         symbol: String,
         timeframe: String,
-        days: Int = 180,
+        days: Int = 1825,
         includeForecast: Bool = true,
         useLayers: Bool = false
     ) async throws -> UnifiedChartResponse {

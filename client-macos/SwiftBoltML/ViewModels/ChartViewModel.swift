@@ -957,7 +957,7 @@ final class ChartViewModel: ObservableObject {
                 let unified = try await APIClient.shared.fetchUnifiedChart(
                     symbol: symbol.ticker,
                     timeframe: timeframe.apiToken,
-                    days: 180,
+                    days: timeframe.chartDefaultDays,
                     includeForecast: true
                 )
 

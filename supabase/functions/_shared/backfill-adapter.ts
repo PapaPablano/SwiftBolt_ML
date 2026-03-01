@@ -122,9 +122,8 @@ export async function fetchIntradayForDay(
       end: toTs,
     });
 
-    // Determine provider name based on routing configuration
-    // Alpaca is primary for all data when available, otherwise fallback to Yahoo/Tradier
-    const provider = isIntraday ? "alpaca" : "yfinance";
+    // Alpaca is the sole provider for all OHLCV data (see ALPACA_PROVIDER_STRATEGY.md)
+    const provider = "alpaca";
 
     console.log(
       `[BackfillAdapter] Received ${bars.length} bars for ${symbol} ${day} (provider: ${provider})`,
