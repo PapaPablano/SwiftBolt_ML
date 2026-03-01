@@ -21,8 +21,6 @@ enum WebViewLoadState: Equatable {
 struct StrategyBuilderWebView: View {
     let symbol: String?
 
-    @State private var loadState: WebViewLoadState = .loading
-
     var body: some View {
         FrontendWebEmbedView(
             path: "/strategy-builder",

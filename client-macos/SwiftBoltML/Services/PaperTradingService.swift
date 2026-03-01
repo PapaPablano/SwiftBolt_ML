@@ -141,12 +141,12 @@ final class PaperTradingService: ObservableObject {
 
         // Scope subscription to the current user's rows for defense-in-depth
         // (RLS provides server-side enforcement; this is an additional client filter).
-        let userId = supabase.auth.currentUser?.id.uuidString
+        let filter: RealtimePostgresFilter? = supabase.auth.currentUser.map { .eq("user_id", value: $0.id) }
         let changes = channel.postgresChange(
             AnyAction.self,
             schema: "public",
             table: "paper_trading_positions",
-            filter: userId.map { "user_id=eq.\($0)" }
+            filter: filter
         )
         await channel.subscribe()
 
