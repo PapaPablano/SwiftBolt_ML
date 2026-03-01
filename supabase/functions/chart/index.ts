@@ -507,9 +507,7 @@ serve(async (req: Request): Promise<Response> => {
     // -------------------------------------------------------------------------
     const { data: symbolData, error: symbolError } = await supabase
       .from("symbols")
-      .select(
-        "id, ticker, asset_type, futures_root_id, is_continuous, expiry_month, expiry_year",
-      )
+      .select("id, ticker, asset_type, name, is_active")
       .eq("ticker", resolvedSymbol)
       .single();
 
@@ -526,39 +524,17 @@ serve(async (req: Request): Promise<Response> => {
     const symbolId = symbolData.id as string;
     const assetType = (symbolData.asset_type as string) || "unknown";
 
-    // Populate futures metadata from symbol row when available
-    if (futuresMetadata) {
-      futuresMetadata.root_id = (symbolData.futures_root_id as string | null) ??
-        null;
-      if (symbolData.expiry_month != null) {
-        const MONTH_NAMES = [
-          "Jan",
-          "Feb",
-          "Mar",
-          "Apr",
-          "May",
-          "Jun",
-          "Jul",
-          "Aug",
-          "Sep",
-          "Oct",
-          "Nov",
-          "Dec",
-        ];
-        const monthIndex = (symbolData.expiry_month as number) - 1;
-        futuresMetadata.expiry_info = {
-          month: symbolData.expiry_month as number,
-          year: symbolData.expiry_year as number,
-          display: `${MONTH_NAMES[monthIndex]} ${symbolData.expiry_year}`,
-        };
-      }
-    } else if (assetType === "future") {
+    // Populate futures metadata from symbol row when available.
+    // Note: futures-specific columns (futures_root_id, is_continuous, expiry_month, expiry_year)
+    // are stored in futures_contracts/futures_roots tables, not the symbols table.
+    // Expiry info is resolved via the resolve_futures_symbol RPC in Step 1 above.
+    if (!futuresMetadata && assetType === "future") {
       // Symbol is a future but didn't match futures pattern — populate minimal metadata
       futuresMetadata = {
         requested_symbol: symbol,
         resolved_symbol: resolvedSymbol,
-        is_continuous: (symbolData.is_continuous as boolean) ?? false,
-        root_id: (symbolData.futures_root_id as string | null) ?? null,
+        is_continuous: false,
+        root_id: null,
         expiry_info: null,
       };
     }

@@ -28,3 +28,9 @@ verify_jwt = false
 
 [functions.strategy-backtest-worker]
 verify_jwt = false
+
+# chart: Public read-only chart data endpoint (OHLCV + ML enrichment + options).
+# The macOS client and frontend authenticate with the Supabase anon key.
+# verify_jwt = false allows anon-key requests through the gateway.
+[functions.chart]
+verify_jwt = false
