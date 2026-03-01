@@ -1,0 +1,5 @@
+-- Already applied via apply_migration (fix_chart_rpc_forecast_dedup).
+-- Fix: d1/w1 ELSE branch was returning forecast bars that overlapped actual
+-- trading days (forecast at 00:00Z, actual at 05:00Z for same calendar date).
+-- Now uses actual/last_actual/forecasts CTEs to only show forecasts AFTER
+-- the last real bar.
