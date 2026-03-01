@@ -14,7 +14,7 @@ import { TradingViewChart } from './TradingViewChart';
 import { IndicatorPanel } from './IndicatorPanel';
 import { PivotLevelsPanel } from './PivotLevelsPanel';
 import { StrategyBacktestPanel } from './StrategyBacktestPanel';
-import type { BacktestResult } from './StrategyBacktestPanel';
+import type { BacktestResult } from '../types/strategyBacktest';
 import { useIndicators } from '../hooks/useIndicators';
 import { usePivotLevels } from '../hooks/usePivotLevels';
 

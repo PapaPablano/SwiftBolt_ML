@@ -8,8 +8,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { createChart } from 'lightweight-charts';
 import { ChartWithIndicators } from './components/ChartWithIndicators';
-import type { BacktestResult } from './components/StrategyBacktestPanel';
-import { dedupeEquityCurve } from './components/StrategyBacktestPanel';
+import type { BacktestResult } from './types/strategyBacktest';
+import { dedupeEquityCurve } from './lib/backtestConstants';
 import { RecommendationsPanel } from './components/RecommendationsPanel';
 
 type AppTab = 'charts' | 'recommendations';
