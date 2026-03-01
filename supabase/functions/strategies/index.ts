@@ -36,8 +36,10 @@ interface StrategyRow {
 }
 
 serve(async (req) => {
+  const origin = req.headers.get("origin");
+
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   const supabase = getSupabaseClient();
@@ -47,10 +49,7 @@ serve(async (req) => {
     authHeader.replace("Bearer ", ""),
   );
   if (authError || !user) {
-    return new Response(JSON.stringify({ error: "Authentication required" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return errorResponse("Authentication required", 401, origin);
   }
   const userId = user.id;
 

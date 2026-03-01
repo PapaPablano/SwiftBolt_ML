@@ -170,14 +170,22 @@ export const jsonResponse = (
 };
 
 /**
- * Legacy function name for backward compatibility.
- * @deprecated Use corsResponse instead
+ * Returns a standardized error response with CORS headers.
+ *
+ * @param message - Human-readable error message (never expose raw DB errors here)
+ * @param status - HTTP status code (default: 400)
+ * @param origin - Origin header from request (default: null)
  */
 export const errorResponse = (
   message: string,
   status: number = 400,
-  requestHeaders?: Headers
+  origin: string | null = null,
 ): Response => {
-  const origin = requestHeaders?.get("origin") ?? null;
-  return corsResponse({ error: message }, status, origin);
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...getCorsHeaders(origin),
+    },
+  });
 };

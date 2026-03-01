@@ -163,6 +163,7 @@ serve(async (req: Request): Promise<Response> => {
       {
         status: 429,
         headers: {
+          ...getCorsHeaders(origin),
           "Content-Type": "application/json",
           "Retry-After": "60",
         },
@@ -307,8 +308,7 @@ serve(async (req: Request): Promise<Response> => {
       origin,
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
     console.error("[quotes] Error:", error);
-    return errorResponse(message || "Internal server error", 500, origin);
+    return errorResponse("An internal error occurred", 500, origin);
   }
 });

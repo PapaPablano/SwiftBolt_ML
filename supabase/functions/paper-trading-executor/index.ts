@@ -1039,12 +1039,12 @@ Deno.serve(async (req) => {
         headers: { "Content-Type": "application/json" },
       },
     );
-  } catch (error: any) {
-    console.error("Edge function error:", error);
+  } catch (error: unknown) {
+    console.error("[paper-trading-executor] Edge function error:", error);
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message,
+        error: "An internal error occurred",
       }),
       {
         status: 500,
