@@ -14,10 +14,7 @@
 // This is the ONE chart read path for the app. Do not fragment it.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import {
-  getCorsHeaders,
-  handleCorsOptions,
-} from "../_shared/cors.ts";
+import { getCorsHeaders, handleCorsOptions } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 import type {
   ChartIndicators,
@@ -172,11 +169,16 @@ function toUnixSeconds(value: unknown): number {
 
 function normalizeForecastPoint(
   point: Record<string, unknown>,
-): { ts: number; value: number; lower: number; upper: number } & Record<string, unknown> {
+):
+  & { ts: number; value: number; lower: number; upper: number }
+  & Record<string, unknown> {
   const out: Record<string, unknown> = {
     ...point,
     ts: toUnixSeconds(point["ts"] ?? point["time"]),
-    value: Number(point["value"] ?? point["price"] ?? point["mid"] ?? point["midpoint"] ?? 0),
+    value: Number(
+      point["value"] ?? point["price"] ?? point["mid"] ?? point["midpoint"] ??
+        0,
+    ),
     lower: Number(
       point["lower"] ?? point["lower_band"] ?? point["min"] ??
         point["lower_bound"] ?? point["value"] ?? point["price"] ?? 0,
@@ -187,7 +189,9 @@ function normalizeForecastPoint(
     ),
   };
   if (out["timeframe"] === "4h_trading") out["timeframe"] = "h4";
-  return out as { ts: number; value: number; lower: number; upper: number } & Record<string, unknown>;
+  return out as
+    & { ts: number; value: number; lower: number; upper: number }
+    & Record<string, unknown>;
 }
 
 function normalizeForecastPoints(
@@ -270,7 +274,10 @@ function aggregateWeeklyBars(bars: OHLCBar[]): OHLCBar[] {
     const last = weekBars[weekBars.length - 1];
     const firstDate = normalizeBarTimestamp(first.ts);
     if (!firstDate) {
-      console.warn("[chart] Skipping weekly bar with unparseable timestamp:", first.ts);
+      console.warn(
+        "[chart] Skipping weekly bar with unparseable timestamp:",
+        first.ts,
+      );
       continue; // skip this week bucket
     }
     const timeSuffix = `T${String(firstDate.getUTCHours()).padStart(2, "0")}:${
@@ -290,7 +297,9 @@ function aggregateWeeklyBars(bars: OHLCBar[]): OHLCBar[] {
     });
   }
 
-  weeklyBars.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  weeklyBars.sort((a, b) =>
+    new Date(a.ts).getTime() - new Date(b.ts).getTime()
+  );
   return weeklyBars;
 }
 
@@ -325,19 +334,40 @@ function buildForecastTargets(
   points: Array<{ ts: number; value: number; lower: number; upper: number }>,
 ): Record<string, number | null> | null {
   const synthesis = parseRecord(row["synthesis_data"]) ?? {};
-  const tp1 = toNumber(synthesis["tp1"] ?? synthesis["target"] ?? row["target_price"]);
+  const tp1 = toNumber(
+    synthesis["tp1"] ?? synthesis["target"] ?? row["target_price"],
+  );
   const tp2 = toNumber(synthesis["tp2"]);
   const tp3 = toNumber(synthesis["tp3"]);
-  const stopLoss = toNumber(synthesis["stop_loss"] ?? synthesis["stop"] ?? synthesis["sl"]);
-  const qualityScore = toNumber(synthesis["quality_score"] ?? row["quality_score"]);
+  const stopLoss = toNumber(
+    synthesis["stop_loss"] ?? synthesis["stop"] ?? synthesis["sl"],
+  );
+  const qualityScore = toNumber(
+    synthesis["quality_score"] ?? row["quality_score"],
+  );
   const confluenceScore = toNumber(synthesis["confluence_score"]);
 
-  const fallbackTp1 = tp1 ?? (points.length > 0 ? points[points.length - 1].value : null);
-  const hasAny = [fallbackTp1, tp2, tp3, stopLoss, qualityScore, confluenceScore]
+  const fallbackTp1 = tp1 ??
+    (points.length > 0 ? points[points.length - 1].value : null);
+  const hasAny = [
+    fallbackTp1,
+    tp2,
+    tp3,
+    stopLoss,
+    qualityScore,
+    confluenceScore,
+  ]
     .some((v) => typeof v === "number" && Number.isFinite(v));
 
   if (!hasAny) return null;
-  return { tp1: fallbackTp1, tp2, tp3, stop_loss: stopLoss, quality_score: qualityScore, confluence_score: confluenceScore };
+  return {
+    tp1: fallbackTp1,
+    tp2,
+    tp3,
+    stop_loss: stopLoss,
+    quality_score: qualityScore,
+    confluence_score: confluenceScore,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -368,35 +398,53 @@ serve(async (req: Request): Promise<Response> => {
     const url = new URL(req.url);
     const rawSymbol = url.searchParams.get("symbol");
     if (!rawSymbol) {
-      return new Response(JSON.stringify({ error: "Symbol parameter is required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Symbol parameter is required" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
     const symbol = rawSymbol.toUpperCase().trim();
 
     const rawTimeframe = url.searchParams.get("timeframe");
     if (!rawTimeframe) {
-      return new Response(JSON.stringify({ error: "timeframe is required (m15, h1, h4, d1, w1)" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          error: "timeframe is required (m15, h1, h4, d1, w1)",
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
     const timeframe = rawTimeframe as Timeframe;
     if (!(VALID_TIMEFRAMES as readonly string[]).includes(timeframe)) {
       return new Response(
-        JSON.stringify({ error: `Invalid timeframe: ${timeframe}. Must be one of: ${VALID_TIMEFRAMES.join(", ")}` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        JSON.stringify({
+          error: `Invalid timeframe: ${timeframe}. Must be one of: ${
+            VALID_TIMEFRAMES.join(", ")
+          }`,
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 
     const daysParam = url.searchParams.get("days");
-    const rawDays = daysParam ? Math.min(3650, Math.max(1, Number(daysParam))) : 180;
+    const rawDays = daysParam
+      ? Math.min(3650, Math.max(1, Number(daysParam)))
+      : 180;
     const startParam = url.searchParams.get("start");
     const endParam = url.searchParams.get("end");
 
     const includeOptions = url.searchParams.get("include_options") !== "false";
-    const includeForecast = url.searchParams.get("include_forecast") !== "false";
+    const includeForecast =
+      url.searchParams.get("include_forecast") !== "false";
     const includeML = url.searchParams.get("include_ml") !== "false";
     const useLayers = url.searchParams.get("layers") === "true";
 
@@ -444,7 +492,9 @@ serve(async (req: Request): Promise<Response> => {
           };
           console.log(`[chart] Resolved ${symbol} → ${resolvedSymbol}`);
         } else {
-          console.log(`[chart] Could not resolve futures symbol ${symbol}, using as-is`);
+          console.log(
+            `[chart] Could not resolve futures symbol ${symbol}, using as-is`,
+          );
         }
       } catch (err) {
         console.error(`[chart] Error resolving futures symbol:`, err);
@@ -457,14 +507,19 @@ serve(async (req: Request): Promise<Response> => {
     // -------------------------------------------------------------------------
     const { data: symbolData, error: symbolError } = await supabase
       .from("symbols")
-      .select("id, ticker, asset_type, futures_root_id, is_continuous, expiry_month, expiry_year")
+      .select(
+        "id, ticker, asset_type, futures_root_id, is_continuous, expiry_month, expiry_year",
+      )
       .eq("ticker", resolvedSymbol)
       .single();
 
     if (symbolError || !symbolData) {
       return new Response(
         JSON.stringify({ error: `Symbol not found: ${resolvedSymbol}` }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 
@@ -473,11 +528,22 @@ serve(async (req: Request): Promise<Response> => {
 
     // Populate futures metadata from symbol row when available
     if (futuresMetadata) {
-      futuresMetadata.root_id = (symbolData.futures_root_id as string | null) ?? null;
+      futuresMetadata.root_id = (symbolData.futures_root_id as string | null) ??
+        null;
       if (symbolData.expiry_month != null) {
         const MONTH_NAMES = [
-          "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+          "Jan",
+          "Feb",
+          "Mar",
+          "Apr",
+          "May",
+          "Jun",
+          "Jul",
+          "Aug",
+          "Sep",
+          "Oct",
+          "Nov",
+          "Dec",
         ];
         const monthIndex = (symbolData.expiry_month as number) - 1;
         futuresMetadata.expiry_info = {
@@ -540,7 +606,9 @@ serve(async (req: Request): Promise<Response> => {
       includeForecast || includeML
         ? supabase
           .from("latest_forecast_summary")
-          .select("overall_label, confidence, horizon, run_at, points, sr_levels, sr_density, supertrend_factor, supertrend_signal, supertrend_direction, trend_label, trend_confidence, stop_level, trend_duration_bars, rsi, adx, macd_histogram, kdj_j, adaptive_supertrend_factor, adaptive_supertrend_signal")
+          .select(
+            "overall_label, confidence, horizon, run_at, points, sr_levels, sr_density, supertrend_factor, supertrend_signal, supertrend_direction, trend_label, trend_confidence, stop_level, trend_duration_bars, rsi, adx, macd_histogram, kdj_j, adaptive_supertrend_factor, adaptive_supertrend_signal",
+          )
           .eq("symbol_id", symbolId)
           .limit(1)
           .single()
@@ -624,7 +692,9 @@ serve(async (req: Request): Promise<Response> => {
     const paginatedBars = allBars.slice(barOffset, barOffset + barLimit);
 
     // Freshness should use the full dataset, not the paginated slice
-    const lastBarTs = allBars.length > 0 ? allBars[allBars.length - 1].ts : null;
+    const lastBarTs = allBars.length > 0
+      ? allBars[allBars.length - 1].ts
+      : null;
 
     // -------------------------------------------------------------------------
     // Step 5 — Freshness check + fire-and-forget stale refresh
@@ -672,8 +742,7 @@ serve(async (req: Request): Promise<Response> => {
       // Rough fallback
       const hour = now.getUTCHours();
       const dow = now.getUTCDay();
-      isMarketOpen =
-        dow >= MARKET_WEEKDAY_START &&
+      isMarketOpen = dow >= MARKET_WEEKDAY_START &&
         dow <= MARKET_WEEKDAY_END &&
         hour >= MARKET_OPEN_HOUR_UTC &&
         hour < MARKET_CLOSE_HOUR_UTC;
@@ -689,14 +758,24 @@ serve(async (req: Request): Promise<Response> => {
     if (includeML) {
       try {
         if (intradayForecastResult.error) {
-          console.error("[chart] Intraday forecast query error:", intradayForecastResult.error.message);
+          console.error(
+            "[chart] Intraday forecast query error:",
+            intradayForecastResult.error.message,
+          );
         }
-        const intradayForecastData = intradayForecastResult.data as IntradayForecastRow | null;
+        const intradayForecastData = intradayForecastResult.data as
+          | IntradayForecastRow
+          | null;
 
         if (dailyForecastResult.error) {
-          console.error("[chart] Daily forecast query error:", dailyForecastResult.error.message);
+          console.error(
+            "[chart] Daily forecast query error:",
+            dailyForecastResult.error.message,
+          );
         }
-        const dailyForecastData = dailyForecastResult.data as DailyForecastRow | null;
+        const dailyForecastData = dailyForecastResult.data as
+          | DailyForecastRow
+          | null;
 
         // Secondary parallel fetch: both ML sub-queries run concurrently
         const [intradayPathResult, dailyForecastsResult] = await Promise.all([
@@ -723,10 +802,16 @@ serve(async (req: Request): Promise<Response> => {
         ]);
 
         if (intradayPathResult.error) {
-          console.error("[chart] ml_forecast_paths_intraday query error:", intradayPathResult.error.message);
+          console.error(
+            "[chart] ml_forecast_paths_intraday query error:",
+            intradayPathResult.error.message,
+          );
         }
         if (dailyForecastsResult.error) {
-          console.error("[chart] ml_forecasts query error:", dailyForecastsResult.error.message);
+          console.error(
+            "[chart] ml_forecasts query error:",
+            dailyForecastsResult.error.message,
+          );
         }
 
         if (isIntraday && intradayForecastData) {
@@ -736,7 +821,9 @@ serve(async (req: Request): Promise<Response> => {
 
           const horizons: HorizonForecast[] = [];
 
-          const intradayPathData = intradayPathResult.data as IntradayPathRow | null;
+          const intradayPathData = intradayPathResult.data as
+            | IntradayPathRow
+            | null;
 
           if (
             intradayPathData &&
@@ -760,7 +847,8 @@ serve(async (req: Request): Promise<Response> => {
             );
             if (pts.length > 0) {
               horizons.push({
-                horizon: intradayForecastData.horizon ?? (timeframe === "m15" ? "15m" : "1h"),
+                horizon: intradayForecastData.horizon ??
+                  (timeframe === "m15" ? "15m" : "1h"),
                 points: pts,
               });
             }
@@ -799,7 +887,10 @@ serve(async (req: Request): Promise<Response> => {
             const dailyForecasts = dailyForecastsResult.data;
 
             if (Array.isArray(dailyForecasts)) {
-              const latestByHorizon = new Map<string, Record<string, unknown>>();
+              const latestByHorizon = new Map<
+                string,
+                Record<string, unknown>
+              >();
               for (const row of dailyForecasts) {
                 const h = typeof row?.horizon === "string" ? row.horizon : null;
                 if (!h || latestByHorizon.has(h)) continue;
@@ -816,7 +907,11 @@ serve(async (req: Request): Promise<Response> => {
                 );
                 if (pts.length === 0) continue;
                 const targets = buildForecastTargets(row, pts);
-                dailySeries.push({ horizon, points: pts, ...(targets ? { targets } : {}) });
+                dailySeries.push({
+                  horizon,
+                  points: pts,
+                  ...(targets ? { targets } : {}),
+                });
               }
 
               if (dailySeries.length > 0) {
@@ -859,12 +954,17 @@ serve(async (req: Request): Promise<Response> => {
               );
               if (pts.length === 0) continue;
               const targets = buildForecastTargets(row, pts);
-              horizonSeries.push({ horizon, points: pts, ...(targets ? { targets } : {}) });
+              horizonSeries.push({
+                horizon,
+                points: pts,
+                ...(targets ? { targets } : {}),
+              });
 
               // Pick the row with highest confidence as the best overall row
               if (
                 Object.keys(bestForecastRow).length === 0 ||
-                clampNumber(row["confidence"], -1) > clampNumber(bestForecastRow["confidence"], -1)
+                clampNumber(row["confidence"], -1) >
+                  clampNumber(bestForecastRow["confidence"], -1)
               ) {
                 bestForecastRow = row;
               }
@@ -872,45 +972,53 @@ serve(async (req: Request): Promise<Response> => {
 
             if (horizonSeries.length > 0) {
               mlSummary = {
-                overallLabel: typeof bestForecastRow["overall_label"] === "string"
-                  ? bestForecastRow["overall_label"]
-                  : null,
+                overallLabel:
+                  typeof bestForecastRow["overall_label"] === "string"
+                    ? bestForecastRow["overall_label"]
+                    : null,
                 confidence: clampNumber(bestForecastRow["confidence"], conf),
                 horizons: horizonSeries,
-                srLevels: (bestForecastRow["sr_levels"] as Record<string, unknown>) ?? null,
+                srLevels:
+                  (bestForecastRow["sr_levels"] as Record<string, unknown>) ??
+                    null,
                 srDensity: typeof bestForecastRow["sr_density"] === "number"
                   ? bestForecastRow["sr_density"]
                   : null,
               };
 
               indicators = {
-                supertrendFactor: typeof bestForecastRow["supertrend_factor"] === "number"
-                  ? bestForecastRow["supertrend_factor"]
-                  : (dailyForecastData.adaptive_supertrend_factor ?? null),
-                supertrendSignal: typeof bestForecastRow["supertrend_signal"] === "number"
-                  ? bestForecastRow["supertrend_signal"]
-                  : (dailyForecastData.adaptive_supertrend_signal ?? null),
+                supertrendFactor:
+                  typeof bestForecastRow["supertrend_factor"] === "number"
+                    ? bestForecastRow["supertrend_factor"]
+                    : (dailyForecastData.adaptive_supertrend_factor ?? null),
+                supertrendSignal:
+                  typeof bestForecastRow["supertrend_signal"] === "number"
+                    ? bestForecastRow["supertrend_signal"]
+                    : (dailyForecastData.adaptive_supertrend_signal ?? null),
                 trendLabel: typeof bestForecastRow["trend_label"] === "string"
                   ? bestForecastRow["trend_label"]
                   : (dailyForecastData.trend_label ?? null),
-                trendConfidence: typeof bestForecastRow["trend_confidence"] === "number"
-                  ? bestForecastRow["trend_confidence"]
-                  : (dailyForecastData.trend_confidence ?? null),
+                trendConfidence:
+                  typeof bestForecastRow["trend_confidence"] === "number"
+                    ? bestForecastRow["trend_confidence"]
+                    : (dailyForecastData.trend_confidence ?? null),
                 stopLevel: typeof bestForecastRow["stop_level"] === "number"
                   ? bestForecastRow["stop_level"]
                   : (dailyForecastData.stop_level ?? null),
-                trendDurationBars: typeof bestForecastRow["trend_duration_bars"] === "number"
-                  ? bestForecastRow["trend_duration_bars"]
-                  : (dailyForecastData.trend_duration_bars ?? null),
+                trendDurationBars:
+                  typeof bestForecastRow["trend_duration_bars"] === "number"
+                    ? bestForecastRow["trend_duration_bars"]
+                    : (dailyForecastData.trend_duration_bars ?? null),
                 rsi: typeof bestForecastRow["rsi"] === "number"
                   ? bestForecastRow["rsi"]
                   : (dailyForecastData.rsi ?? null),
                 adx: typeof bestForecastRow["adx"] === "number"
                   ? bestForecastRow["adx"]
                   : (dailyForecastData.adx ?? null),
-                macdHistogram: typeof bestForecastRow["macd_histogram"] === "number"
-                  ? bestForecastRow["macd_histogram"]
-                  : (dailyForecastData.macd_histogram ?? null),
+                macdHistogram:
+                  typeof bestForecastRow["macd_histogram"] === "number"
+                    ? bestForecastRow["macd_histogram"]
+                    : (dailyForecastData.macd_histogram ?? null),
                 kdjJ: typeof bestForecastRow["kdj_j"] === "number"
                   ? bestForecastRow["kdj_j"]
                   : (dailyForecastData.kdj_j ?? null),
@@ -926,19 +1034,25 @@ serve(async (req: Request): Promise<Response> => {
               mlSummary = {
                 overallLabel: dailyForecastData.overall_label ?? null,
                 confidence: conf,
-                horizons: [{ horizon: dailyForecastData.horizon ?? "1D", points: pts }],
+                horizons: [{
+                  horizon: dailyForecastData.horizon ?? "1D",
+                  points: pts,
+                }],
                 srLevels: dailyForecastData.sr_levels ?? null,
                 srDensity: dailyForecastData.sr_density ?? null,
               };
               indicators = {
-                supertrendFactor: dailyForecastData.adaptive_supertrend_factor ??
-                  dailyForecastData.supertrend_factor ?? null,
-                supertrendSignal: dailyForecastData.adaptive_supertrend_signal ??
-                  dailyForecastData.supertrend_signal ?? null,
+                supertrendFactor:
+                  dailyForecastData.adaptive_supertrend_factor ??
+                    dailyForecastData.supertrend_factor ?? null,
+                supertrendSignal:
+                  dailyForecastData.adaptive_supertrend_signal ??
+                    dailyForecastData.supertrend_signal ?? null,
                 trendLabel: dailyForecastData.trend_label ?? null,
                 trendConfidence: dailyForecastData.trend_confidence ?? null,
                 stopLevel: dailyForecastData.stop_level ?? null,
-                trendDurationBars: dailyForecastData.trend_duration_bars ?? null,
+                trendDurationBars: dailyForecastData.trend_duration_bars ??
+                  null,
                 rsi: dailyForecastData.rsi ?? null,
                 adx: dailyForecastData.adx ?? null,
                 macdHistogram: dailyForecastData.macd_histogram ?? null,
@@ -961,7 +1075,7 @@ serve(async (req: Request): Promise<Response> => {
     // -------------------------------------------------------------------------
     // Step 8 — Append forecast bars to paginatedBars (if requested)
     // -------------------------------------------------------------------------
-    let bars = [...paginatedBars];
+    const bars = [...paginatedBars];
 
     if (includeForecast && mlSummary && mlSummary.horizons.length > 0) {
       const existingTs = new Set(bars.map((b) => b.ts));
@@ -1018,13 +1132,15 @@ serve(async (req: Request): Promise<Response> => {
     // -------------------------------------------------------------------------
     // Step 11 — DataQuality block (from chart-read)
     // -------------------------------------------------------------------------
-    const oldestBarTs = bars.length > 0 ? bars[0].ts : null;
+    const _oldestBarTs = bars.length > 0 ? bars[0].ts : null;
     const newestBarTs = bars.length > 0 ? bars[bars.length - 1].ts : null;
     const slaHours = slaMinutes / 60;
 
     const dataQuality: DataQuality = {
       dataAgeHours: newestBarTs
-        ? Math.round((Date.now() - new Date(newestBarTs).getTime()) / (1000 * 60 * 60))
+        ? Math.round(
+          (Date.now() - new Date(newestBarTs).getTime()) / (1000 * 60 * 60),
+        )
         : null,
       isStale,
       slaHours,
@@ -1104,7 +1220,10 @@ serve(async (req: Request): Promise<Response> => {
     console.error("[chart] Unhandled error:", error);
     return new Response(
       JSON.stringify({ error: "An internal error occurred" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
     );
   }
 });
