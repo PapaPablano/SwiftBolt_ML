@@ -602,7 +602,16 @@ async function executePaperTradingCycle(
       console.warn("Market data validation warnings:", validation.errors);
     }
 
-    // 3. Pre-calculate indicators (shared cache)
+    // 3. Update current_price on all open positions for this symbol so the native
+    //    dashboard can display live unrealised P&L without a separate price fetch.
+    const latestClose = sortedBars[sortedBars.length - 1].close;
+    await supabase
+      .from("paper_trading_positions")
+      .update({ current_price: latestClose })
+      .eq("symbol_id", symbol)
+      .eq("status", "open");
+
+    // 4. Pre-calculate indicators (shared cache)
     const indicatorCache = new Map<string, number>();
     // In production, calculate RSI, MACD, etc. here
     // For now, mock some indicator values
@@ -610,7 +619,7 @@ async function executePaperTradingCycle(
     indicatorCache.set("MACD", 0.5);
     indicatorCache.set("Volume_MA", 1000000);
 
-    // 4. Execute strategies with concurrency limiting
+    // 5. Execute strategies with concurrency limiting
     const results: ExecutionResult[] = [];
     const limiter = new Semaphore(CONCURRENCY_LIMIT);
 
@@ -750,6 +759,43 @@ Deno.serve(async (req) => {
 
     // Parse request
     const body = await req.json();
+    const { action } = body;
+
+    // Manual close-position action — allows native clients to close positions on demand.
+    if (action === "close_position") {
+      const { position_id, exit_price } = body;
+      if (!position_id || typeof exit_price !== "number") {
+        return new Response(
+          JSON.stringify({ error: "position_id and exit_price are required" }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      // Fetch position to compute P&L
+      const { data: pos, error: fetchErr } = await supabase
+        .from("paper_trading_positions")
+        .select("id,direction,entry_price,quantity,status")
+        .eq("id", position_id)
+        .eq("status", "open")
+        .single();
+
+      if (fetchErr || !pos) {
+        return new Response(
+          JSON.stringify({ error: "Position not found or already closed" }),
+          { status: 404, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      const pnl = pos.direction === "long"
+        ? (exit_price - pos.entry_price) * pos.quantity
+        : (pos.entry_price - exit_price) * pos.quantity;
+
+      const result = await closePosition(supabase, pos as PaperPosition, exit_price, "MANUAL");
+      return new Response(JSON.stringify({ ...result, pnl }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const { symbol, timeframe } = body;
 
     if (!symbol || !timeframe) {
