@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SwiftBolt ML · Signal Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,700;9..144,900&family=IBM+Plex+Mono:wght@300;400;500;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:         #030309;
+      --surface:    #08091A;
+      --surface-2:  #0E0F24;
+      --border:     rgba(110, 110, 230, 0.08);
+      --border-hi:  rgba(110, 110, 230, 0.14);
+
+      --strong-buy:      #00FFAA;
+      --strong-buy-dim:  rgba(0, 255, 170, 0.09);
+      --strong-buy-glow: 0 0 40px rgba(0,255,170,.22), 0 0 80px rgba(0,255,170,.07);
+
+      --buy:      #4ADE80;
+      --buy-dim:  rgba(74, 222, 128, 0.09);
+
+      --hold:     #FCD34D;
+      --hold-dim: rgba(252, 211, 77, 0.09);
+
+      --sell:     #F87171;
+      --sell-dim: rgba(248, 113, 113, 0.09);
+
+      --text:     #EEEEFF;
+      --text-dim: #555578;
+      --text-mute:#252540;
+
+      --accent:   #5B5FF5;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { height: 100%; }
+
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Blueprint grid */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(80,80,200,.028) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(80,80,200,.028) 1px, transparent 1px);
+      background-size: 44px 44px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Grain */
+    body::after {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.05'/%3E%3C/svg%3E");
+      background-size: 256px;
+      pointer-events: none;
+      z-index: 1;
+      opacity: .45;
+    }
+
+    .app {
+      position: relative; z-index: 2;
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      padding: 20px 24px; gap: 14px;
+    }
+
+    /* ── HEADER ─────────────────────────────────────────────── */
+    .header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      animation: fadeDown .55s cubic-bezier(.16,1,.3,1) both;
+    }
+
+    .logo-group { display: flex; align-items: baseline; gap: 14px; }
+
+    .logo-name {
+      font-family: 'Syne', sans-serif; font-weight: 800;
+      font-size: 14px; letter-spacing: .08em; text-transform: uppercase;
+    }
+
+    .logo-section {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px; color: var(--text-dim);
+      letter-spacing: .3em; text-transform: uppercase;
+    }
+
+    .header-meta { display: flex; align-items: center; gap: 18px; }
+
+    .live-badge {
+      display: flex; align-items: center; gap: 7px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px; letter-spacing: .16em; color: var(--strong-buy);
+    }
+
+    .live-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--strong-buy);
+      box-shadow: 0 0 7px var(--strong-buy);
+      animation: blink 2s ease-in-out infinite;
+    }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+    .clock {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px; color: var(--text-dim); letter-spacing: .04em;
+    }
+
+    .tag {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 8px; letter-spacing: .26em; color: var(--text-mute);
+      border: 1px solid var(--border); padding: 3px 9px; border-radius: 2px;
+    }
+
+    /* ── MAIN GRID ───────────────────────────────────────────── */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 372px 1fr;
+      gap: 14px;
+      flex: 1;
+    }
+
+    /* ── FEATURED CARD ───────────────────────────────────────── */
+    .featured {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 26px 26px 22px;
+      display: flex; flex-direction: column;
+      position: relative; overflow: hidden;
+      animation: fadeUp .65s cubic-bezier(.16,1,.3,1) both;
+    }
+
+    .featured.strong-buy {
+      border-color: rgba(0,255,170,.17);
+      box-shadow: var(--strong-buy-glow);
+    }
+
+    /* top accent bar */
+    .featured::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--strong-buy) 42%, transparent);
+    }
+
+    /* corner glow */
+    .featured::after {
+      content: '';
+      position: absolute; bottom: 0; right: 0;
+      width: 140px; height: 140px;
+      background: radial-gradient(ellipse at bottom right, rgba(0,255,170,.055), transparent 70%);
+      pointer-events: none;
+    }
+
+    .feat-eyebrow {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .feat-eyebrow-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 8px; letter-spacing: .34em; color: var(--text-mute);
+      text-transform: uppercase;
+    }
+
+    .feat-chg {
+      font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500;
+    }
+    .feat-chg.pos { color: var(--strong-buy); }
+    .feat-chg.neg { color: var(--sell); }
+
+    .feat-ticker {
+      font-family: 'Fraunces', serif; font-weight: 900;
+      font-size: 86px; line-height: .88;
+      letter-spacing: -.03em;
+      text-shadow: 0 0 50px rgba(0,255,170,.13);
+      margin-bottom: 5px;
+    }
+
+    .feat-company {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px; color: var(--text-dim);
+      letter-spacing: .07em; margin-bottom: 18px;
+    }
+
+    /* Signal badge */
+    .sig-badge {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 5px 13px 5px 11px; border-radius: 2px;
+      font-family: 'Syne', sans-serif; font-weight: 700;
+      font-size: 9px; letter-spacing: .2em; text-transform: uppercase;
+      width: fit-content;
+    }
+    .sig-badge::before {
+      content: ''; display: block;
+      width: 4px; height: 4px; border-radius: 50%; background: currentColor;
+    }
+    .sig-badge.strong-buy { background: var(--strong-buy-dim); color: var(--strong-buy); border: 1px solid rgba(0,255,170,.18); }
+    .sig-badge.buy        { background: var(--buy-dim);        color: var(--buy);        border: 1px solid rgba(74,222,128,.15); }
+    .sig-badge.hold       { background: var(--hold-dim);       color: var(--hold);       border: 1px solid rgba(252,211,77,.15); }
+    .sig-badge.sell       { background: var(--sell-dim);       color: var(--sell);       border: 1px solid rgba(248,113,113,.15); }
+
+    /* Conviction section */
+    .conviction-section {
+      margin-top: 22px; padding-top: 18px;
+      border-top: 1px solid var(--border);
+    }
+
+    .section-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 8px; letter-spacing: .34em; color: var(--text-mute);
+      text-transform: uppercase; margin-bottom: 12px;
+    }
+
+    .conviction-row { display: flex; align-items: center; gap: 14px; }
+
+    /* SVG gauge */
+    .gauge-wrap {
+      position: relative; width: 86px; height: 50px;
+      flex-shrink: 0; overflow: hidden;
+    }
+
+    .gauge-wrap svg {
+      position: absolute; top: 0; left: 0;
+      width: 86px; height: 86px;
+    }
+
+    .gauge-num {
+      position: absolute; bottom: 0; left: 50%;
+      transform: translateX(-50%);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 19px; font-weight: 600; line-height: 1; white-space: nowrap;
+    }
+
+    .gauge-unit { font-size: 9px; font-weight: 300; opacity: .45; }
+
+    /* Signal breakdown bars */
+    .sigs-list { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+
+    .sig-row { display: flex; align-items: center; gap: 8px; }
+
+    .sig-name {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px; color: var(--text-dim);
+      width: 108px; flex-shrink: 0;
+    }
+
+    .sig-track {
+      flex: 1; height: 2px;
+      background: var(--border-hi); border-radius: 1px; overflow: hidden;
+    }
+
+    .sig-fill {
+      height: 100%; border-radius: 1px;
+      transform-origin: left; transform: scaleX(0);
+      transition: transform 1.4s cubic-bezier(.16,1,.3,1);
+    }
+    .sig-fill.bullish { background: var(--strong-buy); }
+    .sig-fill.neutral { background: var(--hold); }
+    .sig-fill.bearish { background: var(--sell); }
+
+    .sig-pct {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px; color: var(--text-dim); width: 28px; text-align: right;
+    }
+
+    /* Price grid */
+    .price-grid {
+      margin-top: 18px; padding-top: 16px;
+      border-top: 1px solid var(--border);
+      display: grid; grid-template-columns: repeat(3, 1fr);
+    }
+
+    .price-cell { padding: 0 10px 0 0; }
+    .price-cell + .price-cell { padding-left: 10px; border-left: 1px solid var(--border); }
+
+    .price-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 7px; letter-spacing: .28em; color: var(--text-mute);
+      text-transform: uppercase; margin-bottom: 5px;
+    }
+
+    .price-val {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 15px; font-weight: 600; letter-spacing: -.01em;
+    }
+    .price-val.accent { color: var(--strong-buy); }
+    .price-val.up     { color: var(--buy); }
+
+    /* ── RECS GRID ───────────────────────────────────────────── */
+    .recs-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .rec-card {
+      background: var(--surface);
+      border: 1px solid var(--border); border-radius: 3px;
+      padding: 17px; cursor: pointer;
+      position: relative; overflow: hidden;
+      display: flex; flex-direction: column;
+      transition: border-color .22s, box-shadow .22s, transform .22s;
+    }
+
+    .rec-card::before {
+      content: ''; position: absolute;
+      left: 0; top: 12%; bottom: 12%;
+      width: 2px; border-radius: 0 2px 2px 0;
+      transform: scaleY(0);
+      transition: transform .2s cubic-bezier(.16,1,.3,1);
+    }
+    .rec-card:hover::before { transform: scaleY(1); }
+    .rec-card.strong-buy::before { background: var(--strong-buy); }
+    .rec-card.buy::before        { background: var(--buy); }
+    .rec-card.hold::before       { background: var(--hold); }
+    .rec-card.sell::before       { background: var(--sell); }
+
+    .rec-card:hover { transform: translateY(-3px); }
+    .rec-card.strong-buy:hover { border-color: rgba(0,255,170,.28);   box-shadow: 0 10px 36px rgba(0,255,170,.09); }
+    .rec-card.buy:hover        { border-color: rgba(74,222,128,.22);  box-shadow: 0 10px 36px rgba(74,222,128,.07); }
+    .rec-card.hold:hover       { border-color: rgba(252,211,77,.18); }
+    .rec-card.sell:hover       { border-color: rgba(248,113,113,.2);  box-shadow: 0 10px 36px rgba(248,113,113,.06); }
+
+    .rec-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
+
+    .rec-ticker {
+      font-family: 'Fraunces', serif; font-weight: 900;
+      font-size: 36px; line-height: 1; letter-spacing: -.02em;
+    }
+
+    .rec-chg {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px; padding: 2px 7px; border-radius: 2px;
+    }
+    .rec-chg.pos { background: rgba(0,255,170,.07); color: var(--strong-buy); }
+    .rec-chg.neg { background: rgba(248,113,113,.07); color: var(--sell); }
+
+    .rec-co {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 8px; color: var(--text-mute); letter-spacing: .05em; margin-bottom: 10px;
+    }
+
+    .rec-badge-row {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px;
+    }
+
+    .mini-badge {
+      font-family: 'Syne', sans-serif; font-weight: 700;
+      font-size: 8px; letter-spacing: .18em; text-transform: uppercase;
+      padding: 3px 8px; border-radius: 2px;
+    }
+    .mini-badge.strong-buy { background: var(--strong-buy-dim); color: var(--strong-buy); border: 1px solid rgba(0,255,170,.14); }
+    .mini-badge.buy        { background: var(--buy-dim);        color: var(--buy);        border: 1px solid rgba(74,222,128,.13); }
+    .mini-badge.hold       { background: var(--hold-dim);       color: var(--hold);       border: 1px solid rgba(252,211,77,.13); }
+    .mini-badge.sell       { background: var(--sell-dim);       color: var(--sell);       border: 1px solid rgba(248,113,113,.13); }
+
+    .rec-conf-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px; color: var(--text-dim);
+    }
+
+    .conf-track {
+      height: 2px; background: var(--border-hi); border-radius: 1px;
+      overflow: hidden; margin-bottom: 11px;
+    }
+
+    .conf-fill {
+      height: 100%; border-radius: 1px;
+      transform-origin: left; transform: scaleX(0);
+      transition: transform 1.5s cubic-bezier(.16,1,.3,1);
+    }
+    .conf-fill.strong-buy { background: var(--strong-buy); }
+    .conf-fill.buy        { background: var(--buy); }
+    .conf-fill.hold       { background: var(--hold); }
+    .conf-fill.sell       { background: var(--sell); }
+
+    .rec-prices { display: flex; justify-content: space-between; align-items: flex-end; margin-top: auto; }
+
+    .rec-cur { font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 600; }
+    .rec-tgt { font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: var(--text-dim); margin-top: 2px; }
+
+    .rec-upside {
+      font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600;
+      padding: 4px 9px; border-radius: 2px;
+    }
+    .rec-upside.hi  { background: rgba(0,255,170,.07);    color: var(--strong-buy); }
+    .rec-upside.mid { background: rgba(74,222,128,.07);   color: var(--buy); }
+    .rec-upside.neg { background: rgba(248,113,113,.07);  color: var(--sell); }
+
+    /* ── BOTTOM PANEL ────────────────────────────────────────── */
+    .bottom-panel {
+      background: var(--surface);
+      border: 1px solid var(--border); border-radius: 3px;
+      padding: 18px 22px;
+      animation: fadeUp .6s .38s cubic-bezier(.16,1,.3,1) both;
+    }
+
+    .bottom-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .bottom-title {
+      font-family: 'Syne', sans-serif; font-weight: 700;
+      font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+    }
+
+    .bottom-sub {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px; color: var(--text-dim); margin-top: 2px;
+    }
+
+    .models-row {
+      display: grid; grid-template-columns: repeat(5, 1fr);
+      gap: 14px; align-items: end;
+    }
+
+    .model-col { display: flex; flex-direction: column; gap: 7px; }
+
+    .model-head { display: flex; justify-content: space-between; align-items: baseline; }
+
+    .model-name {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 9px; color: var(--text-dim);
+    }
+
+    .model-score {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px; font-weight: 600;
+    }
+
+    .model-track {
+      height: 52px; background: var(--surface-2);
+      border: 1px solid var(--border); border-radius: 2px;
+      overflow: hidden; display: flex; align-items: flex-end;
+    }
+
+    .model-fill {
+      width: 100%;
+      background: linear-gradient(to top, var(--accent), rgba(91,95,245,.22));
+      transform-origin: bottom; transform: scaleY(0);
+    }
+
+    .model-dir {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 8px; letter-spacing: .2em; text-transform: uppercase;
+    }
+    .model-dir.bull { color: var(--buy); }
+    .model-dir.flat { color: var(--hold); }
+    .model-dir.bear { color: var(--sell); }
+
+    /* ── ANIMATIONS ──────────────────────────────────────────── */
+    @keyframes fadeUp   { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:none} }
+    @keyframes fadeDown { from{opacity:0;transform:translateY(-8px)}  to{opacity:1;transform:none} }
+
+    .rec-card { animation: fadeUp .58s cubic-bezier(.16,1,.3,1) both; }
+    .rec-card:nth-child(1){animation-delay:.10s}
+    .rec-card:nth-child(2){animation-delay:.15s}
+    .rec-card:nth-child(3){animation-delay:.20s}
+    .rec-card:nth-child(4){animation-delay:.25s}
+    .rec-card:nth-child(5){animation-delay:.30s}
+    .rec-card:nth-child(6){animation-delay:.35s}
+
+    /* Arc SVG */
+    .arc-track { fill:none; stroke: var(--border-hi); stroke-width:7; stroke-linecap:round; }
+    .arc-fill  { fill:none; stroke-width:7; stroke-linecap:round; }
+  </style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="logo-group">
+      <span class="logo-name">SwiftBolt ML</span>
+      <span class="logo-section">Signal Intelligence</span>
+    </div>
+    <div class="header-meta">
+      <div class="live-badge"><div class="live-dot"></div>MARKET OPEN</div>
+      <div class="clock" id="clock">--:--:-- EST</div>
+      <div class="tag">LSTM · ARIMA-GARCH</div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <div class="main-grid">
+    <div class="featured strong-buy" id="featured"></div>
+    <div class="recs-grid" id="recsGrid"></div>
+  </div>
+
+  <!-- BOTTOM -->
+  <div class="bottom-panel">
+    <div class="bottom-header">
+      <div>
+        <div class="bottom-title">Model Ensemble · NVDA · 20D Horizon</div>
+        <div class="bottom-sub">Weighted contribution to conviction score</div>
+      </div>
+      <div class="tag">WALK-FORWARD VALIDATED</div>
+    </div>
+    <div class="models-row" id="modelsRow"></div>
+  </div>
+
+</div>
+
+<script>
+// ─── DATA ────────────────────────────────────────────────────────────────────
+const FEATURED = {
+  ticker: 'NVDA', company: 'NVIDIA Corporation',
+  signal: 'STRONG BUY', cls: 'strong-buy', color: '#00FFAA',
+  confidence: 94, change: '+2.34%', changePos: true,
+  current: 875.40, target: 1050.00, horizon: '20D', upside: 19.9,
+  signals: [
+    { name: 'LSTM Ensemble',  score: .96, dir: 'bullish' },
+    { name: 'ARIMA-GARCH',   score: .89, dir: 'bullish' },
+    { name: 'RSI Momentum',  score: .78, dir: 'bullish' },
+    { name: 'Volume Profile',score: .82, dir: 'bullish' },
+    { name: 'Support/Resist',score: .71, dir: 'neutral'  },
+  ],
+};
+
+const RECS = [
+  { ticker:'AAPL', company:'Apple Inc.',      signal:'BUY',        cls:'buy',        confidence:78, current:189.30, target:215.00, horizon:'10D', upside:13.6, change:'+0.87%', pos:true  },
+  { ticker:'META', company:'Meta Platforms',  signal:'STRONG BUY', cls:'strong-buy', confidence:88, current:485.20, target:560.00, horizon:'20D', upside:15.4, change:'+1.92%', pos:true  },
+  { ticker:'MSFT', company:'Microsoft Corp.', signal:'BUY',        cls:'buy',        confidence:82, current:415.60, target:470.00, horizon:'20D', upside:13.1, change:'+0.62%', pos:true  },
+  { ticker:'TSLA', company:'Tesla Inc.',      signal:'HOLD',       cls:'hold',       confidence:61, current:245.80, target:255.00, horizon:'5D',  upside:3.7,  change:'-0.44%', pos:false },
+  { ticker:'AMZN', company:'Amazon.com',      signal:'BUY',        cls:'buy',        confidence:75, current:192.40, target:218.00, horizon:'10D', upside:13.3, change:'+1.15%', pos:true  },
+  { ticker:'INTC', company:'Intel Corp.',     signal:'SELL',       cls:'sell',       confidence:72, current:43.20,  target:37.00,  horizon:'10D', upside:-14.4,change:'-1.78%', pos:false },
+];
+
+const MODELS = [
+  { name:'LSTM',        score:.94, weight:.35, dir:'bull' },
+  { name:'ARIMA-GARCH', score:.89, weight:.28, dir:'bull' },
+  { name:'XGBoost',     score:.82, weight:.20, dir:'bull' },
+  { name:'TabPFN',      score:.76, weight:.12, dir:'bull' },
+  { name:'Ensemble',    score:.94, weight:1.0, dir:'bull' },
+];
+
+// ─── SVG ARC MATH ─────────────────────────────────────────────────────────────
+// 270° gauge: starts at 225° (clockwise from top = 7-o'clock) → ends at 135° (5-o'clock)
+// Using "degrees clockwise from 12-o'clock" convention
+const CX = 43, CY = 43, R = 34;
+const ARC_START = 225, ARC_SWEEP = 270;
+// circumference of 270° arc: 2π × R × (270/360)
+const ARC_LEN = +(2 * Math.PI * R * (270 / 360)).toFixed(2); // ≈ 161.3
+
+function pxy(deg) {
+  const rad = (deg - 90) * Math.PI / 180;
+  return { x: +(CX + R * Math.cos(rad)).toFixed(2), y: +(CY + R * Math.sin(rad)).toFixed(2) };
+}
+
+function arcD(startDeg, endDeg) {
+  const s = pxy(startDeg), e = pxy(endDeg);
+  const span = ((endDeg - startDeg) % 360 + 360) % 360;
+  const lg = span > 180 ? 1 : 0;
+  return `M ${s.x} ${s.y} A ${R} ${R} 0 ${lg} 1 ${e.x} ${e.y}`;
+}
+
+const TRACK_D = arcD(ARC_START, ARC_START + ARC_SWEEP);
+
+// ─── RENDER FEATURED ─────────────────────────────────────────────────────────
+function renderFeatured() {
+  const f = FEATURED;
+  const dateStr = new Date().toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+
+  document.getElementById('featured').innerHTML = `
+    <div class="feat-eyebrow">
+      <span class="feat-eyebrow-label">Top Signal · ${dateStr}</span>
+      <span class="feat-chg ${f.changePos ? 'pos' : 'neg'}">${f.change}</span>
+    </div>
+    <div class="feat-ticker">${f.ticker}</div>
+    <div class="feat-company">${f.company}</div>
+    <div class="sig-badge ${f.cls}">${f.signal}</div>
+
+    <div class="conviction-section">
+      <div class="section-label">ML Conviction</div>
+      <div class="conviction-row">
+        <div class="gauge-wrap">
+          <svg viewBox="0 0 86 86" xmlns="http://www.w3.org/2000/svg">
+            <path class="arc-track" d="${TRACK_D}" />
+            <path class="arc-fill" id="arcFill"
+              d="${TRACK_D}"
+              stroke="${f.color}"
+              stroke-dasharray="${ARC_LEN}"
+              stroke-dashoffset="${ARC_LEN}"
+              filter="url(#glow)" />
+            <defs>
+              <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur" />
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+          </svg>
+          <div class="gauge-num" style="color:${f.color}">
+            ${f.confidence}<span class="gauge-unit">%</span>
+          </div>
+        </div>
+        <div class="sigs-list">
+          ${f.signals.map(s => `
+            <div class="sig-row">
+              <span class="sig-name">${s.name}</span>
+              <div class="sig-track"><div class="sig-fill ${s.dir}" data-v="${s.score}"></div></div>
+              <span class="sig-pct">${Math.round(s.score * 100)}%</span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="price-grid">
+      <div class="price-cell">
+        <div class="price-label">Current</div>
+        <div class="price-val">$${f.current.toFixed(2)}</div>
+      </div>
+      <div class="price-cell">
+        <div class="price-label">Target · ${f.horizon}</div>
+        <div class="price-val accent" style="color:${f.color}">$${f.target.toFixed(2)}</div>
+      </div>
+      <div class="price-cell">
+        <div class="price-label">Upside</div>
+        <div class="price-val up">+${f.upside.toFixed(1)}%</div>
+      </div>
+    </div>`;
+}
+
+// ─── RENDER GRID ──────────────────────────────────────────────────────────────
+function uCls(u) { return u > 12 ? 'hi' : u > 0 ? 'mid' : 'neg'; }
+
+function renderGrid() {
+  document.getElementById('recsGrid').innerHTML = RECS.map(r => `
+    <div class="rec-card ${r.cls}">
+      <div class="rec-top">
+        <div class="rec-ticker">${r.ticker}</div>
+        <div class="rec-chg ${r.pos ? 'pos' : 'neg'}">${r.change}</div>
+      </div>
+      <div class="rec-co">${r.company}</div>
+      <div class="rec-badge-row">
+        <div class="mini-badge ${r.cls}">${r.signal}</div>
+        <span class="rec-conf-label">${r.confidence}% · ${r.horizon}</span>
+      </div>
+      <div class="conf-track">
+        <div class="conf-fill ${r.cls}" data-v="${r.confidence / 100}"></div>
+      </div>
+      <div class="rec-prices">
+        <div>
+          <div class="rec-cur">$${r.current.toFixed(2)}</div>
+          <div class="rec-tgt">→ $${r.target.toFixed(2)}</div>
+        </div>
+        <div class="rec-upside ${uCls(r.upside)}">${r.upside > 0 ? '+' : ''}${r.upside.toFixed(1)}%</div>
+      </div>
+    </div>`).join('');
+}
+
+// ─── RENDER MODELS ────────────────────────────────────────────────────────────
+function renderModels() {
+  document.getElementById('modelsRow').innerHTML = MODELS.map((m, i) => `
+    <div class="model-col" style="animation: fadeUp .5s ${.42 + i * .06}s cubic-bezier(.16,1,.3,1) both">
+      <div class="model-head">
+        <span class="model-name">${m.name}</span>
+        <span class="model-score">${Math.round(m.score * 100)}%</span>
+      </div>
+      <div class="model-track">
+        <div class="model-fill" data-w="${m.weight}" style="height:${m.weight * 100}%"></div>
+      </div>
+      <div class="model-dir ${m.dir}">${m.dir === 'bull' ? 'BULLISH' : m.dir === 'bear' ? 'BEARISH' : 'NEUTRAL'}</div>
+    </div>`).join('');
+}
+
+// ─── ANIMATE ─────────────────────────────────────────────────────────────────
+function animateAll() {
+  // Signal bars
+  document.querySelectorAll('.sig-fill, .conf-fill').forEach(el => {
+    const v = parseFloat(el.dataset.v);
+    requestAnimationFrame(() => { el.style.transform = `scaleX(${v})`; });
+  });
+
+  // Arc
+  const arc = document.getElementById('arcFill');
+  if (arc) {
+    const offset = +(ARC_LEN * (1 - FEATURED.confidence / 100)).toFixed(2);
+    setTimeout(() => {
+      arc.style.transition = 'stroke-dashoffset 1.7s cubic-bezier(.16,1,.3,1)';
+      arc.style.strokeDashoffset = offset;
+    }, 280);
+  }
+
+  // Model bars
+  document.querySelectorAll('.model-fill').forEach((el, i) => {
+    el.style.transform = 'scaleY(0)';
+    setTimeout(() => {
+      el.style.transition = `transform 1.2s ${i * 0.07}s cubic-bezier(.16,1,.3,1)`;
+      el.style.transform = 'scaleY(1)';
+    }, 160);
+  });
+}
+
+// ─── CLOCK ───────────────────────────────────────────────────────────────────
+function tick() {
+  const t = new Date().toLocaleTimeString('en-US', {
+    timeZone: 'America/New_York', hour12: false,
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+  const el = document.getElementById('clock');
+  if (el) el.textContent = `${t} EST`;
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+renderFeatured();
+renderGrid();
+renderModels();
+tick();
+setInterval(tick, 1000);
+requestAnimationFrame(() => setTimeout(animateAll, 80));
+</script>
+</body>
+</html>

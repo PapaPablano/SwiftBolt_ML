@@ -10,8 +10,12 @@ import { createChart } from 'lightweight-charts';
 import { ChartWithIndicators } from './components/ChartWithIndicators';
 import type { BacktestResult } from './components/StrategyBacktestPanel';
 import { dedupeEquityCurve } from './components/StrategyBacktestPanel';
+import { RecommendationsPanel } from './components/RecommendationsPanel';
+
+type AppTab = 'charts' | 'recommendations';
 
 function App() {
+  const [activeTab, setActiveTab] = useState<AppTab>('charts');
   const [selectedSymbol, setSelectedSymbol] = useState('AAPL');
   const [selectedHorizon, setSelectedHorizon] = useState('1D');
   const [startDate, setStartDate] = useState<Date>(() => {
@@ -55,17 +59,72 @@ function App() {
 
   const daysFromRange = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
 
+  if (activeTab === 'recommendations') {
+    return (
+      <div>
+        {/* Back to charts overlay button */}
+        <div style={{ position: 'fixed', top: 0, right: 0, zIndex: 100, padding: '8px 16px' }}>
+          <button
+            onClick={() => setActiveTab('charts')}
+            style={{
+              background: 'rgba(8,9,26,0.9)',
+              border: '1px solid rgba(110,110,230,0.15)',
+              color: '#EEEEFF',
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: '9px',
+              letterSpacing: '.2em',
+              padding: '5px 12px',
+              borderRadius: '2px',
+              cursor: 'pointer',
+              backdropFilter: 'blur(8px)',
+            }}
+          >
+            ← CHARTS
+          </button>
+        </div>
+        <RecommendationsPanel />
+      </div>
+    );
+  }
+
+  const isCharts = activeTab === 'charts';
+
   return (
     <div className="min-h-screen bg-gray-950 p-4 md:p-8 flex flex-col">
       <div className="mx-auto max-w-7xl flex-grow">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl md:text-3xl font-bold text-white">
-            SwiftBolt <span className="text-blue-500">Forecast Charts</span>
-          </h1>
-          <p className="text-sm text-gray-400 mt-1">
-            Multi-timeframe analysis with strategy backtesting
-          </p>
+        <div className="mb-6 flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold text-white">
+              SwiftBolt <span className="text-blue-500">Forecast Charts</span>
+            </h1>
+            <p className="text-sm text-gray-400 mt-1">
+              Multi-timeframe analysis with strategy backtesting
+            </p>
+          </div>
+          {/* Tab nav */}
+          <div className="flex gap-2 mt-1">
+            <button
+              onClick={() => setActiveTab('charts')}
+              className={`px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
+                isCharts
+                  ? 'bg-blue-600 border-blue-500 text-white'
+                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+              }`}
+            >
+              Charts
+            </button>
+            <button
+              onClick={() => setActiveTab('recommendations')}
+              className={`px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
+                !isCharts
+                  ? 'bg-blue-600 border-blue-500 text-white'
+                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+              }`}
+            >
+              Recommendations
+            </button>
+          </div>
         </div>
 
         {/* Controls */}
