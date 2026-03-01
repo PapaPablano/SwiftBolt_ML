@@ -176,12 +176,21 @@ serve(async (req) => {
   const endTs = Math.floor(now.getTime() / 1000);
 
   // ── Process all timeframes ────────────────────────────────────────────────
+  const DEADLINE_MS = 55_000; // bail at 55s before pg_cron's 58s kill
+  const functionStart = Date.now();
   const errors: Array<{ ticker: string; timeframe: string; error: string }> =
     [];
   let totalUpserted = 0;
+  let hitDeadline = false;
 
   for (const tf of TIMEFRAMES_TO_REFRESH) {
+    if (hitDeadline) break;
     for (let i = 0; i < symbols.length; i += MULTI_SYMBOL_BATCH_SIZE) {
+      if (Date.now() - functionStart > DEADLINE_MS) {
+        console.warn("[intraday-live-refresh] Approaching deadline, stopping");
+        hitDeadline = true;
+        break;
+      }
       const batch = symbols.slice(i, i + MULTI_SYMBOL_BATCH_SIZE);
 
       try {
@@ -255,6 +264,7 @@ serve(async (req) => {
     errors: errors.length,
     errorDetails: errors.slice(0, 10),
     errorsTruncated: errors.length > 10,
+    hitDeadline,
   };
 
   console.log(
