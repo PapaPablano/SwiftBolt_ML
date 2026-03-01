@@ -269,12 +269,14 @@ function aggregateWeeklyBars(bars: OHLCBar[]): OHLCBar[] {
     const first = weekBars[0];
     const last = weekBars[weekBars.length - 1];
     const firstDate = normalizeBarTimestamp(first.ts);
-    const timeSuffix = firstDate
-      ? `T${String(firstDate.getUTCHours()).padStart(2, "0")}:${
-        String(firstDate.getUTCMinutes()).padStart(2, "0")
-      }:00Z`
-      : "T05:00:00Z";
-    const ts = `${weekStartKey(firstDate ?? new Date())}${timeSuffix}`;
+    if (!firstDate) {
+      console.warn("[chart] Skipping weekly bar with unparseable timestamp:", first.ts);
+      continue; // skip this week bucket
+    }
+    const timeSuffix = `T${String(firstDate.getUTCHours()).padStart(2, "0")}:${
+      String(firstDate.getUTCMinutes()).padStart(2, "0")
+    }:00Z`;
+    const ts = `${weekStartKey(firstDate)}${timeSuffix}`;
     const highs = weekBars.map((b) => b.high);
     const lows = weekBars.map((b) => b.low);
     weeklyBars.push({
@@ -621,10 +623,8 @@ serve(async (req: Request): Promise<Response> => {
     // Apply pagination (offset + limit, both capped)
     const paginatedBars = allBars.slice(barOffset, barOffset + barLimit);
 
-    // Last bar timestamp (after pagination — used for freshness)
-    const lastBarTs = paginatedBars.length > 0
-      ? paginatedBars[paginatedBars.length - 1].ts
-      : null;
+    // Freshness should use the full dataset, not the paginated slice
+    const lastBarTs = allBars.length > 0 ? allBars[allBars.length - 1].ts : null;
 
     // -------------------------------------------------------------------------
     // Step 5 — Freshness check + fire-and-forget stale refresh
@@ -688,8 +688,46 @@ serve(async (req: Request): Promise<Response> => {
 
     if (includeML) {
       try {
+        if (intradayForecastResult.error) {
+          console.error("[chart] Intraday forecast query error:", intradayForecastResult.error.message);
+        }
         const intradayForecastData = intradayForecastResult.data as IntradayForecastRow | null;
+
+        if (dailyForecastResult.error) {
+          console.error("[chart] Daily forecast query error:", dailyForecastResult.error.message);
+        }
         const dailyForecastData = dailyForecastResult.data as DailyForecastRow | null;
+
+        // Secondary parallel fetch: both ML sub-queries run concurrently
+        const [intradayPathResult, dailyForecastsResult] = await Promise.all([
+          isIntraday && intradayForecastData
+            ? supabase
+              .from("ml_forecast_paths_intraday")
+              .select("*")
+              .eq("symbol_id", symbolId)
+              .eq("timeframe", intradayHorizonTf)
+              .eq("horizon", "7d")
+              .gte("expires_at", expiryCutoffIso)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle()
+            : Promise.resolve({ data: null, error: null }),
+          includeML
+            ? supabase
+              .from("ml_forecasts")
+              .select("*")
+              .eq("symbol_id", symbolId)
+              .in("horizon", [...DAILY_FORECAST_HORIZONS])
+              .order("created_at", { ascending: false })
+            : Promise.resolve({ data: [], error: null }),
+        ]);
+
+        if (intradayPathResult.error) {
+          console.error("[chart] ml_forecast_paths_intraday query error:", intradayPathResult.error.message);
+        }
+        if (dailyForecastsResult.error) {
+          console.error("[chart] ml_forecasts query error:", dailyForecastsResult.error.message);
+        }
 
         if (isIntraday && intradayForecastData) {
           // --- Intraday branch ---
@@ -698,19 +736,7 @@ serve(async (req: Request): Promise<Response> => {
 
           const horizons: HorizonForecast[] = [];
 
-          // Also try to pull the path forecast for the 7d horizon
-          const { data: intradayPath } = await supabase
-            .from("ml_forecast_paths_intraday")
-            .select("*")
-            .eq("symbol_id", symbolId)
-            .eq("timeframe", intradayHorizonTf)
-            .eq("horizon", "7d")
-            .gte("expires_at", expiryCutoffIso)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          const intradayPathData = intradayPath as IntradayPathRow | null;
+          const intradayPathData = intradayPathResult.data as IntradayPathRow | null;
 
           if (
             intradayPathData &&
@@ -770,12 +796,7 @@ serve(async (req: Request): Promise<Response> => {
 
           // Also merge daily horizons onto intraday mlSummary
           if (dailyForecastData) {
-            const { data: dailyForecasts } = await supabase
-              .from("ml_forecasts")
-              .select("*")
-              .eq("symbol_id", symbolId)
-              .in("horizon", [...DAILY_FORECAST_HORIZONS])
-              .order("created_at", { ascending: false });
+            const dailyForecasts = dailyForecastsResult.data;
 
             if (Array.isArray(dailyForecasts)) {
               const latestByHorizon = new Map<string, Record<string, unknown>>();
@@ -815,13 +836,8 @@ serve(async (req: Request): Promise<Response> => {
           latestForecastRunAt = dailyForecastData.run_at ?? null;
           const conf = clampNumber(dailyForecastData.confidence, 0.5);
 
-          // Pull all daily forecasts by horizon
-          const { data: dailyForecasts } = await supabase
-            .from("ml_forecasts")
-            .select("*")
-            .eq("symbol_id", symbolId)
-            .in("horizon", [...DAILY_FORECAST_HORIZONS])
-            .order("created_at", { ascending: false });
+          // Use pre-fetched daily forecasts from the secondary Promise.all above
+          const dailyForecasts = dailyForecastsResult.data;
 
           if (Array.isArray(dailyForecasts) && dailyForecasts.length > 0) {
             const latestByHorizon = new Map<string, Record<string, unknown>>();
