@@ -18,114 +18,19 @@ enum WebViewLoadState: Equatable {
 // MARK: - Strategy Builder WebView
 
 /// Embeds the React Strategy Condition Builder via WKWebView.
-/// Provides a JS bridge so the native app can pass the selected symbol and receive condition updates.
 struct StrategyBuilderWebView: View {
     let symbol: String?
 
     @State private var loadState: WebViewLoadState = .loading
 
     var body: some View {
-        ZStack {
-            // Always render the WebView in the background so it loads immediately;
-            // overlay with progress/error UI as needed.
-            if !loadState.isFailed {
-                StrategyBuilderWebViewRepresentable(symbol: symbol, loadState: $loadState)
-            }
-
-            switch loadState {
-            case .loading:
-                ProgressView("Loading Strategy Builder…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(.background)
-            case .loaded:
-                EmptyView()
-            case .failed(let message):
-                WebViewFallbackView(title: "Strategy Builder Unavailable", message: message) {
-                    loadState = .loading
-                }
-            }
-        }
-        .navigationTitle("Condition Builder")
-    }
-}
-
-// MARK: - Strategy Builder NSViewRepresentable
-
-private struct StrategyBuilderWebViewRepresentable: NSViewRepresentable {
-    let symbol: String?
-    @Binding var loadState: WebViewLoadState
-
-    private let logger = Logger(subsystem: "com.swiftbolt.ml", category: "StrategyBuilderWebView")
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    func makeNSView(context: Context) -> WKWebView {
-        let config = WKWebViewConfiguration()
-        config.userContentController.add(context.coordinator, name: "strategyBuilder")
-
-        let webView = WKWebView(frame: .zero, configuration: config)
-        webView.navigationDelegate = context.coordinator
-
-        let urlString = frontendURL(path: "/strategy-builder")
-        if let url = URL(string: urlString) {
-            webView.load(URLRequest(url: url))
-        }
-        return webView
-    }
-
-    func updateNSView(_ webView: WKWebView, context: Context) {
-        guard let symbol else { return }
-        let escaped = symbol.replacingOccurrences(of: "'", with: "\\'")
-        webView.evaluateJavaScript("window.postMessage({ type: 'symbolChanged', symbol: '\(escaped)' }, '*');")
-    }
-
-    // MARK: - Coordinator
-
-    @MainActor
-    class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
-        var parent: StrategyBuilderWebViewRepresentable
-        private let logger = Logger(subsystem: "com.swiftbolt.ml", category: "StrategyBuilderWebView")
-
-        init(parent: StrategyBuilderWebViewRepresentable) {
-            self.parent = parent
-        }
-
-        func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-            parent.loadState = .loading
-        }
-
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            parent.loadState = .loaded
-            if let symbol = parent.symbol {
-                let escaped = symbol.replacingOccurrences(of: "'", with: "\\'")
-                webView.evaluateJavaScript("window.postMessage({ type: 'symbolChanged', symbol: '\(escaped)' }, '*');")
-            }
-        }
-
-        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            logger.error("Navigation failed: \(error.localizedDescription)")
-            parent.loadState = .failed(error.localizedDescription)
-        }
-
-        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            logger.error("Provisional navigation failed: \(error.localizedDescription)")
-            parent.loadState = .failed(error.localizedDescription)
-        }
-
-        // React → Native messages
-        nonisolated func userContentController(
-            _ controller: WKUserContentController,
-            didReceive message: WKScriptMessage
-        ) {
-            guard message.name == "strategyBuilder",
-                  let body = message.body as? [String: Any],
-                  let eventType = body["type"] as? String else { return }
-            let logger = Logger(subsystem: "com.swiftbolt.ml", category: "StrategyBuilderWebView")
-            logger.debug("Received JS event: \(eventType, privacy: .public)")
-            // Future: handle "conditionUpdated", "strategyActivated", "backtestRequested"
-        }
+        FrontendWebEmbedView(
+            path: "/strategy-builder",
+            messageName: "strategyBuilder",
+            navigationTitle: "Condition Builder",
+            loadingLabel: "Loading Strategy Builder…",
+            symbol: symbol
+        )
     }
 }
 
@@ -135,50 +40,82 @@ private struct StrategyBuilderWebViewRepresentable: NSViewRepresentable {
 struct BacktestResultsWebView: View {
     let symbol: String?
 
+    var body: some View {
+        FrontendWebEmbedView(
+            path: "/backtesting",
+            messageName: "backtestPanel",
+            navigationTitle: "Backtesting",
+            loadingLabel: "Loading Backtest Panel…",
+            symbol: symbol
+        )
+    }
+}
+
+// MARK: - Generic Frontend Embed View
+
+/// Reusable SwiftUI wrapper for embedding any React frontend route in a WKWebView.
+struct FrontendWebEmbedView: View {
+    let path: String
+    let messageName: String
+    let navigationTitle: String
+    let loadingLabel: String
+    let symbol: String?
+
     @State private var loadState: WebViewLoadState = .loading
 
     var body: some View {
         ZStack {
             if !loadState.isFailed {
-                BacktestResultsWebViewRepresentable(symbol: symbol, loadState: $loadState)
+                FrontendWebViewRepresentable(
+                    path: path,
+                    messageName: messageName,
+                    symbol: symbol,
+                    loadState: $loadState
+                )
             }
 
             switch loadState {
             case .loading:
-                ProgressView("Loading Backtest Panel…")
+                ProgressView(loadingLabel)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(.background)
             case .loaded:
                 EmptyView()
             case .failed(let message):
-                WebViewFallbackView(title: "Backtest Panel Unavailable", message: message) {
+                WebViewFallbackView(title: "\(navigationTitle) Unavailable", message: message) {
                     loadState = .loading
                 }
             }
         }
-        .navigationTitle("Backtesting")
+        .navigationTitle(navigationTitle)
     }
 }
 
-// MARK: - Backtest NSViewRepresentable
+// MARK: - NSViewRepresentable (single, parameterized)
 
-private struct BacktestResultsWebViewRepresentable: NSViewRepresentable {
+private struct FrontendWebViewRepresentable: NSViewRepresentable {
+    let path: String
+    let messageName: String
     let symbol: String?
     @Binding var loadState: WebViewLoadState
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
+        Coordinator(messageName: messageName, loadState: $loadState)
     }
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
-        config.userContentController.add(context.coordinator, name: "backtestPanel")
+        // Use a weak proxy to avoid the retain cycle:
+        // WKUserContentController holds script handlers strongly.
+        let proxy = WeakScriptHandler(context.coordinator)
+        config.userContentController.add(proxy, name: messageName)
+        // Prevent the WebView from navigating outside app-bound domains
+        config.limitsNavigationsToAppBoundDomains = true
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
 
-        let urlString = frontendURL(path: "/backtesting")
-        if let url = URL(string: urlString) {
+        if let url = URL(string: frontendURL(path: path)) {
             webView.load(URLRequest(url: url))
         }
         return webView
@@ -186,51 +123,114 @@ private struct BacktestResultsWebViewRepresentable: NSViewRepresentable {
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         guard let symbol else { return }
-        let escaped = symbol.replacingOccurrences(of: "'", with: "\\'")
-        webView.evaluateJavaScript("window.postMessage({ type: 'symbolChanged', symbol: '\(escaped)' }, '*');")
+        context.coordinator.currentSymbol = symbol
+        injectSymbol(symbol, into: webView)
     }
+
+    static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
+        nsView.configuration.userContentController.removeAllScriptMessageHandlers()
+    }
+
+    // MARK: - Coordinator
 
     @MainActor
     class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
-        var parent: BacktestResultsWebViewRepresentable
-        private let logger = Logger(subsystem: "com.swiftbolt.ml", category: "BacktestResultsWebView")
+        private let messageName: String
+        @Binding var loadState: WebViewLoadState
+        private let logger: Logger
+        /// Tracks the most recent symbol so it can be re-injected after page load.
+        var currentSymbol: String?
 
-        init(parent: BacktestResultsWebViewRepresentable) {
-            self.parent = parent
+        init(messageName: String, loadState: Binding<WebViewLoadState>) {
+            self.messageName = messageName
+            self._loadState = loadState
+            self.logger = Logger(subsystem: "com.swiftbolt.ml", category: "WebView.\(messageName)")
         }
 
+        // MARK: Navigation delegate
+
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-            parent.loadState = .loading
+            loadState = .loading
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            parent.loadState = .loaded
-            if let symbol = parent.symbol {
-                let escaped = symbol.replacingOccurrences(of: "'", with: "\\'")
-                webView.evaluateJavaScript("window.postMessage({ type: 'symbolChanged', symbol: '\(escaped)' }, '*');")
+            loadState = .loaded
+            // Re-inject symbol so React picks it up after the page finishes loading.
+            if let symbol = currentSymbol {
+                injectSymbol(symbol, into: webView)
             }
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             logger.error("Navigation failed: \(error.localizedDescription)")
-            parent.loadState = .failed(error.localizedDescription)
+            loadState = .failed(error.localizedDescription)
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
             logger.error("Provisional navigation failed: \(error.localizedDescription)")
-            parent.loadState = .failed(error.localizedDescription)
+            loadState = .failed(error.localizedDescription)
         }
+
+        /// Restrict navigation to localhost / 127.0.0.1 only.
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            guard let host = navigationAction.request.url?.host,
+                  allowedHosts.contains(host) else {
+                logger.warning("Blocked navigation to: \(navigationAction.request.url?.absoluteString ?? "unknown", privacy: .public)")
+                decisionHandler(.cancel)
+                return
+            }
+            decisionHandler(.allow)
+        }
+
+        // MARK: Script message handler (React → Native)
 
         nonisolated func userContentController(
             _ controller: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
-            guard message.name == "backtestPanel",
-                  let body = message.body as? [String: Any],
+            guard let body = message.body as? [String: Any],
                   let eventType = body["type"] as? String else { return }
-            let logger = Logger(subsystem: "com.swiftbolt.ml", category: "BacktestResultsWebView")
+            let logger = Logger(subsystem: "com.swiftbolt.ml", category: "WebView.bridge")
             logger.debug("Received JS event: \(eventType, privacy: .public)")
+
+            switch eventType {
+            case "conditionUpdated":
+                // Strategy conditions changed in React — notify native layer
+                NotificationCenter.default.post(name: .strategyConditionsUpdated, object: nil)
+            case "backtestRequested":
+                if let strategyId = body["strategyId"] as? String {
+                    NotificationCenter.default.post(
+                        name: .backtestRequested,
+                        object: nil,
+                        userInfo: ["strategyId": strategyId]
+                    )
+                }
+            default:
+                break
+            }
         }
+    }
+}
+
+// MARK: - Weak Script Handler Proxy
+
+/// Prevents WKUserContentController's strong reference from creating a retain cycle.
+private final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
+    weak var delegate: WKScriptMessageHandler?
+
+    init(_ delegate: WKScriptMessageHandler) {
+        self.delegate = delegate
+    }
+
+    func userContentController(
+        _ userContentController: WKUserContentController,
+        didReceive message: WKScriptMessage
+    ) {
+        delegate?.userContentController(userContentController, didReceive: message)
     }
 }
 
@@ -262,25 +262,48 @@ struct WebViewFallbackView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 400)
 
-            Button("Retry") {
-                onRetry()
-            }
-            .buttonStyle(.borderedProminent)
+            Button("Retry") { onRetry() }
+                .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
     }
 }
 
-// MARK: - URL Helper
+// MARK: - Notification Names
 
-/// Returns the frontend base URL + path. Reads FRONTEND_URL from env; falls back to localhost:5173.
+extension Notification.Name {
+    static let strategyConditionsUpdated = Notification.Name("strategyConditionsUpdated")
+    static let backtestRequested = Notification.Name("backtestRequested")
+}
+
+// MARK: - Helpers
+
+/// Allowed hosts for WebView navigation (localhost only in development).
+/// Add production hostname here when deploying.
+private let allowedHosts: Set<String> = ["localhost", "127.0.0.1"]
+
+/// Injects the selected symbol into the React app via window.postMessage.
+/// Uses JSONSerialization to safely encode all characters (backslash, quotes, Unicode).
+private func injectSymbol(_ symbol: String, into webView: WKWebView) {
+    let payload: [String: Any] = ["type": "symbolChanged", "symbol": symbol]
+    guard let data = try? JSONSerialization.data(withJSONObject: payload),
+          let json = String(data: data, encoding: .utf8) else { return }
+    webView.evaluateJavaScript("window.postMessage(\(json), '*');")
+}
+
+/// Returns the validated frontend base URL + path.
+/// Reads FRONTEND_URL from env; validates scheme and host; falls back to localhost:5173.
 private func frontendURL(path: String) -> String {
-    let base: String
-    if let env = ProcessInfo.processInfo.environment["FRONTEND_URL"], !env.isEmpty {
-        base = env.hasSuffix("/") ? String(env.dropLast()) : env
-    } else {
-        base = "http://localhost:5173"
+    if let env = ProcessInfo.processInfo.environment["FRONTEND_URL"],
+       !env.isEmpty,
+       let components = URLComponents(string: env),
+       let scheme = components.scheme,
+       let host = components.host,
+       ["http", "https"].contains(scheme),
+       allowedHosts.contains(host) {
+        let base = env.hasSuffix("/") ? String(env.dropLast()) : env
+        return base + path
     }
-    return base + path
+    return "http://localhost:5173" + path
 }

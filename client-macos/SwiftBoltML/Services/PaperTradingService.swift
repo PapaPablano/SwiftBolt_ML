@@ -110,6 +110,10 @@ final class PaperTradingService: ObservableObject {
 
     private let supabase = SupabaseService.shared.client
     private var realtimeChannel: RealtimeChannelV2?
+    /// Stored task handle so the subscription loop can be cancelled on re-entry or view disappear.
+    private var subscriptionTask: Task<Void, Never>?
+    /// Debouncer prevents full reload on every realtime event during burst updates.
+    private let reloadDebouncer = Debouncer(frequency: .slow) // 500ms
 
     func loadData() async {
         isLoading = true
@@ -128,22 +132,37 @@ final class PaperTradingService: ObservableObject {
     }
 
     func subscribeToPositions() async {
+        // Cancel any existing subscription loop before creating a new one.
+        subscriptionTask?.cancel()
+        await realtimeChannel?.unsubscribe()
+
         let channel = supabase.channel("paper_trading_positions")
         realtimeChannel = channel
+
+        // Scope subscription to the current user's rows for defense-in-depth
+        // (RLS provides server-side enforcement; this is an additional client filter).
+        let userId = supabase.auth.currentUser?.id.uuidString
         let changes = channel.postgresChange(
             AnyAction.self,
             schema: "public",
-            table: "paper_trading_positions"
+            table: "paper_trading_positions",
+            filter: userId.map { "user_id=eq.\($0)" }
         )
         await channel.subscribe()
-        Task { [weak self] in
+
+        subscriptionTask = Task { [weak self] in
             for await _ in changes {
-                await self?.loadData()
+                guard !Task.isCancelled else { break }
+                await self?.reloadDebouncer.debounce { [weak self] in
+                    await self?.loadData()
+                }
             }
         }
     }
 
     func unsubscribe() async {
+        subscriptionTask?.cancel()
+        subscriptionTask = nil
         await realtimeChannel?.unsubscribe()
         realtimeChannel = nil
     }
@@ -151,24 +170,33 @@ final class PaperTradingService: ObservableObject {
     // MARK: - Private
 
     private func fetchOpenPositions() async throws -> [PaperPosition] {
-        let response: [PaperPosition] = try await supabase
+        var query = supabase
             .from("paper_trading_positions")
-            .select("*")
+            .select("id,user_id,strategy_id,symbol_id,ticker,timeframe,entry_price,current_price,quantity,entry_time,direction,stop_loss_price,take_profit_price,status")
             .eq("status", value: "open")
             .order("entry_time", ascending: false)
-            .execute()
-            .value
+
+        // Client-side user scoping (defense-in-depth alongside RLS)
+        if let userId = supabase.auth.currentUser?.id {
+            query = query.eq("user_id", value: userId)
+        }
+
+        let response: [PaperPosition] = try await query.execute().value
         return response
     }
 
     private func fetchTradeHistory() async throws -> [PaperTrade] {
-        let response: [PaperTrade] = try await supabase
+        var query = supabase
             .from("paper_trading_trades")
-            .select("*")
+            .select("id,user_id,strategy_id,symbol_id,ticker,timeframe,entry_price,exit_price,quantity,direction,entry_time,exit_time,pnl,pnl_pct,trade_reason,created_at")
             .order("exit_time", ascending: false)
             .limit(100)
-            .execute()
-            .value
+
+        if let userId = supabase.auth.currentUser?.id {
+            query = query.eq("user_id", value: userId)
+        }
+
+        let response: [PaperTrade] = try await query.execute().value
         return response
     }
 
@@ -182,13 +210,13 @@ final class PaperTradingService: ObservableObject {
         let grossLoss = abs(losses.reduce(0) { $0 + $1.pnl })
         let profitFactor = grossLoss == 0 ? (grossWin > 0 ? Double.infinity : 0) : grossWin / grossLoss
 
-        // Simple max drawdown: running peak minus trough
-        var peak = 0.0, trough = 0.0, maxDD = 0.0, running = 0.0
+        // Max drawdown: running peak minus current equity
+        var peak = 0.0, maxDD = 0.0, running = 0.0
         for trade in trades.reversed() {
             running += trade.pnl
             if running > peak { peak = running }
-            trough = running - peak
-            if trough < maxDD { maxDD = trough }
+            let drawdown = running - peak
+            if drawdown < maxDD { maxDD = drawdown }
         }
 
         return PositionMetrics(
