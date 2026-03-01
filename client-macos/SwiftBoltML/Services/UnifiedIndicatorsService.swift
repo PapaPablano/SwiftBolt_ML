@@ -8,7 +8,7 @@ class UnifiedIndicatorsService: ObservableObject {
     
     @Published var currentIndicators: TechnicalIndicatorsResponse?
     @Published var selectedSymbol: String = "AAPL"
-    @Published var selectedTimeframe: String = "1D"
+    @Published var selectedTimeframe: String = "d1"
     
     private let apiClient = APIClient.shared
     
@@ -181,7 +181,8 @@ class UnifiedIndicatorsService: ObservableObject {
     // MARK: - Fetch Current Indicators
     
     func fetchIndicators(symbol: String, timeframe: String) async throws {
-        let response = try await apiClient.fetchTechnicalIndicators(symbol: symbol, timeframe: timeframe)
+        let apiTimeframe = Timeframe(from: timeframe)?.apiToken ?? "d1"
+        let response = try await apiClient.fetchTechnicalIndicators(symbol: symbol, timeframe: apiTimeframe)
         await MainActor.run {
             self.currentIndicators = response
             self.selectedSymbol = symbol

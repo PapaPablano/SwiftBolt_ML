@@ -1,12 +1,21 @@
 import SwiftUI
 
+enum StrategyPlatformSection: Hashable {
+    case builder
+    case paperTrading
+    case backtesting
+}
+
 enum SidebarSection: Hashable {
     case stocks
     case portfolio
     case multileg
     case predictions
     case tradestation
+    case strategyPlatform(StrategyPlatformSection)
+    #if DEBUG
     case devtools
+    #endif
 }
 
 struct ContentView: View {
@@ -35,9 +44,19 @@ struct ContentView: View {
                             .environmentObject(appViewModel)
                     case .tradestation:
                         IntegratedStrategyBuilder()
-                    default:
+                    case .strategyPlatform(.builder):
+                        StrategyBuilderWebView(symbol: appViewModel.selectedSymbol?.ticker)
+                    case .strategyPlatform(.paperTrading):
+                        PaperTradingDashboardView()
+                    case .strategyPlatform(.backtesting):
+                        BacktestResultsWebView(symbol: appViewModel.selectedSymbol?.ticker)
+                    case .stocks:
                         DetailView()
                             .environmentObject(appViewModel)
+                    #if DEBUG
+                    case .devtools:
+                        DevToolsView()
+                    #endif
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -47,12 +66,7 @@ struct ContentView: View {
         .task {
             await appViewModel.checkSupabaseConnectivity()
         }
-        .onChange(of: appViewModel.selectedSymbol) { oldValue, newValue in
-            print("[DEBUG] ========================================")
-            print("[DEBUG] ContentView detected selectedSymbol change")
-            print("[DEBUG] - Old: \(oldValue?.ticker ?? "nil")")
-            print("[DEBUG] - New: \(newValue?.ticker ?? "nil")")
-            print("[DEBUG] ========================================")
+        .onChange(of: appViewModel.selectedSymbol) { _, _ in
             // Defer to avoid publishing changes from within view updates
             DispatchQueue.main.async { activeSection = .stocks }
         }
@@ -91,6 +105,20 @@ struct SidebarView: View {
                     }
                 } header: {
                     Text("Strategy")
+                }
+
+                Section {
+                    NavigationLink(value: SidebarSection.strategyPlatform(.builder)) {
+                        Label("Condition Builder", systemImage: "checklist")
+                    }
+                    NavigationLink(value: SidebarSection.strategyPlatform(.paperTrading)) {
+                        Label("Paper Trading", systemImage: "dollarsign.circle")
+                    }
+                    NavigationLink(value: SidebarSection.strategyPlatform(.backtesting)) {
+                        Label("Backtesting", systemImage: "clock.arrow.2.circlepath")
+                    }
+                } header: {
+                    Text("Strategy Platform")
                 }
 
                 Section("Navigation") {

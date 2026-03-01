@@ -163,11 +163,12 @@ async function handleUpdate(supabase: ReturnType<typeof getSupabaseClient>, user
   
   const body = await req.json();
   
-  const updates: Partial<StrategyRow> = {};
+  const updates: Record<string, unknown> = {};
   if (body.name !== undefined) updates.name = body.name;
   if (body.description !== undefined) updates.description = body.description;
   if (body.config !== undefined) updates.config = body.config;
   if (body.is_active !== undefined) updates.is_active = body.is_active;
+  if (body.paper_trading_enabled !== undefined) updates.paper_trading_enabled = body.paper_trading_enabled;
   
   const { data, error } = await supabase
     .from("strategy_user_strategies")
