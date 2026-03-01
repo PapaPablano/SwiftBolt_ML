@@ -221,26 +221,29 @@ struct ChartMetadata: Codable, Equatable {
 struct DataQuality: Codable, Equatable {
     let dataAgeHours: Int?
     let isStale: Bool
-    let hasRecentData: Bool
-    let historicalDepthDays: Int
+    // Legacy fields from chart-data-v2 / chart-read (optional for backward compat)
+    let hasRecentData: Bool?
+    let historicalDepthDays: Int?
+    // New field from unified /chart endpoint
+    let slaHours: Double?
     let sufficientForML: Bool
     let barCount: Int
-    
+
     var statusDescription: String {
         if isStale {
-            return "⚠️ Data is stale (> 24 hours old)"
-        } else if hasRecentData {
-            return "✅ Fresh data (< 4 hours old)"
+            return "Data is stale (> 24 hours old)"
+        } else if hasRecentData == true {
+            return "Fresh data (< 4 hours old)"
         } else {
-            return "🔄 Recent data (< 24 hours old)"
+            return "Recent data (< 24 hours old)"
         }
     }
-    
+
     var mlTrainingStatus: String {
         if sufficientForML {
-            return "✅ Sufficient for ML (\(barCount) bars)"
+            return "Sufficient for ML (\(barCount) bars)"
         } else {
-            return "⚠️ Insufficient for ML (need 250+ bars, have \(barCount))"
+            return "Insufficient for ML (need 250+ bars, have \(barCount))"
         }
     }
 }
@@ -263,7 +266,7 @@ extension ChartDataV2Response {
     }
     
     var isDataFresh: Bool {
-        dataQuality?.hasRecentData ?? false
+        dataQuality?.hasRecentData ?? !(dataQuality?.isStale ?? true)
     }
     
     var isDataStale: Bool {
@@ -283,4 +286,121 @@ extension ChartDataV2Response {
             return "\(days) days old"
         }
     }
+}
+
+// MARK: - Unified Chart Response (GET /chart)
+
+/// Response from the unified GET /chart endpoint.
+/// Replaces the 3-function fallback chain (chart-data-v2 → chart-read → chart).
+struct UnifiedChartResponse: Codable {
+    let symbol: String
+    let symbolId: String
+    let timeframe: String
+    let assetType: String
+    /// Flat bar array: historical + intraday + forecast bars (forecast bars have isForecast=true).
+    let bars: [OHLCBar]
+    let optionsRanks: [UnifiedOptionsRank]
+    let mlSummary: MLSummary?
+    let indicators: IndicatorData?
+    let meta: UnifiedChartMeta
+    let dataQuality: DataQuality
+    let freshness: UnifiedFreshness
+    let futures: UnifiedFuturesData?
+    let layers: UnifiedChartLayers?
+
+    enum CodingKeys: String, CodingKey {
+        case symbol, timeframe, bars, optionsRanks, mlSummary, indicators, meta,
+             dataQuality, freshness, futures, layers
+        case symbolId = "symbol_id"
+        case assetType = "asset_type"
+    }
+
+    /// Return only the non-forecast bars (historical + intraday).
+    var historicalBars: [OHLCBar] {
+        // OHLCBar does not carry is_forecast — forecast bars were appended by the backend
+        // with provider="ml_forecast". Use layers when present; otherwise return all bars
+        // (the unified endpoint already filters them when includeForecast=false).
+        if let layers {
+            return layers.historical.data + layers.intraday.data
+        }
+        return bars
+    }
+
+    /// Convert to the existing ChartResponse type so the rest of the view model works unchanged.
+    func toChartResponse(assetType: String) -> ChartResponse {
+        ChartResponse(
+            symbol: symbol,
+            assetType: assetType,
+            timeframe: timeframe,
+            bars: historicalBars,
+            mlSummary: mlSummary,
+            indicators: indicators,
+            superTrendAI: nil,
+            dataQuality: dataQuality,
+            refresh: nil
+        )
+    }
+}
+
+/// A simplified layer entry in the optional ?layers=true response.
+struct UnifiedLayerEntry: Codable {
+    let count: Int
+    let data: [OHLCBar]
+}
+
+struct UnifiedChartLayers: Codable {
+    let historical: UnifiedLayerEntry
+    let intraday: UnifiedLayerEntry
+    let forecast: UnifiedLayerEntry
+}
+
+/// Meta block from the unified /chart endpoint.
+struct UnifiedChartMeta: Codable {
+    let lastBarTs: String?
+    let dataStatus: String
+    let isMarketOpen: Bool
+    let totalBars: Int
+    let hasPendingSplits: Bool
+    let latestForecastRunAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case dataStatus, isMarketOpen, totalBars, hasPendingSplits, latestForecastRunAt
+        case lastBarTs = "lastBarTs"
+    }
+}
+
+/// Freshness block from the unified /chart endpoint.
+struct UnifiedFreshness: Codable {
+    let ageMinutes: Double?
+    let slaMinutes: Double
+    let isWithinSla: Bool
+}
+
+/// Futures resolution metadata from the unified /chart endpoint.
+struct UnifiedFuturesData: Codable {
+    let requestedSymbol: String
+    let resolvedSymbol: String
+    let isContinuous: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case requestedSymbol = "requested_symbol"
+        case resolvedSymbol = "resolved_symbol"
+        case isContinuous = "is_continuous"
+    }
+}
+
+/// Options rank entry from the unified /chart endpoint.
+struct UnifiedOptionsRank: Codable {
+    let expiry: String
+    let strike: Double
+    let side: String
+    let mlScore: Double
+    let impliedVol: Double
+    let delta: Double
+    let gamma: Double
+    let theta: Double
+    let vega: Double
+    let openInterest: Double
+    let volume: Double
+    let runAt: String
 }

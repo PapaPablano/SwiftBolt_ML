@@ -750,6 +750,51 @@ final class APIClient {
         return try await performRequestWithHeaderLogging(request, symbol: symbol, timeframe: timeframe)
     }
     
+    // MARK: - Unified Chart Endpoint
+
+    /// Fetch chart data from the unified GET /chart endpoint.
+    ///
+    /// This is the single canonical chart read path — a one-round-trip replacement for the
+    /// three-function fallback chain (chart-data-v2 → chart-read → chart).
+    ///
+    /// - Parameters:
+    ///   - symbol: Ticker symbol (e.g. "AAPL", "/ES", "AAPL240119C00150000")
+    ///   - timeframe: Bar interval API token (e.g. "d1", "h1", "m15", "w1")
+    ///   - days: Number of calendar days of history to return (default 180)
+    ///   - includeForecast: Whether to append ML forecast bars (default true)
+    ///   - useLayers: Whether to include optional `layers` field (default false)
+    func fetchUnifiedChart(
+        symbol: String,
+        timeframe: String,
+        days: Int = 180,
+        includeForecast: Bool = true,
+        useLayers: Bool = false
+    ) async throws -> UnifiedChartResponse {
+        var components = URLComponents(url: functionURL("chart"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "symbol", value: symbol),
+            URLQueryItem(name: "timeframe", value: timeframe),
+            URLQueryItem(name: "days", value: String(days)),
+            URLQueryItem(name: "include_forecast", value: includeForecast ? "true" : "false"),
+        ]
+        if useLayers {
+            components.queryItems?.append(URLQueryItem(name: "layers", value: "true"))
+        }
+
+        guard let url = components.url else { throw APIError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("no-cache, no-store, must-revalidate", forHTTPHeaderField: "Cache-Control")
+        request.setValue(UUID().uuidString, forHTTPHeaderField: "X-Request-ID")
+
+        print("[DEBUG] Fetching unified chart: symbol=\(symbol), timeframe=\(timeframe), days=\(days)")
+        return try await performRequest(request)
+    }
+
     /// Request binary (up/down) forecast from ML API and write to ml_forecasts for chart overlay.
     /// Call this then reload chart (e.g. loadChart) to show the new forecast.
     func refreshBinaryForecast(symbol: String, horizons: [Int] = [1, 5, 10]) async throws {

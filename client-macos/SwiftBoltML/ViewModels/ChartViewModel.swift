@@ -953,188 +953,56 @@ final class ChartViewModel: ObservableObject {
             }
             
             do {
-                if useV2API && !v2UnsupportedSymbols.contains(symbol.ticker) {
-                    let response: ChartDataV2Response
-                    do {
-                        // Backend automatically separates today's bars into intraday layer
-                        // Just fetch the timeframe data and trust the layer separation
-                        response = try await APIClient.shared.fetchChartV2(
-                            symbol: symbol.ticker,
-                            timeframe: timeframe.apiToken,
-                            includeForecast: true
-                        )
-                    } catch {
-                        print("[DEBUG] chart-data-v2 failed: \(error). Falling back to chart-read.")
-                        // Track that v2 doesn't support this symbol
-                        if error.localizedDescription.contains("404") || error.localizedDescription.contains("not found") {
-                            v2UnsupportedSymbols.insert(symbol.ticker)
-                            print("[DEBUG] Marked \(symbol.ticker) as v2-unsupported, will skip v2 on next load")
-                        }
-                        let fallback = try await APIClient.shared.fetchChartRead(
-                            symbol: symbol.ticker,
-                            timeframe: timeframe.apiToken,
-                            includeMLData: true
-                        )
-                        let fallbackBars = fallback.bars
-                        guard !Task.isCancelled else {
-                            print("[DEBUG] Load cancelled after fallback fetch")
-                            return
-                        }
+                // ── Unified /chart endpoint (single round-trip, replaces 3-function chain) ──
+                let unified = try await APIClient.shared.fetchUnifiedChart(
+                    symbol: symbol.ticker,
+                    timeframe: timeframe.apiToken,
+                    days: 180,
+                    includeForecast: true
+                )
 
-                        print("[DEBUG] ChartViewModel.loadChart() - chart-read fallback SUCCESS!")
-                        print("[DEBUG] - Bars: \(fallbackBars.count)")
-                        print("[DEBUG] - ML: \(fallback.mlSummary != nil ? "✓" : "✗")")
-
-                        guard currentLoadId == loadId else { return }
-                        chartData = fallback
-                        updateSelectedForecastHorizon(from: fallback.mlSummary)
-
-                        if indicatorConfig.useWebChart {
-                            chartDataV2 = convertToV2Response(fallback)
-                        } else {
-                            chartDataV2 = nil
-                        }
-                        // Set loading false immediately so UI shows chart before any refresh/async work
-                        if currentLoadId == loadId { isLoading = false }
-
-                        ChartCache.saveBars(symbol: symbol.ticker, timeframe: timeframe, bars: fallbackBars)
-                        scheduleIndicatorRecalculation()
-
-                        Task { await loadBinaryForecastWhenCandlesPresent(symbol: symbol.ticker) }
-
-                        if liveQuoteTask == nil || liveQuoteTask?.isCancelled == true {
-                            startLiveQuoteUpdates()
-                        }
-
-                        if chartRefreshTask == nil || chartRefreshTask?.isCancelled == true {
-                            startChartAutoRefresh()
-                        }
-                        return
-                    }
-
-                    guard !Task.isCancelled else {
-                        print("[DEBUG] Load cancelled after fetch")
-                        return
-                    }
-
-                    let bars = buildBars(from: response, for: timeframe)
-                    print("[DEBUG] ChartViewModel.loadChart() - chart-data-v2 SUCCESS!")
-                    print("[DEBUG] - Bars: \(bars.count)")
-                    print("[DEBUG] - ML: \(response.mlSummary != nil ? "✓" : "✗")")
-
-                    guard currentLoadId == loadId else { return }
-                    chartData = ChartResponse(
-                        symbol: symbol.ticker,
-                        assetType: symbol.assetType,
-                        timeframe: timeframe.apiToken,
-                        bars: bars,
-                        mlSummary: response.mlSummary,
-                        indicators: response.indicators,
-                        superTrendAI: response.superTrendAI,
-                        dataQuality: response.dataQuality,
-                        refresh: nil
-                    )
-                    updateSelectedForecastHorizon(from: response.mlSummary)
-                    if currentLoadId == loadId { isLoading = false }
-
-                    if indicatorConfig.useWebChart {
-                        // For d1 timeframe, create a new response with aggregated bars instead of raw h1 bars
-                        if timeframe == .d1 {
-                            // Create new layers with aggregated bars in historical, empty intraday
-                            let aggregatedLayers = ChartLayers(
-                                historical: LayerData(
-                                    count: bars.count,
-                                    provider: response.layers.historical.provider,
-                                    data: bars,
-                                    oldestBar: bars.first?.ts.ISO8601Format(),
-                                    newestBar: bars.last?.ts.ISO8601Format()
-                                ),
-                                intraday: LayerData(
-                                    count: 0,
-                                    provider: "",
-                                    data: [],
-                                    oldestBar: nil,
-                                    newestBar: nil
-                                ),
-                                forecast: response.layers.forecast
-                            )
-
-                            // Create new response with aggregated layers
-                            chartDataV2 = ChartDataV2Response(
-                                symbol: response.symbol,
-                                timeframe: response.timeframe,
-                                layers: aggregatedLayers,
-                                metadata: response.metadata,
-                                dataQuality: response.dataQuality,
-                                mlSummary: response.mlSummary,
-                                indicators: response.indicators,
-                                superTrendAI: response.superTrendAI
-                            )
-                        } else {
-                            chartDataV2 = response
-                        }
-                    } else {
-                        chartDataV2 = nil
-                    }
-
-                    // Save bars to cache for instant subsequent loads
-                    ChartCache.saveBars(symbol: symbol.ticker, timeframe: timeframe, bars: bars)
-
-                    // Explicitly recalculate indicators with new data
-                    scheduleIndicatorRecalculation()
-
-                    Task { await loadBinaryForecastWhenCandlesPresent(symbol: symbol.ticker) }
-
-                    // Start live quotes (streaming price updates every 5s during market hours)
-                    if liveQuoteTask == nil || liveQuoteTask?.isCancelled == true {
-                        startLiveQuoteUpdates()
-                    }
-
-                    // Start chart auto-refresh based on timeframe (15m/1h/4h/daily)
-                    if chartRefreshTask == nil || chartRefreshTask?.isCancelled == true {
-                        startChartAutoRefresh()
-                    }
-                } else {
-                    // Use legacy API
-                    let response = try await APIClient.shared.fetchChart(
-                        symbol: symbol.ticker,
-                        timeframe: timeframe.apiToken
-                    )
-
-                    // Check if task was cancelled
-                    guard !Task.isCancelled else {
-                        print("[DEBUG] ChartViewModel.loadChart() - CANCELLED")
-                        return
-                    }
-
-                    print("[DEBUG] ChartViewModel.loadChart() - SUCCESS!")
-                    print("[DEBUG] - Received \(response.bars.count) bars")
-                    print("[DEBUG] - Setting chartData property...")
-                    guard currentLoadId == loadId else { return }
-                    chartData = response
-                    updateSelectedForecastHorizon(from: response.mlSummary)
-                    if currentLoadId == loadId { isLoading = false }
-                    print("[DEBUG] - chartData is now: \(chartData == nil ? "nil" : "non-nil with \(chartData!.bars.count) bars")")
-
-                    // Save bars to cache
-                    ChartCache.saveBars(symbol: symbol.ticker, timeframe: timeframe, bars: response.bars)
-
-                    // Explicitly recalculate indicators with new data
-                    scheduleIndicatorRecalculation()
-
-                    Task { await loadBinaryForecastWhenCandlesPresent(symbol: symbol.ticker) }
-
-                    // Start live quotes (streaming price updates every 5s during market hours)
-                    if liveQuoteTask == nil || liveQuoteTask?.isCancelled == true {
-                        startLiveQuoteUpdates()
-                    }
-
-                    // Start chart auto-refresh based on timeframe
-                    if chartRefreshTask == nil || chartRefreshTask?.isCancelled == true {
-                        startChartAutoRefresh()
-                    }
+                guard !Task.isCancelled else {
+                    print("[DEBUG] Load cancelled after unified chart fetch")
+                    return
                 }
-            
+
+                let historicalBars = unified.historicalBars
+                print("[DEBUG] ChartViewModel.loadChart() - unified /chart SUCCESS!")
+                print("[DEBUG] - Bars (historical): \(historicalBars.count), total: \(unified.bars.count)")
+                print("[DEBUG] - ML: \(unified.mlSummary != nil ? "✓" : "✗")")
+
+                guard currentLoadId == loadId else { return }
+
+                // Map to existing ChartResponse so all downstream consumers work unchanged
+                chartData = unified.toChartResponse(assetType: symbol.assetType)
+                updateSelectedForecastHorizon(from: unified.mlSummary)
+                if currentLoadId == loadId { isLoading = false }
+
+                // Build WebChart V2 layer structure for AdvancedChartView / WebChartView
+                if indicatorConfig.useWebChart {
+                    chartDataV2 = convertToV2Response(chartData!)
+                } else {
+                    chartDataV2 = nil
+                }
+
+                // Save bars to cache for instant subsequent loads
+                ChartCache.saveBars(symbol: symbol.ticker, timeframe: timeframe, bars: historicalBars)
+
+                // Recalculate S&R and AI indicators with new data
+                scheduleIndicatorRecalculation()
+
+                Task { await loadBinaryForecastWhenCandlesPresent(symbol: symbol.ticker) }
+
+                // Start live quotes (streaming price updates every 5s during market hours)
+                if liveQuoteTask == nil || liveQuoteTask?.isCancelled == true {
+                    startLiveQuoteUpdates()
+                }
+
+                // Start chart auto-refresh based on timeframe (15m/1h/4h/daily)
+                if chartRefreshTask == nil || chartRefreshTask?.isCancelled == true {
+                    startChartAutoRefresh()
+                }
+
             if currentLoadId == loadId {
                 errorMessage = nil
             }

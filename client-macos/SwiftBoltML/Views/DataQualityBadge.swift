@@ -39,17 +39,17 @@ struct DataQualityBadge: View {
     private func statusIcon(for quality: DataQuality) -> String {
         if quality.isStale {
             return "exclamationmark.triangle.fill"
-        } else if quality.hasRecentData {
+        } else if quality.hasRecentData == true {
             return "checkmark.circle.fill"
         } else {
             return "clock.fill"
         }
     }
-    
+
     private func statusColor(for quality: DataQuality) -> Color {
         if quality.isStale {
             return .orange
-        } else if quality.hasRecentData {
+        } else if quality.hasRecentData == true {
             return .green
         } else {
             return .blue
@@ -75,7 +75,9 @@ struct DataQualityBadge: View {
         var details: [String] = []
         
         details.append(quality.statusDescription)
-        details.append("Historical depth: \(quality.historicalDepthDays) days")
+        if let depth = quality.historicalDepthDays {
+            details.append("Historical depth: \(depth) days")
+        }
         details.append(quality.mlTrainingStatus)
         
         return details.joined(separator: "\n")
@@ -133,8 +135,13 @@ struct DataQualityBadgePopover: View {
                     Text("Historical Depth")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Text("\(quality.historicalDepthDays) days (\(quality.barCount) bars)")
-                        .font(.body)
+                    if let depth = quality.historicalDepthDays {
+                        Text("\(depth) days (\(quality.barCount) bars)")
+                            .font(.body)
+                    } else {
+                        Text("\(quality.barCount) bars")
+                            .font(.body)
+                    }
                 }
             }
             
@@ -196,26 +203,29 @@ struct DataQualityBadge_Previews: PreviewProvider {
                 isStale: false,
                 hasRecentData: true,
                 historicalDepthDays: 365,
+                slaHours: 4,
                 sufficientForML: true,
                 barCount: 500
             ))
-            
+
             // Recent but not fresh
             DataQualityBadge(dataQuality: DataQuality(
                 dataAgeHours: 12,
                 isStale: false,
                 hasRecentData: false,
                 historicalDepthDays: 180,
+                slaHours: 4,
                 sufficientForML: true,
                 barCount: 300
             ))
-            
+
             // Stale data
             DataQualityBadge(dataQuality: DataQuality(
                 dataAgeHours: 48,
                 isStale: true,
                 hasRecentData: false,
                 historicalDepthDays: 90,
+                slaHours: 4,
                 sufficientForML: false,
                 barCount: 150
             ))
