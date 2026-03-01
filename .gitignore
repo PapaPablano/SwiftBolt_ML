@@ -8,6 +8,9 @@
 *.swp
 *~
 
+# Secrets (never commit)
+client-macos/Secrets.xcconfig
+
 # Xcode
 build/
 DerivedData/
