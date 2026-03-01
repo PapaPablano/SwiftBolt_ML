@@ -8,6 +8,13 @@ const corsHeaders = {
 const TRADESTATION_BASE_URL = "https://api.tradestation.com/v3";
 const TRADESTATION_SIM_URL = 'https://sim-api.tradestation.com/v3'
 
+function errorResponse(message: string, status: number): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 interface TradeStationCredential {
   access_token: string
   refresh_token: string
@@ -195,8 +202,12 @@ async function handleAuth(req: Request, supabase: any, userId: string) {
 
     if (action === 'exchange') {
       // Exchange authorization code for tokens
-      const clientId = Deno.env.get('TRADESTATION_CLIENT_ID') || 'x3IYfpnSYevmXREQuW34LJUyeXaHBK'
-      
+      const clientId = Deno.env.get('TRADESTATION_CLIENT_ID');
+      if (!clientId) {
+        console.error('[ts-strategies] TRADESTATION_CLIENT_ID not configured');
+        return errorResponse('TradeStation integration not configured', 503);
+      }
+
       const tokenResponse = await fetch('https://signin.tradestation.com/oauth/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -252,8 +263,12 @@ async function handleAuth(req: Request, supabase: any, userId: string) {
         })
       }
 
-      const clientId = Deno.env.get('TRADESTATION_CLIENT_ID') || 'x3IYfpnSYevmXREQuW34LJUyeXaHBK'
-      
+      const clientId = Deno.env.get('TRADESTATION_CLIENT_ID');
+      if (!clientId) {
+        console.error('[ts-strategies] TRADESTATION_CLIENT_ID not configured');
+        return errorResponse('TradeStation integration not configured', 503);
+      }
+
       const refreshResponse = await fetch('https://signin.tradestation.com/oauth/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -338,7 +353,14 @@ async function handleExecute(req: Request, supabase: any, userId: string) {
       body: new URLSearchParams({
         grant_type: 'refresh_token',
         refresh_token: creds.refresh_token,
-        client_id: Deno.env.get('TRADESTATION_CLIENT_ID') || 'x3IYfpnSYevmXREQuW34LJUyeXaHBK'
+        client_id: (() => {
+          const id = Deno.env.get('TRADESTATION_CLIENT_ID');
+          if (!id) {
+            console.error('[ts-strategies] TRADESTATION_CLIENT_ID not configured');
+            throw new Error('TradeStation integration not configured');
+          }
+          return id;
+        })()
       })
     })
     const tokens = await refreshResponse.json()

@@ -19,6 +19,7 @@ import {
   saveStrategyToSupabase,
   updateStrategyInSupabase,
   runBacktestViaAPI,
+  type BacktestJobResult,
 } from '../lib/backtestService';
 import BacktestResultsPanel from './BacktestResultsPanel';
 
@@ -116,8 +117,8 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    const savedId = await saveStrategyToSupabase(newStrategy);
-    if (savedId) newStrategy.id = savedId;
+    const saveResult: BacktestJobResult = await saveStrategyToSupabase(newStrategy);
+    if (saveResult.success) newStrategy.id = saveResult.jobId;
     setStrategies([...strategies, newStrategy]);
     setSelectedStrategy(newStrategy);
     setIsCreating(false);

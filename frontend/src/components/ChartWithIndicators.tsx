@@ -15,8 +15,7 @@ import { IndicatorPanel } from './IndicatorPanel';
 import { PivotLevelsPanel } from './PivotLevelsPanel';
 import { StrategyBacktestPanel } from './StrategyBacktestPanel';
 import type { BacktestResult } from '../types/strategyBacktest';
-import { useIndicators } from '../hooks/useIndicators';
-import { usePivotLevels } from '../hooks/usePivotLevels';
+import { useSupportResistance } from '../hooks/useSupportResistance';
 
 interface ChartWithIndicatorsProps {
   symbol: string;
@@ -45,21 +44,21 @@ export const ChartWithIndicators: React.FC<ChartWithIndicatorsProps> = ({
 }) => {
   const [activePanel, setActivePanel] = useState<'analysis' | 'pivots' | 'strategy'>('strategy');
 
-  // Fetch support/resistance indicators
-  const { data, loading, error } = useIndicators(symbol, horizon);
-
-  // Fetch pivot levels
-  const { pivotLevels, metrics, loading: pivotLoading, error: pivotError } = usePivotLevels(
-    symbol,
-    horizon
-  );
+  // Single fetch for both S/R indicators and pivot levels — one poll per 30s cycle.
+  const {
+    srData,
+    pivotLevels,
+    pivotMetrics,
+    loading,
+    error,
+  } = useSupportResistance(symbol, horizon);
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
       {/* Chart (takes 3 columns on xl desktop) */}
       <div className="xl:col-span-3">
         <div className="rounded-lg bg-gray-900 p-4 md:p-6 shadow-xl border border-gray-800">
-          <TradingViewChart symbol={symbol} horizon={horizon} daysBack={daysBack} srData={data} backtestTrades={backtestResult?.trades ?? null} />
+          <TradingViewChart symbol={symbol} horizon={horizon} daysBack={daysBack} srData={srData} backtestTrades={backtestResult?.trades ?? null} />
         </div>
       </div>
 
@@ -67,9 +66,9 @@ export const ChartWithIndicators: React.FC<ChartWithIndicatorsProps> = ({
       <div className="xl:col-span-2 min-w-0">
         <div className="bg-gray-900 rounded-lg p-4 shadow-xl border border-gray-800 h-full min-h-[400px]">
           <Tabs activeTab={activePanel} onTabChange={setActivePanel} />
-          
-          {activePanel === 'analysis' && <IndicatorPanel data={data} loading={loading} error={error} />}
-          {activePanel === 'pivots' && <PivotLevelsPanel pivotLevels={pivotLevels} metrics={metrics} loading={pivotLoading} error={pivotError} />}
+
+          {activePanel === 'analysis' && <IndicatorPanel data={srData} loading={loading} error={error} />}
+          {activePanel === 'pivots' && <PivotLevelsPanel pivotLevels={pivotLevels} metrics={pivotMetrics} loading={loading} error={error} />}
           {activePanel === 'strategy' && (
             <StrategyBacktestPanel
               symbol={symbol}

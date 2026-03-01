@@ -5,7 +5,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 import { callFastApi } from "../_shared/fastapi-client.ts";
-import { YFinanceClient } from "../_shared/providers/yfinance-client.ts";
 
 interface BacktestJob {
   id: string;
@@ -75,9 +74,8 @@ async function claimJob(supabase: ReturnType<typeof getSupabaseClient>): Promise
   return job as BacktestJob;
 }
 
-const yfinance = new YFinanceClient();
-
 async function fetchMarketData(
+  supabase: ReturnType<typeof getSupabaseClient>,
   symbol: string,
   startDate: string,
   endDate: string,
@@ -90,41 +88,50 @@ async function fetchMarketData(
   closes: number[];
   volumes: number[];
 }> {
-  const start = Math.floor(new Date(startDate).getTime() / 1000);
-  const end = Math.floor(new Date(endDate).getTime() / 1000);
+  const start = new Date(startDate).toISOString();
+  const end = new Date(endDate).toISOString();
   const tf = timeframe && timeframe !== "" ? timeframe : "d1";
 
-  try {
-    const bars = await yfinance.getHistoricalBars({
-      symbol: symbol.toUpperCase(),
-      timeframe: tf,
-      start,
-      end,
-    });
+  // Look up symbol_id from the symbols table
+  const { data: symbolRow } = await supabase
+    .from("symbols")
+    .select("id")
+    .eq("ticker", symbol.toUpperCase())
+    .single();
 
-    if (!bars || bars.length === 0) {
-      console.warn(`[BacktestWorker] No Yahoo Finance data for ${symbol} ${tf}; using mock fallback`);
-      return generateMockData(startDate, endDate);
-    }
-
-    const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(tf);
-    const dates = bars.map((b) =>
-      isIntraday
-        ? new Date(b.timestamp * 1000).toISOString()
-        : new Date(b.timestamp * 1000).toISOString().split("T")[0]
-    );
-    const opens = bars.map((b) => b.open);
-    const highs = bars.map((b) => b.high);
-    const lows = bars.map((b) => b.low);
-    const closes = bars.map((b) => b.close);
-    const volumes = bars.map((b) => b.volume);
-
-    console.log(`[BacktestWorker] Fetched ${bars.length} bars for ${symbol} from Yahoo Finance`);
-    return { dates, opens, highs, lows, closes, volumes };
-  } catch (e) {
-    console.error(`[BacktestWorker] Yahoo Finance fetch failed for ${symbol}:`, e);
-    return generateMockData(startDate, endDate);
+  if (!symbolRow) {
+    throw new Error(`Symbol ${symbol} not found in database`);
   }
+
+  // Fetch bars from ohlc_bars_v2
+  const { data: bars, error: barsError } = await supabase
+    .from("ohlc_bars_v2")
+    .select("ts, open, high, low, close, volume")
+    .eq("symbol_id", symbolRow.id)
+    .eq("timeframe", tf)
+    .gte("ts", start)
+    .lte("ts", end)
+    .order("ts", { ascending: true });
+
+  if (barsError || !bars || bars.length === 0) {
+    console.warn(`[BacktestWorker] No data in ohlc_bars_v2 for ${symbol} ${tf}, range ${start} to ${end}`);
+    throw new Error(`Insufficient data for ${symbol} ${tf} in range ${start} to ${end}`);
+  }
+
+  const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(tf);
+  const dates = bars.map((b) =>
+    isIntraday
+      ? new Date(b.ts).toISOString()
+      : new Date(b.ts).toISOString().split("T")[0]
+  );
+  const opens = bars.map((b) => b.open as number);
+  const highs = bars.map((b) => b.high as number);
+  const lows = bars.map((b) => b.low as number);
+  const closes = bars.map((b) => b.close as number);
+  const volumes = bars.map((b) => b.volume as number);
+
+  console.log(`[BacktestWorker] Fetched ${bars.length} bars for ${symbol} from ohlc_bars_v2`);
+  return { dates, opens, highs, lows, closes, volumes };
 }
 
 function generateMockData(startDate: string, endDate: string) {
@@ -352,7 +359,11 @@ function calculateSuperTrend(
   return { trend, signal };
 }
 
-async function runBacktest(job: BacktestJob, config: StrategyConfig): Promise<{
+async function runBacktest(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  job: BacktestJob,
+  config: StrategyConfig
+): Promise<{
   metrics: Record<string, unknown>;
   trades: Record<string, unknown>[];
   equity_curve: Record<string, unknown>[];
@@ -365,6 +376,7 @@ async function runBacktest(job: BacktestJob, config: StrategyConfig): Promise<{
   const timeframe = (params.timeframe as string) || "d1";
 
   const { dates, opens, highs, lows, closes, volumes } = await fetchMarketData(
+    supabase,
     job.symbol,
     job.start_date,
     job.end_date,
@@ -602,7 +614,30 @@ async function runPresetViaFastApi(job: BacktestJob): Promise<{
   };
 }
 
-serve(async (): Promise<Response> => {
+serve(async (req: Request): Promise<Response> => {
+  // Handle OPTIONS preflight
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, X-SB-Gateway-Key",
+      },
+    });
+  }
+
+  // Gateway key auth
+  const gatewayKey = Deno.env.get("SB_GATEWAY_KEY");
+  if (!gatewayKey) {
+    console.error("[strategy-backtest-worker] SB_GATEWAY_KEY not configured");
+    return new Response("Server misconfiguration", { status: 500 });
+  }
+  const callerKey = req.headers.get("X-SB-Gateway-Key");
+  if (callerKey !== gatewayKey) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
   const supabase = getSupabaseClient();
 
   console.log("Backtest worker started");
@@ -635,7 +670,7 @@ serve(async (): Promise<Response> => {
           const rawConfig = (strategy?.config || {}) as StrategyConfig;
           const { entry_conditions, exit_conditions } = normalizeConfig(rawConfig);
           const config: StrategyConfig = { ...rawConfig, entry_conditions, exit_conditions };
-          result = await runBacktest(job, config);
+          result = await runBacktest(supabase, job, config);
         } else {
           throw new Error("Job must have strategy_id or parameters.strategy");
         }

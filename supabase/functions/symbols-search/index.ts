@@ -248,6 +248,17 @@ serve(async (req: Request): Promise<Response> => {
       return errorResponse("Missing or empty query parameter 'q'", 400);
     }
 
+    if (query.length > 20) {
+      return errorResponse("Query too long (max 20 characters)", 400);
+    }
+
+    if (!/^[A-Za-z0-9.\s\-\/]+$/.test(query)) {
+      return errorResponse(
+        "Invalid characters in query (alphanumeric, dot, space, hyphen, slash only)",
+        400,
+      );
+    }
+
     const searchTerm = query.trim().toUpperCase();
     console.log(`[Symbol Search] Searching for: "${searchTerm}"`);
 

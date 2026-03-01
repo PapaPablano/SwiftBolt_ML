@@ -240,20 +240,96 @@ serve(async (req: Request): Promise<Response> => {
 
     const symbolId = symbolRecord.id;
 
-    // 2. Fetch bars using get_chart_data_v2 RPC (provider-aware)
-    let barsData: ChartBarRow[] | null = null;
-    const { data: rpcData, error: barsError } = await supabase.rpc(
-      "get_chart_data_v2",
-      {
+    // Pagination limits (Todo 055: cap caller-supplied values to prevent oversized responses)
+    const MAX_BAR_LIMIT = 2000;
+    const MAX_OPTIONS_LIMIT = 100;
+    const barOffset = barOffsetParam ? Math.max(0, Number(barOffsetParam)) : 0;
+    const optionsOffset = Math.max(0, Number(optionsOffsetParam || 0));
+    const optionsLimit = Math.min(
+      MAX_OPTIONS_LIMIT,
+      Math.max(1, Number(optionsLimitParam) || 10),
+    );
+
+    // Determine intraday path upfront (needed to build parallel queries)
+    const isIntraday = ["m15", "h1", "h4"].includes(timeframe);
+    const intradayTimeframe = timeframe === "h4" ? "h1" : timeframe; // 4h charts use 1h forecast row
+
+    // 2–7. Run all independent queries in parallel after symbol lookup.
+    // Forecast queries: fire both intraday and daily-summary in parallel so we
+    // avoid a second round-trip for the fallback path. We pick results below.
+    const [
+      barsResult,
+      intradayForecastResult,
+      dailyForecastResult,
+      optionsResult,
+      marketStatusResult,
+      pendingSplitsResult,
+      activeJobsResult,
+    ] = await Promise.all([
+      // 2. Bars via get_chart_data_v2 RPC (provider-aware)
+      supabase.rpc("get_chart_data_v2", {
         p_symbol_id: symbolId,
         p_timeframe: timeframe,
         p_start_date: startDate.toISOString(),
         p_end_date: endDate.toISOString(),
-      },
-    );
+      }),
+      // 3a. Intraday forecast (only meaningful when isIntraday && includeForecast)
+      includeForecast && isIntraday
+        ? supabase
+          .from("ml_forecasts_intraday")
+          .select("overall_label, confidence, horizon, created_at, points")
+          .eq("symbol_id", symbolId)
+          .eq("timeframe", intradayTimeframe)
+          .gte("expires_at", new Date().toISOString())
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      // 3b. Daily / fallback forecast summary
+      includeForecast
+        ? supabase
+          .from("latest_forecast_summary")
+          .select("overall_label, confidence, horizon, run_at, points")
+          .eq("symbol_id", symbolId)
+          .limit(1)
+          .single()
+        : Promise.resolve({ data: null, error: null }),
+      // 4. Options ranks
+      includeOptions
+        ? supabase
+          .from("options_ranks")
+          .select(
+            "expiry, strike, side, ml_score, implied_vol, delta, gamma, theta, vega, open_interest, volume, run_at",
+          )
+          .eq("underlying_symbol_id", symbolId)
+          .order("ml_score", { ascending: false })
+          .range(optionsOffset, optionsOffset + optionsLimit - 1)
+        : Promise.resolve({ data: null, error: null }),
+      // 5. Market open status
+      supabase.rpc("is_market_open"),
+      // 6. Pending corporate actions (splits)
+      supabase
+        .from("corporate_actions")
+        .select("action_type, ex_date, ratio")
+        .eq("symbol", symbol)
+        .eq("bars_adjusted", false)
+        .in("action_type", ["stock_split", "reverse_split"])
+        .order("ex_date", { ascending: true })
+        .limit(1),
+      // 7. Active ingest jobs (determines "updating" data status)
+      supabase
+        .from("job_runs")
+        .select("id")
+        .eq("symbol", symbol)
+        .eq("timeframe", timeframe)
+        .in("status", ["queued", "running"])
+        .limit(1),
+    ]);
 
-    if (barsError) {
-      console.error("[chart] Bars query error:", barsError);
+    // 2. Process bars result
+    let barsData: ChartBarRow[] | null = null;
+    if (barsResult.error) {
+      console.error("[chart] Bars query error:", barsResult.error);
       // Fallback to direct query if RPC fails
       const { data: fallbackBars } = await supabase
         .from("ohlc_bars_v2")
@@ -267,7 +343,7 @@ serve(async (req: Request): Promise<Response> => {
 
       barsData = fallbackBars;
     } else {
-      barsData = rpcData;
+      barsData = barsResult.data;
     }
 
     const allBars: ChartBar[] = (barsData || []).map((bar: ChartBarRow) => ({
@@ -281,34 +357,22 @@ serve(async (req: Request): Promise<Response> => {
       dataStatus: bar.data_status || "unknown",
     }));
 
-    const barOffset = barOffsetParam ? Number(barOffsetParam) : 0;
-    const barLimit = barLimitParam ? Number(barLimitParam) : allBars.length;
-    const bars = allBars.slice(
-      Math.max(0, barOffset),
-      Math.max(0, barOffset) + Math.max(0, barLimit),
-    );
+    // Apply bar pagination with cap (Todo 055)
+    const rawBarLimit = barLimitParam
+      ? Math.min(MAX_BAR_LIMIT, Math.max(1, Number(barLimitParam)))
+      : allBars.length;
+    const barLimit = Math.min(rawBarLimit, MAX_BAR_LIMIT);
+    const bars = allBars.slice(barOffset, barOffset + barLimit);
 
     // Get last bar timestamp
     const lastBarTs = bars.length > 0 ? bars[bars.length - 1].ts : null;
 
-    // 3. Fetch latest forecast if requested
+    // 3. Resolve forecast data from parallel results
     let forecastData: ForecastData | null = null;
     if (includeForecast) {
-      const isIntraday = ["m15", "h1", "h4"].includes(timeframe);
-      // Intraday: prefer ml_forecasts_intraday.points (canonical ForecastPoint[]); fallback to daily summary
+      // Intraday: prefer ml_forecasts_intraday result
       if (isIntraday) {
-        const intradayTimeframe = timeframe === "h4" ? "h1" : timeframe; // 4h charts use 1h forecast row
-        const { data: intradayRow } = await supabase
-          .from("ml_forecasts_intraday")
-          .select("overall_label, confidence, horizon, created_at, points")
-          .eq("symbol_id", symbolId)
-          .eq("timeframe", intradayTimeframe)
-          .gte("expires_at", new Date().toISOString())
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        const row = intradayRow as {
+        const row = intradayForecastResult.data as {
           overall_label?: string | null;
           confidence?: number | null;
           horizon?: string | null;
@@ -327,15 +391,9 @@ serve(async (req: Request): Promise<Response> => {
           };
         }
       }
+      // Fallback (or daily timeframe): use latest_forecast_summary result
       if (!forecastData) {
-        const { data: forecast } = await supabase
-          .from("latest_forecast_summary")
-          .select("overall_label, confidence, horizon, run_at, points")
-          .eq("symbol_id", symbolId)
-          .limit(1)
-          .single();
-
-        const forecastRow = forecast as ForecastRow | null;
+        const forecastRow = dailyForecastResult.data as ForecastRow | null;
         if (forecastRow) {
           forecastData = {
             label: forecastRow.overall_label || "neutral",
@@ -350,47 +408,31 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    // 4. Fetch top options ranks if requested
+    // 4. Process options ranks
     let optionsRanks: OptionsRank[] = [];
-    if (includeOptions) {
-      const { data: options } = await supabase
-        .from("options_ranks")
-        .select(
-          "expiry, strike, side, ml_score, implied_vol, delta, gamma, theta, vega, open_interest, volume, run_at",
-        )
-        .eq("underlying_symbol_id", symbolId)
-        .order("ml_score", { ascending: false })
-        .range(
-          Math.max(0, Number(optionsOffsetParam || 0)),
-          Math.max(0, Number(optionsOffsetParam || 0)) +
-            Math.max(1, Number(optionsLimitParam || 10)) - 1,
-        );
-
-      if (options) {
-        optionsRanks = (options as OptionsRankRow[]).map((opt) => ({
-          expiry: opt.expiry,
-          strike: Number(opt.strike),
-          side: opt.side,
-          mlScore: Number(opt.ml_score) || 0,
-          impliedVol: Number(opt.implied_vol) || 0,
-          delta: Number(opt.delta) || 0,
-          gamma: Number(opt.gamma) || 0,
-          theta: Number(opt.theta) || 0,
-          vega: Number(opt.vega) || 0,
-          openInterest: Number(opt.open_interest) || 0,
-          volume: Number(opt.volume) || 0,
-          runAt: opt.run_at || "",
-        }));
-      }
+    if (includeOptions && optionsResult.data) {
+      optionsRanks = (optionsResult.data as OptionsRankRow[]).map((opt) => ({
+        expiry: opt.expiry,
+        strike: Number(opt.strike),
+        side: opt.side,
+        mlScore: Number(opt.ml_score) || 0,
+        impliedVol: Number(opt.implied_vol) || 0,
+        delta: Number(opt.delta) || 0,
+        gamma: Number(opt.gamma) || 0,
+        theta: Number(opt.theta) || 0,
+        vega: Number(opt.vega) || 0,
+        openInterest: Number(opt.open_interest) || 0,
+        volume: Number(opt.volume) || 0,
+        runAt: opt.run_at || "",
+      }));
     }
 
-    // 5. Check market status
+    // 5. Process market status
     let isMarketOpen = false;
     try {
-      const { data: marketStatus } = await supabase.rpc("is_market_open");
-      isMarketOpen = marketStatus ?? false;
+      isMarketOpen = marketStatusResult.data ?? false;
     } catch {
-      // Default to checking current time if RPC fails
+      // Default to checking current time if RPC result is unusable
       const hour = now.getUTCHours();
       const dayOfWeek = now.getUTCDay();
       // Rough market hours check using constants
@@ -399,16 +441,8 @@ serve(async (req: Request): Promise<Response> => {
         hour >= MARKET_OPEN_HOUR_UTC && hour < MARKET_CLOSE_HOUR_UTC;
     }
 
-    // 6. Check for pending splits
-    const { data: pendingSplits } = await supabase
-      .from("corporate_actions")
-      .select("action_type, ex_date, ratio")
-      .eq("symbol", symbol)
-      .eq("bars_adjusted", false)
-      .in("action_type", ["stock_split", "reverse_split"])
-      .order("ex_date", { ascending: true })
-      .limit(1);
-
+    // 6. Process pending splits
+    const pendingSplits = pendingSplitsResult.data;
     const hasPendingSplits = (pendingSplits?.length || 0) > 0;
     const pendingSplitInfo = hasPendingSplits && pendingSplits?.[0]
       ? `${pendingSplits[0].action_type} ${pendingSplits[0].ratio}:1 on ${
@@ -438,14 +472,7 @@ serve(async (req: Request): Promise<Response> => {
       dataStatus = "stale";
     }
     // Check if there's an active job updating this data
-    const { data: activeJobs } = await supabase
-      .from("job_runs")
-      .select("id")
-      .eq("symbol", symbol)
-      .eq("timeframe", timeframe)
-      .in("status", ["queued", "running"])
-      .limit(1);
-
+    const activeJobs = activeJobsResult.data;
     if (activeJobs && activeJobs.length > 0) {
       dataStatus = "updating";
     }

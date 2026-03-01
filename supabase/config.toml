@@ -13,6 +13,8 @@ verify_jwt = false
 [functions.chart-data-v2]
 verify_jwt = true
 
+# ga-strategy: Triggered by cron automation only, not user-facing.
+# Auth enforced at the job queue level. verify_jwt disabled for performance.
 [functions.ga-strategy]
 verify_jwt = false
 

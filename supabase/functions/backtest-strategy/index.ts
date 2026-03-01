@@ -12,20 +12,6 @@ import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
 const VALID_PRESET_STRATEGIES = ["supertrend_ai", "sma_crossover", "buy_and_hold"];
 
-function getUserIdFromRequest(req: Request): string | null {
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) return null;
-  const token = authHeader.replace("Bearer ", "");
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(atob(parts[1]));
-    return payload.sub || null;
-  } catch {
-    return null;
-  }
-}
-
 serve(async (req: Request) => {
   const origin = req.headers.get("origin");
 
@@ -34,10 +20,15 @@ serve(async (req: Request) => {
   }
 
   const supabase = getSupabaseClient();
-  let userId = getUserIdFromRequest(req);
-  if (!userId) {
-    userId = "00000000-0000-0000-0000-000000000001"; // demo fallback
+
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const { data: { user }, error: authError } = await supabase.auth.getUser(
+    authHeader.replace("Bearer ", ""),
+  );
+  if (authError || !user) {
+    return corsResponse({ error: "Authentication required" }, 401, origin);
   }
+  const userId = user.id;
 
   const url = new URL(req.url);
   const jobId = url.searchParams.get("id");
@@ -53,19 +44,13 @@ serve(async (req: Request) => {
       return corsResponse(
         { error: "Missing query param: id (job_id)" },
         400,
-        origin
+        origin,
       );
     }
     return corsResponse({ error: "Method not allowed" }, 405, origin);
   } catch (err) {
-    console.error("[BacktestStrategy] Error:", err);
-    return corsResponse(
-      {
-        error: err instanceof Error ? err.message : "Internal server error",
-      },
-      500,
-      origin
-    );
+    console.error("[BacktestStrategy] Unexpected error:", err);
+    return corsResponse({ error: "An internal error occurred" }, 500, origin);
   }
 });
 

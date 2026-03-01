@@ -450,13 +450,17 @@ async function loadCascadeRows(
     ? [horizonParam]
     : consensusRows.map((row) => row.horizon);
 
-  const collected: CascadeForecastRow[] = [];
-  for (const horizon of horizons) {
-    const { data, error } = await supabase.rpc("get_forecast_cascade", {
-      p_symbol: symbol,
-      p_horizon: horizon,
-    });
+  const results = await Promise.all(
+    horizons.map((horizon) =>
+      supabase.rpc("get_forecast_cascade", {
+        p_symbol: symbol,
+        p_horizon: horizon,
+      })
+    ),
+  );
 
+  const collected: CascadeForecastRow[] = [];
+  for (const { data, error } of results) {
     if (error) {
       return { data: [], error };
     }

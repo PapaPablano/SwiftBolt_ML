@@ -1,34 +1,28 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { Strategy, BacktestResult, Trade } from '../types/strategyBacktest';
 import { isStrategyIdUuid, toChartTime, horizonToTimeframe, createDefaultConfig } from './backtestConstants';
+import { strategiesApi } from '../api/strategiesApi';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
-const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? '';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const SUPABASE_FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`;
 
+export type BacktestJobResult =
+  | { success: true; jobId: string; status: string; createdAt: string }
+  | { success: false; error: { code: 'network' | 'auth' | 'validation' | 'server' | 'not_found'; message: string } };
+
 export const fetchStrategiesFromSupabase = async (): Promise<Strategy[]> => {
   try {
-    const { data, error } = await supabase
-      .from('strategy_user_strategies')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(20);
-
-    if (error) return [];
-
-    return (
-      data?.map((row: any) => ({
-        id: row.id,
-        name: row.name,
-        description: row.description || '',
-        config: row.config || createDefaultConfig(),
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      })) || []
-    );
+    const rows: any[] = await strategiesApi.list(SUPABASE_ANON_KEY);
+    return rows.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description || '',
+      config: row.config || createDefaultConfig(),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
   } catch {
     return [];
   }
@@ -36,34 +30,39 @@ export const fetchStrategiesFromSupabase = async (): Promise<Strategy[]> => {
 
 export const saveStrategyToSupabase = async (
   strategy: Omit<Strategy, 'createdAt' | 'updatedAt'>
-): Promise<string | null> => {
+): Promise<BacktestJobResult> => {
   try {
-    const { data, error } = await supabase
-      .from('strategy_user_strategies')
-      .insert({ name: strategy.name, description: strategy.description, config: strategy.config })
-      .select('id')
-      .single();
-
-    if (error) return null;
-    return data?.id || null;
-  } catch {
-    return null;
+    const data = await strategiesApi.create(
+      { name: strategy.name, description: strategy.description, config: strategy.config },
+      SUPABASE_ANON_KEY
+    );
+    if (!data?.id) {
+      return { success: false, error: { code: 'server', message: 'Server error, please try again' } };
+    }
+    return { success: true, jobId: data.id, status: 'created', createdAt: data.created_at ?? new Date().toISOString() };
+  } catch (err: any) {
+    const status: number | undefined = err?.status;
+    if (status === 401) return { success: false, error: { code: 'auth', message: 'Authentication required' } };
+    if (status === 400) return { success: false, error: { code: 'validation', message: err?.message ?? 'Validation error' } };
+    if (status != null && status >= 500) return { success: false, error: { code: 'server', message: 'Server error, please try again' } };
+    return { success: false, error: { code: 'network', message: 'Network error, check connection' } };
   }
 };
 
 export const updateStrategyInSupabase = async (strategy: Strategy): Promise<boolean> => {
   if (!isStrategyIdUuid(strategy.id)) return false;
   try {
-    const { error } = await supabase
-      .from('strategy_user_strategies')
-      .update({
+    await strategiesApi.update(
+      strategy.id,
+      {
         name: strategy.name,
         description: strategy.description,
         config: strategy.config,
         updated_at: new Date().toISOString(),
-      })
-      .eq('id', strategy.id);
-    return !error;
+      },
+      SUPABASE_ANON_KEY
+    );
+    return true;
   } catch {
     return false;
   }
@@ -72,13 +71,90 @@ export const updateStrategyInSupabase = async (strategy: Strategy): Promise<bool
 /** Ensure strategy exists in Supabase so we have a strategy_id for backtest. Returns strategy_id. */
 export async function ensureStrategyId(strategy: Strategy): Promise<string> {
   if (isStrategyIdUuid(strategy.id)) return strategy.id;
-  const id = await saveStrategyToSupabase({
+  const result = await saveStrategyToSupabase({
     id: strategy.id,
     name: strategy.name,
     description: strategy.description,
     config: strategy.config,
   });
-  return id || strategy.id;
+  return result.success ? result.jobId : strategy.id;
+}
+
+/** Queue a backtest job via Supabase Edge Function. Returns a typed result. */
+async function queueBacktestJob(
+  strategyId: string,
+  symbol: string,
+  startDate: string,
+  endDate: string,
+  timeframe: string,
+  headers: Record<string, string>
+): Promise<BacktestJobResult> {
+  try {
+    const postRes = await fetch(`${SUPABASE_FUNCTIONS_URL}/backtest-strategy`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ symbol, startDate, endDate, strategy_id: strategyId, initialCapital: 10000, timeframe }),
+      cache: 'no-store',
+    });
+    if (postRes.status === 401) {
+      return { success: false, error: { code: 'auth', message: 'Authentication required' } };
+    }
+    if (postRes.status === 400) {
+      return { success: false, error: { code: 'validation', message: await postRes.text() } };
+    }
+    if (postRes.status >= 500) {
+      return { success: false, error: { code: 'server', message: 'Server error, please try again' } };
+    }
+    if (!postRes.ok) {
+      return { success: false, error: { code: 'server', message: await postRes.text() } };
+    }
+    const payload = (await postRes.json()) as { job_id?: string; status?: string; created_at?: string };
+    if (!payload.job_id) {
+      return { success: false, error: { code: 'server', message: 'Server error, please try again' } };
+    }
+    return {
+      success: true,
+      jobId: payload.job_id,
+      status: payload.status ?? 'queued',
+      createdAt: payload.created_at ?? new Date().toISOString(),
+    };
+  } catch {
+    return { success: false, error: { code: 'network', message: 'Network error, check connection' } };
+  }
+}
+
+/** Poll a queued backtest job by id. Returns a typed result. */
+async function pollBacktestJob(
+  jobId: string,
+  headers: Record<string, string>
+): Promise<BacktestJobResult> {
+  try {
+    const getRes = await fetch(`${SUPABASE_FUNCTIONS_URL}/backtest-strategy?id=${jobId}`, {
+      headers,
+      cache: 'no-store',
+    });
+    if (getRes.status === 401) {
+      return { success: false, error: { code: 'auth', message: 'Authentication required' } };
+    }
+    if (getRes.status === 404) {
+      return { success: false, error: { code: 'not_found', message: 'Job not found' } };
+    }
+    if (getRes.status >= 500) {
+      return { success: false, error: { code: 'server', message: 'Server error, please try again' } };
+    }
+    if (!getRes.ok) {
+      return { success: false, error: { code: 'server', message: await getRes.text() } };
+    }
+    const payload = (await getRes.json()) as { status?: string; job_id?: string; created_at?: string };
+    return {
+      success: true,
+      jobId: payload.job_id ?? jobId,
+      status: payload.status ?? 'pending',
+      createdAt: payload.created_at ?? new Date().toISOString(),
+    };
+  } catch {
+    return { success: false, error: { code: 'network', message: 'Network error, check connection' } };
+  }
 }
 
 /** Run backtest via Supabase (worker runs full strategy config). Polls until completed then maps result. */
@@ -94,28 +170,34 @@ async function runBacktestViaSupabase(
     'Content-Type': 'application/json',
     Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
   };
-  const postRes = await fetch(`${SUPABASE_FUNCTIONS_URL}/backtest-strategy`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ symbol, startDate, endDate, strategy_id: strategyId, initialCapital: 10000, timeframe }),
-    cache: 'no-store',
-  });
-  if (!postRes.ok) {
-    console.error('[Backtest] Supabase queue error:', await postRes.text());
+  const queueResult = await queueBacktestJob(strategyId, symbol, startDate, endDate, timeframe, headers);
+  if (!queueResult.success) {
+    console.error('[Backtest] Supabase queue error:', queueResult.error.message);
     return null;
   }
-  const { job_id } = (await postRes.json()) as { job_id: string };
-  if (!job_id) return null;
+  const job_id = queueResult.jobId;
 
   // 20 × 1.5 s = 30 s max wait; then fall through to FastAPI fallback.
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 1500));
-    const getRes = await fetch(`${SUPABASE_FUNCTIONS_URL}/backtest-strategy?id=${job_id}`, {
+    const pollResult = await pollBacktestJob(job_id, headers);
+    if (!pollResult.success) {
+      console.error('[Backtest] Poll error:', pollResult.error.message);
+      return null;
+    }
+    if (pollResult.status === 'failed') {
+      console.error('[Backtest] Job failed');
+      return null;
+    }
+    if (pollResult.status !== 'completed') continue;
+
+    // Fetch the full completed payload (includes result, metrics, trades).
+    const completedRes = await fetch(`${SUPABASE_FUNCTIONS_URL}/backtest-strategy?id=${job_id}`, {
       headers,
       cache: 'no-store',
     });
-    if (!getRes.ok) return null;
-    const statusPayload = (await getRes.json()) as {
+    if (!completedRes.ok) return null;
+    const statusPayload = (await completedRes.json()) as {
       status: string;
       result?: {
         metrics?: Record<string, unknown>;
@@ -124,10 +206,6 @@ async function runBacktestViaSupabase(
       };
       error?: string;
     };
-    if (statusPayload.status === 'failed') {
-      console.error('[Backtest] Job failed:', statusPayload.error);
-      return null;
-    }
     if (statusPayload.status === 'completed' && statusPayload.result) {
       const r = statusPayload.result;
       const metrics = r.metrics || {};
@@ -136,6 +214,8 @@ async function runBacktestViaSupabase(
 
       let buyAndHoldReturn = 0;
       try {
+        // TODO: route buy-and-hold price data through the chart Edge Function
+        // (GET /chart) instead of calling the FastAPI endpoint directly.
         const priceRes = await fetch(
           `${API_BASE}/api/v1/chart-data/${symbol}/d1?start_date=${startDate}&end_date=${endDate}`,
           { cache: 'no-store' }
@@ -271,6 +351,8 @@ export const runBacktestViaAPI = async (
 
     let buyAndHoldReturn = 0;
     try {
+      // TODO: route buy-and-hold price data through the chart Edge Function
+      // (GET /chart) instead of calling the FastAPI endpoint directly.
       const priceResponse = await fetch(
         `${API_BASE}/api/v1/chart-data/${symbol}/d1?start_date=${startDate}&end_date=${endDate}`,
         { cache: 'no-store' }

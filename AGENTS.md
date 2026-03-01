@@ -129,6 +129,7 @@ docker compose up --build    # ML backend API on port 8000
 - **One markdown doc per session** — Consolidate documentation into a single file per session rather than creating multiple .md files.
 - **Sentiment features are currently disabled** (zero-variance fix pending). Do not re-enable without running `validate_sentiment_variance`.
 - **Forecast weight precedence:** intraday-calibrated (fresh) → intraday-calibrated (stale, with warning) → symbol-specific from DB → defaults. Managed by `IntradayDailyFeedback`.
+- **API contract versioning** — Edge Function response shapes are API contracts. Any breaking change to a function's response requires: (1) a PR review of all affected callers, (2) a caller-update PR merged before the function change. Additive changes (new optional fields) do not require caller updates. Use `chart` as the canonical chart endpoint — `chart-read` and `chart-data-v2` are deprecated and scheduled for removal.
 
 ## Environment Variables
 

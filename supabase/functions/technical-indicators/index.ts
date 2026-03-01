@@ -6,11 +6,14 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { corsResponse, handlePreflight } from "../_shared/cors.ts";
-import { getSupabaseClient } from "../_shared/supabase-client.ts";
 import { callFastApi } from "../_shared/fastapi-client.ts";
+import { MemoryCache } from "../_shared/cache/memory-cache.ts";
 
-const CACHE_DURATION_INTRADAY = 5 * 60; // 5 minutes for intraday
-const CACHE_DURATION_DAILY = 60 * 60; // 1 hour for daily+
+const CACHE_DURATION_INTRADAY = 5 * 60; // 5 minutes for intraday (seconds)
+const CACHE_DURATION_DAILY = 60 * 60; // 1 hour for daily+ (seconds)
+
+// Module-level in-memory cache shared across requests within the same isolate
+const indicatorCache = new MemoryCache();
 
 interface TechnicalIndicatorsResponse {
   symbol: string;
@@ -37,13 +40,6 @@ function isIntraday(timeframe: string): boolean {
 }
 
 /**
- * Get cache key for symbol/timeframe
- */
-function getCacheKey(symbol: string, timeframe: string): string {
-  return `indicators:${symbol}:${timeframe}`;
-}
-
-/**
  * Call FastAPI to calculate indicators
  */
 async function calculateIndicators(
@@ -59,21 +55,29 @@ async function calculateIndicators(
 }
 
 /**
- * Get cached indicators from database
+ * Get cached indicators from in-memory cache
  */
 async function getCachedIndicators(
-  supabase: ReturnType<typeof getSupabaseClient>,
   symbol: string,
   timeframe: string,
 ): Promise<TechnicalIndicatorsResponse | null> {
-  const cacheKey = getCacheKey(symbol, timeframe);
-  const cacheDuration = isIntraday(timeframe)
+  const key = `${symbol}:${timeframe}`;
+  return (await indicatorCache.get<TechnicalIndicatorsResponse>(key)) ?? null;
+}
+
+/**
+ * Store indicators in in-memory cache with timeframe-appropriate TTL
+ */
+function setCachedIndicators(
+  symbol: string,
+  timeframe: string,
+  data: TechnicalIndicatorsResponse,
+): void {
+  const key = `${symbol}:${timeframe}`;
+  const ttlSeconds = isIntraday(timeframe)
     ? CACHE_DURATION_INTRADAY
     : CACHE_DURATION_DAILY;
-
-  // For now, we'll skip database caching and just use in-memory cache
-  // TODO: Implement Redis or database caching if needed
-  return null;
+  indicatorCache.set(key, data, ttlSeconds);
 }
 
 serve(async (req: Request) => {
@@ -116,8 +120,7 @@ serve(async (req: Request) => {
     );
 
     // Try to get from cache first
-    const supabase = getSupabaseClient();
-    const cached = await getCachedIndicators(supabase, symbol, timeframe);
+    const cached = await getCachedIndicators(symbol, timeframe);
 
     if (cached) {
       console.log(
@@ -142,6 +145,9 @@ serve(async (req: Request) => {
         Object.keys(result.indicators).length
       } indicators for ${symbol}/${timeframe}`,
     );
+
+    // Persist result in in-memory cache for subsequent requests
+    setCachedIndicators(symbol, timeframe, result);
 
     return corsResponse(result, 200, origin);
   } catch (error) {

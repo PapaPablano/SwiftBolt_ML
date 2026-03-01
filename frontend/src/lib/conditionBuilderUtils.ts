@@ -1,3 +1,8 @@
+// NOTE: This Condition type is used by the condition builder UI.
+// The canonical strategy Condition type is in ../types/strategyBacktest.ts.
+// TODO: Unify these two types in a future refactor.
+// Operator mapping: frontend '>' → backend 'above', '>=' → 'above_or_equal', '==' → 'equals', '<' → 'below', '<=' → 'below_or_equal'
+
 /** Types, constants, and pure helper functions for StrategyConditionBuilder. */
 
 // ============================================================================
@@ -61,6 +66,16 @@ export const COMPARISON_OPERATORS: ComparisonOperator[] = ['>', '<', '>=', '<=',
 export const CROSS_OPERATORS: CrossOperator[] = ['cross_up', 'cross_down'];
 export const RANGE_OPERATORS: RangeOperator[] = ['touches', 'within_range'];
 export const MAX_CONDITIONS_PER_SIGNAL = 5;
+
+export const OPERATOR_TO_BACKEND: Record<string, string> = {
+  '>': 'above',
+  '>=': 'above_or_equal',
+  '==': 'equals',
+  '<': 'below',
+  '<=': 'below_or_equal',
+  'cross_up': 'cross_up',
+  'cross_down': 'cross_down',
+};
 
 /** Typical indicator ranges for quick validation. */
 export const INDICATOR_RANGES: Record<string, { min: number; max: number }> = {

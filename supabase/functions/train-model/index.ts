@@ -45,12 +45,38 @@ serve(async (req) => {
     return handlePreflight();
   }
 
+  // Gateway key authentication — only service/cron callers should invoke this
+  const gatewayKey = Deno.env.get("SB_GATEWAY_KEY");
+  if (!gatewayKey || gatewayKey.length === 0) {
+    console.error("[train-model] SB_GATEWAY_KEY not configured");
+    return new Response(
+      JSON.stringify({ error: "Server misconfiguration" }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  const callerKey = req.headers.get("x-sb-gateway-key") ??
+    req.headers.get("X-SB-Gateway-Key") ?? "";
+  if (callerKey !== gatewayKey) {
+    console.warn("[train-model] Invalid or missing X-SB-Gateway-Key");
+    return new Response(
+      JSON.stringify({ error: "Unauthorized" }),
+      { status: 401, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
   try {
     const request: TrainModelRequest = await req.json();
 
     if (!request.symbol) {
       return corsResponse(
         { error: "symbol is required" },
+        { status: 400 },
+      );
+    }
+
+    if (!/^[A-Z0-9./\-]{1,20}$/i.test(request.symbol)) {
+      return corsResponse(
+        { error: "Invalid symbol format" },
         { status: 400 },
       );
     }

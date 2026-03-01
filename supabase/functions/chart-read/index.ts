@@ -719,23 +719,6 @@ serve(async (req: Request): Promise<Response> => {
     try {
       const now = new Date();
       const enqueueTimeframes: CanonicalTimeframe[] = [...CANONICAL_TIMEFRAMES];
-      // #region agent log
-      fetch(
-        "http://127.0.0.1:7242/ingest/c38aa5cd-6eb1-473a-b1f0-0fdd8c2a440d",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            location: "chart-read/index.ts:641",
-            message: "enqueue loop entry",
-            data: { symbol, timeframe, tfCount: enqueueTimeframes.length },
-            timestamp: Date.now(),
-            sessionId: "debug-session",
-            hypothesisId: "H1,H4",
-          }),
-        },
-      ).catch(() => {});
-      // #endregion
 
       for (const tf of enqueueTimeframes) {
         const jobType = (tf === "m15" || tf === "h1" || tf === "h4")
@@ -774,25 +757,6 @@ serve(async (req: Request): Promise<Response> => {
         const sliceTo = alignedSliceTo(now, tf);
         const sliceFrom = new Date(sliceTo.getTime() - refreshWindowMs(tf));
 
-        // #region agent log
-        const _enqStart = Date.now();
-        fetch(
-          "http://127.0.0.1:7242/ingest/c38aa5cd-6eb1-473a-b1f0-0fdd8c2a440d",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              location: "chart-read/index.ts:before-rpc",
-              message: "before enqueue_job_slices",
-              data: { symbol, tf, jobType, sliceCount: 1 },
-              timestamp: Date.now(),
-              sessionId: "debug-session",
-              hypothesisId: "H1,H2,H4",
-            }),
-          },
-        ).catch(() => {});
-        // #endregion
-
         const { data: enqueueResult, error: enqueueError } = await supabase
           .rpc("enqueue_job_slices", {
             p_job_def_id: jobDefRow.id,
@@ -805,33 +769,6 @@ serve(async (req: Request): Promise<Response> => {
             }],
             p_triggered_by: "chart-read",
           });
-
-        // #region agent log
-        const _enqDur = Date.now() - _enqStart;
-        fetch(
-          "http://127.0.0.1:7242/ingest/c38aa5cd-6eb1-473a-b1f0-0fdd8c2a440d",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              location: "chart-read/index.ts:after-rpc",
-              message: "after enqueue_job_slices",
-              data: {
-                symbol,
-                tf,
-                durationMs: _enqDur,
-                success: !enqueueError,
-                errorMsg: enqueueError?.message,
-                errorCode: enqueueError?.code,
-                errorDetails: enqueueError?.details,
-              },
-              timestamp: Date.now(),
-              sessionId: "debug-session",
-              hypothesisId: "H1,H2,H3,H4,H5",
-            }),
-          },
-        ).catch(() => {});
-        // #endregion
 
         if (enqueueError) {
           throw new Error(
@@ -850,31 +787,6 @@ serve(async (req: Request): Promise<Response> => {
         refresh.insertedSlices += insertedCount;
       }
     } catch (enqueueErr) {
-      // #region agent log
-      fetch(
-        "http://127.0.0.1:7242/ingest/c38aa5cd-6eb1-473a-b1f0-0fdd8c2a440d",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            location: "chart-read/index.ts:catch",
-            message: "enqueue catch",
-            data: {
-              symbol,
-              errorMsg: enqueueErr instanceof Error
-                ? enqueueErr.message
-                : String(enqueueErr),
-              errorStack: enqueueErr instanceof Error
-                ? enqueueErr.stack
-                : undefined,
-            },
-            timestamp: Date.now(),
-            sessionId: "debug-session",
-            hypothesisId: "H5",
-          }),
-        },
-      ).catch(() => {});
-      // #endregion
       console.error("[chart-read] Refresh enqueue failed:", enqueueErr);
       refresh.error = enqueueErr instanceof Error
         ? enqueueErr.message

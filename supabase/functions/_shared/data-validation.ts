@@ -150,11 +150,31 @@ class TradierIntradayRule extends WriteValidationRule {
 
   private getMarketCloseTime(): Date {
     const now = new Date();
-    // Convert to ET (approximate - in production use proper timezone library)
-    const etOffset = -5; // ET is UTC-5 (or UTC-4 during DST)
-    const marketClose = new Date(now);
-    marketClose.setHours(16 + etOffset, 0, 0, 0); // 4:00 PM ET
-    return marketClose;
+
+    // Get today's date in America/New_York using ISO-style formatting (en-CA locale)
+    // so we get YYYY-MM-DD without locale-specific separators.
+    const nyDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(now);
+
+    // Treat the resulting string as a NY local date and append 4:00 PM.
+    // new Date("YYYY-MM-DDT16:00:00") parses as local time on the host,
+    // so we correct for the difference between host-local and NY time below.
+    const marketCloseLocal = new Date(`${nyDate}T16:00:00`);
+
+    // Compute the offset between host-local time and New York time so we
+    // can express 4:00 PM ET as a proper UTC instant regardless of whether
+    // the host is running EST (UTC-5) or EDT (UTC-4) or any other zone.
+    const hostNow = now.getTime();
+    const nyNow = new Date(
+      now.toLocaleString("en-US", { timeZone: "America/New_York" }),
+    ).getTime();
+    const offsetMs = hostNow - nyNow;
+
+    return new Date(marketCloseLocal.getTime() + offsetMs);
   }
 
   private getMarketCloseLockTime(): Date {

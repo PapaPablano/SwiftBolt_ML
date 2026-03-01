@@ -7,7 +7,7 @@
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
-import { getSupabaseClient, getSupabaseClientWithAuth } from "../_shared/supabase-client.ts";
+import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
 interface StrategyConfig {
   entry_conditions: Condition[];
@@ -35,34 +35,24 @@ interface StrategyRow {
   updated_at: string;
 }
 
-function getUserIdFromRequest(req: Request): string | null {
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) return null;
-  
-  const token = authHeader.replace("Bearer ", "");
-  // Decode JWT manually to get user_id (avoids async auth call)
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(atob(parts[1]));
-    return payload.sub || null;
-  } catch {
-    return null;
-  }
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return handleCorsOptions();
   }
 
   const supabase = getSupabaseClient();
-  let userId = getUserIdFromRequest(req);
-  
-  // Demo mode: use a test user ID if no auth provided
-  if (!userId) {
-    userId = "00000000-0000-0000-0000-000000000001";
+
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const { data: { user }, error: authError } = await supabase.auth.getUser(
+    authHeader.replace("Bearer ", ""),
+  );
+  if (authError || !user) {
+    return new Response(JSON.stringify({ error: "Authentication required" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
+  const userId = user.id;
 
   const url = new URL(req.url);
   const strategyId = url.searchParams.get("id");
@@ -71,30 +61,30 @@ serve(async (req) => {
   try {
     switch (req.method) {
       case "GET":
-        return await handleGet(supabase, userId, strategyId);
-      
+        return await handleGet(supabase, userId, strategyId, url);
+
       case "POST":
         if (action === "duplicate") {
           return await handleDuplicate(supabase, userId, req);
         }
         return await handleCreate(supabase, userId, req);
-      
+
       case "PUT":
         return await handleUpdate(supabase, userId, req, strategyId);
-      
+
       case "DELETE":
         return await handleDelete(supabase, userId, strategyId);
-      
+
       default:
         return errorResponse("Method not allowed", 405);
     }
   } catch (err) {
-    console.error("Strategy API error:", err);
-    return errorResponse(err instanceof Error ? err.message : "Internal error", 500);
+    console.error("[strategies] Unexpected error:", err);
+    return errorResponse("An internal error occurred", 500);
   }
 });
 
-async function handleGet(supabase: ReturnType<typeof getSupabaseClient>, userId: string, id: string | null) {
+async function handleGet(supabase: ReturnType<typeof getSupabaseClient>, userId: string, id: string | null, url: URL) {
   if (id) {
     const { data, error } = await supabase
       .from("strategy_user_strategies")
@@ -102,24 +92,28 @@ async function handleGet(supabase: ReturnType<typeof getSupabaseClient>, userId:
       .eq("id", id)
       .eq("user_id", userId)
       .single();
-    
+
     if (error || !data) {
       return errorResponse("Strategy not found", 404);
     }
     return jsonResponse({ strategy: data });
   }
-  
-  // List all strategies
+
+  // List strategies with pagination (excludes large config JSONB)
+  const offset = parseInt(url.searchParams.get("offset") ?? "0", 10) || 0;
   const { data, error } = await supabase
     .from("strategy_user_strategies")
-    .select("*")
+    .select("id, name, is_active, paper_trading_enabled, created_at, updated_at")
     .eq("user_id", userId)
-    .order("updated_at", { ascending: false });
-  
+    .order("updated_at", { ascending: false })
+    .range(offset, offset + 49)
+    .limit(50);
+
   if (error) {
-    return errorResponse(error.message);
+    console.error("[strategies] DB error listing strategies:", error);
+    return errorResponse("An internal error occurred", 500);
   }
-  
+
   return jsonResponse({ strategies: data || [] });
 }
 
@@ -148,11 +142,12 @@ async function handleCreate(supabase: ReturnType<typeof getSupabaseClient>, user
     .insert(strategy)
     .select()
     .single();
-  
+
   if (error) {
-    return errorResponse(error.message);
+    console.error("[strategies] DB error creating strategy:", error);
+    return errorResponse("An internal error occurred", 500);
   }
-  
+
   return jsonResponse({ strategy: data }, 201);
 }
 
@@ -177,15 +172,16 @@ async function handleUpdate(supabase: ReturnType<typeof getSupabaseClient>, user
     .eq("user_id", userId)
     .select()
     .single();
-  
+
   if (error) {
-    return errorResponse(error.message);
+    console.error("[strategies] DB error updating strategy:", error);
+    return errorResponse("An internal error occurred", 500);
   }
-  
+
   if (!data) {
     return errorResponse("Strategy not found", 404);
   }
-  
+
   return jsonResponse({ strategy: data });
 }
 
@@ -199,11 +195,12 @@ async function handleDelete(supabase: ReturnType<typeof getSupabaseClient>, user
     .delete()
     .eq("id", id)
     .eq("user_id", userId);
-  
+
   if (error) {
-    return errorResponse(error.message);
+    console.error("[strategies] DB error deleting strategy:", error);
+    return errorResponse("An internal error occurred", 500);
   }
-  
+
   return jsonResponse({ message: "Strategy deleted" });
 }
 
@@ -235,14 +232,15 @@ async function handleDuplicate(supabase: ReturnType<typeof getSupabaseClient>, u
       name: `${source.name} (Copy)`,
       description: source.description,
       config: source.config,
-      is_active: false
+      is_active: false,
     })
     .select()
     .single();
-  
+
   if (error) {
-    return errorResponse(error.message);
+    console.error("[strategies] DB error duplicating strategy:", error);
+    return errorResponse("An internal error occurred", 500);
   }
-  
+
   return jsonResponse({ strategy: data }, 201);
 }
