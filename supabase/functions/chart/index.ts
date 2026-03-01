@@ -437,9 +437,9 @@ serve(async (req: Request): Promise<Response> => {
 
     const daysParam = url.searchParams.get("days");
     const TIMEFRAME_DEFAULT_DAYS: Record<string, number> = {
-      m15: 60,
-      h1: 180,
-      h4: 365,
+      m15: 10, // ~2 weeks trading, ~260 bars
+      h1: 30, // ~6 weeks trading, ~210 bars
+      h4: 90, // ~3 months, ~270 bars
       d1: 1825, // 5 years
       w1: 1825, // 5 years
     };

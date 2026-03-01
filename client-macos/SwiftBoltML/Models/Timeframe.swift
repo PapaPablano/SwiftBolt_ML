@@ -120,14 +120,15 @@ public enum Timeframe: String, CaseIterable, Codable, Hashable, Identifiable {
         }
     }
     
-    /// Default number of calendar days of chart history to request per timeframe
+    /// Default number of calendar days of chart history to request per timeframe.
+    /// Tuned so each timeframe yields ~200-300 bars for a readable default view.
     var chartDefaultDays: Int {
         switch self {
-        case .m15: return 60
-        case .h1:  return 180
-        case .h4:  return 365
-        case .d1:  return 1825  // 5 years
-        case .w1:  return 1825  // 5 years
+        case .m15: return 10   // ~2 weeks trading, ~260 bars
+        case .h1:  return 30   // ~6 weeks trading, ~210 bars
+        case .h4:  return 90   // ~3 months, ~270 bars
+        case .d1:  return 1825 // 5 years
+        case .w1:  return 1825 // 5 years
         }
     }
 

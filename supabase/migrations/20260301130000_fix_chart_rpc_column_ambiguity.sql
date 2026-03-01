@@ -1,0 +1,11 @@
+-- Fix get_chart_data_v2 RPC: resolve column ambiguity in h1/h4 branch,
+-- add explicit enum casts for timeframe and data_status columns.
+--
+-- Issues fixed:
+-- 1. Bare column names in bucketed CTE collided with RETURNS TABLE names (PG 42702)
+-- 2. p_timeframe (varchar) compared to o.timeframe (timeframe enum) without cast (PG 42883)
+-- 3. o.data_status (data_status enum) returned as varchar without cast (PG 42804)
+--
+-- The final version applied via apply_migration (fix_chart_rpc_enum_casts)
+-- supersedes this file. Kept as placeholder for local migration history.
+-- See 20260301140000 for details.

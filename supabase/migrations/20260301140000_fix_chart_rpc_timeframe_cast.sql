@@ -1,0 +1,8 @@
+-- Final consolidated fix for get_chart_data_v2 RPC.
+-- Applied via apply_migration as fix_chart_rpc_enum_casts.
+--
+-- Changes from original varchar overload:
+-- 1. h1/h4 branch: renamed CTE columns to bar_*/agg_* to avoid RETURNS TABLE collision
+-- 2. m15 branch: explicit 'm15'::timeframe cast for enum comparison
+-- 3. ELSE branch: p_timeframe::timeframe cast and o.data_status::VARCHAR(20) cast
+-- 4. All branches: alpaca has priority 1 in provider deduplication
