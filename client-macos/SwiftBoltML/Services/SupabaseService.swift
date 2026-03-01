@@ -2,12 +2,12 @@ import Supabase
 
 /// Singleton wrapper around the Supabase Swift SDK client.
 /// Provides a single shared instance used throughout the app.
-public class SupabaseService {
+final class SupabaseService {
     /// Shared singleton instance
-    public static let shared = SupabaseService()
+    static let shared = SupabaseService()
 
     /// The underlying `SupabaseClient` from the SDK.
-    public let client: SupabaseClient
+    let client: SupabaseClient
 
     private init() {
         // The Config struct already exposes the URL and anon key via environment or Keychain.

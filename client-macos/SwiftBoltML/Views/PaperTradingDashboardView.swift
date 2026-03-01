@@ -342,12 +342,19 @@ private struct EmptyRowView: View {
 
 // MARK: - Formatters
 
+/// Shared formatter — avoids allocating a new instance on every render cycle.
+/// Locked to en_US locale so negative values render as -$1.23, not ($1.23).
+private let currencyFormatter: NumberFormatter = {
+    let f = NumberFormatter()
+    f.numberStyle = .currency
+    f.currencyCode = "USD"
+    f.locale = Locale(identifier: "en_US")
+    f.maximumFractionDigits = 2
+    return f
+}()
+
 private func formatCurrency(_ value: Double) -> String {
-    let formatter = NumberFormatter()
-    formatter.numberStyle = .currency
-    formatter.currencyCode = "USD"
-    formatter.maximumFractionDigits = 2
-    return formatter.string(from: NSNumber(value: value)) ?? "$0.00"
+    currencyFormatter.string(from: NSNumber(value: value)) ?? "$0.00"
 }
 
 private func formatPrice(_ value: Double) -> String {

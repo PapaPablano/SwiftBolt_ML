@@ -13,7 +13,9 @@ enum SidebarSection: Hashable {
     case predictions
     case tradestation
     case strategyPlatform(StrategyPlatformSection)
+    #if DEBUG
     case devtools
+    #endif
 }
 
 struct ContentView: View {
@@ -48,9 +50,13 @@ struct ContentView: View {
                         PaperTradingDashboardView()
                     case .strategyPlatform(.backtesting):
                         BacktestResultsWebView(symbol: appViewModel.selectedSymbol?.ticker)
-                    default:
+                    case .stocks:
                         DetailView()
                             .environmentObject(appViewModel)
+                    #if DEBUG
+                    case .devtools:
+                        DevToolsView()
+                    #endif
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -60,12 +66,7 @@ struct ContentView: View {
         .task {
             await appViewModel.checkSupabaseConnectivity()
         }
-        .onChange(of: appViewModel.selectedSymbol) { oldValue, newValue in
-            print("[DEBUG] ========================================")
-            print("[DEBUG] ContentView detected selectedSymbol change")
-            print("[DEBUG] - Old: \(oldValue?.ticker ?? "nil")")
-            print("[DEBUG] - New: \(newValue?.ticker ?? "nil")")
-            print("[DEBUG] ========================================")
+        .onChange(of: appViewModel.selectedSymbol) { _, _ in
             // Defer to avoid publishing changes from within view updates
             DispatchQueue.main.async { activeSection = .stocks }
         }
