@@ -120,6 +120,17 @@ public enum Timeframe: String, CaseIterable, Codable, Hashable, Identifiable {
         }
     }
     
+    /// Default number of calendar days of chart history to request per timeframe
+    var chartDefaultDays: Int {
+        switch self {
+        case .m15: return 60
+        case .h1:  return 180
+        case .h4:  return 365
+        case .d1:  return 1825  // 5 years
+        case .w1:  return 1825  // 5 years
+        }
+    }
+
     /// Minimum refresh interval in seconds (for rate limiting)
     var minRefreshSeconds: Double {
         switch self {

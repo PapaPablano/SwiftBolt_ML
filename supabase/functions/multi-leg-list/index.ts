@@ -10,10 +10,7 @@ import {
   handleCorsOptions,
   jsonResponse,
 } from "../_shared/cors.ts";
-import {
-  getSupabaseClient,
-  getSupabaseClientWithAuth,
-} from "../_shared/supabase-client.ts";
+import { getSupabaseClientWithAuth } from "../_shared/supabase-client.ts";
 import {
   type StrategyRow,
   strategyRowToModel,
@@ -52,11 +49,7 @@ serve(async (req: Request): Promise<Response> => {
     );
     const offset = parseInt(url.searchParams.get("offset") ?? "0");
 
-    // Try to get user ID from auth, fall back to service role for development
-    let userId: string | null = null;
-    let supabase;
-
-    // First try to get authenticated user
+    // Authenticate user
     const authSupabase = getSupabaseClientWithAuth(authHeader);
     const {
       data: { user },
@@ -64,22 +57,20 @@ serve(async (req: Request): Promise<Response> => {
     } = await authSupabase.auth.getUser();
 
     if (userError || !user) {
-      // For development/testing: use service role client which bypasses RLS
-      console.warn(
-        "[multi-leg-list] No authenticated user, using service role client",
-      );
-      supabase = getSupabaseClient();
-      userId = "00000000-0000-0000-0000-000000000000";
-    } else {
-      userId = user.id;
-      supabase = authSupabase;
+      return new Response(JSON.stringify({ error: "Authentication required" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
     }
+
+    const userId: string = user.id;
+    const supabase = authSupabase;
 
     // Build query
     let query = supabase
       .from("options_strategies")
       .select("*", { count: "exact" })
-      .eq("user_id", userId) // Filter by user ID (needed when using service role)
+      .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 

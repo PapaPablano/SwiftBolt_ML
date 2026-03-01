@@ -10,10 +10,7 @@ import {
   handleCorsOptions,
   jsonResponse,
 } from "../_shared/cors.ts";
-import {
-  getSupabaseClient,
-  getSupabaseClientWithAuth,
-} from "../_shared/supabase-client.ts";
+import { getSupabaseClientWithAuth } from "../_shared/supabase-client.ts";
 
 serve(async (req: Request): Promise<Response> => {
   // Handle CORS preflight
@@ -53,11 +50,7 @@ serve(async (req: Request): Promise<Response> => {
       return errorResponse("strategyId is required", 400);
     }
 
-    // Try to get user ID from auth, fall back to service role for development
-    let userId: string | null = null;
-    let supabase;
-
-    // First try to get authenticated user
+    // Authenticate user
     const authSupabase = getSupabaseClientWithAuth(authHeader);
     const {
       data: { user },
@@ -65,16 +58,14 @@ serve(async (req: Request): Promise<Response> => {
     } = await authSupabase.auth.getUser();
 
     if (userError || !user) {
-      // For development/testing: use service role client which bypasses RLS
-      console.warn(
-        "[multi-leg-delete] No authenticated user, using service role client",
-      );
-      supabase = getSupabaseClient();
-      userId = "00000000-0000-0000-0000-000000000000";
-    } else {
-      userId = user.id;
-      supabase = authSupabase;
+      return new Response(JSON.stringify({ error: "Authentication required" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
     }
+
+    const userId: string = user.id;
+    const supabase = authSupabase;
 
     // First verify the strategy exists and belongs to the user
     const { data: strategyData, error: fetchError } = await supabase

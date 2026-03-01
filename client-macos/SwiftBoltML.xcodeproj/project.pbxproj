@@ -187,6 +187,10 @@
 		SR0000012345678900000003 /* SupportResistanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SR0000012345678900000004 /* SupportResistanceView.swift */; };
 		TRGA0000123456789ABCDEF /* GAStrategyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */; };
 		WC734A8413BAD142EF9439139C /* WebChartControlsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */; };
+		95D2E66386B7421884922127 /* SupabaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AA3920C63C04EC4B71DF371 /* SupabaseService.swift */; };
+		6D5C12AB440D4C97917CCFB6 /* PaperTradingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD11AD1876294470966EE50B /* PaperTradingService.swift */; };
+		EBE5E5FA585748D98623520B /* PaperTradingDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 456261EF76E34144B3179C74 /* PaperTradingDashboardView.swift */; };
+		4E2F4B5AFEC140D6B6A37534 /* StrategyBuilderWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70AA966950A94213A369976A /* StrategyBuilderWebView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -218,6 +222,7 @@
 		9A702F82DACC8241B3B9A8BA /* PolynomialRegressionIndicator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PolynomialRegressionIndicator.swift; sourceTree = "<group>"; };
 		9CE2E34EE4D81F3060BC9AF1 /* PivotLevel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PivotLevel.swift; sourceTree = "<group>"; };
 		A0FBC98DD5D3AA21FD643B9B /* MultiLegStrategyDetailView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MultiLegStrategyDetailView.swift; sourceTree = "<group>"; };
+		C1000001233456780000001 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 		A2000001233456780000001 /* SwiftBoltMLApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftBoltMLApp.swift; sourceTree = "<group>"; };
 		A2000002233456780000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A2000003233456780000003 /* DevToolsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevToolsView.swift; sourceTree = "<group>"; };
@@ -375,6 +380,10 @@
 		SR0000012345678900000004 /* SupportResistanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportResistanceView.swift; sourceTree = "<group>"; };
 		TRGA0001123456789ABCDEF0 /* GAStrategyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GAStrategyModels.swift; sourceTree = "<group>"; };
 		WC3D70AA864E564C5E83E58618 /* WebChartControlsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebChartControlsView.swift; sourceTree = "<group>"; };
+		9AA3920C63C04EC4B71DF371 /* SupabaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseService.swift; sourceTree = "<group>"; };
+		CD11AD1876294470966EE50B /* PaperTradingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaperTradingService.swift; sourceTree = "<group>"; };
+		456261EF76E34144B3179C74 /* PaperTradingDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaperTradingDashboardView.swift; sourceTree = "<group>"; };
+		70AA966950A94213A369976A /* StrategyBuilderWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrategyBuilderWebView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -399,6 +408,7 @@
 			children = (
 				A5000002233456780000002 /* SwiftBoltML */,
 				A5000010233456780000010 /* Products */,
+				C1000001233456780000001 /* Secrets.xcconfig */,
 			);
 			sourceTree = "<group>";
 		};
@@ -488,6 +498,9 @@
 				GS0000012345678900000012 /* VolatilitySurfaceView.swift */,
 				600B4DA6E1D5A21C28EEF437 /* TSStrategyBuilderView.swift */,
 				9452CCC41C1DE30AB2FC973E /* StrategyBuilderView.swift */,
+				456261EF76E34144B3179C74 /* PaperTradingDashboardView.swift */,
+				70AA966950A94213A369976A /* StrategyBuilderWebView.swift */,
+
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -592,6 +605,9 @@
 				F6EBEFBA2F23DD3D001C6A4D /* MarketDataService.swift */,
 				A2000013233456780000013 /* APIClient.swift */,
 				MF0002012345678900000001 /* BackfillService.swift */,
+				9AA3920C63C04EC4B71DF371 /* SupabaseService.swift */,
+				CD11AD1876294470966EE50B /* PaperTradingService.swift */,
+
 				UNI000012F44B14A00047DB3 /* UnifiedIndicatorsService.swift */,
 				A2000014233456780000014 /* Config.swift */,
 				E2A2B3C4D5E6F708192A3B4C /* SupabaseConnectivity.swift */,
@@ -957,6 +973,11 @@
 				F6EBEFBB2F23DD3D001C6A4D /* MarketDataService.swift in Sources */,
 				893B3E6734F63C82006BBA70 /* AddToStrategySheet.swift in Sources */,
 				A9C7BE76FE341CF77B5F8B47 /* StrategyBuilderView.swift in Sources */,
+				95D2E66386B7421884922127 /* SupabaseService.swift in Sources */,
+				6D5C12AB440D4C97917CCFB6 /* PaperTradingService.swift in Sources */,
+				EBE5E5FA585748D98623520B /* PaperTradingDashboardView.swift in Sources */,
+				4E2F4B5AFEC140D6B6A37534 /* StrategyBuilderWebView.swift in Sources */,
+
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1085,6 +1106,7 @@
 		};
 		B2000001233456780000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = C1000001233456780000001 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -1116,6 +1138,7 @@
 		};
 		B2000002233456780000002 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = C1000001233456780000001 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;

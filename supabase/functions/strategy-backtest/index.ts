@@ -7,32 +7,24 @@ import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
-function getUserIdFromRequest(req: Request): string | null {
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader) return null;
-  
-  const token = authHeader.replace("Bearer ", "");
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(atob(parts[1]));
-    return payload.sub || null;
-  } catch {
-    return null;
-  }
-}
-
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return handleCorsOptions();
   }
 
   const supabase = getSupabaseClient();
-  let userId = getUserIdFromRequest(req);
-  
-  if (!userId) {
-    userId = "00000000-0000-0000-0000-000000000001";
+
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const { data: { user }, error: authError } = await supabase.auth.getUser(
+    authHeader.replace("Bearer ", ""),
+  );
+  if (authError || !user) {
+    return new Response(JSON.stringify({ error: "Authentication required" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
+  const userId = user.id;
 
   const url = new URL(req.url);
   const jobId = url.searchParams.get("id");
@@ -41,18 +33,18 @@ serve(async (req: Request): Promise<Response> => {
     if (req.method === "POST") {
       return await handleQueueBacktest(supabase, userId, req);
     }
-    
+
     if (req.method === "GET") {
       if (jobId) {
         return await handleGetJob(supabase, userId, jobId);
       }
       return await handleListJobs(supabase, userId, url);
     }
-    
+
     return errorResponse("Method not allowed", 405);
   } catch (err) {
-    console.error("Backtest API error:", err);
-    return errorResponse(err instanceof Error ? err.message : "Internal error", 500);
+    console.error("[strategy-backtest] Unexpected error:", err);
+    return errorResponse("An internal error occurred", 500);
   }
 });
 
@@ -173,11 +165,12 @@ async function handleListJobs(
   }
   
   const { data, error } = await query;
-  
+
   if (error) {
-    return errorResponse(error.message);
+    console.error("[strategy-backtest] DB error listing jobs:", error);
+    return errorResponse("An internal error occurred", 500);
   }
-  
+
   // Get strategy names
   const jobs = data || [];
   const strategyIds = [...new Set(jobs.map(j => j.strategy_id).filter(Boolean))];

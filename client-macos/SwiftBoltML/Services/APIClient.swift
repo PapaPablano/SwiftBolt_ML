@@ -628,8 +628,9 @@ final class APIClient {
     }
 
     func fetchChartRead(symbol: String, timeframe: String = "d1", includeMLData: Bool = true) async throws -> ChartResponse {
+        // Redirected from retired chart-read to the unified chart function.
         // Build URL with cache-buster to bypass CDN caching
-        var urlComponents = URLComponents(url: functionURL("chart-read"), resolvingAgainstBaseURL: false)!
+        var urlComponents = URLComponents(url: functionURL("chart"), resolvingAgainstBaseURL: false)!
         let cacheBuster = Int(Date().timeIntervalSince1970)
         urlComponents.queryItems = [
             URLQueryItem(name: "t", value: "\(cacheBuster)"),
@@ -643,7 +644,7 @@ final class APIClient {
             "includeMLData": includeMLData
         ]
 
-        print("[DEBUG] 📊 Fetching chart-read: symbol=\(symbol), timeframe=\(timeframe), cacheBuster=\(cacheBuster)")
+        print("[DEBUG] 📊 Fetching chart (was chart-read): symbol=\(symbol), timeframe=\(timeframe), cacheBuster=\(cacheBuster)")
 
         guard let url = urlComponents.url else {
             throw APIError.invalidURL
@@ -666,6 +667,8 @@ final class APIClient {
     }
 
     func fetchChartReadPage(symbol: String, timeframe: String = "d1", before: Int, pageSize: Int = 400) async throws -> ChartResponse {
+        // NOTE: fetchChartReadPage still calls chart-read for pagination; update separately when the
+        // unified chart function gains cursor-based pagination support.
         var urlComponents = URLComponents(url: functionURL("chart-read"), resolvingAgainstBaseURL: false)!
         let cacheBuster = Int(Date().timeIntervalSince1970)
         urlComponents.queryItems = [
@@ -706,8 +709,9 @@ final class APIClient {
     }
     
     func fetchChartV2(symbol: String, timeframe: String = "d1", days: Int = 60, includeForecast: Bool = true, forecastDays: Int = 10, forecastSteps: Int? = nil) async throws -> ChartDataV2Response {
+        // Redirected from retired chart-data-v2 to the unified chart function.
         // Build URL with cache-buster to bypass CDN caching (for all timeframes)
-        var urlComponents = URLComponents(url: functionURL("chart-data-v2"), resolvingAgainstBaseURL: false)!
+        var urlComponents = URLComponents(url: functionURL("chart"), resolvingAgainstBaseURL: false)!
         let cacheBuster = Int(Date().timeIntervalSince1970)
         urlComponents.queryItems = [
             URLQueryItem(name: "t", value: "\(cacheBuster)"),
@@ -740,7 +744,7 @@ final class APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         request.httpBody = bodyData
-        print("[DEBUG] 📊 chart-data-v2 request: method=\(request.httpMethod ?? "nil"), bodyBytes=\(bodyData.count)")
+        print("[DEBUG] 📊 chart (was chart-data-v2) request: method=\(request.httpMethod ?? "nil"), bodyBytes=\(bodyData.count)")
 
         // Bypass network cache for all requests to ensure fresh data
         request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -750,6 +754,51 @@ final class APIClient {
         return try await performRequestWithHeaderLogging(request, symbol: symbol, timeframe: timeframe)
     }
     
+    // MARK: - Unified Chart Endpoint
+
+    /// Fetch chart data from the unified GET /chart endpoint.
+    ///
+    /// This is the single canonical chart read path — a one-round-trip replacement for the
+    /// three-function fallback chain (chart-data-v2 → chart-read → chart).
+    ///
+    /// - Parameters:
+    ///   - symbol: Ticker symbol (e.g. "AAPL", "/ES", "AAPL240119C00150000")
+    ///   - timeframe: Bar interval API token (e.g. "d1", "h1", "m15", "w1")
+    ///   - days: Number of calendar days of history to return (default 1825)
+    ///   - includeForecast: Whether to append ML forecast bars (default true)
+    ///   - useLayers: Whether to include optional `layers` field (default false)
+    func fetchUnifiedChart(
+        symbol: String,
+        timeframe: String,
+        days: Int = 1825,
+        includeForecast: Bool = true,
+        useLayers: Bool = false
+    ) async throws -> UnifiedChartResponse {
+        var components = URLComponents(url: functionURL("chart"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "symbol", value: symbol),
+            URLQueryItem(name: "timeframe", value: timeframe),
+            URLQueryItem(name: "days", value: String(days)),
+            URLQueryItem(name: "include_forecast", value: includeForecast ? "true" : "false"),
+        ]
+        if useLayers {
+            components.queryItems?.append(URLQueryItem(name: "layers", value: "true"))
+        }
+
+        guard let url = components.url else { throw APIError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("no-cache, no-store, must-revalidate", forHTTPHeaderField: "Cache-Control")
+        request.setValue(UUID().uuidString, forHTTPHeaderField: "X-Request-ID")
+
+        print("[DEBUG] Fetching unified chart: symbol=\(symbol), timeframe=\(timeframe), days=\(days)")
+        return try await performRequest(request)
+    }
+
     /// Request binary (up/down) forecast from ML API and write to ml_forecasts for chart overlay.
     /// Call this then reload chart (e.g. loadChart) to show the new forecast.
     func refreshBinaryForecast(symbol: String, horizons: [Int] = [1, 5, 10]) async throws {

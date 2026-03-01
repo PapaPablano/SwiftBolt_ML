@@ -16,13 +16,13 @@ Deno.serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const gatewayKey = Deno.env.get("SB_GATEWAY_KEY") ??
-      Deno.env.get("ANON_KEY") ??
-      Deno.env.get("SUPABASE_ANON_KEY") ??
-      supabaseServiceKey;
+    const gatewayKey = Deno.env.get("SB_GATEWAY_KEY");
+    if (!gatewayKey) {
+      console.error("[trigger-backfill] SB_GATEWAY_KEY not configured");
+      return new Response("Server misconfiguration", { status: 500 });
+    }
 
-    const expectedCallerKey = Deno.env.get("SB_GATEWAY_KEY") ?? gatewayKey;
+    const expectedCallerKey = gatewayKey;
     const authHeader = req.headers.get("authorization");
     const apikeyHeader = req.headers.get("apikey");
     const bearer = authHeader?.toLowerCase().startsWith("bearer ")

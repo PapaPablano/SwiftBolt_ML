@@ -11,10 +11,7 @@ import {
   handleCorsOptions,
   jsonResponse,
 } from "../_shared/cors.ts";
-import {
-  getSupabaseClient,
-  getSupabaseClientWithAuth,
-} from "../_shared/supabase-client.ts";
+import { getSupabaseClientWithAuth } from "../_shared/supabase-client.ts";
 import {
   type CreateStrategyRequest,
   type LegRow,
@@ -62,11 +59,7 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // Try to get user ID from auth, fall back to service role for development
-    let userId: string;
-    let supabase;
-
-    // First try to get authenticated user
+    // Authenticate user
     const authSupabase = getSupabaseClientWithAuth(authHeader);
     const {
       data: { user },
@@ -74,18 +67,14 @@ serve(async (req: Request): Promise<Response> => {
     } = await authSupabase.auth.getUser();
 
     if (userError || !user) {
-      // For development/testing: use service role client which bypasses RLS
-      // In production, you should require authentication
-      console.warn(
-        "[multi-leg-create] No authenticated user, using service role client",
-      );
-      supabase = getSupabaseClient();
-      // Use a placeholder UUID for anonymous strategies
-      userId = "00000000-0000-0000-0000-000000000000";
-    } else {
-      userId = user.id;
-      supabase = authSupabase;
+      return new Response(JSON.stringify({ error: "Authentication required" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
     }
+
+    const userId: string = user.id;
+    const supabase = authSupabase;
 
     // Look up symbol ID from ticker, or create if it doesn't exist
     const ticker = body.underlyingTicker.toUpperCase();

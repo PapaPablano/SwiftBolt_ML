@@ -9,10 +9,7 @@ import {
   handleCorsOptions,
   jsonResponse,
 } from "../_shared/cors.ts";
-import {
-  getSupabaseClient,
-  getSupabaseClientWithAuth,
-} from "../_shared/supabase-client.ts";
+import { getSupabaseClientWithAuth } from "../_shared/supabase-client.ts";
 import {
   type AlertRow,
   alertRowToModel,
@@ -48,11 +45,7 @@ serve(async (req: Request): Promise<Response> => {
       return errorResponse("strategyId is required", 400);
     }
 
-    // Try to get user ID from auth, fall back to service role for development
-    let userId: string | null = null;
-    let supabase;
-
-    // First try to get authenticated user
+    // Authenticate user
     const authSupabase = getSupabaseClientWithAuth(authHeader);
     const {
       data: { user },
@@ -60,23 +53,31 @@ serve(async (req: Request): Promise<Response> => {
     } = await authSupabase.auth.getUser();
 
     if (userError || !user) {
-      // For development/testing: use service role client which bypasses RLS
-      console.warn(
-        "[multi-leg-detail] No authenticated user, using service role client",
-      );
-      supabase = getSupabaseClient();
-      userId = "00000000-0000-0000-0000-000000000000";
-    } else {
-      userId = user.id;
-      supabase = authSupabase;
+      return new Response(JSON.stringify({ error: "Authentication required" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
-    // Fetch strategy
+    const userId: string = user.id;
+    const supabase = authSupabase;
+
+    // Fetch strategy first (sequential — strategyId is already known, but we
+    // must verify ownership and existence before proceeding)
     const { data: strategyData, error: strategyError } = await supabase
       .from("options_strategies")
-      .select("*")
+      .select(
+        "id, user_id, name, strategy_type, underlying_symbol_id, underlying_ticker, " +
+        "created_at, opened_at, closed_at, status, " +
+        "total_debit, total_credit, net_premium, num_contracts, " +
+        "max_risk, max_reward, max_risk_pct, breakeven_points, profit_zones, " +
+        "current_value, total_pl, total_pl_pct, realized_pl, " +
+        "forecast_id, forecast_alignment, forecast_confidence, alignment_check_at, " +
+        "combined_delta, combined_gamma, combined_theta, combined_vega, combined_rho, greeks_updated_at, " +
+        "min_dte, max_dte, tags, notes, last_alert_at, version, updated_at",
+      )
       .eq("id", strategyId)
-      .eq("user_id", userId) // Filter by user ID (needed when using service role)
+      .eq("user_id", userId)
       .single();
 
     if (strategyError) {
@@ -90,41 +91,63 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    // Fetch legs
-    const { data: legsData, error: legsError } = await supabase
-      .from("options_legs")
-      .select("*")
-      .eq("strategy_id", strategyId)
-      .order("leg_number", { ascending: true });
+    // Fetch legs, alerts, and metrics in parallel
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const [legsResult, alertsResult, metricsResult] = await Promise.all([
+      supabase
+        .from("options_legs")
+        .select(
+          "id, strategy_id, leg_number, leg_role, position_type, option_type, strike, expiry, " +
+          "dte_at_entry, current_dte, entry_timestamp, entry_price, contracts, total_entry_cost, " +
+          "current_price, current_value, unrealized_pl, unrealized_pl_pct, " +
+          "is_closed, exit_price, exit_timestamp, realized_pl, " +
+          "entry_delta, entry_gamma, entry_theta, entry_vega, entry_rho, " +
+          "current_delta, current_gamma, current_theta, current_vega, current_rho, greeks_updated_at, " +
+          "entry_implied_vol, current_implied_vol, vega_exposure, " +
+          "is_assigned, assignment_timestamp, assignment_price, " +
+          "is_exercised, exercise_timestamp, exercise_price, " +
+          "is_itm, is_deep_itm, is_breaching_strike, is_near_expiration, " +
+          "notes, updated_at",
+        )
+        .eq("strategy_id", strategyId)
+        .order("leg_number", { ascending: true }),
+      supabase
+        .from("options_multi_leg_alerts")
+        .select(
+          "id, strategy_id, leg_id, alert_type, severity, title, reason, details, " +
+          "suggested_action, created_at, acknowledged_at, resolved_at, resolution_action, action_required",
+        )
+        .eq("strategy_id", strategyId)
+        .is("resolved_at", null)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("options_strategy_metrics")
+        .select(
+          "id, strategy_id, recorded_at, recorded_timestamp, underlying_price, " +
+          "total_value, total_pl, total_pl_pct, " +
+          "delta_snapshot, gamma_snapshot, theta_snapshot, vega_snapshot, " +
+          "min_dte, alert_count, critical_alert_count",
+        )
+        .eq("strategy_id", strategyId)
+        .gte("recorded_at", thirtyDaysAgo.toISOString().split("T")[0])
+        .order("recorded_at", { ascending: true }),
+    ]);
+
+    const { data: legsData, error: legsError } = legsResult;
+    const { data: alertsData, error: alertsError } = alertsResult;
+    const { data: metricsData, error: metricsError } = metricsResult;
 
     if (legsError) {
       console.error("[multi-leg-detail] Legs fetch error:", legsError);
       return errorResponse(`Failed to fetch legs: ${legsError.message}`, 500);
     }
 
-    // Fetch active alerts (unresolved)
-    const { data: alertsData, error: alertsError } = await supabase
-      .from("options_multi_leg_alerts")
-      .select("*")
-      .eq("strategy_id", strategyId)
-      .is("resolved_at", null)
-      .order("created_at", { ascending: false });
-
     if (alertsError) {
       console.error("[multi-leg-detail] Alerts fetch error:", alertsError);
       // Non-fatal, continue with empty alerts
     }
-
-    // Fetch recent metrics (last 30 days)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const { data: metricsData, error: metricsError } = await supabase
-      .from("options_strategy_metrics")
-      .select("*")
-      .eq("strategy_id", strategyId)
-      .gte("recorded_at", thirtyDaysAgo.toISOString().split("T")[0])
-      .order("recorded_at", { ascending: true });
 
     if (metricsError) {
       console.error("[multi-leg-detail] Metrics fetch error:", metricsError);

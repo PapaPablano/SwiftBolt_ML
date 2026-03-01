@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { TrendingUp, TrendingDown, DollarSign, Target, AlertCircle, RefreshCw } from 'lucide-react';
 
 // ============================================================================
@@ -7,22 +7,23 @@ import { TrendingUp, TrendingDown, DollarSign, Target, AlertCircle, RefreshCw } 
 
 interface PaperPosition {
   id: string;
-  strategy_name: string;
+  strategy_id: string;
   symbol_id: string;
   entry_price: number;
-  current_price: number;
+  current_price: number | null;
   quantity: number;
   direction: 'long' | 'short';
   entry_time: string;
   stop_loss_price: number;
   take_profit_price: number;
-  unrealized_pnl: number;
-  unrealized_pnl_pct: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface PaperTrade {
   id: string;
-  strategy_name: string;
+  strategy_id: string;
   symbol_id: string;
   entry_price: number;
   exit_price: number;
@@ -32,8 +33,8 @@ interface PaperTrade {
   exit_time: string;
   pnl: number;
   pnl_pct: number;
-  duration_hours: number;
   close_reason: string;
+  created_at: string;
 }
 
 interface PerformanceMetrics {
@@ -166,6 +167,26 @@ function calculateMetrics(trades: PaperTrade[]): PerformanceMetrics {
 }
 
 // ============================================================================
+// HELPERS
+// ============================================================================
+
+function calcUnrealizedPnl(pos: PaperPosition): { pnl: number; pnl_pct: number } {
+  const current = pos.current_price ?? pos.entry_price;
+  const raw = pos.direction === 'long'
+    ? (current - pos.entry_price) * pos.quantity
+    : (pos.entry_price - current) * pos.quantity;
+  const pct = pos.entry_price > 0
+    ? ((current - pos.entry_price) / pos.entry_price) * (pos.direction === 'long' ? 1 : -1) * 100
+    : 0;
+  return { pnl: raw, pnl_pct: pct };
+}
+
+function calcDurationHours(entry_time: string, exit_time: string): number {
+  const ms = new Date(exit_time).getTime() - new Date(entry_time).getTime();
+  return Math.round((ms / 3600000) * 10) / 10;
+}
+
+// ============================================================================
 // SUB-COMPONENTS
 // ============================================================================
 
@@ -187,7 +208,6 @@ function PositionsTable({ positions }: PositionsTableProps) {
       <table className="w-full text-sm">
         <thead className="bg-gray-50 border-b border-gray-200">
           <tr>
-            <th className="px-4 py-2 text-left text-gray-700 font-medium">Strategy</th>
             <th className="px-4 py-2 text-left text-gray-700 font-medium">Symbol</th>
             <th className="px-4 py-2 text-right text-gray-700 font-medium">Dir</th>
             <th className="px-4 py-2 text-right text-gray-700 font-medium">Entry</th>
@@ -199,43 +219,46 @@ function PositionsTable({ positions }: PositionsTableProps) {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200">
-          {positions.map((pos) => (
-            <tr key={pos.id} className="hover:bg-gray-50">
-              <td className="px-4 py-2 text-gray-900">{pos.strategy_name}</td>
-              <td className="px-4 py-2 font-mono text-gray-700">{pos.symbol_id}</td>
-              <td className="px-4 py-2 text-right">
-                <span
-                  className={`px-2 py-1 rounded text-xs font-medium ${
-                    pos.direction === 'long'
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-red-100 text-red-800'
+          {positions.map((pos) => {
+            const { pnl: unrealizedPnl, pnl_pct: unrealizedPct } = calcUnrealizedPnl(pos);
+            const current = pos.current_price ?? pos.entry_price;
+            return (
+              <tr key={pos.id} className="hover:bg-gray-50">
+                <td className="px-4 py-2 font-mono text-gray-700">{pos.symbol_id}</td>
+                <td className="px-4 py-2 text-right">
+                  <span
+                    className={`px-2 py-1 rounded text-xs font-medium ${
+                      pos.direction === 'long'
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-red-100 text-red-800'
+                    }`}
+                  >
+                    {pos.direction.toUpperCase()}
+                  </span>
+                </td>
+                <td className="px-4 py-2 text-right font-mono text-gray-700">
+                  ${pos.entry_price.toFixed(2)}
+                </td>
+                <td className="px-4 py-2 text-right font-mono text-gray-700">
+                  ${current.toFixed(2)}
+                </td>
+                <td className="px-4 py-2 text-right font-mono text-gray-700">{pos.quantity}</td>
+                <td
+                  className={`px-4 py-2 text-right font-mono font-medium ${
+                    unrealizedPnl >= 0 ? 'text-green-600' : 'text-red-600'
                   }`}
                 >
-                  {pos.direction.toUpperCase()}
-                </span>
-              </td>
-              <td className="px-4 py-2 text-right font-mono text-gray-700">
-                ${pos.entry_price.toFixed(2)}
-              </td>
-              <td className="px-4 py-2 text-right font-mono text-gray-700">
-                ${pos.current_price.toFixed(2)}
-              </td>
-              <td className="px-4 py-2 text-right font-mono text-gray-700">{pos.quantity}</td>
-              <td
-                className={`px-4 py-2 text-right font-mono font-medium ${
-                  pos.unrealized_pnl >= 0 ? 'text-green-600' : 'text-red-600'
-                }`}
-              >
-                ${pos.unrealized_pnl.toFixed(2)} ({pos.unrealized_pnl_pct.toFixed(2)}%)
-              </td>
-              <td className="px-4 py-2 text-right font-mono text-gray-700">
-                ${pos.stop_loss_price.toFixed(2)}
-              </td>
-              <td className="px-4 py-2 text-right font-mono text-gray-700">
-                ${pos.take_profit_price.toFixed(2)}
-              </td>
-            </tr>
-          ))}
+                  ${unrealizedPnl.toFixed(2)} ({unrealizedPct.toFixed(2)}%)
+                </td>
+                <td className="px-4 py-2 text-right font-mono text-gray-700">
+                  ${pos.stop_loss_price.toFixed(2)}
+                </td>
+                <td className="px-4 py-2 text-right font-mono text-gray-700">
+                  ${pos.take_profit_price.toFixed(2)}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -263,7 +286,6 @@ function TradesHistory({ trades, limit = 10 }: TradesHistoryProps) {
       <table className="w-full text-sm">
         <thead className="bg-gray-50 border-b border-gray-200">
           <tr>
-            <th className="px-4 py-2 text-left text-gray-700 font-medium">Strategy</th>
             <th className="px-4 py-2 text-left text-gray-700 font-medium">Symbol</th>
             <th className="px-4 py-2 text-right text-gray-700 font-medium">Dir</th>
             <th className="px-4 py-2 text-right text-gray-700 font-medium">Entry</th>
@@ -276,7 +298,6 @@ function TradesHistory({ trades, limit = 10 }: TradesHistoryProps) {
         <tbody className="divide-y divide-gray-200">
           {displayTrades.map((trade) => (
             <tr key={trade.id} className="hover:bg-gray-50">
-              <td className="px-4 py-2 text-gray-900">{trade.strategy_name}</td>
               <td className="px-4 py-2 font-mono text-gray-700">{trade.symbol_id}</td>
               <td className="px-4 py-2 text-right">
                 <span
@@ -315,7 +336,7 @@ function TradesHistory({ trades, limit = 10 }: TradesHistoryProps) {
                   {trade.close_reason}
                 </span>
               </td>
-              <td className="px-4 py-2 text-right text-gray-700">{trade.duration_hours}h</td>
+              <td className="px-4 py-2 text-right text-gray-700">{calcDurationHours(trade.entry_time, trade.exit_time)}h</td>
             </tr>
           ))}
         </tbody>
@@ -389,6 +410,13 @@ function MetricsGrid({ metrics }: MetricsGridProps) {
 }
 
 // ============================================================================
+// API CONFIGURATION
+// ============================================================================
+
+const SUPABASE_FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
+
+// ============================================================================
 // MAIN COMPONENT
 // ============================================================================
 
@@ -397,85 +425,76 @@ export const PaperTradingDashboard: React.FC<PaperTradingDashboardProps> = ({
   onRefresh,
   autoRefreshInterval = 60000, // Default: 1 minute
 }) => {
-  // Mock data for demonstration
-  const [positions, setPositions] = useState<PaperPosition[]>([
-    {
-      id: 'pos_1',
-      strategy_name: 'SuperTrend Strategy',
-      symbol_id: 'AAPL',
-      entry_price: 150,
-      current_price: 155,
-      quantity: 10,
-      direction: 'long',
-      entry_time: '2026-02-26T09:30:00Z',
-      stop_loss_price: 147,
-      take_profit_price: 160,
-      unrealized_pnl: 50,
-      unrealized_pnl_pct: 3.33,
-    },
-  ]);
-
-  const [trades, setTrades] = useState<PaperTrade[]>([
-    {
-      id: 'trade_1',
-      strategy_name: 'RSI Oversold',
-      symbol_id: 'MSFT',
-      entry_price: 300,
-      exit_price: 305,
-      quantity: 5,
-      direction: 'long',
-      entry_time: '2026-02-25T10:00:00Z',
-      exit_time: '2026-02-25T14:30:00Z',
-      pnl: 25,
-      pnl_pct: 1.67,
-      duration_hours: 4.5,
-      close_reason: 'TP_HIT',
-    },
-    {
-      id: 'trade_2',
-      strategy_name: 'SuperTrend Strategy',
-      symbol_id: 'GOOGL',
-      entry_price: 100,
-      exit_price: 98,
-      quantity: 8,
-      direction: 'long',
-      entry_time: '2026-02-24T11:00:00Z',
-      exit_time: '2026-02-25T09:00:00Z',
-      pnl: -16,
-      pnl_pct: -2.0,
-      duration_hours: 22,
-      close_reason: 'SL_HIT',
-    },
-  ]);
-
+  const [positions, setPositions] = useState<PaperPosition[]>([]);
+  const [trades, setTrades] = useState<PaperTrade[]>([]);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Calculate metrics
+  // Calculate metrics from live trade data
   const metrics = useMemo(() => calculateMetrics(trades), [trades]);
+
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'apikey': SUPABASE_ANON_KEY,
+      };
+
+      const baseUrl = `${SUPABASE_FUNCTIONS_URL}/paper-trading-executor`;
+      const posUrl = strategyId
+        ? `${baseUrl}?action=positions&strategy_id=${strategyId}`
+        : `${baseUrl}?action=positions`;
+
+      const [posRes, tradesRes] = await Promise.all([
+        fetch(posUrl, { headers }),
+        fetch(`${baseUrl}?action=trades`, { headers }),
+      ]);
+
+      if (posRes.ok) {
+        const posData = await posRes.json();
+        setPositions(posData.positions ?? []);
+      } else {
+        console.error('[PaperTradingDashboard] positions fetch failed:', posRes.status);
+      }
+
+      if (tradesRes.ok) {
+        const tradesData = await tradesRes.json();
+        setTrades(tradesData.trades ?? []);
+      } else {
+        console.error('[PaperTradingDashboard] trades fetch failed:', tradesRes.status);
+      }
+
+      setLastRefresh(new Date());
+    } catch (err) {
+      setError('Failed to load paper trading data');
+      console.error('[PaperTradingDashboard]', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [strategyId]);
+
+  // Initial fetch
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // Auto-refresh effect
   useEffect(() => {
     if (autoRefreshInterval <= 0) return;
 
     const interval = setInterval(() => {
-      handleRefresh();
+      fetchData();
     }, autoRefreshInterval);
 
     return () => clearInterval(interval);
-  }, [autoRefreshInterval]);
+  }, [autoRefreshInterval, fetchData]);
 
   const handleRefresh = async () => {
-    setIsLoading(true);
-    try {
-      // In production, fetch from API
-      // await fetchPositions();
-      // await fetchTrades();
-      setLastRefresh(new Date());
-    } finally {
-      setIsLoading(false);
-    }
-
+    await fetchData();
     if (onRefresh) {
       onRefresh();
     }
@@ -505,6 +524,14 @@ export const PaperTradingDashboard: React.FC<PaperTradingDashboardProps> = ({
           {isLoading ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
+
+      {/* Error Banner */}
+      {error && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-sm text-red-700">
+          <AlertCircle size={16} className="flex-shrink-0" />
+          {error}
+        </div>
+      )}
 
       {/* Performance Metrics */}
       <div>

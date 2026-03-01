@@ -19,6 +19,8 @@ import { WebSocketUpdate } from '../types/chart';
 
 const WS_BASE_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
 
+const MAX_RECONNECT_DELAY_MS = 30_000;
+
 interface UseWebSocketReturn {
   isConnected: boolean;
   lastUpdate: WebSocketUpdate | null;
@@ -35,6 +37,7 @@ export function useWebSocket(
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef(0);
 
   const connect = useCallback(() => {
     // Clear any existing connection
@@ -51,6 +54,7 @@ export function useWebSocket(
       console.log(`[WebSocket] Connected: ${symbol}/${horizon}`);
       setIsConnected(true);
       setError(null);
+      reconnectAttemptsRef.current = 0;
     };
 
     ws.onmessage = (event) => {
@@ -82,12 +86,17 @@ export function useWebSocket(
       console.log(`[WebSocket] Disconnected: ${event.code} ${event.reason}`);
       setIsConnected(false);
 
-      // Attempt reconnection after 5 seconds
+      // Attempt reconnection with exponential backoff
       if (!event.wasClean) {
-        console.log('[WebSocket] Attempting reconnection in 5s...');
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
-        }, 5000);
+        const attempt = reconnectAttemptsRef.current;
+        reconnectAttemptsRef.current += 1;
+        const delay =
+          Math.min(MAX_RECONNECT_DELAY_MS, 1_000 * Math.pow(2, attempt)) +
+          Math.random() * 1_000;
+        console.log(
+          `[WebSocket] Attempting reconnection in ${Math.round(delay)}ms (attempt ${attempt + 1})...`
+        );
+        reconnectTimeoutRef.current = setTimeout(connect, delay);
       }
     };
 

@@ -325,6 +325,107 @@ export class AlpacaClient implements DataProviderAbstraction {
   }
 
   /**
+   * Get historical bars for multiple symbols in a single API call.
+   * Uses Alpaca's multi-symbol bars endpoint for efficiency.
+   * Returns bars keyed by symbol ticker.
+   */
+  async getMultiSymbolBars(
+    request: {
+      symbols: string[];
+      timeframe: string;
+      start: number;
+      end: number;
+    },
+  ): Promise<Record<string, Bar[]>> {
+    const { symbols, timeframe, start, end } = request;
+
+    if (symbols.length === 0) return {};
+
+    const alpacaTimeframe = this.convertTimeframe(timeframe);
+    const startDate = this.toUTCISOString(start);
+    const endDate = this.toUTCISOString(end);
+    const symbolsParam = symbols.join(",");
+
+    console.log(
+      `[Alpaca] Fetching multi-symbol bars: ${symbols.length} symbols, ${timeframe} (${alpacaTimeframe})`,
+    );
+
+    const result: Record<string, Bar[]> = {};
+    for (const sym of symbols) {
+      result[sym] = [];
+    }
+
+    let nextPageToken: string | undefined;
+    let pageCount = 0;
+    const maxPages = 100;
+
+    try {
+      do {
+        await this.rateLimiter.acquire("alpaca");
+
+        let url = `${this.baseUrl}/stocks/bars?` +
+          `symbols=${symbolsParam}&` +
+          `timeframe=${alpacaTimeframe}&` +
+          `start=${startDate}&` +
+          `end=${endDate}&` +
+          `limit=10000&` +
+          `adjustment=raw&` +
+          `feed=sip&` +
+          `sort=asc`;
+
+        if (nextPageToken) {
+          url += `&page_token=${nextPageToken}`;
+        }
+
+        const response = await this.fetchWithRetry(url);
+
+        if (!response.ok) {
+          await this.handleErrorResponse(response);
+        }
+
+        const data = await response.json() as AlpacaBarsResponse;
+
+        for (const [sym, alpacaBars] of Object.entries(data.bars || {})) {
+          const bars: Bar[] = alpacaBars.map((bar) => ({
+            timestamp: Math.floor(new Date(bar.t).getTime() / 1000),
+            open: bar.o,
+            high: bar.h,
+            low: bar.l,
+            close: bar.c,
+            volume: bar.v,
+          }));
+          if (result[sym]) {
+            result[sym].push(...bars);
+          } else {
+            result[sym] = bars;
+          }
+        }
+
+        nextPageToken = data.next_page_token;
+        pageCount++;
+
+        if (pageCount >= maxPages) {
+          console.warn(`[Alpaca] Reached max page limit for multi-symbol bars`);
+          break;
+        }
+      } while (nextPageToken);
+
+      const totalBars = Object.values(result).reduce(
+        (sum, bars) => sum + bars.length,
+        0,
+      );
+      console.log(
+        `[Alpaca] Retrieved ${totalBars} bars across ${symbols.length} symbols in ${pageCount} page(s)`,
+      );
+
+      return result;
+    } catch (error) {
+      console.error(`[Alpaca] Error fetching multi-symbol bars:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Get news for a symbol
    * Alpaca provides news from multiple sources
    */

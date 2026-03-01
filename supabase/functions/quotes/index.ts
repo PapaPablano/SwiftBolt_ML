@@ -11,6 +11,31 @@ declare const Deno: {
   };
 };
 
+// ---------------------------------------------------------------------------
+// Simple per-IP sliding-window rate limiter (module-level, in-memory)
+// Allows up to 30 requests per 60-second window per unique client IP.
+// ---------------------------------------------------------------------------
+const RATE_LIMIT_MAX = 30;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+
+// Map<clientIp, timestamps[]>
+const _rateLimitWindows = new Map<string, number[]>();
+
+function isRateLimited(clientIp: string): boolean {
+  const now = Date.now();
+  const cutoff = now - RATE_LIMIT_WINDOW_MS;
+  const timestamps = (_rateLimitWindows.get(clientIp) ?? []).filter(
+    (t) => t > cutoff,
+  );
+  if (timestamps.length >= RATE_LIMIT_MAX) {
+    _rateLimitWindows.set(clientIp, timestamps);
+    return true;
+  }
+  timestamps.push(now);
+  _rateLimitWindows.set(clientIp, timestamps);
+  return false;
+}
+
 function jsonResponse(
   data: unknown,
   status = 200,
@@ -125,6 +150,25 @@ serve(async (req: Request): Promise<Response> => {
 
   if (req.method === "OPTIONS") {
     return handlePreflight(origin);
+  }
+
+  // Per-IP rate limiting: 30 requests per 60 seconds
+  const clientIp =
+    req.headers.get("x-forwarded-for") ??
+    req.headers.get("x-real-ip") ??
+    "unknown";
+  if (isRateLimited(clientIp)) {
+    return new Response(
+      JSON.stringify({ error: "Rate limit exceeded" }),
+      {
+        status: 429,
+        headers: {
+          ...getCorsHeaders(origin),
+          "Content-Type": "application/json",
+          "Retry-After": "60",
+        },
+      },
+    );
   }
 
   if (req.method !== "GET" && req.method !== "POST") {
@@ -264,8 +308,7 @@ serve(async (req: Request): Promise<Response> => {
       origin,
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
     console.error("[quotes] Error:", error);
-    return errorResponse(message || "Internal server error", 500, origin);
+    return errorResponse("An internal error occurred", 500, origin);
   }
 });

@@ -9,10 +9,8 @@ project_id = "cygflaemtmwiwaviclks"
 [functions.run-backfill-worker]
 verify_jwt = false
 
-# For iOS app to work correctly, we need to set up proper JWT verification for chart-data-v2
-[functions.chart-data-v2]
-verify_jwt = true
-
+# ga-strategy: Triggered by cron automation only, not user-facing.
+# Auth enforced at the job queue level. verify_jwt disabled for performance.
 [functions.ga-strategy]
 verify_jwt = false
 
@@ -29,4 +27,15 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.strategy-backtest-worker]
+verify_jwt = false
+
+# chart: Public read-only chart data endpoint (OHLCV + ML enrichment + options).
+# The macOS client and frontend authenticate with the Supabase anon key.
+# verify_jwt = false allows anon-key requests through the gateway.
+[functions.chart]
+verify_jwt = false
+
+# intraday-live-refresh: Called by pg_cron every 15 min during market hours.
+# Auth enforced inside function via X-SB-Gateway-Key (SB_GATEWAY_KEY).
+[functions.intraday-live-refresh]
 verify_jwt = false

@@ -5,6 +5,7 @@
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.97.0";
+import { getSupabaseClientWithAuth } from "../_shared/supabase-client.ts";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -300,15 +301,17 @@ function evaluateCondition(
     }
   }
 
-  // Cross operators (simplified: would need historical data for true cross detection)
+  // Cross operators — compare current value against previous bar's value
   if (
     condition.operator === "cross_up" || condition.operator === "cross_down"
   ) {
-    // In production, this would compare against crossWith indicator
-    // For now, simplified logic: check if indicator > threshold
-    return condition.operator === "cross_up"
-      ? indicatorValue > 50
-      : indicatorValue < 50;
+    const prevValue = indicatorCache.get(`${condition.indicator}_prev`) ??
+      indicatorValue;
+    if (condition.operator === "cross_up") {
+      return prevValue <= 50 && indicatorValue > 50;
+    } else {
+      return prevValue >= 50 && indicatorValue < 50;
+    }
   }
 
   // Range operators
@@ -348,7 +351,7 @@ async function getOpenPosition(
   try {
     const { data, error } = await supabase
       .from("paper_trading_positions")
-      .select("*")
+      .select("id, symbol_id, symbol, direction, entry_price, current_price, quantity, status, stop_loss, take_profit, user_id, created_at")
       .eq("strategy_id", strategyId)
       .eq("status", "open")
       .single();
@@ -523,6 +526,53 @@ async function closePosition(
 }
 
 // ============================================================================
+// INDICATOR COMPUTATION
+// ============================================================================
+
+function computeRSI(bars: { close: number }[], period = 14): number {
+  if (bars.length < period + 1) return 50;
+  const closes = bars.map((b) => b.close);
+  let gains = 0, losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff > 0) gains += diff;
+    else losses -= diff;
+  }
+  let avgGain = gains / period, avgLoss = losses / period;
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    avgGain = (avgGain * (period - 1) + Math.max(0, diff)) / period;
+    avgLoss = (avgLoss * (period - 1) + Math.max(0, -diff)) / period;
+  }
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - 100 / (1 + rs);
+}
+
+function computeEMA(values: number[], period: number): number[] {
+  const k = 2 / (period + 1);
+  const ema = [values[0]];
+  for (let i = 1; i < values.length; i++) {
+    ema.push(values[i] * k + ema[i - 1] * (1 - k));
+  }
+  return ema;
+}
+
+function computeMACD(bars: { close: number }[]): number {
+  const closes = bars.map((b) => b.close);
+  if (closes.length < 26) return 0;
+  const ema12 = computeEMA(closes, 12);
+  const ema26 = computeEMA(closes, 26);
+  const macdLine = ema12.map((v, i) => v - ema26[i]);
+  return macdLine[macdLine.length - 1];
+}
+
+function computeVolumeMA(bars: { volume: number }[], period = 20): number {
+  const slice = bars.slice(-period);
+  return slice.reduce((sum, b) => sum + (b.volume || 0), 0) / slice.length;
+}
+
+// ============================================================================
 // MAIN EXECUTOR
 // ============================================================================
 
@@ -535,7 +585,7 @@ async function executePaperTradingCycle(
     // 1. Fetch active strategies for this symbol/timeframe
     const { data: strategies, error: stratError } = await supabase
       .from("strategy_user_strategies")
-      .select("*")
+      .select("id, name, config, is_active, paper_trading_enabled")
       .eq("symbol_id", symbol)
       .eq("timeframe", timeframe)
       .eq("paper_trading_enabled", true);
@@ -565,7 +615,7 @@ async function executePaperTradingCycle(
     // 2. Fetch latest market data (ONCE - reuse for all strategies)
     const { data: bars, error: barError } = await supabase
       .from("ohlc_bars_v2")
-      .select("*")
+      .select("ts, open, high, low, close, volume")
       .eq("symbol_id", symbol)
       .eq("timeframe", timeframe)
       .order("ts", { ascending: false })
@@ -602,15 +652,31 @@ async function executePaperTradingCycle(
       console.warn("Market data validation warnings:", validation.errors);
     }
 
-    // 3. Pre-calculate indicators (shared cache)
-    const indicatorCache = new Map<string, number>();
-    // In production, calculate RSI, MACD, etc. here
-    // For now, mock some indicator values
-    indicatorCache.set("RSI", 55);
-    indicatorCache.set("MACD", 0.5);
-    indicatorCache.set("Volume_MA", 1000000);
+    // 3. Update current_price on all open positions for this symbol so the native
+    //    dashboard can display live unrealised P&L without a separate price fetch.
+    const latestClose = sortedBars[sortedBars.length - 1].close;
+    await supabase
+      .from("paper_trading_positions")
+      .update({ current_price: latestClose })
+      .eq("symbol_id", symbol)
+      .eq("status", "open");
 
-    // 4. Execute strategies with concurrency limiting
+    // 4. Pre-calculate indicators (shared cache)
+    const indicatorCache = new Map<string, number>();
+
+    // Current bar indicators
+    indicatorCache.set("RSI", computeRSI(sortedBars));
+    indicatorCache.set("MACD", computeMACD(sortedBars));
+    indicatorCache.set("Volume_MA", computeVolumeMA(sortedBars));
+
+    // Previous bar indicators for crossover detection
+    const prevBars = sortedBars.slice(0, -1);
+    const prevRSI = prevBars.length >= 15 ? computeRSI(prevBars) : 50;
+    indicatorCache.set("RSI_prev", prevRSI);
+    const prevMACD = prevBars.length >= 27 ? computeMACD(prevBars) : 0;
+    indicatorCache.set("MACD_prev", prevMACD);
+
+    // 5. Execute strategies with concurrency limiting
     const results: ExecutionResult[] = [];
     const limiter = new Semaphore(CONCURRENCY_LIMIT);
 
@@ -731,25 +797,214 @@ async function executeStrategy(
 
 Deno.serve(async (req) => {
   try {
-    // CORS headers
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey",
+    };
+
+    // CORS preflight
     if (req.method === "OPTIONS") {
-      return new Response(null, {
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      return new Response(null, { headers: corsHeaders });
+    }
+
+    // Initialize Supabase service-role client (used for writes / execution)
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    const url = new URL(req.url);
+
+    // ========================================================================
+    // GET — Read endpoints for positions, trades, and summary
+    // ========================================================================
+    if (req.method === "GET") {
+      // Authenticate the requesting user via their JWT
+      const authHeader = req.headers.get("Authorization") ?? "";
+      const supabaseAuth = getSupabaseClientWithAuth(authHeader);
+      const { data: { user }, error: authError } = await supabaseAuth.auth
+        .getUser();
+      if (authError || !user) {
+        return new Response(
+          JSON.stringify({ error: "Authentication required" }),
+          {
+            status: 401,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
+      }
+
+      const action = url.searchParams.get("action") ?? "positions";
+      const limit = Math.min(
+        50,
+        Math.max(1, Number(url.searchParams.get("limit") || 50)),
+      );
+      const offset = Math.max(
+        0,
+        Number(url.searchParams.get("offset") || 0),
+      );
+
+      if (action === "positions") {
+        // List open positions for the authenticated user
+        const { data: positions, error } = await supabase
+          .from("paper_trading_positions")
+          .select(
+            "id, strategy_id, symbol_id, direction, entry_price, current_price, quantity, status, stop_loss_price, take_profit_price, entry_time, created_at, updated_at",
+          )
+          .eq("user_id", user.id)
+          .eq("status", "open")
+          .order("created_at", { ascending: false })
+          .range(offset, offset + limit - 1);
+
+        if (error) {
+          console.error(
+            "[paper-trading-executor] positions query error:",
+            error,
+          );
+          return new Response(
+            JSON.stringify({ error: "Failed to fetch positions" }),
+            {
+              status: 500,
+              headers: { "Content-Type": "application/json", ...corsHeaders },
+            },
+          );
+        }
+
+        return new Response(
+          JSON.stringify({
+            positions: positions ?? [],
+            total: positions?.length ?? 0,
+            offset,
+            limit,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
+      }
+
+      if (action === "trades") {
+        // List closed trades for the authenticated user
+        const { data: trades, error } = await supabase
+          .from("paper_trading_trades")
+          .select(
+            "id, strategy_id, symbol_id, direction, entry_price, exit_price, quantity, pnl, pnl_pct, close_reason, entry_time, exit_time, created_at",
+          )
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .range(offset, offset + limit - 1);
+
+        if (error) {
+          console.error(
+            "[paper-trading-executor] trades query error:",
+            error,
+          );
+          return new Response(
+            JSON.stringify({ error: "Failed to fetch trades" }),
+            {
+              status: 500,
+              headers: { "Content-Type": "application/json", ...corsHeaders },
+            },
+          );
+        }
+
+        return new Response(
+          JSON.stringify({
+            trades: trades ?? [],
+            total: trades?.length ?? 0,
+            offset,
+            limit,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
+      }
+
+      if (action === "summary") {
+        // Aggregate performance metrics for the authenticated user
+        const { data: trades } = await supabase
+          .from("paper_trading_trades")
+          .select("pnl, pnl_pct")
+          .eq("user_id", user.id);
+
+        const allTrades = trades ?? [];
+        const totalTrades = allTrades.length;
+        const winningTrades = allTrades.filter((t) => (t.pnl ?? 0) > 0).length;
+        const totalPnl = allTrades.reduce(
+          (sum: number, t: { pnl: number | null }) => sum + (t.pnl ?? 0),
+          0,
+        );
+        const winRate = totalTrades > 0 ? winningTrades / totalTrades : 0;
+
+        return new Response(
+          JSON.stringify({
+            total_trades: totalTrades,
+            win_rate: winRate,
+            total_pnl: totalPnl,
+            winning_trades: winningTrades,
+            losing_trades: totalTrades - winningTrades,
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          },
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          error: "Unknown action. Use: positions, trades, summary",
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
         },
+      );
+    }
+
+    // Parse POST request body
+    const body = await req.json();
+    const { action } = body;
+
+    // Manual close-position action — allows native clients to close positions on demand.
+    if (action === "close_position") {
+      const { position_id, exit_price } = body;
+      if (!position_id || typeof exit_price !== "number") {
+        return new Response(
+          JSON.stringify({ error: "position_id and exit_price are required" }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      // Fetch position to compute P&L
+      const { data: pos, error: fetchErr } = await supabase
+        .from("paper_trading_positions")
+        .select("id,direction,entry_price,quantity,status")
+        .eq("id", position_id)
+        .eq("status", "open")
+        .single();
+
+      if (fetchErr || !pos) {
+        return new Response(
+          JSON.stringify({ error: "Position not found or already closed" }),
+          { status: 404, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
+      const pnl = pos.direction === "long"
+        ? (exit_price - pos.entry_price) * pos.quantity
+        : (pos.entry_price - exit_price) * pos.quantity;
+
+      const result = await closePosition(supabase, pos as PaperPosition, exit_price, "MANUAL");
+      return new Response(JSON.stringify({ ...result, pnl }), {
+        headers: { "Content-Type": "application/json" },
       });
     }
 
-    // Initialize Supabase client
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_KEY")!,
-    );
-
-    // Parse request
-    const body = await req.json();
     const { symbol, timeframe } = body;
 
     if (!symbol || !timeframe) {
@@ -784,12 +1039,12 @@ Deno.serve(async (req) => {
         headers: { "Content-Type": "application/json" },
       },
     );
-  } catch (error: any) {
-    console.error("Edge function error:", error);
+  } catch (error: unknown) {
+    console.error("[paper-trading-executor] Edge function error:", error);
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message,
+        error: "An internal error occurred",
       }),
       {
         status: 500,

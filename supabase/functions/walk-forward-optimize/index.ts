@@ -55,6 +55,18 @@ interface WalkForwardResponse {
   error?: string;
 }
 
+// NOTE: This function delegates to the Python ML pipeline's walk-forward backtesting
+// implementation. Call chain:
+//   Edge Function (POST /walk-forward-optimize)
+//     → FastAPI route ml/api/routers/walk_forward.py  (/api/v1/walk-forward-optimize)
+//     → ml/scripts/run_walk_forward.py  (run_walk_forward wrapper)
+//     → ml/src/backtesting/walk_forward_tester.py  (WalkForwardBacktester)
+//
+// This is the strategy-level walk-forward backtester (trainWindow/testWindow/stepSize).
+// It is distinct from the ML evaluation walk-forward CV at ml/src/evaluation/walk_forward_cv.py,
+// which validates forecast accuracy for individual ML models (LSTM, ARIMA-GARCH, etc.).
+// No duplication: the two pipelines serve different purposes and share no code.
+
 /**
  * Call FastAPI to run walk-forward optimization
  */

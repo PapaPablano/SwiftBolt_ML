@@ -1,139 +1,26 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { ChevronDown, ChevronUp, Plus, Trash2, Copy } from 'lucide-react';
+import {
+  type Condition,
+  type ConditionBuilderProps,
+  type ConditionTreeNode,
+  COMPARISON_OPERATORS,
+  CROSS_OPERATORS,
+  RANGE_OPERATORS,
+  MAX_CONDITIONS_PER_SIGNAL,
+  generateId,
+  validateCondition,
+  buildConditionTree,
+  type ComparisonOperator,
+  type CrossOperator,
+  type RangeOperator,
+} from '../lib/conditionBuilderUtils';
+
+// Re-export Condition so existing test imports keep working.
+export type { Condition };
 
 // ============================================================================
-// TYPE DEFINITIONS
-// ============================================================================
-
-// Discriminated union types for type-safe operators
-export type ComparisonOperator = '>' | '<' | '>=' | '<=' | '==' | '!=';
-export type CrossOperator = 'cross_up' | 'cross_down';
-export type RangeOperator = 'touches' | 'within_range';
-
-export type Condition =
-  | {
-      id: string;
-      indicator: string; // "RSI", "MACD", "Close", etc.
-      operator: ComparisonOperator;
-      value: number;
-      logicalOp: 'AND' | 'OR';
-      parentId?: string;
-    }
-  | {
-      id: string;
-      indicator: string;
-      operator: CrossOperator;
-      crossWith: string; // "MACD_Signal" for cross_up
-      logicalOp: 'AND' | 'OR';
-      parentId?: string;
-    }
-  | {
-      id: string;
-      indicator: string;
-      operator: RangeOperator;
-      minValue: number;
-      maxValue: number;
-      logicalOp: 'AND' | 'OR';
-      parentId?: string;
-    };
-
-interface ConditionBuilderProps {
-  signalType: 'entry' | 'exit' | 'stoploss' | 'takeprofit';
-  initialConditions: Condition[];
-  onConditionsChange: (conditions: Condition[]) => void;
-  availableIndicators: string[];
-}
-
-interface ConditionError {
-  conditionId: string;
-  message: string;
-}
-
-// ============================================================================
-// CONSTANTS
-// ============================================================================
-
-const COMPARISON_OPERATORS: ComparisonOperator[] = ['>', '<', '>=', '<=', '==', '!='];
-const CROSS_OPERATORS: CrossOperator[] = ['cross_up', 'cross_down'];
-const RANGE_OPERATORS: RangeOperator[] = ['touches', 'within_range'];
-const MAX_CONDITIONS_PER_SIGNAL = 5;
-
-// Typical indicator ranges for quick validation
-const INDICATOR_RANGES: Record<string, { min: number; max: number }> = {
-  RSI: { min: 0, max: 100 },
-  STOCH: { min: 0, max: 100 },
-  CCI: { min: -200, max: 200 },
-  Volume: { min: 0, max: Infinity },
-  Close: { min: 0, max: Infinity },
-  Open: { min: 0, max: Infinity },
-  High: { min: 0, max: Infinity },
-  Low: { min: 0, max: Infinity },
-};
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-function generateId(): string {
-  return `cond_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-}
-
-function validateCondition(condition: Condition): string | null {
-  const indicatorRange = INDICATOR_RANGES[condition.indicator];
-
-  // Validate cross operators
-  if ('crossWith' in condition) {
-    if (!condition.crossWith) {
-      return `${condition.operator} requires a cross target`;
-    }
-  }
-
-  // Validate comparison operators with value
-  if ('value' in condition) {
-    // Check if value is within reasonable range for known indicators
-    if (indicatorRange && (condition.value < indicatorRange.min || condition.value > indicatorRange.max)) {
-      return `${condition.indicator} value should be between ${indicatorRange.min} and ${indicatorRange.max}`;
-    }
-  }
-
-  // Validate range operators
-  if ('minValue' in condition && 'maxValue' in condition) {
-    if (condition.minValue >= condition.maxValue) {
-      return `Min value must be less than max value`;
-    }
-  }
-
-  return null;
-}
-
-function buildConditionTree(conditions: Condition[]): ConditionTreeNode | null {
-  if (conditions.length === 0) return null;
-
-  // Find root conditions (no parentId)
-  const roots = conditions.filter((c) => !c.parentId);
-  if (roots.length === 0) return null;
-
-  const conditionMap = new Map(conditions.map((c) => [c.id, c]));
-
-  function buildNode(condition: Condition): ConditionTreeNode {
-    const children = conditions.filter((c) => c.parentId === condition.id);
-    return {
-      condition,
-      children: children.map((c) => buildNode(c)),
-    };
-  }
-
-  // Return first root (typically only one root per signal)
-  return buildNode(roots[0]);
-}
-
-interface ConditionTreeNode {
-  condition: Condition;
-  children: ConditionTreeNode[];
-}
-
-// ============================================================================
-// SUB-COMPONENTS
+// ConditionForm
 // ============================================================================
 
 interface ConditionFormProps {
@@ -159,7 +46,6 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
     let newFormData: Condition;
 
     if (op === 'cross_up' || op === 'cross_down') {
-      // Create cross variant
       newFormData = {
         id: formData.id,
         indicator: formData.indicator,
@@ -169,7 +55,6 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
         parentId: formData.parentId,
       };
     } else if (op === 'touches' || op === 'within_range') {
-      // Create range variant
       newFormData = {
         id: formData.id,
         indicator: formData.indicator,
@@ -180,7 +65,6 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
         parentId: formData.parentId,
       };
     } else {
-      // Create comparison variant
       newFormData = {
         id: formData.id,
         indicator: formData.indicator,
@@ -209,12 +93,7 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
           <label className="block text-sm font-medium text-gray-700 mb-1">Indicator</label>
           <select
             value={formData.indicator}
-            onChange={(e) =>
-              setFormData({
-                ...formData,
-                indicator: e.target.value,
-              })
-            }
+            onChange={(e) => setFormData({ ...formData, indicator: e.target.value })}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
           >
             {availableIndicators.map((ind) => (
@@ -228,50 +107,43 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
         {/* Operator Selection */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Condition</label>
-          <div className="flex gap-2">
-            <select
-              value={formData.operator}
-              onChange={(e) => handleOperatorChange(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-            >
-              <optgroup label="Comparison">
-                {COMPARISON_OPERATORS.map((op) => (
-                  <option key={op} value={op}>
-                    {op}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Cross">
-                {CROSS_OPERATORS.map((op) => (
-                  <option key={op} value={op}>
-                    {op}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Range">
-                {RANGE_OPERATORS.map((op) => (
-                  <option key={op} value={op}>
-                    {op}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-          </div>
+          <select
+            value={formData.operator}
+            onChange={(e) => handleOperatorChange(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          >
+            <optgroup label="Comparison">
+              {COMPARISON_OPERATORS.map((op) => (
+                <option key={op} value={op}>
+                  {op}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Cross">
+              {CROSS_OPERATORS.map((op) => (
+                <option key={op} value={op}>
+                  {op}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Range">
+              {RANGE_OPERATORS.map((op) => (
+                <option key={op} value={op}>
+                  {op}
+                </option>
+              ))}
+            </optgroup>
+          </select>
         </div>
 
-        {/* Value Inputs (Dynamic based on operator type) */}
+        {/* Dynamic Value Inputs */}
         {operatorType === 'comparison' && 'value' in formData && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Value</label>
             <input
               type="number"
               value={formData.value}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  value: parseFloat(e.target.value) || 0,
-                })
-              }
+              onChange={(e) => setFormData({ ...formData, value: parseFloat(e.target.value) || 0 })}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             />
           </div>
@@ -283,12 +155,7 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
             <input
               type="text"
               value={formData.crossWith}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  crossWith: e.target.value,
-                })
-              }
+              onChange={(e) => setFormData({ ...formData, crossWith: e.target.value })}
               placeholder="e.g., MACD_Signal"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             />
@@ -303,10 +170,7 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
                 type="number"
                 value={formData.minValue}
                 onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    minValue: parseFloat(e.target.value) || 0,
-                  })
+                  setFormData({ ...formData, minValue: parseFloat(e.target.value) || 0 })
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               />
@@ -317,10 +181,7 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
                 type="number"
                 value={formData.maxValue}
                 onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    maxValue: parseFloat(e.target.value) || 0,
-                  })
+                  setFormData({ ...formData, maxValue: parseFloat(e.target.value) || 0 })
                 }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               />
@@ -332,45 +193,26 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Logic</label>
           <div className="flex gap-2">
-            <label className="flex items-center">
-              <input
-                type="radio"
-                name="logicalOp"
-                value="AND"
-                checked={formData.logicalOp === 'AND'}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    logicalOp: e.target.value as 'AND' | 'OR',
-                  })
-                }
-                className="mr-2"
-              />
-              <span className="text-sm">AND</span>
-            </label>
-            <label className="flex items-center">
-              <input
-                type="radio"
-                name="logicalOp"
-                value="OR"
-                checked={formData.logicalOp === 'OR'}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    logicalOp: e.target.value as 'AND' | 'OR',
-                  })
-                }
-                className="mr-2"
-              />
-              <span className="text-sm">OR</span>
-            </label>
+            {(['AND', 'OR'] as const).map((op) => (
+              <label key={op} className="flex items-center">
+                <input
+                  type="radio"
+                  name="logicalOp"
+                  value={op}
+                  checked={formData.logicalOp === op}
+                  onChange={(e) =>
+                    setFormData({ ...formData, logicalOp: e.target.value as 'AND' | 'OR' })
+                  }
+                  className="mr-2"
+                />
+                <span className="text-sm">{op}</span>
+              </label>
+            ))}
           </div>
         </div>
 
-        {/* Error Display */}
         {error && <div className="text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
 
-        {/* Actions */}
         <div className="flex gap-2 pt-2">
           <button
             onClick={() => onSave(formData)}
@@ -389,6 +231,10 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
     </div>
   );
 }
+
+// ============================================================================
+// ConditionTreeView
+// ============================================================================
 
 interface ConditionTreeViewProps {
   tree: ConditionTreeNode | null;
@@ -410,14 +256,13 @@ function ConditionTreeView({ tree, onEdit, onDelete, onDuplicate }: ConditionTre
     const { condition, children } = node;
     const isComparison = 'value' in condition;
     const isCross = 'crossWith' in condition;
-    const isRange = 'minValue' in condition;
 
     let conditionLabel = '';
     if (isComparison) {
       conditionLabel = `${condition.indicator} ${condition.operator} ${condition.value}`;
     } else if (isCross) {
       conditionLabel = `${condition.indicator} ${condition.operator} ${condition.crossWith}`;
-    } else if (isRange) {
+    } else if ('minValue' in condition) {
       conditionLabel = `${condition.indicator} ${condition.operator} [${condition.minValue}, ${condition.maxValue}]`;
     }
 
@@ -455,7 +300,6 @@ function ConditionTreeView({ tree, onEdit, onDelete, onDuplicate }: ConditionTre
           </div>
         </div>
 
-        {/* Child conditions with connector lines */}
         {children.length > 0 && (
           <div className="ml-6 mt-2 border-l-2 border-gray-300 pl-4">
             {children.map((child) => renderNode(child, depth + 1))}
@@ -488,9 +332,7 @@ export const StrategyConditionBuilder: React.FC<ConditionBuilderProps> = ({
     const errorMap = new Map<string, string>();
     conditions.forEach((c) => {
       const error = validateCondition(c);
-      if (error) {
-        errorMap.set(c.id, error);
-      }
+      if (error) errorMap.set(c.id, error);
     });
     return errorMap;
   }, [conditions]);
@@ -505,7 +347,7 @@ export const StrategyConditionBuilder: React.FC<ConditionBuilderProps> = ({
       indicator: availableIndicators[0] || 'RSI',
       operator: '>',
       value: 50,
-      logicalOp: conditions.length > 0 ? 'AND' : 'AND',
+      logicalOp: 'AND',
     });
   }, [conditions.length, availableIndicators]);
 
@@ -518,10 +360,8 @@ export const StrategyConditionBuilder: React.FC<ConditionBuilderProps> = ({
       }
 
       if (editingCondition && editingCondition.id === condition.id) {
-        // Update existing
         setConditions(conditions.map((c) => (c.id === condition.id ? condition : c)));
       } else {
-        // Add new
         setConditions([...conditions, condition]);
       }
 
@@ -546,12 +386,7 @@ export const StrategyConditionBuilder: React.FC<ConditionBuilderProps> = ({
         alert(`Maximum ${MAX_CONDITIONS_PER_SIGNAL} conditions per signal type`);
         return;
       }
-
-      const newCondition = {
-        ...condition,
-        id: generateId(),
-      };
-
+      const newCondition = { ...condition, id: generateId() };
       const updated = [...conditions, newCondition];
       setConditions(updated);
       onConditionsChange(updated);
@@ -561,7 +396,6 @@ export const StrategyConditionBuilder: React.FC<ConditionBuilderProps> = ({
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      {/* Header */}
       <div
         className="p-4 border-b border-gray-200 bg-gray-50 cursor-pointer hover:bg-gray-100 flex items-center justify-between"
         onClick={() => setExpanded(!expanded)}
@@ -575,11 +409,9 @@ export const StrategyConditionBuilder: React.FC<ConditionBuilderProps> = ({
         </div>
       </div>
 
-      {/* Content */}
       {expanded && (
         <div className="p-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Form Panel */}
             <div>
               <h4 className="text-sm font-semibold text-gray-900 mb-3">Add/Edit Condition</h4>
               {editingCondition ? (
@@ -606,7 +438,6 @@ export const StrategyConditionBuilder: React.FC<ConditionBuilderProps> = ({
               )}
             </div>
 
-            {/* Tree View Panel */}
             <div>
               <h4 className="text-sm font-semibold text-gray-900 mb-3">Logic Tree</h4>
               <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 max-h-96 overflow-y-auto">
@@ -620,7 +451,6 @@ export const StrategyConditionBuilder: React.FC<ConditionBuilderProps> = ({
             </div>
           </div>
 
-          {/* Validation Summary */}
           {errors.size > 0 && (
             <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <p className="text-sm font-medium text-yellow-800">⚠ Validation Issues:</p>
@@ -636,5 +466,3 @@ export const StrategyConditionBuilder: React.FC<ConditionBuilderProps> = ({
     </div>
   );
 };
-
-export default StrategyConditionBuilder;

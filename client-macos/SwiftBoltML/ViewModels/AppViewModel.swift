@@ -95,47 +95,23 @@ final class AppViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Relay chartViewModel changes to trigger AppViewModel updates
-        chartViewModel.objectWillChange.sink { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.objectWillChange.send()
-            }
-        }.store(in: &cancellables)
-
-        // Relay newsViewModel changes to trigger AppViewModel updates
-        newsViewModel.objectWillChange.sink { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.objectWillChange.send()
-            }
-        }.store(in: &cancellables)
-
-        // Relay optionsChainViewModel changes to trigger AppViewModel updates
-        optionsChainViewModel.objectWillChange.sink { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.objectWillChange.send()
-            }
-        }.store(in: &cancellables)
-
-        // Relay optionsRankerViewModel changes to trigger AppViewModel updates
-        optionsRankerViewModel.objectWillChange.sink { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.objectWillChange.send()
-            }
-        }.store(in: &cancellables)
-
-        // Relay predictionsViewModel changes to trigger AppViewModel updates
-        predictionsViewModel.objectWillChange.sink { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.objectWillChange.send()
-            }
-        }.store(in: &cancellables)
-
-        // Relay selectedContractState changes to trigger AppViewModel updates
-        selectedContractState.objectWillChange.sink { [weak self] _ in
-            DispatchQueue.main.async {
-                self?.objectWillChange.send()
-            }
-        }.store(in: &cancellables)
+        // Batch-relay child VM changes to AppViewModel.
+        // Merging into a single debounced publisher collapses rapid bursts
+        // (10-20 emissions per symbol load) into at most 1 parent notification
+        // per UI frame (~16 ms / 60 fps), cutting redundant view re-renders.
+        Publishers.MergeMany([
+            chartViewModel.objectWillChange.eraseToAnyPublisher(),
+            newsViewModel.objectWillChange.eraseToAnyPublisher(),
+            optionsChainViewModel.objectWillChange.eraseToAnyPublisher(),
+            optionsRankerViewModel.objectWillChange.eraseToAnyPublisher(),
+            predictionsViewModel.objectWillChange.eraseToAnyPublisher(),
+            selectedContractState.objectWillChange.eraseToAnyPublisher(),
+        ])
+        .debounce(for: .milliseconds(16), scheduler: RunLoop.main)
+        .sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+        .store(in: &cancellables)
 
         // Update GA strategy when options ranker changes (defer to avoid publish-in-view-update)
         optionsRankerViewModel.$gaStrategy

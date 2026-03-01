@@ -20,15 +20,22 @@
 
 /**
  * Get allowed origins based on environment.
- * 
- * Environment is determined by ENVIRONMENT variable:
- * - "production": Only production domains
- * - "staging": Staging + localhost
- * - "development" (default): Localhost only
+ *
+ * Precedence:
+ * 1. ALLOWED_ORIGINS env var (comma-separated list) — overrides everything
+ * 2. ENVIRONMENT variable:
+ *    - "production": Only production domains
+ *    - "staging": Staging + localhost
+ *    - "development" (default): Localhost only
  */
 export const getAllowedOrigins = (): string[] => {
+  const envOrigins = Deno.env.get("ALLOWED_ORIGINS");
+  if (envOrigins) {
+    return envOrigins.split(",").map((o) => o.trim()).filter(Boolean);
+  }
+
   const env = Deno.env.get("ENVIRONMENT") || "development";
-  
+
   if (env === "production") {
     return [
       "https://swiftbolt.app",
@@ -60,17 +67,22 @@ export const getAllowedOrigins = (): string[] => {
 
 /**
  * Get CORS headers for the given origin.
- * 
+ *
  * If origin is in the allowlist, it's returned in Access-Control-Allow-Origin.
  * Otherwise, the first allowed origin is returned (prevents breaking existing requests).
- * 
+ *
+ * The allowlist is populated from:
+ * 1. ALLOWED_ORIGINS env var (comma-separated), if set
+ * 2. Otherwise, the environment-specific list from getAllowedOrigins()
+ *
  * @param origin - The origin header from the request
  * @returns CORS headers object
  */
 export const getCorsHeaders = (origin: string | null): Record<string, string> => {
-  // Allow all origins for development
+  const allowed = getAllowedOrigins();
+  const responseOrigin = origin && allowed.includes(origin) ? origin : allowed[0];
   return {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": responseOrigin,
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-requested-with",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
     "Access-Control-Max-Age": "86400", // 24 hours
@@ -158,14 +170,22 @@ export const jsonResponse = (
 };
 
 /**
- * Legacy function name for backward compatibility.
- * @deprecated Use corsResponse instead
+ * Returns a standardized error response with CORS headers.
+ *
+ * @param message - Human-readable error message (never expose raw DB errors here)
+ * @param status - HTTP status code (default: 400)
+ * @param origin - Origin header from request (default: null)
  */
 export const errorResponse = (
   message: string,
   status: number = 400,
-  requestHeaders?: Headers
+  origin: string | null = null,
 ): Response => {
-  const origin = requestHeaders?.get("origin") ?? null;
-  return corsResponse({ error: message }, status, origin);
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...getCorsHeaders(origin),
+    },
+  });
 };
