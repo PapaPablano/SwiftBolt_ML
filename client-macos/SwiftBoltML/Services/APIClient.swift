@@ -628,8 +628,9 @@ final class APIClient {
     }
 
     func fetchChartRead(symbol: String, timeframe: String = "d1", includeMLData: Bool = true) async throws -> ChartResponse {
+        // Redirected from retired chart-read to the unified chart function.
         // Build URL with cache-buster to bypass CDN caching
-        var urlComponents = URLComponents(url: functionURL("chart-read"), resolvingAgainstBaseURL: false)!
+        var urlComponents = URLComponents(url: functionURL("chart"), resolvingAgainstBaseURL: false)!
         let cacheBuster = Int(Date().timeIntervalSince1970)
         urlComponents.queryItems = [
             URLQueryItem(name: "t", value: "\(cacheBuster)"),
@@ -643,7 +644,7 @@ final class APIClient {
             "includeMLData": includeMLData
         ]
 
-        print("[DEBUG] 📊 Fetching chart-read: symbol=\(symbol), timeframe=\(timeframe), cacheBuster=\(cacheBuster)")
+        print("[DEBUG] 📊 Fetching chart (was chart-read): symbol=\(symbol), timeframe=\(timeframe), cacheBuster=\(cacheBuster)")
 
         guard let url = urlComponents.url else {
             throw APIError.invalidURL
@@ -666,6 +667,8 @@ final class APIClient {
     }
 
     func fetchChartReadPage(symbol: String, timeframe: String = "d1", before: Int, pageSize: Int = 400) async throws -> ChartResponse {
+        // NOTE: fetchChartReadPage still calls chart-read for pagination; update separately when the
+        // unified chart function gains cursor-based pagination support.
         var urlComponents = URLComponents(url: functionURL("chart-read"), resolvingAgainstBaseURL: false)!
         let cacheBuster = Int(Date().timeIntervalSince1970)
         urlComponents.queryItems = [
@@ -706,8 +709,9 @@ final class APIClient {
     }
     
     func fetchChartV2(symbol: String, timeframe: String = "d1", days: Int = 60, includeForecast: Bool = true, forecastDays: Int = 10, forecastSteps: Int? = nil) async throws -> ChartDataV2Response {
+        // Redirected from retired chart-data-v2 to the unified chart function.
         // Build URL with cache-buster to bypass CDN caching (for all timeframes)
-        var urlComponents = URLComponents(url: functionURL("chart-data-v2"), resolvingAgainstBaseURL: false)!
+        var urlComponents = URLComponents(url: functionURL("chart"), resolvingAgainstBaseURL: false)!
         let cacheBuster = Int(Date().timeIntervalSince1970)
         urlComponents.queryItems = [
             URLQueryItem(name: "t", value: "\(cacheBuster)"),
@@ -740,7 +744,7 @@ final class APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         request.httpBody = bodyData
-        print("[DEBUG] 📊 chart-data-v2 request: method=\(request.httpMethod ?? "nil"), bodyBytes=\(bodyData.count)")
+        print("[DEBUG] 📊 chart (was chart-data-v2) request: method=\(request.httpMethod ?? "nil"), bodyBytes=\(bodyData.count)")
 
         // Bypass network cache for all requests to ensure fresh data
         request.cachePolicy = .reloadIgnoringLocalCacheData

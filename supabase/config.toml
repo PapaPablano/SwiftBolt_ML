@@ -9,10 +9,6 @@ project_id = "cygflaemtmwiwaviclks"
 [functions.run-backfill-worker]
 verify_jwt = false
 
-# For iOS app to work correctly, we need to set up proper JWT verification for chart-data-v2
-[functions.chart-data-v2]
-verify_jwt = true
-
 # ga-strategy: Triggered by cron automation only, not user-facing.
 # Auth enforced at the job queue level. verify_jwt disabled for performance.
 [functions.ga-strategy]

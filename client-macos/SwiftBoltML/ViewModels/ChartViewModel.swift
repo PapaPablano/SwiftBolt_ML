@@ -1319,7 +1319,7 @@ final class ChartViewModel: ObservableObject {
 
         let historicalLayer = LayerData(
             count: bars.count,
-            provider: "chart-read",
+            provider: "chart",
             data: bars,
             oldestBar: bars.first?.ts.ISO8601Format(),
             newestBar: bars.last?.ts.ISO8601Format()
@@ -1327,7 +1327,7 @@ final class ChartViewModel: ObservableObject {
 
         let intradayLayer = LayerData(
             count: 0,
-            provider: "chart-read",
+            provider: "chart",
             data: [],
             oldestBar: nil,
             newestBar: nil
