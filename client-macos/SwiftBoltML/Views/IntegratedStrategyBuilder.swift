@@ -122,10 +122,8 @@ struct IntegratedStrategyBuilder: View {
                     }
                 
                 Picker("", selection: $indicatorsService.selectedTimeframe) {
-                    // Tag "1D" as "d1" to match selectedTimeframe's apiToken default.
-                    Text("1D").tag("d1")
-                    ForEach(["4H", "1H", "30m", "15m", "5m"], id: \.self) { tf in
-                        Text(tf).tag(tf)
+                    ForEach(Timeframe.allOrdered) { tf in
+                        Text(tf.displayName).tag(tf.apiToken)
                     }
                 }
                 .frame(width: 80)
