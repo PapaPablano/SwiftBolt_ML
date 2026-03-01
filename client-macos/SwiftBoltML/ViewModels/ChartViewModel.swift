@@ -271,15 +271,7 @@ final class ChartViewModel: ObservableObject {
         return formatter
     }()
 
-    init(
-        supabase: SupabaseClient = SupabaseClient(
-            supabaseURL: Config.supabaseURL,
-            supabaseKey: Config.supabaseAnonKey,
-            options: SupabaseClientOptions(
-                auth: .init(emitLocalSessionAsInitialSession: true)
-            )
-        )
-    ) {
+    init(supabase: SupabaseClient = SupabaseService.shared.client) {
         self.supabase = supabase
     }
 
