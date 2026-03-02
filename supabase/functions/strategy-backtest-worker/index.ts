@@ -159,33 +159,6 @@ async function fetchMarketData(
   return { dates, opens, highs, lows, closes, volumes };
 }
 
-function generateMockData(startDate: string, endDate: string) {
-  const dates: string[] = [];
-  const closes: number[] = [];
-  const highs: number[] = [];
-  const lows: number[] = [];
-  const volumes: number[] = [];
-  
-  let price = 100;
-  const currentDate = new Date(startDate);
-  const end = new Date(endDate);
-  
-  while (currentDate <= end) {
-    if (currentDate.getDay() !== 0 && currentDate.getDay() !== 6) {
-      dates.push(currentDate.toISOString().split('T')[0]);
-      const change = (Math.random() - 0.48) * 0.03;
-      price = price * (1 + change);
-      closes.push(price);
-      highs.push(price * 1.02);
-      lows.push(price * 0.98);
-      volumes.push(Math.floor(5000000 + Math.random() * 10000000));
-    }
-    currentDate.setDate(currentDate.getDate() + 1);
-  }
-  
-  return { dates, opens: closes, highs, lows, closes, volumes };
-}
-
 function calculateIndicators(closes: number[], highs: number[], lows: number[], volumes: number[]) {
   const sma20: (number | null)[] = [];
   const ema12: (number | null)[] = [];
@@ -416,6 +389,14 @@ async function runBacktest(
   const { sma20, ema12, ema26, macd, macdSignal, rsi, atr, stochasticK, adx } = calculateIndicators(closes, highs, lows, volumes);
   const { trend: supertrendTrend, signal: supertrendSignal } = calculateSuperTrend(highs, lows, closes, 7, 2.0);
 
+  // Log conditions once to diagnose translation issues
+  const entryConds = config.entry_conditions || [];
+  const exitConds = config.exit_conditions || [];
+  console.log(`[BacktestWorker] Entry conditions (${entryConds.length}):`,
+    JSON.stringify(entryConds.map(c => ({ type: c.type, name: c.name, op: c.operator, val: c.value }))));
+  console.log(`[BacktestWorker] Exit conditions (${exitConds.length}):`,
+    JSON.stringify(exitConds.map(c => ({ type: c.type, name: c.name, op: c.operator, val: c.value }))));
+
   function evaluateConditions(conditions: Condition[] | undefined, i: number): boolean {
     if (!conditions || conditions.length === 0) return true;
 
@@ -463,8 +444,6 @@ async function runBacktest(
   const equityCurve: Record<string, number>[] = [];
   
   for (let i = 30; i < closes.length; i++) {
-    const entryConds = config.entry_conditions || [];
-    const exitConds = config.exit_conditions || [];
     
     if (shares === 0 && evaluateConditions(entryConds, i)) {
       shares = Math.min(positionSize, Math.floor(cash / closes[i]));
@@ -708,12 +687,32 @@ serve(async (req: Request): Promise<Response> => {
 
         let result: { metrics: Record<string, unknown>; trades: Record<string, unknown>[]; equity_curve: Record<string, unknown>[] };
 
-        if (!job.strategy_id && job.parameters?.strategy) {
+        // Determine strategy config: prefer inline config from parameters, then DB lookup, then preset
+        const inlineConfig = job.parameters?.strategy_config as StrategyConfig | undefined;
+
+        if (inlineConfig) {
+          // Inline config: use the exact conditions the user submitted (most reliable path)
+          console.log(`Job ${job.id}: using inline strategy_config`);
+          const { entry_conditions, exit_conditions } = normalizeConfig(inlineConfig);
+          const config: StrategyConfig = { ...inlineConfig, entry_conditions, exit_conditions };
+
+          await updateHeartbeat(supabase, job.id);
+          if (await isJobCancelled(supabase, job.id)) {
+            console.log(`Job ${job.id} cancelled before backtest computation`);
+            return new Response(JSON.stringify({ success: true, message: "Job cancelled" }), {
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+
+          result = await runBacktest(supabase, job, config);
+          await updateHeartbeat(supabase, job.id);
+        } else if (!job.strategy_id && job.parameters?.strategy) {
           // Preset strategy: call FastAPI
           await updateHeartbeat(supabase, job.id);
           result = await runPresetViaFastApi(job);
         } else if (job.strategy_id) {
-          // Builder strategy: use local TS backtest
+          // Builder strategy: read config from DB
+          console.log(`Job ${job.id}: reading config from DB for strategy ${job.strategy_id}`);
           const { data: strategy } = await supabase
             .from("strategy_user_strategies")
             .select("config")
@@ -738,7 +737,7 @@ serve(async (req: Request): Promise<Response> => {
           // Heartbeat after computation complete
           await updateHeartbeat(supabase, job.id);
         } else {
-          throw new Error("Job must have strategy_id or parameters.strategy");
+          throw new Error("Job must have strategy_config, strategy_id, or parameters.strategy");
         }
 
         // Final cancel check before writing results

@@ -78,6 +78,7 @@ async function handleQueueBacktest(
   const endDate = (body.endDate as string) || (body.end_date as string);
   const strategyId = body.strategy_id as string | undefined;
   const strategyPreset = body.strategy as string | undefined;
+  const inlineConfig = body.strategy_config as Record<string, unknown> | undefined;
   const timeframe = (body.timeframe as string) || "d1";
   const initialCapital = (body.initialCapital as number) ?? 10000;
   const params = (body.params as Record<string, unknown>) || (body.parameters as Record<string, unknown>) || {};
@@ -90,8 +91,8 @@ async function handleQueueBacktest(
     );
   }
 
-  let strategyConfig: Record<string, unknown> | null = null;
-  if (strategyId) {
+  let strategyConfig: Record<string, unknown> | null = inlineConfig || null;
+  if (!strategyConfig && strategyId) {
     // Sanitize userId to prevent PostgREST filter injection — only allow
     // UUID format or the literal "anonymous" sentinel.
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -108,7 +109,7 @@ async function handleQueueBacktest(
       return corsResponse({ error: "Strategy not found" }, 404, origin);
     }
     strategyConfig = (strategy.config as Record<string, unknown>) || null;
-  } else if (strategyPreset) {
+  } else if (!strategyConfig && !strategyId && strategyPreset) {
     if (!VALID_PRESET_STRATEGIES.includes(strategyPreset)) {
       return corsResponse(
         {
@@ -118,9 +119,9 @@ async function handleQueueBacktest(
         origin
       );
     }
-  } else {
+  } else if (!strategyConfig && !strategyId && !strategyPreset) {
     return corsResponse(
-      { error: "Provide either strategy_id (UUID) or strategy (preset name)" },
+      { error: "Provide strategy_config, strategy_id (UUID), or strategy (preset name)" },
       400,
       origin
     );
@@ -143,8 +144,13 @@ async function handleQueueBacktest(
   if (strategyPreset) {
     parameters.strategy = strategyPreset;
   }
+  // Store inline config in parameters so the worker can use it directly
+  if (strategyConfig) {
+    parameters.strategy_config = strategyConfig;
+  }
+
   // Builder strategy: merge riskManagement from config so worker uses your stop loss / take profit
-  if (strategyId && strategyConfig?.riskManagement) {
+  if (strategyConfig?.riskManagement) {
     const rm = strategyConfig.riskManagement as Record<string, { type?: string; value?: number }>;
     const sl = rm?.stopLoss;
     const tp = rm?.takeProfit;

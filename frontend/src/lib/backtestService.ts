@@ -85,13 +85,22 @@ async function queueBacktestJob(
   startDate: string,
   endDate: string,
   timeframe: string,
-  headers: Record<string, string>
+  headers: Record<string, string>,
+  strategyConfig?: Record<string, unknown>
 ): Promise<BacktestJobResult> {
   try {
+    const body: Record<string, unknown> = { symbol, startDate, endDate, initialCapital: 10000, timeframe };
+    if (isStrategyIdUuid(strategyId)) {
+      body.strategy_id = strategyId;
+    }
+    // Always send inline config so the worker uses the exact conditions the user sees
+    if (strategyConfig) {
+      body.strategy_config = strategyConfig;
+    }
     const postRes = await fetch(`${SUPABASE_FUNCTIONS_URL}/backtest-strategy`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ symbol, startDate, endDate, strategy_id: strategyId, initialCapital: 10000, timeframe }),
+      body: JSON.stringify(body),
       cache: 'no-store',
     });
     if (postRes.status === 401) {
@@ -164,7 +173,8 @@ async function runBacktestViaSupabase(
   endDate: string,
   timeframe: string,
   token?: string,
-  onJobQueued?: (jobId: string) => void
+  onJobQueued?: (jobId: string) => void,
+  strategyConfig?: Record<string, unknown>
 ): Promise<BacktestResult | null> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -173,7 +183,7 @@ async function runBacktestViaSupabase(
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  const queueResult = await queueBacktestJob(strategyId, symbol, startDate, endDate, timeframe, headers);
+  const queueResult = await queueBacktestJob(strategyId, symbol, startDate, endDate, timeframe, headers, strategyConfig);
   if (!queueResult.success) {
     console.error('[Backtest] Supabase queue error:', queueResult.error.message);
     return null;
@@ -360,148 +370,17 @@ export const runBacktestViaAPI = async (
   try {
     const timeframe = horizonToTimeframe(horizon);
 
-    // Custom (UUID) strategies: use Supabase worker which evaluates full conditions
-    if (isStrategyIdUuid(strategy.id)) {
-      const result = await runBacktestViaSupabase(strategy.id, strategy.id, symbol, startDate, endDate, timeframe, token, onJobQueued);
-      if (result) return result;
-      // No FastAPI fallback for custom strategies — it can't evaluate custom conditions.
-      // Surface the timeout error directly so the user gets actionable feedback.
-      throw new Error('Backtest timed out. This may be due to a cold start — click Retry to try again.');
-    } else {
-      // Default preset strategies (id='1','2','3'): skip Supabase, go directly to FastAPI
-      console.info(`[Backtest] Default strategy '${strategy.name}' — using FastAPI preset path.`);
-    }
-    const strategyType = strategy.config.entryConditions[0]?.type;
-    let apiStrategy = 'supertrend_ai';
-    if (strategyType === 'sma_cross') apiStrategy = 'sma_crossover';
-    else if (
-      strategyType === 'price_breakout' ||
-      strategyType === 'volume_spike' ||
-      strategyType === 'ml_signal'
-    )
-      apiStrategy = 'buy_and_hold';
-
-    const response = await fetch(`${API_BASE}/api/v1/backtest-strategy`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      cache: 'no-store',
-      body: JSON.stringify({
-        symbol,
-        strategy: apiStrategy,
-        startDate,
-        endDate,
-        timeframe,
-        initialCapital: 10000,
-        params: strategy.config.entryConditions[0]?.params || {},
-      }),
-    });
-    if (!response.ok) {
-      console.error('[Backtest] FastAPI error:', await response.text());
-      return null;
-    }
-    const data = await response.json();
-    if (!data?.symbol) return null;
-
-    const metrics = data.metrics || {};
-    const equityCurve = data.equityCurve || [];
-
-    let buyAndHoldReturn = 0;
-    try {
-      // TODO: route buy-and-hold price data through the chart Edge Function
-      // (GET /chart) instead of calling the FastAPI endpoint directly.
-      const priceResponse = await fetch(
-        `${API_BASE}/api/v1/chart-data/${symbol}/d1?start_date=${startDate}&end_date=${endDate}`,
-        { cache: 'no-store' }
-      );
-      if (priceResponse.ok) {
-        const priceData = await priceResponse.json();
-        const bars = priceData.bars || [];
-        if (bars.length >= 2) {
-          buyAndHoldReturn =
-            ((bars[bars.length - 1].close - bars[0].close) / bars[0].close) * 100;
-        }
-      }
-    } catch (_) {}
-
-    const rawTrades = data.trades || [];
-    const tradesList: Trade[] = [];
-    let pendingBuy: { date: string; price: number } | null = null;
-    for (const t of rawTrades) {
-      const rawDate = t.date ?? t.timestamp ?? t.datetime ?? '';
-      const dateMatch = String(rawDate).trim().match(/^(\d{4}-\d{2}-\d{2})/);
-      const dateStr = dateMatch ? dateMatch[1] : '';
-      const price = Number(t.price ?? 0);
-      const action = String(t.action ?? '').toUpperCase();
-      if (action === 'BUY') {
-        pendingBuy = { date: dateStr, price };
-      } else if (action === 'SELL' && pendingBuy) {
-        const entryPrice = pendingBuy.price;
-        const exitPrice = price;
-        const qty = Number(t.quantity ?? 1);
-        const apiPnl = t.pnl != null && t.pnl !== '' ? Number(t.pnl) : null;
-        const pnl = apiPnl != null ? apiPnl : (exitPrice - entryPrice) * qty;
-        const pnlPercent = entryPrice ? ((exitPrice - entryPrice) / entryPrice) * 100 : 0;
-        tradesList.push({
-          id: `trade-${tradesList.length}`,
-          entryTime: pendingBuy.date,
-          exitTime: dateStr,
-          entryPrice,
-          exitPrice,
-          quantity: qty,
-          pnl,
-          pnlPercent,
-          isWin: pnl > 0 || pnlPercent > 0,
-          direction: 'long',
-          closeReason: 'unknown',
-        });
-        pendingBuy = null;
-      }
-    }
-
-    const firstEntryNotional =
-      tradesList.length > 0 ? tradesList[0].entryPrice * tradesList[0].quantity : 0;
-    const lastExitNotional =
-      tradesList.length > 0
-        ? tradesList[tradesList.length - 1].exitPrice * tradesList[tradesList.length - 1].quantity
-        : 0;
-    const tradeBasedReturnPct =
-      tradesList.length > 0 && firstEntryNotional !== 0
-        ? ((lastExitNotional - firstEntryNotional) / firstEntryNotional) * 100
-        : undefined;
-    const winningTradesCount = tradesList.filter((t) => t.isWin).length;
-    const tradeBasedMaxDrawdownPct =
-      tradesList.length > 0
-        ? Math.min(...tradesList.map((t) => t.pnlPercent)) / 100
-        : undefined;
-
-    return {
-      id: Date.now().toString(),
-      strategyId: strategy.id,
-      symbol: data.symbol,
-      period: `${data.period?.start ?? startDate} to ${data.period?.end ?? endDate}`,
-      totalTrades: metrics.totalTrades ?? tradesList.length,
-      winningTrades: winningTradesCount,
-      losingTrades: tradesList.length - winningTradesCount,
-      winRate: tradesList.length
-        ? winningTradesCount / tradesList.length
-        : (metrics.winRate ?? 0) / 100,
-      totalReturn: data.totalReturn != null ? Number(data.totalReturn) : 0,
-      tradeBasedReturnPct,
-      tradeBasedMaxDrawdownPct,
-      buyAndHoldReturn,
-      maxDrawdown: metrics.maxDrawdown != null ? Number(metrics.maxDrawdown) / 100 : 0,
-      sharpeRatio: metrics.sharpeRatio != null ? Number(metrics.sharpeRatio) : 0,
-      profitFactor: 0,
-      avgWin: 0,
-      avgLoss: 0,
-      trades: tradesList,
-      equityCurve: equityCurve.map((e: { date?: string; value: number }) => ({
-        time: toChartTime(e?.date ?? ''),
-        value: e.value,
-      })),
-    };
+    // Always use the Supabase worker for backtesting — it evaluates the full strategy config.
+    // Send the config inline so the worker uses exactly what the user sees in the form.
+    const result = await runBacktestViaSupabase(
+      strategy.id, strategy.id, symbol, startDate, endDate, timeframe, token, onJobQueued,
+      strategy.config as unknown as Record<string, unknown>
+    );
+    if (result) return result;
+    throw new Error('Backtest timed out. This may be due to a cold start — click Retry to try again.');
   } catch (err) {
     console.error('[Backtest] Error:', err);
+    if (err instanceof Error && err.message.includes('timed out')) throw err;
     return null;
   }
 };
