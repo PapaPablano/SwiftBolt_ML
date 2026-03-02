@@ -261,11 +261,11 @@ draw(target: CanvasRenderingTarget2D): void {
 - [x] BUY/SELL markers colored by trade outcome (not always green/red)
 - [x] Regions semi-transparent (candles readable underneath)
 - [x] Chart maintains 60fps with 100+ trades during pan/zoom (viewport culling)
-- [ ] Trade table shows ALL trades (not capped at 15-20) with scrolling
-- [ ] Direction and Close Reason columns visible in trade table
-- [ ] Click column header to sort
-- [ ] Works for both daily and intraday timeframes
-- [ ] Equity curve extracted to own component (EquityCurveChart.tsx)
+- [x] Trade table shows ALL trades (not capped at 15-20) with scrolling
+- [x] Direction and Close Reason columns visible in trade table
+- [x] Click column header to sort
+- [x] Works for both daily and intraday timeframes
+- [x] Equity curve extracted to own component (EquityCurveChart.tsx)
 
 ---
 
