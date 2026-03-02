@@ -5,6 +5,12 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 import { callFastApi } from "../_shared/fastapi-client.ts";
+import {
+  normalizeToWorkerFormat,
+  type WorkerCondition,
+  type FrontendCondition,
+  type StrategyConfigRaw,
+} from "../_shared/strategy-translator.ts";
 
 interface BacktestJob {
   id: string;
@@ -16,45 +22,17 @@ interface BacktestJob {
   parameters: Record<string, unknown>;
 }
 
-interface StrategyConfig {
-  entry_conditions?: Condition[];
-  exit_conditions?: Condition[];
-  entryConditions?: FrontendCondition[];
-  exitConditions?: FrontendCondition[];
-  filters?: Condition[];
+/** Worker-local alias using shared types. */
+type Condition = WorkerCondition;
+
+interface StrategyConfig extends StrategyConfigRaw {
+  filters?: WorkerCondition[];
   parameters?: Record<string, unknown>;
 }
 
-interface Condition {
-  type: string;
-  name: string;
-  operator?: string;
-  value?: number;
-  params?: Record<string, unknown>;
-}
-
-/** Frontend builder format (camelCase, type = indicator id) */
-interface FrontendCondition {
-  type: string;
-  operator?: string;
-  value?: number;
-  params?: Record<string, unknown>;
-}
-
+/** Normalize config using shared translator. */
 function normalizeConfig(raw: StrategyConfig): { entry_conditions: Condition[]; exit_conditions: Condition[] } {
-  const entry = raw.entry_conditions ?? [];
-  const exit = raw.exit_conditions ?? [];
-  if (entry.length > 0 || exit.length > 0) return { entry_conditions: entry, exit_conditions: exit };
-  const mapOne = (c: FrontendCondition): Condition => ({
-    type: "indicator",
-    name: c.type,
-    operator: c.operator === ">" || c.operator === ">=" ? "above" : c.operator === "==" ? "equals" : "below",
-    value: c.value ?? 0,
-  });
-  return {
-    entry_conditions: (raw.entryConditions ?? []).map(mapOne),
-    exit_conditions: (raw.exitConditions ?? []).map(mapOne),
-  };
+  return normalizeToWorkerFormat(raw);
 }
 
 async function claimJob(supabase: ReturnType<typeof getSupabaseClient>): Promise<BacktestJob | null> {

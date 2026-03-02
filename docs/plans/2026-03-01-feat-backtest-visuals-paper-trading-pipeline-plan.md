@@ -177,8 +177,8 @@ Create `frontend/src/lib/strategyTranslator.ts` as the single canonical translat
 - [x] Backtesting works without authentication
 - [x] `Trade` type includes `direction`, `closeReason`
 - [x] Backtest worker returns direction, close_reason, profit_factor, avg_win, avg_loss, buy_and_hold_return_pct
-- [ ] Strategy translator converts between all 3 condition formats
-- [ ] Existing backtest functionality unchanged (backward compatible)
+- [x] Strategy translator converts between all 3 condition formats
+- [x] Existing backtest functionality unchanged (backward compatible)
 
 ---
 
