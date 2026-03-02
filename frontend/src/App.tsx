@@ -12,6 +12,7 @@ import { RecommendationsPanel } from './components/RecommendationsPanel';
 import { StrategyConditionBuilder } from './components/StrategyConditionBuilder';
 import { StrategyBacktestPanel } from './components/StrategyBacktestPanel';
 import EquityCurveChart from './components/EquityCurveChart';
+import { PaperTradingDashboard } from './components/PaperTradingDashboard';
 import type { Condition } from './components/StrategyConditionBuilder';
 
 // ---------------------------------------------------------------------------
@@ -83,7 +84,7 @@ function EmbeddedBacktesting() {
 // Main App
 // ---------------------------------------------------------------------------
 
-type AppTab = 'charts' | 'recommendations';
+type AppTab = 'charts' | 'recommendations' | 'paper-trading';
 
 function App() {
   // Pathname-based routing for macOS WKWebView embedded views
@@ -103,6 +104,33 @@ function App() {
   const symbols = ['AAPL', 'NVDA', 'TSLA', 'CRWD', 'MU', 'PLTR', 'AMD', 'GOOG'];
 
   const daysFromRange = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  const tabNav = (
+    <div className="flex gap-2 mt-1">
+      {(['charts', 'recommendations', 'paper-trading'] as AppTab[]).map((tab) => {
+        const labels: Record<AppTab, string> = {
+          charts: 'Charts',
+          recommendations: 'Recommendations',
+          'paper-trading': 'Paper Trading',
+        };
+        return (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
+              activeTab === tab
+                ? tab === 'paper-trading'
+                  ? 'bg-purple-600 border-purple-500 text-white'
+                  : 'bg-blue-600 border-blue-500 text-white'
+                : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+            }`}
+          >
+            {labels[tab]}
+          </button>
+        );
+      })}
+    </div>
+  );
 
   if (activeTab === 'recommendations') {
     return (
@@ -132,7 +160,31 @@ function App() {
     );
   }
 
-  const isCharts = activeTab === 'charts';
+  if (activeTab === 'paper-trading') {
+    return (
+      <div className="min-h-screen bg-gray-950 p-4 md:p-8 flex flex-col">
+        <div className="mx-auto max-w-7xl flex-grow w-full">
+          <div className="mb-6 flex items-start justify-between">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold text-white">
+                SwiftBolt <span className="text-purple-400">Paper Trading</span>
+              </h1>
+              <p className="text-sm text-gray-400 mt-1">
+                Live strategy monitoring and performance tracking
+              </p>
+            </div>
+            <button
+              onClick={() => setActiveTab('charts')}
+              className="px-3 py-1.5 text-xs font-medium rounded border bg-gray-800 border-gray-700 text-gray-400 hover:text-white"
+            >
+              ← Charts
+            </button>
+          </div>
+          <PaperTradingDashboard />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-950 p-4 md:p-8 flex flex-col">
@@ -148,28 +200,7 @@ function App() {
             </p>
           </div>
           {/* Tab nav */}
-          <div className="flex gap-2 mt-1">
-            <button
-              onClick={() => setActiveTab('charts')}
-              className={`px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
-                isCharts
-                  ? 'bg-blue-600 border-blue-500 text-white'
-                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
-              }`}
-            >
-              Charts
-            </button>
-            <button
-              onClick={() => setActiveTab('recommendations')}
-              className={`px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
-                !isCharts
-                  ? 'bg-blue-600 border-blue-500 text-white'
-                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
-              }`}
-            >
-              Recommendations
-            </button>
-          </div>
+          {tabNav}
         </div>
 
         {/* Controls */}

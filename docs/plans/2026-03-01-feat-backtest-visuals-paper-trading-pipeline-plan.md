@@ -320,11 +320,11 @@ Simplified from original Phase 5. Deploy button, confirmation modal (not full re
 - [x] Deploy requires confirmation (not one-click)
 - [ ] Strategy config correctly translated to executor format via strategyTranslator
 - [ ] Compact status widget shows active strategies/positions/P&L
-- [ ] Status widget pauses polling when tab is in background
-- [ ] Full Paper Trading tab in main navigation
-- [ ] Dashboard uses dark theme (matches rest of app)
-- [ ] All paper trading API calls use user JWT
-- [ ] Unauthenticated users see login modal when trying to deploy
+- [x] Status widget pauses polling when tab is in background
+- [x] Full Paper Trading tab in main navigation
+- [x] Dashboard uses dark theme (matches rest of app)
+- [x] All paper trading API calls use user JWT
+- [x] Unauthenticated users see login modal when trying to deploy
 
 ---
 

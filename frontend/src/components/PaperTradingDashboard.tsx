@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { TrendingUp, TrendingDown, DollarSign, Target, AlertCircle, RefreshCw } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -206,54 +207,54 @@ function PositionsTable({ positions }: PositionsTableProps) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50 border-b border-gray-200">
+        <thead className="bg-gray-800 border-b border-gray-700">
           <tr>
-            <th className="px-4 py-2 text-left text-gray-700 font-medium">Symbol</th>
-            <th className="px-4 py-2 text-right text-gray-700 font-medium">Dir</th>
-            <th className="px-4 py-2 text-right text-gray-700 font-medium">Entry</th>
-            <th className="px-4 py-2 text-right text-gray-700 font-medium">Current</th>
-            <th className="px-4 py-2 text-right text-gray-700 font-medium">Qty</th>
-            <th className="px-4 py-2 text-right text-gray-700 font-medium">P&L</th>
-            <th className="px-4 py-2 text-right text-gray-700 font-medium">SL</th>
-            <th className="px-4 py-2 text-right text-gray-700 font-medium">TP</th>
+            <th className="px-4 py-2 text-left text-gray-400 font-medium">Symbol</th>
+            <th className="px-4 py-2 text-right text-gray-400 font-medium">Dir</th>
+            <th className="px-4 py-2 text-right text-gray-400 font-medium">Entry</th>
+            <th className="px-4 py-2 text-right text-gray-400 font-medium">Current</th>
+            <th className="px-4 py-2 text-right text-gray-400 font-medium">Qty</th>
+            <th className="px-4 py-2 text-right text-gray-400 font-medium">P&L</th>
+            <th className="px-4 py-2 text-right text-gray-400 font-medium">SL</th>
+            <th className="px-4 py-2 text-right text-gray-400 font-medium">TP</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-200">
+        <tbody className="divide-y divide-gray-700">
           {positions.map((pos) => {
             const { pnl: unrealizedPnl, pnl_pct: unrealizedPct } = calcUnrealizedPnl(pos);
             const current = pos.current_price ?? pos.entry_price;
             return (
-              <tr key={pos.id} className="hover:bg-gray-50">
-                <td className="px-4 py-2 font-mono text-gray-700">{pos.symbol_id}</td>
+              <tr key={pos.id} className="hover:bg-gray-800">
+                <td className="px-4 py-2 font-mono text-gray-300">{pos.symbol_id}</td>
                 <td className="px-4 py-2 text-right">
                   <span
                     className={`px-2 py-1 rounded text-xs font-medium ${
                       pos.direction === 'long'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-red-100 text-red-800'
+                        ? 'bg-green-900/40 text-green-400'
+                        : 'bg-red-900/40 text-red-400'
                     }`}
                   >
                     {pos.direction.toUpperCase()}
                   </span>
                 </td>
-                <td className="px-4 py-2 text-right font-mono text-gray-700">
+                <td className="px-4 py-2 text-right font-mono text-gray-300">
                   ${pos.entry_price.toFixed(2)}
                 </td>
-                <td className="px-4 py-2 text-right font-mono text-gray-700">
+                <td className="px-4 py-2 text-right font-mono text-gray-300">
                   ${current.toFixed(2)}
                 </td>
-                <td className="px-4 py-2 text-right font-mono text-gray-700">{pos.quantity}</td>
+                <td className="px-4 py-2 text-right font-mono text-gray-300">{pos.quantity}</td>
                 <td
                   className={`px-4 py-2 text-right font-mono font-medium ${
-                    unrealizedPnl >= 0 ? 'text-green-600' : 'text-red-600'
+                    unrealizedPnl >= 0 ? 'text-green-400' : 'text-red-400'
                   }`}
                 >
                   ${unrealizedPnl.toFixed(2)} ({unrealizedPct.toFixed(2)}%)
                 </td>
-                <td className="px-4 py-2 text-right font-mono text-gray-700">
+                <td className="px-4 py-2 text-right font-mono text-gray-300">
                   ${pos.stop_loss_price.toFixed(2)}
                 </td>
-                <td className="px-4 py-2 text-right font-mono text-gray-700">
+                <td className="px-4 py-2 text-right font-mono text-gray-300">
                   ${pos.take_profit_price.toFixed(2)}
                 </td>
               </tr>
@@ -284,59 +285,59 @@ function TradesHistory({ trades, limit = 10 }: TradesHistoryProps) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50 border-b border-gray-200">
+        <thead className="bg-gray-800 border-b border-gray-700">
           <tr>
-            <th className="px-4 py-2 text-left text-gray-700 font-medium">Symbol</th>
-            <th className="px-4 py-2 text-right text-gray-700 font-medium">Dir</th>
-            <th className="px-4 py-2 text-right text-gray-700 font-medium">Entry</th>
-            <th className="px-4 py-2 text-right text-gray-700 font-medium">Exit</th>
-            <th className="px-4 py-2 text-right text-gray-700 font-medium">P&L</th>
-            <th className="px-4 py-2 text-left text-gray-700 font-medium">Reason</th>
-            <th className="px-4 py-2 text-right text-gray-700 font-medium">Duration</th>
+            <th className="px-4 py-2 text-left text-gray-400 font-medium">Symbol</th>
+            <th className="px-4 py-2 text-right text-gray-400 font-medium">Dir</th>
+            <th className="px-4 py-2 text-right text-gray-400 font-medium">Entry</th>
+            <th className="px-4 py-2 text-right text-gray-400 font-medium">Exit</th>
+            <th className="px-4 py-2 text-right text-gray-400 font-medium">P&L</th>
+            <th className="px-4 py-2 text-left text-gray-400 font-medium">Reason</th>
+            <th className="px-4 py-2 text-right text-gray-400 font-medium">Duration</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-200">
+        <tbody className="divide-y divide-gray-700">
           {displayTrades.map((trade) => (
-            <tr key={trade.id} className="hover:bg-gray-50">
-              <td className="px-4 py-2 font-mono text-gray-700">{trade.symbol_id}</td>
+            <tr key={trade.id} className="hover:bg-gray-800">
+              <td className="px-4 py-2 font-mono text-gray-300">{trade.symbol_id}</td>
               <td className="px-4 py-2 text-right">
                 <span
                   className={`px-2 py-1 rounded text-xs font-medium ${
                     trade.direction === 'long'
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-red-100 text-red-800'
+                      ? 'bg-green-900/40 text-green-400'
+                      : 'bg-red-900/40 text-red-400'
                   }`}
                 >
                   {trade.direction.toUpperCase()}
                 </span>
               </td>
-              <td className="px-4 py-2 text-right font-mono text-gray-700">
+              <td className="px-4 py-2 text-right font-mono text-gray-300">
                 ${trade.entry_price.toFixed(2)}
               </td>
-              <td className="px-4 py-2 text-right font-mono text-gray-700">
+              <td className="px-4 py-2 text-right font-mono text-gray-300">
                 ${trade.exit_price.toFixed(2)}
               </td>
               <td
                 className={`px-4 py-2 text-right font-mono font-medium ${
-                  trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
+                  trade.pnl >= 0 ? 'text-green-400' : 'text-red-400'
                 }`}
               >
                 ${trade.pnl.toFixed(2)} ({trade.pnl_pct.toFixed(2)}%)
               </td>
-              <td className="px-4 py-2 text-gray-700 text-xs">
+              <td className="px-4 py-2 text-gray-300 text-xs">
                 <span
                   className={`px-2 py-1 rounded ${
                     trade.close_reason === 'TP_HIT'
-                      ? 'bg-green-100 text-green-800'
+                      ? 'bg-green-900/40 text-green-400'
                       : trade.close_reason === 'SL_HIT'
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-blue-100 text-blue-800'
+                        ? 'bg-red-900/40 text-red-400'
+                        : 'bg-blue-900/40 text-blue-400'
                   }`}
                 >
                   {trade.close_reason}
                 </span>
               </td>
-              <td className="px-4 py-2 text-right text-gray-700">{calcDurationHours(trade.entry_time, trade.exit_time)}h</td>
+              <td className="px-4 py-2 text-right text-gray-300">{calcDurationHours(trade.entry_time, trade.exit_time)}h</td>
             </tr>
           ))}
         </tbody>
@@ -378,26 +379,26 @@ function MetricsGrid({ metrics }: MetricsGridProps) {
         return (
           <div
             key={card.label}
-            className={`p-4 rounded-lg border-2 ${
+            className={`p-4 rounded-lg border ${
               card.color === 'green'
-                ? 'border-green-200 bg-green-50'
+                ? 'border-green-800 bg-green-900/20'
                 : card.color === 'red'
-                  ? 'border-red-200 bg-red-50'
+                  ? 'border-red-800 bg-red-900/20'
                   : card.color === 'orange'
-                    ? 'border-orange-200 bg-orange-50'
-                    : 'border-blue-200 bg-blue-50'
+                    ? 'border-orange-800 bg-orange-900/20'
+                    : 'border-blue-800 bg-blue-900/20'
             }`}
           >
-            <p className="text-xs text-gray-600 font-medium mb-1">{card.label}</p>
+            <p className="text-xs text-gray-400 font-medium mb-1">{card.label}</p>
             <p
               className={`text-lg font-bold ${
                 card.color === 'green'
-                  ? 'text-green-700'
+                  ? 'text-green-400'
                   : card.color === 'red'
-                    ? 'text-red-700'
+                    ? 'text-red-400'
                     : card.color === 'orange'
-                      ? 'text-orange-700'
-                      : 'text-blue-700'
+                      ? 'text-orange-400'
+                      : 'text-blue-400'
               }`}
             >
               {displayValue}
@@ -430,17 +431,24 @@ export const PaperTradingDashboard: React.FC<PaperTradingDashboardProps> = ({
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const visibleRef = useRef(true);
+  const { session } = useAuth();
 
   // Calculate metrics from live trade data
   const metrics = useMemo(() => calculateMetrics(trades), [trades]);
 
   const fetchData = useCallback(async () => {
+    if (!session?.access_token) {
+      setError('Sign in to view paper trading data');
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
       const headers = {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Authorization': `Bearer ${session.access_token}`,
         'apikey': SUPABASE_ANON_KEY,
       };
 
@@ -475,22 +483,28 @@ export const PaperTradingDashboard: React.FC<PaperTradingDashboardProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [strategyId]);
+  }, [strategyId, session?.access_token]);
 
   // Initial fetch
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // Auto-refresh effect
+  // Auto-refresh effect — pauses when tab is in background
   useEffect(() => {
     if (autoRefreshInterval <= 0) return;
 
+    const onVisibility = () => { visibleRef.current = !document.hidden; };
+    document.addEventListener('visibilitychange', onVisibility);
+
     const interval = setInterval(() => {
-      fetchData();
+      if (visibleRef.current) fetchData();
     }, autoRefreshInterval);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [autoRefreshInterval, fetchData]);
 
   const handleRefresh = async () => {
@@ -501,14 +515,14 @@ export const PaperTradingDashboard: React.FC<PaperTradingDashboardProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6 space-y-6">
+    <div className="bg-gray-900 rounded-lg p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <TrendingUp className="text-blue-600" size={28} />
+          <TrendingUp className="text-blue-400" size={28} />
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Paper Trading Dashboard</h2>
-            <p className="text-sm text-gray-600">Last refreshed: {lastRefresh.toLocaleTimeString()}</p>
+            <h2 className="text-2xl font-bold text-white">Paper Trading Dashboard</h2>
+            <p className="text-sm text-gray-400">Last refreshed: {lastRefresh.toLocaleTimeString()}</p>
           </div>
         </div>
         <button
@@ -516,7 +530,7 @@ export const PaperTradingDashboard: React.FC<PaperTradingDashboardProps> = ({
           disabled={isLoading}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
             isLoading
-              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
               : 'bg-blue-600 text-white hover:bg-blue-700'
           }`}
         >
@@ -527,7 +541,7 @@ export const PaperTradingDashboard: React.FC<PaperTradingDashboardProps> = ({
 
       {/* Error Banner */}
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-sm text-red-700">
+        <div className="p-3 bg-red-900/30 border border-red-800 rounded-lg flex items-center gap-2 text-sm text-red-400">
           <AlertCircle size={16} className="flex-shrink-0" />
           {error}
         </div>
@@ -535,17 +549,17 @@ export const PaperTradingDashboard: React.FC<PaperTradingDashboardProps> = ({
 
       {/* Performance Metrics */}
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Performance Overview</h3>
+        <h3 className="text-lg font-semibold text-white mb-4">Performance Overview</h3>
         <MetricsGrid metrics={metrics} />
       </div>
 
       {/* Open Positions */}
       <div>
         <div className="flex items-center gap-2 mb-4">
-          <Target className="text-green-600" size={20} />
-          <h3 className="text-lg font-semibold text-gray-900">Open Positions ({positions.length})</h3>
+          <Target className="text-green-400" size={20} />
+          <h3 className="text-lg font-semibold text-white">Open Positions ({positions.length})</h3>
         </div>
-        <div className="bg-gray-50 rounded-lg p-4 overflow-hidden">
+        <div className="bg-gray-800 rounded-lg p-4 overflow-hidden">
           <PositionsTable positions={positions} />
         </div>
       </div>
@@ -553,36 +567,36 @@ export const PaperTradingDashboard: React.FC<PaperTradingDashboardProps> = ({
       {/* Trades History */}
       <div>
         <div className="flex items-center gap-2 mb-4">
-          <DollarSign className="text-blue-600" size={20} />
-          <h3 className="text-lg font-semibold text-gray-900">Closed Trades ({trades.length})</h3>
+          <DollarSign className="text-blue-400" size={20} />
+          <h3 className="text-lg font-semibold text-white">Closed Trades ({trades.length})</h3>
         </div>
-        <div className="bg-gray-50 rounded-lg p-4 overflow-hidden">
-          <TradesHistory trades={trades} limit={10} />
+        <div className="bg-gray-800 rounded-lg p-4 overflow-hidden">
+          <TradesHistory trades={trades} />
         </div>
       </div>
 
       {/* Key Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-200">
-        <div className="p-4 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-700">
+        <div className="p-4 bg-green-900/20 rounded-lg border border-green-800">
           <div className="flex items-start gap-3">
-            <TrendingUp className="text-green-600 mt-1" size={20} />
+            <TrendingUp className="text-green-400 mt-1" size={20} />
             <div>
-              <p className="text-sm text-gray-600 font-medium">Winning Trades</p>
-              <p className="text-2xl font-bold text-green-700">{metrics.winning_trades}</p>
-              <p className="text-xs text-gray-600 mt-1">
+              <p className="text-sm text-gray-400 font-medium">Winning Trades</p>
+              <p className="text-2xl font-bold text-green-400">{metrics.winning_trades}</p>
+              <p className="text-xs text-gray-500 mt-1">
                 Largest win: ${metrics.largest_win.toFixed(2)}
               </p>
             </div>
           </div>
         </div>
 
-        <div className="p-4 bg-gradient-to-br from-red-50 to-red-100 rounded-lg border border-red-200">
+        <div className="p-4 bg-red-900/20 rounded-lg border border-red-800">
           <div className="flex items-start gap-3">
-            <TrendingDown className="text-red-600 mt-1" size={20} />
+            <TrendingDown className="text-red-400 mt-1" size={20} />
             <div>
-              <p className="text-sm text-gray-600 font-medium">Losing Trades</p>
-              <p className="text-2xl font-bold text-red-700">{metrics.losing_trades}</p>
-              <p className="text-xs text-gray-600 mt-1">
+              <p className="text-sm text-gray-400 font-medium">Losing Trades</p>
+              <p className="text-2xl font-bold text-red-400">{metrics.losing_trades}</p>
+              <p className="text-xs text-gray-500 mt-1">
                 Largest loss: -${metrics.largest_loss.toFixed(2)}
               </p>
             </div>
@@ -591,11 +605,11 @@ export const PaperTradingDashboard: React.FC<PaperTradingDashboardProps> = ({
       </div>
 
       {/* Footer Note */}
-      <div className="p4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
-        <AlertCircle className="text-blue-600 mt-0.5 flex-shrink-0" size={18} />
-        <div className="text-sm text-blue-700">
+      <div className="p-4 bg-blue-900/20 border border-blue-800 rounded-lg flex items-start gap-3">
+        <AlertCircle className="text-blue-400 mt-0.5 flex-shrink-0" size={18} />
+        <div className="text-sm text-blue-300">
           <p className="font-medium">Paper Trading Mode</p>
-          <p className="text-xs text-blue-600 mt-1">
+          <p className="text-xs text-blue-400 mt-1">
             This dashboard shows simulated trading results. No real money is at risk.
           </p>
         </div>
