@@ -164,4 +164,6 @@ export interface StrategyBacktestPanelProps {
   onBacktestComplete?: (result: BacktestResult | null) => void;
   /** When period preset is clicked, call with new start/end so parent can update chart date range. */
   onDateRangeChange?: (start: Date, end: Date) => void;
+  /** Navigate to Paper Trading tab. */
+  onNavigatePaperTrading?: () => void;
 }

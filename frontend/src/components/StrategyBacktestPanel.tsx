@@ -23,6 +23,7 @@ import {
   type BacktestJobResult,
 } from '../lib/backtestService';
 import BacktestResultsPanel from './BacktestResultsPanel';
+import { PaperTradingStatusWidget } from './PaperTradingStatusWidget';
 import { useAuth } from '../contexts/AuthContext';
 
 const defaultStrategies: Strategy[] = [
@@ -74,6 +75,7 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
   endDate: parentEndDate,
   onBacktestComplete,
   onDateRangeChange,
+  onNavigatePaperTrading,
 }) => {
   const [strategies, setStrategies] = useState<Strategy[]>(defaultStrategies);
   const [selectedStrategy, setSelectedStrategy] = useState<Strategy | null>(strategies[0]);
@@ -503,6 +505,9 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
           </div>
         )}
       </div>
+
+      {/* Paper Trading Status Widget */}
+      <PaperTradingStatusWidget onNavigate={onNavigatePaperTrading} />
 
       {/* Backtest Controls */}
       <div className="space-y-1 pt-1.5 border-t border-gray-700">

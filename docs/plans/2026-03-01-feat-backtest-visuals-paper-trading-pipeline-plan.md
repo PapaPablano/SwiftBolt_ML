@@ -319,7 +319,7 @@ Simplified from original Phase 5. Deploy button, confirmation modal (not full re
 - [x] Confirmation modal shows strategy summary + backtest stats
 - [x] Deploy requires confirmation (not one-click)
 - [ ] Strategy config correctly translated to executor format via strategyTranslator
-- [ ] Compact status widget shows active strategies/positions/P&L
+- [x] Compact status widget shows active strategies/positions/P&L
 - [x] Status widget pauses polling when tab is in background
 - [x] Full Paper Trading tab in main navigation
 - [x] Dashboard uses dark theme (matches rest of app)

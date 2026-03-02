@@ -272,6 +272,7 @@ function App() {
             setStartDate(start);
             setEndDate(end);
           }}
+          onNavigatePaperTrading={() => setActiveTab('paper-trading')}
         />
 
         {/* Results Section - Live backtest results (same data as Strategy tab) */}

@@ -30,6 +30,8 @@ interface ChartWithIndicatorsProps {
   onBacktestComplete?: (result: BacktestResult | null) => void;
   /** When Strategy panel period is changed, call with new start/end so App can update chart date range. */
   onDateRangeChange?: (start: Date, end: Date) => void;
+  /** Navigate to Paper Trading tab. */
+  onNavigatePaperTrading?: () => void;
 }
 
 export const ChartWithIndicators: React.FC<ChartWithIndicatorsProps> = ({
@@ -41,6 +43,7 @@ export const ChartWithIndicators: React.FC<ChartWithIndicatorsProps> = ({
   backtestResult,
   onBacktestComplete,
   onDateRangeChange,
+  onNavigatePaperTrading,
 }) => {
   const [activePanel, setActivePanel] = useState<'analysis' | 'pivots' | 'strategy'>('strategy');
 
@@ -77,6 +80,7 @@ export const ChartWithIndicators: React.FC<ChartWithIndicatorsProps> = ({
               endDate={endDate}
               onBacktestComplete={onBacktestComplete}
               onDateRangeChange={onDateRangeChange}
+              onNavigatePaperTrading={onNavigatePaperTrading}
             />
           )}
         </div>
