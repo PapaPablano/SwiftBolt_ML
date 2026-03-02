@@ -6,6 +6,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.97.0";
 import { getSupabaseClientWithAuth } from "../_shared/supabase-client.ts";
+import { getCorsHeaders, handlePreflight, corsResponse, errorResponse } from "../_shared/cors.ts";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -145,6 +146,61 @@ const INDICATOR_RANGES: Record<string, { min: number; max: number }> = {
   High: { min: 0, max: Infinity },
   Low: { min: 0, max: Infinity },
 };
+
+// Allowed indicator names for condition validation (includes cache-derived keys)
+const ALLOWED_INDICATORS = new Set([
+  ...Object.keys(INDICATOR_RANGES),
+  "MACD",
+  "Volume_MA",
+  "RSI_prev",
+  "MACD_prev",
+  "Volume_MA_prev",
+  "Close_prev",
+]);
+
+// Allowed condition operators
+const ALLOWED_OPERATORS = new Set<string>([
+  ">", "<", ">=", "<=", "==", "!=",
+  "cross_up", "cross_down",
+  "touches", "within_range",
+]);
+
+// Simple in-memory rate limiter for POST requests (per user)
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10;
+
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(userId);
+
+  if (!entry || now >= entry.resetAt) {
+    rateLimitMap.set(userId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+
+  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return false;
+  }
+
+  entry.count++;
+  return true;
+}
+
+/** Validate that all conditions use allowed indicator names and operators. */
+function validateConditions(conditions: Condition[]): string[] {
+  const errors: string[] = [];
+  for (const c of conditions) {
+    if (!ALLOWED_INDICATORS.has(c.indicator)) {
+      errors.push(`Unrecognized indicator: ${c.indicator}`);
+    }
+    if (!ALLOWED_OPERATORS.has(c.operator)) {
+      errors.push(`Invalid operator: ${c.operator}`);
+    }
+  }
+  return errors;
+}
 
 // ============================================================================
 // VALIDATOR FUNCTIONS
@@ -719,6 +775,23 @@ async function executeStrategy(
   indicatorCache: Map<string, number>,
 ): Promise<ExecutionResult> {
   try {
+    // Validate condition indicators/operators before evaluation
+    const allConditions = [
+      ...(strategy.entry_conditions || []),
+      ...(strategy.exit_conditions || []),
+    ];
+    const conditionErrors = validateConditions(allConditions);
+    if (conditionErrors.length > 0) {
+      return {
+        success: false,
+        error: {
+          type: "condition_eval_failed",
+          indicator: "validation",
+          reason: `Invalid conditions: ${conditionErrors.join("; ")}`,
+        },
+      };
+    }
+
     const latestPrice = bars[bars.length - 1].close;
 
     // Check for open position
@@ -796,16 +869,13 @@ async function executeStrategy(
 // ============================================================================
 
 Deno.serve(async (req) => {
-  try {
-    const corsHeaders = {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization, apikey",
-    };
+  const origin = req.headers.get("origin");
+  const corsHeaders = getCorsHeaders(origin);
 
+  try {
     // CORS preflight
     if (req.method === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders });
+      return handlePreflight(origin);
     }
 
     // Initialize Supabase service-role client (used for writes / execution)
@@ -817,23 +887,20 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
 
     // ========================================================================
+    // AUTHENTICATE — All endpoints require a valid JWT
+    // ========================================================================
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const supabaseAuth = getSupabaseClientWithAuth(authHeader);
+    const { data: { user }, error: authError } = await supabaseAuth.auth
+      .getUser();
+    if (authError || !user) {
+      return errorResponse("Authentication required", 401, origin);
+    }
+
+    // ========================================================================
     // GET — Read endpoints for positions, trades, and summary
     // ========================================================================
     if (req.method === "GET") {
-      // Authenticate the requesting user via their JWT
-      const authHeader = req.headers.get("Authorization") ?? "";
-      const supabaseAuth = getSupabaseClientWithAuth(authHeader);
-      const { data: { user }, error: authError } = await supabaseAuth.auth
-        .getUser();
-      if (authError || !user) {
-        return new Response(
-          JSON.stringify({ error: "Authentication required" }),
-          {
-            status: 401,
-            headers: { "Content-Type": "application/json", ...corsHeaders },
-          },
-        );
-      }
 
       const action = url.searchParams.get("action") ?? "positions";
       const limit = Math.min(
@@ -966,6 +1033,19 @@ Deno.serve(async (req) => {
       );
     }
 
+    // ========================================================================
+    // POST — Rate-limited write endpoints
+    // ========================================================================
+
+    // Enforce rate limit on POST requests
+    if (!checkRateLimit(user.id)) {
+      return errorResponse(
+        "Rate limit exceeded. Max 10 requests per minute.",
+        429,
+        origin,
+      );
+    }
+
     // Parse POST request body
     const body = await req.json();
     const { action } = body;
@@ -974,25 +1054,20 @@ Deno.serve(async (req) => {
     if (action === "close_position") {
       const { position_id, exit_price } = body;
       if (!position_id || typeof exit_price !== "number") {
-        return new Response(
-          JSON.stringify({ error: "position_id and exit_price are required" }),
-          { status: 400, headers: { "Content-Type": "application/json" } },
-        );
+        return errorResponse("position_id and exit_price are required", 400, origin);
       }
 
-      // Fetch position to compute P&L
+      // Fetch position — verify ownership via user_id
       const { data: pos, error: fetchErr } = await supabase
         .from("paper_trading_positions")
-        .select("id,direction,entry_price,quantity,status")
+        .select("id, user_id, direction, entry_price, quantity, status")
         .eq("id", position_id)
+        .eq("user_id", user.id)
         .eq("status", "open")
         .single();
 
       if (fetchErr || !pos) {
-        return new Response(
-          JSON.stringify({ error: "Position not found or already closed" }),
-          { status: 404, headers: { "Content-Type": "application/json" } },
-        );
+        return errorResponse("Position not found or already closed", 404, origin);
       }
 
       const pnl = pos.direction === "long"
@@ -1000,21 +1075,13 @@ Deno.serve(async (req) => {
         : (pos.entry_price - exit_price) * pos.quantity;
 
       const result = await closePosition(supabase, pos as PaperPosition, exit_price, "MANUAL");
-      return new Response(JSON.stringify({ ...result, pnl }), {
-        headers: { "Content-Type": "application/json" },
-      });
+      return corsResponse({ ...result, pnl }, 200, origin);
     }
 
     const { symbol, timeframe } = body;
 
     if (!symbol || !timeframe) {
-      return new Response(
-        JSON.stringify({ error: "symbol and timeframe are required" }),
-        {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
+      return errorResponse("symbol and timeframe are required", 400, origin);
     }
 
     // Execute paper trading cycle
@@ -1024,32 +1091,22 @@ Deno.serve(async (req) => {
     const successCount = results.filter((r) => r.success).length;
     const failureCount = results.length - successCount;
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        execution_time: new Date().toISOString(),
-        symbol,
-        timeframe,
-        strategies_processed: results.length,
-        successful: successCount,
-        failed: failureCount,
-        results,
-      }),
-      {
-        headers: { "Content-Type": "application/json" },
-      },
-    );
+    return corsResponse({
+      success: true,
+      execution_time: new Date().toISOString(),
+      symbol,
+      timeframe,
+      strategies_processed: results.length,
+      successful: successCount,
+      failed: failureCount,
+      results,
+    }, 200, origin);
   } catch (error: unknown) {
     console.error("[paper-trading-executor] Edge function error:", error);
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: "An internal error occurred",
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      },
+    return corsResponse(
+      { success: false, error: "An internal error occurred" },
+      500,
+      origin,
     );
   }
 });
