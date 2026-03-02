@@ -163,7 +163,8 @@ async function runBacktestViaSupabase(
   startDate: string,
   endDate: string,
   timeframe: string,
-  token?: string
+  token?: string,
+  onJobQueued?: (jobId: string) => void
 ): Promise<BacktestResult | null> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -178,9 +179,10 @@ async function runBacktestViaSupabase(
     return null;
   }
   const job_id = queueResult.jobId;
+  onJobQueued?.(job_id);
 
-  // 40 × 1.5 s = 60 s max wait; then fall through to FastAPI fallback.
-  for (let i = 0; i < 40; i++) {
+  // 120 × 1.5 s = 180 s max wait. No fallback for custom strategies.
+  for (let i = 0; i < 120; i++) {
     await new Promise((r) => setTimeout(r, 1500));
     const pollResult = await pollBacktestJob(job_id, headers);
     if (!pollResult.success) {
@@ -189,6 +191,10 @@ async function runBacktestViaSupabase(
     }
     if (pollResult.status === 'failed') {
       console.error('[Backtest] Job failed');
+      return null;
+    }
+    if (pollResult.status === 'cancelled') {
+      console.log('[Backtest] Job was cancelled');
       return null;
     }
     if (pollResult.status !== 'completed') continue;
@@ -305,6 +311,27 @@ async function runBacktestViaSupabase(
   return null;
 }
 
+/** Cancel a running backtest job via PATCH. Requires auth. */
+export async function cancelBacktestJob(
+  jobId: string,
+  token: string
+): Promise<boolean> {
+  try {
+    const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/backtest-strategy`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ job_id: jobId, status: 'cancelled' }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Enable paper trading for a strategy. Requires a valid session token and UUID strategy id. */
 export async function deployToPaperTrading(
   strategyId: string,
@@ -327,16 +354,19 @@ export const runBacktestViaAPI = async (
   startDate: string,
   endDate: string,
   horizon: string,
-  token?: string
+  token?: string,
+  onJobQueued?: (jobId: string) => void
 ): Promise<BacktestResult | null> => {
   try {
     const timeframe = horizonToTimeframe(horizon);
 
     // Custom (UUID) strategies: use Supabase worker which evaluates full conditions
     if (isStrategyIdUuid(strategy.id)) {
-      const result = await runBacktestViaSupabase(strategy.id, strategy.id, symbol, startDate, endDate, timeframe, token);
+      const result = await runBacktestViaSupabase(strategy.id, strategy.id, symbol, startDate, endDate, timeframe, token, onJobQueued);
       if (result) return result;
-      console.warn('[Backtest] Supabase worker timed out — falling back to FastAPI preset. Custom conditions will NOT be evaluated.');
+      // No FastAPI fallback for custom strategies — it can't evaluate custom conditions.
+      // Surface the timeout error directly so the user gets actionable feedback.
+      throw new Error('Backtest timed out. This may be due to a cold start — click Retry to try again.');
     } else {
       // Default preset strategies (id='1','2','3'): skip Supabase, go directly to FastAPI
       console.info(`[Backtest] Default strategy '${strategy.name}' — using FastAPI preset path.`);
