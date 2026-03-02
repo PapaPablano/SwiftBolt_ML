@@ -48,6 +48,9 @@ serve(async (req: Request) => {
     if (req.method === "GET" && jobId) {
       return await handleGetJobStatus(supabase, userId, jobId, origin);
     }
+    if (req.method === "PATCH") {
+      return await handleCancelJob(supabase, userId, req, origin);
+    }
     if (req.method === "GET") {
       return corsResponse(
         { error: "Missing query param: id (job_id)" },
@@ -190,23 +193,43 @@ async function handleQueueBacktest(
     `[BacktestStrategy] Queued job ${job.id} for ${symbol} (${strategyPreset || strategyId})`
   );
 
-  // Trigger the worker immediately (fire-and-forget) so the job is processed
-  // without requiring an external cron. Uses the service-role key so the worker
-  // can update job status even with RLS enabled.
+  // Trigger the worker and await the response so we know if it started.
+  // Uses the service-role key so the worker can update job status even with RLS.
+  let workerTriggered = false;
   const workerUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/strategy-backtest-worker`;
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
   const gatewayKey = Deno.env.get('SB_GATEWAY_KEY') ?? '';
+
   if (workerUrl && serviceKey && gatewayKey) {
-    fetch(workerUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${serviceKey}`,
-        'Content-Type': 'application/json',
-        'X-SB-Gateway-Key': gatewayKey,
-        'x-trigger-source': 'backtest-strategy',
-      },
-      body: JSON.stringify({ triggered_job_id: job.id }),
-    }).catch(e => console.warn('[BacktestStrategy] Worker trigger warning:', e));
+    const triggerWorker = async (): Promise<boolean> => {
+      try {
+        const res = await fetch(workerUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${serviceKey}`,
+            'Content-Type': 'application/json',
+            'X-SB-Gateway-Key': gatewayKey,
+            'x-trigger-source': 'backtest-strategy',
+          },
+          body: JSON.stringify({ triggered_job_id: job.id }),
+        });
+        if (res.ok) {
+          console.log(`[BacktestStrategy] Worker triggered for job ${job.id} (status ${res.status})`);
+          return true;
+        }
+        console.warn(`[BacktestStrategy] Worker trigger returned ${res.status}`);
+        return false;
+      } catch (e) {
+        console.warn('[BacktestStrategy] Worker trigger failed:', e);
+        return false;
+      }
+    };
+
+    workerTriggered = await triggerWorker();
+    if (!workerTriggered) {
+      console.warn('[BacktestStrategy] Retrying worker trigger for job', job.id);
+      workerTriggered = await triggerWorker();
+    }
   } else {
     console.warn('[BacktestStrategy] Missing env: SUPABASE_SERVICE_ROLE_KEY or SB_GATEWAY_KEY — worker not triggered');
   }
@@ -216,10 +239,53 @@ async function handleQueueBacktest(
       job_id: job.id,
       status: job.status,
       created_at: job.created_at,
+      worker_triggered: workerTriggered,
     },
     201,
     origin
   );
+}
+
+async function handleCancelJob(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  userId: string,
+  req: Request,
+  origin: string | null
+): Promise<Response> {
+  if (userId === "anonymous") {
+    return corsResponse({ error: "Authentication required to cancel jobs" }, 401, origin);
+  }
+
+  const body = (await req.json()) as Record<string, unknown>;
+  const jobId = body.job_id as string;
+  if (!jobId) {
+    return corsResponse({ error: "Missing required field: job_id" }, 400, origin);
+  }
+
+  // Only cancel jobs owned by this user that are in a cancellable state
+  const { data, error } = await supabase
+    .from("strategy_backtest_jobs")
+    .update({
+      status: "cancelled",
+      completed_at: new Date().toISOString(),
+      error_message: "Cancelled by user",
+    })
+    .eq("id", jobId)
+    .eq("user_id", userId)
+    .in("status", ["pending", "running"])
+    .select("id, status")
+    .single();
+
+  if (error || !data) {
+    return corsResponse(
+      { error: "Job not found, not owned by you, or already in a terminal state" },
+      404,
+      origin
+    );
+  }
+
+  console.log(`[BacktestStrategy] Job ${jobId} cancelled by user ${userId}`);
+  return corsResponse({ job_id: data.id, status: data.status }, 200, origin);
 }
 
 async function handleGetJobStatus(
@@ -228,6 +294,19 @@ async function handleGetJobStatus(
   jobId: string,
   origin: string | null
 ): Promise<Response> {
+  // Clean up stale jobs: running for >5 minutes with no recent heartbeat
+  await supabase
+    .from("strategy_backtest_jobs")
+    .update({
+      status: "failed",
+      error_message: "Worker timed out",
+      completed_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId)
+    .eq("status", "running")
+    .lt("started_at", new Date(Date.now() - 5 * 60 * 1000).toISOString())
+    .or(`heartbeat_at.is.null,heartbeat_at.lt.${new Date(Date.now() - 5 * 60 * 1000).toISOString()}`);
+
   const { data: job, error } = await supabase
     .from("strategy_backtest_jobs")
     .select("*")

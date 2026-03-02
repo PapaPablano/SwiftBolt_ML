@@ -35,21 +35,68 @@ function normalizeConfig(raw: StrategyConfig): { entry_conditions: Condition[]; 
   return normalizeToWorkerFormat(raw);
 }
 
-async function claimJob(supabase: ReturnType<typeof getSupabaseClient>): Promise<BacktestJob | null> {
-  const { data, error } = await supabase.rpc("claim_pending_backtest_job");
-  
-  if (error || !data) {
-    console.log("No pending jobs or error:", error?.message);
-    return null;
+async function claimJob(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  triggeredJobId?: string
+): Promise<BacktestJob | null> {
+  let jobId: string | null = null;
+
+  if (triggeredJobId) {
+    // Claim the specific triggered job to avoid race conditions
+    const { data, error } = await supabase
+      .from("strategy_backtest_jobs")
+      .update({ status: "running", started_at: new Date().toISOString() })
+      .eq("id", triggeredJobId)
+      .eq("status", "pending")
+      .select("id")
+      .single();
+
+    if (error || !data) {
+      console.log(`Triggered job ${triggeredJobId} not claimable:`, error?.message);
+      return null;
+    }
+    jobId = data.id;
+  } else {
+    // Fallback: claim oldest pending job via RPC
+    const { data, error } = await supabase.rpc("claim_pending_backtest_job");
+    if (error || !data) {
+      console.log("No pending jobs or error:", error?.message);
+      return null;
+    }
+    jobId = data;
   }
-  
+
   const { data: job } = await supabase
     .from("strategy_backtest_jobs")
     .select("*")
-    .eq("id", data)
+    .eq("id", jobId)
     .single();
-  
+
   return job as BacktestJob;
+}
+
+/** Update heartbeat_at to signal worker is still alive. */
+async function updateHeartbeat(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  jobId: string
+): Promise<void> {
+  await supabase
+    .from("strategy_backtest_jobs")
+    .update({ heartbeat_at: new Date().toISOString() })
+    .eq("id", jobId);
+}
+
+/** Check if job has been cancelled. Returns true if cancelled. */
+async function isJobCancelled(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  jobId: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("strategy_backtest_jobs")
+    .select("status")
+    .eq("id", jobId)
+    .single();
+  return data?.status === "cancelled";
 }
 
 async function fetchMarketData(
@@ -626,24 +673,44 @@ serve(async (req: Request): Promise<Response> => {
 
   const supabase = getSupabaseClient();
 
-  console.log("Backtest worker started");
+  // Read triggered_job_id from request body
+  let triggeredJobId: string | undefined;
+  try {
+    const body = await req.json();
+    triggeredJobId = body?.triggered_job_id;
+  } catch {
+    // No body or invalid JSON — fall back to claiming oldest pending
+  }
+
+  console.log("Backtest worker started", triggeredJobId ? `for job ${triggeredJobId}` : "(no triggered_job_id)");
 
   try {
-    for (let i = 0; i < 3; i++) {
-      const job = await claimJob(supabase);
+    {
+      const job = await claimJob(supabase, triggeredJobId);
 
       if (!job) {
-        console.log("No more pending jobs");
-        break;
+        console.log("No job to process");
+        return new Response(JSON.stringify({ success: true, message: "No job to process" }), {
+          headers: { "Content-Type": "application/json" },
+        });
       }
 
       console.log(`Processing job ${job.id} for ${job.symbol}`);
 
       try {
+        // Cancel check before starting
+        if (await isJobCancelled(supabase, job.id)) {
+          console.log(`Job ${job.id} was cancelled before processing`);
+          return new Response(JSON.stringify({ success: true, message: "Job cancelled" }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
         let result: { metrics: Record<string, unknown>; trades: Record<string, unknown>[]; equity_curve: Record<string, unknown>[] };
 
         if (!job.strategy_id && job.parameters?.strategy) {
           // Preset strategy: call FastAPI
+          await updateHeartbeat(supabase, job.id);
           result = await runPresetViaFastApi(job);
         } else if (job.strategy_id) {
           // Builder strategy: use local TS backtest
@@ -656,9 +723,30 @@ serve(async (req: Request): Promise<Response> => {
           const rawConfig = (strategy?.config || {}) as StrategyConfig;
           const { entry_conditions, exit_conditions } = normalizeConfig(rawConfig);
           const config: StrategyConfig = { ...rawConfig, entry_conditions, exit_conditions };
+
+          // Heartbeat after config loaded, cancel check before heavy computation
+          await updateHeartbeat(supabase, job.id);
+          if (await isJobCancelled(supabase, job.id)) {
+            console.log(`Job ${job.id} cancelled before backtest computation`);
+            return new Response(JSON.stringify({ success: true, message: "Job cancelled" }), {
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+
           result = await runBacktest(supabase, job, config);
+
+          // Heartbeat after computation complete
+          await updateHeartbeat(supabase, job.id);
         } else {
           throw new Error("Job must have strategy_id or parameters.strategy");
+        }
+
+        // Final cancel check before writing results
+        if (await isJobCancelled(supabase, job.id)) {
+          console.log(`Job ${job.id} cancelled before saving results`);
+          return new Response(JSON.stringify({ success: true, message: "Job cancelled" }), {
+            headers: { "Content-Type": "application/json" },
+          });
         }
 
         const { data: resultRecord, error: resultError } = await supabase
@@ -697,9 +785,9 @@ serve(async (req: Request): Promise<Response> => {
           .eq("id", job.id);
       }
     }
-    
+
     return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json" },
     });
     
   } catch (err) {
