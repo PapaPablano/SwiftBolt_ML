@@ -290,7 +290,8 @@ if __name__ == "__main__":
         print("\n⚠️ Weights & Biases not installed")
         print("Install with: pip install wandb")
         print("\nExample usage:")
-        print("""
+        print(
+            """
         from src.training.wandb_integration import WandBTracker
         
         # Initialize
@@ -315,7 +316,8 @@ if __name__ == "__main__":
         
         # Finish
         tracker.finish_run()
-        """)
+        """
+        )
     else:
         print("\n✅ Weights & Biases available")
         print("\nExample tracker usage shown above")
