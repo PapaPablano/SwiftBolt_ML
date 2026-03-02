@@ -28,14 +28,15 @@ class Config {
         // First check if we have a valid URL in environment
         if let envValue = ProcessInfo.processInfo.environment[supabaseURLKey],
            !envValue.isEmpty,
-           let url = URL(string: envValue) {
+           let url = URL(string: ensureScheme(envValue)) {
             cachedSupabaseURL = url
             return url
         }
 
         // If no environment value, try to get from keychain or plist as fallback
         let rawValue = loadOrStoreConfigValue(for: supabaseURLKey)
-        guard let url = URL(string: rawValue) else {
+        let urlString = ensureScheme(rawValue)
+        guard let url = URL(string: urlString) else {
             fatalError("Invalid SUPABASE_URL: \(rawValue)")
         }
 
@@ -96,6 +97,15 @@ class Config {
     
     // Feature flags
     let ensureCoverageEnabled = false  // SPEC-8 orchestrator DISABLED
+
+    /// xcconfig treats "//" as a comment, so SUPABASE_URL is stored as a bare host
+    /// (e.g. "xyz.supabase.co"). Prepend https:// when the scheme is missing.
+    private func ensureScheme(_ value: String) -> String {
+        if value.hasPrefix("http://") || value.hasPrefix("https://") {
+            return value
+        }
+        return "https://\(value)"
+    }
 
     private func loadOrStoreConfigValue(for key: String) -> String {
         if let stored = KeychainService.load(key) {
