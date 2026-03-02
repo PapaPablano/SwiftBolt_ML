@@ -166,9 +166,9 @@ Create `frontend/src/lib/strategyTranslator.ts` as the single canonical translat
 - Executor: POST returns 401 without JWT, ownership verified on close_position
 
 **Acceptance criteria:**
-- [ ] Users can sign up / sign in with email+password via login modal
-- [ ] Session persists across page reloads, handles token refresh
-- [ ] Paper trading API calls use user JWT (not anon key)
+- [x] Users can sign up / sign in with email+password via login modal
+- [x] Session persists across page reloads, handles token refresh
+- [x] Paper trading API calls use user JWT (not anon key)
 - [x] All executor POST operations return 401 without valid JWT
 - [x] Users cannot close positions they do not own
 - [x] Rate limiting on executor POST: 10 req/min per user
