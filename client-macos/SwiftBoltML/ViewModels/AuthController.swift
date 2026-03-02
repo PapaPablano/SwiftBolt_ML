@@ -49,11 +49,6 @@ final class AuthController {
         }
     }
 
-    deinit {
-        authTask?.cancel()
-        authTask = nil
-    }
-
     // MARK: - Actions
 
     func signIn(email: String, password: String) async {
