@@ -1,7 +1,7 @@
 ---
 title: "feat: Backtest Visuals + Paper Trading Pipeline"
 type: feat
-status: active
+status: completed
 date: 2026-03-01
 origin: docs/brainstorms/2026-03-01-backtest-visuals-paper-trading-pipeline-brainstorm.md
 reviewed: 2026-03-01
@@ -318,7 +318,7 @@ Simplified from original Phase 5. Deploy button, confirmation modal (not full re
 - [x] "Deploy to Paper Trading" button appears after backtest completes
 - [x] Confirmation modal shows strategy summary + backtest stats
 - [x] Deploy requires confirmation (not one-click)
-- [ ] Strategy config correctly translated to executor format via strategyTranslator
+- [x] Strategy config correctly translated to executor format via strategyTranslator
 - [x] Compact status widget shows active strategies/positions/P&L
 - [x] Status widget pauses polling when tab is in background
 - [x] Full Paper Trading tab in main navigation
