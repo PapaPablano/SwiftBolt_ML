@@ -452,11 +452,19 @@ async function runBacktest(
       
       if (exitByCondition || exitByRisk) {
         cash += shares * closes[i];
+        const closeReason = exitByCondition
+          ? "exit_condition"
+          : pnlPct >= takeProfit
+            ? "take_profit"
+            : "stop_loss";
         trades.push({
           entry_date: dates[i - 1],
           exit_date: dates[i],
           entry_price: entryPrice,
           exit_price: closes[i],
+          quantity: shares,
+          direction: "long",
+          close_reason: closeReason,
           pnl: (closes[i] - entryPrice) * shares,
           pnl_pct: pnlPct * 100
         });

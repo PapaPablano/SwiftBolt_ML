@@ -1,4 +1,4 @@
-import type { Strategy, BacktestResult, Trade } from '../types/strategyBacktest';
+import type { Strategy, BacktestResult, Trade, TradeDirection, CloseReason } from '../types/strategyBacktest';
 import { isStrategyIdUuid, toChartTime, horizonToTimeframe, createDefaultConfig } from './backtestConstants';
 import { strategiesApi } from '../api/strategiesApi';
 
@@ -252,6 +252,8 @@ async function runBacktestViaSupabase(
           pnl,
           pnlPercent,
           isWin: pnl > 0 || pnlPercent > 0,
+          direction: (t.direction as TradeDirection) ?? 'long',
+          closeReason: (t.close_reason as CloseReason) ?? 'unknown',
         });
       }
 
@@ -395,6 +397,8 @@ export const runBacktestViaAPI = async (
           pnl,
           pnlPercent,
           isWin: pnl > 0 || pnlPercent > 0,
+          direction: 'long',
+          closeReason: 'unknown',
         });
         pendingBuy = null;
       }

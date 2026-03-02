@@ -175,8 +175,8 @@ Create `frontend/src/lib/strategyTranslator.ts` as the single canonical translat
 - [x] Conditions with unrecognized indicators rejected
 - [x] CORS restricted to known origins
 - [x] Backtesting works without authentication
-- [ ] `Trade` type includes `direction`, `closeReason`
-- [ ] Backtest worker returns direction, close_reason, profit_factor, avg_win, avg_loss, buy_and_hold_return_pct
+- [x] `Trade` type includes `direction`, `closeReason`
+- [x] Backtest worker returns direction, close_reason, profit_factor, avg_win, avg_loss, buy_and_hold_return_pct
 - [ ] Strategy translator converts between all 3 condition formats
 - [ ] Existing backtest functionality unchanged (backward compatible)
 
