@@ -5,16 +5,92 @@
  * Root component for SwiftBolt Forecast Charts.
  */
 
-import { useState, useRef, useEffect } from 'react';
-import { createChart } from 'lightweight-charts';
+import { useState, useEffect } from 'react';
 import { ChartWithIndicators } from './components/ChartWithIndicators';
 import type { BacktestResult } from './types/strategyBacktest';
-import { dedupeEquityCurve } from './lib/backtestConstants';
 import { RecommendationsPanel } from './components/RecommendationsPanel';
+import { StrategyConditionBuilder } from './components/StrategyConditionBuilder';
+import { StrategyBacktestPanel } from './components/StrategyBacktestPanel';
+import EquityCurveChart from './components/EquityCurveChart';
+import { PaperTradingDashboard } from './components/PaperTradingDashboard';
+import type { Condition } from './components/StrategyConditionBuilder';
 
-type AppTab = 'charts' | 'recommendations';
+// ---------------------------------------------------------------------------
+// Embedded-mode helpers (macOS WKWebView integration)
+// ---------------------------------------------------------------------------
+
+const DEFAULT_INDICATORS = [
+  'RSI', 'MACD', 'SMA', 'EMA', 'VWAP', 'Bollinger Bands',
+  'ATR', 'Stochastic', 'Volume', 'Close', 'Open', 'High', 'Low',
+];
+
+/** Listens for `window.postMessage({ type: 'symbolChanged', symbol })` from the macOS native bridge. */
+function useEmbeddedSymbol(fallback = 'AAPL'): string {
+  const [symbol, setSymbol] = useState(fallback);
+
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'symbolChanged' && typeof e.data.symbol === 'string') {
+        setSymbol(e.data.symbol);
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  return symbol;
+}
+
+// ---------------------------------------------------------------------------
+// Standalone embedded views (rendered at /strategy-builder & /backtesting)
+// ---------------------------------------------------------------------------
+
+function EmbeddedConditionBuilder() {
+  const symbol = useEmbeddedSymbol();
+  const [conditions, setConditions] = useState<Condition[]>([]);
+
+  return (
+    <div className="min-h-screen bg-gray-950 p-4">
+      <div className="max-w-4xl mx-auto">
+        <div className="mb-4 text-xs text-gray-500">Symbol: {symbol}</div>
+        <StrategyConditionBuilder
+          signalType="entry"
+          initialConditions={conditions}
+          onConditionsChange={setConditions}
+          availableIndicators={DEFAULT_INDICATORS}
+        />
+      </div>
+    </div>
+  );
+}
+
+function EmbeddedBacktesting() {
+  const symbol = useEmbeddedSymbol();
+
+  return (
+    <div className="min-h-screen bg-gray-950 p-4">
+      <div className="max-w-5xl mx-auto">
+        <StrategyBacktestPanel
+          symbol={symbol}
+          horizon="1D"
+          expanded={true}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main App
+// ---------------------------------------------------------------------------
+
+type AppTab = 'charts' | 'recommendations' | 'paper-trading';
 
 function App() {
+  // Pathname-based routing for macOS WKWebView embedded views
+  const pathname = window.location.pathname;
+  if (pathname === '/strategy-builder') return <EmbeddedConditionBuilder />;
+  if (pathname === '/backtesting') return <EmbeddedBacktesting />;
   const [activeTab, setActiveTab] = useState<AppTab>('charts');
   const [selectedSymbol, setSelectedSymbol] = useState('AAPL');
   const [selectedHorizon, setSelectedHorizon] = useState('1D');
@@ -25,39 +101,36 @@ function App() {
   });
   const [endDate, setEndDate] = useState<Date>(new Date());
   const [backtestResult, setBacktestResult] = useState<BacktestResult | null>(null);
-  const equityChartRef = useRef<HTMLDivElement | null>(null);
-  const equityChartInstanceRef = useRef<ReturnType<typeof createChart> | null>(null);
-
   const symbols = ['AAPL', 'NVDA', 'TSLA', 'CRWD', 'MU', 'PLTR', 'AMD', 'GOOG'];
 
-  // Real equity curve line chart (replaces div-bar sparkline)
-  useEffect(() => {
-    if (!equityChartRef.current) return;
-    equityChartInstanceRef.current?.remove();
-    equityChartInstanceRef.current = null;
-    if (!backtestResult?.equityCurve?.length) return;
-    const el = equityChartRef.current;
-    const chart = createChart(el, {
-      layout: { background: { color: '#111827' }, textColor: '#9ca3af' },
-      grid: { vertLines: { color: '#374151' }, horzLines: { color: '#374151' } },
-      timeScale: { borderColor: '#374151' },
-      height: 160,
-    });
-    equityChartInstanceRef.current = chart;
-    const lineSeries = chart.addLineSeries({ color: '#3b82f6', lineWidth: 2 });
-    const deduped = dedupeEquityCurve(backtestResult.equityCurve);
-    lineSeries.setData(deduped.map((p) => ({
-      time: (typeof p.time === 'string' ? Math.floor(new Date(p.time).getTime() / 1000) : p.time) as any,
-      value: p.value
-    })));
-    chart.timeScale().fitContent();
-    return () => {
-      chart.remove();
-      equityChartInstanceRef.current = null;
-    };
-  }, [backtestResult?.equityCurve]);
-
   const daysFromRange = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  const tabNav = (
+    <div className="flex gap-2 mt-1">
+      {(['charts', 'recommendations', 'paper-trading'] as AppTab[]).map((tab) => {
+        const labels: Record<AppTab, string> = {
+          charts: 'Charts',
+          recommendations: 'Recommendations',
+          'paper-trading': 'Paper Trading',
+        };
+        return (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
+              activeTab === tab
+                ? tab === 'paper-trading'
+                  ? 'bg-purple-600 border-purple-500 text-white'
+                  : 'bg-blue-600 border-blue-500 text-white'
+                : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+            }`}
+          >
+            {labels[tab]}
+          </button>
+        );
+      })}
+    </div>
+  );
 
   if (activeTab === 'recommendations') {
     return (
@@ -87,7 +160,31 @@ function App() {
     );
   }
 
-  const isCharts = activeTab === 'charts';
+  if (activeTab === 'paper-trading') {
+    return (
+      <div className="min-h-screen bg-gray-950 p-4 md:p-8 flex flex-col">
+        <div className="mx-auto max-w-7xl flex-grow w-full">
+          <div className="mb-6 flex items-start justify-between">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold text-white">
+                SwiftBolt <span className="text-purple-400">Paper Trading</span>
+              </h1>
+              <p className="text-sm text-gray-400 mt-1">
+                Live strategy monitoring and performance tracking
+              </p>
+            </div>
+            <button
+              onClick={() => setActiveTab('charts')}
+              className="px-3 py-1.5 text-xs font-medium rounded border bg-gray-800 border-gray-700 text-gray-400 hover:text-white"
+            >
+              ← Charts
+            </button>
+          </div>
+          <PaperTradingDashboard />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-950 p-4 md:p-8 flex flex-col">
@@ -103,28 +200,7 @@ function App() {
             </p>
           </div>
           {/* Tab nav */}
-          <div className="flex gap-2 mt-1">
-            <button
-              onClick={() => setActiveTab('charts')}
-              className={`px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
-                isCharts
-                  ? 'bg-blue-600 border-blue-500 text-white'
-                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
-              }`}
-            >
-              Charts
-            </button>
-            <button
-              onClick={() => setActiveTab('recommendations')}
-              className={`px-3 py-1.5 text-xs font-medium rounded border transition-colors ${
-                !isCharts
-                  ? 'bg-blue-600 border-blue-500 text-white'
-                  : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
-              }`}
-            >
-              Recommendations
-            </button>
-          </div>
+          {tabNav}
         </div>
 
         {/* Controls */}
@@ -196,6 +272,7 @@ function App() {
             setStartDate(start);
             setEndDate(end);
           }}
+          onNavigatePaperTrading={() => setActiveTab('paper-trading')}
         />
 
         {/* Results Section - Live backtest results (same data as Strategy tab) */}
@@ -252,9 +329,11 @@ function App() {
               })()}
               <div className="mb-6">
                 <h3 className="text-lg font-semibold text-white mb-3">Equity Curve</h3>
-                <div ref={equityChartRef} className="h-40 bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center">
-                  {!(backtestResult.equityCurve && backtestResult.equityCurve.length > 0) && (
-                    <div className="text-gray-500">No equity data</div>
+                <div className="bg-gray-900 rounded-lg overflow-hidden">
+                  {backtestResult.equityCurve && backtestResult.equityCurve.length > 0 ? (
+                    <EquityCurveChart equityCurve={backtestResult.equityCurve} height={160} />
+                  ) : (
+                    <div className="h-40 flex items-center justify-center text-gray-500">No equity data</div>
                   )}
                 </div>
               </div>
@@ -265,20 +344,22 @@ function App() {
                     <thead>
                       <tr className="border-b border-gray-700">
                         <th className="px-4 py-2 text-left text-gray-400">#</th>
+                        <th className="px-4 py-2 text-left text-gray-400">Dir</th>
                         <th className="px-4 py-2 text-left text-gray-400">Entry</th>
                         <th className="px-4 py-2 text-left text-gray-400">Exit</th>
                         <th className="px-4 py-2 text-left text-gray-400">P&L</th>
                         <th className="px-4 py-2 text-left text-gray-400" title="Trade return (not % of bank)">Return %</th>
+                        <th className="px-4 py-2 text-left text-gray-400">Close</th>
                         <th className="px-4 py-2 text-left text-gray-400">Cum. P&L</th>
                       </tr>
                     </thead>
                     <tbody>
                       {backtestResult.trades.length === 0 ? (
-                        <tr><td colSpan={6} className="px-4 py-2 text-gray-500">No trade details</td></tr>
+                        <tr><td colSpan={8} className="px-4 py-2 text-gray-500">No trade details</td></tr>
                       ) : (
                         (() => {
                           const tradesWithCum: { t: typeof backtestResult.trades[0]; cumPnl: number }[] = [];
-                          backtestResult.trades.slice(0, 20).reduce((acc, t) => {
+                          backtestResult.trades.reduce((acc, t) => {
                             const cumPnl = acc + t.pnl;
                             tradesWithCum.push({ t, cumPnl });
                             return cumPnl;
@@ -286,13 +367,17 @@ function App() {
                           return tradesWithCum.map(({ t, cumPnl }, idx) => {
                             const entryNotional = t.entryPrice * t.quantity;
                             const exitNotional = t.exitPrice * t.quantity;
+                            const dirLabel = t.direction === 'short' ? 'SHORT' : 'LONG';
+                            const closeLabel = (t.closeReason ?? 'unknown').replace('_', ' ');
                             return (
                               <tr key={t.id} className="border-b border-gray-800 hover:bg-gray-800">
                                 <td className="px-4 py-2 text-gray-500">{idx + 1}</td>
+                                <td className={`px-4 py-2 ${t.direction === 'short' ? 'text-red-400' : 'text-green-400'}`}>{dirLabel}</td>
                                 <td className="px-4 py-2 text-gray-400">${Math.round(entryNotional).toLocaleString()}</td>
                                 <td className="px-4 py-2 text-gray-400">${Math.round(exitNotional).toLocaleString()}</td>
                                 <td className={`px-4 py-2 ${t.isWin ? 'text-green-400' : 'text-red-400'}`}>{t.isWin ? '+' : ''}{t.pnl.toFixed(0)}</td>
                                 <td className={`px-4 py-2 ${t.pnlPercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>{t.pnlPercent >= 0 ? '+' : ''}{t.pnlPercent.toFixed(1)}%</td>
+                                <td className="px-4 py-2 text-gray-400 text-xs capitalize">{closeLabel}</td>
                                 <td className={`px-4 py-2 ${cumPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>{cumPnl >= 0 ? '+' : ''}${Math.round(cumPnl).toLocaleString()}</td>
                               </tr>
                             );

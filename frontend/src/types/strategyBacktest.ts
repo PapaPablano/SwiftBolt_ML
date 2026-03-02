@@ -89,6 +89,9 @@ export interface Strategy {
   updatedAt: string;
 }
 
+export type TradeDirection = 'long' | 'short';
+export type CloseReason = 'exit_condition' | 'stop_loss' | 'take_profit' | 'manual' | 'unknown';
+
 export interface Trade {
   id: string;
   entryTime: string;
@@ -99,6 +102,8 @@ export interface Trade {
   pnl: number;
   pnlPercent: number;
   isWin: boolean;
+  direction: TradeDirection;
+  closeReason: CloseReason;
 }
 
 export interface BacktestResult {
@@ -159,4 +164,6 @@ export interface StrategyBacktestPanelProps {
   onBacktestComplete?: (result: BacktestResult | null) => void;
   /** When period preset is clicked, call with new start/end so parent can update chart date range. */
   onDateRangeChange?: (start: Date, end: Date) => void;
+  /** Navigate to Paper Trading tab. */
+  onNavigatePaperTrading?: () => void;
 }

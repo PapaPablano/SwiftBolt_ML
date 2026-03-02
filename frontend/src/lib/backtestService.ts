@@ -1,4 +1,4 @@
-import type { Strategy, BacktestResult, Trade } from '../types/strategyBacktest';
+import type { Strategy, BacktestResult, Trade, TradeDirection, CloseReason } from '../types/strategyBacktest';
 import { isStrategyIdUuid, toChartTime, horizonToTimeframe, createDefaultConfig } from './backtestConstants';
 import { strategiesApi } from '../api/strategiesApi';
 
@@ -168,7 +168,7 @@ async function runBacktestViaSupabase(
 ): Promise<BacktestResult | null> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    apikey: SUPABASE_ANON_KEY,
   };
   const queueResult = await queueBacktestJob(strategyId, symbol, startDate, endDate, timeframe, headers);
   if (!queueResult.success) {
@@ -252,6 +252,8 @@ async function runBacktestViaSupabase(
           pnl,
           pnlPercent,
           isWin: pnl > 0 || pnlPercent > 0,
+          direction: (t.direction as TradeDirection) ?? 'long',
+          closeReason: (t.close_reason as CloseReason) ?? 'unknown',
         });
       }
 
@@ -299,6 +301,22 @@ async function runBacktestViaSupabase(
   }
   console.error('[Backtest] Timeout waiting for job');
   return null;
+}
+
+/** Enable paper trading for a strategy. Requires a valid session token and UUID strategy id. */
+export async function deployToPaperTrading(
+  strategyId: string,
+  token: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!isStrategyIdUuid(strategyId)) {
+    return { success: false, error: 'Strategy must be saved before deploying' };
+  }
+  try {
+    await strategiesApi.update(strategyId, { paper_trading_enabled: true }, token);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message ?? 'Failed to enable paper trading' };
+  }
 }
 
 export const runBacktestViaAPI = async (
@@ -395,6 +413,8 @@ export const runBacktestViaAPI = async (
           pnl,
           pnlPercent,
           isWin: pnl > 0 || pnlPercent > 0,
+          direction: 'long',
+          closeReason: 'unknown',
         });
         pendingBuy = null;
       }

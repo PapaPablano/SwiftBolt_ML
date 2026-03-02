@@ -274,27 +274,34 @@ const BacktestResultsPanel: React.FC<BacktestResultsPanelProps> = ({
         <div
           className={`overflow-y-auto ${expanded ? 'max-h-[300px] text-xs' : 'max-h-[150px] text-[10px]'}`}
         >
-          <div className="grid grid-cols-5 gap-1 text-gray-500 sticky top-0 bg-gray-800 py-1">
+          <div className="grid grid-cols-7 gap-1 text-gray-500 sticky top-0 bg-gray-800 py-1">
             <span>#</span>
+            <span>Dir</span>
             <span>Entry</span>
             <span>Exit</span>
             <span>P&L</span>
-            <span title="Trade return (not % of bank)">Return %</span>
+            <span title="Trade return (not % of bank)">Ret%</span>
+            <span>Close</span>
           </div>
           {result.trades.length === 0 ? (
             <div className="text-center text-gray-500 py-2">No trade details available</div>
           ) : (
-            result.trades.slice(0, 15).map((trade, idx) => {
+            result.trades.map((trade, idx) => {
               const entryNotional = trade.entryPrice * trade.quantity;
               const exitNotional = trade.exitPrice * trade.quantity;
+              const dirLabel = trade.direction === 'short' ? 'S' : 'L';
+              const closeLabel = (trade.closeReason ?? 'unknown').replace('exit_condition', 'exit').replace('take_profit', 'TP').replace('stop_loss', 'SL');
               return (
                 <div
                   key={trade.id}
-                  className={`grid grid-cols-5 gap-1 py-0.5 rounded ${
+                  className={`grid grid-cols-7 gap-1 py-0.5 rounded ${
                     trade.isWin ? 'bg-green-900/20' : 'bg-red-900/20'
                   }`}
                 >
                   <span className="text-gray-500">{idx + 1}</span>
+                  <span className={trade.direction === 'short' ? 'text-red-400' : 'text-green-400'}>
+                    {dirLabel}
+                  </span>
                   <span
                     className="text-gray-400"
                     title={`$${trade.entryPrice.toFixed(2)} × ${trade.quantity}`}
@@ -317,6 +324,7 @@ const BacktestResultsPanel: React.FC<BacktestResultsPanelProps> = ({
                     {trade.pnlPercent >= 0 ? '+' : ''}
                     {trade.pnlPercent.toFixed(1)}%
                   </span>
+                  <span className="text-gray-400 capitalize">{closeLabel}</span>
                 </div>
               );
             })
