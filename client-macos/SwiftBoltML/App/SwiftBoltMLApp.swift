@@ -2,9 +2,21 @@ import SwiftUI
 
 @main
 struct SwiftBoltMLApp: App {
+    @State private var authController = AuthController()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            Group {
+                if authController.isAuthenticated {
+                    ContentView()
+                } else {
+                    LoginView()
+                }
+            }
+            .environment(authController)
+            .task {
+                authController.startListening()
+            }
         }
         .windowStyle(.automatic)
         .defaultSize(width: 1400, height: 900)
