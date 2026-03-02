@@ -201,9 +201,10 @@ final class BacktestingViewModel: ObservableObject {
         let startDateStr = dateFormatter.string(from: startDate)
         let endDateStr = dateFormatter.string(from: endDate)
 
-        var params = strategyParams
-        if params.isEmpty {
-            params = selectedStrategy.defaultParams
+        // Start with defaults, then overlay user modifications
+        var params = selectedStrategy.defaultParams
+        for (key, value) in strategyParams {
+            params[key] = value
         }
 
         let request = BacktestRequest(
@@ -215,6 +216,14 @@ final class BacktestingViewModel: ObservableObject {
             initialCapital: initialCapital,
             params: params.isEmpty ? nil : params
         )
+
+        // Debug logging
+        print("[Backtest] Sending params:", params)
+        print("[Backtest] Strategy:", selectedStrategy.rawValue)
+        print("[Backtest] Symbol:", sym)
+        print("[Backtest] Date range:", startDateStr, "to", endDateStr)
+        print("[Backtest] Timeframe:", timeframe)
+        print("[Backtest] Initial capital:", initialCapital)
 
         do {
             let queued = try await APIClient.shared.queueBacktestJob(request: request)

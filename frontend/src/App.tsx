@@ -53,6 +53,17 @@ function EmbeddedConditionBuilder() {
 function EmbeddedBacktesting() {
   const symbol = useEmbeddedSymbol();
 
+  const handleBacktestComplete = (result: BacktestResult | null) => {
+    // Send trade data to Swift via WKWebView bridge so native chart can draw markers
+    const handler = (window as any).webkit?.messageHandlers?.backtestPanel;
+    if (handler) {
+      handler.postMessage({
+        type: 'backtestComplete',
+        trades: result?.trades ?? [],
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-950 p-4">
       <div className="max-w-5xl mx-auto">
@@ -60,6 +71,7 @@ function EmbeddedBacktesting() {
           symbol={symbol}
           horizon="1D"
           expanded={true}
+          onBacktestComplete={handleBacktestComplete}
         />
       </div>
     </div>

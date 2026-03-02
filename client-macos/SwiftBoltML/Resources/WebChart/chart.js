@@ -2250,6 +2250,74 @@
         },
 
         /**
+         * Draw backtest trade markers (buy/sell arrows) on the candle series.
+         * trades[] = [{ entryTime, exitTime, entryPrice, exitPrice, pnl, pnlPercent, isWin }]
+         * Times can be ISO strings ("2024-01-15"), "yyyy-mm-dd HH:MM:SS", or Unix seconds.
+         */
+        setBacktestTrades: function(trades) {
+            var candleSeries = state.series.candles;
+            if (!candleSeries) {
+                console.warn('[ChartJS] setBacktestTrades: candle series not ready');
+                return;
+            }
+            if (!trades || !trades.length) {
+                candleSeries.setMarkers([]);
+                console.log('[ChartJS] Backtest trade markers cleared');
+                return;
+            }
+
+            // Parse time to business-day string "yyyy-mm-dd" for daily charts
+            function toBusinessDay(raw) {
+                if (raw == null) return null;
+                var s = String(raw).trim();
+                var m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+                return m ? m[1] : null;
+            }
+
+            var rawMarkers = [];
+            for (var i = 0; i < trades.length; i++) {
+                var t = trades[i];
+                var entryDay = toBusinessDay(t.entryTime);
+                var exitDay = toBusinessDay(t.exitTime);
+                var ep = Number(t.entryPrice);
+                var xp = Number(t.exitPrice);
+                var pnlPct = t.pnlPercent != null ? Number(t.pnlPercent) : null;
+
+                if (entryDay) {
+                    rawMarkers.push({
+                        time: entryDay,
+                        position: 'belowBar',
+                        color: '#22c55e',
+                        shape: 'arrowUp',
+                        text: 'BUY $' + ep.toFixed(2),
+                        size: 1
+                    });
+                }
+                if (exitDay) {
+                    var pnlStr = pnlPct != null
+                        ? ' (' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(1) + '%)'
+                        : '';
+                    rawMarkers.push({
+                        time: exitDay,
+                        position: 'aboveBar',
+                        color: '#ef4444',
+                        shape: 'arrowDown',
+                        text: 'SELL $' + xp.toFixed(2) + pnlStr,
+                        size: 1
+                    });
+                }
+            }
+
+            // Sort by time (required by Lightweight Charts)
+            rawMarkers.sort(function(a, b) {
+                return a.time > b.time ? 1 : a.time < b.time ? -1 : 0;
+            });
+
+            candleSeries.setMarkers(rawMarkers);
+            console.log('[ChartJS] Backtest trade markers set:', rawMarkers.length);
+        },
+
+        /**
          * Add markers (buy/sell signals)
          */
         setMarkers: function(seriesId, markers) {
@@ -3053,6 +3121,9 @@
                         break;
                     case 'setMarkers':
                         this.setMarkers(cmd.seriesId, cmd.markers);
+                        break;
+                    case 'setBacktestTrades':
+                        this.setBacktestTrades(cmd.trades || []);
                         break;
                     case 'addPriceLine':
                         this.addPriceLine(cmd.seriesId, cmd.price, cmd.options || {});

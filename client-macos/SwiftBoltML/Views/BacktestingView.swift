@@ -57,6 +57,9 @@ struct BacktestingView: View {
                         }
                     }
                     .pickerStyle(.menu)
+                    .onChange(of: viewModel.selectedStrategy) { _ in
+                        viewModel.resetStrategyParams()
+                    }
                     
                     Text(viewModel.selectedStrategy.description)
                         .font(.caption)

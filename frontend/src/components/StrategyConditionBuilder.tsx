@@ -86,15 +86,15 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
   })();
 
   return (
-    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-      <div className="grid grid-cols-1 gap-3">
+    <div className="p-3 bg-gray-800 rounded-lg border border-gray-700">
+      <div className="grid grid-cols-2 gap-2">
         {/* Indicator Selection */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Indicator</label>
+          <label className="block text-xs font-medium text-gray-400 mb-0.5">Indicator</label>
           <select
             value={formData.indicator}
             onChange={(e) => setFormData({ ...formData, indicator: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            className="w-full px-2 py-1.5 bg-gray-900 border border-gray-600 rounded text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             {availableIndicators.map((ind) => (
               <option key={ind} value={ind}>
@@ -106,11 +106,11 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
 
         {/* Operator Selection */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Condition</label>
+          <label className="block text-xs font-medium text-gray-400 mb-0.5">Condition</label>
           <select
             value={formData.operator}
             onChange={(e) => handleOperatorChange(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+            className="w-full px-2 py-1.5 bg-gray-900 border border-gray-600 rounded text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             <optgroup label="Comparison">
               {COMPARISON_OPERATORS.map((op) => (
@@ -139,25 +139,25 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
         {/* Dynamic Value Inputs */}
         {operatorType === 'comparison' && 'value' in formData && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Value</label>
+            <label className="block text-xs font-medium text-gray-400 mb-0.5">Value</label>
             <input
               type="number"
               value={formData.value}
               onChange={(e) => setFormData({ ...formData, value: parseFloat(e.target.value) || 0 })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              className="w-full px-2 py-1.5 bg-gray-900 border border-gray-600 rounded text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
         )}
 
         {operatorType === 'cross' && 'crossWith' in formData && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Cross With</label>
+            <label className="block text-xs font-medium text-gray-400 mb-0.5">Cross With</label>
             <input
               type="text"
               value={formData.crossWith}
               onChange={(e) => setFormData({ ...formData, crossWith: e.target.value })}
               placeholder="e.g., MACD_Signal"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              className="w-full px-2 py-1.5 bg-gray-900 border border-gray-600 rounded text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
         )}
@@ -165,25 +165,25 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
         {operatorType === 'range' && 'minValue' in formData && (
           <>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Min Value</label>
+              <label className="block text-xs font-medium text-gray-400 mb-0.5">Min</label>
               <input
                 type="number"
                 value={formData.minValue}
                 onChange={(e) =>
                   setFormData({ ...formData, minValue: parseFloat(e.target.value) || 0 })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className="w-full px-2 py-1.5 bg-gray-900 border border-gray-600 rounded text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Max Value</label>
+              <label className="block text-xs font-medium text-gray-400 mb-0.5">Max</label>
               <input
                 type="number"
                 value={formData.maxValue}
                 onChange={(e) =>
                   setFormData({ ...formData, maxValue: parseFloat(e.target.value) || 0 })
                 }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className="w-full px-2 py-1.5 bg-gray-900 border border-gray-600 rounded text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
           </>
@@ -191,8 +191,8 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
 
         {/* Logical Operator */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Logic</label>
-          <div className="flex gap-2">
+          <label className="block text-xs font-medium text-gray-400 mb-0.5">Logic</label>
+          <div className="flex gap-3">
             {(['AND', 'OR'] as const).map((op) => (
               <label key={op} className="flex items-center">
                 <input
@@ -203,26 +203,26 @@ function ConditionForm({ condition, availableIndicators, onSave, onCancel, error
                   onChange={(e) =>
                     setFormData({ ...formData, logicalOp: e.target.value as 'AND' | 'OR' })
                   }
-                  className="mr-2"
+                  className="mr-1"
                 />
-                <span className="text-sm">{op}</span>
+                <span className="text-xs text-gray-300">{op}</span>
               </label>
             ))}
           </div>
         </div>
 
-        {error && <div className="text-sm text-red-600 bg-red-50 p-2 rounded">{error}</div>}
+        {error && <div className="col-span-2 text-xs text-red-400 bg-red-900/30 p-1.5 rounded">{error}</div>}
 
-        <div className="flex gap-2 pt-2">
+        <div className="col-span-2 flex gap-2 pt-1">
           <button
             onClick={() => onSave(formData)}
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700"
+            className="flex-1 px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700"
           >
             Save
           </button>
           <button
             onClick={onCancel}
-            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50"
+            className="flex-1 px-3 py-1.5 border border-gray-600 text-gray-300 rounded text-xs font-medium hover:bg-gray-700"
           >
             Cancel
           </button>
@@ -246,8 +246,8 @@ interface ConditionTreeViewProps {
 function ConditionTreeView({ tree, onEdit, onDelete, onDuplicate }: ConditionTreeViewProps) {
   if (!tree) {
     return (
-      <div className="text-center py-8 text-gray-500">
-        <p className="text-sm">No conditions added yet</p>
+      <div className="text-center py-4 text-gray-500">
+        <p className="text-xs">No conditions added yet</p>
       </div>
     );
   }
@@ -267,41 +267,41 @@ function ConditionTreeView({ tree, onEdit, onDelete, onDuplicate }: ConditionTre
     }
 
     return (
-      <div key={condition.id} className="mb-3">
-        <div className="bg-white border-l-4 border-blue-500 p-3 rounded-r-lg shadow-sm hover:shadow-md transition-shadow">
+      <div key={condition.id} className="mb-2">
+        <div className="bg-gray-900 border-l-2 border-blue-500 p-2 rounded-r shadow-sm">
           <div className="flex items-center justify-between">
-            <div className="flex-1">
-              <p className="text-sm font-mono text-gray-900">{conditionLabel}</p>
-              <p className="text-xs text-gray-500 mt-1">Logic: {condition.logicalOp}</p>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-mono text-gray-200 truncate">{conditionLabel}</p>
+              <p className="text-[10px] text-gray-500">{condition.logicalOp}</p>
             </div>
-            <div className="flex gap-1 ml-2">
+            <div className="flex gap-0.5 ml-1 shrink-0">
               <button
                 onClick={() => onEdit(condition)}
-                className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                className="p-0.5 text-gray-500 hover:text-blue-400 rounded"
                 title="Edit"
               >
                 ✎
               </button>
               <button
                 onClick={() => onDuplicate(condition)}
-                className="p-1 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded"
+                className="p-0.5 text-gray-500 hover:text-green-400 rounded"
                 title="Duplicate"
               >
-                <Copy size={16} />
+                <Copy size={12} />
               </button>
               <button
                 onClick={() => onDelete(condition.id)}
-                className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                className="p-0.5 text-gray-500 hover:text-red-400 rounded"
                 title="Delete"
               >
-                <Trash2 size={16} />
+                <Trash2 size={12} />
               </button>
             </div>
           </div>
         </div>
 
         {children.length > 0 && (
-          <div className="ml-6 mt-2 border-l-2 border-gray-300 pl-4">
+          <div className="ml-4 mt-1 border-l border-gray-700 pl-3">
             {children.map((child) => renderNode(child, depth + 1))}
           </div>
         )}
@@ -309,7 +309,7 @@ function ConditionTreeView({ tree, onEdit, onDelete, onDuplicate }: ConditionTre
     );
   }
 
-  return <div className="py-4">{renderNode(tree)}</div>;
+  return <div className="py-2">{renderNode(tree)}</div>;
 }
 
 // ============================================================================
@@ -395,25 +395,25 @@ export const StrategyConditionBuilder: React.FC<ConditionBuilderProps> = ({
   );
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
       <div
-        className="p-4 border-b border-gray-200 bg-gray-50 cursor-pointer hover:bg-gray-100 flex items-center justify-between"
+        className="px-3 py-2 border-b border-gray-700 bg-gray-800 cursor-pointer hover:bg-gray-750 flex items-center justify-between"
         onClick={() => setExpanded(!expanded)}
       >
-        <h3 className="text-lg font-semibold text-gray-900 capitalize">{signalType} Conditions</h3>
+        <h3 className="text-sm font-semibold text-gray-200 capitalize">{signalType} Conditions</h3>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600 bg-gray-200 px-2 py-1 rounded">
+          <span className="text-xs text-gray-400 bg-gray-700 px-2 py-0.5 rounded">
             {conditions.length} / {MAX_CONDITIONS_PER_SIGNAL}
           </span>
-          {expanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+          {expanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
         </div>
       </div>
 
       {expanded && (
-        <div className="p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="p-3">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <div>
-              <h4 className="text-sm font-semibold text-gray-900 mb-3">Add/Edit Condition</h4>
+              <h4 className="text-xs font-semibold text-gray-300 mb-2">Add/Edit Condition</h4>
               {editingCondition ? (
                 <ConditionForm
                   condition={editingCondition}
@@ -426,21 +426,21 @@ export const StrategyConditionBuilder: React.FC<ConditionBuilderProps> = ({
                 <button
                   onClick={handleAddCondition}
                   disabled={conditions.length >= MAX_CONDITIONS_PER_SIGNAL}
-                  className={`w-full py-3 rounded-lg border-2 border-dashed flex items-center justify-center gap-2 transition-colors ${
+                  className={`w-full py-2 rounded border-2 border-dashed flex items-center justify-center gap-1.5 text-xs transition-colors ${
                     conditions.length >= MAX_CONDITIONS_PER_SIGNAL
-                      ? 'border-gray-200 text-gray-400 cursor-not-allowed'
-                      : 'border-blue-300 text-blue-600 hover:bg-blue-50'
+                      ? 'border-gray-700 text-gray-600 cursor-not-allowed'
+                      : 'border-blue-500/40 text-blue-400 hover:bg-blue-900/20'
                   }`}
                 >
-                  <Plus size={20} />
+                  <Plus size={14} />
                   Add Condition
                 </button>
               )}
             </div>
 
             <div>
-              <h4 className="text-sm font-semibold text-gray-900 mb-3">Logic Tree</h4>
-              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200 max-h-96 overflow-y-auto">
+              <h4 className="text-xs font-semibold text-gray-300 mb-2">Logic Tree</h4>
+              <div className="bg-gray-800 rounded p-3 border border-gray-700 max-h-72 overflow-y-auto">
                 <ConditionTreeView
                   tree={tree}
                   onEdit={setEditingCondition}
