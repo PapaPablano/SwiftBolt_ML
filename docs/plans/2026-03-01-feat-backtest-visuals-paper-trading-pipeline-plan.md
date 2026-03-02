@@ -315,9 +315,9 @@ Simplified from original Phase 5. Deploy button, confirmation modal (not full re
 - Dashboard tab: renders, dark theme, JWT auth
 
 **Acceptance criteria:**
-- [ ] "Deploy to Paper Trading" button appears after backtest completes
-- [ ] Confirmation modal shows strategy summary + backtest stats
-- [ ] Deploy requires confirmation (not one-click)
+- [x] "Deploy to Paper Trading" button appears after backtest completes
+- [x] Confirmation modal shows strategy summary + backtest stats
+- [x] Deploy requires confirmation (not one-click)
 - [ ] Strategy config correctly translated to executor format via strategyTranslator
 - [ ] Compact status widget shows active strategies/positions/P&L
 - [ ] Status widget pauses polling when tab is in background

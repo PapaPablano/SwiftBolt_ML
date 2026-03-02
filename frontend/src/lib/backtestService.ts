@@ -303,6 +303,22 @@ async function runBacktestViaSupabase(
   return null;
 }
 
+/** Enable paper trading for a strategy. Requires a valid session token and UUID strategy id. */
+export async function deployToPaperTrading(
+  strategyId: string,
+  token: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!isStrategyIdUuid(strategyId)) {
+    return { success: false, error: 'Strategy must be saved before deploying' };
+  }
+  try {
+    await strategiesApi.update(strategyId, { paper_trading_enabled: true }, token);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message ?? 'Failed to enable paper trading' };
+  }
+}
+
 export const runBacktestViaAPI = async (
   strategy: Strategy,
   symbol: string,

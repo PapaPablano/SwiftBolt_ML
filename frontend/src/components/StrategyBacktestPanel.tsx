@@ -19,9 +19,11 @@ import {
   saveStrategyToSupabase,
   updateStrategyInSupabase,
   runBacktestViaAPI,
+  deployToPaperTrading,
   type BacktestJobResult,
 } from '../lib/backtestService';
 import BacktestResultsPanel from './BacktestResultsPanel';
+import { useAuth } from '../contexts/AuthContext';
 
 const defaultStrategies: Strategy[] = [
   {
@@ -84,6 +86,11 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
   const [isRunning, setIsRunning] = useState(false);
   const [showEquityChart, setShowEquityChart] = useState(true);
   const [showTrades, setShowTrades] = useState(true);
+  const [showDeployConfirm, setShowDeployConfirm] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [deployError, setDeployError] = useState<string | null>(null);
+  const [deploySuccess, setDeploySuccess] = useState(false);
+  const { session } = useAuth();
 
   useEffect(() => {
     const loadStrategies = async () => {
@@ -207,11 +214,27 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
     }
   };
 
+  const handleDeploy = async () => {
+    if (!selectedStrategy || !session?.access_token) return;
+    setIsDeploying(true);
+    setDeployError(null);
+    const res = await deployToPaperTrading(selectedStrategy.id, session.access_token);
+    setIsDeploying(false);
+    if (res.success) {
+      setDeploySuccess(true);
+      setShowDeployConfirm(false);
+    } else {
+      setDeployError(res.error ?? 'Deploy failed');
+    }
+  };
+
   const handleRunBacktest = async () => {
     if (!selectedStrategy) return;
     setResult(null);
     onBacktestComplete?.(null);
     setIsRunning(true);
+    setDeploySuccess(false);
+    setDeployError(null);
     const startDateStr =
       parentStartDate && parentEndDate
         ? parentStartDate.toISOString().split('T')[0]
@@ -536,6 +559,72 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
           onToggleChart={() => setShowEquityChart(!showEquityChart)}
           onToggleTrades={() => setShowTrades(!showTrades)}
         />
+      )}
+
+      {/* Deploy to Paper Trading */}
+      {result && selectedStrategy && session && !deploySuccess && (
+        <button
+          onClick={() => { setShowDeployConfirm(true); setDeployError(null); }}
+          className="w-full py-1.5 rounded text-xs font-medium bg-purple-600 text-white hover:bg-purple-500"
+        >
+          Deploy to Paper Trading
+        </button>
+      )}
+
+      {deploySuccess && (
+        <div className="text-center text-xs text-green-400 py-1">
+          Strategy deployed to paper trading
+        </div>
+      )}
+
+      {/* Deploy Confirmation Modal */}
+      {showDeployConfirm && selectedStrategy && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-gray-800 border border-gray-600 rounded-lg p-4 w-80 space-y-3">
+            <h3 className="text-sm font-semibold text-white">Deploy to Paper Trading</h3>
+            <div className="space-y-1 text-[11px] text-gray-300">
+              <div><span className="text-gray-500">Strategy:</span> {selectedStrategy.name}</div>
+              <div>
+                <span className="text-gray-500">Entry:</span>{' '}
+                {selectedStrategy.config.entryConditions.map((c) => `${c.type} ${c.operator} ${c.value}`).join(', ') || 'None'}
+              </div>
+              <div>
+                <span className="text-gray-500">Exit:</span>{' '}
+                {selectedStrategy.config.exitConditions.map((c) => `${c.type} ${c.operator} ${c.value}`).join(', ') || 'None'}
+              </div>
+              <div>
+                <span className="text-gray-500">Stop Loss:</span>{' '}
+                {selectedStrategy.config.riskManagement.stopLoss.type === 'percent'
+                  ? `${selectedStrategy.config.riskManagement.stopLoss.value}%`
+                  : `$${selectedStrategy.config.riskManagement.stopLoss.value}`}
+                {' · '}
+                <span className="text-gray-500">Take Profit:</span>{' '}
+                {selectedStrategy.config.riskManagement.takeProfit.type === 'percent'
+                  ? `${selectedStrategy.config.riskManagement.takeProfit.value}%`
+                  : `$${selectedStrategy.config.riskManagement.takeProfit.value}`}
+              </div>
+            </div>
+            {deployError && (
+              <div className="text-[11px] text-red-400">{deployError}</div>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowDeployConfirm(false)}
+                disabled={isDeploying}
+                className="flex-1 py-1 rounded text-xs bg-gray-700 text-gray-300 hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeploy}
+                disabled={isDeploying}
+                className="flex-1 py-1 rounded text-xs font-medium bg-purple-600 text-white hover:bg-purple-500 disabled:opacity-50"
+              >
+                {isDeploying ? 'Deploying...' : 'Confirm Deploy'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
