@@ -384,6 +384,8 @@ function evaluateConditionList(
   bars: Bar[],
   indicatorCache: Map<string, number>,
 ): boolean {
+  // Empty conditions → false (safety: don't trade unconfigured strategies in live paper trading).
+  // Note: backtest worker returns true for empty conditions to support buy_and_hold preset.
   if (!conditions || conditions.length === 0) return false;
 
   // Simplified: treat all as AND

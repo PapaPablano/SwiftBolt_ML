@@ -1,15 +1,14 @@
 // Strategy Backtest Worker - Processes pending backtest jobs
-// Preset strategies (supertrend_ai, sma_crossover, buy_and_hold): calls FastAPI
-// Builder strategies (strategy_id): uses local TS backtest with strategy_user_strategies config
+// All strategies (preset + builder) run natively in the TS backtest engine.
+// Presets (supertrend_ai, sma_crossover, buy_and_hold) are translated to condition configs.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
-import { callFastApi } from "../_shared/fastapi-client.ts";
 import {
-  normalizeToWorkerFormat,
-  type WorkerCondition,
   type FrontendCondition,
+  normalizeToWorkerFormat,
   type StrategyConfigRaw,
+  type WorkerCondition,
 } from "../_shared/strategy-translator.ts";
 
 interface BacktestJob {
@@ -31,25 +30,77 @@ interface StrategyConfig extends StrategyConfigRaw {
 }
 
 /** Normalize config using shared translator. */
-function normalizeConfig(raw: StrategyConfig): { entry_conditions: Condition[]; exit_conditions: Condition[] } {
+function normalizeConfig(
+  raw: StrategyConfig,
+): { entry_conditions: Condition[]; exit_conditions: Condition[] } {
   return normalizeToWorkerFormat(raw);
 }
 
-async function claimJob(supabase: ReturnType<typeof getSupabaseClient>): Promise<BacktestJob | null> {
-  const { data, error } = await supabase.rpc("claim_pending_backtest_job");
-  
-  if (error || !data) {
-    console.log("No pending jobs or error:", error?.message);
-    return null;
+async function claimJob(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  triggeredJobId?: string,
+): Promise<BacktestJob | null> {
+  let jobId: string | null = null;
+
+  if (triggeredJobId) {
+    // Claim the specific triggered job to avoid race conditions
+    const { data, error } = await supabase
+      .from("strategy_backtest_jobs")
+      .update({ status: "running", started_at: new Date().toISOString() })
+      .eq("id", triggeredJobId)
+      .eq("status", "pending")
+      .select("id")
+      .single();
+
+    if (error || !data) {
+      console.log(
+        `Triggered job ${triggeredJobId} not claimable:`,
+        error?.message,
+      );
+      return null;
+    }
+    jobId = data.id;
+  } else {
+    // Fallback: claim oldest pending job via RPC
+    const { data, error } = await supabase.rpc("claim_pending_backtest_job");
+    if (error || !data) {
+      console.log("No pending jobs or error:", error?.message);
+      return null;
+    }
+    jobId = data;
   }
-  
+
   const { data: job } = await supabase
     .from("strategy_backtest_jobs")
     .select("*")
-    .eq("id", data)
+    .eq("id", jobId)
     .single();
-  
+
   return job as BacktestJob;
+}
+
+/** Update heartbeat_at to signal worker is still alive. */
+async function updateHeartbeat(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  jobId: string,
+): Promise<void> {
+  await supabase
+    .from("strategy_backtest_jobs")
+    .update({ heartbeat_at: new Date().toISOString() })
+    .eq("id", jobId);
+}
+
+/** Check if job has been cancelled. Returns true if cancelled. */
+async function isJobCancelled(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  jobId: string,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("strategy_backtest_jobs")
+    .select("status")
+    .eq("id", jobId)
+    .single();
+  return data?.status === "cancelled";
 }
 
 async function fetchMarketData(
@@ -57,7 +108,7 @@ async function fetchMarketData(
   symbol: string,
   startDate: string,
   endDate: string,
-  timeframe: string
+  timeframe: string,
 ): Promise<{
   dates: string[];
   opens: number[];
@@ -92,8 +143,12 @@ async function fetchMarketData(
     .order("ts", { ascending: true });
 
   if (barsError || !bars || bars.length === 0) {
-    console.warn(`[BacktestWorker] No data in ohlc_bars_v2 for ${symbol} ${tf}, range ${start} to ${end}`);
-    throw new Error(`Insufficient data for ${symbol} ${tf} in range ${start} to ${end}`);
+    console.warn(
+      `[BacktestWorker] No data in ohlc_bars_v2 for ${symbol} ${tf}, range ${start} to ${end}`,
+    );
+    throw new Error(
+      `Insufficient data for ${symbol} ${tf} in range ${start} to ${end}`,
+    );
   }
 
   const isIntraday = ["m1", "m5", "m15", "m30", "h1", "h4"].includes(tf);
@@ -108,137 +163,304 @@ async function fetchMarketData(
   const closes = bars.map((b) => b.close as number);
   const volumes = bars.map((b) => b.volume as number);
 
-  console.log(`[BacktestWorker] Fetched ${bars.length} bars for ${symbol} from ohlc_bars_v2`);
+  console.log(
+    `[BacktestWorker] Fetched ${bars.length} bars for ${symbol} from ohlc_bars_v2`,
+  );
   return { dates, opens, highs, lows, closes, volumes };
 }
 
-function generateMockData(startDate: string, endDate: string) {
-  const dates: string[] = [];
-  const closes: number[] = [];
-  const highs: number[] = [];
-  const lows: number[] = [];
-  const volumes: number[] = [];
-  
-  let price = 100;
-  const currentDate = new Date(startDate);
-  const end = new Date(endDate);
-  
-  while (currentDate <= end) {
-    if (currentDate.getDay() !== 0 && currentDate.getDay() !== 6) {
-      dates.push(currentDate.toISOString().split('T')[0]);
-      const change = (Math.random() - 0.48) * 0.03;
-      price = price * (1 + change);
-      closes.push(price);
-      highs.push(price * 1.02);
-      lows.push(price * 0.98);
-      volumes.push(Math.floor(5000000 + Math.random() * 10000000));
+/** Compute SMA over a window. Returns null if not enough data. */
+function computeSMA(data: number[], period: number): (number | null)[] {
+  const result: (number | null)[] = [];
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      result.push(null);
+      continue;
     }
-    currentDate.setDate(currentDate.getDate() + 1);
+    let sum = 0;
+    for (let j = i - period + 1; j <= i; j++) sum += data[j];
+    result.push(sum / period);
   }
-  
-  return { dates, opens: closes, highs, lows, closes, volumes };
+  return result;
 }
 
-function calculateIndicators(closes: number[], highs: number[], lows: number[], volumes: number[]) {
-  const sma20: (number | null)[] = [];
-  const ema12: (number | null)[] = [];
-  const ema26: (number | null)[] = [];
-  const rsi: number[] = [];
-  const macd: (number | null)[] = [];
-  const macdSignal: (number | null)[] = [];
-  const atr: (number | null)[] = [];
-  const stochasticK: (number | null)[] = [];
-  const adx: (number | null)[] = [];
-  
-  for (let i = 0; i < closes.length; i++) {
-    // SMA 20
-    if (i < 19) {
-      sma20.push(null);
-    } else {
+/** Compute EMA seeded with SMA of first `period` values. */
+function computeEMA(data: number[], period: number): (number | null)[] {
+  const result: (number | null)[] = [];
+  const k = 2 / (period + 1);
+  for (let i = 0; i < data.length; i++) {
+    if (i < period - 1) {
+      result.push(null);
+      continue;
+    }
+    if (i === period - 1) {
+      // Seed with SMA of first `period` values
       let sum = 0;
-      for (let j = i - 19; j <= i; j++) sum += closes[j];
-      sma20.push(sum / 20);
+      for (let j = 0; j < period; j++) sum += data[j];
+      result.push(sum / period);
+      continue;
     }
-    
-    // EMA 12
-    if (i === 0) {
-      ema12.push(closes[0]);
-    } else {
-      const prev = ema12[i - 1] ?? closes[0];
-      ema12.push((closes[i] - prev) * (2 / 13) + prev);
-    }
-    
-    // EMA 26
-    if (i === 0) {
-      ema26.push(closes[0]);
-    } else {
-      const prev = ema26[i - 1] ?? closes[0];
-      ema26.push((closes[i] - prev) * (2 / 27) + prev);
-    }
-    
-    // MACD
-    const ema12Val = ema12[i];
-    const ema26Val = ema26[i];
-    if (ema12Val !== null && ema26Val !== null) {
-      macd.push(ema12Val - ema26Val);
-    } else {
-      macd.push(null);
-    }
-    
-    // MACD Signal (9-period EMA of MACD)
-    if (i === 0 || macd[i] === null) {
+    const prev = result[i - 1] ?? data[i];
+    result.push((data[i] - prev) * k + prev);
+  }
+  return result;
+}
+
+function calculateIndicators(
+  closes: number[],
+  highs: number[],
+  lows: number[],
+  volumes: number[],
+) {
+  const n = closes.length;
+
+  // SMAs
+  const sma20 = computeSMA(closes, 20);
+  const sma50 = computeSMA(closes, 50);
+
+  // EMAs
+  const ema12 = computeEMA(closes, 12);
+  const ema26 = computeEMA(closes, 26);
+
+  // MACD line, signal, histogram
+  const macd: (number | null)[] = [];
+  for (let i = 0; i < n; i++) {
+    if (ema12[i] !== null && ema26[i] !== null) {
+      macd.push(ema12[i]! - ema26[i]!);
+    } else macd.push(null);
+  }
+  // MACD signal: 9-period EMA of MACD values (skip nulls for seeding)
+  const macdSignal: (number | null)[] = [];
+  const macdHist: (number | null)[] = [];
+  let macdSigCount = 0;
+  let macdSigSum = 0;
+  let macdSigEma: number | null = null;
+  for (let i = 0; i < n; i++) {
+    if (macd[i] === null) {
       macdSignal.push(null);
-    } else {
-      const prev = macdSignal[i - 1] ?? macd[i];
-      macdSignal.push((macd[i]! - prev) * (2 / 10) + prev);
+      macdHist.push(null);
+      continue;
     }
-    
-    // RSI 14
-    if (i < 14) {
-      rsi.push(50);
+    macdSigCount++;
+    macdSigSum += macd[i]!;
+    if (macdSigCount < 9) {
+      macdSignal.push(null);
+      macdHist.push(null);
+      continue;
+    }
+    if (macdSigCount === 9) {
+      macdSigEma = macdSigSum / 9;
     } else {
+      macdSigEma = (macd[i]! - macdSigEma!) * (2 / 10) + macdSigEma!;
+    }
+    macdSignal.push(macdSigEma);
+    macdHist.push(macd[i]! - macdSigEma!);
+  }
+
+  // RSI 14 — Wilder's smoothing (matches TradingView)
+  const rsi: number[] = [];
+  let prevAvgGain = 0;
+  let prevAvgLoss = 0;
+  for (let i = 0; i < n; i++) {
+    if (i < 1) {
+      rsi.push(50);
+      continue;
+    }
+    if (i <= 14) {
+      // Accumulate for seed
+      if (i < 14) {
+        rsi.push(50);
+        continue;
+      }
+      // i === 14: compute initial SMA of gains/losses over first 14 changes
       let gains = 0, losses = 0;
-      for (let j = i - 13; j <= i; j++) {
+      for (let j = 1; j <= 14; j++) {
         const diff = closes[j] - closes[j - 1];
         if (diff > 0) gains += diff;
         else losses -= diff;
       }
-      const avgGain = gains / 14;
-      const avgLoss = losses / 14;
-      const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-      rsi.push(100 - (100 / (1 + rs)));
-    }
-    
-    // ATR 14
-    if (i < 14) {
-      atr.push(null);
+      prevAvgGain = gains / 14;
+      prevAvgLoss = losses / 14;
     } else {
-      let trSum = 0;
-      for (let j = i - 13; j <= i; j++) {
-        const tr = Math.max(
-          highs[j] - lows[j],
-          Math.abs(highs[j] - closes[j - 1]),
-          Math.abs(lows[j] - closes[j - 1])
-        );
-        trSum += tr;
-      }
-      atr.push(trSum / 14);
+      // Wilder smoothing
+      const diff = closes[i] - closes[i - 1];
+      const gain = diff > 0 ? diff : 0;
+      const loss = diff < 0 ? -diff : 0;
+      prevAvgGain = (prevAvgGain * 13 + gain) / 14;
+      prevAvgLoss = (prevAvgLoss * 13 + loss) / 14;
     }
-    
-    // Stochastic
+    const rs = prevAvgLoss === 0 ? 100 : prevAvgGain / prevAvgLoss;
+    rsi.push(100 - (100 / (1 + rs)));
+  }
+
+  // ATR 14 — Wilder's smoothing
+  const atr: (number | null)[] = [];
+  const trueRange: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (i === 0) trueRange.push(highs[0] - lows[0]);
+    else {
+      trueRange.push(Math.max(
+        highs[i] - lows[i],
+        Math.abs(highs[i] - closes[i - 1]),
+        Math.abs(lows[i] - closes[i - 1]),
+      ));
+    }
+    if (i < 13) atr.push(null);
+    else if (i === 13) {
+      let sum = 0;
+      for (let j = 0; j < 14; j++) sum += trueRange[j];
+      atr.push(sum / 14);
+    } else {
+      atr.push((atr[i - 1]! * 13 + trueRange[i]) / 14);
+    }
+  }
+
+  // Stochastic %K (14-period), NaN-safe
+  const stochasticK: (number | null)[] = [];
+  for (let i = 0; i < n; i++) {
     if (i < 13) {
       stochasticK.push(null);
-    } else {
-      const low14 = Math.min(...lows.slice(i - 13, i + 1));
-      const high14 = Math.max(...highs.slice(i - 13, i + 1));
-      stochasticK.push(100 * (closes[i] - low14) / (high14 - low14));
+      continue;
     }
-    
-    // ADX (simplified)
-    adx.push(25);
+    const low14 = Math.min(...lows.slice(i - 13, i + 1));
+    const high14 = Math.max(...highs.slice(i - 13, i + 1));
+    const range = high14 - low14;
+    stochasticK.push(range > 0 ? 100 * (closes[i] - low14) / range : 50);
   }
-  
-  return { sma20, ema12, ema26, macd, macdSignal, rsi, atr, stochasticK, adx };
+
+  // ADX (14-period, Wilder's directional movement)
+  const adx: (number | null)[] = [];
+  const plusDI: (number | null)[] = [];
+  const minusDI: (number | null)[] = [];
+  {
+    const plusDM: number[] = [];
+    const minusDM: number[] = [];
+    for (let i = 0; i < n; i++) {
+      if (i === 0) {
+        plusDM.push(0);
+        minusDM.push(0);
+        continue;
+      }
+      const upMove = highs[i] - highs[i - 1];
+      const downMove = lows[i - 1] - lows[i];
+      plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+      minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+    }
+    let smoothPlusDM = 0, smoothMinusDM = 0, smoothTR = 0, adxSmooth = 0;
+    for (let i = 0; i < n; i++) {
+      if (i < 14) {
+        smoothPlusDM += plusDM[i];
+        smoothMinusDM += minusDM[i];
+        smoothTR += trueRange[i];
+        adx.push(null);
+        plusDI.push(null);
+        minusDI.push(null);
+        continue;
+      }
+      if (i === 14) {
+        // Already summed first 14 values
+      } else {
+        smoothPlusDM = smoothPlusDM - (smoothPlusDM / 14) + plusDM[i];
+        smoothMinusDM = smoothMinusDM - (smoothMinusDM / 14) + minusDM[i];
+        smoothTR = smoothTR - (smoothTR / 14) + trueRange[i];
+      }
+      const pdi = smoothTR > 0 ? (smoothPlusDM / smoothTR) * 100 : 0;
+      const mdi = smoothTR > 0 ? (smoothMinusDM / smoothTR) * 100 : 0;
+      plusDI.push(pdi);
+      minusDI.push(mdi);
+      const diSum = pdi + mdi;
+      const dx = diSum > 0 ? Math.abs(pdi - mdi) / diSum * 100 : 0;
+      if (i < 28) {
+        adx.push(null);
+        continue;
+      }
+      if (i === 28) {
+        // Initial ADX = SMA of first 14 DX values
+        let dxSum = 0;
+        // Recompute DX for bars 14..27 (we only need the average)
+        // Simplified: use current DX as seed
+        adxSmooth = dx;
+        adx.push(adxSmooth);
+      } else {
+        adxSmooth = (adxSmooth * 13 + dx) / 14;
+        adx.push(adxSmooth);
+      }
+    }
+  }
+
+  // Bollinger Bands (20-period, 2 std dev)
+  const bbUpper: (number | null)[] = [];
+  const bbLower: (number | null)[] = [];
+  const bbMiddle: (number | null)[] = [];
+  for (let i = 0; i < n; i++) {
+    if (i < 19) {
+      bbUpper.push(null);
+      bbLower.push(null);
+      bbMiddle.push(null);
+      continue;
+    }
+    const slice = closes.slice(i - 19, i + 1);
+    const mean = slice.reduce((a, b) => a + b, 0) / 20;
+    const variance = slice.reduce((a, v) => a + (v - mean) ** 2, 0) / 20;
+    const stdDev = Math.sqrt(variance);
+    bbMiddle.push(mean);
+    bbUpper.push(mean + 2 * stdDev);
+    bbLower.push(mean - 2 * stdDev);
+  }
+
+  // CCI (20-period)
+  const cci: (number | null)[] = [];
+  for (let i = 0; i < n; i++) {
+    if (i < 19) {
+      cci.push(null);
+      continue;
+    }
+    const tps: number[] = [];
+    for (let j = i - 19; j <= i; j++) {
+      tps.push((highs[j] + lows[j] + closes[j]) / 3);
+    }
+    const tp = tps[tps.length - 1];
+    const meanTP = tps.reduce((a, b) => a + b, 0) / 20;
+    const meanDev = tps.reduce((a, v) => a + Math.abs(v - meanTP), 0) / 20;
+    cci.push(meanDev > 0 ? (tp - meanTP) / (0.015 * meanDev) : 0);
+  }
+
+  // OBV
+  const obv: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (i === 0) {
+      obv.push(volumes[0]);
+      continue;
+    }
+    if (closes[i] > closes[i - 1]) obv.push(obv[i - 1] + volumes[i]);
+    else if (closes[i] < closes[i - 1]) obv.push(obv[i - 1] - volumes[i]);
+    else obv.push(obv[i - 1]);
+  }
+
+  // Volume MA (20-period)
+  const volumeMA = computeSMA(volumes, 20);
+
+  return {
+    sma20,
+    sma50,
+    ema12,
+    ema26,
+    macd,
+    macdSignal,
+    macdHist,
+    rsi,
+    atr,
+    stochasticK,
+    adx,
+    plusDI,
+    minusDI,
+    bbUpper,
+    bbLower,
+    bbMiddle,
+    cci,
+    obv,
+    volumeMA,
+  };
 }
 
 /** SuperTrend (TradingView-style): period=7, multiplier=2.0 to align with ML pipeline. */
@@ -247,7 +469,7 @@ function calculateSuperTrend(
   lows: number[],
   closes: number[],
   period: number = 7,
-  multiplier: number = 2.0
+  multiplier: number = 2.0,
 ): { trend: number[]; signal: number[] } {
   const n = closes.length;
   const trend: number[] = [];
@@ -265,8 +487,8 @@ function calculateSuperTrend(
         Math.max(
           highs[i] - lows[i],
           Math.abs(highs[i] - closes[i - 1]),
-          Math.abs(lows[i] - closes[i - 1])
-        )
+          Math.abs(lows[i] - closes[i - 1]),
+        ),
       );
     }
   }
@@ -298,13 +520,17 @@ function calculateSuperTrend(
   for (let i = 1; i < n; i++) {
     let fu: number, fl: number;
     // Adjust lower band (TradingView: basic_lower vs prev close vs prev final_lower)
-    if (basicLower[i] > basicLower[i - 1]! || closes[i - 1] < finalLower[i - 1]!) {
+    if (
+      basicLower[i] > basicLower[i - 1]! || closes[i - 1] < finalLower[i - 1]!
+    ) {
       fl = basicLower[i];
     } else {
       fl = finalLower[i - 1]!;
     }
     // Adjust upper band
-    if (basicUpper[i] < basicUpper[i - 1]! || closes[i - 1] > finalUpper[i - 1]!) {
+    if (
+      basicUpper[i] < basicUpper[i - 1]! || closes[i - 1] > finalUpper[i - 1]!
+    ) {
       fu = basicUpper[i];
     } else {
       fu = finalUpper[i - 1]!;
@@ -340,14 +566,15 @@ function calculateSuperTrend(
 async function runBacktest(
   supabase: ReturnType<typeof getSupabaseClient>,
   job: BacktestJob,
-  config: StrategyConfig
+  config: StrategyConfig,
 ): Promise<{
   metrics: Record<string, unknown>;
   trades: Record<string, unknown>[];
   equity_curve: Record<string, unknown>[];
 }> {
   const params = job.parameters as Record<string, unknown>;
-  const initialCapital = (params.initial_capital as number) || 10000;
+  const initialCapital = (params.initialCapital as number) ||
+    (params.initial_capital as number) || 10000;
   const positionSize = (params.position_size as number) || 100;
   const stopLoss = ((params.stop_loss_pct as number) || 2) / 100;
   const takeProfit = ((params.take_profit_pct as number) || 4) / 100;
@@ -358,22 +585,90 @@ async function runBacktest(
     job.symbol,
     job.start_date,
     job.end_date,
-    timeframe
+    timeframe,
   );
-  
-  if (closes.length === 0) {
-    return { metrics: { total_trades: 0, winning_trades: 0, losing_trades: 0, win_rate: 0, total_return_pct: 0, final_value: initialCapital, max_drawdown_pct: 0, avg_win: 0, avg_loss: 0, profit_factor: 0 }, trades: [], equity_curve: [] };
-  }
-  
-  // Calculate indicators
-  const { sma20, ema12, ema26, macd, macdSignal, rsi, atr, stochasticK, adx } = calculateIndicators(closes, highs, lows, volumes);
-  const { trend: supertrendTrend, signal: supertrendSignal } = calculateSuperTrend(highs, lows, closes, 7, 2.0);
 
-  function evaluateConditions(conditions: Condition[] | undefined, i: number): boolean {
+  if (closes.length === 0) {
+    return {
+      metrics: {
+        total_trades: 0,
+        winning_trades: 0,
+        losing_trades: 0,
+        win_rate: 0,
+        total_return_pct: 0,
+        final_value: initialCapital,
+        max_drawdown_pct: 0,
+        sharpe_ratio: 0,
+        avg_win: 0,
+        avg_loss: 0,
+        profit_factor: 0,
+      },
+      trades: [],
+      equity_curve: [],
+    };
+  }
+
+  // Calculate indicators
+  const {
+    sma20,
+    sma50,
+    ema12,
+    ema26,
+    macd,
+    macdSignal,
+    macdHist,
+    rsi,
+    atr,
+    stochasticK,
+    adx,
+    plusDI,
+    minusDI,
+    bbUpper,
+    bbLower,
+    bbMiddle,
+    cci,
+    obv,
+    volumeMA,
+  } = calculateIndicators(closes, highs, lows, volumes);
+  const { trend: supertrendTrend, signal: supertrendSignal } =
+    calculateSuperTrend(highs, lows, closes, 7, 2.0);
+
+  // Log conditions once to diagnose translation issues
+  const entryConds = config.entry_conditions || [];
+  const exitConds = config.exit_conditions || [];
+  console.log(
+    `[BacktestWorker] Entry conditions (${entryConds.length}):`,
+    JSON.stringify(
+      entryConds.map((c) => ({
+        type: c.type,
+        name: c.name,
+        op: c.operator,
+        val: c.value,
+      })),
+    ),
+  );
+  console.log(
+    `[BacktestWorker] Exit conditions (${exitConds.length}):`,
+    JSON.stringify(
+      exitConds.map((c) => ({
+        type: c.type,
+        name: c.name,
+        op: c.operator,
+        val: c.value,
+      })),
+    ),
+  );
+
+  const warnedIndicators = new Set<string>();
+
+  function evaluateConditions(
+    conditions: Condition[] | undefined,
+    i: number,
+  ): boolean {
     if (!conditions || conditions.length === 0) return true;
 
     for (const cond of conditions) {
-      if (cond.type !== 'indicator') continue;
+      if (cond.type !== "indicator") continue;
 
       const name = cond.name;
       const op = cond.operator;
@@ -381,84 +676,156 @@ async function runBacktest(
 
       let indicatorValue: number | null = null;
 
-      if (name === 'rsi') indicatorValue = rsi[i] ?? 50;
-      else if (name === 'sma') indicatorValue = sma20[i] ?? 0;
-      else if (name === 'ema') indicatorValue = ema12[i] ?? 0;
-      else if (name === 'price_above_sma') indicatorValue = (sma20[i] !== null && closes[i] > sma20[i]!) ? 1 : 0;
-      else if (name === 'price_above_ema') indicatorValue = (ema12[i] !== null && closes[i] > ema12[i]!) ? 1 : 0;
-      else if (name === 'macd') indicatorValue = macd[i] ?? 0;
-      else if (name === 'macd_signal') indicatorValue = macdSignal[i] ?? 0;
-      else if (name === 'stochastic' || name === 'stochastic_k') indicatorValue = stochasticK[i] ?? 50;
-      else if (name === 'adx') indicatorValue = adx[i] ?? 25;
-      else if (name === 'atr') indicatorValue = atr[i] ?? 0;
-      else if (name === 'close' || name === 'price') indicatorValue = closes[i];
-      else if (name === 'high') indicatorValue = highs[i];
-      else if (name === 'low') indicatorValue = lows[i];
-      else if (name === 'volume') indicatorValue = volumes[i];
-      else if (name === 'supertrend_trend') indicatorValue = supertrendTrend[i] ?? 1;
-      else if (name === 'supertrend_signal') indicatorValue = supertrendSignal[i] ?? 0;
-      else if (name === 'supertrend_factor') indicatorValue = 2.0;
-      
+      // Momentum indicators
+      if (name === "rsi") indicatorValue = rsi[i] ?? null;
+      else if (name === "stochastic" || name === "stochastic_k") {
+        indicatorValue = stochasticK[i] ?? null;
+      } else if (name === "cci") indicatorValue = cci[i] ?? null;
+      else if (name === "macd") indicatorValue = macd[i] ?? null;
+      else if (name === "macd_signal") indicatorValue = macdSignal[i] ?? null;
+      else if (name === "macd_hist") indicatorValue = macdHist[i] ?? null;
+      // Trend indicators
+      else if (name === "sma") indicatorValue = sma20[i] ?? null;
+      else if (name === "ema") indicatorValue = ema12[i] ?? null;
+      else if (name === "adx") indicatorValue = adx[i] ?? null;
+      else if (name === "plus_di") indicatorValue = plusDI[i] ?? null;
+      else if (name === "minus_di") indicatorValue = minusDI[i] ?? null;
+      else if (name === "price_above_sma") {
+        indicatorValue = (sma20[i] !== null && closes[i] > sma20[i]!) ? 1 : 0;
+      } else if (name === "price_above_ema") {
+        indicatorValue = (ema12[i] !== null && closes[i] > ema12[i]!) ? 1 : 0;
+      } else if (name === "price_vs_sma20") {
+        indicatorValue = sma20[i] !== null
+          ? (closes[i] - sma20[i]!) / sma20[i]!
+          : null;
+      } else if (name === "price_vs_sma50") {
+        indicatorValue = sma50[i] !== null
+          ? (closes[i] - sma50[i]!) / sma50[i]!
+          : null;
+      } // Volatility indicators
+      else if (name === "atr") indicatorValue = atr[i] ?? null;
+      else if (name === "bb_upper") indicatorValue = bbUpper[i] ?? null;
+      else if (name === "bb_lower") indicatorValue = bbLower[i] ?? null;
+      else if (name === "bb") indicatorValue = bbMiddle[i] ?? null;
+      else if (name === "supertrend_trend") {
+        indicatorValue = supertrendTrend[i] ?? null;
+      } else if (name === "supertrend_signal") {
+        indicatorValue = supertrendSignal[i] ?? null;
+      } else if (name === "supertrend_factor") indicatorValue = 2.0;
+      // Price
+      else if (name === "close" || name === "price") indicatorValue = closes[i];
+      else if (name === "high") indicatorValue = highs[i];
+      else if (name === "low") indicatorValue = lows[i];
+      else if (name === "open") indicatorValue = opens[i];
+      // Volume
+      else if (name === "volume") indicatorValue = volumes[i];
+      else if (name === "volume_ratio") {
+        indicatorValue = volumeMA[i] !== null && volumeMA[i]! > 0
+          ? volumes[i] / volumeMA[i]!
+          : null;
+      } else if (name === "obv") indicatorValue = obv[i] ?? null;
+      else {
+        // Unknown indicator — warn once and skip (don't silently pass)
+        if (!warnedIndicators.has(name)) {
+          console.warn(
+            `[BacktestWorker] Unknown indicator "${name}" — condition skipped`,
+          );
+          warnedIndicators.add(name);
+        }
+        continue;
+      }
+
       if (indicatorValue === null) continue;
-      
-      if (op === 'below') { if (!(indicatorValue < val)) return false; }
-      else if (op === 'above') { if (!(indicatorValue > val)) return false; }
-      else if (op === 'equals') { if (indicatorValue !== val) return false; }
+
+      // Evaluate operator (above_equal/below_equal preserve >= / <= precision)
+      if (op === "below") { if (!(indicatorValue < val)) return false; }
+      else if (op === "below_equal") {
+        if (!(indicatorValue <= val)) return false;
+      } else if (op === "above") { if (!(indicatorValue > val)) return false; }
+      else if (op === "above_equal") {
+        if (!(indicatorValue >= val)) return false;
+      } else if (op === "equals") {
+        const epsilon = 0.0001;
+        if (Math.abs(indicatorValue - val) >= epsilon) return false;
+      }
     }
     return true;
   }
-  
+
   // Run backtest
+  const slippagePct = 0.0005; // 5 basis points per side (realistic for liquid equities)
   let cash = initialCapital;
   let shares = 0;
   let entryPrice = 0;
+  let entryBar = 0; // Track actual entry bar index for correct date recording
   const trades: Record<string, unknown>[] = [];
-  const equityCurve: Record<string, number>[] = [];
-  
+  const equityCurve: { date: string; value: number }[] = [];
+
   for (let i = 30; i < closes.length; i++) {
-    const entryConds = config.entry_conditions || [];
-    const exitConds = config.exit_conditions || [];
-    
     if (shares === 0 && evaluateConditions(entryConds, i)) {
-      shares = Math.min(positionSize, Math.floor(cash / closes[i]));
-      cash -= shares * closes[i];
-      entryPrice = closes[i];
+      const execPrice = closes[i] * (1 + slippagePct); // slippage on buy
+      shares = Math.min(positionSize, Math.floor(cash / execPrice));
+      cash -= shares * execPrice;
+      entryPrice = execPrice;
+      entryBar = i;
     } else if (shares > 0) {
-      const pnlPct = (closes[i] - entryPrice) / entryPrice;
+      // Check intrabar SL/TP using highs and lows for realistic risk management
+      const lowPnlPct = (lows[i] - entryPrice) / entryPrice;
+      const highPnlPct = (highs[i] - entryPrice) / entryPrice;
+      const hitStopLoss = lowPnlPct <= -stopLoss;
+      const hitTakeProfit = highPnlPct >= takeProfit;
       const exitByCondition = evaluateConditions(exitConds, i);
-      const exitByRisk = pnlPct >= takeProfit || pnlPct <= -stopLoss;
-      
+      const exitByRisk = hitStopLoss || hitTakeProfit;
+
       if (exitByCondition || exitByRisk) {
-        cash += shares * closes[i];
-        const closeReason = exitByCondition
-          ? "exit_condition"
-          : pnlPct >= takeProfit
-            ? "take_profit"
-            : "stop_loss";
+        // Determine exit price: SL/TP hit at the trigger level, condition at close
+        let exitPrice: number;
+        let closeReason: string;
+        if (hitStopLoss) {
+          exitPrice = entryPrice * (1 - stopLoss); // exited at stop level
+          closeReason = "stop_loss";
+        } else if (hitTakeProfit) {
+          exitPrice = entryPrice * (1 + takeProfit); // exited at take-profit level
+          closeReason = "take_profit";
+        } else {
+          exitPrice = closes[i];
+          closeReason = "exit_condition";
+        }
+        exitPrice *= 1 - slippagePct; // slippage on sell
+        cash += shares * exitPrice;
+        const pnl = (exitPrice - entryPrice) * shares;
+        const pnlPct = (exitPrice - entryPrice) / entryPrice;
         trades.push({
-          entry_date: dates[i - 1],
+          entry_date: dates[entryBar],
           exit_date: dates[i],
           entry_price: entryPrice,
-          exit_price: closes[i],
+          exit_price: exitPrice,
           quantity: shares,
           direction: "long",
           close_reason: closeReason,
-          pnl: (closes[i] - entryPrice) * shares,
-          pnl_pct: pnlPct * 100
+          pnl,
+          pnl_pct: pnlPct * 100,
         });
         shares = 0;
       }
     }
-    
+
     equityCurve.push({ date: dates[i], value: cash + (shares * closes[i]) });
   }
-  
+
+  // Include unrealized position value in final portfolio value
+  const lastClose = closes.length > 0 ? closes[closes.length - 1] : 0;
+  const finalValue = cash + (shares * lastClose);
+
   // Calculate metrics
-  const winning = trades.filter((t: Record<string, unknown>) => (t.pnl as number) > 0);
-  const losing = trades.filter((t: Record<string, unknown>) => (t.pnl as number) <= 0);
-  const finalValue = cash;
+  const winning = trades.filter((t: Record<string, unknown>) =>
+    (t.pnl as number) > 0
+  );
+  const losing = trades.filter((t: Record<string, unknown>) =>
+    (t.pnl as number) <= 0
+  );
   const totalReturn = ((finalValue - initialCapital) / initialCapital) * 100;
-  
+
   let peak = initialCapital;
   let maxDrawdown = 0;
   for (const eq of equityCurve) {
@@ -466,20 +833,64 @@ async function runBacktest(
     const dd = (peak - eq.value) / peak;
     if (dd > maxDrawdown) maxDrawdown = dd;
   }
-  
-  const avgWin = winning.length ? winning.reduce((s: number, t: Record<string, unknown>) => s + (t.pnl as number), 0) / winning.length : 0;
-  const avgLoss = losing.length ? Math.abs(losing.reduce((s: number, t: Record<string, unknown>) => s + (t.pnl as number), 0) / losing.length) : 0;
-  const profitFactor = avgLoss !== 0 ? avgWin / avgLoss : 0;
-  
-  const avgTrade =
-    trades.length > 0
-      ? ((finalValue - initialCapital) / initialCapital / trades.length) * 100
-      : null;
-  const years = (new Date(job.end_date).getTime() - new Date(job.start_date).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
-  const cagr =
-    years > 0 && initialCapital > 0
-      ? (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100
-      : null;
+
+  const avgWin = winning.length
+    ? winning.reduce(
+      (s: number, t: Record<string, unknown>) => s + (t.pnl as number),
+      0,
+    ) / winning.length
+    : 0;
+  const avgLoss = losing.length
+    ? Math.abs(
+      losing.reduce(
+        (s: number, t: Record<string, unknown>) => s + (t.pnl as number),
+        0,
+      ) / losing.length,
+    )
+    : 0;
+  // Profit factor = total gross profit / total gross loss (not avgWin/avgLoss)
+  const totalGrossProfit = winning.reduce(
+    (s: number, t: Record<string, unknown>) => s + (t.pnl as number),
+    0,
+  );
+  const totalGrossLoss = Math.abs(
+    losing.reduce(
+      (s: number, t: Record<string, unknown>) => s + (t.pnl as number),
+      0,
+    ),
+  );
+  const profitFactor = totalGrossLoss > 0
+    ? totalGrossProfit / totalGrossLoss
+    : 0;
+
+  // Sharpe ratio (annualized) from equity curve daily returns
+  let sharpeRatio = 0;
+  if (equityCurve.length > 2) {
+    const returns: number[] = [];
+    for (let i = 1; i < equityCurve.length; i++) {
+      const prev = equityCurve[i - 1].value;
+      if (prev > 0) returns.push((equityCurve[i].value - prev) / prev);
+    }
+    if (returns.length > 1) {
+      const meanReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
+      const variance = returns.reduce((a, r) => a + (r - meanReturn) ** 2, 0) /
+        (returns.length - 1);
+      const stdDev = Math.sqrt(variance);
+      if (stdDev > 0) {
+        sharpeRatio = (meanReturn / stdDev) * Math.sqrt(252); // annualize assuming daily bars
+      }
+    }
+  }
+
+  const avgTrade = trades.length > 0
+    ? ((finalValue - initialCapital) / initialCapital / trades.length) * 100
+    : null;
+  const years =
+    (new Date(job.end_date).getTime() - new Date(job.start_date).getTime()) /
+    (365.25 * 24 * 60 * 60 * 1000);
+  const cagr = years > 0 && initialCapital > 0
+    ? (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100
+    : null;
 
   return {
     metrics: {
@@ -490,6 +901,7 @@ async function runBacktest(
       total_return_pct: totalReturn,
       final_value: finalValue,
       max_drawdown_pct: maxDrawdown * 100,
+      sharpe_ratio: sharpeRatio,
       avg_win: avgWin,
       avg_loss: avgLoss,
       profit_factor: profitFactor,
@@ -501,103 +913,58 @@ async function runBacktest(
   };
 }
 
-/** Run preset strategy via FastAPI and return result in worker format */
-async function runPresetViaFastApi(job: BacktestJob): Promise<{
-  metrics: Record<string, unknown>;
-  trades: Record<string, unknown>[];
-  equity_curve: Record<string, unknown>[];
-}> {
-  const strategyPreset = job.parameters?.strategy as string;
-  const initialCapital = (job.parameters?.initialCapital as number) ?? 10000;
-  const timeframe = (job.parameters?.timeframe as string) || "d1";
-  const params = { ...job.parameters } as Record<string, unknown>;
-  delete params.strategy;
-  delete params.initialCapital;
-  delete params.timeframe;
-
-  const apiResult = await callFastApi<{
-    symbol: string;
-    strategy: string;
-    period: { start: string; end: string };
-    initialCapital: number;
-    finalValue: number;
-    totalReturn: number;
-    metrics: {
-      sharpeRatio?: number | null;
-      maxDrawdown?: number | null;
-      winRate?: number | null;
-      totalTrades: number;
-      profitFactor?: number | null;
-      averageTrade?: number | null;
-      cagr?: number | null;
-    };
-    equityCurve: Array<{ date: string; value: number }>;
-    trades: Array<{
-      date: string;
-      symbol: string;
-      action: string;
-      quantity: number;
-      price: number;
-      pnl: number | null;
-      entryPrice?: number | null;
-      exitPrice?: number | null;
-      duration?: number | null;
-      fees?: number | null;
-    }>;
-    barsUsed: number;
-    error?: string;
-  }>(
-    "/api/v1/backtest-strategy",
-    {
-      method: "POST",
-      body: JSON.stringify({
-        symbol: job.symbol,
-        strategy: strategyPreset,
-        startDate: job.start_date,
-        endDate: job.end_date,
-        timeframe,
-        initialCapital,
-        params,
-      }),
-    },
-    90000
-  );
-
-  if (apiResult.error) {
-    throw new Error(apiResult.error);
+/** Build a StrategyConfig for a preset strategy name so it runs natively. */
+function getPresetConfig(presetName: string): StrategyConfig {
+  switch (presetName) {
+    case "supertrend_ai":
+      return {
+        entry_conditions: [
+          {
+            type: "indicator",
+            name: "supertrend_trend",
+            operator: "above",
+            value: 0,
+          },
+        ],
+        exit_conditions: [
+          {
+            type: "indicator",
+            name: "supertrend_trend",
+            operator: "below",
+            value: 1,
+          },
+        ],
+      };
+    case "sma_crossover":
+      return {
+        entry_conditions: [
+          {
+            type: "indicator",
+            name: "price_above_sma",
+            operator: "above",
+            value: 0,
+          },
+        ],
+        exit_conditions: [
+          {
+            type: "indicator",
+            name: "price_above_sma",
+            operator: "below",
+            value: 1,
+          },
+        ],
+      };
+    case "buy_and_hold":
+      // Entry: always (empty conditions = true). Exit: never (impossible condition).
+      return {
+        entry_conditions: [],
+        exit_conditions: [
+          { type: "indicator", name: "rsi", operator: "below", value: -999 },
+        ],
+      };
+    default:
+      throw new Error(`Unknown preset strategy: ${presetName}`);
   }
-
-  const winning = apiResult.trades.filter((t) => (t.pnl ?? 0) > 0).length;
-  const losing = apiResult.trades.length - winning;
-
-  return {
-    metrics: {
-      total_trades: apiResult.metrics.totalTrades,
-      winning_trades: winning,
-      losing_trades: losing,
-      win_rate: apiResult.metrics.totalTrades ? (winning / apiResult.metrics.totalTrades) * 100 : 0,
-      total_return_pct: apiResult.totalReturn,
-      final_value: apiResult.finalValue,
-      max_drawdown_pct: apiResult.metrics.maxDrawdown ?? 0,
-      sharpe_ratio: apiResult.metrics.sharpeRatio ?? null,
-      profit_factor: apiResult.metrics.profitFactor ?? null,
-      average_trade: apiResult.metrics.averageTrade ?? null,
-      cagr: apiResult.metrics.cagr ?? null,
-    },
-    trades: apiResult.trades.map((t) => ({
-      date: t.date,
-      symbol: t.symbol,
-      action: t.action,
-      quantity: t.quantity,
-      price: t.price,
-      pnl: t.pnl,
-      entryPrice: t.entryPrice ?? null,
-      exitPrice: t.exitPrice ?? null,
-      duration: t.duration ?? null,
-      fees: t.fees ?? null,
-    })),
-    equity_curve: apiResult.equityCurve.map((p) => ({ date: p.date, value: p.value })),
-  };
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -626,27 +993,116 @@ serve(async (req: Request): Promise<Response> => {
 
   const supabase = getSupabaseClient();
 
-  console.log("Backtest worker started");
+  // Read triggered_job_id from request body
+  let triggeredJobId: string | undefined;
+  try {
+    const body = await req.json();
+    triggeredJobId = body?.triggered_job_id;
+  } catch {
+    // No body or invalid JSON — fall back to claiming oldest pending
+  }
+
+  console.log(
+    "Backtest worker started",
+    triggeredJobId ? `for job ${triggeredJobId}` : "(no triggered_job_id)",
+  );
 
   try {
-    for (let i = 0; i < 3; i++) {
-      const job = await claimJob(supabase);
+    {
+      const job = await claimJob(supabase, triggeredJobId);
 
       if (!job) {
-        console.log("No more pending jobs");
-        break;
+        console.log("No job to process");
+        return new Response(
+          JSON.stringify({ success: true, message: "No job to process" }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        );
       }
 
       console.log(`Processing job ${job.id} for ${job.symbol}`);
 
       try {
-        let result: { metrics: Record<string, unknown>; trades: Record<string, unknown>[]; equity_curve: Record<string, unknown>[] };
+        // Cancel check before starting
+        if (await isJobCancelled(supabase, job.id)) {
+          console.log(`Job ${job.id} was cancelled before processing`);
+          return new Response(
+            JSON.stringify({ success: true, message: "Job cancelled" }),
+            {
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+        }
 
-        if (!job.strategy_id && job.parameters?.strategy) {
-          // Preset strategy: call FastAPI
-          result = await runPresetViaFastApi(job);
+        let result: {
+          metrics: Record<string, unknown>;
+          trades: Record<string, unknown>[];
+          equity_curve: Record<string, unknown>[];
+        };
+
+        // Determine strategy config: prefer inline config from parameters, then DB lookup, then preset
+        const inlineConfig = job.parameters?.strategy_config as
+          | StrategyConfig
+          | undefined;
+
+        if (inlineConfig) {
+          // Inline config: use the exact conditions the user submitted (most reliable path)
+          console.log(`Job ${job.id}: using inline strategy_config`);
+          const { entry_conditions, exit_conditions } = normalizeConfig(
+            inlineConfig,
+          );
+          const config: StrategyConfig = {
+            ...inlineConfig,
+            entry_conditions,
+            exit_conditions,
+          };
+
+          await updateHeartbeat(supabase, job.id);
+          if (await isJobCancelled(supabase, job.id)) {
+            console.log(`Job ${job.id} cancelled before backtest computation`);
+            return new Response(
+              JSON.stringify({ success: true, message: "Job cancelled" }),
+              {
+                headers: { "Content-Type": "application/json" },
+              },
+            );
+          }
+
+          result = await runBacktest(supabase, job, config);
+          await updateHeartbeat(supabase, job.id);
+        } else if (!job.strategy_id && job.parameters?.strategy) {
+          // Preset strategy: run natively with translated config
+          const presetName = job.parameters.strategy as string;
+          console.log(
+            `Job ${job.id}: running preset strategy "${presetName}" natively`,
+          );
+          const presetConfig = getPresetConfig(presetName);
+
+          // Buy-and-hold: disable stop-loss/take-profit so position holds to end
+          if (presetName === "buy_and_hold") {
+            job.parameters.stop_loss_pct = 99999;
+            job.parameters.take_profit_pct = 99999;
+          }
+
+          await updateHeartbeat(supabase, job.id);
+          if (await isJobCancelled(supabase, job.id)) {
+            console.log(`Job ${job.id} cancelled before backtest computation`);
+            return new Response(
+              JSON.stringify({ success: true, message: "Job cancelled" }),
+              {
+                headers: { "Content-Type": "application/json" },
+              },
+            );
+          }
+
+          result = await runBacktest(supabase, job, presetConfig);
+          await updateHeartbeat(supabase, job.id);
         } else if (job.strategy_id) {
-          // Builder strategy: use local TS backtest
+          // Builder strategy: read config from DB
+          console.log(
+            `Job ${job.id}: reading config from DB for strategy ${job.strategy_id}`,
+          );
           const { data: strategy } = await supabase
             .from("strategy_user_strategies")
             .select("config")
@@ -654,11 +1110,46 @@ serve(async (req: Request): Promise<Response> => {
             .single();
 
           const rawConfig = (strategy?.config || {}) as StrategyConfig;
-          const { entry_conditions, exit_conditions } = normalizeConfig(rawConfig);
-          const config: StrategyConfig = { ...rawConfig, entry_conditions, exit_conditions };
+          const { entry_conditions, exit_conditions } = normalizeConfig(
+            rawConfig,
+          );
+          const config: StrategyConfig = {
+            ...rawConfig,
+            entry_conditions,
+            exit_conditions,
+          };
+
+          // Heartbeat after config loaded, cancel check before heavy computation
+          await updateHeartbeat(supabase, job.id);
+          if (await isJobCancelled(supabase, job.id)) {
+            console.log(`Job ${job.id} cancelled before backtest computation`);
+            return new Response(
+              JSON.stringify({ success: true, message: "Job cancelled" }),
+              {
+                headers: { "Content-Type": "application/json" },
+              },
+            );
+          }
+
           result = await runBacktest(supabase, job, config);
+
+          // Heartbeat after computation complete
+          await updateHeartbeat(supabase, job.id);
         } else {
-          throw new Error("Job must have strategy_id or parameters.strategy");
+          throw new Error(
+            "Job must have strategy_config, strategy_id, or parameters.strategy",
+          );
+        }
+
+        // Final cancel check before writing results
+        if (await isJobCancelled(supabase, job.id)) {
+          console.log(`Job ${job.id} cancelled before saving results`);
+          return new Response(
+            JSON.stringify({ success: true, message: "Job cancelled" }),
+            {
+              headers: { "Content-Type": "application/json" },
+            },
+          );
         }
 
         const { data: resultRecord, error: resultError } = await supabase
@@ -683,7 +1174,11 @@ serve(async (req: Request): Promise<Response> => {
           })
           .eq("id", job.id);
 
-        console.log(`Job ${job.id} completed with ${(result.metrics.total_trades as number) ?? 0} trades`);
+        console.log(
+          `Job ${job.id} completed with ${
+            (result.metrics.total_trades as number) ?? 0
+          } trades`,
+        );
       } catch (err) {
         console.error(`Job ${job.id} failed:`, err);
 
@@ -697,16 +1192,20 @@ serve(async (req: Request): Promise<Response> => {
           .eq("id", job.id);
       }
     }
-    
+
     return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json" },
     });
-    
   } catch (err) {
     console.error("Worker error:", err);
-    return new Response(JSON.stringify({ error: err?.message || "Worker failed" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" }
-    });
+    return new Response(
+      JSON.stringify({
+        error: err instanceof Error ? err.message : "Worker failed",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 });

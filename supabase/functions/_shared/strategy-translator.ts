@@ -47,12 +47,13 @@ export interface ExecutorCondition {
 // OPERATOR MAPPINGS
 // ============================================================================
 
-/** Frontend symbol operators → Worker text operators. */
+/** Frontend symbol operators → Worker text operators.
+ *  Preserves >= / <= distinction so the backtest engine can apply correct comparison. */
 const OPERATOR_TO_WORKER: Record<string, string> = {
   ">": "above",
-  ">=": "above",
+  ">=": "above_equal",
   "<": "below",
-  "<=": "below",
+  "<=": "below_equal",
   "==": "equals",
   "!=": "not_equals",
   "cross_up": "cross_up",
@@ -62,7 +63,9 @@ const OPERATOR_TO_WORKER: Record<string, string> = {
 /** Worker text operators → Frontend symbol operators. */
 const OPERATOR_FROM_WORKER: Record<string, string> = {
   above: ">",
+  above_equal: ">=",
   below: "<",
+  below_equal: "<=",
   equals: "==",
   not_equals: "!=",
   cross_up: "cross_up",
@@ -93,7 +96,7 @@ const INDICATOR_CANONICAL: Record<string, string> = {
   ema: "Close",
   sma_cross: "Close",
   ema_cross: "Close",
-  adx: "RSI",       // ADX uses similar range
+  adx: "RSI", // ADX uses similar range
   bb: "Close",
   bb_upper: "Close",
   bb_lower: "Close",
@@ -178,7 +181,10 @@ export function workerToExecutor(
   index: number,
 ): ExecutorCondition {
   const frontendOp = OPERATOR_FROM_WORKER[c.operator ?? "above"] ?? ">";
-  return frontendToExecutor({ ...workerToFrontend(c), operator: frontendOp }, index);
+  return frontendToExecutor(
+    { ...workerToFrontend(c), operator: frontendOp },
+    index,
+  );
 }
 
 // ============================================================================
@@ -217,7 +223,10 @@ export function normalizeToWorkerFormat(
  */
 export function normalizeToExecutorFormat(
   raw: StrategyConfigRaw,
-): { entry_conditions: ExecutorCondition[]; exit_conditions: ExecutorCondition[] } {
+): {
+  entry_conditions: ExecutorCondition[];
+  exit_conditions: ExecutorCondition[];
+} {
   // First normalize to worker, then convert to executor
   const { entry_conditions, exit_conditions } = normalizeToWorkerFormat(raw);
   return {

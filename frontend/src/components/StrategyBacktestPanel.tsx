@@ -19,6 +19,7 @@ import {
   saveStrategyToSupabase,
   updateStrategyInSupabase,
   runBacktestViaAPI,
+  cancelBacktestJob,
   deployToPaperTrading,
   type BacktestJobResult,
 } from '../lib/backtestService';
@@ -93,7 +94,22 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
   const [deployError, setDeployError] = useState<string | null>(null);
   const [deploySuccess, setDeploySuccess] = useState(false);
   const [backtestError, setBacktestError] = useState<string | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const { session } = useAuth();
+
+  // Elapsed time counter during backtest
+  useEffect(() => {
+    if (!isRunning) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isRunning]);
 
   useEffect(() => {
     const loadStrategies = async () => {
@@ -262,10 +278,20 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
     }
   };
 
+  const handleCancelBacktest = async () => {
+    if (activeJobId && session?.access_token) {
+      await cancelBacktestJob(activeJobId, session.access_token);
+    }
+    setIsRunning(false);
+    setActiveJobId(null);
+    setBacktestError('Backtest cancelled.');
+  };
+
   const handleRunBacktest = async () => {
     if (!selectedStrategy) return;
     setResult(null);
     setBacktestError(null);
+    setActiveJobId(null);
     onBacktestComplete?.(null);
     setIsRunning(true);
     setDeploySuccess(false);
@@ -282,17 +308,26 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
       : selectedStrategy;
 
     try {
-      const apiResult = await runBacktestViaAPI(runStrategy, symbol, startDateStr, endDateStr, horizon, session?.access_token);
+      const apiResult = await runBacktestViaAPI(
+        runStrategy, symbol, startDateStr, endDateStr, horizon, session?.access_token,
+        (jobId) => setActiveJobId(jobId)
+      );
       if (apiResult) {
         setResult(apiResult);
         onBacktestComplete?.(apiResult);
+        setRetryCount(0);
       } else {
         setBacktestError('Backtest returned no results. The worker may have timed out — try again or check the backend logs.');
       }
     } catch (err) {
-      setBacktestError(err instanceof Error ? err.message : 'An unexpected error occurred during backtest.');
+      const message = err instanceof Error ? err.message : 'An unexpected error occurred during backtest.';
+      if (message.includes('timed out')) {
+        setRetryCount((prev) => prev + 1);
+      }
+      setBacktestError(message);
     }
     setIsRunning(false);
+    setActiveJobId(null);
   };
 
   const renderConditionBuilder = (isEntry: boolean) => {
@@ -589,27 +624,48 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
           ))}
         </div>
 
-        <button
-          onClick={handleRunBacktest}
-          disabled={isRunning || !selectedStrategy}
-          className={`w-full py-1.5 rounded text-xs font-medium ${
-            isRunning || !selectedStrategy ? 'bg-gray-600 text-gray-400' : 'bg-green-600 text-white hover:bg-green-500'
-          }`}
-        >
-          {isRunning ? 'Running...' : '▶ Run Backtest'}
-        </button>
+        {isRunning ? (
+          <div className="flex gap-1">
+            <div className="flex-1 py-1.5 rounded text-xs font-medium bg-gray-600 text-gray-300 text-center">
+              {activeJobId ? 'Computing' : 'Queued'}... {elapsedSeconds}s
+            </div>
+            <button
+              onClick={handleCancelBacktest}
+              className="px-3 py-1.5 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-500"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={handleRunBacktest}
+            disabled={!selectedStrategy}
+            className={`w-full py-1.5 rounded text-xs font-medium ${
+              !selectedStrategy ? 'bg-gray-600 text-gray-400' : 'bg-green-600 text-white hover:bg-green-500'
+            }`}
+          >
+            ▶ Run Backtest
+          </button>
+        )}
       </div>
 
       {backtestError && (
         <div className="mx-2 mb-2 p-2 bg-red-900/50 border border-red-700 rounded text-xs text-red-300">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-1">
             <span>{backtestError}</span>
-            <button
-              onClick={() => { setBacktestError(null); handleRunBacktest(); }}
-              className="ml-2 px-2 py-0.5 bg-red-700 text-white rounded text-[10px] hover:bg-red-600"
-            >
-              Retry
-            </button>
+            {retryCount >= 2 && (
+              <span className="text-[10px] text-yellow-400">
+                Try a shorter date range (e.g. 6 months) for faster results.
+              </span>
+            )}
+            <div className="flex justify-end">
+              <button
+                onClick={() => { setBacktestError(null); handleRunBacktest(); }}
+                className="px-2 py-0.5 bg-red-700 text-white rounded text-[10px] hover:bg-red-600"
+              >
+                Retry
+              </button>
+            </div>
           </div>
         </div>
       )}

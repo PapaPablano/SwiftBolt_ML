@@ -11,7 +11,11 @@ import { corsResponse, handlePreflight } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 import { validateSLTPBounds } from "../_shared/validators.ts";
 
-const VALID_PRESET_STRATEGIES = ["supertrend_ai", "sma_crossover", "buy_and_hold"];
+const VALID_PRESET_STRATEGIES = [
+  "supertrend_ai",
+  "sma_crossover",
+  "buy_and_hold",
+];
 
 serve(async (req: Request) => {
   const origin = req.headers.get("origin");
@@ -24,8 +28,8 @@ serve(async (req: Request) => {
 
   // Backtesting is read-only computation — no user data sensitivity.
   // Auth is optional: if a valid JWT is present, tag the job with user_id;
-  // otherwise, use "anonymous" so the workstation works without login.
-  let userId = "anonymous";
+  // otherwise, use null so RLS allows anonymous inserts.
+  let userId: string | null = null;
   const authHeader = req.headers.get("Authorization") ?? "";
   if (authHeader && authHeader !== "Bearer " && !authHeader.endsWith("eyJ")) {
     try {
@@ -48,6 +52,9 @@ serve(async (req: Request) => {
     if (req.method === "GET" && jobId) {
       return await handleGetJobStatus(supabase, userId, jobId, origin);
     }
+    if (req.method === "PATCH") {
+      return await handleCancelJob(supabase, userId, req, origin);
+    }
     if (req.method === "GET") {
       return corsResponse(
         { error: "Missing query param: id (job_id)" },
@@ -64,9 +71,9 @@ serve(async (req: Request) => {
 
 async function handleQueueBacktest(
   supabase: ReturnType<typeof getSupabaseClient>,
-  userId: string,
+  userId: string | null,
   req: Request,
-  origin: string | null
+  origin: string | null,
 ): Promise<Response> {
   const body = (await req.json()) as Record<string, unknown>;
 
@@ -75,61 +82,78 @@ async function handleQueueBacktest(
   const endDate = (body.endDate as string) || (body.end_date as string);
   const strategyId = body.strategy_id as string | undefined;
   const strategyPreset = body.strategy as string | undefined;
+  const inlineConfig = body.strategy_config as
+    | Record<string, unknown>
+    | undefined;
   const timeframe = (body.timeframe as string) || "d1";
   const initialCapital = (body.initialCapital as number) ?? 10000;
-  const params = (body.params as Record<string, unknown>) || (body.parameters as Record<string, unknown>) || {};
+  const params = (body.params as Record<string, unknown>) ||
+    (body.parameters as Record<string, unknown>) || {};
 
   if (!startDate || !endDate) {
     return corsResponse(
       { error: "Missing required fields: startDate and endDate (YYYY-MM-DD)" },
       400,
-      origin
+      origin,
     );
   }
 
-  let strategyConfig: Record<string, unknown> | null = null;
-  if (strategyId) {
-    // Sanitize userId to prevent PostgREST filter injection — only allow
-    // UUID format or the literal "anonymous" sentinel.
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const safeUserId = UUID_RE.test(userId) ? userId : 'anonymous';
+  let strategyConfig: Record<string, unknown> | null = inlineConfig || null;
+  if (!strategyConfig && strategyId) {
+    // Build filter: if authenticated, match user_id or null; if anonymous, only null
+    const strategyFilter = userId
+      ? `user_id.eq.${userId},user_id.is.null`
+      : `user_id.is.null`;
 
     const { data: strategy, error } = await supabase
       .from("strategy_user_strategies")
       .select("id, config")
       .eq("id", strategyId)
-      .or(`user_id.eq.${safeUserId},user_id.is.null`)
+      .or(strategyFilter)
       .single();
 
     if (error || !strategy) {
       return corsResponse({ error: "Strategy not found" }, 404, origin);
     }
     strategyConfig = (strategy.config as Record<string, unknown>) || null;
-  } else if (strategyPreset) {
+  } else if (!strategyConfig && !strategyId && strategyPreset) {
     if (!VALID_PRESET_STRATEGIES.includes(strategyPreset)) {
       return corsResponse(
         {
-          error: `Invalid strategy: ${strategyPreset}. Valid: ${VALID_PRESET_STRATEGIES.join(", ")}`,
+          error: `Invalid strategy: ${strategyPreset}. Valid: ${
+            VALID_PRESET_STRATEGIES.join(", ")
+          }`,
         },
         400,
-        origin
+        origin,
       );
     }
-  } else {
+  } else if (!strategyConfig && !strategyId && !strategyPreset) {
     return corsResponse(
-      { error: "Provide either strategy_id (UUID) or strategy (preset name)" },
+      {
+        error:
+          "Provide strategy_config, strategy_id (UUID), or strategy (preset name)",
+      },
       400,
-      origin
+      origin,
     );
   }
 
   const start = new Date(startDate);
   const end = new Date(endDate);
   if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-    return corsResponse({ error: "Invalid date format. Use YYYY-MM-DD" }, 400, origin);
+    return corsResponse(
+      { error: "Invalid date format. Use YYYY-MM-DD" },
+      400,
+      origin,
+    );
   }
   if (start >= end) {
-    return corsResponse({ error: "Start date must be before end date" }, 400, origin);
+    return corsResponse(
+      { error: "Start date must be before end date" },
+      400,
+      origin,
+    );
   }
 
   const parameters: Record<string, unknown> = {
@@ -140,9 +164,17 @@ async function handleQueueBacktest(
   if (strategyPreset) {
     parameters.strategy = strategyPreset;
   }
+  // Store inline config in parameters so the worker can use it directly
+  if (strategyConfig) {
+    parameters.strategy_config = strategyConfig;
+  }
+
   // Builder strategy: merge riskManagement from config so worker uses your stop loss / take profit
-  if (strategyId && strategyConfig?.riskManagement) {
-    const rm = strategyConfig.riskManagement as Record<string, { type?: string; value?: number }>;
+  if (strategyConfig?.riskManagement) {
+    const rm = strategyConfig.riskManagement as Record<
+      string,
+      { type?: string; value?: number }
+    >;
     const sl = rm?.stopLoss;
     const tp = rm?.takeProfit;
     if (sl?.type === "percent" && typeof sl.value === "number") {
@@ -159,9 +191,9 @@ async function handleQueueBacktest(
       const validation = validateSLTPBounds({ slPct, tpPct });
       if (!validation.valid) {
         return corsResponse(
-          { error: `Invalid risk parameters: ${validation.errors.join('; ')}` },
+          { error: `Invalid risk parameters: ${validation.errors.join("; ")}` },
           400,
-          origin
+          origin,
         );
       }
     }
@@ -187,28 +219,61 @@ async function handleQueueBacktest(
   }
 
   console.log(
-    `[BacktestStrategy] Queued job ${job.id} for ${symbol} (${strategyPreset || strategyId})`
+    `[BacktestStrategy] Queued job ${job.id} for ${symbol} (${
+      strategyPreset || strategyId
+    })`,
   );
 
-  // Trigger the worker immediately (fire-and-forget) so the job is processed
-  // without requiring an external cron. Uses the service-role key so the worker
-  // can update job status even with RLS enabled.
-  const workerUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/strategy-backtest-worker`;
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  const gatewayKey = Deno.env.get('SB_GATEWAY_KEY') ?? '';
+  // Trigger the worker and await the response so we know if it started.
+  // Uses the service-role key so the worker can update job status even with RLS.
+  let workerTriggered = false;
+  const workerUrl = `${
+    Deno.env.get("SUPABASE_URL")
+  }/functions/v1/strategy-backtest-worker`;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const gatewayKey = Deno.env.get("SB_GATEWAY_KEY") ?? "";
+
   if (workerUrl && serviceKey && gatewayKey) {
-    fetch(workerUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${serviceKey}`,
-        'Content-Type': 'application/json',
-        'X-SB-Gateway-Key': gatewayKey,
-        'x-trigger-source': 'backtest-strategy',
-      },
-      body: JSON.stringify({ triggered_job_id: job.id }),
-    }).catch(e => console.warn('[BacktestStrategy] Worker trigger warning:', e));
+    const triggerWorker = async (): Promise<boolean> => {
+      try {
+        const res = await fetch(workerUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${serviceKey}`,
+            "Content-Type": "application/json",
+            "X-SB-Gateway-Key": gatewayKey,
+            "x-trigger-source": "backtest-strategy",
+          },
+          body: JSON.stringify({ triggered_job_id: job.id }),
+        });
+        if (res.ok) {
+          console.log(
+            `[BacktestStrategy] Worker triggered for job ${job.id} (status ${res.status})`,
+          );
+          return true;
+        }
+        console.warn(
+          `[BacktestStrategy] Worker trigger returned ${res.status}`,
+        );
+        return false;
+      } catch (e) {
+        console.warn("[BacktestStrategy] Worker trigger failed:", e);
+        return false;
+      }
+    };
+
+    workerTriggered = await triggerWorker();
+    if (!workerTriggered) {
+      console.warn(
+        "[BacktestStrategy] Retrying worker trigger for job",
+        job.id,
+      );
+      workerTriggered = await triggerWorker();
+    }
   } else {
-    console.warn('[BacktestStrategy] Missing env: SUPABASE_SERVICE_ROLE_KEY or SB_GATEWAY_KEY — worker not triggered');
+    console.warn(
+      "[BacktestStrategy] Missing env: SUPABASE_SERVICE_ROLE_KEY or SB_GATEWAY_KEY — worker not triggered",
+    );
   }
 
   return corsResponse(
@@ -216,24 +281,104 @@ async function handleQueueBacktest(
       job_id: job.id,
       status: job.status,
       created_at: job.created_at,
+      worker_triggered: workerTriggered,
     },
     201,
-    origin
+    origin,
   );
+}
+
+async function handleCancelJob(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  userId: string | null,
+  req: Request,
+  origin: string | null,
+): Promise<Response> {
+  if (!userId) {
+    return corsResponse(
+      { error: "Authentication required to cancel jobs" },
+      401,
+      origin,
+    );
+  }
+
+  const body = (await req.json()) as Record<string, unknown>;
+  const jobId = body.job_id as string;
+  if (!jobId) {
+    return corsResponse(
+      { error: "Missing required field: job_id" },
+      400,
+      origin,
+    );
+  }
+
+  // Only cancel jobs owned by this user that are in a cancellable state
+  const { data, error } = await supabase
+    .from("strategy_backtest_jobs")
+    .update({
+      status: "cancelled",
+      completed_at: new Date().toISOString(),
+      error_message: "Cancelled by user",
+    })
+    .eq("id", jobId)
+    .eq("user_id", userId)
+    .in("status", ["pending", "running"])
+    .select("id, status")
+    .single();
+
+  if (error || !data) {
+    return corsResponse(
+      {
+        error:
+          "Job not found, not owned by you, or already in a terminal state",
+      },
+      404,
+      origin,
+    );
+  }
+
+  console.log(`[BacktestStrategy] Job ${jobId} cancelled by user ${userId}`);
+  return corsResponse({ job_id: data.id, status: data.status }, 200, origin);
 }
 
 async function handleGetJobStatus(
   supabase: ReturnType<typeof getSupabaseClient>,
-  userId: string,
+  userId: string | null,
   jobId: string,
-  origin: string | null
+  origin: string | null,
 ): Promise<Response> {
-  const { data: job, error } = await supabase
+  // Clean up stale jobs: running for >5 minutes with no recent heartbeat
+  const staleQuery = supabase
+    .from("strategy_backtest_jobs")
+    .update({
+      status: "failed",
+      error_message: "Worker timed out",
+      completed_at: new Date().toISOString(),
+    })
+    .eq("status", "running")
+    .lt("started_at", new Date(Date.now() - 5 * 60 * 1000).toISOString())
+    .or(
+      `heartbeat_at.is.null,heartbeat_at.lt.${
+        new Date(Date.now() - 5 * 60 * 1000).toISOString()
+      }`,
+    );
+  if (userId) {
+    staleQuery.eq("user_id", userId);
+  } else {
+    staleQuery.is("user_id", null);
+  }
+  await staleQuery;
+
+  let jobQuery = supabase
     .from("strategy_backtest_jobs")
     .select("*")
-    .eq("id", jobId)
-    .eq("user_id", userId)
-    .single();
+    .eq("id", jobId);
+  if (userId) {
+    jobQuery = jobQuery.eq("user_id", userId);
+  } else {
+    jobQuery = jobQuery.is("user_id", null);
+  }
+  const { data: job, error } = await jobQuery.single();
 
   if (error || !job) {
     return corsResponse({ error: "Job not found" }, 404, origin);
@@ -260,6 +405,6 @@ async function handleGetJobStatus(
       result,
     },
     200,
-    origin
+    origin,
   );
 }
