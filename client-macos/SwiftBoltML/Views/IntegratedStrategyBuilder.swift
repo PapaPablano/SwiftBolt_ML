@@ -113,8 +113,22 @@ struct IntegratedStrategyBuilder: View {
                 // Show Supabase strategies (name only from list endpoint)
                 ForEach(strategyListVM.strategies) { supabaseStrategy in
                     Button(supabaseStrategy.name) {
-                        // Load full strategy from local model for now
-                        selectedStrategy = Strategy(name: supabaseStrategy.name)
+                        Task {
+                            do {
+                                let full = try await StrategyService.shared.getStrategy(id: supabaseStrategy.id)
+                                var strategy = Strategy(name: full.name)
+                                strategy.description = full.description
+                                strategy.entryConditions = full.config.entryConditions.map { fromSupabaseCondition($0) }
+                                strategy.exitConditions = full.config.exitConditions.map { fromSupabaseCondition($0) }
+                                strategy.isActive = full.isActive
+                                if let p = full.config.parameters["stop_loss"], case .double(let v) = p { strategy.stopLoss = v }
+                                if let p = full.config.parameters["take_profit"], case .double(let v) = p { strategy.takeProfit = v }
+                                if let p = full.config.parameters["position_size"], case .double(let v) = p { strategy.positionSize = v }
+                                selectedStrategy = strategy
+                            } catch {
+                                selectedStrategy = Strategy(name: supabaseStrategy.name)
+                            }
+                        }
                     }
                 }
                 Divider()
@@ -196,7 +210,6 @@ struct IntegratedStrategyBuilder: View {
         .padding(.vertical, 12)
         .background(Color(.windowBackgroundColor))
     }
-}
 
     // MARK: - Supabase Helpers
 

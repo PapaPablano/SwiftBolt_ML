@@ -131,12 +131,29 @@ final class BacktestingViewModel: ObservableObject {
                     self.jobStatus = .completed
                     self.finishPolling(idle: false)
 
+                    // Convert to [[String: Any]] so WebChartView can cast it correctly.
+                    // display.trades is [BacktestResponse.Trade] (a struct), not [[String: Any]].
+                    let tradesPayload: [[String: Any]] = display.trades.map { trade in
+                        var dict: [String: Any] = [
+                            "date": trade.date,
+                            "symbol": trade.symbol,
+                            "action": trade.action,
+                            "quantity": trade.quantity,
+                            "price": trade.price
+                        ]
+                        if let v = trade.pnl { dict["pnl"] = v }
+                        if let v = trade.entryPrice { dict["entryPrice"] = v }
+                        if let v = trade.exitPrice { dict["exitPrice"] = v }
+                        if let v = trade.duration { dict["duration"] = v }
+                        if let v = trade.fees { dict["fees"] = v }
+                        return dict
+                    }
                     // Post notification for chart overlay with symbol + generation guard data
                     NotificationCenter.default.post(
                         name: .backtestTradesUpdated,
                         object: nil,
                         userInfo: [
-                            "trades": display.trades,
+                            "trades": tradesPayload,
                             "symbol": sym,
                             "generation": generation
                         ]

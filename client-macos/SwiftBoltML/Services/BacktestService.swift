@@ -107,10 +107,17 @@ final class BacktestService {
         }
         components.queryItems = [URLQueryItem(name: "id", value: jobId)]
 
-        var request = URLRequest(url: components.url!)
+        guard let url = components.url else {
+            throw BacktestServiceError.invalidURL
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        if let session = try? await SupabaseService.shared.client.auth.session {
+            request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
+        } else {
+            request.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+        }
 
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateResponse(response)
