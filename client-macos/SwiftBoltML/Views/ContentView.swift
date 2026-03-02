@@ -43,10 +43,10 @@ struct ContentView: View {
                         .opacity(activeSection == .stocks ? 1 : 0)
                         .allowsHitTesting(activeSection == .stocks)
 
-                    // Strategy Builder (always mounted, shares chart overlay via notifications)
-                    IntegratedStrategyBuilder(symbol: appViewModel.selectedSymbol?.ticker)
-                        .opacity(activeSection == .tradestation ? 1 : 0)
-                        .allowsHitTesting(activeSection == .tradestation)
+                    // Strategy Builder: conditionally mounted (no WKWebView JS runtime to preserve)
+                    if activeSection == .tradestation {
+                        IntegratedStrategyBuilder(symbol: appViewModel.selectedSymbol?.ticker)
+                    }
 
                     // Other sections: only mounted when active
                     if activeSection == .predictions {

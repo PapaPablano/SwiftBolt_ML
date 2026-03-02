@@ -69,8 +69,8 @@ final class AuthController {
             currentUser = session.user
             Self.logger.info("Signed in: \(session.user.id)")
         } catch {
-            errorMessage = error.localizedDescription
             Self.logger.error("Sign in failed: \(error)")
+            errorMessage = "Unable to sign in. Please check your credentials and try again."
         }
         isLoading = false
     }
@@ -94,8 +94,8 @@ final class AuthController {
                 Self.logger.info("Confirmation email sent")
             }
         } catch {
-            errorMessage = error.localizedDescription
             Self.logger.error("Sign up failed: \(error)")
+            errorMessage = "Unable to create account. Please try again."
         }
         isLoading = false
     }
@@ -106,8 +106,8 @@ final class AuthController {
             isAuthenticated = false
             currentUser = nil
         } catch {
-            errorMessage = error.localizedDescription
             Self.logger.error("Sign out failed: \(error)")
+            errorMessage = "Unable to sign out. Please try again."
         }
     }
 }

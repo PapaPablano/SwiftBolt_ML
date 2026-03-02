@@ -27,11 +27,28 @@ struct WebChartView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            #if DEBUG
             print("[WebChartView] Navigation finished")
+            #endif
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            #if DEBUG
             print("[WebChartView] Navigation failed: \(error.localizedDescription)")
+            #endif
+        }
+
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            // Only allow file:// navigation (local chart HTML + resources)
+            if navigationAction.request.url?.scheme == "file" {
+                decisionHandler(.allow)
+            } else {
+                decisionHandler(.cancel)
+            }
         }
 
         func setupDataBindings() {
@@ -254,15 +271,12 @@ struct WebChartView: NSViewRepresentable {
                 .sink { [weak self] notification in
                     guard let self = self else { return }
 
-                    // Symbol guard: only apply trades for the currently displayed symbol
-                    if let tradeSymbol = notification.userInfo?["symbol"] as? String,
-                       let currentSymbol = self.parent.viewModel.selectedSymbol?.ticker {
-                        guard tradeSymbol.uppercased() == currentSymbol.uppercased() else {
-                            #if DEBUG
-                            print("[WebChartView] Ignoring backtest trades for \(tradeSymbol) (current: \(currentSymbol))")
-                            #endif
-                            return
-                        }
+                    // Symbol guard: only apply trades for the currently displayed symbol.
+                    // Notifications missing "symbol" are rejected to prevent cross-chart contamination.
+                    guard let tradeSymbol = notification.userInfo?["symbol"] as? String,
+                          let currentSymbol = self.parent.viewModel.selectedSymbol?.ticker,
+                          tradeSymbol.uppercased() == currentSymbol.uppercased() else {
+                        return
                     }
 
                     let trades = notification.userInfo?["trades"] as? [[String: Any]] ?? []
@@ -1202,8 +1216,8 @@ struct WebChartView: NSViewRepresentable {
         // Enable developer extras for debugging (optional, remove in production)
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
 
-        // Register message handler for JS → Swift communication
-        config.userContentController.add(bridge, name: "bridge")
+        // Register message handler via weak proxy to avoid retain cycle
+        config.userContentController.add(WebChartWeakScriptHandler(bridge), name: "bridge")
 
         // Create webview
         let webView = WKWebView(frame: .zero, configuration: config)
@@ -1297,6 +1311,21 @@ struct WebChartView_Previews: PreviewProvider {
     }
 }
 #endif
+
+// MARK: - Weak Script Handler Proxy
+
+/// Breaks the strong reference cycle: WKUserContentController → handler → WKWebView.
+private final class WebChartWeakScriptHandler: NSObject, WKScriptMessageHandler {
+    weak var delegate: WKScriptMessageHandler?
+
+    init(_ delegate: WKScriptMessageHandler) {
+        self.delegate = delegate
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        delegate?.userContentController(userContentController, didReceive: message)
+    }
+}
 
 // MARK: - Convenience Modifiers
 

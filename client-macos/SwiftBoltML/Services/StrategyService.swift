@@ -79,15 +79,6 @@ enum AnyCodableValue: Codable, Hashable {
 
 // MARK: - Condition Mapping
 
-/// Allowed indicator names for validation before JS interpolation.
-private let allowedIndicators: Set<String> = [
-    "rsi", "macd", "sma", "ema", "supertrend", "supertrend_factor", "bollinger",
-    "atr", "adx", "stochastic", "cci", "williams_r", "obv", "vwap", "mfi",
-    "roc", "momentum", "trix", "ichimoku", "parabolic_sar", "donchian",
-    "keltner", "ppo", "dpo", "cmo", "aroon", "ultimate", "chaikin",
-    "force_index", "elder_ray", "mass_index", "volume_profile"
-]
-
 /// Maps Swift-side operator strings to the Supabase operator format.
 /// The server-side `strategy-translator.ts` handles further normalization.
 func mapOperator(_ op: String) -> String {
@@ -150,11 +141,6 @@ final class StrategyService {
 
     private init() {}
 
-    /// Validate that an indicator name is in the allowlist.
-    func isValidIndicator(_ name: String) -> Bool {
-        allowedIndicators.contains(name.lowercased().replacingOccurrences(of: " ", with: "_"))
-    }
-
     // MARK: - List
 
     func listStrategies() async throws -> [SupabaseStrategy] {
@@ -182,7 +168,8 @@ final class StrategyService {
         }
         components.queryItems = [URLQueryItem(name: "id", value: id.uuidString)]
 
-        var request = URLRequest(url: components.url!)
+        guard let url = components.url else { throw StrategyServiceError.invalidURL }
+        var request = URLRequest(url: url)
         request.httpMethod = "GET"
         try await addAuthHeaders(&request)
 
@@ -227,7 +214,8 @@ final class StrategyService {
         }
         components.queryItems = [URLQueryItem(name: "id", value: id.uuidString)]
 
-        var request = URLRequest(url: components.url!)
+        guard let url = components.url else { throw StrategyServiceError.invalidURL }
+        var request = URLRequest(url: url)
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         try await addAuthHeaders(&request)
@@ -254,7 +242,8 @@ final class StrategyService {
         }
         components.queryItems = [URLQueryItem(name: "id", value: id.uuidString)]
 
-        var request = URLRequest(url: components.url!)
+        guard let url = components.url else { throw StrategyServiceError.invalidURL }
+        var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         try await addAuthHeaders(&request)
 

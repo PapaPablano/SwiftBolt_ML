@@ -76,6 +76,10 @@ struct LoginView: View {
 
     private func submit() {
         guard !email.isEmpty, !password.isEmpty else { return }
+        if isSignUp && password.count < 8 {
+            authController.errorMessage = "Password must be at least 8 characters."
+            return
+        }
         Task {
             if isSignUp {
                 await authController.signUp(email: email, password: password)

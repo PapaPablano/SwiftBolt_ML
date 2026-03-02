@@ -40,7 +40,6 @@ enum ChartCommand: Encodable {
     case setTechnicalIndicatorsOverlay(indicators: [TechnicalIndicatorOverlay])
     case setBinaryForecastMarkers(baseTime: Int, basePrice: Double, items: [BinaryForecastMarkerItem])
     case setRealtimeConfig(supabaseURL: String, anonKey: String, symbolId: String, timeframe: String, modelType: String)
-    case setBacktestTrades(tradesJSON: String)
 
     // Custom encoding to match JS API
     private enum CodingKeys: String, CodingKey {
@@ -51,7 +50,7 @@ enum ChartCommand: Encodable {
         case supabaseUrl, anonKey, symbolId, timeframe, modelType
         case line, signal, histogram, kData, dData, jData, adxData, plusDI, minusDI, panel
         case trendData, strengthData, resistance, support, levels, category
-        case config, indicators, trades
+        case config, indicators
     }
 
     func encode(to encoder: Encoder) throws {
@@ -175,9 +174,6 @@ enum ChartCommand: Encodable {
             try container.encode(symbolId, forKey: .symbolId)
             try container.encode(timeframe, forKey: .timeframe)
             try container.encode(modelType, forKey: .modelType)
-        case .setBacktestTrades:
-            // Handled via direct JS evaluation in ChartBridge.setBacktestTrades()
-            try container.encode("setBacktestTrades", forKey: .type)
         }
     }
 }
@@ -715,7 +711,9 @@ final class ChartBridge: NSObject, ObservableObject {
             let js = "window.chartApi && window.chartApi.setBacktestTrades(\(jsonString));"
             enqueueJS(js)
         } catch {
+            #if DEBUG
             print("[ChartBridge] setBacktestTrades JSON error: \(error.localizedDescription)")
+            #endif
         }
     }
 

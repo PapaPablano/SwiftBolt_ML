@@ -1,5 +1,5 @@
 ---
-status: pending
+status: resolved
 priority: p2
 issue_id: "076"
 tags: [code-review, swift, cleanup, dead-code]

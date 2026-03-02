@@ -117,6 +117,7 @@ struct IntegratedStrategyBuilder: View {
                             do {
                                 let full = try await StrategyService.shared.getStrategy(id: supabaseStrategy.id)
                                 var strategy = Strategy(name: full.name)
+                                strategy.supabaseId = full.id
                                 strategy.description = full.description
                                 strategy.entryConditions = full.config.entryConditions.map { fromSupabaseCondition($0) }
                                 strategy.exitConditions = full.config.exitConditions.map { fromSupabaseCondition($0) }
@@ -129,6 +130,19 @@ struct IntegratedStrategyBuilder: View {
                                 selectedStrategy = Strategy(name: supabaseStrategy.name)
                             }
                         }
+                    }
+                }
+                if let selected = selectedStrategy,
+                   let id = selected.supabaseId,
+                   let existing = strategyListVM.strategies.first(where: { $0.id == id }) {
+                    Divider()
+                    Button(role: .destructive) {
+                        Task {
+                            await strategyListVM.deleteStrategy(existing)
+                            selectedStrategy = nil
+                        }
+                    } label: {
+                        Label("Delete \"\(selected.name)\"", systemImage: "trash")
                     }
                 }
                 Divider()
@@ -214,11 +228,26 @@ struct IntegratedStrategyBuilder: View {
     // MARK: - Supabase Helpers
 
     private func saveStrategyToSupabase(_ strategy: Strategy) async {
-        await strategyListVM.createStrategy(
-            name: strategy.name,
-            entryConditions: strategy.entryConditions,
-            exitConditions: strategy.exitConditions
+        let config = StrategyConfig(
+            entryConditions: strategy.entryConditions.map { toSupabaseCondition($0) },
+            exitConditions: strategy.exitConditions.map { toSupabaseCondition($0) },
+            filters: [],
+            parameters: [
+                "stop_loss": .double(strategy.stopLoss),
+                "take_profit": .double(strategy.takeProfit),
+                "position_size": .double(strategy.positionSize)
+            ]
         )
+        if let id = strategy.supabaseId,
+           let existing = strategyListVM.strategies.first(where: { $0.id == id }) {
+            await strategyListVM.updateStrategy(existing, name: strategy.name, config: config)
+        } else {
+            await strategyListVM.createStrategy(
+                name: strategy.name,
+                entryConditions: strategy.entryConditions,
+                exitConditions: strategy.exitConditions
+            )
+        }
     }
 }
 
