@@ -9,6 +9,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { corsResponse, handlePreflight } from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
+import { validateSLTPBounds } from "../_shared/validators.ts";
 
 const VALID_PRESET_STRATEGIES = ["supertrend_ai", "sma_crossover", "buy_and_hold"];
 
@@ -88,11 +89,16 @@ async function handleQueueBacktest(
 
   let strategyConfig: Record<string, unknown> | null = null;
   if (strategyId) {
+    // Sanitize userId to prevent PostgREST filter injection — only allow
+    // UUID format or the literal "anonymous" sentinel.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const safeUserId = UUID_RE.test(userId) ? userId : 'anonymous';
+
     const { data: strategy, error } = await supabase
       .from("strategy_user_strategies")
       .select("id, config")
       .eq("id", strategyId)
-      .or(`user_id.eq.${userId},user_id.is.null`)
+      .or(`user_id.eq.${safeUserId},user_id.is.null`)
       .single();
 
     if (error || !strategy) {
@@ -145,6 +151,20 @@ async function handleQueueBacktest(
     if (tp?.type === "percent" && typeof tp.value === "number") {
       parameters.take_profit_pct = tp.value;
     }
+
+    // Validate SL/TP bounds before queuing the job
+    const slPct = parameters.stop_loss_pct as number | undefined;
+    const tpPct = parameters.take_profit_pct as number | undefined;
+    if (slPct != null && tpPct != null) {
+      const validation = validateSLTPBounds({ slPct, tpPct });
+      if (!validation.valid) {
+        return corsResponse(
+          { error: `Invalid risk parameters: ${validation.errors.join('; ')}` },
+          400,
+          origin
+        );
+      }
+    }
   }
 
   const { data: job, error } = await supabase
@@ -175,18 +195,20 @@ async function handleQueueBacktest(
   // can update job status even with RLS enabled.
   const workerUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/strategy-backtest-worker`;
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-  if (workerUrl && serviceKey) {
+  const gatewayKey = Deno.env.get('SB_GATEWAY_KEY') ?? '';
+  if (workerUrl && serviceKey && gatewayKey) {
     fetch(workerUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${serviceKey}`,
         'Content-Type': 'application/json',
+        'X-SB-Gateway-Key': gatewayKey,
         'x-trigger-source': 'backtest-strategy',
       },
       body: JSON.stringify({ triggered_job_id: job.id }),
     }).catch(e => console.warn('[BacktestStrategy] Worker trigger warning:', e));
   } else {
-    console.warn('[BacktestStrategy] SUPABASE_SERVICE_ROLE_KEY not set — worker not triggered automatically');
+    console.warn('[BacktestStrategy] Missing env: SUPABASE_SERVICE_ROLE_KEY or SB_GATEWAY_KEY — worker not triggered');
   }
 
   return corsResponse(

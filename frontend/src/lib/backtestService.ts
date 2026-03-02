@@ -68,16 +68,14 @@ export const updateStrategyInSupabase = async (strategy: Strategy): Promise<bool
   }
 };
 
-/** Ensure strategy exists in Supabase so we have a strategy_id for backtest. Returns strategy_id. */
+/** Ensure strategy exists in Supabase so we have a strategy_id for backtest.
+ *  Default strategies (id='1','2','3') are NOT saved — they use the preset
+ *  FastAPI path. Only user-created strategies need a Supabase record. */
 export async function ensureStrategyId(strategy: Strategy): Promise<string> {
   if (isStrategyIdUuid(strategy.id)) return strategy.id;
-  const result = await saveStrategyToSupabase({
-    id: strategy.id,
-    name: strategy.name,
-    description: strategy.description,
-    config: strategy.config,
-  });
-  return result.success ? result.jobId : strategy.id;
+  // Default preset strategies — don't create duplicates in Supabase.
+  // Return the original ID so the backtest falls through to the preset path.
+  return strategy.id;
 }
 
 /** Queue a backtest job via Supabase Edge Function. Returns a typed result. */
@@ -164,12 +162,16 @@ async function runBacktestViaSupabase(
   symbol: string,
   startDate: string,
   endDate: string,
-  timeframe: string
+  timeframe: string,
+  token?: string
 ): Promise<BacktestResult | null> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     apikey: SUPABASE_ANON_KEY,
   };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   const queueResult = await queueBacktestJob(strategyId, symbol, startDate, endDate, timeframe, headers);
   if (!queueResult.success) {
     console.error('[Backtest] Supabase queue error:', queueResult.error.message);
@@ -177,8 +179,8 @@ async function runBacktestViaSupabase(
   }
   const job_id = queueResult.jobId;
 
-  // 20 × 1.5 s = 30 s max wait; then fall through to FastAPI fallback.
-  for (let i = 0; i < 20; i++) {
+  // 40 × 1.5 s = 60 s max wait; then fall through to FastAPI fallback.
+  for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 1500));
     const pollResult = await pollBacktestJob(job_id, headers);
     if (!pollResult.success) {
@@ -324,15 +326,21 @@ export const runBacktestViaAPI = async (
   symbol: string,
   startDate: string,
   endDate: string,
-  horizon: string
+  horizon: string,
+  token?: string
 ): Promise<BacktestResult | null> => {
   try {
     const timeframe = horizonToTimeframe(horizon);
-    const strategyId = await ensureStrategyId(strategy);
-    const result = await runBacktestViaSupabase(strategyId, strategy.id, symbol, startDate, endDate, timeframe);
-    if (result) return result;
 
-    // Fallback: FastAPI preset (only runs one of 3 presets; used if Supabase fails)
+    // Custom (UUID) strategies: use Supabase worker which evaluates full conditions
+    if (isStrategyIdUuid(strategy.id)) {
+      const result = await runBacktestViaSupabase(strategy.id, strategy.id, symbol, startDate, endDate, timeframe, token);
+      if (result) return result;
+      console.warn('[Backtest] Supabase worker timed out — falling back to FastAPI preset. Custom conditions will NOT be evaluated.');
+    } else {
+      // Default preset strategies (id='1','2','3'): skip Supabase, go directly to FastAPI
+      console.info(`[Backtest] Default strategy '${strategy.name}' — using FastAPI preset path.`);
+    }
     const strategyType = strategy.config.entryConditions[0]?.type;
     let apiStrategy = 'supertrend_ai';
     if (strategyType === 'sma_cross') apiStrategy = 'sma_crossover';

@@ -92,6 +92,7 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployError, setDeployError] = useState<string | null>(null);
   const [deploySuccess, setDeploySuccess] = useState(false);
+  const [backtestError, setBacktestError] = useState<string | null>(null);
   const { session } = useAuth();
 
   useEffect(() => {
@@ -132,7 +133,8 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
     setSelectedStrategy(newStrategy);
     setIsCreating(false);
     setNewStrategyName('');
-    setNewConfig(createDefaultConfig());
+    // Don't reset newConfig — it's now saved in newStrategy.config and will be
+    // loaded via startEditStrategy if the user clicks Edit again.
   };
 
   const startEditStrategy = () => {
@@ -158,16 +160,46 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
     setSelectedStrategy(updated);
     setIsEditing(false);
     setNewStrategyName('');
-    setNewConfig(createDefaultConfig());
+    // Keep newConfig as-is so the saved values persist for the next edit
     setResult(null);
     onBacktestComplete?.(null);
+  };
+
+  /** Save a copy of a default strategy as a new custom strategy in Supabase. */
+  const handleSaveAsCopy = async () => {
+    if (!selectedStrategy || !newStrategyName.trim()) return;
+    const result = await saveStrategyToSupabase({
+      id: crypto.randomUUID(),
+      name: newStrategyName.trim(),
+      description: `${newConfig.entryConditions.length} entry, ${newConfig.exitConditions.length} exit conditions`,
+      config: { ...newConfig },
+    });
+    if (result.success) {
+      const newStrategy: Strategy = {
+        id: result.jobId,
+        name: newStrategyName.trim(),
+        description: `${newConfig.entryConditions.length} entry, ${newConfig.exitConditions.length} exit conditions`,
+        config: { ...newConfig },
+        createdAt: result.createdAt,
+        updatedAt: result.createdAt,
+      };
+      setStrategies([...strategies, newStrategy]);
+      setSelectedStrategy(newStrategy);
+      setIsEditing(false);
+      setNewStrategyName('');
+      setResult(null);
+      onBacktestComplete?.(null);
+    }
   };
 
   const cancelForm = () => {
     setIsCreating(false);
     setIsEditing(false);
     setNewStrategyName('');
-    setNewConfig(createDefaultConfig());
+    // Only reset config when cancelling a new strategy creation, not when cancelling an edit
+    if (isCreating) {
+      setNewConfig(createDefaultConfig());
+    }
   };
 
   const addCondition = (isEntry: boolean) => {
@@ -233,26 +265,32 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
   const handleRunBacktest = async () => {
     if (!selectedStrategy) return;
     setResult(null);
+    setBacktestError(null);
     onBacktestComplete?.(null);
     setIsRunning(true);
     setDeploySuccess(false);
     setDeployError(null);
-    const startDateStr =
-      parentStartDate && parentEndDate
-        ? parentStartDate.toISOString().split('T')[0]
-        : getPresetDates(selectedPreset).start.toISOString().split('T')[0];
-    const endDateStr =
-      parentStartDate && parentEndDate
-        ? parentEndDate.toISOString().split('T')[0]
-        : getPresetDates(selectedPreset).end.toISOString().split('T')[0];
+    const { start, end } = parentStartDate && parentEndDate
+      ? { start: parentStartDate, end: parentEndDate }
+      : getPresetDates(selectedPreset);
+    const startDateStr = start.toISOString().split('T')[0];
+    const endDateStr = end.toISOString().split('T')[0];
 
-    const apiResult = await runBacktestViaAPI(selectedStrategy, symbol, startDateStr, endDateStr, horizon);
-    if (apiResult) {
-      setResult(apiResult);
-      onBacktestComplete?.(apiResult);
-    } else {
-      setResult(null);
-      onBacktestComplete?.(null);
+    // Use the form config if actively editing, otherwise use the saved strategy config
+    const runStrategy: Strategy = isEditing
+      ? { ...selectedStrategy, config: { ...newConfig } }
+      : selectedStrategy;
+
+    try {
+      const apiResult = await runBacktestViaAPI(runStrategy, symbol, startDateStr, endDateStr, horizon, session?.access_token);
+      if (apiResult) {
+        setResult(apiResult);
+        onBacktestComplete?.(apiResult);
+      } else {
+        setBacktestError('Backtest returned no results. The worker may have timed out — try again or check the backend logs.');
+      }
+    } catch (err) {
+      setBacktestError(err instanceof Error ? err.message : 'An unexpected error occurred during backtest.');
     }
     setIsRunning(false);
   };
@@ -260,9 +298,9 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
   const renderConditionBuilder = (isEntry: boolean) => {
     const conditions = isEntry ? newConfig.entryConditions : newConfig.exitConditions;
     return (
-      <div className="flex flex-col flex-1 min-w-0 rounded border border-gray-600 bg-gray-700/40">
-        <div className="flex justify-between items-center px-1.5 py-0.5 border-b border-gray-600 shrink-0">
-          <span className="text-[11px] font-medium text-gray-400">{isEntry ? 'Entry' : 'Exit'}</span>
+      <div className="rounded border border-gray-600 bg-gray-700/40">
+        <div className="flex justify-between items-center px-2 py-1 border-b border-gray-600">
+          <span className="text-[11px] font-medium text-gray-400">{isEntry ? 'Entry Conditions' : 'Exit Conditions'}</span>
           <button
             onClick={() => addCondition(isEntry)}
             className="text-[11px] text-blue-400 hover:text-blue-300 whitespace-nowrap"
@@ -270,7 +308,7 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
             + Add
           </button>
         </div>
-        <div className="space-y-0.5 p-1 min-h-0">
+        <div className="space-y-1 p-1.5">
           {conditions.map((condition, idx) => {
             const ctConfig = conditionTypes.find((c) => c.id === condition.type);
             const presets = ctConfig?.presets;
@@ -283,12 +321,13 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
                     <div className="flex-1 border-t border-dashed border-gray-600" />
                   </div>
                 )}
-                <div className="py-1 px-1.5 bg-gray-700 rounded space-y-0.5 text-[11px]">
-                  <div className="flex gap-0.5 items-center">
+                <div className="py-1.5 px-2 bg-gray-700 rounded space-y-1 text-[11px]">
+                  {/* Indicator selector - full width so names aren't clipped */}
+                  <div className="flex gap-1 items-center">
                     <select
                       value={condition.type}
                       onChange={(e) => updateCondition(isEntry, idx, 'type', e.target.value)}
-                      className="flex-1 min-w-0 px-1.5 py-0.5 bg-gray-800 border border-gray-600 rounded text-white text-[11px]"
+                      className="flex-1 px-1.5 py-1 bg-gray-800 border border-gray-600 rounded text-white text-[11px]"
                     >
                       {conditionTypes.map((ct) => (
                         <option key={ct.id} value={ct.id}>
@@ -304,6 +343,7 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
                       ✕
                     </button>
                   </div>
+                  {/* Preset chips */}
                   {presets && presets.length > 0 && (
                     <div className="flex flex-wrap gap-0.5">
                       {presets.map((p) => (
@@ -322,11 +362,12 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
                       ))}
                     </div>
                   )}
-                  <div className="flex gap-0.5 items-center">
+                  {/* Operator + value row */}
+                  <div className="flex gap-1 items-center">
                     <select
                       value={condition.operator}
                       onChange={(e) => updateCondition(isEntry, idx, 'operator', e.target.value)}
-                      className="flex-1 min-w-0 px-1.5 py-0.5 bg-gray-800 border border-gray-600 rounded text-white text-[11px]"
+                      className="flex-1 px-1.5 py-1 bg-gray-800 border border-gray-600 rounded text-white text-[11px]"
                     >
                       {operators.map((op) => (
                         <option key={op.id} value={op.id}>
@@ -341,7 +382,7 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
                         onChange={(e) =>
                           updateCondition(isEntry, idx, 'value', parseFloat(e.target.value))
                         }
-                        className="w-12 shrink-0 px-1 py-0.5 bg-gray-800 border border-gray-600 rounded text-white text-[11px] text-center"
+                        className="w-14 shrink-0 px-1 py-1 bg-gray-800 border border-gray-600 rounded text-white text-[11px] text-center"
                       />
                     )}
                   </div>
@@ -407,7 +448,7 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
               onChange={(e) => setNewStrategyName(e.target.value)}
               className="w-full px-1.5 py-1 bg-gray-900 border border-gray-700 rounded text-[11px] text-white shrink-0"
             />
-            <div className="flex gap-1.5 min-h-0">
+            <div className="space-y-1.5">
               {renderConditionBuilder(true)}
               {renderConditionBuilder(false)}
             </div>
@@ -496,10 +537,14 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
                 />
               </div>
               <button
-                onClick={isEditing ? handleSaveStrategy : handleCreateStrategy}
+                onClick={isEditing
+                  ? (selectedStrategy && !isStrategyIdUuid(selectedStrategy.id) ? handleSaveAsCopy : handleSaveStrategy)
+                  : handleCreateStrategy}
                 className="ml-auto px-3 py-0.5 bg-blue-600 text-white text-[10px] rounded font-medium"
               >
-                {isEditing ? 'Save' : 'Create'}
+                {isEditing
+                  ? (selectedStrategy && !isStrategyIdUuid(selectedStrategy.id) ? 'Save as Copy' : 'Save')
+                  : 'Create'}
               </button>
             </div>
           </div>
@@ -554,6 +599,20 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
           {isRunning ? 'Running...' : '▶ Run Backtest'}
         </button>
       </div>
+
+      {backtestError && (
+        <div className="mx-2 mb-2 p-2 bg-red-900/50 border border-red-700 rounded text-xs text-red-300">
+          <div className="flex items-center justify-between">
+            <span>{backtestError}</span>
+            <button
+              onClick={() => { setBacktestError(null); handleRunBacktest(); }}
+              className="ml-2 px-2 py-0.5 bg-red-700 text-white rounded text-[10px] hover:bg-red-600"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
 
       {result && (
         <BacktestResultsPanel
