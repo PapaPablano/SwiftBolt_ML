@@ -254,13 +254,13 @@ draw(target: CanvasRenderingTarget2D): void {
 - Trade table: renders all trades, sort works, direction/closeReason columns display correctly
 
 **Acceptance criteria:**
-- [ ] Green shaded region between entry/exit bars for winning trades
-- [ ] Red shaded region between entry/exit bars for losing trades
-- [ ] Connecting line from entry price to exit price within each region
-- [ ] P&L label on each trade region showing dollar + percentage
-- [ ] BUY/SELL markers colored by trade outcome (not always green/red)
-- [ ] Regions semi-transparent (candles readable underneath)
-- [ ] Chart maintains 60fps with 100+ trades during pan/zoom (viewport culling)
+- [x] Green shaded region between entry/exit bars for winning trades
+- [x] Red shaded region between entry/exit bars for losing trades
+- [x] Connecting line from entry price to exit price within each region
+- [x] P&L label on each trade region showing dollar + percentage
+- [x] BUY/SELL markers colored by trade outcome (not always green/red)
+- [x] Regions semi-transparent (candles readable underneath)
+- [x] Chart maintains 60fps with 100+ trades during pan/zoom (viewport culling)
 - [ ] Trade table shows ALL trades (not capped at 15-20) with scrolling
 - [ ] Direction and Close Reason columns visible in trade table
 - [ ] Click column header to sort

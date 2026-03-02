@@ -21,6 +21,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { createChart, IChartApi, ISeriesApi, ColorType } from 'lightweight-charts';
+import { TradeRegionManager } from './TradeRegions';
 import { createClient } from '@supabase/supabase-js';
 import { ForecastOverlay } from '../types/chart';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -101,6 +102,7 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
   const confidenceBandRef = useRef<ISeriesApi<'Area'> | null>(null);
   const indicatorSeriesRefs = useRef<Map<string, ISeriesApi<any>>>(new Map());
   const signalSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const tradeRegionsRef = useRef<TradeRegionManager | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -158,6 +160,7 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
     });
 
     chartRef.current = chart;
+    tradeRegionsRef.current = new TradeRegionManager(chart);
 
     // Add candlestick series
     const candleSeries = chart.addCandlestickSeries({
@@ -229,6 +232,8 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
     window.addEventListener('resize', handleResize);
 
     return () => {
+      tradeRegionsRef.current?.dispose();
+      tradeRegionsRef.current = null;
       resizeObserver.disconnect();
       window.removeEventListener('resize', handleResize);
       chart.remove();
@@ -519,6 +524,31 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
     return () => {
       cancelAnimationFrame(rafId);
       try { candleSeriesRef.current?.setMarkers([]); } catch { /* chart may already be disposed on unmount/HMR */ }
+    };
+  }, [backtestTrades, symbol, loading]);
+
+  // Backtest trade regions — shaded entry→exit areas on the candle chart
+  useEffect(() => {
+    if (!tradeRegionsRef.current) return;
+    if (!backtestTrades?.length) {
+      tradeRegionsRef.current.clear();
+      return;
+    }
+
+    const regions = backtestTrades.map((t) => ({
+      entryTime: String(t.entryTime).split('T')[0],
+      exitTime: String(t.exitTime).split('T')[0],
+      entryPrice: t.entryPrice,
+      exitPrice: t.exitPrice,
+      isWin: t.isWin,
+    }));
+
+    const rafId = requestAnimationFrame(() => {
+      tradeRegionsRef.current?.update(regions);
+    });
+    return () => {
+      cancelAnimationFrame(rafId);
+      tradeRegionsRef.current?.clear();
     };
   }, [backtestTrades, symbol, loading]);
 
