@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Strategy Editor (Integrated with Indicators)
 struct StrategyEditorIntegrated: View {
     @Binding var strategy: Strategy?
-    @ObservedObject var viewModel: StrategyBuilderViewModel
+    var onSave: (Strategy) -> Void
     @ObservedObject var indicatorsService: UnifiedIndicatorsService
     
     @State private var showingAddEntry = false
@@ -22,9 +22,9 @@ struct StrategyEditorIntegrated: View {
                     StrategyInfoCard(
                         strategy: Binding(
                             get: { strategy },
-                            set: { 
+                            set: {
                                 self.strategy = $0
-                                viewModel.saveStrategy($0)
+                                onSave($0)
                             }
                         ),
                         onSave: {}
@@ -42,7 +42,7 @@ struct StrategyEditorIntegrated: View {
                                 } else {
                                     updated.entryGroups[updated.entryGroups.count - 1].conditions.append(condition)
                                 }
-                                viewModel.saveStrategy(updated)
+                                onSave(updated)
                                 self.strategy = updated
                             },
                             onAddExit: { condition in
@@ -52,7 +52,7 @@ struct StrategyEditorIntegrated: View {
                                 } else {
                                     updated.exitGroups[updated.exitGroups.count - 1].conditions.append(condition)
                                 }
-                                viewModel.saveStrategy(updated)
+                                onSave(updated)
                                 self.strategy = updated
                             }
                         )
@@ -71,7 +71,6 @@ struct StrategyEditorIntegrated: View {
                         },
                         onDelete: { index in
                             var updated = strategy
-                            // Find and remove from groups
                             let target = updated.entryConditions[index]
                             for (gi, group) in updated.entryGroups.enumerated() {
                                 if let ci = group.conditions.firstIndex(where: { $0.id == target.id }) {
@@ -82,7 +81,7 @@ struct StrategyEditorIntegrated: View {
                                     break
                                 }
                             }
-                            viewModel.saveStrategy(updated)
+                            onSave(updated)
                             self.strategy = updated
                         }
                     )
@@ -110,7 +109,7 @@ struct StrategyEditorIntegrated: View {
                                     break
                                 }
                             }
-                            viewModel.saveStrategy(updated)
+                            onSave(updated)
                             self.strategy = updated
                         }
                     )
@@ -120,7 +119,7 @@ struct StrategyEditorIntegrated: View {
                         get: { strategy },
                         set: {
                             self.strategy = $0
-                            viewModel.saveStrategy($0)
+                            onSave($0)
                         }
                     ))
                     
@@ -146,12 +145,12 @@ struct StrategyEditorIntegrated: View {
                     } else {
                         strategy.entryGroups[strategy.entryGroups.count - 1].conditions.append(condition)
                     }
-                    viewModel.saveStrategy(strategy)
+                    onSave(strategy)
                     self.strategy = strategy
                 }
                 showingAddEntry = false
             }
-            .frame(minWidth: 550, minHeight: 500)
+            .frame(minWidth: 800, minHeight: 560)
         }
         .sheet(isPresented: $showingAddExit) {
             ConditionPickerIntegrated(
@@ -164,12 +163,12 @@ struct StrategyEditorIntegrated: View {
                     } else {
                         strategy.exitGroups[strategy.exitGroups.count - 1].conditions.append(condition)
                     }
-                    viewModel.saveStrategy(strategy)
+                    onSave(strategy)
                     self.strategy = strategy
                 }
                 showingAddExit = false
             }
-            .frame(minWidth: 550, minHeight: 500)
+            .frame(minWidth: 800, minHeight: 560)
         }
     }
 }
@@ -398,7 +397,7 @@ struct ConditionPickerIntegrated: View {
                         .padding(.bottom, 12)
                     }
                 }
-                .frame(width: 240)
+                .frame(width: 260)
                 
                 Divider()
                 
@@ -515,7 +514,7 @@ struct ConditionPickerIntegrated: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(width: 750, height: 520)
+        .frame(width: 820, height: 560)
     }
 }
 
@@ -555,16 +554,18 @@ struct EnhancedIndicatorRow: View {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.name)
-                        .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
+                        .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
                         .foregroundColor(isSelected ? .accentColor : .primary)
-                    
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
                     if let value = currentValue {
                         Text(String(format: "%.4f", value))
-                            .font(.system(size: 12, design: .rounded))
+                            .font(.system(size: 11, design: .rounded))
                             .foregroundColor(.secondary)
                     } else {
                         Text("—")
-                            .font(.system(size: 12))
+                            .font(.system(size: 11))
                             .foregroundColor(.secondary.opacity(0.5))
                     }
                 }
@@ -654,9 +655,11 @@ struct EnhancedConditionPresetCard: View {
                 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(preset.label)
-                        .font(.system(size: 14, weight: isSelected ? .semibold : .medium))
+                        .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
                         .foregroundColor(isSelected ? .primary : .primary)
-                    
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
                     HStack(spacing: 6) {
                         Text(preset.op)
                             .font(.system(size: 12, weight: .medium))

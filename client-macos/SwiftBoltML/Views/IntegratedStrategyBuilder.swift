@@ -4,11 +4,17 @@ import SwiftUI
 /// Combines Technical Indicators display with Strategy Builder functionality
 struct IntegratedStrategyBuilder: View {
     @StateObject private var indicatorsService = UnifiedIndicatorsService.shared
-    @StateObject private var strategyViewModel = StrategyBuilderViewModel()
-    
+    @StateObject private var backtestingViewModel = BacktestingViewModel()
+
+    /// The user's strategies from Supabase.
+    @State private var strategyListVM = StrategyListViewModel()
+
     @State private var selectedStrategy: Strategy?
     @State private var selectedTab = 0 // 0 = Editor, 1 = Live Indicators, 2 = Backtest
     @State private var showingNewStrategy = false
+
+    /// Selected symbol from the Charts tab, threaded via parent.
+    var symbol: String?
     
     var body: some View {
         VStack(spacing: 0) {
@@ -38,7 +44,9 @@ struct IntegratedStrategyBuilder: View {
             case 0:
                 StrategyEditorIntegrated(
                     strategy: $selectedStrategy,
-                    viewModel: strategyViewModel,
+                    onSave: { strategy in
+                        Task { await saveStrategyToSupabase(strategy) }
+                    },
                     indicatorsService: indicatorsService
                 )
             case 1:
@@ -50,14 +58,17 @@ struct IntegratedStrategyBuilder: View {
                         } else {
                             strategy.entryGroups[strategy.entryGroups.count - 1].conditions.append(condition)
                         }
-                        strategyViewModel.saveStrategy(strategy)
                         selectedStrategy = strategy
                         selectedTab = 0 // Switch to editor
                     }
                 }
             case 2:
                 if let strategy = selectedStrategy {
-                    BacktestWebStyle(strategy: strategy, viewModel: strategyViewModel)
+                    StrategyBacktestTab(
+                        strategy: strategy,
+                        backtestingViewModel: backtestingViewModel,
+                        symbol: symbol
+                    )
                 } else {
                     SBEmptyStateView(message: "Select or create a strategy to backtest")
                 }
@@ -71,13 +82,21 @@ struct IntegratedStrategyBuilder: View {
                 symbol: indicatorsService.selectedSymbol,
                 timeframe: indicatorsService.selectedTimeframe
             )
+            // Load strategies from Supabase
+            await strategyListVM.loadStrategies()
         }
         .sheet(isPresented: $showingNewStrategy) {
             NewStrategyDialog { name, description in
                 let strategy = Strategy(name: name, description: description)
-                strategyViewModel.addStrategy(strategy)
                 selectedStrategy = strategy
                 showingNewStrategy = false
+                Task {
+                    await strategyListVM.createStrategy(
+                        name: name,
+                        entryConditions: strategy.entryConditions,
+                        exitConditions: strategy.exitConditions
+                    )
+                }
             }
             .frame(minWidth: 400, minHeight: 300)
         }
@@ -87,9 +106,15 @@ struct IntegratedStrategyBuilder: View {
         HStack(spacing: 16) {
             // Strategy Selector
             Menu {
-                ForEach(strategyViewModel.strategies) { strategy in
-                    Button(strategy.name) {
-                        selectedStrategy = strategy
+                if strategyListVM.strategies.isEmpty {
+                    Text("No strategies yet")
+                        .foregroundStyle(.secondary)
+                }
+                // Show Supabase strategies (name only from list endpoint)
+                ForEach(strategyListVM.strategies) { supabaseStrategy in
+                    Button(supabaseStrategy.name) {
+                        // Load full strategy from local model for now
+                        selectedStrategy = Strategy(name: supabaseStrategy.name)
                     }
                 }
                 Divider()
@@ -162,7 +187,6 @@ struct IntegratedStrategyBuilder: View {
                         var updated = strategy
                         updated.isActive = newValue
                         selectedStrategy = updated
-                        strategyViewModel.saveStrategy(updated)
                     }
                 ))
                 .toggleStyle(.switch)
@@ -171,6 +195,175 @@ struct IntegratedStrategyBuilder: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(Color(.windowBackgroundColor))
+    }
+}
+
+    // MARK: - Supabase Helpers
+
+    private func saveStrategyToSupabase(_ strategy: Strategy) async {
+        await strategyListVM.createStrategy(
+            name: strategy.name,
+            entryConditions: strategy.entryConditions,
+            exitConditions: strategy.exitConditions
+        )
+    }
+}
+
+// MARK: - Strategy Backtest Tab
+
+/// Backtest tab content: date range picker, "Run Backtest" button, and results.
+private struct StrategyBacktestTab: View {
+    let strategy: Strategy
+    @ObservedObject var backtestingViewModel: BacktestingViewModel
+    var symbol: String?
+
+    @State private var startDate = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? Date()
+    @State private var endDate = Date()
+
+    private var canRun: Bool {
+        !strategy.entryConditions.isEmpty && symbol != nil && !backtestingViewModel.isLoading
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Backtest Controls
+            HStack(spacing: 16) {
+                // Symbol
+                HStack(spacing: 4) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    Text(symbol ?? "No symbol")
+                        .font(.headline)
+                }
+
+                Divider().frame(height: 20)
+
+                // Date Range
+                DatePicker("From", selection: $startDate, displayedComponents: .date)
+                    .labelsHidden()
+                    .frame(width: 120)
+
+                Text("to")
+                    .foregroundStyle(.secondary)
+
+                DatePicker("To", selection: $endDate, displayedComponents: .date)
+                    .labelsHidden()
+                    .frame(width: 120)
+
+                Spacer()
+
+                // Run Button
+                Button(action: runBacktest) {
+                    HStack(spacing: 6) {
+                        if backtestingViewModel.isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Running... \(backtestingViewModel.elapsedSeconds)s")
+                        } else {
+                            Image(systemName: "play.fill")
+                            Text("Run Backtest")
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!canRun)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color(.controlBackgroundColor))
+
+            Divider()
+
+            // Validation warnings
+            if strategy.entryConditions.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("Add at least one entry condition before running a backtest.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+            }
+
+            if strategy.exitConditions.isEmpty && !strategy.entryConditions.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundStyle(.blue)
+                    Text("No exit conditions set. Positions will close only on stop-loss or take-profit.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 4)
+            }
+
+            // Error
+            if let error = backtestingViewModel.error {
+                HStack(spacing: 8) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.red)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+            }
+
+            // Results
+            if let result = backtestingViewModel.backtestResult {
+                BacktestResultsView(result: result)
+            } else if !backtestingViewModel.isLoading {
+                VStack(spacing: 16) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.secondary)
+                    Text("Run a backtest to see results")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                VStack(spacing: 16) {
+                    ProgressView()
+                    Text("Running backtest...")
+                        .foregroundStyle(.secondary)
+                    Text("\(backtestingViewModel.elapsedSeconds)s elapsed")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
+    private func runBacktest() {
+        guard let sym = symbol else { return }
+
+        // Build StrategyConfig from native Strategy model
+        let config = StrategyConfig(
+            entryConditions: strategy.entryConditions.map { toSupabaseCondition($0) },
+            exitConditions: strategy.exitConditions.map { toSupabaseCondition($0) },
+            filters: [],
+            parameters: [
+                "stop_loss": .double(strategy.stopLoss),
+                "take_profit": .double(strategy.takeProfit),
+                "position_size": .double(strategy.positionSize)
+            ]
+        )
+
+        Task {
+            await backtestingViewModel.runStrategyBacktest(
+                strategyConfig: config,
+                symbol: sym,
+                startDate: startDate,
+                endDate: endDate
+            )
+        }
     }
 }
 
