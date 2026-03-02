@@ -40,6 +40,7 @@ enum ChartCommand: Encodable {
     case setTechnicalIndicatorsOverlay(indicators: [TechnicalIndicatorOverlay])
     case setBinaryForecastMarkers(baseTime: Int, basePrice: Double, items: [BinaryForecastMarkerItem])
     case setRealtimeConfig(supabaseURL: String, anonKey: String, symbolId: String, timeframe: String, modelType: String)
+    case setBacktestTrades(tradesJSON: String)
 
     // Custom encoding to match JS API
     private enum CodingKeys: String, CodingKey {
@@ -50,7 +51,7 @@ enum ChartCommand: Encodable {
         case supabaseUrl, anonKey, symbolId, timeframe, modelType
         case line, signal, histogram, kData, dData, jData, adxData, plusDI, minusDI, panel
         case trendData, strengthData, resistance, support, levels, category
-        case config, indicators
+        case config, indicators, trades
     }
 
     func encode(to encoder: Encoder) throws {
@@ -174,6 +175,9 @@ enum ChartCommand: Encodable {
             try container.encode(symbolId, forKey: .symbolId)
             try container.encode(timeframe, forKey: .timeframe)
             try container.encode(modelType, forKey: .modelType)
+        case .setBacktestTrades:
+            // Handled via direct JS evaluation in ChartBridge.setBacktestTrades()
+            try container.encode("setBacktestTrades", forKey: .type)
         }
     }
 }
@@ -700,6 +704,23 @@ final class ChartBridge: NSObject, ObservableObject {
     /// Set arbitrary markers on a series
     func setMarkers(_ markers: [ChartMarker], seriesId: String = "candles") {
         send(.setMarkers(seriesId: seriesId, markers: markers))
+    }
+
+    /// Send backtest trade data to chart.js so it draws buy/sell markers on candles.
+    /// Trades come as raw dictionaries from the React→Swift bridge.
+    func setBacktestTrades(_ trades: [[String: Any]]) {
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: trades, options: [])
+            guard let jsonString = String(data: jsonData, encoding: .utf8) else { return }
+            let js = "window.chartApi && window.chartApi.setBacktestTrades(\(jsonString));"
+            enqueueJS(js)
+        } catch {
+            print("[ChartBridge] setBacktestTrades JSON error: \(error.localizedDescription)")
+        }
+    }
+
+    func clearBacktestTrades() {
+        enqueueJS("window.chartApi && window.chartApi.setBacktestTrades([]);")
     }
 
     /// Add support/resistance price lines

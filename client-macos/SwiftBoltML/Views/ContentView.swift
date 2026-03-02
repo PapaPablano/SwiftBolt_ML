@@ -33,46 +33,47 @@ struct ContentView: View {
                     SupabaseConnectivityBanner()
                         .environmentObject(appViewModel)
                 }
-                Group {
-                    switch activeSection {
-                    case .predictions:
+
+                // ZStack keeps the chart's WKWebView alive across tab switches.
+                // Non-chart tabs use opacity(0) so the JS context continues running.
+                ZStack {
+                    // Chart (always mounted, hidden when another section is active)
+                    DetailView()
+                        .environmentObject(appViewModel)
+                        .opacity(activeSection == .stocks ? 1 : 0)
+                        .allowsHitTesting(activeSection == .stocks)
+
+                    // Strategy Builder (always mounted, shares chart overlay via notifications)
+                    IntegratedStrategyBuilder(symbol: appViewModel.selectedSymbol?.ticker)
+                        .opacity(activeSection == .tradestation ? 1 : 0)
+                        .allowsHitTesting(activeSection == .tradestation)
+
+                    // Other sections: only mounted when active
+                    if activeSection == .predictions {
                         PredictionsView()
                             .environmentObject(appViewModel)
-                    case .portfolio:
+                    }
+                    if activeSection == .portfolio {
                         Text("Portfolio")
-                    case .multileg:
+                    }
+                    if activeSection == .multileg {
                         MultiLegStrategyListView()
                             .environmentObject(appViewModel)
-                    case .tradestation:
-                        IntegratedStrategyBuilder()
-                    case .strategyPlatform(.builder):
-                        StrategyPlatformWebView(
-                            symbol: appViewModel.selectedSymbol?.ticker,
-                            initialTab: .builder
-                        )
-                    case .strategyPlatform(.paperTrading):
-                        StrategyPlatformWebView(
-                            symbol: appViewModel.selectedSymbol?.ticker,
-                            initialTab: .paperTrading
-                        )
-                    case .strategyPlatform(.backtesting):
-                        StrategyPlatformWebView(
-                            symbol: appViewModel.selectedSymbol?.ticker,
-                            initialTab: .backtest
-                        )
-                    case .strategyPlatform(.liveTrading):
-                        StrategyPlatformWebView(
-                            symbol: appViewModel.selectedSymbol?.ticker,
-                            initialTab: .liveTrading
-                        )
-                    case .stocks:
-                        DetailView()
-                            .environmentObject(appViewModel)
-                    #if DEBUG
-                    case .devtools:
-                        DevToolsView()
-                    #endif
                     }
+                    if activeSection == .strategyPlatform(.builder) {
+                        StrategyBuilderWebView(symbol: appViewModel.selectedSymbol?.ticker)
+                    }
+                    if activeSection == .strategyPlatform(.paperTrading) {
+                        PaperTradingDashboardView()
+                    }
+                    if activeSection == .strategyPlatform(.backtesting) {
+                        BacktestResultsWebView(symbol: appViewModel.selectedSymbol?.ticker)
+                    }
+                    #if DEBUG
+                    if activeSection == .devtools {
+                        DevToolsView()
+                    }
+                    #endif
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -199,7 +200,7 @@ struct DetailView: View {
                             AnalysisView()
                                 .environmentObject(appViewModel)
                         } else {
-                            IntegratedStrategyBuilder()
+                            IntegratedStrategyBuilder(symbol: appViewModel.selectedSymbol?.ticker)
                         }
                     }
                 }

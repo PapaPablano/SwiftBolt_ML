@@ -19,6 +19,8 @@ struct WebChartView: NSViewRepresentable {
         var lastCandleSignature: (count: Int, lastTs: Int)?
         /// Only resend setRealtimeConfig when (symbolId, timeframe-for-binary, modelType) changes to avoid redundant subscriptions.
         var lastRealtimeConfigSignature: String?
+        /// Pending backtest trades received before the chart bridge was ready.
+        var pendingBacktestTrades: [[String: Any]]?
 
         init(_ parent: WebChartView) {
             self.parent = parent
@@ -51,6 +53,9 @@ struct WebChartView: NSViewRepresentable {
                     guard let self else { return }
                     self.lastVisibleRange = nil
                     self.hasAppliedInitialZoom = false
+                    // Clear stale backtest trades when symbol changes
+                    self.pendingBacktestTrades = nil
+                    self.parent.bridge.clearBacktestTrades()
                 }
                 .store(in: &cancellables)
 
@@ -107,6 +112,12 @@ struct WebChartView: NSViewRepresentable {
                             self.updateChart(with: data)
                             self.hasLoadedInitialData = true
                         }
+                    }
+
+                    // Apply any pending backtest trades that arrived before the bridge was ready
+                    if let pendingTrades = self.pendingBacktestTrades {
+                        self.parent.bridge.setBacktestTrades(pendingTrades)
+                        self.pendingBacktestTrades = nil
                     }
                 }
                 .store(in: &cancellables)
@@ -234,6 +245,32 @@ struct WebChartView: NSViewRepresentable {
                     guard let self = self, self.parent.bridge.isReady,
                           let lastBar = self.parent.viewModel.bars.last else { return }
                     self.parent.bridge.setBinaryForecastCandle(overlay: overlay, lastBar: lastBar)
+                }
+                .store(in: &cancellables)
+
+            // Listen for backtest trade data with symbol guard + generation counter
+            NotificationCenter.default.publisher(for: .backtestTradesUpdated)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] notification in
+                    guard let self = self else { return }
+
+                    // Symbol guard: only apply trades for the currently displayed symbol
+                    if let tradeSymbol = notification.userInfo?["symbol"] as? String,
+                       let currentSymbol = self.parent.viewModel.selectedSymbol?.ticker {
+                        guard tradeSymbol.uppercased() == currentSymbol.uppercased() else {
+                            #if DEBUG
+                            print("[WebChartView] Ignoring backtest trades for \(tradeSymbol) (current: \(currentSymbol))")
+                            #endif
+                            return
+                        }
+                    }
+
+                    let trades = notification.userInfo?["trades"] as? [[String: Any]] ?? []
+                    if self.parent.bridge.isReady {
+                        self.parent.bridge.setBacktestTrades(trades)
+                    } else {
+                        self.pendingBacktestTrades = trades
+                    }
                 }
                 .store(in: &cancellables)
         }
