@@ -21,14 +21,21 @@ serve(async (req: Request) => {
 
   const supabase = getSupabaseClient();
 
+  // Backtesting is read-only computation — no user data sensitivity.
+  // Auth is optional: if a valid JWT is present, tag the job with user_id;
+  // otherwise, use "anonymous" so the workstation works without login.
+  let userId = "anonymous";
   const authHeader = req.headers.get("Authorization") ?? "";
-  const { data: { user }, error: authError } = await supabase.auth.getUser(
-    authHeader.replace("Bearer ", ""),
-  );
-  if (authError || !user) {
-    return corsResponse({ error: "Authentication required" }, 401, origin);
+  if (authHeader && authHeader !== "Bearer " && !authHeader.endsWith("eyJ")) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser(
+        authHeader.replace("Bearer ", ""),
+      );
+      if (user) userId = user.id;
+    } catch {
+      // Auth failed — proceed as anonymous
+    }
   }
-  const userId = user.id;
 
   const url = new URL(req.url);
   const jobId = url.searchParams.get("id");

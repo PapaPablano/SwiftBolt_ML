@@ -168,7 +168,7 @@ async function runBacktestViaSupabase(
 ): Promise<BacktestResult | null> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    apikey: SUPABASE_ANON_KEY,
   };
   const queueResult = await queueBacktestJob(strategyId, symbol, startDate, endDate, timeframe, headers);
   if (!queueResult.success) {

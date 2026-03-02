@@ -174,7 +174,7 @@ Create `frontend/src/lib/strategyTranslator.ts` as the single canonical translat
 - [x] Rate limiting on executor POST: 10 req/min per user
 - [x] Conditions with unrecognized indicators rejected
 - [x] CORS restricted to known origins
-- [ ] Backtesting works without authentication
+- [x] Backtesting works without authentication
 - [ ] `Trade` type includes `direction`, `closeReason`
 - [ ] Backtest worker returns direction, close_reason, profit_factor, avg_win, avg_loss, buy_and_hold_return_pct
 - [ ] Strategy translator converts between all 3 condition formats
