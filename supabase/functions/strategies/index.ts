@@ -35,6 +35,13 @@ interface StrategyRow {
   description: string | null;
   config: StrategyConfig;
   is_active: boolean;
+  paper_trading_enabled: boolean;
+  live_trading_enabled: boolean;
+  live_risk_pct: number;
+  live_daily_loss_limit_pct: number;
+  live_max_positions: number;
+  live_max_position_pct: number;
+  live_trading_paused: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -112,7 +119,7 @@ async function handleGet(
   const { data, error } = await supabase
     .from("strategy_user_strategies")
     .select(
-      "id, name, is_active, paper_trading_enabled, created_at, updated_at",
+      "id, name, is_active, paper_trading_enabled, live_trading_enabled, live_trading_paused, created_at, updated_at",
     )
     .eq("user_id", userId)
     .order("updated_at", { ascending: false })
@@ -185,6 +192,12 @@ async function handleUpdate(
   if (body.paper_trading_enabled !== undefined) {
     updates.paper_trading_enabled = body.paper_trading_enabled;
   }
+  if (body.live_trading_enabled !== undefined) updates.live_trading_enabled = body.live_trading_enabled;
+  if (body.live_risk_pct !== undefined) updates.live_risk_pct = body.live_risk_pct;
+  if (body.live_daily_loss_limit_pct !== undefined) updates.live_daily_loss_limit_pct = body.live_daily_loss_limit_pct;
+  if (body.live_max_positions !== undefined) updates.live_max_positions = body.live_max_positions;
+  if (body.live_max_position_pct !== undefined) updates.live_max_position_pct = body.live_max_position_pct;
+  if (body.live_trading_paused !== undefined) updates.live_trading_paused = body.live_trading_paused;
 
   const { data, error } = await supabase
     .from("strategy_user_strategies")
