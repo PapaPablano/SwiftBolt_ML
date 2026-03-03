@@ -25,6 +25,46 @@ async function invokeFunction(
   return res.json();
 }
 
+// Live Trading API (mirrors paper-trading-executor pattern)
+export const liveTradingApi = {
+  positions: (token: string) =>
+    invokeFunction('live-trading-executor?action=positions', { token }).then(
+      (d) => d.positions ?? [],
+    ),
+
+  trades: (token: string) =>
+    invokeFunction('live-trading-executor?action=trades', { token }).then(
+      (d) => d.trades ?? [],
+    ),
+
+  summary: (token: string) =>
+    invokeFunction('live-trading-executor?action=summary', { token }),
+
+  brokerStatus: (token: string) =>
+    invokeFunction('live-trading-executor?action=broker_status', { token }),
+
+  closePosition: (positionId: string, token: string) =>
+    invokeFunction('live-trading-executor', {
+      method: 'POST',
+      body: { action: 'close_position', position_id: positionId },
+      token,
+    }),
+
+  execute: (symbol: string, timeframe: string, token: string) =>
+    invokeFunction('live-trading-executor', {
+      method: 'POST',
+      body: { symbol, timeframe },
+      token,
+    }),
+
+  disconnectBroker: (token: string) =>
+    invokeFunction('live-trading-executor', {
+      method: 'POST',
+      body: { action: 'disconnect_broker' },
+      token,
+    }),
+};
+
 export const strategiesApi = {
   list: (token: string, _offset = 0) =>
     invokeFunction('strategies', { token }).then((d) => d.strategies ?? []),

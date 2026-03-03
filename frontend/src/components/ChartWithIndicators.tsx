@@ -32,6 +32,8 @@ interface ChartWithIndicatorsProps {
   onDateRangeChange?: (start: Date, end: Date) => void;
   /** Navigate to Paper Trading tab. */
   onNavigatePaperTrading?: () => void;
+  /** Navigate to Live Trading tab. */
+  onNavigateLiveTrading?: () => void;
 }
 
 export const ChartWithIndicators: React.FC<ChartWithIndicatorsProps> = ({
@@ -44,6 +46,7 @@ export const ChartWithIndicators: React.FC<ChartWithIndicatorsProps> = ({
   onBacktestComplete,
   onDateRangeChange,
   onNavigatePaperTrading,
+  onNavigateLiveTrading,
 }) => {
   const [activePanel, setActivePanel] = useState<'analysis' | 'pivots' | 'strategy'>('strategy');
 
@@ -81,6 +84,7 @@ export const ChartWithIndicators: React.FC<ChartWithIndicatorsProps> = ({
               onBacktestComplete={onBacktestComplete}
               onDateRangeChange={onDateRangeChange}
               onNavigatePaperTrading={onNavigatePaperTrading}
+              onNavigateLiveTrading={onNavigateLiveTrading}
             />
           )}
         </div>

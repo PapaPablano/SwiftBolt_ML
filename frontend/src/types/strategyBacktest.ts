@@ -220,4 +220,6 @@ export interface StrategyBacktestPanelProps {
   onDateRangeChange?: (start: Date, end: Date) => void;
   /** Navigate to Paper Trading tab. */
   onNavigatePaperTrading?: () => void;
+  /** Navigate to Live Trading tab. */
+  onNavigateLiveTrading?: () => void;
 }

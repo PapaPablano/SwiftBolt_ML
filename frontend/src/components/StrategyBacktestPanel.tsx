@@ -25,6 +25,7 @@ import {
 } from '../lib/backtestService';
 import BacktestResultsPanel from './BacktestResultsPanel';
 import { PaperTradingStatusWidget } from './PaperTradingStatusWidget';
+import { LiveTradingStatusWidget } from './LiveTradingStatusWidget';
 import { useAuth } from '../contexts/AuthContext';
 
 const defaultStrategies: Strategy[] = [
@@ -77,6 +78,7 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
   onBacktestComplete,
   onDateRangeChange,
   onNavigatePaperTrading,
+  onNavigateLiveTrading,
 }) => {
   const [strategies, setStrategies] = useState<Strategy[]>(defaultStrategies);
   const [selectedStrategy, setSelectedStrategy] = useState<Strategy | null>(strategies[0]);
@@ -586,8 +588,9 @@ export const StrategyBacktestPanel: React.FC<StrategyBacktestPanelProps> = ({
         )}
       </div>
 
-      {/* Paper Trading Status Widget */}
+      {/* Trading Status Widgets */}
       <PaperTradingStatusWidget onNavigate={onNavigatePaperTrading} />
+      <LiveTradingStatusWidget onNavigate={onNavigateLiveTrading} />
 
       {/* Backtest Controls */}
       <div className="space-y-1 pt-1.5 border-t border-gray-700">
