@@ -1840,6 +1840,9 @@ final class APIClient {
         if let params = request.params {
             jsonDict["params"] = params
         }
+        if let config = request.strategyConfig {
+            jsonDict["strategy_config"] = config
+        }
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
 
         return try await performRequest(urlRequest)
@@ -1859,7 +1862,27 @@ final class APIClient {
 
         return try await performRequest(urlRequest)
     }
-    
+
+    /// Cancel a running backtest job (PATCH). Returns true if the server accepted the cancellation.
+    @discardableResult
+    func cancelBacktestJob(jobId: String) async -> Bool {
+        do {
+            var urlRequest = URLRequest(url: functionURL("backtest-strategy"))
+            urlRequest.httpMethod = "PATCH"
+            urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+            urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.httpBody = try JSONSerialization.data(withJSONObject: ["job_id": jobId, "status": "cancelled"])
+            let (_, response) = try await URLSession.shared.data(for: urlRequest)
+            if let http = response as? HTTPURLResponse {
+                return (200...204).contains(http.statusCode)
+            }
+            return false
+        } catch {
+            return false
+        }
+    }
+
     // MARK: - Walk-Forward Optimization
     
     /// Run walk-forward optimization for ML forecasters

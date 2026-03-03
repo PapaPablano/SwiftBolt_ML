@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 
 // MARK: - Web-Style Strategy Builder with Full Indicator Support
 
@@ -276,7 +277,7 @@ struct StrategyInfoCard: View {
                 .frame(height: 60)
                 .background(Color(.textBackgroundColor))
                 .cornerRadius(6)
-                .onChange(of: strategy.description) { _ in onSave() }
+                .onChange(of: strategy.description) { onSave() }
             }
         }
         .padding()
@@ -413,9 +414,16 @@ struct ConditionRowWeb: View {
 struct ParametersCardWeb: View {
     @Binding var strategy: Strategy
     let onSave: () -> Void
-    
+
+    private let directionOptions = [("long", "Long"), ("short", "Short"), ("both", "Both")]
+    private let sizingOptions = [
+        ("percent_of_equity", "% Equity"),
+        ("fixed", "Fixed $"),
+        ("kelly", "Kelly")
+    ]
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Image(systemName: "slider.horizontal.3")
                     .foregroundColor(.accentColor)
@@ -423,7 +431,40 @@ struct ParametersCardWeb: View {
                     .font(.headline)
                 Spacer()
             }
-            
+
+            // Direction + position sizing row
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Direction")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Picker("", selection: $strategy.direction) {
+                        ForEach(directionOptions, id: \.0) { opt in
+                            Text(opt.1).tag(opt.0)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 180)
+                    .onChange(of: strategy.direction) { _ in onSave() }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Position Sizing")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Picker("", selection: $strategy.positionSizing) {
+                        ForEach(sizingOptions, id: \.0) { opt in
+                            Text(opt.1).tag(opt.0)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 210)
+                    .onChange(of: strategy.positionSizing) { _ in onSave() }
+                }
+
+                Spacer()
+            }
+
             HStack(spacing: 16) {
                 ParameterFieldWeb(
                     label: "Position Size",
@@ -432,7 +473,7 @@ struct ParametersCardWeb: View {
                     range: 1...100,
                     onChange: onSave
                 )
-                
+
                 ParameterFieldWeb(
                     label: "Stop Loss",
                     value: $strategy.stopLoss,
@@ -440,7 +481,7 @@ struct ParametersCardWeb: View {
                     range: 0.1...50,
                     onChange: onSave
                 )
-                
+
                 ParameterFieldWeb(
                     label: "Take Profit",
                     value: $strategy.takeProfit,
@@ -705,7 +746,7 @@ struct ConditionEditorWeb: View {
                         }
                     }
                     .pickerStyle(.segmented)
-                    .onChange(of: selectedCategory) { _ in
+                    .onChange(of: selectedCategory) {
                         // Auto-select first indicator in category
                         if let first = indicators[selectedCategory]?.first {
                             selectedIndicator = first
@@ -824,15 +865,20 @@ enum StrategyIndicatorCategory: String, CaseIterable, Identifiable {
 struct BacktestWebStyle: View {
     let strategy: Strategy
     @ObservedObject var viewModel: StrategyBuilderViewModel
-    
+
     @State private var symbol = "AAPL"
-    @State private var timeframe = "1D"
+    @State private var timeframe = "d1"
+    @State private var startDate = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? Date()
+    @State private var endDate = Date()
     @State private var isRunning = false
     @State private var result: BacktestResult?
-    
+    @State private var errorMessage: String?
+    @State private var jobStatus: String?
+    @State private var currentJobId: String?
+
     let symbols = ["AAPL", "MSFT", "GOOGL", "TSLA", "NVDA", "SPY", "QQQ", "IWM"]
-    let timeframes = ["1D", "4H", "1H", "30m", "15m", "5m"]
-    
+    let timeframes = [("d1", "1D"), ("4h", "4H"), ("1h", "1H"), ("30m", "30m"), ("15m", "15m")]
+
     var body: some View {
         VStack(spacing: 0) {
             // Controls
@@ -843,23 +889,46 @@ struct BacktestWebStyle: View {
                     }
                 }
                 .frame(width: 100)
-                
+
                 Picker("Timeframe:", selection: $timeframe) {
-                    ForEach(timeframes, id: \.self) { tf in
-                        Text(tf).tag(tf)
+                    ForEach(timeframes, id: \.0) { tf in
+                        Text(tf.1).tag(tf.0)
                     }
                 }
                 .frame(width: 120)
-                
-                DatePicker("From", selection: .constant(Date().addingTimeInterval(-30*24*60*60)), displayedComponents: .date)
+
+                DatePicker("From", selection: $startDate, displayedComponents: .date)
                     .labelsHidden()
-                
-                DatePicker("To", selection: .constant(Date()), displayedComponents: .date)
+
+                DatePicker("To", selection: $endDate, displayedComponents: .date)
                     .labelsHidden()
-                
+
                 Spacer()
-                
-                Button(action: runBacktest) {
+
+                if let status = jobStatus, isRunning {
+                    Text(status)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if isRunning {
+                    Button(action: {
+                        Task {
+                            if let jobId = currentJobId {
+                                await APIClient.shared.cancelBacktestJob(jobId: jobId)
+                            }
+                            isRunning = false
+                            jobStatus = nil
+                            currentJobId = nil
+                        }
+                    }) {
+                        Label("Cancel", systemImage: "xmark.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                }
+
+                Button(action: { Task { await runBacktest() } }) {
                     if isRunning {
                         ProgressView()
                             .scaleEffect(0.8)
@@ -868,13 +937,27 @@ struct BacktestWebStyle: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(isRunning)
+                .disabled(isRunning || strategy.entryConditions.isEmpty)
             }
             .padding()
-            
+
             Divider()
-            
-            if let result = result {
+
+            if let error = errorMessage {
+                VStack(spacing: 12) {
+                    Spacer()
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 40))
+                        .foregroundStyle(.orange)
+                    Text(error)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("Dismiss") { errorMessage = nil }
+                        .buttonStyle(.bordered)
+                    Spacer()
+                }
+            } else if let result = result {
                 BacktestResultsWeb(result: result)
             } else {
                 VStack(spacing: 16) {
@@ -882,28 +965,164 @@ struct BacktestWebStyle: View {
                     Image(systemName: "chart.bar.xaxis")
                         .font(.system(size: 60))
                         .foregroundColor(.secondary)
-                    Text("Run a backtest to see results")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
+                    if strategy.entryConditions.isEmpty {
+                        Text("Add entry conditions to run a backtest")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Run a backtest to see results")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                    }
                     Spacer()
                 }
             }
         }
     }
-    
-    private func runBacktest() {
-        isRunning = true
-        // Simulate API call
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            result = BacktestResult.mock()
-            isRunning = false
+
+    /// Convert Swift Strategy conditions to the worker's expected JSON format.
+    private func buildStrategyConfig() -> [String: Any] {
+        var config: [String: Any] = [:]
+
+        // Convert conditions to worker format: { type: "indicator", name: "rsi", operator: "below", value: 30 }
+        config["entry_conditions"] = strategy.entryConditions.map { conditionToDict($0) }
+        config["exit_conditions"] = strategy.exitConditions.map { conditionToDict($0) }
+
+        // Direction and position sizing
+        config["direction"] = strategy.direction
+        config["position_sizing"] = [
+            "type": strategy.positionSizing,
+            "value": strategy.positionSize
+        ]
+
+        // Risk management
+        config["riskManagement"] = [
+            "stopLoss": ["type": "percent", "value": strategy.stopLoss],
+            "takeProfit": ["type": "percent", "value": strategy.takeProfit],
+        ]
+
+        return config
+    }
+
+    private func conditionToDict(_ c: StrategyCondition) -> [String: Any] {
+        var dict: [String: Any] = [
+            "type": "indicator",
+            "name": c.indicator.lowercased().replacingOccurrences(of: " ", with: "_"),
+            "operator": mapOperator(c.operator),
+            "value": c.value,
+        ]
+        if let params = c.parameters {
+            dict["params"] = params
         }
+        return dict
+    }
+
+    /// Map display operators to worker text operators.
+    private func mapOperator(_ op: String) -> String {
+        switch op.lowercased() {
+        case ">", "above": return "above"
+        case ">=", "above_equal": return "above_equal"
+        case "<", "below": return "below"
+        case "<=", "below_equal": return "below_equal"
+        case "==", "equals": return "equals"
+        case "crosses_above", "cross_up": return "cross_up"
+        case "crosses_below", "cross_down": return "cross_down"
+        default: return op.lowercased()
+        }
+    }
+
+    private func runBacktest() async {
+        isRunning = true
+        errorMessage = nil
+        result = nil
+        jobStatus = "Queuing…"
+
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+
+        let request = BacktestRequest(
+            symbol: symbol,
+            strategy: "custom",
+            startDate: df.string(from: startDate),
+            endDate: df.string(from: endDate),
+            timeframe: timeframe,
+            initialCapital: 10000,
+            strategyConfig: buildStrategyConfig()
+        )
+
+        do {
+            let queued = try await APIClient.shared.queueBacktestJob(request: request)
+            currentJobId = queued.jobId
+            jobStatus = "Running…"
+
+            // Poll for completion (max 120 × 1.5s = 180s)
+            for i in 0..<120 {
+                try await Task.sleep(nanoseconds: 1_500_000_000)
+                // Check if cancelled by the user
+                guard isRunning else { return }
+
+                let status = try await APIClient.shared.getBacktestJobStatus(jobId: queued.jobId)
+
+                if status.status == "failed" {
+                    errorMessage = status.error ?? "Backtest failed"
+                    isRunning = false
+                    jobStatus = nil
+                    currentJobId = nil
+                    return
+                }
+
+                if status.status == "cancelled" {
+                    isRunning = false
+                    jobStatus = nil
+                    currentJobId = nil
+                    return
+                }
+
+                if status.status == "completed", let payload = status.result {
+                    result = BacktestResult.from(
+                        metrics: payload.metrics,
+                        trades: payload.trades,
+                        equityCurve: payload.equityCurve,
+                        parseDate: parseDate,
+                        validation: payload.validation,
+                        monthlyReturns: payload.monthlyReturns,
+                        rollingMetrics: payload.rollingMetrics,
+                        drawdownSeries: payload.drawdownSeries
+                    )
+                    isRunning = false
+                    jobStatus = nil
+                    currentJobId = nil
+                    return
+                }
+
+                jobStatus = "Running… (\(i + 1)s)"
+            }
+
+            errorMessage = "Backtest timed out — try again"
+        } catch {
+            errorMessage = "Error: \(error.localizedDescription)"
+        }
+
+        isRunning = false
+        jobStatus = nil
+        currentJobId = nil
+    }
+
+    private func parseDate(_ str: String) -> Date {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(secondsFromGMT: 0)
+        for fmt in ["yyyy-MM-dd'T'HH:mm:ss.SSSZ", "yyyy-MM-dd'T'HH:mm:ssZ", "yyyy-MM-dd"] {
+            df.dateFormat = fmt
+            if let d = df.date(from: str) { return d }
+        }
+        return Date()
     }
 }
 
 struct BacktestResultsWeb: View {
     let result: BacktestResult
-    
+
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
@@ -924,13 +1143,139 @@ struct BacktestResultsWeb: View {
                     MetricCardWeb(title: "Avg Loss", value: String(format: "$%.2f", result.avgLoss), color: .red, icon: "dollarsign")
                 }
                 .padding(.horizontal)
-                
+
+                // Equity Curve Chart with Trade Markers
+                if !result.equityCurve.isEmpty {
+                    EquityCurveChartWeb(equityCurve: result.equityCurve, trades: result.trades)
+                        .padding(.horizontal)
+                }
+
                 // Trades Table
                 TradesTableWeb(trades: result.trades)
                     .padding(.horizontal)
             }
             .padding(.vertical)
         }
+    }
+}
+
+// MARK: - Equity Curve Chart with Trade Markers
+
+struct EquityCurveChartWeb: View {
+    let equityCurve: [EquityPointLocal]
+    let trades: [Trade]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .foregroundColor(.blue)
+                Text("Equity Curve")
+                    .font(.headline)
+                Spacer()
+                // Legend
+                HStack(spacing: 12) {
+                    HStack(spacing: 4) {
+                        Circle().fill(.green).frame(width: 8, height: 8)
+                        Text("Entry").font(.caption2).foregroundColor(.secondary)
+                    }
+                    HStack(spacing: 4) {
+                        Circle().fill(.red).frame(width: 8, height: 8)
+                        Text("Exit").font(.caption2).foregroundColor(.secondary)
+                    }
+                }
+            }
+
+            Chart {
+                // Equity curve line
+                ForEach(equityCurve) { point in
+                    LineMark(
+                        x: .value("Date", point.date),
+                        y: .value("Value", point.value)
+                    )
+                    .foregroundStyle(.blue)
+                    .interpolationMethod(.catmullRom)
+
+                    AreaMark(
+                        x: .value("Date", point.date),
+                        y: .value("Value", point.value)
+                    )
+                    .foregroundStyle(
+                        .linearGradient(
+                            colors: [.blue.opacity(0.15), .blue.opacity(0.02)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .interpolationMethod(.catmullRom)
+                }
+
+                // Trade entry markers (green triangles)
+                ForEach(trades) { trade in
+                    if let eqValue = equityValueNear(date: trade.entryDate) {
+                        PointMark(
+                            x: .value("Date", trade.entryDate),
+                            y: .value("Value", eqValue)
+                        )
+                        .foregroundStyle(.green)
+                        .symbolSize(40)
+                        .symbol(.triangle)
+                    }
+                }
+
+                // Trade exit markers (red inverted triangles)
+                ForEach(trades) { trade in
+                    if let eqValue = equityValueNear(date: trade.exitDate) {
+                        PointMark(
+                            x: .value("Date", trade.exitDate),
+                            y: .value("Value", eqValue)
+                        )
+                        .foregroundStyle(trade.pnl >= 0 ? .green : .red)
+                        .symbolSize(40)
+                        .symbol(.diamond)
+                    }
+                }
+            }
+            .chartXAxis {
+                AxisMarks(values: .stride(by: .month, count: 3)) { _ in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                    AxisValueLabel(format: .dateTime.month(.abbreviated).year(.twoDigits))
+                        .font(.caption2)
+                }
+            }
+            .chartYAxis {
+                AxisMarks { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                    AxisValueLabel {
+                        if let v = value.as(Double.self) {
+                            Text("$\(v, specifier: "%.0f")")
+                                .font(.caption2)
+                        }
+                    }
+                }
+            }
+            .frame(height: 280)
+        }
+        .padding()
+        .background(Color(.controlBackgroundColor))
+        .cornerRadius(12)
+    }
+
+    /// Find the closest equity curve value for a given trade date
+    private func equityValueNear(date: Date) -> Double? {
+        guard !equityCurve.isEmpty else { return nil }
+        let sorted = equityCurve.sorted { $0.date < $1.date }
+        // Find the closest point by date
+        var best = sorted[0]
+        var bestDiff = abs(date.timeIntervalSince(best.date))
+        for pt in sorted {
+            let diff = abs(date.timeIntervalSince(pt.date))
+            if diff < bestDiff {
+                bestDiff = diff
+                best = pt
+            }
+        }
+        return best.value
     }
 }
 
@@ -967,38 +1312,49 @@ struct MetricCardWeb: View {
 
 struct TradesTableWeb: View {
     let trades: [Trade]
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Trade History")
                 .font(.headline)
-            
+
             VStack(spacing: 0) {
                 // Header
-                HStack {
-                    Text("Entry Date").font(.caption).bold()
+                HStack(spacing: 4) {
+                    Text("Dir").font(.caption).bold().frame(width: 28, alignment: .center)
+                    Text("Entry").font(.caption).bold()
                     Spacer()
-                    Text("Exit Date").font(.caption).bold()
+                    Text("Exit").font(.caption).bold()
                     Spacer()
                     Text("Entry $").font(.caption).bold()
                     Spacer()
                     Text("Exit $").font(.caption).bold()
                     Spacer()
+                    Text("Rtn%").font(.caption).bold()
+                    Spacer()
                     Text("P&L").font(.caption).bold()
+                    Spacer()
+                    Text("Reason").font(.caption).bold()
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(Color.secondary.opacity(0.1))
-                
+
                 Divider()
-                
+
                 // Rows
                 ForEach(trades) { trade in
-                    HStack {
-                        Text(trade.entryDate, format: .dateTime.month().day())
+                    HStack(spacing: 4) {
+                        Image(systemName: trade.direction == "short"
+                            ? "arrow.down.circle.fill"
+                            : "arrow.up.circle.fill")
+                            .font(.caption)
+                            .foregroundColor(trade.direction == "short" ? .red : .green)
+                            .frame(width: 28, alignment: .center)
+                        Text(trade.entryDate, format: .dateTime.month(.abbreviated).day())
                             .font(.caption)
                         Spacer()
-                        Text(trade.exitDate, format: .dateTime.month().day())
+                        Text(trade.exitDate, format: .dateTime.month(.abbreviated).day())
                             .font(.caption)
                         Spacer()
                         Text(String(format: "%.2f", trade.entryPrice))
@@ -1007,14 +1363,23 @@ struct TradesTableWeb: View {
                         Text(String(format: "%.2f", trade.exitPrice))
                             .font(.caption)
                         Spacer()
-                        Text(String(format: "%.2f", trade.pnl))
+                        Text(String(format: "%+.1f%%", trade.returnPct))
+                            .font(.caption)
+                            .foregroundColor(trade.returnPct >= 0 ? .green : .red)
+                        Spacer()
+                        Text(String(format: "%+.2f", trade.pnl))
                             .font(.caption)
                             .foregroundColor(trade.pnl >= 0 ? .green : .red)
+                        Spacer()
+                        Text(closeReasonLabel(trade.closeReason))
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .frame(minWidth: 30, alignment: .trailing)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(trade.pnl >= 0 ? Color.green.opacity(0.05) : Color.red.opacity(0.05))
-                    
+
                     Divider()
                 }
             }
@@ -1028,6 +1393,16 @@ struct TradesTableWeb: View {
         .padding()
         .background(Color(.controlBackgroundColor))
         .cornerRadius(12)
+    }
+
+    private func closeReasonLabel(_ reason: String?) -> String {
+        switch reason {
+        case "stop_loss": return "SL"
+        case "take_profit": return "TP"
+        case "exit_condition": return "Exit"
+        case "manual": return "Manual"
+        default: return "—"
+        }
     }
 }
 
@@ -1089,6 +1464,8 @@ struct Strategy: Identifiable, Hashable {
     var positionSize: Double = 10.0
     var stopLoss: Double = 2.0
     var takeProfit: Double = 4.0
+    var direction: String = "long"              // "long" | "short" | "both"
+    var positionSizing: String = "percent_of_equity"  // "fixed" | "percent_of_equity" | "kelly"
     var isActive: Bool = true
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
@@ -1110,6 +1487,12 @@ struct StrategyCondition: Identifiable, Hashable {
     }
 }
 
+struct EquityPointLocal: Identifiable {
+    let id = UUID()
+    let date: Date
+    let value: Double
+}
+
 struct BacktestResult {
     let totalTrades: Int
     let winRate: Double
@@ -1120,25 +1503,63 @@ struct BacktestResult {
     let avgWin: Double
     let avgLoss: Double
     let trades: [Trade]
-    
-    static func mock() -> BacktestResult {
-        let trades: [Trade] = [
-            Trade(entryDate: Date().addingTimeInterval(-5*24*60*60), exitDate: Date().addingTimeInterval(-4*24*60*60), entryPrice: 150, exitPrice: 155, pnl: 5.0),
-            Trade(entryDate: Date().addingTimeInterval(-4*24*60*60), exitDate: Date().addingTimeInterval(-3*24*60*60), entryPrice: 155, exitPrice: 152, pnl: -3.0),
-            Trade(entryDate: Date().addingTimeInterval(-3*24*60*60), exitDate: Date().addingTimeInterval(-2*24*60*60), entryPrice: 160, exitPrice: 165, pnl: 5.0),
-            Trade(entryDate: Date().addingTimeInterval(-2*24*60*60), exitDate: Date().addingTimeInterval(-1*24*60*60), entryPrice: 165, exitPrice: 162, pnl: -3.0),
-            Trade(entryDate: Date().addingTimeInterval(-1*24*60*60), exitDate: Date(), entryPrice: 170, exitPrice: 175, pnl: 5.0)
-        ]
+    let equityCurve: [EquityPointLocal]
+    // Statistical validation (optional — present when trade count >= 10)
+    let validation: BacktestValidation?
+    let monthlyReturns: [BacktestMonthlyReturn]?
+    let rollingMetrics: [BacktestRollingMetric]?
+    let drawdownSeries: [BacktestDrawdownPoint]?
+
+    /// Build from worker payload, mapping all new fields (direction, closeReason, quantity, returnPct).
+    static func from(
+        metrics m: BacktestResultMetrics,
+        trades rawTrades: [BacktestResultTrade],
+        equityCurve rawCurve: [BacktestResultEquityPoint],
+        parseDate: (String) -> Date,
+        validation: BacktestValidation? = nil,
+        monthlyReturns: [BacktestMonthlyReturn]? = nil,
+        rollingMetrics: [BacktestRollingMetric]? = nil,
+        drawdownSeries: [BacktestDrawdownPoint]? = nil
+    ) -> BacktestResult {
+        let trades = rawTrades.map { t -> Trade in
+            let retPct = t.pnlPct ?? (t.entryPrice > 0 ? ((t.exitPrice - t.entryPrice) / t.entryPrice) * 100.0 : 0)
+            return Trade(
+                entryDate: parseDate(t.entryDate),
+                exitDate: parseDate(t.exitDate),
+                entryPrice: t.entryPrice,
+                exitPrice: t.exitPrice,
+                pnl: t.pnl ?? 0,
+                direction: t.direction,
+                closeReason: t.closeReason,
+                quantity: t.quantity ?? 1,
+                returnPct: retPct
+            )
+        }
+
+        let wins = trades.filter { $0.pnl > 0 }
+        let losses = trades.filter { $0.pnl < 0 }
+        let avgWin = wins.isEmpty ? 0 : wins.map(\.pnl).reduce(0, +) / Double(wins.count)
+        let avgLoss = losses.isEmpty ? 0 : losses.map(\.pnl).reduce(0, +) / Double(losses.count)
+
+        let curve = rawCurve.map {
+            EquityPointLocal(date: parseDate($0.date), value: $0.value)
+        }
+
         return BacktestResult(
-            totalTrades: 24,
-            winRate: 0.625,
-            totalReturn: 0.1847,
-            maxDrawdown: 0.0823,
-            profitFactor: 2.34,
-            sharpeRatio: 1.56,
-            avgWin: 245.50,
-            avgLoss: -98.30,
-            trades: trades
+            totalTrades: m.totalTrades,
+            winRate: (m.winRate ?? 0) / 100.0,
+            totalReturn: (m.totalReturnPct ?? 0) / 100.0,
+            maxDrawdown: (m.maxDrawdownPct ?? 0) / 100.0,
+            profitFactor: m.profitFactor ?? 0,
+            sharpeRatio: m.sharpeRatio ?? 0,
+            avgWin: avgWin,
+            avgLoss: avgLoss,
+            trades: trades,
+            equityCurve: curve,
+            validation: validation,
+            monthlyReturns: monthlyReturns,
+            rollingMetrics: rollingMetrics,
+            drawdownSeries: drawdownSeries
         )
     }
 }
@@ -1150,6 +1571,10 @@ struct Trade: Identifiable {
     let entryPrice: Double
     let exitPrice: Double
     let pnl: Double
+    let direction: String      // "long" or "short"
+    let closeReason: String?   // "stop_loss" | "take_profit" | "exit_condition" | "manual"
+    let quantity: Double
+    let returnPct: Double      // percentage return on this trade
 }
 
 // Reuse existing StrategyBuilderViewModel but with enhanced features

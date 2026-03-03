@@ -209,53 +209,41 @@ All phases ship together on one branch but are logically ordered for dependency 
 
 ##### Task 5.1: Update BacktestingModels.swift
 
-- [ ] Add to `BacktestResultPayload`:
+- [x] Add to `BacktestResultPayload`:
   ```swift
   let validation: BacktestValidation?
   let monthlyReturns: [MonthlyReturn]?
   let rollingMetrics: [RollingMetric]?
   let drawdownSeries: [DrawdownPoint]?
   ```
-- [ ] New structs:
-  ```swift
-  struct BacktestValidation: Decodable {
-    let confidenceIntervals: ConfidenceIntervals?
-    let pValue: Double?
-    let inSample: SplitMetrics?
-    let outOfSample: SplitMetrics?
-    let sampleSize: Int?
-    let bootstrapIterations: Int?
-  }
-  struct ConfidenceIntervals: Decodable { ... }
-  struct SplitMetrics: Decodable { ... }
-  struct MonthlyReturn: Decodable { let year: Int; let month: Int; let returnPct: Double }
-  struct RollingMetric: Decodable { let date: String; let sharpe63: Double?; let winRate63: Double? }
-  struct DrawdownPoint: Decodable { let date: String; let drawdownPct: Double }
-  ```
-- [ ] All new fields use `decodeIfPresent` for backward compatibility
+- [x] New structs: `BacktestValidation`, `BacktestConfidenceIntervals`, `BacktestConfidenceInterval`, `BacktestSplitMetrics`, `BacktestMonthlyReturn`, `BacktestRollingMetric`, `BacktestDrawdownPoint`
+- [x] All new fields use `decodeIfPresent` for backward compatibility
+- [x] Added `quantity` and `pnlPct` to `BacktestResultTrade`
 
 ##### Task 5.2: Update Trade model
 
-- [ ] Add `direction`, `closeReason`, `quantity`, `returnPct` to `Trade` struct in StrategyBuilderWebStyle.swift
-- [ ] Update `BacktestResult.from()` to map these fields from `BacktestResultTrade`
-- [ ] Update `TradesTableWeb` to display direction (arrow icon), close reason, and return %
+- [x] Add `direction`, `closeReason`, `quantity`, `returnPct` to `Trade` struct in StrategyBuilderWebStyle.swift
+- [x] Update `BacktestResult.from()` to map these fields from `BacktestResultTrade`
+- [x] Update `TradesTableWeb` to display direction (arrow icon), close reason, and return %
 
 ##### Task 5.3: Update BacktestResult
 
-- [ ] Add `validation`, `monthlyReturns`, `rollingMetrics`, `drawdownSeries` to `BacktestResult`
-- [ ] Update `BacktestResult.from()` factory to pass through new data
+- [x] Add `validation`, `monthlyReturns`, `rollingMetrics`, `drawdownSeries` to `BacktestResult`
+- [x] Update `BacktestResult.from()` factory to pass through new data
 
 ##### Task 5.4: Add direction and position sizing to Swift UI
 
-- [ ] Add direction picker to `BacktestWebStyle`: Segmented control (Long Only / Short Only / Long & Short)
-- [ ] Add position sizing mode picker: percent_of_equity / fixed_dollar / half_kelly with value input
-- [ ] Update `buildStrategyConfig()` to include `direction` and `position_sizing`
+- [x] Add `direction` and `positionSizing` to `Strategy` struct
+- [x] Add direction picker to `ParametersCardWeb`: Segmented control (Long / Short / Both)
+- [x] Add position sizing mode picker: percent_of_equity / fixed / kelly
+- [x] Update `buildStrategyConfig()` to include `direction` and `position_sizing`
 
 ##### Task 5.5: Add cancel backtest button
 
-- [ ] Add "Cancel" button visible during polling
-- [ ] Call existing PATCH endpoint on `backtest-strategy` Edge Function
-- [ ] Stop polling loop on cancellation
+- [x] Add `currentJobId` state to `BacktestWebStyle`; track job ID after queuing
+- [x] Add "Cancel" button visible during polling (sets `isRunning = false` and calls PATCH)
+- [x] Added `cancelBacktestJob()` to `APIClient.swift` (PATCH `backtest-strategy`)
+- [x] Stop polling loop on cancellation (`guard isRunning else { return }`)
 
 **Files:**
 - MODIFY: `client-macos/SwiftBoltML/Models/BacktestingModels.swift`
