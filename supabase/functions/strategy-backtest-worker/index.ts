@@ -972,11 +972,18 @@ serve(async (req: Request): Promise<Response> => {
       } catch (err) {
         console.error(`Job ${job.id} failed:`, err);
 
+        // Extract message from Error, PostgrestError (plain object with .message), or fallback
+        const errorMsg = err instanceof Error
+          ? err.message
+          : (err !== null && typeof err === "object" && "message" in err)
+          ? String((err as Record<string, unknown>).message)
+          : String(err);
+
         await supabase
           .from("strategy_backtest_jobs")
           .update({
             status: "failed",
-            error_message: err instanceof Error ? err.message : "Unknown error",
+            error_message: errorMsg || "Unknown error",
             completed_at: new Date().toISOString(),
           })
           .eq("id", job.id);

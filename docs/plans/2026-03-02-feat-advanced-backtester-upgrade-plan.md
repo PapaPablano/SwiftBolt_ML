@@ -120,9 +120,9 @@ All phases ship together on one branch but are logically ordered for dependency 
 
 ##### Task 2.3: Update strategy-translator.ts
 
-- [ ] Add `direction` field to `WorkerCondition` and `NormalizedConfig`
-- [ ] Add `position_sizing` to normalized config
-- [ ] Map frontend/Swift config to worker format
+- [x] Add `direction` field to `WorkerCondition` and `NormalizedConfig`
+- [x] Add `position_sizing` to normalized config
+- [x] Map frontend/Swift config to worker format
 
 **Files:**
 - MODIFY: `supabase/functions/strategy-backtest-worker/index.ts`
@@ -157,11 +157,11 @@ All phases ship together on one branch but are logically ordered for dependency 
 
 ##### Task 3.3: Update Swift UI for OR grouping
 
-- [ ] Add "OR" divider button between condition groups in `ConditionsCardWeb`
-- [ ] Visual separation: groups in rounded boxes, "OR" pill between them
-- [ ] Each group can have multiple AND conditions
-- [ ] "Add condition" adds to current group, "Add OR group" creates a new group
-- [ ] Update `buildStrategyConfig()` to serialize groups
+- [x] Add "OR" divider button between condition groups in `ConditionsCardWeb`
+- [x] Visual separation: groups in rounded boxes, "OR" pill between them
+- [x] Each group can have multiple AND conditions
+- [x] "Add condition" adds to current group, "Add OR group" creates a new group
+- [x] Update `buildStrategyConfig()` to serialize groups
 
 **Files:**
 - MODIFY: `supabase/functions/strategy-backtest-worker/index.ts`
@@ -349,9 +349,9 @@ All phases ship together on one branch but are logically ordered for dependency 
 
 ##### Task 7.4: Add OR condition groups to Strategy model
 
-- [ ] Update `Strategy.entryConditions` and `exitConditions` from `[StrategyCondition]` to `[ConditionGroup]`
-- [ ] `ConditionGroup` has `conditions: [StrategyCondition]` and `logicalOp: String` ("AND" default)
-- [ ] Backward compatible: single conditions wrapped in a group
+- [x] Update `Strategy.entryConditions` and `exitConditions` from `[StrategyCondition]` to `[ConditionGroup]`
+- [x] `ConditionGroup` has `conditions: [StrategyCondition]` and `logicalOp: String` ("AND" default)
+- [x] Backward compatible: single conditions wrapped in a group
 
 **Files:**
 - MODIFY: `client-macos/SwiftBoltML/Views/StrategyBuilderWebStyle.swift`

@@ -161,31 +161,46 @@ struct StrategyEditorWebStyle: View {
                         title: "Entry Conditions",
                         icon: "arrow.down.circle.fill",
                         color: .green,
-                        conditions: strategy.entryConditions,
+                        groups: strategy.entryGroups,
                         onAdd: { showingAddEntry = true },
+                        onAddORGroup: {
+                            strategyBinding.wrappedValue.entryGroups.append(ConditionGroup())
+                            viewModel.saveStrategy(strategyBinding.wrappedValue)
+                        },
                         onEdit: { condition in
                             editingCondition = condition
                             conditionEditType = .entry
                         },
-                        onDelete: { index in
-                            strategyBinding.wrappedValue.entryConditions.remove(at: index)
+                        onDelete: { groupIdx, condIdx in
+                            strategyBinding.wrappedValue.entryGroups[groupIdx].conditions.remove(at: condIdx)
+                            // Remove empty groups
+                            if strategyBinding.wrappedValue.entryGroups[groupIdx].conditions.isEmpty {
+                                strategyBinding.wrappedValue.entryGroups.remove(at: groupIdx)
+                            }
                             viewModel.saveStrategy(strategyBinding.wrappedValue)
                         }
                     )
-                    
+
                     // Exit Conditions
                     ConditionsCardWeb(
                         title: "Exit Conditions",
                         icon: "arrow.up.circle.fill",
                         color: .red,
-                        conditions: strategy.exitConditions,
+                        groups: strategy.exitGroups,
                         onAdd: { showingAddExit = true },
+                        onAddORGroup: {
+                            strategyBinding.wrappedValue.exitGroups.append(ConditionGroup())
+                            viewModel.saveStrategy(strategyBinding.wrappedValue)
+                        },
                         onEdit: { condition in
                             editingCondition = condition
                             conditionEditType = .exit
                         },
-                        onDelete: { index in
-                            strategyBinding.wrappedValue.exitConditions.remove(at: index)
+                        onDelete: { groupIdx, condIdx in
+                            strategyBinding.wrappedValue.exitGroups[groupIdx].conditions.remove(at: condIdx)
+                            if strategyBinding.wrappedValue.exitGroups[groupIdx].conditions.isEmpty {
+                                strategyBinding.wrappedValue.exitGroups.remove(at: groupIdx)
+                            }
                             viewModel.saveStrategy(strategyBinding.wrappedValue)
                         }
                     )
@@ -204,7 +219,11 @@ struct StrategyEditorWebStyle: View {
         .sheet(isPresented: $showingAddEntry) {
             ConditionEditorWeb { condition in
                 if var strategy = strategy {
-                    strategy.entryConditions.append(condition)
+                    if strategy.entryGroups.isEmpty {
+                        strategy.entryGroups.append(ConditionGroup(conditions: [condition]))
+                    } else {
+                        strategy.entryGroups[strategy.entryGroups.count - 1].conditions.append(condition)
+                    }
                     viewModel.saveStrategy(strategy)
                     self.strategy = strategy
                 }
@@ -215,7 +234,11 @@ struct StrategyEditorWebStyle: View {
         .sheet(isPresented: $showingAddExit) {
             ConditionEditorWeb { condition in
                 if var strategy = strategy {
-                    strategy.exitConditions.append(condition)
+                    if strategy.exitGroups.isEmpty {
+                        strategy.exitGroups.append(ConditionGroup(conditions: [condition]))
+                    } else {
+                        strategy.exitGroups[strategy.exitGroups.count - 1].conditions.append(condition)
+                    }
                     viewModel.saveStrategy(strategy)
                     self.strategy = strategy
                 }
@@ -226,10 +249,16 @@ struct StrategyEditorWebStyle: View {
         .sheet(item: $editingCondition) { condition in
             ConditionEditorWeb(existingCondition: condition) { updated in
                 if var strategy = strategy, let type = conditionEditType {
-                    if type == .entry, let index = strategy.entryConditions.firstIndex(where: { $0.id == condition.id }) {
-                        strategy.entryConditions[index] = updated
-                    } else if type == .exit, let index = strategy.exitConditions.firstIndex(where: { $0.id == condition.id }) {
-                        strategy.exitConditions[index] = updated
+                    let groups = type == .entry ? strategy.entryGroups : strategy.exitGroups
+                    for (gi, group) in groups.enumerated() {
+                        if let ci = group.conditions.firstIndex(where: { $0.id == condition.id }) {
+                            if type == .entry {
+                                strategy.entryGroups[gi].conditions[ci] = updated
+                            } else {
+                                strategy.exitGroups[gi].conditions[ci] = updated
+                            }
+                            break
+                        }
                     }
                     viewModel.saveStrategy(strategy)
                     self.strategy = strategy
@@ -292,11 +321,15 @@ struct ConditionsCardWeb: View {
     let title: String
     let icon: String
     let color: Color
-    let conditions: [StrategyCondition]
+    let groups: [ConditionGroup]
     let onAdd: () -> Void
+    let onAddORGroup: () -> Void
     let onEdit: (StrategyCondition) -> Void
-    let onDelete: (Int) -> Void
-    
+    /// Delete a condition at (groupIndex, conditionIndex).
+    let onDelete: (Int, Int) -> Void
+
+    private var allConditions: [StrategyCondition] { ConditionGroup.flatten(groups) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -304,14 +337,19 @@ struct ConditionsCardWeb: View {
                     .font(.headline)
                     .foregroundColor(color)
                 Spacer()
+                Button(action: onAddORGroup) {
+                    Label("OR Group", systemImage: "plus.rectangle.on.rectangle")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
                 Button(action: onAdd) {
                     Label("Add", systemImage: "plus")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             }
-            
-            if conditions.isEmpty {
+
+            if allConditions.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "plus.circle")
                         .font(.system(size: 32))
@@ -326,24 +364,55 @@ struct ConditionsCardWeb: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 30)
             } else {
-                LazyVStack(spacing: 8) {
-                    ForEach(Array(conditions.enumerated()), id: \.element.id) { index, condition in
-                        ConditionRowWeb(condition: condition, color: color)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                onEdit(condition)
+                LazyVStack(spacing: 4) {
+                    ForEach(Array(groups.enumerated()), id: \.element.id) { groupIndex, group in
+                        // OR divider between groups
+                        if groupIndex > 0 {
+                            HStack {
+                                VStack { Divider() }
+                                Text("OR")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundColor(.orange)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 2)
+                                    .background(Color.orange.opacity(0.15))
+                                    .cornerRadius(4)
+                                VStack { Divider() }
                             }
-                            .contextMenu {
-                                Button("Edit") {
-                                    onEdit(condition)
+                            .padding(.vertical, 4)
+                        }
+
+                        // Group box
+                        VStack(spacing: 6) {
+                            ForEach(Array(group.conditions.enumerated()), id: \.element.id) { condIndex, condition in
+                                // AND divider within group
+                                if condIndex > 0 {
+                                    Text("AND")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                        .frame(maxWidth: .infinity, alignment: .center)
                                 }
-                                Divider()
-                                Button(role: .destructive) {
-                                    onDelete(index)
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
+                                ConditionRowWeb(condition: condition, color: color)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { onEdit(condition) }
+                                    .contextMenu {
+                                        Button("Edit") { onEdit(condition) }
+                                        Divider()
+                                        Button(role: .destructive) {
+                                            onDelete(groupIndex, condIndex)
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
                             }
+                        }
+                        .padding(8)
+                        .background(Color(.controlBackgroundColor).opacity(0.5))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(color.opacity(0.2), lineWidth: 1)
+                        )
+                        .cornerRadius(8)
                     }
                 }
             }
@@ -415,11 +484,11 @@ struct ParametersCardWeb: View {
     @Binding var strategy: Strategy
     let onSave: () -> Void
 
-    private let directionOptions = [("long", "Long"), ("short", "Short"), ("both", "Both")]
+    private let directionOptions = [("long_only", "Long"), ("short_only", "Short"), ("long_short", "Both")]
     private let sizingOptions = [
         ("percent_of_equity", "% Equity"),
-        ("fixed", "Fixed $"),
-        ("kelly", "Kelly")
+        ("fixed_dollar", "Fixed $"),
+        ("half_kelly", "Kelly")
     ]
 
     var body: some View {
@@ -984,7 +1053,16 @@ struct BacktestWebStyle: View {
     private func buildStrategyConfig() -> [String: Any] {
         var config: [String: Any] = [:]
 
-        // Convert conditions to worker format: { type: "indicator", name: "rsi", operator: "below", value: 30 }
+        // Serialize condition groups for OR logic support
+        // Worker expects: entry_condition_groups: [{ conditions: [...] }, ...]
+        config["entry_condition_groups"] = strategy.entryGroups.map { group in
+            ["conditions": group.conditions.map { conditionToDict($0) }] as [String: Any]
+        }
+        config["exit_condition_groups"] = strategy.exitGroups.map { group in
+            ["conditions": group.conditions.map { conditionToDict($0) }] as [String: Any]
+        }
+
+        // Also send flat arrays for backward compatibility
         config["entry_conditions"] = strategy.entryConditions.map { conditionToDict($0) }
         config["exit_conditions"] = strategy.exitConditions.map { conditionToDict($0) }
 
@@ -1488,16 +1566,21 @@ struct Strategy: Identifiable, Hashable {
     var userId: String? = nil
     var name: String
     var description: String?
-    var entryConditions: [StrategyCondition] = []
-    var exitConditions: [StrategyCondition] = []
+    var entryGroups: [ConditionGroup] = []
+    var exitGroups: [ConditionGroup] = []
     var positionSize: Double = 10.0
     var stopLoss: Double = 2.0
     var takeProfit: Double = 4.0
-    var direction: String = "long"              // "long" | "short" | "both"
-    var positionSizing: String = "percent_of_equity"  // "fixed" | "percent_of_equity" | "kelly"
+    var direction: String = "long_only"              // "long_only" | "short_only" | "long_short"
+    var positionSizing: String = "percent_of_equity"  // "percent_of_equity" | "fixed_dollar" | "half_kelly"
     var isActive: Bool = true
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
+
+    /// All entry conditions flattened across groups (convenience for counts/checks).
+    var entryConditions: [StrategyCondition] { ConditionGroup.flatten(entryGroups) }
+    /// All exit conditions flattened across groups.
+    var exitConditions: [StrategyCondition] { ConditionGroup.flatten(exitGroups) }
 }
 
 struct StrategyCondition: Identifiable, Hashable {
@@ -1506,13 +1589,35 @@ struct StrategyCondition: Identifiable, Hashable {
     var `operator`: String
     var value: Double
     var parameters: [String: String]?
-    
+
     init(id: UUID = UUID(), indicator: String, operator: String, value: Double, parameters: [String: String]? = nil) {
         self.id = id
         self.indicator = indicator
         self.operator = `operator`
         self.value = value
         self.parameters = parameters
+    }
+}
+
+/// A group of conditions that are AND'd together.
+/// Multiple groups are OR'd: if ANY group passes, the signal fires.
+struct ConditionGroup: Identifiable, Hashable {
+    let id: UUID
+    var conditions: [StrategyCondition]
+
+    init(id: UUID = UUID(), conditions: [StrategyCondition] = []) {
+        self.id = id
+        self.conditions = conditions
+    }
+
+    /// Convenience: wrap a flat array of conditions into a single AND group.
+    static func single(_ conditions: [StrategyCondition]) -> [ConditionGroup] {
+        conditions.isEmpty ? [] : [ConditionGroup(conditions: conditions)]
+    }
+
+    /// Flatten all conditions from all groups.
+    static func flatten(_ groups: [ConditionGroup]) -> [StrategyCondition] {
+        groups.flatMap(\.conditions)
     }
 }
 
@@ -1622,31 +1727,31 @@ class StrategyBuilderViewModel: ObservableObject {
             Strategy(
                 name: "RSI Oversold",
                 description: "Buy when RSI below 30",
-                entryConditions: [
+                entryGroups: ConditionGroup.single([
                     StrategyCondition(indicator: "RSI", operator: "below", value: 30, parameters: ["period": "14"])
-                ],
-                exitConditions: [
+                ]),
+                exitGroups: ConditionGroup.single([
                     StrategyCondition(indicator: "RSI", operator: "above", value: 70, parameters: ["period": "14"])
-                ]
+                ])
             ),
             Strategy(
                 name: "MACD Crossover",
                 description: "Trend following with MACD",
-                entryConditions: [
+                entryGroups: ConditionGroup.single([
                     StrategyCondition(indicator: "MACD", operator: "crosses_above", value: 0, parameters: nil)
-                ],
-                exitConditions: [
+                ]),
+                exitGroups: ConditionGroup.single([
                     StrategyCondition(indicator: "MACD", operator: "crosses_below", value: 0, parameters: nil)
-                ],
+                ]),
                 isActive: false
             ),
             Strategy(
                 name: "Supertrend",
                 description: "Supertrend with MACD",
-                entryConditions: [
+                entryGroups: ConditionGroup.single([
                     StrategyCondition(indicator: "SuperTrend AI", operator: "above", value: 1, parameters: ["atr_length": "10"])
-                ],
-                exitConditions: [],
+                ]),
+                exitGroups: [],
                 isActive: true
             )
         ]

@@ -1910,7 +1910,15 @@ final class APIClient {
         }
     }
 
+    private struct StrategyRowConditionGroup: Decodable {
+        let conditions: [StrategyRowCondition]
+    }
+
     private struct StrategyRowConfig: Decodable {
+        // Groups (preferred — OR logic)
+        let entryConditionGroups: [StrategyRowConditionGroup]?
+        let exitConditionGroups: [StrategyRowConditionGroup]?
+        // Flat conditions (backward compat — wrapped into single group)
         let entryConditions: [StrategyRowCondition]?
         let exitConditions: [StrategyRowCondition]?
         let positionSize: Double?
@@ -1919,6 +1927,8 @@ final class APIClient {
         let direction: String?
         let positionSizing: String?
         enum CodingKeys: String, CodingKey {
+            case entryConditionGroups = "entry_condition_groups"
+            case exitConditionGroups = "exit_condition_groups"
             case entryConditions = "entry_conditions"
             case exitConditions = "exit_conditions"
             case positionSize = "position_size"
@@ -1947,28 +1957,36 @@ final class APIClient {
         }
         func toStrategy() -> Strategy {
             let cfg = config
-            func makeConditions(_ rows: [StrategyRowCondition]?) -> [StrategyCondition] {
-                (rows ?? []).map { c in
-                    StrategyCondition(
-                        id: UUID(uuidString: c.id ?? "") ?? UUID(),
-                        indicator: c.indicator,
-                        operator: c.operatorType,
-                        value: c.value,
-                        parameters: c.parameters
-                    )
+            func makeCondition(_ c: StrategyRowCondition) -> StrategyCondition {
+                StrategyCondition(
+                    id: UUID(uuidString: c.id ?? "") ?? UUID(),
+                    indicator: c.indicator,
+                    operator: c.operatorType,
+                    value: c.value,
+                    parameters: c.parameters
+                )
+            }
+            func makeGroups(groups: [StrategyRowConditionGroup]?, flat: [StrategyRowCondition]?) -> [ConditionGroup] {
+                if let groups = groups, !groups.isEmpty {
+                    return groups.map { g in
+                        ConditionGroup(conditions: g.conditions.map(makeCondition))
+                    }
                 }
+                // Backward compat: wrap flat conditions in single group
+                let conditions = (flat ?? []).map(makeCondition)
+                return conditions.isEmpty ? [] : [ConditionGroup(conditions: conditions)]
             }
             return Strategy(
                 id: id,
                 userId: userId,
                 name: name,
                 description: description,
-                entryConditions: makeConditions(cfg?.entryConditions),
-                exitConditions: makeConditions(cfg?.exitConditions),
+                entryGroups: makeGroups(groups: cfg?.entryConditionGroups, flat: cfg?.entryConditions),
+                exitGroups: makeGroups(groups: cfg?.exitConditionGroups, flat: cfg?.exitConditions),
                 positionSize: cfg?.positionSize ?? 10.0,
                 stopLoss: cfg?.stopLoss ?? 2.0,
                 takeProfit: cfg?.takeProfit ?? 4.0,
-                direction: cfg?.direction ?? "long",
+                direction: cfg?.direction ?? "long_only",
                 positionSizing: cfg?.positionSizing ?? "percent_of_equity",
                 isActive: isActive ?? true
             )
@@ -1986,8 +2004,15 @@ final class APIClient {
         return d
     }
 
+    private func conditionGroupDict(_ group: ConditionGroup) -> [String: Any] {
+        ["conditions": group.conditions.map(conditionDict)]
+    }
+
     private func strategyBody(_ strategy: Strategy) throws -> Data {
         let configDict: [String: Any] = [
+            "entry_condition_groups": strategy.entryGroups.map(conditionGroupDict),
+            "exit_condition_groups": strategy.exitGroups.map(conditionGroupDict),
+            // Also send flat for backward compat
             "entry_conditions": strategy.entryConditions.map(conditionDict),
             "exit_conditions": strategy.exitConditions.map(conditionDict),
             "position_size": strategy.positionSize,
