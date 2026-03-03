@@ -1126,7 +1126,7 @@ struct BacktestResultsWeb: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                // Metrics Grid
+                // 1. Metrics Grid
                 LazyVGrid(columns: [
                     GridItem(.flexible()),
                     GridItem(.flexible()),
@@ -1144,13 +1144,41 @@ struct BacktestResultsWeb: View {
                 }
                 .padding(.horizontal)
 
-                // Equity Curve Chart with Trade Markers
+                // 2. Equity Curve Chart with Trade Markers
                 if !result.equityCurve.isEmpty {
                     EquityCurveChartWeb(equityCurve: result.equityCurve, trades: result.trades)
                         .padding(.horizontal)
                 }
 
-                // Trades Table
+                // 3. Statistical Validation Card
+                ValidationCardWeb(validation: result.validation, totalTrades: result.totalTrades)
+                    .padding(.horizontal)
+
+                // 4. Monthly Returns Heatmap
+                if let monthly = result.monthlyReturns, !monthly.isEmpty {
+                    MonthlyHeatmapChart(monthlyReturns: monthly)
+                        .padding(.horizontal)
+                }
+
+                // 5. Drawdown Chart
+                if let drawdown = result.drawdownSeries, !drawdown.isEmpty {
+                    DrawdownChart(drawdownSeries: drawdown)
+                        .padding(.horizontal)
+                }
+
+                // 6. Rolling Sharpe
+                if let rolling = result.rollingMetrics, !rolling.isEmpty {
+                    RollingSharpeChart(rollingMetrics: rolling)
+                        .padding(.horizontal)
+                }
+
+                // 7. P&L Distribution
+                if !result.trades.isEmpty {
+                    PnLHistogramChart(trades: result.trades)
+                        .padding(.horizontal)
+                }
+
+                // 8. Trade History Table
                 TradesTableWeb(trades: result.trades)
                     .padding(.horizontal)
             }
@@ -1634,5 +1662,561 @@ class StrategyBuilderViewModel: ObservableObject {
             updated.updatedAt = Date()
             strategies[index] = updated
         }
+    }
+}
+
+// MARK: - Monthly Returns Heatmap
+
+struct MonthlyHeatmapChart: View {
+    let monthlyReturns: [BacktestMonthlyReturn]
+
+    private let monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    private var years: [Int] {
+        Array(Set(monthlyReturns.map(\.year))).sorted()
+    }
+
+    private func returnFor(year: Int, month: Int) -> BacktestMonthlyReturn? {
+        monthlyReturns.first { $0.year == year && $0.month == month }
+    }
+
+    private func cellColor(for returnPct: Double) -> Color {
+        let intensity = min(abs(returnPct) / 10.0, 1.0)
+        return returnPct >= 0
+            ? Color.green.opacity(0.15 + intensity * 0.65)
+            : Color.red.opacity(0.15 + intensity * 0.65)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "calendar.badge.clock")
+                    .foregroundColor(.orange)
+                Text("Monthly Returns")
+                    .font(.headline)
+                Spacer()
+            }
+
+            // Month column headers
+            HStack(spacing: 4) {
+                Text("").frame(width: 38)
+                ForEach(monthNames, id: \.self) { m in
+                    Text(m)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+            }
+
+            // Year rows
+            ForEach(years, id: \.self) { year in
+                HStack(spacing: 4) {
+                    Text(String(year))
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .frame(width: 38, alignment: .leading)
+
+                    ForEach(1...12, id: \.self) { month in
+                        if let r = returnFor(year: year, month: month) {
+                            Text(String(format: "%.1f", r.returnPct))
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(r.returnPct >= 0 ? .green : .red)
+                                .frame(maxWidth: .infinity, minHeight: 22)
+                                .background(cellColor(for: r.returnPct))
+                                .cornerRadius(3)
+                                .opacity(r.isPartial ? 0.55 : 1.0)
+                        } else {
+                            Color.secondary.opacity(0.08)
+                                .frame(maxWidth: .infinity, minHeight: 22)
+                                .cornerRadius(3)
+                        }
+                    }
+                }
+            }
+        }
+        .padding()
+        .background(Color(.controlBackgroundColor))
+        .cornerRadius(12)
+    }
+}
+
+// MARK: - Rolling Sharpe Chart
+
+struct RollingSharpeChart: View {
+    let rollingMetrics: [BacktestRollingMetric]
+
+    private struct MetricPoint: Identifiable {
+        let id = UUID()
+        let date: Date
+        let sharpe: Double
+    }
+
+    private var points: [MetricPoint] {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(secondsFromGMT: 0)
+        df.dateFormat = "yyyy-MM-dd"
+        return rollingMetrics.compactMap { m in
+            guard let s = m.sharpe63, let date = df.date(from: m.date) else { return nil }
+            return MetricPoint(date: date, sharpe: s)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "waveform.path.ecg")
+                    .foregroundColor(.purple)
+                Text("Rolling Sharpe (63-bar)")
+                    .font(.headline)
+                Spacer()
+            }
+
+            if points.isEmpty {
+                Text("Insufficient data for rolling metrics")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .frame(height: 160)
+            } else {
+                Chart {
+                    RuleMark(y: .value("Target", 1.0))
+                        .foregroundStyle(Color.green.opacity(0.5))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4]))
+                        .annotation(position: .trailing, alignment: .leading) {
+                            Text("1.0").font(.caption2).foregroundColor(.green)
+                        }
+
+                    RuleMark(y: .value("Zero", 0.0))
+                        .foregroundStyle(Color.secondary.opacity(0.4))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [2]))
+
+                    ForEach(points) { pt in
+                        LineMark(
+                            x: .value("Date", pt.date),
+                            y: .value("Sharpe", pt.sharpe)
+                        )
+                        .foregroundStyle(
+                            pt.sharpe >= 1.0 ? Color.green
+                            : pt.sharpe >= 0 ? Color.yellow
+                            : Color.red
+                        )
+                        .interpolationMethod(.catmullRom)
+                    }
+                }
+                .chartXAxis {
+                    AxisMarks(values: .stride(by: .month, count: 3)) { _ in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                        AxisValueLabel(format: .dateTime.month(.abbreviated).year(.twoDigits))
+                            .font(.caption2)
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks { value in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                        AxisValueLabel {
+                            if let v = value.as(Double.self) {
+                                Text(String(format: "%.1f", v)).font(.caption2)
+                            }
+                        }
+                    }
+                }
+                .frame(height: 160)
+            }
+        }
+        .padding()
+        .background(Color(.controlBackgroundColor))
+        .cornerRadius(12)
+    }
+}
+
+// MARK: - Drawdown Chart
+
+struct DrawdownChart: View {
+    let drawdownSeries: [BacktestDrawdownPoint]
+
+    private struct DDPoint: Identifiable {
+        let id = UUID()
+        let date: Date
+        let drawdown: Double
+    }
+
+    private var points: [DDPoint] {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(secondsFromGMT: 0)
+        df.dateFormat = "yyyy-MM-dd"
+        return drawdownSeries.compactMap { p in
+            guard let date = df.date(from: p.date) else { return nil }
+            return DDPoint(date: date, drawdown: p.drawdownPct)
+        }
+    }
+
+    private var maxDrawdownPoint: DDPoint? {
+        points.min(by: { $0.drawdown < $1.drawdown })
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "arrow.down.to.line")
+                    .foregroundColor(.red)
+                Text("Drawdown")
+                    .font(.headline)
+                Spacer()
+                if let maxDD = maxDrawdownPoint {
+                    Text(String(format: "Max: %.1f%%", maxDD.drawdown))
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(6)
+                }
+            }
+
+            if points.isEmpty {
+                Text("No drawdown data")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .frame(height: 160)
+            } else {
+                Chart {
+                    ForEach(points) { pt in
+                        AreaMark(
+                            x: .value("Date", pt.date),
+                            yStart: .value("Zero", 0.0),
+                            yEnd: .value("Drawdown", pt.drawdown)
+                        )
+                        .foregroundStyle(
+                            .linearGradient(
+                                colors: [Color.red.opacity(0.55), Color.red.opacity(0.1)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .interpolationMethod(.catmullRom)
+
+                        LineMark(
+                            x: .value("Date", pt.date),
+                            y: .value("Drawdown", pt.drawdown)
+                        )
+                        .foregroundStyle(.red)
+                        .interpolationMethod(.catmullRom)
+                    }
+
+                    if let maxDD = maxDrawdownPoint {
+                        PointMark(
+                            x: .value("Date", maxDD.date),
+                            y: .value("Max DD", maxDD.drawdown)
+                        )
+                        .foregroundStyle(.red)
+                        .symbolSize(60)
+                        .annotation(position: .bottom) {
+                            Text(String(format: "%.1f%%", maxDD.drawdown))
+                                .font(.caption2)
+                                .foregroundColor(.red)
+                        }
+                    }
+                }
+                .chartXAxis {
+                    AxisMarks(values: .stride(by: .month, count: 3)) { _ in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                        AxisValueLabel(format: .dateTime.month(.abbreviated).year(.twoDigits))
+                            .font(.caption2)
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks { value in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                        AxisValueLabel {
+                            if let v = value.as(Double.self) {
+                                Text("\(String(format: "%.0f", v))%").font(.caption2)
+                            }
+                        }
+                    }
+                }
+                .frame(height: 160)
+            }
+        }
+        .padding()
+        .background(Color(.controlBackgroundColor))
+        .cornerRadius(12)
+    }
+}
+
+// MARK: - P&L Distribution Histogram
+
+struct PnLHistogramChart: View {
+    let trades: [Trade]
+
+    private struct HistoBin: Identifiable {
+        let id = UUID()
+        let midpoint: Double
+        let count: Int
+        let isPositive: Bool
+    }
+
+    private var bins: [HistoBin] {
+        guard !trades.isEmpty else { return [] }
+        let returns = trades.map(\.returnPct)
+        guard let minR = returns.min(), let maxR = returns.max(), maxR > minR else { return [] }
+        let binCount = 20
+        let span = maxR - minR + 0.002
+        let binWidth = span / Double(binCount)
+        return (0..<binCount).compactMap { i in
+            let lo = minR - 0.001 + Double(i) * binWidth
+            let hi = lo + binWidth
+            let mid = (lo + hi) / 2
+            let count = returns.filter { $0 >= lo && $0 < hi }.count
+            guard count > 0 else { return nil }
+            return HistoBin(midpoint: mid, count: count, isPositive: mid >= 0)
+        }
+    }
+
+    private var meanReturn: Double {
+        guard !trades.isEmpty else { return 0 }
+        return trades.map(\.returnPct).reduce(0, +) / Double(trades.count)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "chart.bar.fill")
+                    .foregroundColor(.orange)
+                Text("P&L Distribution")
+                    .font(.headline)
+                Spacer()
+                Text(String(format: "Mean: %+.1f%%", meanReturn))
+                    .font(.caption)
+                    .foregroundColor(meanReturn >= 0 ? .green : .red)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background((meanReturn >= 0 ? Color.green : Color.red).opacity(0.1))
+                    .cornerRadius(6)
+            }
+
+            if trades.isEmpty || bins.isEmpty {
+                Text("No trades to display")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .frame(height: 160)
+            } else {
+                Chart {
+                    ForEach(bins) { bin in
+                        BarMark(
+                            x: .value("Return %", bin.midpoint),
+                            y: .value("Count", bin.count)
+                        )
+                        .foregroundStyle(bin.isPositive ? Color.green.opacity(0.7) : Color.red.opacity(0.7))
+                    }
+
+                    RuleMark(x: .value("Mean", meanReturn))
+                        .foregroundStyle(.orange)
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4]))
+                        .annotation(position: .top) {
+                            Text("μ").font(.caption2).foregroundColor(.orange)
+                        }
+                }
+                .chartXAxis {
+                    AxisMarks { value in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                        AxisValueLabel {
+                            if let v = value.as(Double.self) {
+                                Text("\(String(format: "%.0f", v))%").font(.caption2)
+                            }
+                        }
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks { value in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
+                        AxisValueLabel {
+                            if let v = value.as(Int.self) {
+                                Text("\(v)").font(.caption2)
+                            }
+                        }
+                    }
+                }
+                .frame(height: 160)
+            }
+        }
+        .padding()
+        .background(Color(.controlBackgroundColor))
+        .cornerRadius(12)
+    }
+}
+
+// MARK: - Statistical Validation Card
+
+struct ValidationCardWeb: View {
+    let validation: BacktestValidation?
+    let totalTrades: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Image(systemName: "checkmark.shield.fill")
+                    .foregroundColor(.cyan)
+                Text("Statistical Validation")
+                    .font(.headline)
+                Spacer()
+                if let pVal = validation?.pValue {
+                    Text(pVal < 0.05 ? "Significant ✓" : "Not Significant")
+                        .font(.caption)
+                        .foregroundColor(pVal < 0.05 ? .green : .orange)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background((pVal < 0.05 ? Color.green : Color.orange).opacity(0.15))
+                        .cornerRadius(6)
+                }
+            }
+
+            if totalTrades < 10 {
+                HStack {
+                    Image(systemName: "info.circle")
+                        .foregroundColor(.secondary)
+                    Text("Insufficient data — need at least 10 trades for statistical validation.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            } else if let v = validation {
+                // Confidence Intervals
+                if let ci = v.confidenceIntervals {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("95% Confidence Intervals (bootstrap, 1000 iterations)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        HStack(spacing: 12) {
+                            if let sCI = ci.sharpeRatio {
+                                BacktestCIBadge(label: "Sharpe", lower: sCI.lower, upper: sCI.upper, format: "%.2f")
+                            }
+                            if let ddCI = ci.maxDrawdownPct {
+                                BacktestCIBadge(label: "Max DD%", lower: ddCI.lower, upper: ddCI.upper, format: "%.1f")
+                            }
+                            if let wrCI = ci.winRate {
+                                BacktestCIBadge(label: "Win Rate", lower: wrCI.lower, upper: wrCI.upper, format: "%.1f%%")
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+
+                // P-value row
+                if let pVal = v.pValue {
+                    HStack(spacing: 8) {
+                        Text("p-value:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text(String(format: "%.4f", pVal))
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(pVal < 0.05 ? .green : .orange)
+                        Text(pVal < 0.01 ? "(***)" : pVal < 0.05 ? "(**)" : pVal < 0.10 ? "(*)" : "(ns)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        if let n = v.sampleSize {
+                            Text("n = \(n) trades")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        if let b = v.bootstrapIterations {
+                            Text("· \(b) bootstrap iters")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+
+                // IS vs OOS comparison
+                if let inS = v.inSample, let outS = v.outOfSample {
+                    Divider()
+                    HStack(spacing: 0) {
+                        BacktestSplitMetricsColumn(label: "In-Sample (70%)", metrics: inS, color: .blue)
+                        Divider().frame(maxHeight: 80)
+                        BacktestSplitMetricsColumn(label: "Out-of-Sample (30%)", metrics: outS, color: .cyan)
+                    }
+                    .background(Color(.windowBackgroundColor))
+                    .cornerRadius(8)
+                }
+            } else {
+                Text("Validation data not available.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(.controlBackgroundColor))
+        .cornerRadius(12)
+    }
+}
+
+private struct BacktestCIBadge: View {
+    let label: String
+    let lower: Double
+    let upper: Double
+    var format: String = "%.2f"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text("[\(String(format: format, lower)), \(String(format: format, upper))]")
+                .font(.caption)
+                .fontWeight(.medium)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Color.secondary.opacity(0.1))
+        .cornerRadius(6)
+    }
+}
+
+private struct BacktestSplitMetricsColumn: View {
+    let label: String
+    let metrics: BacktestSplitMetrics
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .center, spacing: 6) {
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(color)
+                .fontWeight(.semibold)
+            HStack(spacing: 16) {
+                if let sharpe = metrics.sharpeRatio {
+                    VStack(spacing: 2) {
+                        Text(String(format: "%.2f", sharpe)).font(.caption).fontWeight(.semibold)
+                        Text("Sharpe").font(.caption2).foregroundColor(.secondary)
+                    }
+                }
+                if let ret = metrics.totalReturnPct {
+                    VStack(spacing: 2) {
+                        Text(String(format: "%+.1f%%", ret))
+                            .font(.caption).fontWeight(.semibold)
+                            .foregroundColor(ret >= 0 ? .green : .red)
+                        Text("Return").font(.caption2).foregroundColor(.secondary)
+                    }
+                }
+                if let wr = metrics.winRate {
+                    VStack(spacing: 2) {
+                        Text(String(format: "%.0f%%", wr)).font(.caption).fontWeight(.semibold)
+                        Text("Win Rate").font(.caption2).foregroundColor(.secondary)
+                    }
+                }
+                if let dd = metrics.maxDrawdownPct {
+                    VStack(spacing: 2) {
+                        Text(String(format: "%.1f%%", dd))
+                            .font(.caption).fontWeight(.semibold)
+                            .foregroundColor(.orange)
+                        Text("Max DD").font(.caption2).foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
     }
 }

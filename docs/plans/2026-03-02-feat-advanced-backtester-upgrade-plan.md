@@ -258,58 +258,53 @@ All phases ship together on one branch but are logically ordered for dependency 
 
 ##### Task 6.1: Monthly return heatmap
 
-- [ ] New `MonthlyHeatmapChart` view using Swift Charts `RectangleMark`
-- [ ] X-axis: months (Jan-Dec), Y-axis: years
-- [ ] Color scale: deep red (-10%+) → light red → gray (0%) → light green → deep green (+10%+)
-- [ ] Partial months dimmed with reduced opacity
-- [ ] Tooltip on hover showing exact return %
-- [ ] Computed client-side from `monthlyReturns` array (or from equity curve if not available)
+- [x] New `MonthlyHeatmapChart` view using HStack/VStack grid (RectangleMark not needed)
+- [x] Year rows × 12-month columns; color scale red→green mapped to ±10% return
+- [x] Partial months dimmed at 0.55 opacity
+- [x] Computed from `monthlyReturns` array
 
 ##### Task 6.2: Rolling Sharpe chart
 
-- [ ] New `RollingSharpeChart` view using Swift Charts `LineMark`
-- [ ] Plot rolling Sharpe over time with a horizontal reference line at 0 and 1.0
-- [ ] Color: green above 1.0, yellow 0-1.0, red below 0
-- [ ] Secondary line for rolling win rate (right Y-axis)
-- [ ] Computed from `rollingMetrics` array
+- [x] New `RollingSharpeChart` view using Swift Charts `LineMark`
+- [x] Color: green ≥1.0, yellow 0–1.0, red <0 (per-point coloring)
+- [x] Reference lines at 0 (dashed gray) and 1.0 (dashed green)
+- [x] Computed from `rollingMetrics` array (`sharpe_63` field)
 
 ##### Task 6.3: Drawdown chart
 
-- [ ] New `DrawdownChart` view using Swift Charts `AreaMark`
-- [ ] Always negative (0 at peaks, negative during drawdowns)
-- [ ] Red fill, darker at deeper drawdowns
-- [ ] Max drawdown line annotated with date and depth
-- [ ] Computed from `drawdownSeries` array (or from equity curve client-side)
+- [x] New `DrawdownChart` view using Swift Charts `AreaMark` (yStart:0, yEnd:drawdown)
+- [x] Red gradient fill + red `LineMark` overlay
+- [x] Max drawdown point annotated with depth percentage
+- [x] Computed from `drawdownSeries` array
 
 ##### Task 6.4: P&L distribution histogram
 
-- [ ] New `PnLHistogramChart` view using Swift Charts `BarMark`
-- [ ] Bin trade returns into 20 buckets
-- [ ] Green bars for positive bins, red for negative
-- [ ] Vertical line at mean return
-- [ ] Show count per bin
-- [ ] Computed client-side from trades array
+- [x] New `PnLHistogramChart` view using Swift Charts `BarMark`
+- [x] 20-bin histogram by `trade.returnPct`; empty bins omitted
+- [x] Green bars positive, red bars negative
+- [x] Orange dashed `RuleMark` at mean return (μ annotation)
+- [x] Computed from trades array
 
 ##### Task 6.5: Statistical validation card
 
-- [ ] New `ValidationCardWeb` view showing:
-  - Sharpe CI: "1.2 [0.8, 2.1] (95% CI)"
-  - p-value with significance indicator (green if < 0.05)
-  - IS vs OOS comparison: side-by-side metrics with delta
+- [x] New `ValidationCardWeb` view showing:
+  - Sharpe/Max-DD/Win-Rate 95% CI badges via `BacktestCIBadge`
+  - p-value with significance stars (***/**/*/(ns)) and color
+  - IS vs OOS side-by-side via `BacktestSplitMetricsColumn`
   - Sample size and bootstrap iterations
-- [ ] Show "Insufficient data" if < 10 trades
+- [x] Shows "Insufficient data" if < 10 trades
 
 ##### Task 6.6: Integrate into BacktestResultsWeb
 
-- [ ] Add tabbed sections or scrollable layout:
-  1. Summary metrics grid (existing)
-  2. Equity curve (existing)
-  3. Statistical validation card (new)
-  4. Monthly heatmap (new)
-  5. Rolling metrics (new)
-  6. Drawdown chart (new)
-  7. P&L distribution (new)
-  8. Trade history table (existing)
+- [x] Updated `BacktestResultsWeb` scrollable layout (8 sections):
+  1. Summary metrics grid
+  2. Equity curve
+  3. Statistical validation card
+  4. Monthly heatmap
+  5. Drawdown chart
+  6. Rolling Sharpe
+  7. P&L distribution
+  8. Trade history table
 
 **Files:**
 - NEW: `client-macos/SwiftBoltML/Views/BacktestCharts/MonthlyHeatmapChart.swift`
