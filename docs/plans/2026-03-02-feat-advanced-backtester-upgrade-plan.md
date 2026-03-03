@@ -176,44 +176,26 @@ All phases ship together on one branch but are logically ordered for dependency 
 
 ##### Task 4.1: Implement bootstrap confidence intervals
 
-- [ ] After backtest completes, run bootstrap on trade returns (1000 iterations):
+- [x] After backtest completes, run bootstrap on trade returns (1000 iterations):
   - Resample trade P&L array with replacement
   - Compute Sharpe, max drawdown, win rate for each sample
   - Report 2.5th and 97.5th percentiles as 95% CI
-- [ ] Compute p-value: two-tailed t-test on daily returns vs. zero mean
-- [ ] Add to metrics response:
-  ```typescript
-  validation: {
-    confidence_intervals: {
-      sharpe_ratio: { lower: number, upper: number, confidence: 0.95 },
-      max_drawdown_pct: { lower: number, upper: number, confidence: 0.95 },
-      win_rate: { lower: number, upper: number, confidence: 0.95 }
-    },
-    p_value: number,
-    bootstrap_iterations: 1000,
-    sample_size: number
-  }
-  ```
-- [ ] Skip validation if fewer than 10 trades (insufficient sample)
+- [x] Compute p-value: two-tailed t-test on daily returns vs. zero mean (incomplete beta function implementation)
+- [x] Add `validation` object to response with confidence_intervals, p_value, bootstrap_iterations, sample_size, in_sample, out_of_sample
+- [x] Skip validation if fewer than 10 trades (insufficient sample)
 
 ##### Task 4.2: Implement IS/OOS split
 
-- [ ] Split bars at 70% mark by date
-- [ ] Run backtest on IS segment, report metrics as `in_sample`
-- [ ] Run backtest on OOS segment, report metrics as `out_of_sample`
-- [ ] Full backtest still runs on entire range for primary metrics
-- [ ] Add to response:
-  ```typescript
-  in_sample: { sharpe_ratio, total_return_pct, win_rate, total_trades },
-  out_of_sample: { sharpe_ratio, total_return_pct, win_rate, total_trades }
-  ```
+- [x] Split equity curve at 70% mark by bar index (temporal correctness)
+- [x] Compute IS and OOS metrics using split equity and filtered trades
+- [x] Both sections returned as `in_sample` and `out_of_sample` within `validation`
 
 ##### Task 4.3: Compute monthly returns and rolling metrics
 
-- [ ] Aggregate equity curve into monthly returns: `{ year, month, return_pct }`
-- [ ] Compute rolling Sharpe over 63-bar window: `{ date, sharpe_63, win_rate_63 }`
-- [ ] Compute drawdown series: `{ date, drawdown_pct }` (negative values, 0 at peaks)
-- [ ] Add all three arrays to response
+- [x] Aggregate equity curve into monthly returns: `{ year, month, return_pct, is_partial }`
+- [x] Compute rolling Sharpe over 63-bar window: `{ date, sharpe_63, win_rate_63 }`
+- [x] Compute drawdown series: `{ date, drawdown_pct }` (negative values, 0 at peaks)
+- [x] All three arrays returned from worker and forwarded by frontend `backtestService.ts`
 
 **Files:**
 - MODIFY: `supabase/functions/strategy-backtest-worker/index.ts`

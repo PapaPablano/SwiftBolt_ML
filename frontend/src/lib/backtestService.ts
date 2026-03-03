@@ -1,4 +1,14 @@
-import type { Strategy, BacktestResult, Trade, TradeDirection, CloseReason } from '../types/strategyBacktest';
+import type {
+  Strategy,
+  BacktestResult,
+  Trade,
+  TradeDirection,
+  CloseReason,
+  ValidationResult,
+  MonthlyReturn,
+  RollingMetric,
+  DrawdownPoint,
+} from '../types/strategyBacktest';
 import { isStrategyIdUuid, toChartTime, horizonToTimeframe, createDefaultConfig } from './backtestConstants';
 import { strategiesApi } from '../api/strategiesApi';
 
@@ -221,6 +231,10 @@ async function runBacktestViaSupabase(
         metrics?: Record<string, unknown>;
         trades?: Record<string, unknown>[];
         equity_curve?: { date: string; value: number }[];
+        validation?: ValidationResult | null;
+        monthly_returns?: MonthlyReturn[];
+        rolling_metrics?: RollingMetric[];
+        drawdown_series?: DrawdownPoint[];
       };
       error?: string;
     };
@@ -229,6 +243,10 @@ async function runBacktestViaSupabase(
       const metrics = r.metrics || {};
       const trades = r.trades || [];
       const equityCurve = r.equity_curve || [];
+      const validation = r.validation ?? null;
+      const monthlyReturns = r.monthly_returns ?? [];
+      const rollingMetrics = r.rolling_metrics ?? [];
+      const drawdownSeries = r.drawdown_series ?? [];
 
       let buyAndHoldReturn = 0;
       try {
@@ -314,6 +332,10 @@ async function runBacktestViaSupabase(
           time: toChartTime((e as { date?: string }).date ?? ''),
           value: e.value,
         })),
+        validation,
+        monthlyReturns,
+        rollingMetrics,
+        drawdownSeries,
       };
     }
   }

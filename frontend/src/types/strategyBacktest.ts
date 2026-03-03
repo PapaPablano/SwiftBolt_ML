@@ -106,6 +106,55 @@ export interface Trade {
   closeReason: CloseReason;
 }
 
+// ─── Statistical validation types (Phase 4) ───────────────────────────────────
+
+export interface ConfidenceInterval {
+  lower: number;
+  upper: number;
+  confidence: number;
+}
+
+export interface SplitMetrics {
+  sharpe_ratio: number;
+  total_return_pct: number;
+  win_rate: number;
+  total_trades: number;
+  max_drawdown_pct: number;
+}
+
+export interface ValidationResult {
+  confidence_intervals: {
+    sharpe_ratio: ConfidenceInterval;
+    max_drawdown_pct: ConfidenceInterval;
+    win_rate: ConfidenceInterval;
+  };
+  p_value: number;
+  bootstrap_iterations: number;
+  sample_size: number;
+  in_sample: SplitMetrics | null;
+  out_of_sample: SplitMetrics | null;
+}
+
+export interface MonthlyReturn {
+  year: number;
+  month: number;
+  return_pct: number;
+  is_partial: boolean;
+}
+
+export interface RollingMetric {
+  date: string;
+  sharpe_63: number | null;
+  win_rate_63: number | null;
+}
+
+export interface DrawdownPoint {
+  date: string;
+  drawdown_pct: number;
+}
+
+// ─── BacktestResult ────────────────────────────────────────────────────────────
+
 export interface BacktestResult {
   id: string;
   strategyId: string;
@@ -129,6 +178,11 @@ export interface BacktestResult {
   trades: Trade[];
   /** time: business day "yyyy-mm-dd" (daily) or Unix seconds (intraday). Use dedupeEquityCurve before setData. */
   equityCurve: { time: string | number; value: number }[];
+  // Statistical validation (Phase 4) — optional for backward compatibility
+  validation?: ValidationResult | null;
+  monthlyReturns?: MonthlyReturn[];
+  rollingMetrics?: RollingMetric[];
+  drawdownSeries?: DrawdownPoint[];
 }
 
 export interface ConditionParam {

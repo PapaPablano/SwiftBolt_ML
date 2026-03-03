@@ -18,6 +18,13 @@ import {
   getIndicatorValue,
   isKnownIndicator,
 } from "./indicators.ts";
+import {
+  type DrawdownPoint,
+  type MonthlyReturn,
+  type RollingMetric,
+  runValidation,
+  type ValidationResult,
+} from "./validation.ts";
 
 interface BacktestJob {
   id: string;
@@ -315,6 +322,10 @@ async function runBacktest(
   metrics: Record<string, unknown>;
   trades: Record<string, unknown>[];
   equity_curve: Record<string, unknown>[];
+  validation: ValidationResult | null;
+  monthly_returns: MonthlyReturn[];
+  rolling_metrics: RollingMetric[];
+  drawdown_series: DrawdownPoint[];
 }> {
   const params = job.parameters as Record<string, unknown>;
   const initialCapital = extractInitialCapital(params, config);
@@ -349,6 +360,10 @@ async function runBacktest(
       },
       trades: [],
       equity_curve: [],
+      validation: null,
+      monthly_returns: [],
+      rolling_metrics: [],
+      drawdown_series: [],
     };
   }
 
@@ -650,6 +665,24 @@ async function runBacktest(
     ? (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100
     : null;
 
+  // ─── Statistical validation ─────────────────────────────────────────────────
+
+  const annFactor = annualizationFactor(timeframe);
+  const validationTrades = trades as Array<{
+    pnl: number;
+    pnl_pct: number;
+    entry_date: string;
+    exit_date: string;
+  }>;
+  const { validation, monthly_returns, rolling_metrics, drawdown_series } =
+    runValidation(validationTrades, equityCurve, initialCapital, annFactor);
+
+  console.log(
+    `[BacktestWorker] Validation: ${trades.length} trades, p_value=${
+      validation?.p_value?.toFixed(4) ?? "n/a (< 10 trades)"
+    }`,
+  );
+
   return {
     metrics: {
       total_trades: trades.length,
@@ -668,6 +701,10 @@ async function runBacktest(
     },
     trades,
     equity_curve: equityCurve,
+    validation,
+    monthly_returns,
+    rolling_metrics,
+    drawdown_series,
   };
 }
 
@@ -791,6 +828,10 @@ serve(async (req: Request): Promise<Response> => {
           metrics: Record<string, unknown>;
           trades: Record<string, unknown>[];
           equity_curve: Record<string, unknown>[];
+          validation: ValidationResult | null;
+          monthly_returns: MonthlyReturn[];
+          rolling_metrics: RollingMetric[];
+          drawdown_series: DrawdownPoint[];
         };
 
         const inlineConfig = job.parameters?.strategy_config as
@@ -904,6 +945,10 @@ serve(async (req: Request): Promise<Response> => {
             metrics: result.metrics,
             trades: result.trades,
             equity_curve: result.equity_curve,
+            validation: result.validation,
+            monthly_returns: result.monthly_returns,
+            rolling_metrics: result.rolling_metrics,
+            drawdown_series: result.drawdown_series,
           })
           .select()
           .single();
