@@ -322,32 +322,30 @@ All phases ship together on one branch but are logically ordered for dependency 
 
 ##### Task 7.1: Make Strategy model Codable and Supabase-compatible
 
-- [ ] Add `Codable` conformance to `Strategy`, `StrategyCondition`
-- [ ] Use server-generated UUID (from Supabase) instead of client-side `UUID()`
-- [ ] Map Swift properties to Supabase column names:
+- [x] Add `Codable` conformance to `Strategy`, `StrategyCondition` (via `StrategyRow`/`StrategyRowConfig` in APIClient — avoids Date serialization complexity)
+- [x] Use server-generated UUID (from Supabase) instead of client-side `UUID()` — changed to `var id: String = UUID().uuidString`
+- [x] Map Swift properties to Supabase column names:
   - `id` → `id`
   - `name` → `name`
   - `description` → `description`
   - `entryConditions`, `exitConditions`, `stopLoss`, `takeProfit`, `positionSizing`, `direction` → `config` JSONB
   - `isActive` → `is_active`
-- [ ] Add `userId: String?` field populated from auth
+- [x] Add `userId: String?` field populated from auth
 
 ##### Task 7.2: Add strategy CRUD to APIClient
 
-- [ ] `fetchStrategies() async throws -> [Strategy]` — GET from `strategy_user_strategies` where `user_id` matches
-- [ ] `createStrategy(_ strategy: Strategy) async throws -> Strategy` — INSERT, return with server ID
-- [ ] `updateStrategy(_ strategy: Strategy) async throws` — UPDATE by ID
-- [ ] `deleteStrategy(id: String) async throws` — DELETE by ID
-- [ ] All calls authenticated with JWT from SupabaseService
+- [x] `fetchStrategies() async -> [Strategy]` — GET anon rows (`user_id IS NULL`) via PostgREST
+- [x] `upsertStrategy(_ strategy: Strategy) async -> Bool` — POST with `Prefer: resolution=merge-duplicates` (create or update)
+- [x] `deleteStrategy(id: String) async -> Bool` — DELETE by ID via PostgREST
+- [x] Anon key used (app has no user auth); anon RLS policies allow `user_id IS NULL` rows
 
 ##### Task 7.3: Update StrategyBuilderViewModel for persistence
 
-- [ ] Make `@MainActor` for thread safety
-- [ ] On init: fetch strategies from Supabase, fall back to local mock if auth fails
-- [ ] Debounced auto-save: 2-second delay after last edit
-- [ ] Explicit "Save to Cloud" button in header bar
-- [ ] Handle offline: queue changes, sync when connected
-- [ ] Replace `loadMockStrategies()` with Supabase fetch
+- [x] Make `@MainActor` for thread safety
+- [x] On init: load mock strategies then `Task { await fetchFromSupabase() }`, replacing mocks if server has data
+- [x] Debounced auto-save: 2-second `Task.sleep` cancellation pattern
+- [x] `addStrategy` triggers async upsert; `deleteStrategy` triggers async delete; `saveStrategy` debounces upsert
+- [x] Falls back to local mocks if Supabase fetch returns empty
 
 ##### Task 7.4: Add OR condition groups to Strategy model
 

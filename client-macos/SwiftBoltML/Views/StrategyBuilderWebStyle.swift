@@ -1484,7 +1484,8 @@ struct NewStrategyDialog: View {
 // MARK: - Models
 
 struct Strategy: Identifiable, Hashable {
-    let id = UUID()
+    var id: String = UUID().uuidString
+    var userId: String? = nil
     var name: String
     var description: String?
     var entryConditions: [StrategyCondition] = []
@@ -1606,13 +1607,16 @@ struct Trade: Identifiable {
 }
 
 // Reuse existing StrategyBuilderViewModel but with enhanced features
+@MainActor
 class StrategyBuilderViewModel: ObservableObject {
     @Published var strategies: [Strategy] = []
-    
+    private var saveTask: Task<Void, Never>?
+
     init() {
         loadMockStrategies()
+        Task { await fetchFromSupabase() }
     }
-    
+
     private func loadMockStrategies() {
         strategies = [
             Strategy(
@@ -1647,20 +1651,42 @@ class StrategyBuilderViewModel: ObservableObject {
             )
         ]
     }
-    
+
+    private func fetchFromSupabase() async {
+        let fetched = await APIClient.shared.fetchStrategies()
+        if !fetched.isEmpty {
+            strategies = fetched
+        }
+    }
+
     func addStrategy(_ strategy: Strategy) {
         strategies.append(strategy)
+        Task { await APIClient.shared.upsertStrategy(strategy) }
     }
-    
+
     func deleteStrategy(_ strategy: Strategy) {
         strategies.removeAll { $0.id == strategy.id }
+        Task { await APIClient.shared.deleteStrategy(id: strategy.id) }
     }
-    
+
     func saveStrategy(_ strategy: Strategy) {
         if let index = strategies.firstIndex(where: { $0.id == strategy.id }) {
             var updated = strategy
             updated.updatedAt = Date()
             strategies[index] = updated
+            scheduleSave(updated)
+        }
+    }
+
+    private func scheduleSave(_ strategy: Strategy) {
+        saveTask?.cancel()
+        saveTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+            } catch {
+                return // cancelled
+            }
+            await APIClient.shared.upsertStrategy(strategy)
         }
     }
 }
