@@ -43,6 +43,22 @@ export interface ExecutorCondition {
   parentId?: string;
 }
 
+/**
+ * A group of worker conditions that are AND'd within the group.
+ * Multiple groups are OR'd together (DNF: disjunctive normal form).
+ * Example: (RSI < 30 AND MACD > 0) OR (Price > SMA200)
+ */
+export interface ConditionGroup {
+  conditions: WorkerCondition[];
+  logicalOp?: "AND" | "OR"; // how this group relates to the next (always OR in current design)
+}
+
+/** A group of frontend-format conditions (mirrors ConditionGroup for frontend use). */
+export interface FrontendConditionGroup {
+  conditions: FrontendCondition[];
+  logicalOp?: "AND" | "OR";
+}
+
 // ============================================================================
 // OPERATOR MAPPINGS
 // ============================================================================
@@ -192,10 +208,22 @@ export function workerToExecutor(
 // ============================================================================
 
 export interface StrategyConfigRaw {
+  // Flat condition arrays (worker format, backward-compatible)
   entry_conditions?: WorkerCondition[];
   exit_conditions?: WorkerCondition[];
+  // Grouped condition arrays (OR logic — each group is AND'd internally, groups are OR'd)
+  entry_condition_groups?: ConditionGroup[];
+  exit_condition_groups?: ConditionGroup[];
+  // Flat condition arrays (frontend format)
   entryConditions?: FrontendCondition[];
   exitConditions?: FrontendCondition[];
+  // Grouped condition arrays (frontend format)
+  entryConditionGroups?: FrontendConditionGroup[];
+  exitConditionGroups?: FrontendConditionGroup[];
+  // Strategy-level settings (Task 2.3)
+  direction?: string; // "long_only" | "short_only" | "long_short"
+  position_sizing?: { type: string; value: number };
+  positionSizing?: { type: string; value: number };
 }
 
 /**
@@ -215,6 +243,64 @@ export function normalizeToWorkerFormat(
   return {
     entry_conditions: (raw.entryConditions ?? []).map(frontendToWorker),
     exit_conditions: (raw.exitConditions ?? []).map(frontendToWorker),
+  };
+}
+
+// ============================================================================
+// GROUPED CONDITION NORMALIZATION (Phase 3: OR Logic)
+// ============================================================================
+
+/**
+ * Internal: resolve a set of condition sources into ConditionGroup[].
+ * Priority: worker groups → frontend groups → flat worker conditions → flat frontend conditions.
+ */
+function resolveConditionGroups(
+  workerGroups?: ConditionGroup[],
+  frontendGroups?: FrontendConditionGroup[],
+  workerFlat?: WorkerCondition[],
+  frontendFlat?: FrontendCondition[],
+): ConditionGroup[] {
+  if (workerGroups && workerGroups.length > 0) return workerGroups;
+  if (frontendGroups && frontendGroups.length > 0) {
+    return frontendGroups.map((g) => ({
+      conditions: g.conditions.map(frontendToWorker),
+      logicalOp: g.logicalOp,
+    }));
+  }
+  if (workerFlat && workerFlat.length > 0) return [{ conditions: workerFlat }];
+  if (frontendFlat && frontendFlat.length > 0) {
+    return [{ conditions: frontendFlat.map(frontendToWorker) }];
+  }
+  return [];
+}
+
+/**
+ * Normalize a strategy config to grouped worker format.
+ * Conditions within each group are AND'd; groups are OR'd between.
+ * Falls back to wrapping flat conditions in a single group for backward compatibility.
+ * Also returns strategy-level direction and position_sizing fields.
+ */
+export function normalizeToWorkerGroups(raw: StrategyConfigRaw): {
+  entry_condition_groups: ConditionGroup[];
+  exit_condition_groups: ConditionGroup[];
+  direction?: string;
+  position_sizing?: { type: string; value: number };
+} {
+  return {
+    entry_condition_groups: resolveConditionGroups(
+      raw.entry_condition_groups,
+      raw.entryConditionGroups,
+      raw.entry_conditions,
+      raw.entryConditions,
+    ),
+    exit_condition_groups: resolveConditionGroups(
+      raw.exit_condition_groups,
+      raw.exitConditionGroups,
+      raw.exit_conditions,
+      raw.exitConditions,
+    ),
+    direction: raw.direction,
+    position_sizing: raw.position_sizing ?? raw.positionSizing,
   };
 }
 

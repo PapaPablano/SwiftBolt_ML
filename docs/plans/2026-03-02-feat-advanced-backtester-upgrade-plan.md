@@ -136,24 +136,24 @@ All phases ship together on one branch but are logically ordered for dependency 
 
 ##### Task 3.1: Add condition group support to worker
 
-- [ ] Change condition structure from flat array to grouped:
+- [x] Change condition structure from flat array to grouped:
   ```typescript
   interface ConditionGroup {
     conditions: WorkerCondition[];  // AND within group
     logicalOp: "AND" | "OR";       // how this group relates to next
   }
   ```
-- [ ] `evaluateConditions()` logic:
+- [x] `evaluateConditionGroups()` logic:
   - Evaluate each group: all conditions in a group must be true (AND)
   - Groups connected by OR: at least one group must pass
   - Single flat array (no groups) treated as one AND group (backward compatible)
-- [ ] Backward compatibility: if conditions array contains raw conditions (no groups), wrap in a single AND group
+- [x] Backward compatibility: if conditions array contains raw conditions (no groups), wrap in a single AND group
 
 ##### Task 3.2: Update strategy-translator.ts for groups
 
-- [ ] Add `ConditionGroup` type to translator
-- [ ] Frontend format → worker format conversion handles groups
-- [ ] Swift format → worker format conversion handles groups
+- [x] Add `ConditionGroup` and `FrontendConditionGroup` types to translator
+- [x] Add `normalizeToWorkerGroups()` — handles worker groups → frontend groups → flat worker → flat frontend with fallback chain
+- [x] `StrategyConfigRaw` updated with `entry_condition_groups`, `exit_condition_groups`, `entryConditionGroups`, `exitConditionGroups`, `direction`, `positionSizing`
 
 ##### Task 3.3: Update Swift UI for OR grouping
 

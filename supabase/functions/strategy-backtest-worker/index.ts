@@ -5,7 +5,9 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 import {
+  type ConditionGroup,
   normalizeToWorkerFormat,
+  normalizeToWorkerGroups,
   type StrategyConfigRaw,
   type WorkerCondition,
 } from "../_shared/strategy-translator.ts";
@@ -53,11 +55,16 @@ interface StrategyConfig extends StrategyConfigRaw {
   take_profit_pct?: number;
 }
 
-/** Normalize config using shared translator. */
-function normalizeConfig(
-  raw: StrategyConfig,
-): { entry_conditions: Condition[]; exit_conditions: Condition[] } {
-  return normalizeToWorkerFormat(raw);
+/** Normalize config using shared translator. Returns both flat conditions (backward compat) and groups. */
+function normalizeConfig(raw: StrategyConfig): {
+  entry_conditions: Condition[];
+  exit_conditions: Condition[];
+  entry_condition_groups: ConditionGroup[];
+  exit_condition_groups: ConditionGroup[];
+} {
+  const flat = normalizeToWorkerFormat(raw);
+  const groups = normalizeToWorkerGroups(raw);
+  return { ...flat, ...groups };
 }
 
 // ─── Job management ───────────────────────────────────────────────────────────
@@ -346,32 +353,46 @@ async function runBacktest(
   }
 
   const bars: BarData = { closes, highs, lows, volumes, opens };
-  const entryConds: Condition[] = config.entry_conditions || [];
-  const exitConds: Condition[] = config.exit_conditions || [];
 
-  // Build lazy indicator cache from all conditions referenced by the strategy
-  const allConditions = [...entryConds, ...exitConds];
+  // Get grouped conditions (OR logic: each group is AND'd internally, groups are OR'd)
+  const entryGroups: ConditionGroup[] = config.entry_condition_groups ||
+    (config.entry_conditions?.length
+      ? [{ conditions: config.entry_conditions }]
+      : []);
+  const exitGroups: ConditionGroup[] = config.exit_condition_groups ||
+    (config.exit_conditions?.length
+      ? [{ conditions: config.exit_conditions }]
+      : []);
+
+  // Flatten all conditions from all groups for cache building
+  const allConditions = [
+    ...entryGroups.flatMap((g) => g.conditions),
+    ...exitGroups.flatMap((g) => g.conditions),
+  ];
   const cache = buildIndicatorCache(allConditions, bars);
 
   console.log(
-    `[BacktestWorker] Entry conditions (${entryConds.length}):`,
+    `[BacktestWorker] Entry groups (${entryGroups.length}):`,
     JSON.stringify(
-      entryConds.map((c) => ({
-        name: c.name,
-        op: c.operator,
-        val: c.value,
-        params: c.params,
+      entryGroups.map((g) => ({
+        conditions: g.conditions.map((c) => ({
+          name: c.name,
+          op: c.operator,
+          val: c.value,
+          params: c.params,
+        })),
       })),
     ),
   );
   console.log(
-    `[BacktestWorker] Exit conditions (${exitConds.length}):`,
+    `[BacktestWorker] Exit groups (${exitGroups.length}):`,
     JSON.stringify(
-      exitConds.map((c) => ({
-        name: c.name,
-        op: c.operator,
-        val: c.value,
-        params: c.params,
+      exitGroups.map((g) => ({
+        conditions: g.conditions.map((c) => ({
+          name: c.name,
+          op: c.operator,
+          val: c.value,
+        })),
       })),
     ),
   );
@@ -386,7 +407,7 @@ async function runBacktest(
   const warnedIndicators = new Set<string>();
 
   /**
-   * Evaluate all conditions at bar i.
+   * Evaluate all conditions at bar i (AND logic within a single group).
    * Crossover operators compare bar[i] vs bar[i-1].
    * Unknown indicators are skipped with a warning (condition passes).
    */
@@ -451,6 +472,19 @@ async function runBacktest(
     return true;
   }
 
+  /**
+   * Evaluate condition groups at bar i (OR logic across groups).
+   * Returns true if ANY group fully passes (all conditions within that group are met).
+   * An empty groups array returns true (no conditions = always entry/exit signal).
+   */
+  function evaluateConditionGroups(
+    groups: ConditionGroup[],
+    i: number,
+  ): boolean {
+    if (!groups || groups.length === 0) return true;
+    return groups.some((group) => evaluateConditions(group.conditions, i));
+  }
+
   // ─── Position loop ──────────────────────────────────────────────────────────
 
   const slippagePct = 0.0005; // 5 bps per side (realistic for liquid equities)
@@ -467,7 +501,7 @@ async function runBacktest(
   for (let i = 30; i < closes.length; i++) {
     if (shares === 0) {
       // ── Entry logic ──
-      const entrySignal = evaluateConditions(entryConds, i);
+      const entrySignal = evaluateConditionGroups(entryGroups, i);
 
       if (entrySignal) {
         const posDir = isShortOnly ? -1 : 1; // +1 long, -1 short
@@ -503,7 +537,7 @@ async function runBacktest(
         ? highRet >= takeProfit
         : lowRet <= -takeProfit;
 
-      const exitByCondition = evaluateConditions(exitConds, i);
+      const exitByCondition = evaluateConditionGroups(exitGroups, i);
 
       if (exitByCondition || hitSL || hitTP) {
         let rawExitPrice: number;
@@ -765,13 +799,18 @@ serve(async (req: Request): Promise<Response> => {
 
         if (inlineConfig) {
           console.log(`Job ${job.id}: using inline strategy_config`);
-          const { entry_conditions, exit_conditions } = normalizeConfig(
-            inlineConfig,
-          );
+          const {
+            entry_conditions,
+            exit_conditions,
+            entry_condition_groups,
+            exit_condition_groups,
+          } = normalizeConfig(inlineConfig);
           const config: StrategyConfig = {
             ...inlineConfig,
             entry_conditions,
             exit_conditions,
+            entry_condition_groups,
+            exit_condition_groups,
           };
 
           await updateHeartbeat(supabase, job.id);
@@ -819,13 +858,18 @@ serve(async (req: Request): Promise<Response> => {
             .single();
 
           const rawConfig = (strategy?.config || {}) as StrategyConfig;
-          const { entry_conditions, exit_conditions } = normalizeConfig(
-            rawConfig,
-          );
+          const {
+            entry_conditions,
+            exit_conditions,
+            entry_condition_groups,
+            exit_condition_groups,
+          } = normalizeConfig(rawConfig);
           const config: StrategyConfig = {
             ...rawConfig,
             entry_conditions,
             exit_conditions,
+            entry_condition_groups,
+            exit_condition_groups,
           };
 
           await updateHeartbeat(supabase, job.id);
