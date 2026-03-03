@@ -363,14 +363,13 @@ All phases ship together on one branch but are logically ordered for dependency 
 
 ##### Task 8.1: Add Xcode build phase entries for new files
 
-- [ ] Add all new Swift files to project.pbxproj (PBXBuildFile, PBXFileReference, Sources)
-- [ ] Create `BacktestCharts` group in Xcode project
+- [x] N/A — all Phase 5/6/7 changes were inline modifications to existing files; no new Swift files created, so no pbxproj changes needed
 
 ##### Task 8.2: Deploy Edge Functions
 
-- [ ] Deploy updated `strategy-backtest-worker`
-- [ ] Deploy updated `backtest-strategy` (if changed)
-- [ ] Verify with test backtest: custom RSI strategy with short selling
+- [x] Deploy updated `strategy-backtest-worker` (indicators, validation, index, shared strategy-translator) — 96.87kB bundle deployed
+- [x] `backtest-strategy` — unchanged; no deploy needed
+- [ ] Verify with test backtest: custom RSI strategy with short selling (manual step)
 
 ##### Task 8.3: End-to-end verification
 
