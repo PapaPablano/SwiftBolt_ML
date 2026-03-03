@@ -255,11 +255,11 @@ async function runBacktestViaSupabase(
         const entryPrice = Number(t.entry_price ?? 0);
         const exitPrice = Number(t.exit_price ?? 0);
         const pnl = Number(t.pnl ?? 0);
-        const qty =
-          entryPrice !== exitPrice && entryPrice > 0
-            ? Math.round(pnl / (exitPrice - entryPrice))
-            : Number(t.quantity ?? 1);
-        const pnlPercent = entryPrice ? ((exitPrice - entryPrice) / entryPrice) * 100 : 0;
+        const qty = Number(t.quantity ?? 1);
+        // Use worker-computed pnl_pct directly (correct for both long and short trades)
+        const pnlPercent = t.pnl_pct !== undefined
+          ? Number(t.pnl_pct)
+          : entryPrice ? ((exitPrice - entryPrice) / entryPrice) * 100 : 0;
         tradesList.push({
           id: `trade-${tradesList.length}`,
           entryTime: entryDate,
