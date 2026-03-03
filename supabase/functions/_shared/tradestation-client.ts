@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-explicit-any
 /**
  * TradeStation API Client
  *
@@ -12,8 +13,6 @@
 
 import {
   FUTURES_MULTIPLIERS,
-  FUTURES_TICK_SIZES,
-  MAX_FUTURES_CONTRACTS,
   type FuturesMultiplier,
 } from "./futures-calendar.ts";
 
@@ -160,7 +159,11 @@ export function normalizeSymbol(symbol: string): NormalizedSymbol {
     ? (FUTURES_MULTIPLIERS[tsSymbol] as FuturesMultiplier) ?? 1
     : 1;
 
-  return { tsSymbol, isFutures, multiplier: multiplier as FuturesMultiplier | 1 };
+  return {
+    tsSymbol,
+    isFutures,
+    multiplier: multiplier as FuturesMultiplier | 1,
+  };
 }
 
 // ============================================================================
@@ -175,7 +178,9 @@ function buildAccountUrl(accountId: string, path: string): string {
   if (!/^[A-Z0-9]{4,15}$/.test(accountId)) {
     throw new Error("Invalid account ID format");
   }
-  return `${getBaseUrl()}/brokerage/accounts/${encodeURIComponent(accountId)}${path}`;
+  return `${getBaseUrl()}/brokerage/accounts/${
+    encodeURIComponent(accountId)
+  }${path}`;
 }
 
 // ============================================================================
@@ -189,7 +194,9 @@ export async function refreshAccessToken(
   clientId: string,
   clientSecret: string,
   refreshToken: string,
-): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+): Promise<
+  { access_token: string; refresh_token: string; expires_in: number }
+> {
   const response = await fetch(TS_AUTH_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -247,7 +254,9 @@ export async function ensureFreshToken(
   const clientId = Deno.env.get("TRADESTATION_CLIENT_ID");
   const clientSecret = Deno.env.get("TRADESTATION_CLIENT_SECRET");
   if (!clientId || !clientSecret) {
-    throw new Error("Missing TRADESTATION_CLIENT_ID or TRADESTATION_CLIENT_SECRET");
+    throw new Error(
+      "Missing TRADESTATION_CLIENT_ID or TRADESTATION_CLIENT_SECRET",
+    );
   }
 
   const refreshed = await refreshAccessToken(
@@ -261,7 +270,7 @@ export async function ensureFreshToken(
   ).toISOString();
 
   // Optimistic lock: only update if expires_at hasn't changed (another invocation didn't already refresh)
-  const { data: updated, error: updateError } = await supabase
+  const { data: updated } = await supabase
     .from("broker_tokens")
     .update({
       access_token: refreshed.access_token,
@@ -339,7 +348,10 @@ export async function getOrderStatus(
   accountId: string,
   orderId: string,
 ): Promise<OrderFillResult> {
-  const url = buildAccountUrl(accountId, `/orders/${encodeURIComponent(orderId)}`);
+  const url = buildAccountUrl(
+    accountId,
+    `/orders/${encodeURIComponent(orderId)}`,
+  );
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });

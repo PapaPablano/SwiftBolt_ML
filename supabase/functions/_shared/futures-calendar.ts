@@ -95,7 +95,9 @@ function getThirdFriday(year: number, month: number): Date {
   const d = new Date(year, month, 1);
   // Find first Friday
   const dayOfWeek = d.getDay();
-  const firstFriday = dayOfWeek <= 5 ? (5 - dayOfWeek + 1) : (5 + 7 - dayOfWeek + 1);
+  const firstFriday = dayOfWeek <= 5
+    ? (5 - dayOfWeek + 1)
+    : (5 + 7 - dayOfWeek + 1);
   // Third Friday = first Friday + 14
   return new Date(year, month, firstFriday + 14);
 }
@@ -130,7 +132,6 @@ export function getNearestExpiry(symbol: string): FuturesExpiry {
   const baseSymbol = symbol.replace("@", "");
   const now = new Date();
   const year = now.getFullYear();
-  const yearCode = String(year).slice(-2);
 
   // Find the next quarterly expiry
   for (let monthOffset = 0; monthOffset < 12; monthOffset++) {
@@ -168,10 +169,17 @@ export function getNearestExpiry(symbol: string): FuturesExpiry {
   const nextYear = year + 1;
   return {
     symbol,
-    frontMonth: `${baseSymbol}${MONTH_CODES[fallbackMonth]}${String(nextYear).slice(-2)}`,
-    nextMonth: `${baseSymbol}${MONTH_CODES[QUARTERLY_MONTHS[1]]}${String(nextYear).slice(-2)}`,
+    frontMonth: `${baseSymbol}${MONTH_CODES[fallbackMonth]}${
+      String(nextYear).slice(-2)
+    }`,
+    nextMonth: `${baseSymbol}${MONTH_CODES[QUARTERLY_MONTHS[1]]}${
+      String(nextYear).slice(-2)
+    }`,
     expiryDate: getThirdFriday(nextYear, fallbackMonth),
-    rollDate: subtractBusinessDays(getThirdFriday(nextYear, fallbackMonth), ROLL_DAYS_BEFORE_EXPIRY),
+    rollDate: subtractBusinessDays(
+      getThirdFriday(nextYear, fallbackMonth),
+      ROLL_DAYS_BEFORE_EXPIRY,
+    ),
   };
 }
 

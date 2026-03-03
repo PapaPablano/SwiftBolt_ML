@@ -9,37 +9,33 @@
 // here to limit blast radius of brokerage write access.
 // ============================================================================
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.97.0";
+// deno-lint-ignore-file no-explicit-any
+import { createClient } from "@supabase/supabase-js";
 import { getSupabaseClientWithAuth } from "../_shared/supabase-client.ts";
 import {
-  getCorsHeaders,
-  handlePreflight,
   corsResponse,
   errorResponse,
+  handlePreflight,
 } from "../_shared/cors.ts";
 import {
-  type BrokerToken,
   type AccountBalance,
-  type OrderFillResult,
+  type BrokerToken,
   type CircuitBreakerResult,
-  type LiveExecutionError,
-  type NormalizedSymbol,
   ensureFreshToken,
   getAccountBalance,
-  getOrderStatus,
   getBatchOrderStatus,
+  getOrderStatus,
+  type LiveExecutionError,
+  MAX_FUTURES_CONTRACTS,
   normalizeSymbol,
+  type OrderFillResult,
+  sanitizeBrokerError,
   validateSymbol,
   validateTimeframe,
-  sanitizeBrokerError,
-  FUTURES_MULTIPLIERS,
-  MAX_FUTURES_CONTRACTS,
 } from "../_shared/tradestation-client.ts";
 import { roundToTick } from "../_shared/futures-calendar.ts";
 import {
   type Bar,
-  type Condition,
-  IndicatorCache,
   evaluateStrategySignals,
 } from "../_shared/condition-evaluator.ts";
 
@@ -103,7 +99,6 @@ type ExecutionResult =
 // CONSTANTS
 // ============================================================================
 
-const CONCURRENCY_LIMIT = 5;
 const POLL_TIMEOUT_MS = 15_000; // 15s max poll (P1 #087: 60s edge function limit)
 const POLL_INTERVAL_MS = 1_000; // 1s between poll attempts
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -272,7 +267,9 @@ async function cancelOrder(
   accessToken: string,
   orderId: string,
 ): Promise<void> {
-  const url = `${getBaseUrl()}/orderexecution/orders/${encodeURIComponent(orderId)}`;
+  const url = `${getBaseUrl()}/orderexecution/orders/${
+    encodeURIComponent(orderId)
+  }`;
   await fetch(url, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -382,7 +379,9 @@ async function checkDailyLossLimit(
   if (dailyPnl < maxLoss) {
     return {
       allowed: false,
-      reason: `Daily loss limit hit (${dailyPnl.toFixed(2)} < ${maxLoss.toFixed(2)})`,
+      reason: `Daily loss limit hit (${dailyPnl.toFixed(2)} < ${
+        maxLoss.toFixed(2)
+      })`,
       rule: "daily_loss",
     };
   }
@@ -427,7 +426,9 @@ function checkPositionSizeCap(
   if (tradeValue > maxValue) {
     return {
       allowed: false,
-      reason: `Trade value ${tradeValue.toFixed(0)} exceeds cap ${maxValue.toFixed(0)}`,
+      reason: `Trade value ${tradeValue.toFixed(0)} exceeds cap ${
+        maxValue.toFixed(0)
+      }`,
       rule: "position_size_cap",
     };
   }
@@ -456,9 +457,7 @@ function calculateQuantity(
   const rawQty = riskDollars / (stopDistance * contractMultiplier);
 
   // Apply max contracts cap for futures (P3 #106)
-  const maxQty = isFutures
-    ? (MAX_FUTURES_CONTRACTS[tsSymbol] ?? 10)
-    : 10000;
+  const maxQty = isFutures ? (MAX_FUTURES_CONTRACTS[tsSymbol] ?? 10) : 10000;
 
   return Math.min(maxQty, Math.max(1, Math.floor(rawQty)));
 }
@@ -497,9 +496,7 @@ async function executeLiveTradingCycle(
 
   // 2. Normalize symbol
   const { tsSymbol, isFutures, multiplier } = normalizeSymbol(symbol);
-  const accountId = isFutures
-    ? token.futures_account_id
-    : token.account_id;
+  const accountId = isFutures ? token.futures_account_id : token.account_id;
 
   if (!accountId) {
     return [
@@ -577,7 +574,10 @@ async function executeLiveTradingCycle(
   const latestClose = sortedBars[sortedBars.length - 1].close;
   await supabase
     .from("live_trading_positions")
-    .update({ current_price: latestClose, updated_at: new Date().toISOString() })
+    .update({
+      current_price: latestClose,
+      updated_at: new Date().toISOString(),
+    })
     .eq("user_id", userId)
     .eq("symbol_id", symbol)
     .in("status", ["open", "pending_bracket"]);
@@ -642,7 +642,10 @@ async function executeStrategy(
 
   if (openPosition) {
     // Position exists — check for exit signal
-    if (openPosition.status === "pending_entry" || openPosition.status === "pending_bracket") {
+    if (
+      openPosition.status === "pending_entry" ||
+      openPosition.status === "pending_bracket"
+    ) {
       // Still waiting on previous cycle — skip
       return { success: true, action: "no_action" };
     }
@@ -682,7 +685,10 @@ async function executeStrategy(
   // Run circuit breakers
   const marketCheck = checkMarketHours();
   if (!marketCheck.allowed) {
-    return { success: false, error: { type: "circuit_breaker", rule: "market_hours" } };
+    return {
+      success: false,
+      error: { type: "circuit_breaker", rule: "market_hours" },
+    };
   }
 
   const lossCheck = await checkDailyLossLimit(
@@ -692,7 +698,10 @@ async function executeStrategy(
     strategy.live_daily_loss_limit_pct,
   );
   if (!lossCheck.allowed) {
-    return { success: false, error: { type: "circuit_breaker", rule: "daily_loss" } };
+    return {
+      success: false,
+      error: { type: "circuit_breaker", rule: "daily_loss" },
+    };
   }
 
   const posCheck = await checkMaxPositions(
@@ -701,7 +710,10 @@ async function executeStrategy(
     strategy.live_max_positions,
   );
   if (!posCheck.allowed) {
-    return { success: false, error: { type: "circuit_breaker", rule: "max_positions" } };
+    return {
+      success: false,
+      error: { type: "circuit_breaker", rule: "max_positions" },
+    };
   }
 
   // Determine direction (default long, short if config specifies)
@@ -751,7 +763,10 @@ async function executeStrategy(
     strategy.live_max_position_pct,
   );
   if (!capCheck.allowed) {
-    return { success: false, error: { type: "circuit_breaker", rule: "position_size_cap" } };
+    return {
+      success: false,
+      error: { type: "circuit_breaker", rule: "position_size_cap" },
+    };
   }
 
   // Place entry market order
@@ -869,7 +884,11 @@ async function executeStrategy(
       })
       .eq("id", newPosition.id);
 
-    return { success: true, action: "entry_created", positionId: newPosition.id };
+    return {
+      success: true,
+      action: "entry_created",
+      positionId: newPosition.id,
+    };
   } catch (bracketErr: any) {
     // Bracket failed — IMMEDIATELY close the unprotected position (P1 #085)
     console.error(
@@ -998,7 +1017,7 @@ async function closeLivePositionFromBracket(
     : ((position.entry_price - exitPrice) / position.entry_price) * 100;
 
   // Optimistic lock: only close if still open
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("live_trading_positions")
     .update({
       status: "closed",
@@ -1147,7 +1166,12 @@ Deno.serve(async (req) => {
           .range(offset, offset + limit - 1);
 
         return corsResponse(
-          { positions: positions ?? [], total: positions?.length ?? 0, offset, limit },
+          {
+            positions: positions ?? [],
+            total: positions?.length ?? 0,
+            offset,
+            limit,
+          },
           200,
           origin,
         );
@@ -1184,30 +1208,40 @@ Deno.serve(async (req) => {
           0,
         );
 
-        return corsResponse({
-          total_trades: totalTrades,
-          win_rate: totalTrades > 0 ? wins / totalTrades : 0,
-          total_pnl: totalPnl,
-          winning_trades: wins,
-          losing_trades: totalTrades - wins,
-        }, 200, origin);
+        return corsResponse(
+          {
+            total_trades: totalTrades,
+            win_rate: totalTrades > 0 ? wins / totalTrades : 0,
+            total_pnl: totalPnl,
+            winning_trades: wins,
+            losing_trades: totalTrades - wins,
+          },
+          200,
+          origin,
+        );
       }
 
       if (action === "broker_status") {
         // Check if user has a connected broker
         const { data: token } = await authSupabase
           .from("broker_tokens")
-          .select("id, provider, expires_at, account_id, futures_account_id, revoked_at")
+          .select(
+            "id, provider, expires_at, account_id, futures_account_id, revoked_at",
+          )
           .eq("user_id", user.id)
           .is("revoked_at", null)
           .maybeSingle();
 
-        return corsResponse({
-          connected: !!token,
-          provider: token?.provider ?? null,
-          has_futures: !!token?.futures_account_id,
-          expires_at: token?.expires_at ?? null,
-        }, 200, origin);
+        return corsResponse(
+          {
+            connected: !!token,
+            provider: token?.provider ?? null,
+            has_futures: !!token?.futures_account_id,
+            expires_at: token?.expires_at ?? null,
+          },
+          200,
+          origin,
+        );
       }
 
       return errorResponse(
@@ -1252,7 +1286,11 @@ Deno.serve(async (req) => {
         .single();
 
       if (!pos) {
-        return errorResponse("Position not found or already closed", 404, origin);
+        return errorResponse(
+          "Position not found or already closed",
+          404,
+          origin,
+        );
       }
 
       let token: BrokerToken;
@@ -1371,16 +1409,20 @@ Deno.serve(async (req) => {
     );
 
     const successCount = results.filter((r) => r.success).length;
-    return corsResponse({
-      success: true,
-      execution_time: new Date().toISOString(),
-      symbol,
-      timeframe,
-      strategies_processed: results.length,
-      successful: successCount,
-      failed: results.length - successCount,
-      results,
-    }, 200, origin);
+    return corsResponse(
+      {
+        success: true,
+        execution_time: new Date().toISOString(),
+        symbol,
+        timeframe,
+        strategies_processed: results.length,
+        successful: successCount,
+        failed: results.length - successCount,
+        results,
+      },
+      200,
+      origin,
+    );
   } catch (error: unknown) {
     console.error("[live-trading-executor] Edge function error:", error);
     return corsResponse(
