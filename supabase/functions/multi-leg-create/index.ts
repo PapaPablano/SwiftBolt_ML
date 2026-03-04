@@ -26,21 +26,23 @@ import {
 } from "../_shared/services/pl-calculator.ts";
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   // Only allow POST
   if (req.method !== "POST") {
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, origin);
   }
 
   try {
     // Get auth header
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return errorResponse("Authorization required", 401);
+      return errorResponse("Authorization required", 401, origin);
     }
 
     // Parse request body
@@ -113,6 +115,7 @@ serve(async (req: Request): Promise<Response> => {
         return errorResponse(
           `Failed to create symbol for ${ticker}: ${createError?.message}`,
           500,
+          origin,
         );
       }
 
@@ -199,6 +202,7 @@ serve(async (req: Request): Promise<Response> => {
       return errorResponse(
         `Failed to create strategy: ${strategyError.message}`,
         500,
+        origin,
       );
     }
 
@@ -248,7 +252,11 @@ serve(async (req: Request): Promise<Response> => {
       console.error("[multi-leg-create] Legs insert error:", legsError);
       // Rollback strategy (cascade will handle it if we delete the strategy)
       await supabase.from("options_strategies").delete().eq("id", strategyId);
-      return errorResponse(`Failed to create legs: ${legsError.message}`, 500);
+      return errorResponse(
+        `Failed to create legs: ${legsError.message}`,
+        500,
+        origin,
+      );
     }
 
     // Calculate combined Greeks
@@ -295,7 +303,11 @@ serve(async (req: Request): Promise<Response> => {
 
     if (fetchError) {
       console.error("[multi-leg-create] Fetch error:", fetchError);
-      return errorResponse("Strategy created but failed to fetch result", 500);
+      return errorResponse(
+        "Strategy created but failed to fetch result",
+        500,
+        origin,
+      );
     }
 
     // Build response
@@ -316,6 +328,7 @@ serve(async (req: Request): Promise<Response> => {
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
       500,
+      origin,
     );
   }
 });

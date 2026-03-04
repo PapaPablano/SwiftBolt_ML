@@ -84,12 +84,14 @@ const FORECAST_SLA_HOURS = 24; // Forecasts should be < 24h old
 const OPTIONS_SLA_HOURS = 4; // Options snapshots should be < 4h old during market hours
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   if (req.method !== "GET") {
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, origin);
   }
 
   try {
@@ -369,6 +371,7 @@ serve(async (req: Request): Promise<Response> => {
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
       500,
+      origin,
     );
   }
 });

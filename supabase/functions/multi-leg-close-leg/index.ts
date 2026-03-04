@@ -19,32 +19,34 @@ import {
 import { validateLegClosure } from "../_shared/services/strategy-validator.ts";
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   // Only allow POST
   if (req.method !== "POST") {
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, origin);
   }
 
   try {
     // Get auth header
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return errorResponse("Authorization required", 401);
+      return errorResponse("Authorization required", 401, origin);
     }
 
     // Parse request body
     const body: CloseLegRequest = await req.json();
 
     if (!body.legId) {
-      return errorResponse("legId is required", 400);
+      return errorResponse("legId is required", 400, origin);
     }
 
     if (body.exitPrice === undefined || body.exitPrice <= 0) {
-      return errorResponse("exitPrice must be a positive number", 400);
+      return errorResponse("exitPrice must be a positive number", 400, origin);
     }
 
     // Authenticate user
@@ -77,10 +79,14 @@ serve(async (req: Request): Promise<Response> => {
 
     if (legError) {
       if (legError.code === "PGRST116") {
-        return errorResponse("Leg not found", 404);
+        return errorResponse("Leg not found", 404, origin);
       }
       console.error("[multi-leg-close-leg] Leg fetch error:", legError);
-      return errorResponse(`Failed to fetch leg: ${legError.message}`, 500);
+      return errorResponse(
+        `Failed to fetch leg: ${legError.message}`,
+        500,
+        origin,
+      );
     }
 
     const leg = legRowToModel(legData as LegRow);
@@ -124,7 +130,11 @@ serve(async (req: Request): Promise<Response> => {
 
     if (updateError) {
       console.error("[multi-leg-close-leg] Update error:", updateError);
-      return errorResponse(`Failed to close leg: ${updateError.message}`, 500);
+      return errorResponse(
+        `Failed to close leg: ${updateError.message}`,
+        500,
+        origin,
+      );
     }
 
     // Check if all legs are now closed
@@ -166,7 +176,11 @@ serve(async (req: Request): Promise<Response> => {
 
     if (fetchError) {
       console.error("[multi-leg-close-leg] Fetch error:", fetchError);
-      return errorResponse("Leg closed but failed to fetch result", 500);
+      return errorResponse(
+        "Leg closed but failed to fetch result",
+        500,
+        origin,
+      );
     }
 
     return jsonResponse({
@@ -180,6 +194,7 @@ serve(async (req: Request): Promise<Response> => {
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
       500,
+      origin,
     );
   }
 });

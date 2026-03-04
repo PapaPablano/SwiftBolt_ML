@@ -1,7 +1,7 @@
 ---
 title: "fix: Resolve all P1+P2 code review findings from PR #28 (live trading executor)"
 type: fix
-status: active
+status: completed
 date: 2026-03-03
 origin: docs/brainstorms/2026-03-03-live-trading-executor-tradestation-brainstorm.md
 ---
@@ -1182,71 +1182,71 @@ Phases 1.3, 2 must be deployed **before** the updated Edge Function. The executi
 ## Acceptance Criteria
 
 ### P1 — Must pass before merge
-- [ ] `deno check supabase/functions/live-trading-executor/index.ts` — no type errors
-- [ ] `deno check supabase/functions/_shared/tradestation-client.ts` — no type errors
-- [ ] `deno lint supabase/functions/` — no `no-explicit-any` violations in either file
-- [ ] First live trade does not crash with UUID type mismatch (#117)
-- [ ] `cancelOrder` response.ok is checked; failed cancels are logged (#109)
-- [ ] Market order is cancelled on all DB insert failures, not only 23505 (#110)
-- [ ] `ensureFreshToken` re-read path is null-guarded (#111)
-- [ ] `checkBracketFills` wrapped in try/catch; errors do not abort cycle (#112)
-- [ ] CORS: unknown origins receive no CORS grant (empty string), not `allowed[0]` (#114)
-- [ ] CORS: all 20 caller functions updated to pass `origin` before `getCorsHeaders` fix deploys (#168)
-- [ ] `increment_rate_limit` RPC: valid PL/pgSQL syntax (#153), REVOKE+GRANT (#169), auth.uid() check (#169), SET search_path (#170)
-- [ ] `checkBracketFills` groups by position's `account_id`, not outer-scope ID (#116)
-- [ ] Positions stuck in `pending_bracket` OR filled `pending_entry` are emergency-closed, not advanced to open (#108, #150)
-- [ ] Recovery scan: concurrency guard via `closing_emergency` status prevents double-close (#151)
-- [ ] Recovery scan: try/catch at call site + per-position (#179), NULL order_submitted_at included (#180)
-- [ ] Recovery scan: `closeLivePosition` called with all 7 required args (#151)
-- [ ] Manual and exit-signal closes poll fill price; `pollOrderFill` signature accepts optional `timeoutMs` (#140, #155)
-- [ ] `total` in paginated responses reflects DB row count, not page size (#132)
-- [ ] Phase 4.2: `cancelOrder` called exactly once per error path — no double-cancel (#149)
-- [ ] Phase 2.4: `close_reason` CHECK uses UPPERCASE matching existing casing (#154)
-- [ ] Phase 1.3: DROP INDEX targets correct existing names (#152)
-- [ ] Circuit breaker response includes `reset_at` and `suggested_action` (#174)
-- [ ] Paused strategy response includes `paused_at` and `suggested_action` (#173)
+- [x] `deno check supabase/functions/live-trading-executor/index.ts` — no type errors
+- [x] `deno check supabase/functions/_shared/tradestation-client.ts` — no type errors
+- [x] `deno lint supabase/functions/` — no `no-explicit-any` violations in either file
+- [x] First live trade does not crash with UUID type mismatch (#117)
+- [x] `cancelOrder` response.ok is checked; failed cancels are logged (#109)
+- [x] Market order is cancelled on all DB insert failures, not only 23505 (#110)
+- [x] `ensureFreshToken` re-read path is null-guarded (#111)
+- [x] `checkBracketFills` wrapped in try/catch; errors do not abort cycle (#112)
+- [x] CORS: unknown origins receive no CORS grant (empty string), not `allowed[0]` (#114)
+- [x] CORS: all 20 caller functions updated to pass `origin` before `getCorsHeaders` fix deploys (#168)
+- [x] `increment_rate_limit` RPC: valid PL/pgSQL syntax (#153), REVOKE+GRANT (#169), auth.uid() check (#169), SET search_path (#170)
+- [x] `checkBracketFills` groups by position's `account_id`, not outer-scope ID (#116)
+- [x] Positions stuck in `pending_bracket` OR filled `pending_entry` are emergency-closed, not advanced to open (#108, #150)
+- [x] Recovery scan: concurrency guard via `closing_emergency` status prevents double-close (#151)
+- [x] Recovery scan: try/catch at call site + per-position (#179), NULL order_submitted_at included (#180)
+- [x] Recovery scan: `closeLivePosition` called with all 7 required args (#151)
+- [x] Manual and exit-signal closes poll fill price; `pollOrderFill` signature accepts optional `timeoutMs` (#140, #155)
+- [x] `total` in paginated responses reflects DB row count, not page size (#132)
+- [x] Phase 4.2: `cancelOrder` called exactly once per error path — no double-cancel (#149)
+- [x] Phase 2.4: `close_reason` CHECK uses UPPERCASE matching existing casing (#154)
+- [x] Phase 1.3: DROP INDEX targets correct existing names (#152)
+- [x] Circuit breaker response includes `reset_at` and `suggested_action` (#174)
+- [x] Paused strategy response includes `paused_at` and `suggested_action` (#173)
 
 ### P2 — Should pass before merge
-- [ ] SL/TP recalculated from fill price before bracket placement (#119)
-- [ ] `live_trading_positions.updated_at` auto-updates on every UPDATE; trigger uses DROP-then-CREATE (#120, #158)
-- [ ] Both FK delete policies are `RESTRICT`; GDPR deletion order documented (#121, #166)
-- [ ] `live_trading_trades` has CHECK constraints on price, quantity, close_reason, pnl bounds (#122, #167)
-- [ ] `handleClose` shows toast/error on failure; checks `result.success` for HTTP 200 with `success: false` (#123, #183)
-- [ ] Execute API includes `action` field (defensive improvement, not required by server) (#124, #192)
-- [ ] `OrderFillResult.status` uses union type with `"FPR"` (not `"FLP"`) for partial fills (#125, #161)
-- [ ] Summary endpoint bounded to today (ET, not UTC) by default; `getETStartOfDay()` shared utility (#126, #189)
-- [ ] Positions endpoint accepts `?status=` and `?strategy_id=` filters (#133, #176)
-- [ ] Paused strategy returns structured response (log observability — no frontend consumer identified) (#134, #184)
-- [ ] Circuit breaker response includes `rule`, `reason`, `reset_at`, `suggested_action` (#135)
-- [ ] API client handles 429 with user-facing message (#136)
-- [ ] `getBatchOrderStatus` fetches at most 48h of order history (#146)
-- [ ] `executeStrategy` split into ≤3 focused sub-functions (#142)
-- [ ] `LiveTradingStatusWidget` uses summary endpoint; PnL labeled "Today's Realized P&L" (#143, #185)
-- [ ] CORS: unknown origins receive no header (conditional omission), not empty string (#159)
-- [ ] Phase 6.2: positions with missing `account_id` are skipped (not fallback to current account) (#162)
-- [ ] Phase 5.1: stuck threshold 5 minutes (configurable via env var), not 2 minutes (#163)
-- [ ] Phase 6.3: DB errors return 503, genuine rate limits return 429 (#171)
-- [ ] Phase 4.2: `cancelOnce` checks `cancelled.ok` and logs critical alert on failure (#172)
-- [ ] Paginated responses include `has_more: boolean` (#175)
-- [ ] Phase 4.5: poll boundary clarified — handler polls, passes fill price to `closeLivePosition` (#182)
-- [ ] `disconnect_broker` checks for open positions and returns 409 if any exist (#186)
-- [ ] `EMERGENCY_CLOSE` added to `live_trading_positions.close_reason` CHECK constraint (#187)
-- [ ] Opposite-leg cancellation in `checkBracketFills` documented (or OCO behavior confirmed) (#188)
-- [ ] Standalone `POST action: "recover_positions"` endpoint available (#181)
-- [ ] Phase 6.2 deployed together with or after Phase 7.4 date filter (#160)
+- [x] SL/TP recalculated from fill price before bracket placement (#119)
+- [x] `live_trading_positions.updated_at` auto-updates on every UPDATE; trigger uses DROP-then-CREATE (#120, #158)
+- [x] Both FK delete policies are `RESTRICT`; GDPR deletion order documented (#121, #166)
+- [x] `live_trading_trades` has CHECK constraints on price, quantity, close_reason, pnl bounds (#122, #167)
+- [x] `handleClose` shows toast/error on failure; checks `result.success` for HTTP 200 with `success: false` (#123, #183)
+- [x] Execute API includes `action` field (defensive improvement, not required by server) (#124, #192)
+- [x] `OrderFillResult.status` uses union type with `"FPR"` (not `"FLP"`) for partial fills (#125, #161)
+- [x] Summary endpoint bounded to today (ET, not UTC) by default; `getETStartOfDay()` shared utility (#126, #189)
+- [x] Positions endpoint accepts `?status=` and `?strategy_id=` filters (#133, #176)
+- [x] Paused strategy returns structured response (log observability — no frontend consumer identified) (#134, #184)
+- [x] Circuit breaker response includes `rule`, `reason`, `reset_at`, `suggested_action` (#135)
+- [x] API client handles 429 with user-facing message (#136)
+- [x] `getBatchOrderStatus` fetches at most 48h of order history (#146)
+- [ ] `executeStrategy` split into ≤3 focused sub-functions (#142) — deferred (purely structural refactor)
+- [x] `LiveTradingStatusWidget` uses summary endpoint; PnL labeled "Today's Realized P&L" (#143, #185)
+- [x] CORS: unknown origins receive no header (conditional omission), not empty string (#159)
+- [x] Phase 6.2: positions with missing `account_id` are skipped (not fallback to current account) (#162)
+- [x] Phase 5.1: stuck threshold 5 minutes (configurable via env var), not 2 minutes (#163)
+- [x] Phase 6.3: DB errors return 503, genuine rate limits return 429 (#171)
+- [x] Phase 4.2: `cancelOnce` checks `cancelled.ok` and logs critical alert on failure (#172)
+- [x] Paginated responses include `has_more: boolean` (#175)
+- [x] Phase 4.5: poll boundary clarified — handler polls, passes fill price to `closeLivePosition` (#182)
+- [x] `disconnect_broker` checks for open positions and returns 409 if any exist (#186)
+- [x] `EMERGENCY_CLOSE` added to `live_trading_positions.close_reason` CHECK constraint (#187)
+- [x] Opposite-leg cancellation in `checkBracketFills` documented (or OCO behavior confirmed) (#188)
+- [x] Standalone `POST action: "recover_positions"` endpoint available (#181)
+- [x] Phase 6.2 deployed together with or after Phase 7.4 date filter (#160)
 
 ### P3 — Nice to have (addressed in plan but not blocking)
-- [ ] Phase 1.3 rollback documented as one-way door (#164)
-- [ ] `Math.floor()` added to exponential backoff (#165)
-- [ ] Recovery scan observability gap documented; `close_reason` filter follow-up noted (#177)
-- [ ] `GET ?action=rate_limit_status` endpoint added (#178)
-- [ ] Test matrix for P2 acceptance criteria documented (#190)
-- [ ] Deployment rollback plan table documented (#191)
-- [ ] Phase 8.2 framing corrected (defensive improvement, not bug fix) (#192)
+- [x] Phase 1.3 rollback documented as one-way door (#164)
+- [x] `Math.floor()` added to exponential backoff (#165)
+- [x] Recovery scan observability gap documented; `close_reason` filter follow-up noted (#177)
+- [x] `GET ?action=rate_limit_status` endpoint added (#178)
+- [x] Test matrix for P2 acceptance criteria documented (#190)
+- [x] Deployment rollback plan table documented (#191)
+- [x] Phase 8.2 framing corrected (defensive improvement, not bug fix) (#192)
 
 ### Quality Gates
-- [ ] `deno lint supabase/functions/` passes
-- [ ] `deno fmt --check supabase/functions/` passes
+- [x] `deno lint supabase/functions/` passes (modified files only — pre-existing violations in unrelated functions)
+- [x] `deno fmt --check supabase/functions/` passes
 - [ ] Pre-deploy SQL audits from `docs/DEPLOYMENT_VERIFICATION_PR28_LIVE_TRADING.md` pass
 - [ ] Manual test: submit a `GET ?action=broker_status` request returns 401 without auth
 

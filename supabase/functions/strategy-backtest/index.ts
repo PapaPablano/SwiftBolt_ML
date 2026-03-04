@@ -12,8 +12,10 @@ import {
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   const supabase = getSupabaseClient();
@@ -35,20 +37,20 @@ serve(async (req: Request): Promise<Response> => {
 
   try {
     if (req.method === "POST") {
-      return await handleQueueBacktest(supabase, userId, req);
+      return await handleQueueBacktest(supabase, userId, req, origin);
     }
 
     if (req.method === "GET") {
       if (jobId) {
-        return await handleGetJob(supabase, userId, jobId);
+        return await handleGetJob(supabase, userId, jobId, origin);
       }
-      return await handleListJobs(supabase, userId, url);
+      return await handleListJobs(supabase, userId, url, origin);
     }
 
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, origin);
   } catch (err) {
     console.error("[strategy-backtest] Unexpected error:", err);
-    return errorResponse("An internal error occurred", 500);
+    return errorResponse("An internal error occurred", 500, origin);
   }
 });
 
@@ -56,15 +58,20 @@ async function handleQueueBacktest(
   supabase: ReturnType<typeof getSupabaseClient>,
   userId: string,
   req: Request,
+  origin: string | null,
 ) {
   const body = await req.json();
 
   if (!body.strategy_id) {
-    return errorResponse("strategy_id is required");
+    return errorResponse("strategy_id is required", 400, origin);
   }
 
   if (!body.start_date || !body.end_date) {
-    return errorResponse("start_date and end_date are required (YYYY-MM-DD)");
+    return errorResponse(
+      "start_date and end_date are required (YYYY-MM-DD)",
+      400,
+      origin,
+    );
   }
 
   // Verify strategy exists (allow demo mode strategies with null user_id)
@@ -76,7 +83,7 @@ async function handleQueueBacktest(
     .single();
 
   if (strategyError || !strategy) {
-    return errorResponse("Strategy not found", 404);
+    return errorResponse("Strategy not found", 404, origin);
   }
 
   const job = {
@@ -97,7 +104,7 @@ async function handleQueueBacktest(
 
   if (error) {
     console.error("Failed to queue backtest:", error);
-    return errorResponse("Failed to queue backtest job");
+    return errorResponse("Failed to queue backtest job", 400, origin);
   }
 
   return jsonResponse({
@@ -113,6 +120,7 @@ async function handleGetJob(
   supabase: ReturnType<typeof getSupabaseClient>,
   userId: string,
   jobId: string,
+  origin: string | null,
 ) {
   const { data: job, error } = await supabase
     .from("strategy_backtest_jobs")
@@ -122,7 +130,7 @@ async function handleGetJob(
     .single();
 
   if (error || !job) {
-    return errorResponse("Job not found", 404);
+    return errorResponse("Job not found", 404, origin);
   }
 
   let result = null;
@@ -153,6 +161,7 @@ async function handleListJobs(
   supabase: ReturnType<typeof getSupabaseClient>,
   userId: string,
   url: URL,
+  origin: string | null,
 ) {
   const status = url.searchParams.get("status");
   const limit = parseInt(url.searchParams.get("limit") || "20");
@@ -172,7 +181,7 @@ async function handleListJobs(
 
   if (error) {
     console.error("[strategy-backtest] DB error listing jobs:", error);
-    return errorResponse("An internal error occurred", 500);
+    return errorResponse("An internal error occurred", 500, origin);
   }
 
   // Get strategy names

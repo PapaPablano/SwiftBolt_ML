@@ -68,12 +68,9 @@ export const getAllowedOrigins = (): string[] => {
 /**
  * Get CORS headers for the given origin.
  *
- * If origin is in the allowlist, it's returned in Access-Control-Allow-Origin.
- * Otherwise, the first allowed origin is returned (prevents breaking existing requests).
- *
- * The allowlist is populated from:
- * 1. ALLOWED_ORIGINS env var (comma-separated), if set
- * 2. Otherwise, the environment-specific list from getAllowedOrigins()
+ * If origin is in the allowlist, Access-Control-Allow-Origin is set to that origin.
+ * If origin is not in the allowlist (or null), the header is omitted entirely (#114, #159).
+ * Omitting the header is RFC-compliant and prevents cross-origin bypass.
  *
  * @param origin - The origin header from the request
  * @returns CORS headers object
@@ -81,17 +78,20 @@ export const getAllowedOrigins = (): string[] => {
 export const getCorsHeaders = (
   origin: string | null,
 ): Record<string, string> => {
-  const allowed = getAllowedOrigins();
-  const responseOrigin = origin && allowed.includes(origin)
-    ? origin
-    : allowed[0];
-  return {
-    "Access-Control-Allow-Origin": responseOrigin,
+  const headers: Record<string, string> = {
     "Access-Control-Allow-Headers":
       "authorization, x-client-info, apikey, content-type, x-requested-with",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
     "Access-Control-Max-Age": "86400", // 24 hours
   };
+
+  const allowed = getAllowedOrigins();
+  if (origin && allowed.includes(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+  // If origin not in allowlist, header is omitted entirely (no CORS grant)
+
+  return headers;
 };
 
 /**

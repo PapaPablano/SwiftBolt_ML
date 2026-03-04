@@ -143,9 +143,11 @@ function generateRecommendations(
 }
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   const supabase = getSupabaseClient();
@@ -157,7 +159,7 @@ serve(async (req: Request): Promise<Response> => {
       const symbol = url.searchParams.get("symbol")?.trim().toUpperCase();
 
       if (!symbol) {
-        return errorResponse("Missing required parameter: symbol", 400);
+        return errorResponse("Missing required parameter: symbol", 400, origin);
       }
 
       // Query active GA parameters
@@ -171,7 +173,7 @@ serve(async (req: Request): Promise<Response> => {
 
       if (error) {
         console.error("[GA Strategy] Database error:", error);
-        return errorResponse("Failed to fetch GA strategy", 500);
+        return errorResponse("Failed to fetch GA strategy", 500, origin);
       }
 
       if (!data || data.length === 0) {
@@ -263,7 +265,7 @@ serve(async (req: Request): Promise<Response> => {
       const trainingDays = body.trainingDays || 30;
 
       if (!symbol) {
-        return errorResponse("Missing required field: symbol", 400);
+        return errorResponse("Missing required field: symbol", 400, origin);
       }
 
       // Create optimization run record
@@ -281,7 +283,7 @@ serve(async (req: Request): Promise<Response> => {
 
       if (runError) {
         console.error("[GA Strategy] Failed to create run:", runError);
-        return errorResponse("Failed to queue optimization", 500);
+        return errorResponse("Failed to queue optimization", 500, origin);
       }
 
       // Estimate completion time (roughly 1 min per 10 generations)
@@ -300,7 +302,7 @@ serve(async (req: Request): Promise<Response> => {
       return jsonResponse(response);
     }
 
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, origin);
   } catch (err) {
     console.error("[GA Strategy] Unexpected error:", err);
     return errorResponse(
@@ -308,6 +310,7 @@ serve(async (req: Request): Promise<Response> => {
         err instanceof Error ? err.message : String(err)
       }`,
       500,
+      origin,
     );
   }
 });

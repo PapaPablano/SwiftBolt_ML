@@ -32,9 +32,11 @@ interface ForecastQualityResponse {
 }
 
 serve(async (req) => {
+  const origin = req.headers.get("Origin");
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return handlePreflight();
+    return handlePreflight(origin);
   }
 
   try {

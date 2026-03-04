@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { liveTradingApi } from '../api/strategiesApi';
 
 interface LiveStatusData {
-  openPositions: number;
+  totalTrades: number;
   totalPnl: number;
   connected: boolean;
 }
@@ -20,25 +20,16 @@ export const LiveTradingStatusWidget: React.FC<LiveTradingStatusWidgetProps> = (
   const fetchStatus = useCallback(async () => {
     if (!session?.access_token) return;
     try {
-      const [positions, broker] = await Promise.all([
-        liveTradingApi.positions(session.access_token),
+      // #143, #185: Use summary endpoint instead of fetching all positions
+      const [summary, broker] = await Promise.all([
+        liveTradingApi.summary(session.access_token),
         liveTradingApi.brokerStatus(session.access_token),
       ]);
-      const open = (positions ?? []).filter((p: { status: string }) =>
-        ['open', 'pending_entry', 'pending_bracket'].includes(p.status)
-      );
-      const totalPnl = open.reduce(
-        (sum: number, p: { current_price?: number; entry_price: number; quantity: number; direction: string; contract_multiplier?: number }) => {
-          const current = p.current_price ?? p.entry_price;
-          const mult = p.contract_multiplier ?? 1;
-          const raw = p.direction === 'long'
-            ? (current - p.entry_price) * p.quantity * mult
-            : (p.entry_price - current) * p.quantity * mult;
-          return sum + raw;
-        },
-        0,
-      );
-      setData({ openPositions: open.length, totalPnl, connected: broker?.connected ?? false });
+      setData({
+        totalTrades: summary?.total_trades ?? 0,
+        totalPnl: summary?.total_pnl ?? 0,
+        connected: broker?.connected ?? false,
+      });
     } catch {
       // Widget is informational — fail silently
     }
@@ -71,7 +62,8 @@ export const LiveTradingStatusWidget: React.FC<LiveTradingStatusWidgetProps> = (
       <span className="flex items-center gap-2">
         {data.connected ? (
           <>
-            <span className="text-gray-400">{data.openPositions} pos</span>
+            {/* #185: Show realized P&L from summary endpoint */}
+            <span className="text-gray-400">{data.totalTrades} trades</span>
             <span className={data.totalPnl >= 0 ? 'text-green-400' : 'text-red-400'}>
               {data.totalPnl >= 0 ? '+' : ''}${data.totalPnl.toFixed(0)}
             </span>

@@ -20,21 +20,23 @@ import {
 } from "../_shared/types/multileg.ts";
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   // Only allow GET
   if (req.method !== "GET") {
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, origin);
   }
 
   try {
     // Get auth header
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return errorResponse("Authorization required", 401);
+      return errorResponse("Authorization required", 401, origin);
     }
 
     // Parse query parameters
@@ -42,7 +44,7 @@ serve(async (req: Request): Promise<Response> => {
     const strategyId = url.searchParams.get("strategyId");
 
     if (!strategyId) {
-      return errorResponse("strategyId is required", 400);
+      return errorResponse("strategyId is required", 400, origin);
     }
 
     // Authenticate user
@@ -85,12 +87,13 @@ serve(async (req: Request): Promise<Response> => {
 
     if (strategyError) {
       if (strategyError.code === "PGRST116") {
-        return errorResponse("Strategy not found", 404);
+        return errorResponse("Strategy not found", 404, origin);
       }
       console.error("[multi-leg-detail] Strategy fetch error:", strategyError);
       return errorResponse(
         `Failed to fetch strategy: ${strategyError.message}`,
         500,
+        origin,
       );
     }
 
@@ -144,7 +147,11 @@ serve(async (req: Request): Promise<Response> => {
 
     if (legsError) {
       console.error("[multi-leg-detail] Legs fetch error:", legsError);
-      return errorResponse(`Failed to fetch legs: ${legsError.message}`, 500);
+      return errorResponse(
+        `Failed to fetch legs: ${legsError.message}`,
+        500,
+        origin,
+      );
     }
 
     if (alertsError) {
@@ -227,6 +234,7 @@ serve(async (req: Request): Promise<Response> => {
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
       500,
+      origin,
     );
   }
 });

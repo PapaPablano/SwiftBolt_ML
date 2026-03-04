@@ -22,28 +22,30 @@ interface UpdateRequestWithId extends UpdateStrategyRequest {
 }
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   // Only allow PATCH
   if (req.method !== "PATCH") {
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, origin);
   }
 
   try {
     // Get auth header
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return errorResponse("Authorization required", 401);
+      return errorResponse("Authorization required", 401, origin);
     }
 
     // Parse request body
     const body: UpdateRequestWithId = await req.json();
 
     if (!body.strategyId) {
-      return errorResponse("strategyId is required", 400);
+      return errorResponse("strategyId is required", 400, origin);
     }
 
     // Build update object (only include non-undefined fields)
@@ -51,7 +53,7 @@ serve(async (req: Request): Promise<Response> => {
 
     if (body.name !== undefined) {
       if (!body.name || body.name.trim().length === 0) {
-        return errorResponse("Strategy name cannot be empty", 400);
+        return errorResponse("Strategy name cannot be empty", 400, origin);
       }
       updates.name = body.name.trim();
     }
@@ -75,7 +77,7 @@ serve(async (req: Request): Promise<Response> => {
 
     // Check if there's anything to update
     if (Object.keys(updates).length === 0) {
-      return errorResponse("No fields to update", 400);
+      return errorResponse("No fields to update", 400, origin);
     }
 
     // Add updated_at timestamp
@@ -112,10 +114,14 @@ serve(async (req: Request): Promise<Response> => {
 
     if (error) {
       if (error.code === "PGRST116") {
-        return errorResponse("Strategy not found", 404);
+        return errorResponse("Strategy not found", 404, origin);
       }
       console.error("[multi-leg-update] Update error:", error);
-      return errorResponse(`Failed to update strategy: ${error.message}`, 500);
+      return errorResponse(
+        `Failed to update strategy: ${error.message}`,
+        500,
+        origin,
+      );
     }
 
     const strategy = strategyRowToModel(data as StrategyRow);
@@ -126,6 +132,7 @@ serve(async (req: Request): Promise<Response> => {
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
       500,
+      origin,
     );
   }
 });

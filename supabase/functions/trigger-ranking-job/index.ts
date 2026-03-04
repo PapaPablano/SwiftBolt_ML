@@ -410,12 +410,14 @@ function rankOptions(
 }
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   if (req.method !== "POST") {
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, origin);
   }
 
   try {
@@ -423,7 +425,7 @@ serve(async (req: Request): Promise<Response> => {
     const symbol = body.symbol?.toUpperCase().trim();
 
     if (!symbol) {
-      return errorResponse("Missing 'symbol' in request body", 400);
+      return errorResponse("Missing 'symbol' in request body", 400, origin);
     }
 
     console.log(`[Ranking Job] Starting inline ranking for ${symbol}`);
@@ -439,7 +441,7 @@ serve(async (req: Request): Promise<Response> => {
       .single();
 
     if (symbolError || !symbolData) {
-      return errorResponse(`Symbol not found: ${symbol}`, 404);
+      return errorResponse(`Symbol not found: ${symbol}`, 404, origin);
     }
 
     const symbolId = symbolData.id;
@@ -492,6 +494,7 @@ serve(async (req: Request): Promise<Response> => {
           err instanceof Error ? err.message : String(err)
         }`,
         500,
+        origin,
       );
     }
 
@@ -523,7 +526,7 @@ serve(async (req: Request): Promise<Response> => {
           })
           .eq("id", jobId);
       }
-      return errorResponse(`No options data found for ${symbol}`, 404);
+      return errorResponse(`No options data found for ${symbol}`, 404, origin);
     }
 
     // Save options snapshots for historical tracking (non-blocking)
@@ -698,6 +701,7 @@ serve(async (req: Request): Promise<Response> => {
         return errorResponse(
           `Failed to save rankings: ${upsertError.message}`,
           500,
+          origin,
         );
       }
     }
@@ -762,6 +766,7 @@ serve(async (req: Request): Promise<Response> => {
         err instanceof Error ? err.message : String(err)
       }`,
       500,
+      origin,
     );
   }
 });

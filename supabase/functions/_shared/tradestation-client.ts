@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-explicit-any
 /**
  * TradeStation API Client
  *
@@ -11,10 +10,13 @@
  * concurrent refresh race conditions.
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   FUTURES_MULTIPLIERS,
   type FuturesMultiplier,
 } from "./futures-calendar.ts";
+
+type Db = SupabaseClient;
 
 // ============================================================================
 // CONFIGURATION
@@ -53,10 +55,23 @@ export interface AccountBalance {
   cashBalance: number;
 }
 
+// #125, #161: Known TradeStation order status codes
+type KnownOrderStatus =
+  | "FLL" // Fully filled
+  | "FPR" // Partial fill (#161: NOT "FLP")
+  | "OPN" // Open/working
+  | "CAN" // Cancelled
+  | "REJ" // Rejected
+  | "EXP" // Expired
+  | "Filled" // English alias
+  | "Partial Fill" // English alias
+  | "Canceled" // English alias
+  | "Rejected"; // English alias
+
 export interface OrderFillResult {
   filledQuantity: number;
   fillPrice: number;
-  status: string;
+  status: KnownOrderStatus | string; // | string: broker may send undocumented codes
 }
 
 export interface BracketOrderResult {
@@ -227,7 +242,7 @@ export async function refreshAccessToken(
  * re-read and return the fresh token.
  */
 export async function ensureFreshToken(
-  supabase: any,
+  supabase: Db,
   userId: string,
 ): Promise<BrokerToken> {
   // Read current token (via auth client — respects RLS)
@@ -293,6 +308,11 @@ export async function ensureFreshToken(
       .eq("provider", "tradestation")
       .is("revoked_at", null)
       .single();
+
+    // #111: Null-guard — token may have been revoked between update and re-read
+    if (!freshToken) {
+      throw Object.assign(new Error("broker_not_connected"), { status: 401 });
+    }
     return freshToken as BrokerToken;
   }
 
@@ -379,7 +399,12 @@ export async function getBatchOrderStatus(
   accountId: string,
   orderIds: string[],
 ): Promise<Map<string, OrderFillResult>> {
-  const url = buildAccountUrl(accountId, "/orders");
+  // #146: Limit order history to last 48h to prevent unbounded payload
+  const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+  const url = buildAccountUrl(
+    accountId,
+    `/orders?since=${encodeURIComponent(since)}`,
+  );
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });

@@ -48,14 +48,16 @@ interface OptionContractResponse {
 }
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   // Only allow GET requests
   if (req.method !== "GET") {
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, origin);
   }
 
   try {
@@ -65,7 +67,11 @@ serve(async (req: Request): Promise<Response> => {
     const expirationParam = url.searchParams.get("expiration");
 
     if (!underlying) {
-      return errorResponse("Missing required parameter: underlying", 400);
+      return errorResponse(
+        "Missing required parameter: underlying",
+        400,
+        origin,
+      );
     }
 
     const supabase = getSupabaseClient();
@@ -74,7 +80,7 @@ serve(async (req: Request): Promise<Response> => {
     if (expirationParam) {
       expiration = parseInt(expirationParam, 10);
       if (isNaN(expiration)) {
-        return errorResponse("Invalid expiration timestamp", 400);
+        return errorResponse("Invalid expiration timestamp", 400, origin);
       }
     }
 
@@ -231,6 +237,7 @@ serve(async (req: Request): Promise<Response> => {
           fetchError instanceof Error ? fetchError.message : String(fetchError)
         }`,
         502,
+        origin,
       );
     }
   } catch (err) {
@@ -244,6 +251,7 @@ serve(async (req: Request): Promise<Response> => {
         err instanceof Error ? err.message : String(err)
       }`,
       500,
+      origin,
     );
   }
 });

@@ -119,13 +119,22 @@ export const LiveTradingDashboard: React.FC<LiveTradingDashboardProps> = ({ onBa
     [positions],
   );
 
+  const [closeError, setCloseError] = useState<string | null>(null);
+
   const handleClose = async (positionId: string) => {
     if (!session?.access_token) return;
     setClosingId(positionId);
+    setCloseError(null);
     try {
-      await liveTradingApi.closePosition(positionId, session.access_token);
+      const result = await liveTradingApi.closePosition(positionId, session.access_token);
+      // #183: Check application-level success, not just HTTP status
+      if (result && !result.success) {
+        throw new Error(result.error ?? 'Close position failed');
+      }
       await fetchAll();
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setCloseError(`Failed to close: ${message}`);
       console.error('[LiveTradingDashboard] Close failed:', err);
     } finally {
       setClosingId(null);
@@ -173,11 +182,22 @@ export const LiveTradingDashboard: React.FC<LiveTradingDashboardProps> = ({ onBa
         </button>
       </div>
 
+      {/* Close error banner */}
+      {closeError && (
+        <div className="flex items-center gap-2 px-2 py-1 bg-red-900/30 border border-red-700 rounded text-[10px] text-red-300">
+          <AlertCircle size={12} />
+          <span>{closeError}</span>
+          <button onClick={() => setCloseError(null)} className="ml-auto text-red-400 hover:text-red-200">
+            <XCircle size={12} />
+          </button>
+        </div>
+      )}
+
       {/* Summary Cards */}
       {summary && (
         <div className="grid grid-cols-4 gap-2">
           <div className="bg-gray-800 rounded p-2 border border-gray-700">
-            <div className="text-[9px] text-gray-500 uppercase">Total P&L</div>
+            <div className="text-[9px] text-gray-500 uppercase">Today&apos;s P&L</div>
             <div className={`text-sm font-bold ${summary.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
               {summary.total_pnl >= 0 ? '+' : ''}${summary.total_pnl.toFixed(2)}
             </div>
@@ -325,8 +345,18 @@ export const LiveTradingDashboard: React.FC<LiveTradingDashboardProps> = ({ onBa
           <button
             onClick={async () => {
               if (!session?.access_token) return;
-              await liveTradingApi.disconnectBroker(session.access_token);
-              await fetchAll();
+              try {
+                const result = await liveTradingApi.disconnectBroker(session.access_token);
+                // #186: Server returns 409 if open positions exist
+                if (result && !result.success) {
+                  setCloseError(result.error ?? 'Cannot disconnect with open positions');
+                  return;
+                }
+                await fetchAll();
+              } catch (err) {
+                const message = err instanceof Error ? err.message : 'Disconnect failed';
+                setCloseError(message);
+              }
             }}
             className="text-[10px] text-red-400 hover:text-red-300"
           >

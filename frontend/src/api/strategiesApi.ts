@@ -18,6 +18,11 @@ async function invokeFunction(
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
+  // #136: Surface 429 rate limit errors with actionable message
+  if (res.status === 429) {
+    throw new Error('rate_limited: Too many trading requests. Please wait before retrying.');
+  }
+
   if (!res.ok) {
     const errorText = await res.text().catch(() => 'Unknown error');
     throw new Error(`${name} failed: ${res.status} ${errorText}`);
@@ -53,7 +58,7 @@ export const liveTradingApi = {
   execute: (symbol: string, timeframe: string, token: string) =>
     invokeFunction('live-trading-executor', {
       method: 'POST',
-      body: { symbol, timeframe },
+      body: { action: 'execute', symbol, timeframe },
       token,
     }),
 
