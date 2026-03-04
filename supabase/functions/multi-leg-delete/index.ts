@@ -13,21 +13,23 @@ import {
 import { getSupabaseClientWithAuth } from "../_shared/supabase-client.ts";
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   // Allow DELETE or POST (for clients that don't support DELETE)
   if (req.method !== "DELETE" && req.method !== "POST") {
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, origin);
   }
 
   try {
     // Get auth header
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return errorResponse("Authorization required", 401);
+      return errorResponse("Authorization required", 401, origin);
     }
 
     // Parse strategyId from query string or body
@@ -47,7 +49,7 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     if (!strategyId) {
-      return errorResponse("strategyId is required", 400);
+      return errorResponse("strategyId is required", 400, origin);
     }
 
     // Authenticate user
@@ -80,12 +82,13 @@ serve(async (req: Request): Promise<Response> => {
 
     if (fetchError) {
       if (fetchError.code === "PGRST116") {
-        return errorResponse("Strategy not found", 404);
+        return errorResponse("Strategy not found", 404, origin);
       }
       console.error("[multi-leg-delete] Fetch error:", fetchError);
       return errorResponse(
         `Failed to fetch strategy: ${fetchError.message}`,
         500,
+        origin,
       );
     }
 
@@ -140,6 +143,7 @@ serve(async (req: Request): Promise<Response> => {
       return errorResponse(
         `Failed to delete strategy: ${deleteError.message}`,
         500,
+        origin,
       );
     }
 
@@ -157,6 +161,7 @@ serve(async (req: Request): Promise<Response> => {
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
       500,
+      origin,
     );
   }
 });

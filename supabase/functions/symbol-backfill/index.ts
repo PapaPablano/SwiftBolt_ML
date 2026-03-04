@@ -309,12 +309,14 @@ async function backfillTimeframe(
 }
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   if (req.method !== "POST") {
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, origin);
   }
 
   // Check API key
@@ -322,6 +324,7 @@ serve(async (req: Request): Promise<Response> => {
     return errorResponse(
       "ALPACA_API_KEY or ALPACA_API_SECRET not configured",
       500,
+      origin,
     );
   }
 
@@ -332,7 +335,7 @@ serve(async (req: Request): Promise<Response> => {
     const { symbol, timeframes = DEFAULT_TIMEFRAMES, force = false } = body;
 
     if (!symbol || symbol.trim().length === 0) {
-      return errorResponse("Missing required field: symbol", 400);
+      return errorResponse("Missing required field: symbol", 400, origin);
     }
 
     const ticker = symbol.trim().toUpperCase();
@@ -359,7 +362,7 @@ serve(async (req: Request): Promise<Response> => {
         .single();
 
       if (createError || !newSymbol) {
-        return errorResponse(`Failed to create symbol: ${ticker}`, 500);
+        return errorResponse(`Failed to create symbol: ${ticker}`, 500, origin);
       }
 
       symbolId = newSymbol.id;
@@ -418,6 +421,6 @@ serve(async (req: Request): Promise<Response> => {
     return jsonResponse(response);
   } catch (err) {
     console.error("[SymbolBackfill] Error:", err);
-    return errorResponse("Internal server error", 500);
+    return errorResponse("Internal server error", 500, origin);
   }
 });

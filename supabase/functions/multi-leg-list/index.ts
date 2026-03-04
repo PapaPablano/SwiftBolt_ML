@@ -19,21 +19,23 @@ import {
 } from "../_shared/types/multileg.ts";
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   // Only allow GET
   if (req.method !== "GET") {
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, origin);
   }
 
   try {
     // Get auth header
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return errorResponse("Authorization required", 401);
+      return errorResponse("Authorization required", 401, origin);
     }
 
     // Parse query parameters
@@ -94,7 +96,11 @@ serve(async (req: Request): Promise<Response> => {
 
     if (error) {
       console.error("[multi-leg-list] Query error:", error);
-      return errorResponse(`Failed to fetch strategies: ${error.message}`, 500);
+      return errorResponse(
+        `Failed to fetch strategies: ${error.message}`,
+        500,
+        origin,
+      );
     }
 
     // Get alert counts for each strategy
@@ -146,6 +152,7 @@ serve(async (req: Request): Promise<Response> => {
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
       500,
+      origin,
     );
   }
 });

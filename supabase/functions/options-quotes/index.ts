@@ -32,12 +32,14 @@ interface QuotePayload {
 const MAX_CONTRACTS = 120;
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   if (req.method !== "POST" && req.method !== "GET") {
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, origin);
   }
 
   try {
@@ -72,7 +74,7 @@ serve(async (req: Request): Promise<Response> => {
             .filter((c) => c.length > 0);
         }
       } catch (_err) {
-        return errorResponse("Invalid JSON body", 400);
+        return errorResponse("Invalid JSON body", 400, origin);
       }
     }
 
@@ -80,11 +82,11 @@ serve(async (req: Request): Promise<Response> => {
     const contracts = payload.contracts || [];
 
     if (!symbol) {
-      return errorResponse("Missing required parameter: symbol", 400);
+      return errorResponse("Missing required parameter: symbol", 400, origin);
     }
 
     if (contracts.length === 0) {
-      return errorResponse("No contracts specified", 400);
+      return errorResponse("No contracts specified", 400, origin);
     }
 
     if (contracts.length > MAX_CONTRACTS) {
@@ -147,6 +149,10 @@ serve(async (req: Request): Promise<Response> => {
   } catch (error) {
     console.error("[options-quotes] Error:", error);
     const message = error instanceof Error ? error.message : String(error);
-    return errorResponse(`Failed to fetch option quotes: ${message}`, 500);
+    return errorResponse(
+      `Failed to fetch option quotes: ${message}`,
+      500,
+      origin,
+    );
   }
 });

@@ -34,14 +34,16 @@ import {
 } from "../_shared/services/pl-calculator.ts";
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   // Only allow POST (scheduled jobs use POST)
   if (req.method !== "POST") {
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, origin);
   }
 
   const startTime = Date.now();
@@ -69,6 +71,7 @@ serve(async (req: Request): Promise<Response> => {
       return errorResponse(
         `Failed to fetch strategies: ${strategiesError.message}`,
         500,
+        origin,
       );
     }
 
@@ -116,6 +119,7 @@ serve(async (req: Request): Promise<Response> => {
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
       500,
+      origin,
     );
   }
 });

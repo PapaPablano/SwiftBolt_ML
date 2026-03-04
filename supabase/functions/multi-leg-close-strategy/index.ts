@@ -21,32 +21,34 @@ import {
 import { validateStrategyClosure } from "../_shared/services/strategy-validator.ts";
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   // Only allow POST
   if (req.method !== "POST") {
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, origin);
   }
 
   try {
     // Get auth header
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return errorResponse("Authorization required", 401);
+      return errorResponse("Authorization required", 401, origin);
     }
 
     // Parse request body
     const body: CloseStrategyRequest = await req.json();
 
     if (!body.strategyId) {
-      return errorResponse("strategyId is required", 400);
+      return errorResponse("strategyId is required", 400, origin);
     }
 
     if (!body.exitPrices || body.exitPrices.length === 0) {
-      return errorResponse("exitPrices are required", 400);
+      return errorResponse("exitPrices are required", 400, origin);
     }
 
     // Authenticate user
@@ -79,7 +81,7 @@ serve(async (req: Request): Promise<Response> => {
 
     if (strategyError) {
       if (strategyError.code === "PGRST116") {
-        return errorResponse("Strategy not found", 404);
+        return errorResponse("Strategy not found", 404, origin);
       }
       console.error(
         "[multi-leg-close-strategy] Strategy fetch error:",
@@ -88,11 +90,12 @@ serve(async (req: Request): Promise<Response> => {
       return errorResponse(
         `Failed to fetch strategy: ${strategyError.message}`,
         500,
+        origin,
       );
     }
 
     if ((strategyData as StrategyRow).status === "closed") {
-      return errorResponse("Strategy is already closed", 400);
+      return errorResponse("Strategy is already closed", 400, origin);
     }
 
     // Fetch all legs
@@ -103,7 +106,11 @@ serve(async (req: Request): Promise<Response> => {
 
     if (legsError) {
       console.error("[multi-leg-close-strategy] Legs fetch error:", legsError);
-      return errorResponse(`Failed to fetch legs: ${legsError.message}`, 500);
+      return errorResponse(
+        `Failed to fetch legs: ${legsError.message}`,
+        500,
+        origin,
+      );
     }
 
     const legs = (legsData as LegRow[]).map(legRowToModel);
@@ -202,6 +209,7 @@ serve(async (req: Request): Promise<Response> => {
       return errorResponse(
         `Failed to close strategy: ${strategyUpdateError.message}`,
         500,
+        origin,
       );
     }
 
@@ -218,6 +226,7 @@ serve(async (req: Request): Promise<Response> => {
     return errorResponse(
       error instanceof Error ? error.message : "Internal server error",
       500,
+      origin,
     );
   }
 });

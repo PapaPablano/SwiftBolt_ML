@@ -229,14 +229,16 @@ async function searchFuturesSymbols(
 }
 
 serve(async (req: Request): Promise<Response> => {
+  const origin = req.headers.get("Origin");
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return handleCorsOptions();
+    return handleCorsOptions(origin);
   }
 
   // Only allow GET requests
   if (req.method !== "GET") {
-    return errorResponse("Method not allowed", 405);
+    return errorResponse("Method not allowed", 405, origin);
   }
 
   try {
@@ -245,17 +247,18 @@ serve(async (req: Request): Promise<Response> => {
     const query = url.searchParams.get("q");
 
     if (!query || query.trim().length === 0) {
-      return errorResponse("Missing or empty query parameter 'q'", 400);
+      return errorResponse("Missing or empty query parameter 'q'", 400, origin);
     }
 
     if (query.length > 20) {
-      return errorResponse("Query too long (max 20 characters)", 400);
+      return errorResponse("Query too long (max 20 characters)", 400, origin);
     }
 
     if (!/^[A-Za-z0-9.\s\-\/]+$/.test(query)) {
       return errorResponse(
         "Invalid characters in query (alphanumeric, dot, space, hyphen, slash only)",
         400,
+        origin,
       );
     }
 
@@ -358,6 +361,6 @@ serve(async (req: Request): Promise<Response> => {
     return jsonResponse(savedSymbols);
   } catch (err) {
     console.error("[Symbol Search] Unexpected error:", err);
-    return errorResponse("Internal server error", 500);
+    return errorResponse("Internal server error", 500, origin);
   }
 });
