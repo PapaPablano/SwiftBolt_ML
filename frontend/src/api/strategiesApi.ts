@@ -68,6 +68,47 @@ export const liveTradingApi = {
       body: { action: 'disconnect_broker' },
       token,
     }),
+
+  /** Enable or disable live trading for a strategy. */
+  setLiveTradingEnabled: (strategyId: string, enabled: boolean, token: string) =>
+    invokeFunction('strategies', {
+      method: 'PUT',
+      body: { id: strategyId, live_trading_enabled: enabled },
+      token,
+    }),
+
+  /** Pause or resume live trading execution for a strategy. */
+  setPaused: (strategyId: string, paused: boolean, token: string) =>
+    invokeFunction('strategies', {
+      method: 'PUT',
+      body: { id: strategyId, live_trading_paused: paused },
+      token,
+    }),
+
+  /** Update live risk parameters for a strategy. */
+  updateRiskParams: (
+    strategyId: string,
+    params: {
+      live_risk_pct?: number;
+      live_daily_loss_limit_pct?: number;
+      live_max_positions?: number;
+      live_max_position_pct?: number;
+    },
+    token: string
+  ) =>
+    invokeFunction('strategies', {
+      method: 'PUT',
+      body: { id: strategyId, ...params },
+      token,
+    }),
+
+  /** Get strategies eligible for live execution (live_trading_enabled=true, not paused). */
+  eligibleStrategies: (symbol: string, timeframe: string, token: string) =>
+    invokeFunction(`live-trading-executor?action=eligible_strategies&symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`, { token }),
+
+  /** Get current rate limit consumption. Agents use this to back off before hitting 429s. */
+  rateLimitStatus: (token: string) =>
+    invokeFunction('live-trading-executor?action=rate_limit_status', { token }),
 };
 
 export const strategiesApi = {

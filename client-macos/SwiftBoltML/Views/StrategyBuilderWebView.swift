@@ -15,6 +15,52 @@ enum WebViewLoadState: Equatable {
     }
 }
 
+// MARK: - Strategy Platform Tab
+
+/// Typed tab identifiers for the unified React Strategy Platform.
+/// Using an enum (not String) prevents URL injection and makes invalid tabs
+/// a compile error rather than a runtime fallback.
+enum StrategyPlatformTab: String, CaseIterable {
+    case strategies   = "strategies"
+    case builder      = "builder"
+    case backtest     = "backtest"
+    case paperTrading = "paper-trading"
+    case liveTrading  = "live-trading"
+}
+
+// MARK: - Strategy Platform WebView
+
+/// Embeds the unified React Strategy Platform via WKWebView.
+/// `initialTab` controls which tab is active on load via the `?tab=` query param.
+///
+/// IMPORTANT: `.id(path)` is applied to force WKWebView recreation when the tab
+/// changes — without it, `updateNSView` only injects the symbol and does NOT reload
+/// the URL, causing the React app to stay on whichever tab was last shown.
+struct StrategyPlatformWebView: View {
+    let symbol: String?
+    var initialTab: StrategyPlatformTab = .builder
+
+    private var path: String {
+        // URLComponents handles encoding. Tab rawValues are ASCII alphanumerics + hyphens.
+        var components = URLComponents()
+        components.path = "/strategy-platform"
+        components.queryItems = [URLQueryItem(name: "tab", value: initialTab.rawValue)]
+        return components.url?.absoluteString
+            ?? "/strategy-platform?tab=\(initialTab.rawValue)"
+    }
+
+    var body: some View {
+        FrontendWebEmbedView(
+            path: path,
+            messageName: "strategyPlatform",
+            navigationTitle: "Strategy Platform",
+            loadingLabel: "Loading Strategy Platform…",
+            symbol: symbol
+        )
+        .id(path)  // CRITICAL: forces WKWebView teardown+recreation on tab change
+    }
+}
+
 // MARK: - Strategy Builder WebView
 
 /// Embeds the React Strategy Condition Builder via WKWebView.
@@ -138,6 +184,8 @@ private struct FrontendWebViewRepresentable: NSViewRepresentable {
         private let logger: Logger
         /// Tracks the most recent symbol so it can be re-injected after page load.
         var currentSymbol: String?
+        /// Supabase session token injected into the React app for live trading auth.
+        var sessionToken: String?
 
         init(messageName: String, loadState: Binding<WebViewLoadState>) {
             self.messageName = messageName
@@ -156,6 +204,10 @@ private struct FrontendWebViewRepresentable: NSViewRepresentable {
             // Re-inject symbol so React picks it up after the page finishes loading.
             if let symbol = currentSymbol {
                 injectSymbol(symbol, into: webView)
+            }
+            // Inject the current Supabase session token for live trading auth.
+            if let token = sessionToken {
+                injectSession(token, into: webView)
             }
         }
 
@@ -288,6 +340,15 @@ private let allowedHosts: Set<String> = ["localhost", "127.0.0.1"]
 /// Uses JSONSerialization to safely encode all characters (backslash, quotes, Unicode).
 private func injectSymbol(_ symbol: String, into webView: WKWebView) {
     let payload: [String: Any] = ["type": "symbolChanged", "symbol": symbol]
+    guard let data = try? JSONSerialization.data(withJSONObject: payload),
+          let json = String(data: data, encoding: .utf8) else { return }
+    webView.evaluateJavaScript("window.postMessage(\(json), '*');")
+}
+
+/// Injects a Supabase session JWT into the React app via window.postMessage.
+/// Enables LiveTradingDashboard to authenticate without a browser-based login flow.
+private func injectSession(_ token: String, into webView: WKWebView) {
+    let payload: [String: Any] = ["type": "sessionToken", "token": token]
     guard let data = try? JSONSerialization.data(withJSONObject: payload),
           let json = String(data: data, encoding: .utf8) else { return }
     webView.evaluateJavaScript("window.postMessage(\(json), '*');")
