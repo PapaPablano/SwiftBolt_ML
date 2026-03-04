@@ -53,10 +53,13 @@ serve(async (req: Request): Promise<Response> => {
     } = await authSupabase.auth.getUser();
 
     if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Authentication required" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const userId: string = user.id;
@@ -68,13 +71,13 @@ serve(async (req: Request): Promise<Response> => {
       .from("options_strategies")
       .select(
         "id, user_id, name, strategy_type, underlying_symbol_id, underlying_ticker, " +
-        "created_at, opened_at, closed_at, status, " +
-        "total_debit, total_credit, net_premium, num_contracts, " +
-        "max_risk, max_reward, max_risk_pct, breakeven_points, profit_zones, " +
-        "current_value, total_pl, total_pl_pct, realized_pl, " +
-        "forecast_id, forecast_alignment, forecast_confidence, alignment_check_at, " +
-        "combined_delta, combined_gamma, combined_theta, combined_vega, combined_rho, greeks_updated_at, " +
-        "min_dte, max_dte, tags, notes, last_alert_at, version, updated_at",
+          "created_at, opened_at, closed_at, status, " +
+          "total_debit, total_credit, net_premium, num_contracts, " +
+          "max_risk, max_reward, max_risk_pct, breakeven_points, profit_zones, " +
+          "current_value, total_pl, total_pl_pct, realized_pl, " +
+          "forecast_id, forecast_alignment, forecast_confidence, alignment_check_at, " +
+          "combined_delta, combined_gamma, combined_theta, combined_vega, combined_rho, greeks_updated_at, " +
+          "min_dte, max_dte, tags, notes, last_alert_at, version, updated_at",
       )
       .eq("id", strategyId)
       .eq("user_id", userId)
@@ -100,16 +103,16 @@ serve(async (req: Request): Promise<Response> => {
         .from("options_legs")
         .select(
           "id, strategy_id, leg_number, leg_role, position_type, option_type, strike, expiry, " +
-          "dte_at_entry, current_dte, entry_timestamp, entry_price, contracts, total_entry_cost, " +
-          "current_price, current_value, unrealized_pl, unrealized_pl_pct, " +
-          "is_closed, exit_price, exit_timestamp, realized_pl, " +
-          "entry_delta, entry_gamma, entry_theta, entry_vega, entry_rho, " +
-          "current_delta, current_gamma, current_theta, current_vega, current_rho, greeks_updated_at, " +
-          "entry_implied_vol, current_implied_vol, vega_exposure, " +
-          "is_assigned, assignment_timestamp, assignment_price, " +
-          "is_exercised, exercise_timestamp, exercise_price, " +
-          "is_itm, is_deep_itm, is_breaching_strike, is_near_expiration, " +
-          "notes, updated_at",
+            "dte_at_entry, current_dte, entry_timestamp, entry_price, contracts, total_entry_cost, " +
+            "current_price, current_value, unrealized_pl, unrealized_pl_pct, " +
+            "is_closed, exit_price, exit_timestamp, realized_pl, " +
+            "entry_delta, entry_gamma, entry_theta, entry_vega, entry_rho, " +
+            "current_delta, current_gamma, current_theta, current_vega, current_rho, greeks_updated_at, " +
+            "entry_implied_vol, current_implied_vol, vega_exposure, " +
+            "is_assigned, assignment_timestamp, assignment_price, " +
+            "is_exercised, exercise_timestamp, exercise_price, " +
+            "is_itm, is_deep_itm, is_breaching_strike, is_near_expiration, " +
+            "notes, updated_at",
         )
         .eq("strategy_id", strategyId)
         .order("leg_number", { ascending: true }),
@@ -117,7 +120,7 @@ serve(async (req: Request): Promise<Response> => {
         .from("options_multi_leg_alerts")
         .select(
           "id, strategy_id, leg_id, alert_type, severity, title, reason, details, " +
-          "suggested_action, created_at, acknowledged_at, resolved_at, resolution_action, action_required",
+            "suggested_action, created_at, acknowledged_at, resolved_at, resolution_action, action_required",
         )
         .eq("strategy_id", strategyId)
         .is("resolved_at", null)
@@ -126,9 +129,9 @@ serve(async (req: Request): Promise<Response> => {
         .from("options_strategy_metrics")
         .select(
           "id, strategy_id, recorded_at, recorded_timestamp, underlying_price, " +
-          "total_value, total_pl, total_pl_pct, " +
-          "delta_snapshot, gamma_snapshot, theta_snapshot, vega_snapshot, " +
-          "min_dte, alert_count, critical_alert_count",
+            "total_value, total_pl, total_pl_pct, " +
+            "delta_snapshot, gamma_snapshot, theta_snapshot, vega_snapshot, " +
+            "min_dte, alert_count, critical_alert_count",
         )
         .eq("strategy_id", strategyId)
         .gte("recorded_at", thirtyDaysAgo.toISOString().split("T")[0])
@@ -156,7 +159,7 @@ serve(async (req: Request): Promise<Response> => {
 
     // Fetch leg entries for each leg
     const legIds = (legsData as LegRow[]).map((l) => l.id);
-    let entriesMap: Record<string, any[]> = {};
+    const entriesMap: Record<string, any[]> = {};
 
     if (legIds.length > 0) {
       const { data: entriesData, error: entriesError } = await supabase

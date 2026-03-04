@@ -2,7 +2,7 @@
 // Shared TypeScript types for the unified /chart Edge Function response.
 
 export interface OHLCBar {
-  ts: string;           // ISO 8601 timestamp
+  ts: string; // ISO 8601 timestamp
   open: number;
   high: number;
   low: number;
@@ -13,7 +13,7 @@ export interface OHLCBar {
 }
 
 export interface ForecastPoint {
-  ts: number;           // Unix ms timestamp
+  ts: number; // Unix ms timestamp
   value: number;
   lower?: number;
   upper?: number;
@@ -35,7 +35,7 @@ export interface MLSummary {
 
 export interface ChartIndicators {
   supertrendFactor: number | null;
-  supertrendSignal: number | null;   // -1 | 0 | 1
+  supertrendSignal: number | null; // -1 | 0 | 1
   trendLabel: string | null;
   trendConfidence: number | null;
   stopLevel: number | null;

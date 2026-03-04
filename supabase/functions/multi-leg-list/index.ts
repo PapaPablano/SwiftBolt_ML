@@ -57,10 +57,13 @@ serve(async (req: Request): Promise<Response> => {
     } = await authSupabase.auth.getUser();
 
     if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Authentication required" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const userId: string = user.id;
@@ -97,7 +100,7 @@ serve(async (req: Request): Promise<Response> => {
     // Get alert counts for each strategy
     const strategyIds = (data as StrategyRow[]).map((s) => s.id);
 
-    let alertCounts: Record<string, { total: number; critical: number }> = {};
+    const alertCounts: Record<string, { total: number; critical: number }> = {};
 
     if (strategyIds.length > 0) {
       const { data: alertData, error: alertError } = await supabase

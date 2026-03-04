@@ -6,7 +6,12 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.97.0";
 import { getSupabaseClientWithAuth } from "../_shared/supabase-client.ts";
-import { getCorsHeaders, handlePreflight, corsResponse, errorResponse } from "../_shared/cors.ts";
+import {
+  corsResponse,
+  errorResponse,
+  getCorsHeaders,
+  handlePreflight,
+} from "../_shared/cors.ts";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -160,9 +165,16 @@ const ALLOWED_INDICATORS = new Set([
 
 // Allowed condition operators
 const ALLOWED_OPERATORS = new Set<string>([
-  ">", "<", ">=", "<=", "==", "!=",
-  "cross_up", "cross_down",
-  "touches", "within_range",
+  ">",
+  "<",
+  ">=",
+  "<=",
+  "==",
+  "!=",
+  "cross_up",
+  "cross_down",
+  "touches",
+  "within_range",
 ]);
 
 // Simple in-memory rate limiter for POST requests (per user)
@@ -409,7 +421,9 @@ async function getOpenPosition(
   try {
     const { data, error } = await supabase
       .from("paper_trading_positions")
-      .select("id, symbol_id, symbol, direction, entry_price, current_price, quantity, status, stop_loss, take_profit, user_id, created_at")
+      .select(
+        "id, symbol_id, symbol, direction, entry_price, current_price, quantity, status, stop_loss, take_profit, user_id, created_at",
+      )
       .eq("strategy_id", strategyId)
       .eq("status", "open")
       .single();
@@ -903,7 +917,6 @@ Deno.serve(async (req) => {
     // GET — Read endpoints for positions, trades, and summary
     // ========================================================================
     if (req.method === "GET") {
-
       const action = url.searchParams.get("action") ?? "positions";
       const limit = Math.min(
         50,
@@ -1056,7 +1069,11 @@ Deno.serve(async (req) => {
     if (action === "close_position") {
       const { position_id, exit_price } = body;
       if (!position_id || typeof exit_price !== "number") {
-        return errorResponse("position_id and exit_price are required", 400, origin);
+        return errorResponse(
+          "position_id and exit_price are required",
+          400,
+          origin,
+        );
       }
 
       // Fetch position — verify ownership via user_id
@@ -1069,14 +1086,23 @@ Deno.serve(async (req) => {
         .single();
 
       if (fetchErr || !pos) {
-        return errorResponse("Position not found or already closed", 404, origin);
+        return errorResponse(
+          "Position not found or already closed",
+          404,
+          origin,
+        );
       }
 
       const pnl = pos.direction === "long"
         ? (exit_price - pos.entry_price) * pos.quantity
         : (pos.entry_price - exit_price) * pos.quantity;
 
-      const result = await closePosition(supabase, pos as PaperPosition, exit_price, "MANUAL");
+      const result = await closePosition(
+        supabase,
+        pos as PaperPosition,
+        exit_price,
+        "MANUAL",
+      );
       return corsResponse({ ...result, pnl }, 200, origin);
     }
 
@@ -1093,16 +1119,20 @@ Deno.serve(async (req) => {
     const successCount = results.filter((r) => r.success).length;
     const failureCount = results.length - successCount;
 
-    return corsResponse({
-      success: true,
-      execution_time: new Date().toISOString(),
-      symbol,
-      timeframe,
-      strategies_processed: results.length,
-      successful: successCount,
-      failed: failureCount,
-      results,
-    }, 200, origin);
+    return corsResponse(
+      {
+        success: true,
+        execution_time: new Date().toISOString(),
+        symbol,
+        timeframe,
+        strategies_processed: results.length,
+        successful: successCount,
+        failed: failureCount,
+        results,
+      },
+      200,
+      origin,
+    );
   } catch (error: unknown) {
     console.error("[paper-trading-executor] Edge function error:", error);
     return corsResponse(

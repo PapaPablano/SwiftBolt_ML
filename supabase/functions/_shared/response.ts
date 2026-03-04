@@ -47,7 +47,10 @@ export function jsonUnauthorized(origin: string | null): Response {
 /**
  * Returns a 404 Not Found response.
  */
-export function jsonNotFound(resource: string, origin: string | null): Response {
+export function jsonNotFound(
+  resource: string,
+  origin: string | null,
+): Response {
   return jsonError(`${resource} not found`, origin, 404, "not_found");
 }
 
