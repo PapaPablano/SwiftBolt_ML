@@ -18,8 +18,8 @@ export interface PivotLevel {
   period: number;
   level_high?: number;
   level_low?: number;
-  high_status?: string;
-  low_status?: string;
+  high_status?: 'support' | 'resistance' | 'active' | 'inactive';
+  low_status?: 'support' | 'resistance' | 'active' | 'inactive';
 }
 
 export interface SupportResistanceData {
