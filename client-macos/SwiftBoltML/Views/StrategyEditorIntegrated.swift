@@ -37,20 +37,28 @@ struct StrategyEditorIntegrated: View {
                             registry: indicatorsService.indicatorRegistry,
                             onAddEntry: { condition in
                                 var updated = strategy
-                                updated.entryConditions.append(condition)
+                                if updated.entryGroups.isEmpty {
+                                    updated.entryGroups.append(ConditionGroup(conditions: [condition]))
+                                } else {
+                                    updated.entryGroups[updated.entryGroups.count - 1].conditions.append(condition)
+                                }
                                 viewModel.saveStrategy(updated)
                                 self.strategy = updated
                             },
                             onAddExit: { condition in
                                 var updated = strategy
-                                updated.exitConditions.append(condition)
+                                if updated.exitGroups.isEmpty {
+                                    updated.exitGroups.append(ConditionGroup(conditions: [condition]))
+                                } else {
+                                    updated.exitGroups[updated.exitGroups.count - 1].conditions.append(condition)
+                                }
                                 viewModel.saveStrategy(updated)
                                 self.strategy = updated
                             }
                         )
                     }
                     
-                    // Entry Conditions
+                    // Entry Conditions (flat view — integrated editor doesn't use OR groups yet)
                     ConditionsSectionIntegrated(
                         title: "Entry Conditions",
                         icon: "arrow.down.circle.fill",
@@ -63,12 +71,22 @@ struct StrategyEditorIntegrated: View {
                         },
                         onDelete: { index in
                             var updated = strategy
-                            updated.entryConditions.remove(at: index)
+                            // Find and remove from groups
+                            let target = updated.entryConditions[index]
+                            for (gi, group) in updated.entryGroups.enumerated() {
+                                if let ci = group.conditions.firstIndex(where: { $0.id == target.id }) {
+                                    updated.entryGroups[gi].conditions.remove(at: ci)
+                                    if updated.entryGroups[gi].conditions.isEmpty {
+                                        updated.entryGroups.remove(at: gi)
+                                    }
+                                    break
+                                }
+                            }
                             viewModel.saveStrategy(updated)
                             self.strategy = updated
                         }
                     )
-                    
+
                     // Exit Conditions
                     ConditionsSectionIntegrated(
                         title: "Exit Conditions",
@@ -82,7 +100,16 @@ struct StrategyEditorIntegrated: View {
                         },
                         onDelete: { index in
                             var updated = strategy
-                            updated.exitConditions.remove(at: index)
+                            let target = updated.exitConditions[index]
+                            for (gi, group) in updated.exitGroups.enumerated() {
+                                if let ci = group.conditions.firstIndex(where: { $0.id == target.id }) {
+                                    updated.exitGroups[gi].conditions.remove(at: ci)
+                                    if updated.exitGroups[gi].conditions.isEmpty {
+                                        updated.exitGroups.remove(at: gi)
+                                    }
+                                    break
+                                }
+                            }
                             viewModel.saveStrategy(updated)
                             self.strategy = updated
                         }
@@ -114,7 +141,11 @@ struct StrategyEditorIntegrated: View {
                 title: "Add Entry Condition"
             ) { condition in
                 if var strategy = strategy {
-                    strategy.entryConditions.append(condition)
+                    if strategy.entryGroups.isEmpty {
+                        strategy.entryGroups.append(ConditionGroup(conditions: [condition]))
+                    } else {
+                        strategy.entryGroups[strategy.entryGroups.count - 1].conditions.append(condition)
+                    }
                     viewModel.saveStrategy(strategy)
                     self.strategy = strategy
                 }
@@ -128,7 +159,11 @@ struct StrategyEditorIntegrated: View {
                 title: "Add Exit Condition"
             ) { condition in
                 if var strategy = strategy {
-                    strategy.exitConditions.append(condition)
+                    if strategy.exitGroups.isEmpty {
+                        strategy.exitGroups.append(ConditionGroup(conditions: [condition]))
+                    } else {
+                        strategy.exitGroups[strategy.exitGroups.count - 1].conditions.append(condition)
+                    }
                     viewModel.saveStrategy(strategy)
                     self.strategy = strategy
                 }

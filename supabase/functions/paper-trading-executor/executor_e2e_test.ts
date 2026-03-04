@@ -8,7 +8,11 @@
  * Run with: deno test --allow-env executor_e2e_test.ts
  */
 
-import { assertEquals, assertGreater, assertLess } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import {
+  assertEquals,
+  assertGreater,
+  assertLess,
+} from "https://deno.land/std@0.208.0/assert/mod.ts";
 
 // ============================================================================
 // SCENARIO 1: Simple Entry Signal (RSI > 70)
@@ -99,7 +103,9 @@ Deno.test("E2E: RSI < 30 exit signal closes position", () => {
   assertEquals(pnl, -300);
   assertLess(pnlPct, 0); // Loss
 
-  console.log(`✓ RSI < 30 exit signal closes position with ${pnlPct.toFixed(2)}% loss`);
+  console.log(
+    `✓ RSI < 30 exit signal closes position with ${pnlPct.toFixed(2)}% loss`,
+  );
 });
 
 // ============================================================================
@@ -130,7 +136,9 @@ Deno.test("E2E: Multi-condition entry (RSI > 70 AND Volume > avg) triggers posit
   assertEquals(condition2Met, true);
   assertEquals(entrySignal, true);
 
-  console.log("✓ Multi-condition entry (RSI > 70 AND Volume > avg) triggers position");
+  console.log(
+    "✓ Multi-condition entry (RSI > 70 AND Volume > avg) triggers position",
+  );
 });
 
 // ============================================================================
@@ -162,7 +170,9 @@ Deno.test("E2E: Crossover signal (Price > MA20) triggers entry", () => {
 
   assertEquals(crossAboveMA, true);
 
-  console.log("✓ Crossover signal (Price > MA20) detected and position created");
+  console.log(
+    "✓ Crossover signal (Price > MA20) detected and position created",
+  );
 });
 
 // ============================================================================
@@ -190,7 +200,8 @@ Deno.test("E2E: Stop loss hit closes position automatically", () => {
   // Position closed at SL level
   const exitPrice = position.stop_loss_price;
   const pnl = (exitPrice - position.entry_price) * position.quantity; // -250
-  const pnlPct = ((exitPrice - position.entry_price) / position.entry_price) * 100; // -2.5%
+  const pnlPct = ((exitPrice - position.entry_price) / position.entry_price) *
+    100; // -2.5%
 
   assertEquals(pnl, -250);
   assertEquals(pnlPct.toFixed(2), "-2.43");
@@ -233,7 +244,8 @@ Deno.test("E2E: Take profit hit closes position automatically", () => {
   // Position closed at TP level
   const exitPrice = position.take_profit_price;
   const pnl = (exitPrice - position.entry_price) * position.quantity; // 600
-  const pnlPct = ((exitPrice - position.entry_price) / position.entry_price) * 100; // 5.8%
+  const pnlPct = ((exitPrice - position.entry_price) / position.entry_price) *
+    100; // 5.8%
 
   assertEquals(pnl, 600);
   assertGreater(pnlPct, 5);
@@ -249,7 +261,9 @@ Deno.test("E2E: Take profit hit closes position automatically", () => {
 
   assertEquals(trade.close_reason, "TP_HIT");
 
-  console.log(`✓ Take profit hit, position closed with ${pnlPct.toFixed(2)}% gain`);
+  console.log(
+    `✓ Take profit hit, position closed with ${pnlPct.toFixed(2)}% gain`,
+  );
 });
 
 // ============================================================================
@@ -282,10 +296,15 @@ Deno.test("E2E: Paper trading results match backtest results (parity test)", () 
   };
 
   // Verify parity (within ±0.5% tolerance for rounding)
-  const entryPriceParity = Math.abs(backtestResults.entry_price - paperTradingResults.entry_price) < 0.01;
-  const exitPriceParity = Math.abs(backtestResults.exit_price - paperTradingResults.exit_price) < 0.01;
+  const entryPriceParity =
+    Math.abs(backtestResults.entry_price - paperTradingResults.entry_price) <
+      0.01;
+  const exitPriceParity =
+    Math.abs(backtestResults.exit_price - paperTradingResults.exit_price) <
+      0.01;
   const pnlParity = Math.abs(backtestResults.pnl - paperTradingResults.pnl) < 1;
-  const pnlPctParity = Math.abs(backtestResults.pnl_pct - paperTradingResults.pnl_pct) < 0.5;
+  const pnlPctParity =
+    Math.abs(backtestResults.pnl_pct - paperTradingResults.pnl_pct) < 0.5;
 
   assertEquals(entryPriceParity, true);
   assertEquals(exitPriceParity, true);
@@ -313,7 +332,7 @@ Deno.test("E2E: Executor handles 5+ concurrent strategies <500ms per strategy", 
         entrySignal: rsi > 70,
         executionTimeMs: Math.random() * 100, // <100ms per strategy
       };
-    })
+    }),
   );
 
   const elapsedMs = performance.now() - startTime;
@@ -326,7 +345,11 @@ Deno.test("E2E: Executor handles 5+ concurrent strategies <500ms per strategy", 
     assertLess(r.executionTimeMs, 500);
   });
 
-  console.log(`✓ 5 concurrent strategies executed in ${elapsedMs.toFixed(1)}ms (target: <500ms each)`);
+  console.log(
+    `✓ 5 concurrent strategies executed in ${
+      elapsedMs.toFixed(1)
+    }ms (target: <500ms each)`,
+  );
 });
 
 // ============================================================================
@@ -388,7 +411,7 @@ Deno.test("E2E: All scenarios verified - backtest ↔ paper parity confirmed", (
   ];
 
   console.log("\n=== END-TO-END SCENARIOS COMPLETE ===");
-  scenarios.forEach(s => console.log(s));
+  scenarios.forEach((s) => console.log(s));
   console.log("\n✓ HIGH PRIORITY FIX #6 VERIFIED: Condition evaluator unified");
   console.log("  Backtest and paper trading use identical logic");
   console.log("  Results match within acceptable tolerance");

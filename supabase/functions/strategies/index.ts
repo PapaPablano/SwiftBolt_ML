@@ -6,7 +6,11 @@
 // DELETE /strategies?id=xxx - Delete strategy
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import {
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
 interface StrategyConfig {
@@ -83,7 +87,12 @@ serve(async (req) => {
   }
 });
 
-async function handleGet(supabase: ReturnType<typeof getSupabaseClient>, userId: string, id: string | null, url: URL) {
+async function handleGet(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  userId: string,
+  id: string | null,
+  url: URL,
+) {
   if (id) {
     const { data, error } = await supabase
       .from("strategy_user_strategies")
@@ -102,7 +111,9 @@ async function handleGet(supabase: ReturnType<typeof getSupabaseClient>, userId:
   const offset = parseInt(url.searchParams.get("offset") ?? "0", 10) || 0;
   const { data, error } = await supabase
     .from("strategy_user_strategies")
-    .select("id, name, is_active, paper_trading_enabled, created_at, updated_at")
+    .select(
+      "id, name, is_active, paper_trading_enabled, created_at, updated_at",
+    )
     .eq("user_id", userId)
     .order("updated_at", { ascending: false })
     .range(offset, offset + 49)
@@ -116,13 +127,17 @@ async function handleGet(supabase: ReturnType<typeof getSupabaseClient>, userId:
   return jsonResponse({ strategies: data || [] });
 }
 
-async function handleCreate(supabase: ReturnType<typeof getSupabaseClient>, userId: string, req: Request) {
+async function handleCreate(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  userId: string,
+  req: Request,
+) {
   const body = await req.json();
-  
+
   if (!body.name) {
     return errorResponse("Strategy name is required");
   }
-  
+
   const strategy = {
     user_id: userId,
     name: body.name,
@@ -131,11 +146,11 @@ async function handleCreate(supabase: ReturnType<typeof getSupabaseClient>, user
       entry_conditions: [],
       exit_conditions: [],
       filters: [],
-      parameters: {}
+      parameters: {},
     },
-    is_active: body.is_active ?? true
+    is_active: body.is_active ?? true,
   };
-  
+
   const { data, error } = await supabase
     .from("strategy_user_strategies")
     .insert(strategy)
@@ -150,20 +165,27 @@ async function handleCreate(supabase: ReturnType<typeof getSupabaseClient>, user
   return jsonResponse({ strategy: data }, 201);
 }
 
-async function handleUpdate(supabase: ReturnType<typeof getSupabaseClient>, userId: string, req: Request, id: string | null) {
+async function handleUpdate(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  userId: string,
+  req: Request,
+  id: string | null,
+) {
   if (!id) {
     return errorResponse("Strategy ID is required");
   }
-  
+
   const body = await req.json();
-  
+
   const updates: Record<string, unknown> = {};
   if (body.name !== undefined) updates.name = body.name;
   if (body.description !== undefined) updates.description = body.description;
   if (body.config !== undefined) updates.config = body.config;
   if (body.is_active !== undefined) updates.is_active = body.is_active;
-  if (body.paper_trading_enabled !== undefined) updates.paper_trading_enabled = body.paper_trading_enabled;
-  
+  if (body.paper_trading_enabled !== undefined) {
+    updates.paper_trading_enabled = body.paper_trading_enabled;
+  }
+
   const { data, error } = await supabase
     .from("strategy_user_strategies")
     .update(updates)
@@ -184,11 +206,15 @@ async function handleUpdate(supabase: ReturnType<typeof getSupabaseClient>, user
   return jsonResponse({ strategy: data });
 }
 
-async function handleDelete(supabase: ReturnType<typeof getSupabaseClient>, userId: string, id: string | null) {
+async function handleDelete(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  userId: string,
+  id: string | null,
+) {
   if (!id) {
     return errorResponse("Strategy ID is required");
   }
-  
+
   const { error } = await supabase
     .from("strategy_user_strategies")
     .delete()
@@ -203,14 +229,18 @@ async function handleDelete(supabase: ReturnType<typeof getSupabaseClient>, user
   return jsonResponse({ message: "Strategy deleted" });
 }
 
-async function handleDuplicate(supabase: ReturnType<typeof getSupabaseClient>, userId: string, req: Request) {
+async function handleDuplicate(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  userId: string,
+  req: Request,
+) {
   const body = await req.json();
   const sourceId = body.source_id;
-  
+
   if (!sourceId) {
     return errorResponse("Source strategy ID is required");
   }
-  
+
   // Get source strategy
   const { data: source, error: fetchError } = await supabase
     .from("strategy_user_strategies")
@@ -218,11 +248,11 @@ async function handleDuplicate(supabase: ReturnType<typeof getSupabaseClient>, u
     .eq("id", sourceId)
     .eq("user_id", userId)
     .single();
-  
+
   if (fetchError || !source) {
     return errorResponse("Source strategy not found", 404);
   }
-  
+
   // Create duplicate
   const { data, error } = await supabase
     .from("strategy_user_strategies")

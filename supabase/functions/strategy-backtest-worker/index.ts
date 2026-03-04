@@ -5,11 +5,26 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 import {
-  type FrontendCondition,
+  type ConditionGroup,
   normalizeToWorkerFormat,
+  normalizeToWorkerGroups,
   type StrategyConfigRaw,
   type WorkerCondition,
 } from "../_shared/strategy-translator.ts";
+import {
+  annualizationFactor,
+  type BarData,
+  buildIndicatorCache,
+  getIndicatorValue,
+  isKnownIndicator,
+} from "./indicators.ts";
+import {
+  type DrawdownPoint,
+  type MonthlyReturn,
+  type RollingMetric,
+  runValidation,
+  type ValidationResult,
+} from "./validation.ts";
 
 interface BacktestJob {
   id: string;
@@ -24,17 +39,42 @@ interface BacktestJob {
 /** Worker-local alias using shared types. */
 type Condition = WorkerCondition;
 
+interface PositionSizingConfig {
+  type: "percent_of_equity" | "fixed_dollar" | "half_kelly";
+  value: number;
+}
+
 interface StrategyConfig extends StrategyConfigRaw {
   filters?: WorkerCondition[];
   parameters?: Record<string, unknown>;
+  direction?: string;
+  positionSizing?: PositionSizingConfig;
+  position_sizing?: PositionSizingConfig;
+  riskManagement?: {
+    stopLoss?: { type: string; value: number };
+    takeProfit?: { type: string; value: number };
+  };
+  risk_management?: {
+    stop_loss?: { type: string; value: number };
+    take_profit?: { type: string; value: number };
+  };
+  stop_loss_pct?: number;
+  take_profit_pct?: number;
 }
 
-/** Normalize config using shared translator. */
-function normalizeConfig(
-  raw: StrategyConfig,
-): { entry_conditions: Condition[]; exit_conditions: Condition[] } {
-  return normalizeToWorkerFormat(raw);
+/** Normalize config using shared translator. Returns both flat conditions (backward compat) and groups. */
+function normalizeConfig(raw: StrategyConfig): {
+  entry_conditions: Condition[];
+  exit_conditions: Condition[];
+  entry_condition_groups: ConditionGroup[];
+  exit_condition_groups: ConditionGroup[];
+} {
+  const flat = normalizeToWorkerFormat(raw);
+  const groups = normalizeToWorkerGroups(raw);
+  return { ...flat, ...groups };
 }
+
+// ─── Job management ───────────────────────────────────────────────────────────
 
 async function claimJob(
   supabase: ReturnType<typeof getSupabaseClient>,
@@ -43,7 +83,6 @@ async function claimJob(
   let jobId: string | null = null;
 
   if (triggeredJobId) {
-    // Claim the specific triggered job to avoid race conditions
     const { data, error } = await supabase
       .from("strategy_backtest_jobs")
       .update({ status: "running", started_at: new Date().toISOString() })
@@ -61,7 +100,6 @@ async function claimJob(
     }
     jobId = data.id;
   } else {
-    // Fallback: claim oldest pending job via RPC
     const { data, error } = await supabase.rpc("claim_pending_backtest_job");
     if (error || !data) {
       console.log("No pending jobs or error:", error?.message);
@@ -79,7 +117,6 @@ async function claimJob(
   return job as BacktestJob;
 }
 
-/** Update heartbeat_at to signal worker is still alive. */
 async function updateHeartbeat(
   supabase: ReturnType<typeof getSupabaseClient>,
   jobId: string,
@@ -90,7 +127,6 @@ async function updateHeartbeat(
     .eq("id", jobId);
 }
 
-/** Check if job has been cancelled. Returns true if cancelled. */
 async function isJobCancelled(
   supabase: ReturnType<typeof getSupabaseClient>,
   jobId: string,
@@ -102,6 +138,8 @@ async function isJobCancelled(
     .single();
   return data?.status === "cancelled";
 }
+
+// ─── Market data ──────────────────────────────────────────────────────────────
 
 async function fetchMarketData(
   supabase: ReturnType<typeof getSupabaseClient>,
@@ -121,7 +159,6 @@ async function fetchMarketData(
   const end = new Date(endDate).toISOString();
   const tf = timeframe && timeframe !== "" ? timeframe : "d1";
 
-  // Look up symbol_id from the symbols table
   const { data: symbolRow } = await supabase
     .from("symbols")
     .select("id")
@@ -132,7 +169,6 @@ async function fetchMarketData(
     throw new Error(`Symbol ${symbol} not found in database`);
   }
 
-  // Fetch bars from ohlc_bars_v2
   const { data: bars, error: barsError } = await supabase
     .from("ohlc_bars_v2")
     .select("ts, open, high, low, close, volume")
@@ -157,411 +193,126 @@ async function fetchMarketData(
       ? new Date(b.ts).toISOString()
       : new Date(b.ts).toISOString().split("T")[0]
   );
-  const opens = bars.map((b) => b.open as number);
-  const highs = bars.map((b) => b.high as number);
-  const lows = bars.map((b) => b.low as number);
-  const closes = bars.map((b) => b.close as number);
-  const volumes = bars.map((b) => b.volume as number);
 
   console.log(
     `[BacktestWorker] Fetched ${bars.length} bars for ${symbol} from ohlc_bars_v2`,
   );
-  return { dates, opens, highs, lows, closes, volumes };
-}
-
-/** Compute SMA over a window. Returns null if not enough data. */
-function computeSMA(data: number[], period: number): (number | null)[] {
-  const result: (number | null)[] = [];
-  for (let i = 0; i < data.length; i++) {
-    if (i < period - 1) {
-      result.push(null);
-      continue;
-    }
-    let sum = 0;
-    for (let j = i - period + 1; j <= i; j++) sum += data[j];
-    result.push(sum / period);
-  }
-  return result;
-}
-
-/** Compute EMA seeded with SMA of first `period` values. */
-function computeEMA(data: number[], period: number): (number | null)[] {
-  const result: (number | null)[] = [];
-  const k = 2 / (period + 1);
-  for (let i = 0; i < data.length; i++) {
-    if (i < period - 1) {
-      result.push(null);
-      continue;
-    }
-    if (i === period - 1) {
-      // Seed with SMA of first `period` values
-      let sum = 0;
-      for (let j = 0; j < period; j++) sum += data[j];
-      result.push(sum / period);
-      continue;
-    }
-    const prev = result[i - 1] ?? data[i];
-    result.push((data[i] - prev) * k + prev);
-  }
-  return result;
-}
-
-function calculateIndicators(
-  closes: number[],
-  highs: number[],
-  lows: number[],
-  volumes: number[],
-) {
-  const n = closes.length;
-
-  // SMAs
-  const sma20 = computeSMA(closes, 20);
-  const sma50 = computeSMA(closes, 50);
-
-  // EMAs
-  const ema12 = computeEMA(closes, 12);
-  const ema26 = computeEMA(closes, 26);
-
-  // MACD line, signal, histogram
-  const macd: (number | null)[] = [];
-  for (let i = 0; i < n; i++) {
-    if (ema12[i] !== null && ema26[i] !== null) {
-      macd.push(ema12[i]! - ema26[i]!);
-    } else macd.push(null);
-  }
-  // MACD signal: 9-period EMA of MACD values (skip nulls for seeding)
-  const macdSignal: (number | null)[] = [];
-  const macdHist: (number | null)[] = [];
-  let macdSigCount = 0;
-  let macdSigSum = 0;
-  let macdSigEma: number | null = null;
-  for (let i = 0; i < n; i++) {
-    if (macd[i] === null) {
-      macdSignal.push(null);
-      macdHist.push(null);
-      continue;
-    }
-    macdSigCount++;
-    macdSigSum += macd[i]!;
-    if (macdSigCount < 9) {
-      macdSignal.push(null);
-      macdHist.push(null);
-      continue;
-    }
-    if (macdSigCount === 9) {
-      macdSigEma = macdSigSum / 9;
-    } else {
-      macdSigEma = (macd[i]! - macdSigEma!) * (2 / 10) + macdSigEma!;
-    }
-    macdSignal.push(macdSigEma);
-    macdHist.push(macd[i]! - macdSigEma!);
-  }
-
-  // RSI 14 — Wilder's smoothing (matches TradingView)
-  const rsi: number[] = [];
-  let prevAvgGain = 0;
-  let prevAvgLoss = 0;
-  for (let i = 0; i < n; i++) {
-    if (i < 1) {
-      rsi.push(50);
-      continue;
-    }
-    if (i <= 14) {
-      // Accumulate for seed
-      if (i < 14) {
-        rsi.push(50);
-        continue;
-      }
-      // i === 14: compute initial SMA of gains/losses over first 14 changes
-      let gains = 0, losses = 0;
-      for (let j = 1; j <= 14; j++) {
-        const diff = closes[j] - closes[j - 1];
-        if (diff > 0) gains += diff;
-        else losses -= diff;
-      }
-      prevAvgGain = gains / 14;
-      prevAvgLoss = losses / 14;
-    } else {
-      // Wilder smoothing
-      const diff = closes[i] - closes[i - 1];
-      const gain = diff > 0 ? diff : 0;
-      const loss = diff < 0 ? -diff : 0;
-      prevAvgGain = (prevAvgGain * 13 + gain) / 14;
-      prevAvgLoss = (prevAvgLoss * 13 + loss) / 14;
-    }
-    const rs = prevAvgLoss === 0 ? 100 : prevAvgGain / prevAvgLoss;
-    rsi.push(100 - (100 / (1 + rs)));
-  }
-
-  // ATR 14 — Wilder's smoothing
-  const atr: (number | null)[] = [];
-  const trueRange: number[] = [];
-  for (let i = 0; i < n; i++) {
-    if (i === 0) trueRange.push(highs[0] - lows[0]);
-    else {
-      trueRange.push(Math.max(
-        highs[i] - lows[i],
-        Math.abs(highs[i] - closes[i - 1]),
-        Math.abs(lows[i] - closes[i - 1]),
-      ));
-    }
-    if (i < 13) atr.push(null);
-    else if (i === 13) {
-      let sum = 0;
-      for (let j = 0; j < 14; j++) sum += trueRange[j];
-      atr.push(sum / 14);
-    } else {
-      atr.push((atr[i - 1]! * 13 + trueRange[i]) / 14);
-    }
-  }
-
-  // Stochastic %K (14-period), NaN-safe
-  const stochasticK: (number | null)[] = [];
-  for (let i = 0; i < n; i++) {
-    if (i < 13) {
-      stochasticK.push(null);
-      continue;
-    }
-    const low14 = Math.min(...lows.slice(i - 13, i + 1));
-    const high14 = Math.max(...highs.slice(i - 13, i + 1));
-    const range = high14 - low14;
-    stochasticK.push(range > 0 ? 100 * (closes[i] - low14) / range : 50);
-  }
-
-  // ADX (14-period, Wilder's directional movement)
-  const adx: (number | null)[] = [];
-  const plusDI: (number | null)[] = [];
-  const minusDI: (number | null)[] = [];
-  {
-    const plusDM: number[] = [];
-    const minusDM: number[] = [];
-    for (let i = 0; i < n; i++) {
-      if (i === 0) {
-        plusDM.push(0);
-        minusDM.push(0);
-        continue;
-      }
-      const upMove = highs[i] - highs[i - 1];
-      const downMove = lows[i - 1] - lows[i];
-      plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
-      minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
-    }
-    let smoothPlusDM = 0, smoothMinusDM = 0, smoothTR = 0, adxSmooth = 0;
-    for (let i = 0; i < n; i++) {
-      if (i < 14) {
-        smoothPlusDM += plusDM[i];
-        smoothMinusDM += minusDM[i];
-        smoothTR += trueRange[i];
-        adx.push(null);
-        plusDI.push(null);
-        minusDI.push(null);
-        continue;
-      }
-      if (i === 14) {
-        // Already summed first 14 values
-      } else {
-        smoothPlusDM = smoothPlusDM - (smoothPlusDM / 14) + plusDM[i];
-        smoothMinusDM = smoothMinusDM - (smoothMinusDM / 14) + minusDM[i];
-        smoothTR = smoothTR - (smoothTR / 14) + trueRange[i];
-      }
-      const pdi = smoothTR > 0 ? (smoothPlusDM / smoothTR) * 100 : 0;
-      const mdi = smoothTR > 0 ? (smoothMinusDM / smoothTR) * 100 : 0;
-      plusDI.push(pdi);
-      minusDI.push(mdi);
-      const diSum = pdi + mdi;
-      const dx = diSum > 0 ? Math.abs(pdi - mdi) / diSum * 100 : 0;
-      if (i < 28) {
-        adx.push(null);
-        continue;
-      }
-      if (i === 28) {
-        // Initial ADX = SMA of first 14 DX values
-        let dxSum = 0;
-        // Recompute DX for bars 14..27 (we only need the average)
-        // Simplified: use current DX as seed
-        adxSmooth = dx;
-        adx.push(adxSmooth);
-      } else {
-        adxSmooth = (adxSmooth * 13 + dx) / 14;
-        adx.push(adxSmooth);
-      }
-    }
-  }
-
-  // Bollinger Bands (20-period, 2 std dev)
-  const bbUpper: (number | null)[] = [];
-  const bbLower: (number | null)[] = [];
-  const bbMiddle: (number | null)[] = [];
-  for (let i = 0; i < n; i++) {
-    if (i < 19) {
-      bbUpper.push(null);
-      bbLower.push(null);
-      bbMiddle.push(null);
-      continue;
-    }
-    const slice = closes.slice(i - 19, i + 1);
-    const mean = slice.reduce((a, b) => a + b, 0) / 20;
-    const variance = slice.reduce((a, v) => a + (v - mean) ** 2, 0) / 20;
-    const stdDev = Math.sqrt(variance);
-    bbMiddle.push(mean);
-    bbUpper.push(mean + 2 * stdDev);
-    bbLower.push(mean - 2 * stdDev);
-  }
-
-  // CCI (20-period)
-  const cci: (number | null)[] = [];
-  for (let i = 0; i < n; i++) {
-    if (i < 19) {
-      cci.push(null);
-      continue;
-    }
-    const tps: number[] = [];
-    for (let j = i - 19; j <= i; j++) {
-      tps.push((highs[j] + lows[j] + closes[j]) / 3);
-    }
-    const tp = tps[tps.length - 1];
-    const meanTP = tps.reduce((a, b) => a + b, 0) / 20;
-    const meanDev = tps.reduce((a, v) => a + Math.abs(v - meanTP), 0) / 20;
-    cci.push(meanDev > 0 ? (tp - meanTP) / (0.015 * meanDev) : 0);
-  }
-
-  // OBV
-  const obv: number[] = [];
-  for (let i = 0; i < n; i++) {
-    if (i === 0) {
-      obv.push(volumes[0]);
-      continue;
-    }
-    if (closes[i] > closes[i - 1]) obv.push(obv[i - 1] + volumes[i]);
-    else if (closes[i] < closes[i - 1]) obv.push(obv[i - 1] - volumes[i]);
-    else obv.push(obv[i - 1]);
-  }
-
-  // Volume MA (20-period)
-  const volumeMA = computeSMA(volumes, 20);
 
   return {
-    sma20,
-    sma50,
-    ema12,
-    ema26,
-    macd,
-    macdSignal,
-    macdHist,
-    rsi,
-    atr,
-    stochasticK,
-    adx,
-    plusDI,
-    minusDI,
-    bbUpper,
-    bbLower,
-    bbMiddle,
-    cci,
-    obv,
-    volumeMA,
+    dates,
+    opens: bars.map((b) => b.open as number),
+    highs: bars.map((b) => b.high as number),
+    lows: bars.map((b) => b.low as number),
+    closes: bars.map((b) => b.close as number),
+    volumes: bars.map((b) => b.volume as number),
   };
 }
 
-/** SuperTrend (TradingView-style): period=7, multiplier=2.0 to align with ML pipeline. */
-function calculateSuperTrend(
-  highs: number[],
-  lows: number[],
-  closes: number[],
-  period: number = 7,
-  multiplier: number = 2.0,
-): { trend: number[]; signal: number[] } {
-  const n = closes.length;
-  const trend: number[] = [];
-  const signal: number[] = [];
+// ─── Config extraction helpers ────────────────────────────────────────────────
 
-  if (n === 0) return { trend, signal };
-
-  // True Range
-  const tr: number[] = [];
-  for (let i = 0; i < n; i++) {
-    if (i === 0) {
-      tr.push(highs[0] - lows[0]);
-    } else {
-      tr.push(
-        Math.max(
-          highs[i] - lows[i],
-          Math.abs(highs[i] - closes[i - 1]),
-          Math.abs(lows[i] - closes[i - 1]),
-        ),
-      );
-    }
-  }
-
-  // ATR with Wilder smoothing (EMA alpha = 1/period): ATR[0]=TR[0], ATR[i] = (1/period)*TR[i] + (1-1/period)*ATR[i-1]
-  const atr: number[] = [];
-  const alpha = 1 / period;
-  for (let i = 0; i < n; i++) {
-    if (i === 0) atr.push(tr[0]);
-    else atr.push(alpha * tr[i] + (1 - alpha) * atr[i - 1]!);
-  }
-
-  // Basic bands: HL2 +/- (multiplier * ATR)
-  const hl2 = highs.map((h, i) => (h + lows[i]) / 2);
-  const basicUpper = hl2.map((v, i) => v + multiplier * (atr[i] ?? 0));
-  const basicLower = hl2.map((v, i) => v - multiplier * (atr[i] ?? 0));
-
-  // Final bands and SuperTrend (TradingView iterative logic)
-  const finalUpper: number[] = [];
-  const finalLower: number[] = [];
-  const supertrend: number[] = [];
-
-  finalUpper[0] = basicUpper[0];
-  finalLower[0] = basicLower[0];
-  supertrend[0] = basicLower[0];
-  trend[0] = 1; // 1 = bullish
-  signal[0] = 0;
-
-  for (let i = 1; i < n; i++) {
-    let fu: number, fl: number;
-    // Adjust lower band (TradingView: basic_lower vs prev close vs prev final_lower)
-    if (
-      basicLower[i] > basicLower[i - 1]! || closes[i - 1] < finalLower[i - 1]!
-    ) {
-      fl = basicLower[i];
-    } else {
-      fl = finalLower[i - 1]!;
-    }
-    // Adjust upper band
-    if (
-      basicUpper[i] < basicUpper[i - 1]! || closes[i - 1] > finalUpper[i - 1]!
-    ) {
-      fu = basicUpper[i];
-    } else {
-      fu = finalUpper[i - 1]!;
-    }
-    finalLower[i] = fl;
-    finalUpper[i] = fu;
-
-    let st: number;
-    let inUptrend: number;
-    if (closes[i] > fu) {
-      st = fl;
-      inUptrend = 1;
-    } else if (closes[i] < fl) {
-      st = fu;
-      inUptrend = 0;
-    } else {
-      if (trend[i - 1] === 1) {
-        st = fl;
-        inUptrend = 1;
-      } else {
-        st = fu;
-        inUptrend = 0;
-      }
-    }
-    supertrend.push(st);
-    trend.push(inUptrend);
-    signal.push(st !== 0 ? ((closes[i] - st) / st) * 100 : 0);
-  }
-
-  return { trend, signal };
+function extractInitialCapital(
+  params: Record<string, unknown>,
+  _config: StrategyConfig,
+): number {
+  return (
+    (params.initialCapital as number) ||
+    (params.initial_capital as number) ||
+    10000
+  );
 }
+
+function extractStopLoss(
+  params: Record<string, unknown>,
+  config: StrategyConfig,
+): number {
+  // Prefer inline strategy config (user's actual setting), fall back to job params
+  const fromConfig = config.riskManagement?.stopLoss?.value ??
+    config.risk_management?.stop_loss?.value ??
+    config.stop_loss_pct;
+  if (fromConfig !== undefined && fromConfig !== null) {
+    return Number(fromConfig) / 100;
+  }
+  return ((params.stop_loss_pct as number) || 2) / 100;
+}
+
+function extractTakeProfit(
+  params: Record<string, unknown>,
+  config: StrategyConfig,
+): number {
+  const fromConfig = config.riskManagement?.takeProfit?.value ??
+    config.risk_management?.take_profit?.value ??
+    config.take_profit_pct;
+  if (fromConfig !== undefined && fromConfig !== null) {
+    return Number(fromConfig) / 100;
+  }
+  return ((params.take_profit_pct as number) || 4) / 100;
+}
+
+function extractPositionSizing(
+  _params: Record<string, unknown>,
+  config: StrategyConfig,
+): PositionSizingConfig {
+  const ps = config.positionSizing ?? config.position_sizing;
+  if (ps?.type) return { type: ps.type, value: Number(ps.value) || 2 };
+  return { type: "percent_of_equity", value: 2 };
+}
+
+function extractDirection(config: StrategyConfig): string {
+  return config.direction ?? "long_only";
+}
+
+// ─── Position sizing ──────────────────────────────────────────────────────────
+
+function computeShareCount(
+  equity: number,
+  execPrice: number,
+  sizing: PositionSizingConfig,
+  completedTrades: Record<string, unknown>[],
+): number {
+  if (execPrice <= 0) return 0;
+
+  let notional: number;
+
+  switch (sizing.type) {
+    case "fixed_dollar":
+      notional = sizing.value;
+      break;
+
+    case "half_kelly": {
+      // Require at least 10 completed trades for Kelly to activate
+      if (completedTrades.length >= 10) {
+        const wins = completedTrades.filter((t) => (t.pnl as number) > 0);
+        const losses = completedTrades.filter((t) => (t.pnl as number) <= 0);
+        const winRate = wins.length / completedTrades.length;
+        const avgWin = wins.length
+          ? wins.reduce((s, t) => s + (t.pnl as number), 0) / wins.length
+          : 0;
+        const avgLoss = losses.length
+          ? Math.abs(
+            losses.reduce((s, t) => s + (t.pnl as number), 0) / losses.length,
+          )
+          : 1;
+        const ratio = avgLoss > 0 ? avgWin / avgLoss : 1;
+        const kelly = winRate - (1 - winRate) / ratio;
+        const halfKelly = Math.max(0, Math.min(0.5, kelly * 0.5));
+        notional = equity * halfKelly;
+      } else {
+        // Fall back to 2% until enough trades
+        notional = equity * 0.02;
+      }
+      break;
+    }
+
+    case "percent_of_equity":
+    default:
+      notional = equity * (sizing.value / 100);
+      break;
+  }
+
+  return Math.max(1, Math.floor(notional / execPrice));
+}
+
+// ─── Core backtest engine ─────────────────────────────────────────────────────
 
 async function runBacktest(
   supabase: ReturnType<typeof getSupabaseClient>,
@@ -571,14 +322,18 @@ async function runBacktest(
   metrics: Record<string, unknown>;
   trades: Record<string, unknown>[];
   equity_curve: Record<string, unknown>[];
+  validation: ValidationResult | null;
+  monthly_returns: MonthlyReturn[];
+  rolling_metrics: RollingMetric[];
+  drawdown_series: DrawdownPoint[];
 }> {
   const params = job.parameters as Record<string, unknown>;
-  const initialCapital = (params.initialCapital as number) ||
-    (params.initial_capital as number) || 10000;
-  const positionSize = (params.position_size as number) || 100;
-  const stopLoss = ((params.stop_loss_pct as number) || 2) / 100;
-  const takeProfit = ((params.take_profit_pct as number) || 4) / 100;
+  const initialCapital = extractInitialCapital(params, config);
+  const stopLoss = extractStopLoss(params, config);
+  const takeProfit = extractTakeProfit(params, config);
   const timeframe = (params.timeframe as string) || "d1";
+  const direction = extractDirection(config);
+  const positionSizing = extractPositionSizing(params, config);
 
   const { dates, opens, highs, lows, closes, volumes } = await fetchMarketData(
     supabase,
@@ -605,62 +360,72 @@ async function runBacktest(
       },
       trades: [],
       equity_curve: [],
+      validation: null,
+      monthly_returns: [],
+      rolling_metrics: [],
+      drawdown_series: [],
     };
   }
 
-  // Calculate indicators
-  const {
-    sma20,
-    sma50,
-    ema12,
-    ema26,
-    macd,
-    macdSignal,
-    macdHist,
-    rsi,
-    atr,
-    stochasticK,
-    adx,
-    plusDI,
-    minusDI,
-    bbUpper,
-    bbLower,
-    bbMiddle,
-    cci,
-    obv,
-    volumeMA,
-  } = calculateIndicators(closes, highs, lows, volumes);
-  const { trend: supertrendTrend, signal: supertrendSignal } =
-    calculateSuperTrend(highs, lows, closes, 7, 2.0);
+  const bars: BarData = { closes, highs, lows, volumes, opens };
 
-  // Log conditions once to diagnose translation issues
-  const entryConds = config.entry_conditions || [];
-  const exitConds = config.exit_conditions || [];
+  // Get grouped conditions (OR logic: each group is AND'd internally, groups are OR'd)
+  const entryGroups: ConditionGroup[] = config.entry_condition_groups ||
+    (config.entry_conditions?.length
+      ? [{ conditions: config.entry_conditions }]
+      : []);
+  const exitGroups: ConditionGroup[] = config.exit_condition_groups ||
+    (config.exit_conditions?.length
+      ? [{ conditions: config.exit_conditions }]
+      : []);
+
+  // Flatten all conditions from all groups for cache building
+  const allConditions = [
+    ...entryGroups.flatMap((g) => g.conditions),
+    ...exitGroups.flatMap((g) => g.conditions),
+  ];
+  const cache = buildIndicatorCache(allConditions, bars);
+
   console.log(
-    `[BacktestWorker] Entry conditions (${entryConds.length}):`,
+    `[BacktestWorker] Entry groups (${entryGroups.length}):`,
     JSON.stringify(
-      entryConds.map((c) => ({
-        type: c.type,
-        name: c.name,
-        op: c.operator,
-        val: c.value,
+      entryGroups.map((g) => ({
+        conditions: g.conditions.map((c) => ({
+          name: c.name,
+          op: c.operator,
+          val: c.value,
+          params: c.params,
+        })),
       })),
     ),
   );
   console.log(
-    `[BacktestWorker] Exit conditions (${exitConds.length}):`,
+    `[BacktestWorker] Exit groups (${exitGroups.length}):`,
     JSON.stringify(
-      exitConds.map((c) => ({
-        type: c.type,
-        name: c.name,
-        op: c.operator,
-        val: c.value,
+      exitGroups.map((g) => ({
+        conditions: g.conditions.map((c) => ({
+          name: c.name,
+          op: c.operator,
+          val: c.value,
+        })),
       })),
     ),
+  );
+  console.log(
+    `[BacktestWorker] direction=${direction}, SL=${
+      (stopLoss * 100).toFixed(1)
+    }%, TP=${
+      (takeProfit * 100).toFixed(1)
+    }%, sizing=${positionSizing.type}(${positionSizing.value})`,
   );
 
   const warnedIndicators = new Set<string>();
 
+  /**
+   * Evaluate all conditions at bar i (AND logic within a single group).
+   * Crossover operators compare bar[i] vs bar[i-1].
+   * Unknown indicators are skipped with a warning (condition passes).
+   */
   function evaluateConditions(
     conditions: Condition[] | undefined,
     i: number,
@@ -671,199 +436,206 @@ async function runBacktest(
       if (cond.type !== "indicator") continue;
 
       const name = cond.name;
-      const op = cond.operator;
-      const val = cond.value ?? 0;
+      const op = cond.operator ?? "above";
+      const val = Number(cond.value ?? 0);
+      const condParams = (cond.params as Record<string, unknown>) ?? {};
 
-      let indicatorValue: number | null = null;
-
-      // Momentum indicators
-      if (name === "rsi") indicatorValue = rsi[i] ?? null;
-      else if (name === "stochastic" || name === "stochastic_k") {
-        indicatorValue = stochasticK[i] ?? null;
-      } else if (name === "cci") indicatorValue = cci[i] ?? null;
-      else if (name === "macd") indicatorValue = macd[i] ?? null;
-      else if (name === "macd_signal") indicatorValue = macdSignal[i] ?? null;
-      else if (name === "macd_hist") indicatorValue = macdHist[i] ?? null;
-      // Trend indicators
-      else if (name === "sma") indicatorValue = sma20[i] ?? null;
-      else if (name === "ema") indicatorValue = ema12[i] ?? null;
-      else if (name === "adx") indicatorValue = adx[i] ?? null;
-      else if (name === "plus_di") indicatorValue = plusDI[i] ?? null;
-      else if (name === "minus_di") indicatorValue = minusDI[i] ?? null;
-      else if (name === "price_above_sma") {
-        indicatorValue = (sma20[i] !== null && closes[i] > sma20[i]!) ? 1 : 0;
-      } else if (name === "price_above_ema") {
-        indicatorValue = (ema12[i] !== null && closes[i] > ema12[i]!) ? 1 : 0;
-      } else if (name === "price_vs_sma20") {
-        indicatorValue = sma20[i] !== null
-          ? (closes[i] - sma20[i]!) / sma20[i]!
-          : null;
-      } else if (name === "price_vs_sma50") {
-        indicatorValue = sma50[i] !== null
-          ? (closes[i] - sma50[i]!) / sma50[i]!
-          : null;
-      } // Volatility indicators
-      else if (name === "atr") indicatorValue = atr[i] ?? null;
-      else if (name === "bb_upper") indicatorValue = bbUpper[i] ?? null;
-      else if (name === "bb_lower") indicatorValue = bbLower[i] ?? null;
-      else if (name === "bb") indicatorValue = bbMiddle[i] ?? null;
-      else if (name === "supertrend_trend") {
-        indicatorValue = supertrendTrend[i] ?? null;
-      } else if (name === "supertrend_signal") {
-        indicatorValue = supertrendSignal[i] ?? null;
-      } else if (name === "supertrend_factor") indicatorValue = 2.0;
-      // Price
-      else if (name === "close" || name === "price") indicatorValue = closes[i];
-      else if (name === "high") indicatorValue = highs[i];
-      else if (name === "low") indicatorValue = lows[i];
-      else if (name === "open") indicatorValue = opens[i];
-      // Volume
-      else if (name === "volume") indicatorValue = volumes[i];
-      else if (name === "volume_ratio") {
-        indicatorValue = volumeMA[i] !== null && volumeMA[i]! > 0
-          ? volumes[i] / volumeMA[i]!
-          : null;
-      } else if (name === "obv") indicatorValue = obv[i] ?? null;
-      else {
-        // Unknown indicator — warn once and skip (don't silently pass)
+      if (!isKnownIndicator(name)) {
         if (!warnedIndicators.has(name)) {
           console.warn(
             `[BacktestWorker] Unknown indicator "${name}" — condition skipped`,
           );
           warnedIndicators.add(name);
         }
+        continue; // treat as passing (existing behavior)
+      }
+
+      const cur = getIndicatorValue(name, condParams, i, cache);
+      if (cur === null) continue; // not enough warmup data — skip
+
+      // Crossover operators need the previous bar's value
+      if (op === "cross_up") {
+        if (i === 0) return false;
+        const prev = getIndicatorValue(name, condParams, i - 1, cache);
+        if (prev === null) return false;
+        if (!(cur > val && prev <= val)) return false;
+        continue;
+      }
+      if (op === "cross_down") {
+        if (i === 0) return false;
+        const prev = getIndicatorValue(name, condParams, i - 1, cache);
+        if (prev === null) return false;
+        if (!(cur < val && prev >= val)) return false;
         continue;
       }
 
-      if (indicatorValue === null) continue;
-
-      // Evaluate operator (above_equal/below_equal preserve >= / <= precision)
-      if (op === "below") { if (!(indicatorValue < val)) return false; }
-      else if (op === "below_equal") {
-        if (!(indicatorValue <= val)) return false;
-      } else if (op === "above") { if (!(indicatorValue > val)) return false; }
-      else if (op === "above_equal") {
-        if (!(indicatorValue >= val)) return false;
-      } else if (op === "equals") {
-        const epsilon = 0.0001;
-        if (Math.abs(indicatorValue - val) >= epsilon) return false;
+      // Threshold operators
+      if (op === "below" || op === "<") {
+        if (!(cur < val)) return false;
+      } else if (op === "below_equal" || op === "<=") {
+        if (!(cur <= val)) return false;
+      } else if (op === "above" || op === ">") {
+        if (!(cur > val)) return false;
+      } else if (op === "above_equal" || op === ">=") {
+        if (!(cur >= val)) return false;
+      } else if (op === "equals" || op === "==") {
+        if (Math.abs(cur - val) >= 0.0001) return false;
+      } else if (op === "not_equals" || op === "!=") {
+        if (Math.abs(cur - val) < 0.0001) return false;
       }
     }
     return true;
   }
 
-  // Run backtest
-  const slippagePct = 0.0005; // 5 basis points per side (realistic for liquid equities)
+  /**
+   * Evaluate condition groups at bar i (OR logic across groups).
+   * Returns true if ANY group fully passes (all conditions within that group are met).
+   * An empty groups array returns true (no conditions = always entry/exit signal).
+   */
+  function evaluateConditionGroups(
+    groups: ConditionGroup[],
+    i: number,
+  ): boolean {
+    if (!groups || groups.length === 0) return true;
+    return groups.some((group) => evaluateConditions(group.conditions, i));
+  }
+
+  // ─── Position loop ──────────────────────────────────────────────────────────
+
+  const slippagePct = 0.0005; // 5 bps per side (realistic for liquid equities)
+  const isShortOnly = direction === "short_only";
+
   let cash = initialCapital;
-  let shares = 0;
+  let shares = 0; // positive = long, negative = short (signed-shares model)
   let entryPrice = 0;
-  let entryBar = 0; // Track actual entry bar index for correct date recording
+  let entryBar = 0;
+
   const trades: Record<string, unknown>[] = [];
   const equityCurve: { date: string; value: number }[] = [];
 
   for (let i = 30; i < closes.length; i++) {
-    if (shares === 0 && evaluateConditions(entryConds, i)) {
-      const execPrice = closes[i] * (1 + slippagePct); // slippage on buy
-      shares = Math.min(positionSize, Math.floor(cash / execPrice));
-      cash -= shares * execPrice;
-      entryPrice = execPrice;
-      entryBar = i;
-    } else if (shares > 0) {
-      // Check intrabar SL/TP using highs and lows for realistic risk management
-      const lowPnlPct = (lows[i] - entryPrice) / entryPrice;
-      const highPnlPct = (highs[i] - entryPrice) / entryPrice;
-      const hitStopLoss = lowPnlPct <= -stopLoss;
-      const hitTakeProfit = highPnlPct >= takeProfit;
-      const exitByCondition = evaluateConditions(exitConds, i);
-      const exitByRisk = hitStopLoss || hitTakeProfit;
+    if (shares === 0) {
+      // ── Entry logic ──
+      const entrySignal = evaluateConditionGroups(entryGroups, i);
 
-      if (exitByCondition || exitByRisk) {
-        // Determine exit price: SL/TP hit at the trigger level, condition at close
-        let exitPrice: number;
+      if (entrySignal) {
+        const posDir = isShortOnly ? -1 : 1; // +1 long, -1 short
+        // Slippage: pay more to buy, receive less to short
+        const execPrice = closes[i] * (1 + posDir * slippagePct);
+        const shareCount = computeShareCount(
+          cash,
+          execPrice,
+          positionSizing,
+          trades,
+        );
+        if (shareCount > 0) {
+          shares = posDir * shareCount; // signed
+          // Entry cash: cash -= shares * execPrice (works for both directions)
+          cash -= shares * execPrice;
+          entryPrice = execPrice;
+          entryBar = i;
+        }
+      }
+    } else {
+      // ── Exit logic ──
+      const posDir = shares > 0 ? 1 : -1;
+      const absShares = Math.abs(shares);
+
+      // Intrabar SL/TP check using high/low prices
+      const highRet = (highs[i] - entryPrice) / entryPrice;
+      const lowRet = (lows[i] - entryPrice) / entryPrice;
+
+      // SL triggers when price moves against position by stopLoss
+      const hitSL = posDir === 1 ? lowRet <= -stopLoss : highRet >= stopLoss;
+      // TP triggers when price moves with position by takeProfit
+      const hitTP = posDir === 1
+        ? highRet >= takeProfit
+        : lowRet <= -takeProfit;
+
+      const exitByCondition = evaluateConditionGroups(exitGroups, i);
+
+      if (exitByCondition || hitSL || hitTP) {
+        let rawExitPrice: number;
         let closeReason: string;
-        if (hitStopLoss) {
-          exitPrice = entryPrice * (1 - stopLoss); // exited at stop level
+
+        if (hitSL) {
+          // Exit at the stop level
+          rawExitPrice = entryPrice * (1 - posDir * stopLoss);
           closeReason = "stop_loss";
-        } else if (hitTakeProfit) {
-          exitPrice = entryPrice * (1 + takeProfit); // exited at take-profit level
+        } else if (hitTP) {
+          rawExitPrice = entryPrice * (1 + posDir * takeProfit);
           closeReason = "take_profit";
         } else {
-          exitPrice = closes[i];
+          rawExitPrice = closes[i];
           closeReason = "exit_condition";
         }
-        exitPrice *= 1 - slippagePct; // slippage on sell
+
+        // Slippage on exit: receive less when selling, pay more when covering
+        const exitPrice = rawExitPrice * (1 - posDir * slippagePct);
+
+        // Exit: cash += shares * exitPrice (unified for long + short)
         cash += shares * exitPrice;
-        const pnl = (exitPrice - entryPrice) * shares;
-        const pnlPct = (exitPrice - entryPrice) / entryPrice;
+        const pnl = shares * (exitPrice - entryPrice);
+        const pnlPct = posDir * (exitPrice - entryPrice) / entryPrice;
+
         trades.push({
           entry_date: dates[entryBar],
           exit_date: dates[i],
           entry_price: entryPrice,
           exit_price: exitPrice,
-          quantity: shares,
-          direction: "long",
+          quantity: absShares,
+          direction: posDir === 1 ? "long" : "short",
           close_reason: closeReason,
           pnl,
           pnl_pct: pnlPct * 100,
         });
+
         shares = 0;
       }
     }
 
-    equityCurve.push({ date: dates[i], value: cash + (shares * closes[i]) });
+    // Equity = cash + unrealized position value (signed-shares: works for both)
+    equityCurve.push({ date: dates[i], value: cash + shares * closes[i] });
   }
 
-  // Include unrealized position value in final portfolio value
-  const lastClose = closes.length > 0 ? closes[closes.length - 1] : 0;
-  const finalValue = cash + (shares * lastClose);
+  // ─── Metrics ────────────────────────────────────────────────────────────────
 
-  // Calculate metrics
-  const winning = trades.filter((t: Record<string, unknown>) =>
-    (t.pnl as number) > 0
-  );
-  const losing = trades.filter((t: Record<string, unknown>) =>
-    (t.pnl as number) <= 0
-  );
+  const lastClose = closes.length > 0 ? closes[closes.length - 1] : 0;
+  const finalValue = cash + shares * lastClose;
+
+  const winning = trades.filter((t) => (t.pnl as number) > 0);
+  const losing = trades.filter((t) => (t.pnl as number) <= 0);
   const totalReturn = ((finalValue - initialCapital) / initialCapital) * 100;
 
   let peak = initialCapital;
   let maxDrawdown = 0;
   for (const eq of equityCurve) {
     if (eq.value > peak) peak = eq.value;
-    const dd = (peak - eq.value) / peak;
+    const dd = peak > 0 ? (peak - eq.value) / peak : 0;
     if (dd > maxDrawdown) maxDrawdown = dd;
   }
 
   const avgWin = winning.length
-    ? winning.reduce(
-      (s: number, t: Record<string, unknown>) => s + (t.pnl as number),
-      0,
-    ) / winning.length
+    ? winning.reduce((s, t) => s + (t.pnl as number), 0) / winning.length
     : 0;
   const avgLoss = losing.length
     ? Math.abs(
-      losing.reduce(
-        (s: number, t: Record<string, unknown>) => s + (t.pnl as number),
-        0,
-      ) / losing.length,
+      losing.reduce((s, t) => s + (t.pnl as number), 0) / losing.length,
     )
     : 0;
-  // Profit factor = total gross profit / total gross loss (not avgWin/avgLoss)
+
   const totalGrossProfit = winning.reduce(
-    (s: number, t: Record<string, unknown>) => s + (t.pnl as number),
+    (s, t) => s + (t.pnl as number),
     0,
   );
   const totalGrossLoss = Math.abs(
-    losing.reduce(
-      (s: number, t: Record<string, unknown>) => s + (t.pnl as number),
-      0,
-    ),
+    losing.reduce((s, t) => s + (t.pnl as number), 0),
   );
   const profitFactor = totalGrossLoss > 0
     ? totalGrossProfit / totalGrossLoss
     : 0;
 
-  // Sharpe ratio (annualized) from equity curve daily returns
+  // Sharpe ratio — timeframe-aware annualization
   let sharpeRatio = 0;
   if (equityCurve.length > 2) {
     const returns: number[] = [];
@@ -877,7 +649,8 @@ async function runBacktest(
         (returns.length - 1);
       const stdDev = Math.sqrt(variance);
       if (stdDev > 0) {
-        sharpeRatio = (meanReturn / stdDev) * Math.sqrt(252); // annualize assuming daily bars
+        sharpeRatio = (meanReturn / stdDev) *
+          Math.sqrt(annualizationFactor(timeframe));
       }
     }
   }
@@ -891,6 +664,24 @@ async function runBacktest(
   const cagr = years > 0 && initialCapital > 0
     ? (Math.pow(finalValue / initialCapital, 1 / years) - 1) * 100
     : null;
+
+  // ─── Statistical validation ─────────────────────────────────────────────────
+
+  const annFactor = annualizationFactor(timeframe);
+  const validationTrades = trades as Array<{
+    pnl: number;
+    pnl_pct: number;
+    entry_date: string;
+    exit_date: string;
+  }>;
+  const { validation, monthly_returns, rolling_metrics, drawdown_series } =
+    runValidation(validationTrades, equityCurve, initialCapital, annFactor);
+
+  console.log(
+    `[BacktestWorker] Validation: ${trades.length} trades, p_value=${
+      validation?.p_value?.toFixed(4) ?? "n/a (< 10 trades)"
+    }`,
+  );
 
   return {
     metrics: {
@@ -910,10 +701,15 @@ async function runBacktest(
     },
     trades,
     equity_curve: equityCurve,
+    validation,
+    monthly_returns,
+    rolling_metrics,
+    drawdown_series,
   };
 }
 
-/** Build a StrategyConfig for a preset strategy name so it runs natively. */
+// ─── Preset strategy configs ──────────────────────────────────────────────────
+
 function getPresetConfig(presetName: string): StrategyConfig {
   switch (presetName) {
     case "supertrend_ai":
@@ -955,7 +751,6 @@ function getPresetConfig(presetName: string): StrategyConfig {
         ],
       };
     case "buy_and_hold":
-      // Entry: always (empty conditions = true). Exit: never (impossible condition).
       return {
         entry_conditions: [],
         exit_conditions: [
@@ -967,8 +762,9 @@ function getPresetConfig(presetName: string): StrategyConfig {
   }
 }
 
+// ─── Request handler ──────────────────────────────────────────────────────────
+
 serve(async (req: Request): Promise<Response> => {
-  // Handle OPTIONS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
@@ -980,7 +776,6 @@ serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  // Gateway key auth
   const gatewayKey = Deno.env.get("SB_GATEWAY_KEY");
   if (!gatewayKey) {
     console.error("[strategy-backtest-worker] SB_GATEWAY_KEY not configured");
@@ -993,7 +788,6 @@ serve(async (req: Request): Promise<Response> => {
 
   const supabase = getSupabaseClient();
 
-  // Read triggered_job_id from request body
   let triggeredJobId: string | undefined;
   try {
     const body = await req.json();
@@ -1015,23 +809,18 @@ serve(async (req: Request): Promise<Response> => {
         console.log("No job to process");
         return new Response(
           JSON.stringify({ success: true, message: "No job to process" }),
-          {
-            headers: { "Content-Type": "application/json" },
-          },
+          { headers: { "Content-Type": "application/json" } },
         );
       }
 
       console.log(`Processing job ${job.id} for ${job.symbol}`);
 
       try {
-        // Cancel check before starting
         if (await isJobCancelled(supabase, job.id)) {
           console.log(`Job ${job.id} was cancelled before processing`);
           return new Response(
             JSON.stringify({ success: true, message: "Job cancelled" }),
-            {
-              headers: { "Content-Type": "application/json" },
-            },
+            { headers: { "Content-Type": "application/json" } },
           );
         }
 
@@ -1039,23 +828,30 @@ serve(async (req: Request): Promise<Response> => {
           metrics: Record<string, unknown>;
           trades: Record<string, unknown>[];
           equity_curve: Record<string, unknown>[];
+          validation: ValidationResult | null;
+          monthly_returns: MonthlyReturn[];
+          rolling_metrics: RollingMetric[];
+          drawdown_series: DrawdownPoint[];
         };
 
-        // Determine strategy config: prefer inline config from parameters, then DB lookup, then preset
         const inlineConfig = job.parameters?.strategy_config as
           | StrategyConfig
           | undefined;
 
         if (inlineConfig) {
-          // Inline config: use the exact conditions the user submitted (most reliable path)
           console.log(`Job ${job.id}: using inline strategy_config`);
-          const { entry_conditions, exit_conditions } = normalizeConfig(
-            inlineConfig,
-          );
+          const {
+            entry_conditions,
+            exit_conditions,
+            entry_condition_groups,
+            exit_condition_groups,
+          } = normalizeConfig(inlineConfig);
           const config: StrategyConfig = {
             ...inlineConfig,
             entry_conditions,
             exit_conditions,
+            entry_condition_groups,
+            exit_condition_groups,
           };
 
           await updateHeartbeat(supabase, job.id);
@@ -1063,23 +859,19 @@ serve(async (req: Request): Promise<Response> => {
             console.log(`Job ${job.id} cancelled before backtest computation`);
             return new Response(
               JSON.stringify({ success: true, message: "Job cancelled" }),
-              {
-                headers: { "Content-Type": "application/json" },
-              },
+              { headers: { "Content-Type": "application/json" } },
             );
           }
 
           result = await runBacktest(supabase, job, config);
           await updateHeartbeat(supabase, job.id);
         } else if (!job.strategy_id && job.parameters?.strategy) {
-          // Preset strategy: run natively with translated config
           const presetName = job.parameters.strategy as string;
           console.log(
             `Job ${job.id}: running preset strategy "${presetName}" natively`,
           );
           const presetConfig = getPresetConfig(presetName);
 
-          // Buy-and-hold: disable stop-loss/take-profit so position holds to end
           if (presetName === "buy_and_hold") {
             job.parameters.stop_loss_pct = 99999;
             job.parameters.take_profit_pct = 99999;
@@ -1090,16 +882,13 @@ serve(async (req: Request): Promise<Response> => {
             console.log(`Job ${job.id} cancelled before backtest computation`);
             return new Response(
               JSON.stringify({ success: true, message: "Job cancelled" }),
-              {
-                headers: { "Content-Type": "application/json" },
-              },
+              { headers: { "Content-Type": "application/json" } },
             );
           }
 
           result = await runBacktest(supabase, job, presetConfig);
           await updateHeartbeat(supabase, job.id);
         } else if (job.strategy_id) {
-          // Builder strategy: read config from DB
           console.log(
             `Job ${job.id}: reading config from DB for strategy ${job.strategy_id}`,
           );
@@ -1110,30 +899,30 @@ serve(async (req: Request): Promise<Response> => {
             .single();
 
           const rawConfig = (strategy?.config || {}) as StrategyConfig;
-          const { entry_conditions, exit_conditions } = normalizeConfig(
-            rawConfig,
-          );
+          const {
+            entry_conditions,
+            exit_conditions,
+            entry_condition_groups,
+            exit_condition_groups,
+          } = normalizeConfig(rawConfig);
           const config: StrategyConfig = {
             ...rawConfig,
             entry_conditions,
             exit_conditions,
+            entry_condition_groups,
+            exit_condition_groups,
           };
 
-          // Heartbeat after config loaded, cancel check before heavy computation
           await updateHeartbeat(supabase, job.id);
           if (await isJobCancelled(supabase, job.id)) {
             console.log(`Job ${job.id} cancelled before backtest computation`);
             return new Response(
               JSON.stringify({ success: true, message: "Job cancelled" }),
-              {
-                headers: { "Content-Type": "application/json" },
-              },
+              { headers: { "Content-Type": "application/json" } },
             );
           }
 
           result = await runBacktest(supabase, job, config);
-
-          // Heartbeat after computation complete
           await updateHeartbeat(supabase, job.id);
         } else {
           throw new Error(
@@ -1141,14 +930,11 @@ serve(async (req: Request): Promise<Response> => {
           );
         }
 
-        // Final cancel check before writing results
         if (await isJobCancelled(supabase, job.id)) {
           console.log(`Job ${job.id} cancelled before saving results`);
           return new Response(
             JSON.stringify({ success: true, message: "Job cancelled" }),
-            {
-              headers: { "Content-Type": "application/json" },
-            },
+            { headers: { "Content-Type": "application/json" } },
           );
         }
 
@@ -1159,6 +945,10 @@ serve(async (req: Request): Promise<Response> => {
             metrics: result.metrics,
             trades: result.trades,
             equity_curve: result.equity_curve,
+            validation: result.validation,
+            monthly_returns: result.monthly_returns,
+            rolling_metrics: result.rolling_metrics,
+            drawdown_series: result.drawdown_series,
           })
           .select()
           .single();
@@ -1182,11 +972,18 @@ serve(async (req: Request): Promise<Response> => {
       } catch (err) {
         console.error(`Job ${job.id} failed:`, err);
 
+        // Extract message from Error, PostgrestError (plain object with .message), or fallback
+        const errorMsg = err instanceof Error
+          ? err.message
+          : (err !== null && typeof err === "object" && "message" in err)
+          ? String((err as Record<string, unknown>).message)
+          : String(err);
+
         await supabase
           .from("strategy_backtest_jobs")
           .update({
             status: "failed",
-            error_message: err instanceof Error ? err.message : "Unknown error",
+            error_message: errorMsg || "Unknown error",
             completed_at: new Date().toISOString(),
           })
           .eq("id", job.id);

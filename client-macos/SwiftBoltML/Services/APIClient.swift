@@ -1840,6 +1840,9 @@ final class APIClient {
         if let params = request.params {
             jsonDict["params"] = params
         }
+        if let config = request.strategyConfig {
+            jsonDict["strategy_config"] = config
+        }
         urlRequest.httpBody = try JSONSerialization.data(withJSONObject: jsonDict)
 
         return try await performRequest(urlRequest)
@@ -1859,7 +1862,236 @@ final class APIClient {
 
         return try await performRequest(urlRequest)
     }
-    
+
+    /// Cancel a running backtest job (PATCH). Returns true if the server accepted the cancellation.
+    @discardableResult
+    func cancelBacktestJob(jobId: String) async -> Bool {
+        do {
+            var urlRequest = URLRequest(url: functionURL("backtest-strategy"))
+            urlRequest.httpMethod = "PATCH"
+            urlRequest.setValue("Bearer \(Config.supabaseAnonKey)", forHTTPHeaderField: "Authorization")
+            urlRequest.setValue(Config.supabaseAnonKey, forHTTPHeaderField: "apikey")
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.httpBody = try JSONSerialization.data(withJSONObject: ["job_id": jobId, "status": "cancelled"])
+            let (_, response) = try await URLSession.shared.data(for: urlRequest)
+            if let http = response as? HTTPURLResponse {
+                return (200...204).contains(http.statusCode)
+            }
+            return false
+        } catch {
+            return false
+        }
+    }
+
+    // MARK: - Strategy Persistence (PostgREST REST API)
+
+    private var strategyTableURL: URL {
+        Config.supabaseURL.appendingPathComponent("rest/v1/strategy_user_strategies")
+    }
+
+    private func strategyHeaders(prefer: String = "return=representation") -> [String: String] {
+        [
+            "apikey": Config.supabaseAnonKey,
+            "Authorization": "Bearer \(Config.supabaseAnonKey)",
+            "Content-Type": "application/json",
+            "Prefer": prefer,
+        ]
+    }
+
+    private struct StrategyRowCondition: Decodable {
+        let id: String?
+        let indicator: String
+        let operatorType: String
+        let value: Double
+        let parameters: [String: String]?
+        enum CodingKeys: String, CodingKey {
+            case id, indicator, value, parameters
+            case operatorType = "operator"
+        }
+    }
+
+    private struct StrategyRowConditionGroup: Decodable {
+        let conditions: [StrategyRowCondition]
+    }
+
+    private struct StrategyRowConfig: Decodable {
+        // Groups (preferred — OR logic)
+        let entryConditionGroups: [StrategyRowConditionGroup]?
+        let exitConditionGroups: [StrategyRowConditionGroup]?
+        // Flat conditions (backward compat — wrapped into single group)
+        let entryConditions: [StrategyRowCondition]?
+        let exitConditions: [StrategyRowCondition]?
+        let positionSize: Double?
+        let stopLoss: Double?
+        let takeProfit: Double?
+        let direction: String?
+        let positionSizing: String?
+        enum CodingKeys: String, CodingKey {
+            case entryConditionGroups = "entry_condition_groups"
+            case exitConditionGroups = "exit_condition_groups"
+            case entryConditions = "entry_conditions"
+            case exitConditions = "exit_conditions"
+            case positionSize = "position_size"
+            case stopLoss = "stop_loss"
+            case takeProfit = "take_profit"
+            case direction
+            case positionSizing = "position_sizing"
+        }
+    }
+
+    private struct StrategyRow: Decodable {
+        let id: String
+        let userId: String?
+        let name: String
+        let description: String?
+        let config: StrategyRowConfig?
+        let isActive: Bool?
+        let createdAt: String?
+        let updatedAt: String?
+        enum CodingKeys: String, CodingKey {
+            case id, name, description, config
+            case userId = "user_id"
+            case isActive = "is_active"
+            case createdAt = "created_at"
+            case updatedAt = "updated_at"
+        }
+        func toStrategy() -> Strategy {
+            let cfg = config
+            func makeCondition(_ c: StrategyRowCondition) -> StrategyCondition {
+                StrategyCondition(
+                    id: UUID(uuidString: c.id ?? "") ?? UUID(),
+                    indicator: c.indicator,
+                    operator: c.operatorType,
+                    value: c.value,
+                    parameters: c.parameters
+                )
+            }
+            func makeGroups(groups: [StrategyRowConditionGroup]?, flat: [StrategyRowCondition]?) -> [ConditionGroup] {
+                if let groups = groups, !groups.isEmpty {
+                    return groups.map { g in
+                        ConditionGroup(conditions: g.conditions.map(makeCondition))
+                    }
+                }
+                // Backward compat: wrap flat conditions in single group
+                let conditions = (flat ?? []).map(makeCondition)
+                return conditions.isEmpty ? [] : [ConditionGroup(conditions: conditions)]
+            }
+            return Strategy(
+                id: id,
+                userId: userId,
+                name: name,
+                description: description,
+                entryGroups: makeGroups(groups: cfg?.entryConditionGroups, flat: cfg?.entryConditions),
+                exitGroups: makeGroups(groups: cfg?.exitConditionGroups, flat: cfg?.exitConditions),
+                positionSize: cfg?.positionSize ?? 10.0,
+                stopLoss: cfg?.stopLoss ?? 2.0,
+                takeProfit: cfg?.takeProfit ?? 4.0,
+                direction: cfg?.direction ?? "long_only",
+                positionSizing: cfg?.positionSizing ?? "percent_of_equity",
+                isActive: isActive ?? true
+            )
+        }
+    }
+
+    private func conditionDict(_ c: StrategyCondition) -> [String: Any] {
+        var d: [String: Any] = [
+            "id": c.id.uuidString,
+            "indicator": c.indicator,
+            "operator": c.`operator`,
+            "value": c.value,
+        ]
+        if let params = c.parameters { d["parameters"] = params }
+        return d
+    }
+
+    private func conditionGroupDict(_ group: ConditionGroup) -> [String: Any] {
+        ["conditions": group.conditions.map(conditionDict)]
+    }
+
+    private func strategyBody(_ strategy: Strategy) throws -> Data {
+        let configDict: [String: Any] = [
+            "entry_condition_groups": strategy.entryGroups.map(conditionGroupDict),
+            "exit_condition_groups": strategy.exitGroups.map(conditionGroupDict),
+            // Also send flat for backward compat
+            "entry_conditions": strategy.entryConditions.map(conditionDict),
+            "exit_conditions": strategy.exitConditions.map(conditionDict),
+            "position_size": strategy.positionSize,
+            "stop_loss": strategy.stopLoss,
+            "take_profit": strategy.takeProfit,
+            "direction": strategy.direction,
+            "position_sizing": strategy.positionSizing,
+        ]
+        var body: [String: Any] = [
+            "id": strategy.id,
+            "name": strategy.name,
+            "config": configDict,
+            "is_active": strategy.isActive,
+        ]
+        if let desc = strategy.description { body["description"] = desc }
+        return try JSONSerialization.data(withJSONObject: body)
+    }
+
+    /// Fetch anon strategies (user_id IS NULL) from PostgREST.
+    func fetchStrategies() async -> [Strategy] {
+        guard var components = URLComponents(url: strategyTableURL, resolvingAgainstBaseURL: false) else {
+            return []
+        }
+        components.queryItems = [URLQueryItem(name: "user_id", value: "is.null")]
+        var req = URLRequest(url: components.url!)
+        req.httpMethod = "GET"
+        for (k, v) in strategyHeaders(prefer: "return=representation") { req.setValue(v, forHTTPHeaderField: k) }
+        do {
+            let (data, response) = try await URLSession.shared.data(for: req)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                return []
+            }
+            let rows = try JSONDecoder().decode([StrategyRow].self, from: data)
+            return rows.map { $0.toStrategy() }
+        } catch {
+            print("[Strategies] Fetch error: \(error)")
+            return []
+        }
+    }
+
+    /// Upsert (create or update) a strategy via PostgREST ON CONFLICT on id.
+    @discardableResult
+    func upsertStrategy(_ strategy: Strategy) async -> Bool {
+        var req = URLRequest(url: strategyTableURL)
+        req.httpMethod = "POST"
+        for (k, v) in strategyHeaders(prefer: "resolution=merge-duplicates,return=representation") {
+            req.setValue(v, forHTTPHeaderField: k)
+        }
+        do {
+            req.httpBody = try strategyBody(strategy)
+            let (_, response) = try await URLSession.shared.data(for: req)
+            guard let http = response as? HTTPURLResponse else { return false }
+            return (200...299).contains(http.statusCode)
+        } catch {
+            print("[Strategies] Upsert error: \(error)")
+            return false
+        }
+    }
+
+    /// Delete a strategy by id via PostgREST.
+    @discardableResult
+    func deleteStrategy(id: String) async -> Bool {
+        guard var components = URLComponents(url: strategyTableURL, resolvingAgainstBaseURL: false) else {
+            return false
+        }
+        components.queryItems = [URLQueryItem(name: "id", value: "eq.\(id)")]
+        var req = URLRequest(url: components.url!)
+        req.httpMethod = "DELETE"
+        for (k, v) in strategyHeaders(prefer: "return=representation") { req.setValue(v, forHTTPHeaderField: k) }
+        do {
+            let (_, response) = try await URLSession.shared.data(for: req)
+            guard let http = response as? HTTPURLResponse else { return false }
+            return (200...299).contains(http.statusCode)
+        } catch {
+            print("[Strategies] Delete error: \(error)")
+            return false
+        }
+    }
+
     // MARK: - Walk-Forward Optimization
     
     /// Run walk-forward optimization for ML forecasters

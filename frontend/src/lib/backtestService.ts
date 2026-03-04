@@ -1,4 +1,14 @@
-import type { Strategy, BacktestResult, Trade, TradeDirection, CloseReason } from '../types/strategyBacktest';
+import type {
+  Strategy,
+  BacktestResult,
+  Trade,
+  TradeDirection,
+  CloseReason,
+  ValidationResult,
+  MonthlyReturn,
+  RollingMetric,
+  DrawdownPoint,
+} from '../types/strategyBacktest';
 import { isStrategyIdUuid, toChartTime, horizonToTimeframe, createDefaultConfig } from './backtestConstants';
 import { strategiesApi } from '../api/strategiesApi';
 
@@ -221,6 +231,10 @@ async function runBacktestViaSupabase(
         metrics?: Record<string, unknown>;
         trades?: Record<string, unknown>[];
         equity_curve?: { date: string; value: number }[];
+        validation?: ValidationResult | null;
+        monthly_returns?: MonthlyReturn[];
+        rolling_metrics?: RollingMetric[];
+        drawdown_series?: DrawdownPoint[];
       };
       error?: string;
     };
@@ -229,6 +243,10 @@ async function runBacktestViaSupabase(
       const metrics = r.metrics || {};
       const trades = r.trades || [];
       const equityCurve = r.equity_curve || [];
+      const validation = r.validation ?? null;
+      const monthlyReturns = r.monthly_returns ?? [];
+      const rollingMetrics = r.rolling_metrics ?? [];
+      const drawdownSeries = r.drawdown_series ?? [];
 
       let buyAndHoldReturn = 0;
       try {
@@ -255,11 +273,11 @@ async function runBacktestViaSupabase(
         const entryPrice = Number(t.entry_price ?? 0);
         const exitPrice = Number(t.exit_price ?? 0);
         const pnl = Number(t.pnl ?? 0);
-        const qty =
-          entryPrice !== exitPrice && entryPrice > 0
-            ? Math.round(pnl / (exitPrice - entryPrice))
-            : Number(t.quantity ?? 1);
-        const pnlPercent = entryPrice ? ((exitPrice - entryPrice) / entryPrice) * 100 : 0;
+        const qty = Number(t.quantity ?? 1);
+        // Use worker-computed pnl_pct directly (correct for both long and short trades)
+        const pnlPercent = t.pnl_pct !== undefined
+          ? Number(t.pnl_pct)
+          : entryPrice ? ((exitPrice - entryPrice) / entryPrice) * 100 : 0;
         tradesList.push({
           id: `trade-${tradesList.length}`,
           entryTime: entryDate,
@@ -314,6 +332,10 @@ async function runBacktestViaSupabase(
           time: toChartTime((e as { date?: string }).date ?? ''),
           value: e.value,
         })),
+        validation,
+        monthlyReturns,
+        rollingMetrics,
+        drawdownSeries,
       };
     }
   }

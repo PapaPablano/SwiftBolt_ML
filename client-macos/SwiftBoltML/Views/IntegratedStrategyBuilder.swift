@@ -45,7 +45,11 @@ struct IntegratedStrategyBuilder: View {
                 LiveIndicatorsPanel(service: indicatorsService) { condition in
                     // Add condition to current strategy
                     if var strategy = selectedStrategy {
-                        strategy.entryConditions.append(condition)
+                        if strategy.entryGroups.isEmpty {
+                            strategy.entryGroups.append(ConditionGroup(conditions: [condition]))
+                        } else {
+                            strategy.entryGroups[strategy.entryGroups.count - 1].conditions.append(condition)
+                        }
                         strategyViewModel.saveStrategy(strategy)
                         selectedStrategy = strategy
                         selectedTab = 0 // Switch to editor

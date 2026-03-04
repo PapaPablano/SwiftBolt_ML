@@ -4,7 +4,11 @@
 // GET /strategy-backtest?status=pending - List jobs for user
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
-import { handleCorsOptions, jsonResponse, errorResponse } from "../_shared/cors.ts";
+import {
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
 serve(async (req: Request): Promise<Response> => {
@@ -51,18 +55,18 @@ serve(async (req: Request): Promise<Response> => {
 async function handleQueueBacktest(
   supabase: ReturnType<typeof getSupabaseClient>,
   userId: string,
-  req: Request
+  req: Request,
 ) {
   const body = await req.json();
-  
+
   if (!body.strategy_id) {
     return errorResponse("strategy_id is required");
   }
-  
+
   if (!body.start_date || !body.end_date) {
     return errorResponse("start_date and end_date are required (YYYY-MM-DD)");
   }
-  
+
   // Verify strategy exists (allow demo mode strategies with null user_id)
   const { data: strategy, error: strategyError } = await supabase
     .from("strategy_user_strategies")
@@ -70,11 +74,11 @@ async function handleQueueBacktest(
     .eq("id", body.strategy_id)
     .or("user_id.eq." + userId + ",user_id.is.null")
     .single();
-  
+
   if (strategyError || !strategy) {
     return errorResponse("Strategy not found", 404);
   }
-  
+
   const job = {
     user_id: userId,
     strategy_id: body.strategy_id,
@@ -82,33 +86,33 @@ async function handleQueueBacktest(
     start_date: body.start_date,
     end_date: body.end_date,
     parameters: body.parameters || {},
-    status: "pending"
+    status: "pending",
   };
-  
+
   const { data, error } = await supabase
     .from("strategy_backtest_jobs")
     .insert(job)
     .select()
     .single();
-  
+
   if (error) {
     console.error("Failed to queue backtest:", error);
     return errorResponse("Failed to queue backtest job");
   }
-  
-  return jsonResponse({ 
+
+  return jsonResponse({
     job: {
       id: data.id,
       status: data.status,
-      created_at: data.created_at
-    }
+      created_at: data.created_at,
+    },
   }, 201);
 }
 
 async function handleGetJob(
   supabase: ReturnType<typeof getSupabaseClient>,
   userId: string,
-  jobId: string
+  jobId: string,
 ) {
   const { data: job, error } = await supabase
     .from("strategy_backtest_jobs")
@@ -116,11 +120,11 @@ async function handleGetJob(
     .eq("id", jobId)
     .eq("user_id", userId)
     .single();
-  
+
   if (error || !job) {
     return errorResponse("Job not found", 404);
   }
-  
+
   let result = null;
   if (job.status === "completed" && job.result_id) {
     const { data: resultData } = await supabase
@@ -130,7 +134,7 @@ async function handleGetJob(
       .single();
     result = resultData;
   }
-  
+
   return jsonResponse({
     job: {
       id: job.id,
@@ -139,31 +143,31 @@ async function handleGetJob(
       error_message: job.error_message,
       started_at: job.started_at,
       completed_at: job.completed_at,
-      created_at: job.created_at
+      created_at: job.created_at,
     },
-    result
+    result,
   });
 }
 
 async function handleListJobs(
   supabase: ReturnType<typeof getSupabaseClient>,
   userId: string,
-  url: URL
+  url: URL,
 ) {
   const status = url.searchParams.get("status");
   const limit = parseInt(url.searchParams.get("limit") || "20");
-  
+
   let query = supabase
     .from("strategy_backtest_jobs")
     .select("*")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(limit);
-  
+
   if (status) {
     query = query.eq("status", status);
   }
-  
+
   const { data, error } = await query;
 
   if (error) {
@@ -173,24 +177,26 @@ async function handleListJobs(
 
   // Get strategy names
   const jobs = data || [];
-  const strategyIds = [...new Set(jobs.map(j => j.strategy_id).filter(Boolean))];
+  const strategyIds = [
+    ...new Set(jobs.map((j) => j.strategy_id).filter(Boolean)),
+  ];
   const strategyNames: Record<string, string> = {};
-  
+
   if (strategyIds.length > 0) {
     const { data: strategies } = await supabase
       .from("strategy_user_strategies")
       .select("id, name")
       .in("id", strategyIds);
-    
-    strategies?.forEach(s => {
+
+    strategies?.forEach((s) => {
       strategyNames[s.id] = s.name;
     });
   }
-  
-  const jobsWithNames = jobs.map(job => ({
+
+  const jobsWithNames = jobs.map((job) => ({
     ...job,
-    strategies: { name: strategyNames[job.strategy_id] || 'Strategy' }
+    strategies: { name: strategyNames[job.strategy_id] || "Strategy" },
   }));
-  
+
   return jsonResponse({ jobs: jobsWithNames });
 }

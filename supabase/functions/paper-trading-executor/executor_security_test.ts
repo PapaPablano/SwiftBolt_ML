@@ -5,7 +5,11 @@
  * Run with: deno test --allow-env executor_security_test.ts
  */
 
-import { assertEquals, assertExists, assertStringIncludes } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import {
+  assertEquals,
+  assertExists,
+  assertStringIncludes,
+} from "https://deno.land/std@0.208.0/assert/mod.ts";
 
 // Mock types (in production, import from actual modules)
 interface Bar {
@@ -156,13 +160,13 @@ Deno.test("CRITICAL #3: Position Constraints - SL < Entry < TP for long position
   const longPosition = {
     direction: "long",
     entry_price: 100.00,
-    stop_loss_price: 95.00,  // Below entry ✓
+    stop_loss_price: 95.00, // Below entry ✓
     take_profit_price: 110.00, // Above entry ✓
   };
 
   // DB Constraint validates this ordering
   const isValid = longPosition.stop_loss_price < longPosition.entry_price &&
-                  longPosition.entry_price < longPosition.take_profit_price;
+    longPosition.entry_price < longPosition.take_profit_price;
 
   assertEquals(isValid, true);
   console.log("✓ Long position SL < Entry < TP constraint satisfied");
@@ -172,12 +176,12 @@ Deno.test("CRITICAL #3: Position Constraints - TP < Entry < SL for short positio
   const shortPosition = {
     direction: "short",
     entry_price: 100.00,
-    stop_loss_price: 105.00,  // Above entry ✓
-    take_profit_price: 90.00,  // Below entry ✓
+    stop_loss_price: 105.00, // Above entry ✓
+    take_profit_price: 90.00, // Below entry ✓
   };
 
   const isValid = shortPosition.take_profit_price < shortPosition.entry_price &&
-                  shortPosition.entry_price < shortPosition.stop_loss_price;
+    shortPosition.entry_price < shortPosition.stop_loss_price;
 
   assertEquals(isValid, true);
   console.log("✓ Short position TP < Entry < SL constraint satisfied");
@@ -248,7 +252,8 @@ Deno.test("HIGH #5: Market Data - Rejects null OHLC values", () => {
     volume: 1000,
   };
 
-  const hasNullOHLC = !invalidBar.open || !invalidBar.high || !invalidBar.low || !invalidBar.close;
+  const hasNullOHLC = !invalidBar.open || !invalidBar.high || !invalidBar.low ||
+    !invalidBar.close;
   assertEquals(hasNullOHLC, true);
 
   console.log("✓ Validator rejects null OHLC values");
@@ -258,7 +263,7 @@ Deno.test("HIGH #5: Market Data - Validates high >= low", () => {
   const invalidBar: Bar = {
     time: "2026-02-26T10:00:00Z",
     open: 100.00,
-    high: 98.00,   // High < Low (invalid)
+    high: 98.00, // High < Low (invalid)
     low: 102.00,
     close: 99.00,
     volume: 1000,
@@ -276,11 +281,12 @@ Deno.test("HIGH #5: Market Data - Validates close within [low, high]", () => {
     open: 100.00,
     high: 102.00,
     low: 98.00,
-    close: 103.00,  // Close > High (invalid)
+    close: 103.00, // Close > High (invalid)
     volume: 1000,
   };
 
-  const isInvalid = invalidBar.close < invalidBar.low || invalidBar.close > invalidBar.high;
+  const isInvalid = invalidBar.close < invalidBar.low ||
+    invalidBar.close > invalidBar.high;
   assertEquals(isInvalid, true);
 
   console.log("✓ Validator rejects close outside [low, high]");
@@ -298,14 +304,16 @@ Deno.test("HIGH #5: Market Data - Detects gaps >10%", () => {
 
   const currentBar: Bar = {
     time: "2026-02-26T11:00:00Z",
-    open: 115.00,  // Gap up 15% (>10%)
+    open: 115.00, // Gap up 15% (>10%)
     high: 117.00,
     low: 114.00,
     close: 116.00,
     volume: 1500,
   };
 
-  const gap = Math.abs((currentBar.open - previousBar.close) / previousBar.close);
+  const gap = Math.abs(
+    (currentBar.open - previousBar.close) / previousBar.close,
+  );
   const hasGap = gap > 0.1;
 
   assertEquals(hasGap, true);
@@ -366,7 +374,13 @@ Deno.test("HIGH #7: Indices - Composite index on (user_id, strategy_id, status)"
   // Covers query: SELECT * FROM paper_trading_positions
   //              WHERE user_id = ? AND strategy_id = ? AND status = 'open'
 
-  const indexColumns = ["user_id", "strategy_id", "symbol_id", "status", "created_at"];
+  const indexColumns = [
+    "user_id",
+    "strategy_id",
+    "symbol_id",
+    "status",
+    "created_at",
+  ];
   assertEquals(indexColumns[0], "user_id");
 
   console.log("✓ Composite index present for user/strategy/status queries");
@@ -408,5 +422,5 @@ Deno.test("Summary: All critical and high priority fixes implemented", () => {
   assertEquals(fixes.length, 7);
 
   console.log("\n=== ALL CRITICAL AND HIGH FIXES VERIFIED ===");
-  fixes.forEach(f => console.log(f));
+  fixes.forEach((f) => console.log(f));
 });

@@ -153,8 +153,7 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   // Per-IP rate limiting: 30 requests per 60 seconds
-  const clientIp =
-    req.headers.get("x-forwarded-for") ??
+  const clientIp = req.headers.get("x-forwarded-for") ??
     req.headers.get("x-real-ip") ??
     "unknown";
   if (isRateLimited(clientIp)) {

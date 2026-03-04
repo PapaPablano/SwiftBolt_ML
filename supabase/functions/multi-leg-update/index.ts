@@ -89,10 +89,13 @@ serve(async (req: Request): Promise<Response> => {
     } = await authSupabase.auth.getUser();
 
     if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Authentication required" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const userId: string = user.id;

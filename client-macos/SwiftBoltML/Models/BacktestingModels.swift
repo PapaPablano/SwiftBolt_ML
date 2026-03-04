@@ -35,6 +35,29 @@ struct BacktestRequest {
     let timeframe: String?
     let initialCapital: Double?
     let params: [String: Any]?
+    /// Inline strategy configuration (entry/exit conditions, SL/TP).
+    /// Sent as `strategy_config` so the worker evaluates the user's custom conditions.
+    let strategyConfig: [String: Any]?
+
+    init(
+        symbol: String,
+        strategy: String,
+        startDate: String,
+        endDate: String,
+        timeframe: String? = nil,
+        initialCapital: Double? = nil,
+        params: [String: Any]? = nil,
+        strategyConfig: [String: Any]? = nil
+    ) {
+        self.symbol = symbol
+        self.strategy = strategy
+        self.startDate = startDate
+        self.endDate = endDate
+        self.timeframe = timeframe
+        self.initialCapital = initialCapital
+        self.params = params
+        self.strategyConfig = strategyConfig
+    }
 }
 
 // MARK: - Backtest Job Status (polling state)
@@ -108,11 +131,19 @@ struct BacktestResultPayload: Decodable {
     let metrics: BacktestResultMetrics
     let trades: [BacktestResultTrade]
     let equityCurve: [BacktestResultEquityPoint]
+    let validation: BacktestValidation?
+    let monthlyReturns: [BacktestMonthlyReturn]?
+    let rollingMetrics: [BacktestRollingMetric]?
+    let drawdownSeries: [BacktestDrawdownPoint]?
 
     enum CodingKeys: String, CodingKey {
         case metrics
         case trades
         case equity_curve
+        case validation
+        case monthly_returns
+        case rolling_metrics
+        case drawdown_series
     }
 
     init(from decoder: Decoder) throws {
@@ -120,6 +151,10 @@ struct BacktestResultPayload: Decodable {
         metrics = try c.decode(BacktestResultMetrics.self, forKey: .metrics)
         trades = try c.decode([BacktestResultTrade].self, forKey: .trades)
         equityCurve = try c.decode([BacktestResultEquityPoint].self, forKey: .equity_curve)
+        validation = try c.decodeIfPresent(BacktestValidation.self, forKey: .validation)
+        monthlyReturns = try c.decodeIfPresent([BacktestMonthlyReturn].self, forKey: .monthly_returns)
+        rollingMetrics = try c.decodeIfPresent([BacktestRollingMetric].self, forKey: .rolling_metrics)
+        drawdownSeries = try c.decodeIfPresent([BacktestDrawdownPoint].self, forKey: .drawdown_series)
     }
 }
 
@@ -160,13 +195,30 @@ struct BacktestResultMetrics: Decodable {
     }
 }
 
+/// Trade from the strategy-backtest-worker.
+/// Worker returns: entry_date, exit_date, entry_price, exit_price, direction, close_reason, pnl, quantity, pnl_pct.
 struct BacktestResultTrade: Decodable {
-    let date: String
-    let symbol: String
-    let action: String
-    let quantity: Int
-    let price: Double
+    let entryDate: String
+    let exitDate: String
+    let entryPrice: Double
+    let exitPrice: Double
+    let direction: String
+    let closeReason: String?
     let pnl: Double?
+    let quantity: Double?
+    let pnlPct: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case entryDate = "entry_date"
+        case exitDate = "exit_date"
+        case entryPrice = "entry_price"
+        case exitPrice = "exit_price"
+        case direction
+        case closeReason = "close_reason"
+        case pnl
+        case quantity
+        case pnlPct = "pnl_pct"
+    }
 }
 
 struct BacktestResultEquityPoint: Decodable {
@@ -175,6 +227,96 @@ struct BacktestResultEquityPoint: Decodable {
 
     enum CodingKeys: String, CodingKey {
         case date, value
+    }
+}
+
+// MARK: - Statistical Validation (mirrors validation.ts output)
+
+struct BacktestConfidenceInterval: Decodable {
+    let lower: Double
+    let upper: Double
+    let confidence: Double
+}
+
+struct BacktestConfidenceIntervals: Decodable {
+    let sharpeRatio: BacktestConfidenceInterval?
+    let maxDrawdownPct: BacktestConfidenceInterval?
+    let winRate: BacktestConfidenceInterval?
+
+    enum CodingKeys: String, CodingKey {
+        case sharpeRatio = "sharpe_ratio"
+        case maxDrawdownPct = "max_drawdown_pct"
+        case winRate = "win_rate"
+    }
+}
+
+struct BacktestSplitMetrics: Decodable {
+    let sharpeRatio: Double?
+    let totalReturnPct: Double?
+    let winRate: Double?
+    let totalTrades: Int?
+    let maxDrawdownPct: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case sharpeRatio = "sharpe_ratio"
+        case totalReturnPct = "total_return_pct"
+        case winRate = "win_rate"
+        case totalTrades = "total_trades"
+        case maxDrawdownPct = "max_drawdown_pct"
+    }
+}
+
+struct BacktestValidation: Decodable {
+    let confidenceIntervals: BacktestConfidenceIntervals?
+    let pValue: Double?
+    let bootstrapIterations: Int?
+    let sampleSize: Int?
+    let inSample: BacktestSplitMetrics?
+    let outOfSample: BacktestSplitMetrics?
+
+    enum CodingKeys: String, CodingKey {
+        case confidenceIntervals = "confidence_intervals"
+        case pValue = "p_value"
+        case bootstrapIterations = "bootstrap_iterations"
+        case sampleSize = "sample_size"
+        case inSample = "in_sample"
+        case outOfSample = "out_of_sample"
+    }
+}
+
+struct BacktestMonthlyReturn: Decodable, Identifiable {
+    var id: String { "\(year)-\(month)" }
+    let year: Int
+    let month: Int
+    let returnPct: Double
+    let isPartial: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case year, month
+        case returnPct = "return_pct"
+        case isPartial = "is_partial"
+    }
+}
+
+struct BacktestRollingMetric: Decodable {
+    let date: String
+    let sharpe63: Double?
+    let winRate63: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case date
+        case sharpe63 = "sharpe_63"
+        case winRate63 = "win_rate_63"
+    }
+}
+
+struct BacktestDrawdownPoint: Decodable {
+    let date: String
+    let drawdownPct: Double
+
+    enum CodingKeys: String, CodingKey {
+        case date
+        case drawdownPct = "drawdown_pct"
     }
 }
 
@@ -304,14 +446,14 @@ extension BacktestResponse {
             },
             trades: result.trades.map {
                 BacktestResponse.Trade(
-                    date: $0.date,
-                    symbol: $0.symbol,
-                    action: $0.action,
-                    quantity: $0.quantity,
-                    price: $0.price,
+                    date: $0.entryDate,
+                    symbol: symbol,
+                    action: $0.direction == "short" ? "SELL" : "BUY",
+                    quantity: Int($0.quantity ?? 1),
+                    price: $0.entryPrice,
                     pnl: $0.pnl,
-                    entryPrice: nil,
-                    exitPrice: nil,
+                    entryPrice: $0.entryPrice,
+                    exitPrice: $0.exitPrice,
                     duration: nil,
                     fees: nil
                 )
