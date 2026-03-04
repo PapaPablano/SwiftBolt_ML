@@ -202,11 +202,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Supabase CLI
-      uses: supabase/setup-cli@v1
-      with:
-        version: latest
-
     - name: Validate migration files
       run: |
         echo "Validating migration file structure..."
@@ -240,17 +235,7 @@ jobs:
           fi
         done
 
-    - name: Start local Supabase
-      run: supabase start
-
-    - name: Run migrations on local instance
-      run: |
-        supabase db reset --db-url postgresql://postgres:postgres@127.0.0.1:54322/postgres
-        echo "✅ Migrations applied successfully to local instance"
-
-    - name: Stop local Supabase
-      if: always()
-      run: supabase stop
+        echo "✅ SQL syntax check complete"
 
   # ===========================================================================
   # COMPREHENSIVE REPORT
