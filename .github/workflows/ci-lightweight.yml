@@ -248,7 +248,9 @@ jobs:
     name: ML Unit Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     needs: detect-changes
-    if: needs.detect-changes.outputs.ml == 'true'
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.ml == 'true'
     strategy:
       matrix:
         python-version: ['3.10', '3.11']
@@ -264,16 +266,24 @@ jobs:
         python-version: ${{ matrix.python-version }}
         install-dev-deps: 'true'
 
-    - name: Install test tools
-      run: pip install pytest pytest-cov diff-cover
+    - name: Install test tools and package
+      run: |
+        pip install pytest pytest-cov diff-cover
+        # Install ml package in editable mode so relative imports work (e.g. greeks_validator.py)
+        pip install -e ml/
 
     - name: Run unit tests
       working-directory: ml
+      env:
+        # Dummy values prevent module-level Supabase client init from crashing at collection time
+        SUPABASE_URL: "https://placeholder.supabase.co"
+        SUPABASE_KEY: "placeholder-key-for-ci"
       run: |
         pytest tests/ -m "not integration" \
           --cov=src \
           --cov-report=xml \
           --cov-report=term-missing \
+          --continue-on-collection-errors \
           -v --tb=short --maxfail=10
 
     - name: Enforce diff coverage (>=90%)
@@ -313,14 +323,19 @@ jobs:
         python-version: '3.10'
         install-dev-deps: 'true'
 
-    - name: Install test tools
-      run: pip install pytest
+    - name: Install test tools and package
+      run: |
+        pip install pytest
+        pip install -e ml/
 
     - name: Run integration tests
       working-directory: ml
       continue-on-error: true
+      env:
+        SUPABASE_URL: "https://placeholder.supabase.co"
+        SUPABASE_KEY: "placeholder-key-for-ci"
       run: |
-        pytest tests/ -m integration -v --tb=short
+        pytest tests/ -m integration --continue-on-collection-errors -v --tb=short
 
   # ===========================================================================
   # COMPREHENSIVE REPORT
