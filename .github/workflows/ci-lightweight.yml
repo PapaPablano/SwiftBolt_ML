@@ -85,11 +85,12 @@ jobs:
     - name: Check formatting (Black)
       run: |
         cd ml
-        # Exclude files with pre-existing syntax errors that Black cannot parse
+        # Exclude files with pre-existing syntax errors that Black cannot parse.
+        # Use --extend-exclude to ADD to pyproject.toml excludes (not replace them).
         black --check src tests \
-          --exclude "(hardcoded_env\.py|validation_api\.py)" || (
+          --extend-exclude "(hardcoded_env\.py|validation_api\.py)" || (
           echo "❌ Code formatting issues detected"
-          echo "Run: cd ml && black src tests --exclude '(hardcoded_env\.py|validation_api\.py)'"
+          echo "Run: cd ml && black src tests --extend-exclude '(hardcoded_env\.py|validation_api\.py)'"
           exit 1
         )
 
