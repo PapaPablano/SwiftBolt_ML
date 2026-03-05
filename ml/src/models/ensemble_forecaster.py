@@ -40,14 +40,22 @@ for v in (-1, 0, 1):
 
 def _encode_rf(y: np.ndarray) -> np.ndarray:
     """Encode labels to RF format (0, 1, 2)."""
-    out = np.array([_RF_ENCODE.get(x, _RF_ENCODE.get(str(x).lower() if isinstance(x, str) else x, 1)) for x in y])
+    out = np.array(
+        [
+            _RF_ENCODE.get(x, _RF_ENCODE.get(str(x).lower() if isinstance(x, str) else x, 1))
+            for x in y
+        ]
+    )
     return out.astype(int)
 
 
 def _encode_gb(y: np.ndarray) -> np.ndarray:
     """Encode labels to GB format (-1, 0, 1). Returns float for NaN handling."""
     out = np.array(
-        [_GB_ENCODE.get(x, _GB_ENCODE.get(str(x).lower() if isinstance(x, str) else x, np.nan)) for x in y]
+        [
+            _GB_ENCODE.get(x, _GB_ENCODE.get(str(x).lower() if isinstance(x, str) else x, np.nan))
+            for x in y
+        ]
     )
     return out
 
@@ -258,9 +266,7 @@ class EnsembleForecaster:
             logger.info("Dropped non-numeric columns for training: %s", dropped)
 
         if numeric_features.empty or labels_series.empty:
-            raise ValueError(
-                "Insufficient numeric training data for ensemble training"
-            )
+            raise ValueError("Insufficient numeric training data for ensemble training")
 
         # Replace inf with NaN for imputation
         X = numeric_features.replace([np.inf, -np.inf], np.nan).values
@@ -325,7 +331,9 @@ class EnsembleForecaster:
                     gb_X_tr = pd.DataFrame(X_tr, columns=feature_cols)
                     gb_sw = compute_sample_weight("balanced", y_tr)
                 gb_labels_va = _encode_gb(y_va)
-                gb_va_internal = np.array([{-1: 0, 0: 1, 1: 2}.get(float(x), 0) for x in gb_labels_va])
+                gb_va_internal = np.array(
+                    [{-1: 0, 0: 1, 1: 2}.get(float(x), 0) for x in gb_labels_va]
+                )
                 # Train RF (temp clone for fold eval only)
                 rf_temp = clone(self.rf_model.model)
                 rf_temp.fit(X_tr_bal, rf_labels_tr)
@@ -347,10 +355,21 @@ class EnsembleForecaster:
                 mf1_gb = f1_score(gb_va_internal, gb_pred, average="macro", zero_division=0)
                 ba_rf = balanced_accuracy_score(rf_labels_va, rf_pred)
                 ba_gb = balanced_accuracy_score(gb_va_internal, gb_pred)
-                fold_metrics.append({"macro_f1_rf": mf1_rf, "macro_f1_gb": mf1_gb, "bal_acc_rf": ba_rf, "bal_acc_gb": ba_gb})
+                fold_metrics.append(
+                    {
+                        "macro_f1_rf": mf1_rf,
+                        "macro_f1_gb": mf1_gb,
+                        "bal_acc_rf": ba_rf,
+                        "bal_acc_gb": ba_gb,
+                    }
+                )
                 logger.info(
                     "  Fold %d: RF macro-F1=%.3f bal_acc=%.3f | GB macro-F1=%.3f bal_acc=%.3f",
-                    fold_idx + 1, mf1_rf, ba_rf, mf1_gb, ba_gb,
+                    fold_idx + 1,
+                    mf1_rf,
+                    ba_rf,
+                    mf1_gb,
+                    ba_gb,
                 )
             if fold_metrics:
                 mean_mf1_rf = np.mean([m["macro_f1_rf"] for m in fold_metrics])
@@ -361,7 +380,12 @@ class EnsembleForecaster:
                 std_ba = np.std([m["bal_acc_gb"] for m in fold_metrics])
                 logger.info(
                     "  Walk-forward mean±std: RF macro-F1=%.3f bal_acc=%.3f | GB macro-F1=%.3f±%.3f bal_acc=%.3f±%.3f",
-                    mean_mf1_rf, mean_ba_rf, mean_mf1_gb, std_mf1, mean_ba_gb, std_ba,
+                    mean_mf1_rf,
+                    mean_ba_rf,
+                    mean_mf1_gb,
+                    std_mf1,
+                    mean_ba_gb,
+                    std_ba,
                 )
 
         MIN_FOR_HOLDOUT = 60  # need enough for train+val; else skip split/SMOTE/holdout
@@ -407,7 +431,9 @@ class EnsembleForecaster:
             if not use_holdout:
                 logger.debug("Skipping SMOTE: insufficient data for holdout (n=%d)", n)
             else:
-                logger.warning("Skipping SMOTE: minority class too small (%d samples)", min_class_count)
+                logger.warning(
+                    "Skipping SMOTE: minority class too small (%d samples)", min_class_count
+                )
             X_train_bal_s, y_train_bal = X_train_s, y_train
 
         # Reconstruct unscaled train for GB (GB expects raw features)
@@ -441,7 +467,9 @@ class EnsembleForecaster:
             rf_bal_acc = balanced_accuracy_score(rf_labels_val, val_pred_rf)
             logger.info(
                 "  RF trained (holdout: acc=%.3f macro-F1=%.3f bal_acc=%.3f)",
-                rf_holdout, rf_macro_f1, rf_bal_acc,
+                rf_holdout,
+                rf_macro_f1,
+                rf_bal_acc,
             )
         else:
             rf_holdout = rf_macro_f1 = rf_bal_acc = 0.0
@@ -456,8 +484,14 @@ class EnsembleForecaster:
         if n_valid_for_gb >= min_required_samples_for_gb:
             try:
                 eval_set = None
-                if use_holdout and len(y_val) > 0 and self.gb_model.early_stopping_rounds is not None:
-                    gb_va_internal = np.array([{-1: 0, 0: 1, 1: 2}.get(float(x), 0) for x in gb_labels_val])
+                if (
+                    use_holdout
+                    and len(y_val) > 0
+                    and self.gb_model.early_stopping_rounds is not None
+                ):
+                    gb_va_internal = np.array(
+                        [{-1: 0, 0: 1, 1: 2}.get(float(x), 0) for x in gb_labels_val]
+                    )
                     eval_set = (pd.DataFrame(X_val, columns=feature_cols), gb_va_internal)
                 self.gb_model.train(
                     gb_X_train,
@@ -470,21 +504,44 @@ class EnsembleForecaster:
                     gb_val_df = pd.DataFrame(X_val, columns=feature_cols)
                     gb_val_pred = self.gb_model.predict_batch(gb_val_df)
                     gb_pred_internal = np.array(
-                        [{"bearish": 0, "neutral": 1, "bullish": 2}.get(str(p).lower(), 1) for p in gb_val_pred["prediction"]]
+                        [
+                            {"bearish": 0, "neutral": 1, "bullish": 2}.get(str(p).lower(), 1)
+                            for p in gb_val_pred["prediction"]
+                        ]
                     )
-                    gb_true_internal = np.array([{-1: 0, 0: 1, 1: 2}.get(float(x), np.nan) for x in gb_labels_val])
+                    gb_true_internal = np.array(
+                        [{-1: 0, 0: 1, 1: 2}.get(float(x), np.nan) for x in gb_labels_val]
+                    )
                     valid = ~np.isnan(gb_true_internal)
                     gb_holdout = (
                         accuracy_score(gb_true_internal[valid].astype(int), gb_pred_internal[valid])
                         if valid.sum() > 0
                         else 0.0
                     )
-                    gb_macro_f1 = f1_score(gb_true_internal[valid].astype(int), gb_pred_internal[valid], average="macro", zero_division=0) if valid.sum() > 0 else 0.0
-                    gb_bal_acc = balanced_accuracy_score(gb_true_internal[valid].astype(int), gb_pred_internal[valid]) if valid.sum() > 0 else 0.0
+                    gb_macro_f1 = (
+                        f1_score(
+                            gb_true_internal[valid].astype(int),
+                            gb_pred_internal[valid],
+                            average="macro",
+                            zero_division=0,
+                        )
+                        if valid.sum() > 0
+                        else 0.0
+                    )
+                    gb_bal_acc = (
+                        balanced_accuracy_score(
+                            gb_true_internal[valid].astype(int), gb_pred_internal[valid]
+                        )
+                        if valid.sum() > 0
+                        else 0.0
+                    )
                     best_iter = self.gb_model.training_stats.get("best_iteration")
                     logger.info(
                         "  GB trained (holdout: acc=%.3f macro-F1=%.3f bal_acc=%.3f best_iter=%s)",
-                        gb_holdout, gb_macro_f1, gb_bal_acc, best_iter,
+                        gb_holdout,
+                        gb_macro_f1,
+                        gb_bal_acc,
+                        best_iter,
                     )
                 else:
                     gb_holdout = gb_macro_f1 = gb_bal_acc = 0.0
@@ -511,15 +568,29 @@ class EnsembleForecaster:
             "rf_holdout": rf_holdout,
             "gb_holdout": gb_accuracy,
             "rf_macro_f1": rf_macro_f1 if use_holdout else 0.0,
-            "gb_macro_f1": gb_macro_f1 if use_holdout and n_valid_for_gb >= min_required_samples_for_gb else 0.0,
+            "gb_macro_f1": (
+                gb_macro_f1
+                if use_holdout and n_valid_for_gb >= min_required_samples_for_gb
+                else 0.0
+            ),
             "rf_balanced_accuracy": rf_bal_acc if use_holdout else 0.0,
-            "gb_balanced_accuracy": gb_bal_acc if use_holdout and n_valid_for_gb >= min_required_samples_for_gb else 0.0,
-            "gb_best_iteration": self.gb_model.training_stats.get("best_iteration") if self.gb_model.is_trained else None,
+            "gb_balanced_accuracy": (
+                gb_bal_acc if use_holdout and n_valid_for_gb >= min_required_samples_for_gb else 0.0
+            ),
+            "gb_best_iteration": (
+                self.gb_model.training_stats.get("best_iteration")
+                if self.gb_model.is_trained
+                else None
+            ),
         }
         if fold_metrics:
             self.training_stats["walk_forward_folds"] = fold_metrics
-            self.training_stats["wf_mean_macro_f1_gb"] = float(np.mean([m["macro_f1_gb"] for m in fold_metrics]))
-            self.training_stats["wf_mean_bal_acc_gb"] = float(np.mean([m["bal_acc_gb"] for m in fold_metrics]))
+            self.training_stats["wf_mean_macro_f1_gb"] = float(
+                np.mean([m["macro_f1_gb"] for m in fold_metrics])
+            )
+            self.training_stats["wf_mean_bal_acc_gb"] = float(
+                np.mean([m["bal_acc_gb"] for m in fold_metrics])
+            )
 
         self.is_trained = True
         return self

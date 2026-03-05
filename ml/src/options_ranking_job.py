@@ -345,9 +345,8 @@ def fetch_specific_option_quotes(
                 result[symbol_key] = {
                     "bid": quote.get("bid") or 0,
                     "ask": quote.get("ask") or 0,
-                    "mark": quote.get("mark") or (
-                        ((quote.get("bid") or 0) + (quote.get("ask") or 0)) / 2
-                    ),
+                    "mark": quote.get("mark")
+                    or (((quote.get("bid") or 0) + (quote.get("ask") or 0)) / 2),
                     "last": quote.get("last") or 0,
                     "volume": quote.get("volume") or 0,
                     "open_interest": quote.get("open_interest") or 0,
@@ -359,9 +358,7 @@ def fetch_specific_option_quotes(
                     "rho": quote.get("rho") or 0,
                 }
 
-        logger.info(
-            f"Fetched quotes for {len(result)}/{len(contracts)} strategy contracts"
-        )
+        logger.info(f"Fetched quotes for {len(result)}/{len(contracts)} strategy contracts")
         return result
 
     except requests.exceptions.RequestException as e:
@@ -408,9 +405,7 @@ def save_rankings_to_db(
                 "strike": _sanitize_number(row["strike"]),
                 "side": row["side"],
                 "ml_score": composite_rank / 100.0,  # Normalize to 0-1 for legacy field
-                "implied_vol": _sanitize_number(
-                    row.get("impliedVolatility", row.get("iv", 0))
-                ),
+                "implied_vol": _sanitize_number(row.get("impliedVolatility", row.get("iv", 0))),
                 "delta": _sanitize_number(row.get("delta", 0)),
                 "gamma": _sanitize_number(row.get("gamma", 0)),
                 "theta": _sanitize_number(row.get("theta", 0)),
@@ -434,33 +429,53 @@ def save_rankings_to_db(
                 "value_score": _sanitize_number(row.get("value_score", 0)),
                 "greeks_score": _sanitize_number(row.get("greeks_score", 0)),
                 # Entry/Exit mode-specific ranks
-                "entry_rank": _sanitize_number(row.get("entry_rank")) if "entry_rank" in row else None,
+                "entry_rank": (
+                    _sanitize_number(row.get("entry_rank")) if "entry_rank" in row else None
+                ),
                 "exit_rank": _sanitize_number(row.get("exit_rank")) if "exit_rank" in row else None,
                 # Entry mode component scores
-                "entry_value_score": _sanitize_number(row.get("entry_value_score")) if "entry_value_score" in row else None,
-                "catalyst_score": _sanitize_number(row.get("catalyst_score")) if "catalyst_score" in row else None,
-                "iv_percentile": _sanitize_number(row.get("iv_percentile")) if "iv_percentile" in row else None,
-                "iv_discount_score": _sanitize_number(row.get("iv_discount_score")) if "iv_discount_score" in row else None,
+                "entry_value_score": (
+                    _sanitize_number(row.get("entry_value_score"))
+                    if "entry_value_score" in row
+                    else None
+                ),
+                "catalyst_score": (
+                    _sanitize_number(row.get("catalyst_score")) if "catalyst_score" in row else None
+                ),
+                "iv_percentile": (
+                    _sanitize_number(row.get("iv_percentile")) if "iv_percentile" in row else None
+                ),
+                "iv_discount_score": (
+                    _sanitize_number(row.get("iv_discount_score"))
+                    if "iv_discount_score" in row
+                    else None
+                ),
                 # Exit mode component scores
-                "profit_protection_score": _sanitize_number(row.get("profit_protection_score")) if "profit_protection_score" in row else None,
-                "deterioration_score": _sanitize_number(row.get("deterioration_score")) if "deterioration_score" in row else None,
-                "time_urgency_score": _sanitize_number(row.get("time_urgency_score")) if "time_urgency_score" in row else None,
+                "profit_protection_score": (
+                    _sanitize_number(row.get("profit_protection_score"))
+                    if "profit_protection_score" in row
+                    else None
+                ),
+                "deterioration_score": (
+                    _sanitize_number(row.get("deterioration_score"))
+                    if "deterioration_score" in row
+                    else None
+                ),
+                "time_urgency_score": (
+                    _sanitize_number(row.get("time_urgency_score"))
+                    if "time_urgency_score" in row
+                    else None
+                ),
                 # Other scores
                 "iv_rank": _sanitize_number(row.get("iv_rank", 0)),
                 "spread_pct": _sanitize_number(row.get("spread_pct", 0)),
                 "vol_oi_ratio": _sanitize_number(row.get("vol_oi_ratio", 0)),
                 "liquidity_confidence": _sanitize_number(row.get("liquidity_confidence", 1.0)),
                 "relative_value_score": _sanitize_number(row.get("relative_value_score", 0)),
-                "entry_difficulty_score": _sanitize_number(
-                    row.get("entry_difficulty_score", 0)
-                ),
-                "ranking_stability_score": _sanitize_number(
-                    row.get("ranking_stability_score", 0)
-                ),
+                "entry_difficulty_score": _sanitize_number(row.get("entry_difficulty_score", 0)),
+                "ranking_stability_score": _sanitize_number(row.get("ranking_stability_score", 0)),
                 "iv_curve_ok": bool(row.get("iv_curve_ok", True)),
-                "iv_data_quality_score": _sanitize_number(
-                    row.get("iv_data_quality_score", 1.0)
-                ),
+                "iv_data_quality_score": _sanitize_number(row.get("iv_data_quality_score", 1.0)),
                 # Signals
                 "signal_discount": bool(row.get("signal_discount", False)),
                 "signal_runner": bool(row.get("signal_runner", False)),
@@ -468,9 +483,7 @@ def save_rankings_to_db(
                 "signal_buy": bool(row.get("signal_buy", False)),
                 # FIX: Store signals as JSON array for consistent parsing
                 "signals": json.dumps(
-                    row.get("signals", "").split(",")
-                    if row.get("signals")
-                    else []
+                    row.get("signals", "").split(",") if row.get("signals") else []
                 ),
             }
 
@@ -625,7 +638,9 @@ def process_symbol_options(
                 r2 = fetch_options_from_api(symbol, expiration_ts=expiry_far_ts, persist=0)
                 api_response = _merge_chain_responses([r1, r2])
             except Exception as e:
-                logger.warning(f"Expiry-cached fetch failed for {symbol}: {e}, falling back to full chain")
+                logger.warning(
+                    f"Expiry-cached fetch failed for {symbol}: {e}, falling back to full chain"
+                )
                 api_response = fetch_options_from_api(symbol, persist=0)
                 expiry_near_ts, expiry_far_ts = None, None
         else:
@@ -652,7 +667,9 @@ def process_symbol_options(
                     if close_prices.iloc[0] > 0
                     else 0.0
                 )
-                vol_7d = close_prices.pct_change().dropna().std() * (TRADING_DAYS_PER_YEAR**0.5) * 100
+                vol_7d = (
+                    close_prices.pct_change().dropna().std() * (TRADING_DAYS_PER_YEAR**0.5) * 100
+                )
 
                 underlying_metrics = {
                     "ret_7d": ret_7d,
@@ -684,7 +701,11 @@ def process_symbol_options(
             elif len(exp_col.dropna().unique()) >= 2:
                 exp_vals = sorted(
                     exp_col.dropna().unique(),
-                    key=lambda x: pd.Timestamp(x).timestamp() if isinstance(x, str) and "-" in str(x) else float(x) if isinstance(x, (int, float)) else 0,
+                    key=lambda x: (
+                        pd.Timestamp(x).timestamp()
+                        if isinstance(x, str) and "-" in str(x)
+                        else float(x) if isinstance(x, (int, float)) else 0
+                    ),
                 )
                 ne, fe = exp_vals[0], exp_vals[-1]
                 ne_ts = pd.Timestamp(ne).timestamp() if isinstance(ne, str) else float(ne)
@@ -738,7 +759,7 @@ def process_symbol_options(
 
         # Convert ranking_mode string to RankingMode enum
         mode_enum = RankingMode[ranking_mode.upper()]
-        
+
         # Prepare entry_data for EXIT mode
         entry_data = None
         if mode_enum == RankingMode.EXIT:
@@ -748,8 +769,10 @@ def process_symbol_options(
                 )
             entry_data = {"entry_price": entry_price} if entry_price else None
 
-        logger.info(f"Ranking in {mode_enum.value.upper()} mode" + 
-                   (f" with entry_price=${entry_price}" if entry_price else ""))
+        logger.info(
+            f"Ranking in {mode_enum.value.upper()} mode"
+            + (f" with entry_price=${entry_price}" if entry_price else "")
+        )
 
         # Use calibrated ranking with regime conditioning and underlying metrics
         ranked_df = ranker.rank_options_calibrated(
@@ -777,12 +800,20 @@ def process_symbol_options(
                 "atm_iv_near": forward_vol_result.sigma_near if forward_vol_result else None,
                 "atm_iv_far": forward_vol_result.sigma_far if forward_vol_result else None,
                 "forward_vol": forward_vol_result.forward_vol if forward_vol_result else None,
-                "term_structure_regime": forward_vol_result.term_structure_regime if forward_vol_result else None,
-                "low_confidence": forward_vol_result.low_confidence if forward_vol_result else False,
+                "term_structure_regime": (
+                    forward_vol_result.term_structure_regime if forward_vol_result else None
+                ),
+                "low_confidence": (
+                    forward_vol_result.low_confidence if forward_vol_result else False
+                ),
                 "expected_move_near_pct": near_pct,
                 "expected_move_far_pct": far_pct,
-                "expected_move_near_dollar": (underlying_price * near_pct / 100) if near_pct is not None else None,
-                "expected_move_far_dollar": (underlying_price * far_pct / 100) if far_pct is not None else None,
+                "expected_move_near_dollar": (
+                    (underlying_price * near_pct / 100) if near_pct is not None else None
+                ),
+                "expected_move_far_dollar": (
+                    (underlying_price * far_pct / 100) if far_pct is not None else None
+                ),
                 "skew_proxy": menthorq_features.get("skew_proxy") if menthorq_features else None,
                 "vrp": menthorq_features.get("vrp") if menthorq_features else None,
             }
@@ -855,9 +886,7 @@ def process_symbol_options(
                     missing_options.append(opt)
 
             if missing_options:
-                logger.info(
-                    f"Adding {len(missing_options)} strategy options not in top-ranked"
-                )
+                logger.info(f"Adding {len(missing_options)} strategy options not in top-ranked")
 
                 # Build contract symbols for missing options
                 missing_symbols = []
@@ -897,9 +926,7 @@ def process_symbol_options(
                         "mark": _sanitize_number(quote.get("mark", 0)),
                         "last_price": _sanitize_number(quote.get("last", 0)),
                         "volume": int(_sanitize_number(quote.get("volume", 0))),
-                        "open_interest": int(
-                            _sanitize_number(quote.get("open_interest", 0))
-                        ),
+                        "open_interest": int(_sanitize_number(quote.get("open_interest", 0))),
                         "run_at": run_at,
                         "composite_rank": 0.0,
                         "momentum_score": 0.0,
@@ -921,13 +948,9 @@ def process_symbol_options(
                         db.upsert_option_rank_extended(**record)
                         strategy_saved += 1
                     except Exception as e:
-                        logger.error(
-                            f"Failed to save strategy option {contract_sym}: {e}"
-                        )
+                        logger.error(f"Failed to save strategy option {contract_sym}: {e}")
 
-                logger.info(
-                    f"Saved {strategy_saved} strategy options for {symbol}"
-                )
+                logger.info(f"Saved {strategy_saved} strategy options for {symbol}")
 
     except Exception as e:
         logger.error(f"Error processing options for {symbol}: {e}", exc_info=True)
@@ -948,7 +971,7 @@ Examples:
 
   # MONITOR mode: Balanced ranking for general monitoring
   python -m src.options_ranking_job --symbol AAPL --mode monitor
-        """
+        """,
     )
     parser.add_argument(
         "--symbol",

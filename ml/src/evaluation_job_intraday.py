@@ -60,9 +60,15 @@ class IntradayForecastEvaluator:
         """
         # Fetch from intraday forecasts table
         try:
-            result = db.client.table("ml_forecasts_intraday").select("*").eq(
-                "horizon", horizon
-            ).is_("evaluated_at", "null").order("created_at").limit(1000).execute()
+            result = (
+                db.client.table("ml_forecasts_intraday")
+                .select("*")
+                .eq("horizon", horizon)
+                .is_("evaluated_at", "null")
+                .order("created_at")
+                .limit(1000)
+                .execute()
+            )
 
             forecasts = result.data or []
             logger.info(f"Found {len(forecasts)} pending {horizon} intraday evaluations")
@@ -115,7 +121,9 @@ class IntradayForecastEvaluator:
                 return None
 
             # Get symbol ticker (column is 'ticker', not 'symbol')
-            symbol_result = db.client.table("symbols").select("ticker").eq("id", symbol_id).single().execute()
+            symbol_result = (
+                db.client.table("symbols").select("ticker").eq("id", symbol_id).single().execute()
+            )
             if not symbol_result.data:
                 logger.warning(f"Symbol not found: {symbol_id}")
                 return None
@@ -129,7 +137,9 @@ class IntradayForecastEvaluator:
                 timeframe=timeframe,
             )
             if realized is None:
-                logger.debug(f"No realized price yet for {symbol} ({horizon}) after {forecast_date}")
+                logger.debug(
+                    f"No realized price yet for {symbol} ({horizon}) after {forecast_date}"
+                )
                 return None
 
             eval_ts, realized_price = realized
@@ -206,7 +216,9 @@ class IntradayForecastEvaluator:
                 symbol=evaluation["symbol"],
                 horizon=evaluation["horizon"],
                 predicted_label=evaluation["predicted_label"],
-                predicted_price=float(evaluation.get("predicted_value", evaluation.get("predicted_price", 0))),
+                predicted_price=float(
+                    evaluation.get("predicted_value", evaluation.get("predicted_price", 0))
+                ),
                 predicted_confidence=float(evaluation.get("predicted_confidence", 0.5)),
                 realized_price=float(evaluation["realized_price"]),
                 realized_return=float(evaluation["realized_return"]),

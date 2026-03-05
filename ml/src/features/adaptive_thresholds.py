@@ -117,9 +117,7 @@ class AdaptiveThresholds:
         returns = df["close"].pct_change()
 
         # Compute forward returns for this horizon
-        forward_returns = (
-            returns.rolling(horizon_days).sum().shift(-horizon_days).copy()
-        )
+        forward_returns = returns.rolling(horizon_days).sum().shift(-horizon_days).copy()
         if horizon_days > 0:
             forward_returns.iloc[-horizon_days:] = np.nan
         forward_returns = forward_returns.dropna()

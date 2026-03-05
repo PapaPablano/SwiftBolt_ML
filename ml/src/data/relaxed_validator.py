@@ -160,6 +160,7 @@ def validate_and_fix(df: pd.DataFrame, verbose: bool = True) -> pd.DataFrame:
 if __name__ == "__main__":
     import sys
     from pathlib import Path
+
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     from src.data.supabase_db import SupabaseDatabase
 

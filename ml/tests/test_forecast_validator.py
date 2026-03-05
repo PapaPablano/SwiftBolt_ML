@@ -9,6 +9,7 @@ from src.forecast_validator import (
     evaluate_single_forecast,
     summarize_forecast_accuracy,
 )
+
 if "imblearn" not in sys.modules:
     imblearn_module = types.ModuleType("imblearn")
     over_sampling_module = types.ModuleType("imblearn.over_sampling")

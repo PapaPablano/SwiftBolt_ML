@@ -5,10 +5,10 @@ from .strategy_dna import StrategyDNA, StrategyGene
 from .fitness_evaluator import FitnessEvaluator, FitnessMetrics
 
 __all__ = [
-    'GeneticOptimizer',
-    'OptimizationConfig',
-    'StrategyDNA',
-    'StrategyGene',
-    'FitnessEvaluator',
-    'FitnessMetrics'
+    "GeneticOptimizer",
+    "OptimizationConfig",
+    "StrategyDNA",
+    "StrategyGene",
+    "FitnessEvaluator",
+    "FitnessMetrics",
 ]

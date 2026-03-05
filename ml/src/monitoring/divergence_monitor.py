@@ -33,7 +33,7 @@ class DivergenceMonitor:
 
     # Alert thresholds for different severity levels
     ALERT_THRESHOLDS = {
-        "warning": 0.15,   # 15% divergence
+        "warning": 0.15,  # 15% divergence
         "critical": 0.30,  # 30% divergence
     }
 
@@ -188,9 +188,7 @@ class DivergenceMonitor:
 
         return result
 
-    def _calculate_divergence(
-        self, val_rmse: float, test_rmse: float
-    ) -> float:
+    def _calculate_divergence(self, val_rmse: float, test_rmse: float) -> float:
         """
         Calculate divergence between validation and test RMSE.
 
@@ -288,15 +286,11 @@ class DivergenceMonitor:
                 symbol_divergences[symbol] = max(symbol_divergences[symbol], divergence)
 
         # Sort by divergence (worst first)
-        sorted_symbols = sorted(
-            symbol_divergences.items(), key=lambda x: x[1], reverse=True
-        )
+        sorted_symbols = sorted(symbol_divergences.items(), key=lambda x: x[1], reverse=True)
 
         return sorted_symbols
 
-    def get_divergence_summary(
-        self, horizon: Optional[str] = None
-    ) -> Dict:
+    def get_divergence_summary(self, horizon: Optional[str] = None) -> Dict:
         """
         Get summary statistics of divergence history.
 

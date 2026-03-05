@@ -37,12 +37,9 @@ class XGBoostForecasterOptimized(XGBoostForecaster):
     ) -> None:
         """Train with feature selection: quick model -> select top-k -> train final model."""
         if min_samples is not None and len(X) < min_samples:
-            raise ValueError(
-                f"Insufficient training data: {len(X)} < {min_samples}"
-            )
+            raise ValueError(f"Insufficient training data: {len(X)} < {min_samples}")
         numeric_cols = [
-            c for c in X.columns
-            if X[c].dtype in ("float64", "float32", "int64", "int32")
+            c for c in X.columns if X[c].dtype in ("float64", "float32", "int64", "int32")
         ]
         if not numeric_cols:
             numeric_cols = X.select_dtypes(include=["number"]).columns.tolist()

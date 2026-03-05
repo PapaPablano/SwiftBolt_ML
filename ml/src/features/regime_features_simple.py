@@ -17,7 +17,7 @@ def add_trend_regime(df: pd.DataFrame) -> pd.DataFrame:
         df["sma_50"] = df["close"].rolling(50, min_periods=1).mean()
         df["sma_200"] = df["close"].rolling(200, min_periods=1).mean()
     sma_200 = df["sma_200"].replace(0, np.nan)
-    df["distance_from_200ma"] = (df["close"] / sma_200 - 1)
+    df["distance_from_200ma"] = df["close"] / sma_200 - 1
     # 0 = bearish (>5% below), 1 = sideways, 2 = bullish (>5% above)
     d = df["distance_from_200ma"]
     df["trend_regime"] = np.select([d < -0.05, d > 0.05], [0, 2], default=1)

@@ -144,8 +144,7 @@ class TestForecastWeightDistribution:
         lstm_weight = 0.50
         arima_weight = 0.50
 
-        weighted_forecast = (lstm_prediction * lstm_weight +
-                           arima_prediction * arima_weight)
+        weighted_forecast = lstm_prediction * lstm_weight + arima_prediction * arima_weight
 
         assert weighted_forecast == pytest.approx(5.1, abs=0.001)
 
@@ -159,9 +158,11 @@ class TestForecastWeightDistribution:
         arima_weight = 0.30
         gb_weight = 0.30
 
-        weighted_forecast = (lstm_prediction * lstm_weight +
-                           arima_prediction * arima_weight +
-                           gb_prediction * gb_weight)
+        weighted_forecast = (
+            lstm_prediction * lstm_weight
+            + arima_prediction * arima_weight
+            + gb_prediction * gb_weight
+        )
 
         expected = 5.3 * 0.40 + 5.0 * 0.30 + 5.1 * 0.30
         assert weighted_forecast == pytest.approx(expected, abs=0.001)
@@ -313,8 +314,7 @@ class TestMultiSymbolForecastGeneration:
 
     def test_forecast_generation_10_symbols(self):
         """Test generating forecasts for 10 symbols."""
-        symbols = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA",
-                  "NVDA", "META", "NFLX", "ADBE", "CRM"]
+        symbols = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "NFLX", "ADBE", "CRM"]
 
         forecasts = {}
         for symbol in symbols:

@@ -30,8 +30,8 @@ class TestTrainValTestSplit:
         test_size = len(data) - train_size - val_size
 
         assert train_size == 300  # 60% of 500
-        assert val_size == 100    # 20% of 500
-        assert test_size == 100   # Remaining 20%
+        assert val_size == 100  # 20% of 500
+        assert test_size == 100  # Remaining 20%
 
     def test_data_split_no_overlap(self):
         """Test that splits don't overlap."""
@@ -43,8 +43,8 @@ class TestTrainValTestSplit:
         val_size = int(len(X) * val_split)
 
         train_data = X[:train_size]
-        val_data = X[train_size:train_size + val_size]
-        test_data = X[train_size + val_size:]
+        val_data = X[train_size : train_size + val_size]
+        test_data = X[train_size + val_size :]
 
         # Check no temporal overlap
         assert train_data[-1, 0] < val_data[0, 0]
@@ -59,8 +59,8 @@ class TestTrainValTestSplit:
         val_idx = int(100 * 0.2)
 
         train_data = X[:train_idx]
-        val_data = X[train_idx:train_idx + val_idx]
-        test_data = X[train_idx + val_idx:]
+        val_data = X[train_idx : train_idx + val_idx]
+        test_data = X[train_idx + val_idx :]
 
         # Verify sequential order is maintained
         assert np.allclose(train_data[:, 0], np.arange(0, 60))
@@ -146,12 +146,12 @@ class TestOverfittingDetection:
 
         if divergence > threshold:
             # Revert to equal weights
-            reverted_weights = np.array([1/3, 1/3, 1/3])
+            reverted_weights = np.array([1 / 3, 1 / 3, 1 / 3])
         else:
             reverted_weights = None
 
         assert reverted_weights is not None
-        assert np.allclose(reverted_weights, [1/3, 1/3, 1/3])
+        assert np.allclose(reverted_weights, [1 / 3, 1 / 3, 1 / 3])
 
 
 class TestCalibrationResultAttributes:
@@ -182,7 +182,7 @@ class TestWeightEquality:
 
     def test_equal_weights_sum_to_one(self):
         """Test that equal weights sum to 1.0."""
-        equal_weights = np.array([1/3, 1/3, 1/3])
+        equal_weights = np.array([1 / 3, 1 / 3, 1 / 3])
 
         assert np.allclose(np.sum(equal_weights), 1.0)
 
@@ -257,7 +257,7 @@ class TestGridSearchBehavior:
         # 3. Select best params based on val performance
 
         train_error = 0.04  # Training error (overly optimistic)
-        val_error = 0.06   # Validation error (realistic)
+        val_error = 0.06  # Validation error (realistic)
 
         # Should select based on val_error, not train_error
         assert val_error > train_error  # Expected for overfitting

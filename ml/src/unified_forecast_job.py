@@ -53,17 +53,18 @@ from src.strategies.supertrend_ai import SuperTrendAI
 from src.strategies.adaptive_supertrend_adapter import (  # noqa: E402
     get_adaptive_supertrend_adapter,
 )
+
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
 
 class UnifiedForecastProcessor:
     """Central forecast processor for framework horizons (1D, 5D, 10D, 20D)."""
-    
-    def __init__(self, redis_cache=None, metrics_file=None, model_type='xgboost'):
+
+    def __init__(self, redis_cache=None, metrics_file=None, model_type="xgboost"):
         """
         Initialize processor.
 
@@ -73,31 +74,31 @@ class UnifiedForecastProcessor:
             model_type: Model type to use ('xgboost', 'tabpfn', or 'all')
         """
         self.redis_cache = redis_cache
-        self.metrics_file = metrics_file or 'unified_forecast_metrics.json'
+        self.metrics_file = metrics_file or "unified_forecast_metrics.json"
         self.model_type = model_type
         self.metrics = {
-            'start_time': datetime.now().isoformat(),
-            'symbols_processed': 0,
-            'feature_cache_hits': 0,
-            'feature_cache_misses': 0,
-            'forecast_times': [],
-            'weight_sources': {},
-            'db_writes': 0,
-            'errors': [],
-            'version_id': None,
+            "start_time": datetime.now().isoformat(),
+            "symbols_processed": 0,
+            "feature_cache_hits": 0,
+            "feature_cache_misses": 0,
+            "forecast_times": [],
+            "weight_sources": {},
+            "db_writes": 0,
+            "errors": [],
+            "version_id": None,
         }
-        
+
         # Initialize global calibrator once
         self.calibrator = ConfidenceCalibrator()
         self._load_calibrator()
-        
+
         # Validation metrics cached
         self.validation_metrics = self._load_validation_metrics()
         self.strict_guard_enabled = os.getenv("STRICT_LOOKAHEAD_CHECK", "0").strip().lower() in {
-            '1',
-            'true',
-            'yes',
-            'on',
+            "1",
+            "true",
+            "yes",
+            "on",
         }
         if self.strict_guard_enabled:
             try:
@@ -106,7 +107,7 @@ class UnifiedForecastProcessor:
             except LookaheadViolation as exc:
                 logger.error("Synthetic lookahead guard failed: %s", exc)
                 raise
-    
+
     def _load_calibrator(self):
         """Load confidence calibrator from DB."""
         try:
@@ -120,12 +121,12 @@ class UnifiedForecastProcessor:
                 for result in results:
                     try:
                         # Parse bucket string like "50-60%"
-                        bucket_parts = result.bucket.replace('%', '').split('-')
+                        bucket_parts = result.bucket.replace("%", "").split("-")
                         bucket_low = float(bucket_parts[0]) / 100
                         bucket_high = float(bucket_parts[1]) / 100
-                        
+
                         db.upsert_confidence_calibration(
-                            horizon='global',
+                            horizon="global",
                             bucket_low=bucket_low,
                             bucket_high=bucket_high,
                             predicted_confidence=result.predicted_confidence,
@@ -138,15 +139,15 @@ class UnifiedForecastProcessor:
                         logger.warning(f"Failed to persist calibration: {exc}")
         except Exception as e:
             logger.warning(f"Could not load calibrator: {e}")
-    
+
     def _load_validation_metrics(self) -> Optional[Dict]:
         """Load validation metrics for logging."""
         try:
-            lookback = int(os.getenv('FORECAST_VALIDATION_LOOKBACK_DAYS', '90'))
+            lookback = int(os.getenv("FORECAST_VALIDATION_LOOKBACK_DAYS", "90"))
             forecasts_df, actuals_df = db.fetch_forecast_validation_data(lookback_days=lookback)
             if forecasts_df.empty or actuals_df.empty:
                 return None
-            
+
             validator = ForecastValidator()
             metrics = validator.validate(forecasts_df, actuals_df)
             return metrics.to_dict()
@@ -169,17 +170,17 @@ class UnifiedForecastProcessor:
         except LookaheadViolation as exc:
             logger.error("Strict lookahead guard failed for %s: %s", symbol, exc)
             raise
-    
+
     def _get_weight_source(self, symbol: str, symbol_id: str, horizon: str) -> tuple:
         """
         Get forecast layer weights with explicit precedence using IntradayDailyFeedback.
-        
+
         Priority order (handled by IntradayDailyFeedback):
         1. Fresh intraday-calibrated weights (< staleness threshold)
         2. Stale intraday-calibrated weights (with warning)
         3. Symbol-specific weights from database
         4. Default weights
-        
+
         Returns:
             (ForecastWeights object, source_name)
         """
@@ -187,26 +188,36 @@ class UnifiedForecastProcessor:
             # Use IntradayDailyFeedback abstraction layer (as per INTEGRATION_WORKFLOW_GUIDE.md)
             feedback_loop = IntradayDailyFeedback()
             weights_obj, source = feedback_loop.get_best_weights(symbol, horizon)
-            
+
             # Track weight source in metrics
-            source_key = source.split()[0].lower() if source else 'default'
-            if 'intraday' in source_key or 'calibrated' in source_key:
-                self.metrics['weight_sources']['intraday'] = self.metrics['weight_sources'].get('intraday', 0) + 1
-            elif 'symbol' in source_key:
-                self.metrics['weight_sources']['daily_symbol'] = self.metrics['weight_sources'].get('daily_symbol', 0) + 1
+            source_key = source.split()[0].lower() if source else "default"
+            if "intraday" in source_key or "calibrated" in source_key:
+                self.metrics["weight_sources"]["intraday"] = (
+                    self.metrics["weight_sources"].get("intraday", 0) + 1
+                )
+            elif "symbol" in source_key:
+                self.metrics["weight_sources"]["daily_symbol"] = (
+                    self.metrics["weight_sources"].get("daily_symbol", 0) + 1
+                )
             else:
-                self.metrics['weight_sources']['default'] = self.metrics['weight_sources'].get('default', 0) + 1
-            
+                self.metrics["weight_sources"]["default"] = (
+                    self.metrics["weight_sources"].get("default", 0) + 1
+                )
+
             logger.debug(f"Using weights from {source} for {symbol} {horizon}")
             return weights_obj, source
-            
+
         except Exception as e:
-            logger.warning(f"IntradayDailyFeedback failed for {symbol} {horizon}: {e}. Using default weights.")
+            logger.warning(
+                f"IntradayDailyFeedback failed for {symbol} {horizon}: {e}. Using default weights."
+            )
             # Fallback to default weights
             defaults = get_default_weights()
-            self.metrics['weight_sources']['default'] = self.metrics['weight_sources'].get('default', 0) + 1
-            return defaults, 'default (fallback)'
-    
+            self.metrics["weight_sources"]["default"] = (
+                self.metrics["weight_sources"].get("default", 0) + 1
+            )
+            return defaults, "default (fallback)"
+
     def process_symbol(
         self,
         symbol: str,
@@ -215,15 +226,15 @@ class UnifiedForecastProcessor:
     ) -> Dict:
         """
         Generate forecast for single symbol across all horizons.
-        
+
         This method reuses the core logic from forecast_job.py but with
         improved metrics tracking and explicit weight source logging.
-        
+
         Args:
             symbol: Symbol ticker
             horizons: List of horizons ['1D', '5D', '10D', '20D']
             force_refresh: Skip cache, rebuild features
-        
+
         Returns:
             Processing result dict
         """
@@ -237,21 +248,21 @@ class UnifiedForecastProcessor:
         if invalid_horizons:
             logger.warning("Skipping invalid horizons: %s", ", ".join(invalid_horizons))
         horizons = [h for h in requested_horizons if h in focus_horizons]
-        
+
         start_time = time.time()
         result = {
-            'symbol': symbol,
-            'success': False,
-            'error': None,
-            'forecasts': {},
-            'processing_time': 0,
-            'feature_cache_hit': False,
-            'weight_source': {},
+            "symbol": symbol,
+            "success": False,
+            "error": None,
+            "forecasts": {},
+            "processing_time": 0,
+            "feature_cache_hit": False,
+            "weight_source": {},
         }
-        
+
         try:
             logger.info(f"Processing {symbol}...")
-            
+
             # === STEP 1: Get features (with Redis cache if available) ===
             feature_start = time.time()
             cutoff_ts = pd.Timestamp.utcnow().normalize()
@@ -270,27 +281,27 @@ class UnifiedForecastProcessor:
             )
             feature_time = time.time() - feature_start
             df = features_by_tf.get("d1", pd.DataFrame())
-            
+
             # Estimate cache hit based on timing
             cache_hit = feature_time < 0.5
-            result['feature_cache_hit'] = cache_hit
+            result["feature_cache_hit"] = cache_hit
             if cache_hit:
-                self.metrics['feature_cache_hits'] += 1
+                self.metrics["feature_cache_hits"] += 1
             else:
-                self.metrics['feature_cache_misses'] += 1
-            
+                self.metrics["feature_cache_misses"] += 1
+
             if len(df) < settings.min_bars_for_training:
                 logger.warning(
                     f"Insufficient data for {symbol}: {len(df)} bars "
                     f"(need {settings.min_bars_for_training})"
                 )
-                result['error'] = 'insufficient_data'
+                result["error"] = "insufficient_data"
                 return result
-            
+
             # Get symbol_id
             symbol_id = db.get_symbol_id(symbol)
             mtf_signals = self._fetch_mtf_signals(symbol_id)
-            
+
             # === STEP 1.5: Load sentiment (when enabled) ===
             sentiment_series = None
             if getattr(settings, "enable_sentiment_features", False):
@@ -310,36 +321,38 @@ class UnifiedForecastProcessor:
                             end_date=end_date,
                             use_finviz_realtime=True,
                         )
-                        logger.info(f"Sentiment loaded for {symbol} (std={sentiment_series.std():.4f})")
+                        logger.info(
+                            f"Sentiment loaded for {symbol} (std={sentiment_series.std():.4f})"
+                        )
                     else:
                         logger.warning(f"Sentiment variance check failed for {symbol}, skipping")
                 except Exception as e:
                     logger.warning(f"Sentiment loading failed for {symbol}: {e}")
 
             self._maybe_run_strict_guard(df, sentiment_series=sentiment_series, symbol=symbol)
-            
+
             # === STEP 2: Data validation ===
             validator = OHLCValidator()
             df, validation_result = validator.validate(df, fix_issues=True)
             data_quality_score = validator.get_data_quality_score(df)
-            
+
             # Calculate quality multipliers
             data_quality_multiplier = max(
                 0.9, 1.0 - (validation_result.rows_flagged / max(1, len(df)) * 0.2)
             )
             sample_size_multiplier = min(1.0, len(df) / settings.min_bars_for_high_confidence)
-            
+
             # === STEP 3: Extract S/R levels ===
             sr_detector = SupportResistanceDetector()
             sr_levels = sr_detector.find_all_levels(df)
             current_price = df["close"].iloc[-1]
-            
+
             # === STEP 4: SuperTrend processing ===
             supertrend_data = None
             try:
                 supertrend = SuperTrendAI(df)
                 st_df, st_info_raw = supertrend.calculate()
-                
+
                 supertrend_data = {
                     "supertrend_factor": st_info_raw["target_factor"],
                     "supertrend_performance": st_info_raw["performance_index"],
@@ -357,7 +370,7 @@ class UnifiedForecastProcessor:
                     "performance_index": 0.5,
                     "atr": current_price * 0.02,
                 }
-            
+
             # Optional AdaptiveSuperTrend replacement
             if getattr(settings, "enable_adaptive_supertrend", False):
                 adapter = get_adaptive_supertrend_adapter(
@@ -386,7 +399,7 @@ class UnifiedForecastProcessor:
                         "stop_level": adaptive_signal["supertrend_value"],
                         "trend_duration_bars": adaptive_signal["trend_duration"],
                     }
-            
+
             # === STEP 5: Generate forecasts for each horizon ===
             for horizon in horizons:
                 try:
@@ -397,7 +410,7 @@ class UnifiedForecastProcessor:
                         horizon_key,
                         {"1D": 1, "5D": 5, "10D": 10, "20D": 20}.get(horizon_key, 1),
                     )
-                    
+
                     # Get horizon days
                     horizon_days = {
                         "1D": 1,
@@ -405,38 +418,38 @@ class UnifiedForecastProcessor:
                         "10D": 10,
                         "20D": 20,
                     }.get(horizon_key, 1)
-                    
+
                     # Initialize before model loop (used by _save_model_forecast when model_type=all)
                     quality_score = None
                     quality_issues: list = []
 
                     # Determine which model(s) to use based on model_type setting
                     models_to_run = []
-                    if self.model_type == 'xgboost':
-                        models_to_run = ['xgboost']
-                    elif self.model_type == 'tabpfn':
-                        models_to_run = ['tabpfn']
-                    elif self.model_type == 'all':
-                        models_to_run = ['xgboost', 'tabpfn']
+                    if self.model_type == "xgboost":
+                        models_to_run = ["xgboost"]
+                    elif self.model_type == "tabpfn":
+                        models_to_run = ["tabpfn"]
+                    elif self.model_type == "all":
+                        models_to_run = ["xgboost", "tabpfn"]
 
                     # We'll use the first model's prediction for synthesis
                     # If running 'all', both will be saved to DB separately
                     ml_pred = None
-                    current_model_type = models_to_run[0] if models_to_run else 'xgboost'
+                    current_model_type = models_to_run[0] if models_to_run else "xgboost"
 
                     for model_name in models_to_run:
                         try:
-                            if model_name == 'tabpfn':
+                            if model_name == "tabpfn":
                                 # Use TabPFN forecaster
                                 if not is_tabpfn_available():
                                     logger.warning("TabPFN not available, skipping")
                                     continue
 
                                 logger.info(f"Using TabPFN forecaster for {symbol} {horizon_key}")
-                                tabpfn = TabPFNForecaster(device='cpu')  # Use CPU for stability
+                                tabpfn = TabPFNForecaster(device="cpu")  # Use CPU for stability
                                 tabpfn.fit(df, horizon_days=horizon_days)
                                 model_pred = tabpfn.predict(df, horizon_days=horizon_days)
-                                current_model_type = 'tabpfn'
+                                current_model_type = "tabpfn"
 
                                 # If this is the first/only model, use it for synthesis
                                 if ml_pred is None:
@@ -449,10 +462,16 @@ class UnifiedForecastProcessor:
                                 )
 
                                 # If running 'all', save TabPFN forecast separately (full coverage)
-                                if self.model_type == 'all':
+                                if self.model_type == "all":
                                     self._save_model_forecast(
-                                        symbol_id, horizon_key, model_pred, 'tabpfn',
-                                        df, supertrend_data, quality_score, quality_issues
+                                        symbol_id,
+                                        horizon_key,
+                                        model_pred,
+                                        "tabpfn",
+                                        df,
+                                        supertrend_data,
+                                        quality_score,
+                                        quality_issues,
                                     )
 
                             else:  # xgboost (default ensemble)
@@ -469,12 +488,19 @@ class UnifiedForecastProcessor:
                                     # Uses compute_simplified_features (28 base features + sentiment if enabled)
                                     baseline_prep = BaselineForecaster()
                                     X_train, y_train = baseline_prep.prepare_training_data(
-                                        df, horizon_days=horizon_days, sentiment_series=sentiment_series
+                                        df,
+                                        horizon_days=horizon_days,
+                                        sentiment_series=sentiment_series,
                                     )
 
-                                    if len(X_train) >= settings.min_bars_for_training and len(y_train) > 0:
+                                    if (
+                                        len(X_train) >= settings.min_bars_for_training
+                                        and len(y_train) > 0
+                                    ):
                                         # Calculate training data range (features correspond to indices after min_offset)
-                                        min_offset = 50 if len(df) >= 100 else (26 if len(df) >= 60 else 14)
+                                        min_offset = (
+                                            50 if len(df) >= 100 else (26 if len(df) >= 60 else 14)
+                                        )
                                         start_idx = max(min_offset, 14)
                                         end_idx = len(df) - horizon_days
 
@@ -494,7 +520,7 @@ class UnifiedForecastProcessor:
                                             features_df=X_train.tail(1),
                                             ohlc_df=df,
                                         )
-                                        current_model_type = 'xgboost'
+                                        current_model_type = "xgboost"
 
                                         # If this is the first/only model, use it for synthesis
                                         if ml_pred is None:
@@ -508,10 +534,16 @@ class UnifiedForecastProcessor:
                                         )
 
                                         # If running 'all', save Ensemble forecast separately (full coverage)
-                                        if self.model_type == 'all':
+                                        if self.model_type == "all":
                                             self._save_model_forecast(
-                                                symbol_id, horizon_key, model_pred, 'xgboost',
-                                                df, supertrend_data, quality_score, quality_issues
+                                                symbol_id,
+                                                horizon_key,
+                                                model_pred,
+                                                "xgboost",
+                                                df,
+                                                supertrend_data,
+                                                quality_score,
+                                                quality_issues,
                                             )
                                     else:
                                         logger.warning(
@@ -527,26 +559,30 @@ class UnifiedForecastProcessor:
                                     # Fallback to BaselineForecaster
                                     baseline_forecaster = BaselineForecaster()
                                     baseline_forecaster.fit(df, horizon_days=horizon_days)
-                                    model_pred = baseline_forecaster.predict(df, horizon_days=horizon_days)
+                                    model_pred = baseline_forecaster.predict(
+                                        df, horizon_days=horizon_days
+                                    )
                                     if ml_pred is None:
                                         ml_pred = model_pred
 
                         except Exception as model_error:
-                            logger.error(f"Error with {model_name} model for {symbol} {horizon_key}: {model_error}")
+                            logger.error(
+                                f"Error with {model_name} model for {symbol} {horizon_key}: {model_error}"
+                            )
                             if ml_pred is None:
                                 # Fall back to baseline if no model worked
                                 baseline_forecaster = BaselineForecaster()
                                 baseline_forecaster.fit(df, horizon_days=horizon_days)
                                 ml_pred = baseline_forecaster.predict(df, horizon_days=horizon_days)
-                                current_model_type = 'baseline'
-                    
+                                current_model_type = "baseline"
+
                     # Get layer weights with explicit source tracking (using IntradayDailyFeedback)
                     weights, weight_source = self._get_weight_source(symbol, symbol_id, horizon_key)
-                    result['weight_source'][horizon_key] = weight_source
-                    
+                    result["weight_source"][horizon_key] = weight_source
+
                     # Create synthesizer
                     synthesizer = ForecastSynthesizer(weights=weights)
-                    
+
                     # Generate synthesis
                     if horizon_days == 1:
                         synth_result = synthesizer.generate_1d_forecast(
@@ -568,7 +604,7 @@ class UnifiedForecastProcessor:
                             symbol=symbol,
                             timeframe="d1",
                         )
-                    
+
                     # Build forecast dict
                     synthesis = synth_result.to_dict()
                     synthesis["horizon"] = horizon_key.lower()
@@ -580,18 +616,20 @@ class UnifiedForecastProcessor:
                         "label": synth_result.direction.lower(),
                         "confidence": synth_result.confidence,
                         "horizon": horizon_key,
-                        "points": self._build_forecast_points(synth_result, df["ts"].iloc[-1], horizon_days),
+                        "points": self._build_forecast_points(
+                            synth_result, df["ts"].iloc[-1], horizon_days
+                        ),
                         "synthesis": synthesis,
                         "weight_source": weight_source,
                         "forecast_return": (
                             float(forecast_return) if forecast_return is not None else None
                         ),
                     }
-                    
+
                     # Apply confidence calibration
                     raw_confidence = forecast["confidence"]
                     adjusted_confidence = raw_confidence
-                    
+
                     if raw_confidence >= 0.75:
                         # Trust the model when highly confident; skip crushing
                         adjusted_confidence = float(np.clip(raw_confidence, 0.50, 0.95))
@@ -601,7 +639,7 @@ class UnifiedForecastProcessor:
                         adjusted_confidence *= data_quality_multiplier
                         adjusted_confidence *= sample_size_multiplier
                         adjusted_confidence = float(np.clip(adjusted_confidence, 0.45, 0.95))
-                    
+
                     forecast["confidence"] = adjusted_confidence
                     forecast["raw_confidence"] = raw_confidence
 
@@ -632,9 +670,7 @@ class UnifiedForecastProcessor:
                     confidence_quality = (
                         "high"
                         if adjusted_confidence >= settings.confidence_threshold
-                        else "medium"
-                        if adjusted_confidence >= 0.45
-                        else "low"
+                        else "medium" if adjusted_confidence >= 0.45 else "low"
                     )
                     if not confidence_gate_passed:
                         quality_issues.append(
@@ -717,12 +753,12 @@ class UnifiedForecastProcessor:
                             forecast["forecast_return"] = float(
                                 (adjusted_target - current_price_value) / current_price_value
                             )
-                    
-                    result['forecasts'][horizon] = forecast
-                    
+
+                    result["forecasts"][horizon] = forecast
+
                     # === STEP 6: Write to database ===
                     # When model_type=='all', both models were already saved in the loop; skip main write to avoid duplicate
-                    if self.model_type != 'all':
+                    if self.model_type != "all":
                         db.upsert_forecast(
                             symbol_id=symbol_id,
                             horizon=forecast["horizon"],
@@ -737,45 +773,49 @@ class UnifiedForecastProcessor:
                             timeframe="d1",
                             model_type=current_model_type,
                         )
-                        self.metrics['db_writes'] += 1
+                        self.metrics["db_writes"] += 1
                         logger.info(
                             f"Saved {horizon_key} forecast for {symbol}: "
                             f"{forecast['label'].upper()} "
                             f"({forecast['confidence']:.0%} conf, source={weight_source})"
                         )
                     else:
-                        self.metrics['db_writes'] += 2  # Both models saved in loop
+                        self.metrics["db_writes"] += 2  # Both models saved in loop
                         logger.info(
                             f"Saved both forecasts for {symbol} {horizon_key}: tabpfn + ensemble"
                         )
-                    
+
                 except Exception as e:
                     logger.error(f"Error generating {horizon_key} forecast for {symbol}: {e}")
-                    self.metrics['errors'].append({
-                        'symbol': symbol,
-                        'horizon': horizon_key,
-                        'error': str(e),
-                        'timestamp': datetime.now().isoformat(),
-                    })
-            
-            result['success'] = len(result['forecasts']) > 0
-            
+                    self.metrics["errors"].append(
+                        {
+                            "symbol": symbol,
+                            "horizon": horizon_key,
+                            "error": str(e),
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    )
+
+            result["success"] = len(result["forecasts"]) > 0
+
         except Exception as e:
             logger.error(f"Error processing {symbol}: {e}", exc_info=True)
-            result['error'] = str(e)
-            self.metrics['errors'].append({
-                'symbol': symbol,
-                'error': str(e),
-                'timestamp': datetime.now().isoformat(),
-            })
-        
+            result["error"] = str(e)
+            self.metrics["errors"].append(
+                {
+                    "symbol": symbol,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+
         finally:
-            result['processing_time'] = time.time() - start_time
-            self.metrics['forecast_times'].append(result['processing_time'])
-            self.metrics['symbols_processed'] += 1
-        
+            result["processing_time"] = time.time() - start_time
+            self.metrics["forecast_times"].append(result["processing_time"])
+            self.metrics["symbols_processed"] += 1
+
         return result
-    
+
     def _build_forecast_points(self, synth_result, current_ts, horizon_days):
         """Build forecast points from synthesis result."""
         target_ts = current_ts + timedelta(days=horizon_days)
@@ -853,7 +893,7 @@ class UnifiedForecastProcessor:
             except Exception:
                 continue
         return signals
-    
+
     def _save_model_forecast(
         self,
         symbol_id: str,
@@ -886,7 +926,9 @@ class UnifiedForecastProcessor:
 
             # Build minimal forecast points
             forecast_return = ml_pred.get("forecast_return", 0.0)
-            target_price = current_price * (1 + forecast_return) if forecast_return else current_price
+            target_price = (
+                current_price * (1 + forecast_return) if forecast_return else current_price
+            )
 
             points = [
                 {
@@ -944,58 +986,73 @@ class UnifiedForecastProcessor:
     ) -> Dict:
         """
         Process entire symbol universe.
-        
+
         Args:
             symbols: Optional list of symbols (if None, uses settings)
             force_refresh: Skip cache
-        
+
         Returns:
             Aggregated results
         """
         # Get symbol universe if not provided
         if symbols is None:
             symbols = list(settings.symbols_to_process)
-        
+
         logger.info(f"Processing {len(symbols)} symbols...")
-        
+
         results = []
         for i, symbol in enumerate(symbols):
             if (i + 1) % 10 == 0:
                 logger.info(f"Progress: {i + 1}/{len(symbols)}")
             result = self.process_symbol(symbol, force_refresh=force_refresh)
             results.append(result)
-        
+
         # Aggregate results
         aggregated = {
-            'total_symbols': len(symbols),
-            'successful': sum(1 for r in results if r['success']),
-            'failed': sum(1 for r in results if not r['success']),
-            'total_processing_time': sum(r['processing_time'] for r in results),
-            'avg_processing_time': np.mean([r['processing_time'] for r in results]) if results else 0,
-            'feature_cache_hit_rate': self.metrics['feature_cache_hits'] / (
-                self.metrics['feature_cache_hits'] + self.metrics['feature_cache_misses']
-            ) if (self.metrics['feature_cache_hits'] + self.metrics['feature_cache_misses']) > 0 else 0,
+            "total_symbols": len(symbols),
+            "successful": sum(1 for r in results if r["success"]),
+            "failed": sum(1 for r in results if not r["success"]),
+            "total_processing_time": sum(r["processing_time"] for r in results),
+            "avg_processing_time": (
+                np.mean([r["processing_time"] for r in results]) if results else 0
+            ),
+            "feature_cache_hit_rate": (
+                self.metrics["feature_cache_hits"]
+                / (self.metrics["feature_cache_hits"] + self.metrics["feature_cache_misses"])
+                if (self.metrics["feature_cache_hits"] + self.metrics["feature_cache_misses"]) > 0
+                else 0
+            ),
         }
 
         # Build forecast outputs list for visibility
         forecasts_out = []
         for r in results:
-            sym = r.get('symbol', '')
-            for hor, fc in r.get('forecasts', {}).items():
-                pts = fc.get('points', [])
-                current_pt = next((p for p in pts if p.get('type') == 'current'), {})
-                target_pt = next((p for p in pts if p.get('type') == 'target'), {})
-                forecasts_out.append({
-                    'symbol': sym,
-                    'horizon': hor,
-                    'label': fc.get('label', '').upper(),
-                    'confidence': round(float(fc.get('confidence', 0)) * 100, 1),
-                    'current_price': round(float(current_pt.get('price', 0)), 2) if current_pt else None,
-                    'target_price': round(float(target_pt.get('price', 0)), 2) if target_pt else None,
-                    'forecast_return_pct': round(float(fc.get('forecast_return', 0) or 0) * 100, 2) if fc.get('forecast_return') is not None else None,
-                    'weight_source': fc.get('weight_source', ''),
-                })
-        self.metrics['forecasts'] = forecasts_out
+            sym = r.get("symbol", "")
+            for hor, fc in r.get("forecasts", {}).items():
+                pts = fc.get("points", [])
+                current_pt = next((p for p in pts if p.get("type") == "current"), {})
+                target_pt = next((p for p in pts if p.get("type") == "target"), {})
+                forecasts_out.append(
+                    {
+                        "symbol": sym,
+                        "horizon": hor,
+                        "label": fc.get("label", "").upper(),
+                        "confidence": round(float(fc.get("confidence", 0)) * 100, 1),
+                        "current_price": (
+                            round(float(current_pt.get("price", 0)), 2) if current_pt else None
+                        ),
+                        "target_price": (
+                            round(float(target_pt.get("price", 0)), 2) if target_pt else None
+                        ),
+                        "forecast_return_pct": (
+                            round(float(fc.get("forecast_return", 0) or 0) * 100, 2)
+                            if fc.get("forecast_return") is not None
+                            else None
+                        ),
+                        "weight_source": fc.get("weight_source", ""),
+                    }
+                )
+        self.metrics["forecasts"] = forecasts_out
 
         logger.info(f"\n{'='*60}")
         logger.info(f"Processing Complete:")
@@ -1006,47 +1063,55 @@ class UnifiedForecastProcessor:
         logger.info(f"  Feature cache hit rate: {aggregated['feature_cache_hit_rate']*100:.1f}%")
         logger.info(f"  Weight sources: {self.metrics['weight_sources']}")
         logger.info(f"{'='*60}\n")
-        
-        self.metrics['aggregated'] = aggregated
+
+        self.metrics["aggregated"] = aggregated
         self.save_metrics()
-        
+
         return aggregated
-    
+
     def save_metrics(self):
         """Save processing metrics to file."""
-        self.metrics['end_time'] = datetime.now().isoformat()
-        
+        self.metrics["end_time"] = datetime.now().isoformat()
+
         # Ensure metrics directory exists
         metrics_dir = Path(self.metrics_file).parent
         metrics_dir.mkdir(parents=True, exist_ok=True)
-        
-        with open(self.metrics_file, 'w') as f:
+
+        with open(self.metrics_file, "w") as f:
             json.dump(self.metrics, f, indent=2, default=str)
         logger.info(f"Metrics saved to {self.metrics_file}")
 
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description='Unified ML Forecast Job')
-    parser.add_argument('--symbol', help='Process single symbol (for testing)')
-    parser.add_argument('--symbols', help='Comma-separated list of symbols to process')
-    parser.add_argument('--force-refresh', action='store_true', help='Rebuild features')
-    parser.add_argument('--metrics-file', help='Output metrics file',
-                        default='metrics/unified/unified_forecast_metrics.json')
-    parser.add_argument('--redis-host', default='localhost', help='Redis host')
-    parser.add_argument('--redis-port', type=int, default=6379, help='Redis port')
-    parser.add_argument('--model-type',
-                        choices=['xgboost', 'tabpfn', 'all'],
-                        default='xgboost',
-                        help='Model type to use: xgboost (default), tabpfn, or all (run both for comparison)')
-    parser.add_argument('--horizons',
-                        help='Comma-separated horizons (e.g. 1D,5D,10D,20D). Default: from settings.')
-    parser.add_argument('--skip-sentiment-backfill',
-                        action='store_true',
-                        help='Skip automatic sentiment backfill before forecasting')
-    
+    parser = argparse.ArgumentParser(description="Unified ML Forecast Job")
+    parser.add_argument("--symbol", help="Process single symbol (for testing)")
+    parser.add_argument("--symbols", help="Comma-separated list of symbols to process")
+    parser.add_argument("--force-refresh", action="store_true", help="Rebuild features")
+    parser.add_argument(
+        "--metrics-file",
+        help="Output metrics file",
+        default="metrics/unified/unified_forecast_metrics.json",
+    )
+    parser.add_argument("--redis-host", default="localhost", help="Redis host")
+    parser.add_argument("--redis-port", type=int, default=6379, help="Redis port")
+    parser.add_argument(
+        "--model-type",
+        choices=["xgboost", "tabpfn", "all"],
+        default="xgboost",
+        help="Model type to use: xgboost (default), tabpfn, or all (run both for comparison)",
+    )
+    parser.add_argument(
+        "--horizons", help="Comma-separated horizons (e.g. 1D,5D,10D,20D). Default: from settings."
+    )
+    parser.add_argument(
+        "--skip-sentiment-backfill",
+        action="store_true",
+        help="Skip automatic sentiment backfill before forecasting",
+    )
+
     args = parser.parse_args()
-    
+
     # Resolve symbol list for pre-run backfill
     if args.symbol:
         symbols_for_backfill = [args.symbol.strip().upper()]
@@ -1055,12 +1120,13 @@ def main():
     else:
         try:
             from src.scripts.universe_utils import resolve_symbol_list
+
             symbols_for_backfill = resolve_symbol_list()
         except Exception:
             symbols_for_backfill = []
-    
+
     # Pre-run: sentiment backfill (7 days) for symbols to be processed
-    if not getattr(args, 'skip_sentiment_backfill', False) and symbols_for_backfill:
+    if not getattr(args, "skip_sentiment_backfill", False) and symbols_for_backfill:
         try:
             from backfill_sentiment import run_sentiment_backfill
 
@@ -1077,11 +1143,12 @@ def main():
                 logger.info("Sentiment backfill done: %d rows written", written)
         except Exception as e:
             logger.warning("Sentiment backfill skipped: %s", e)
-    
+
     # Initialize Redis cache if available
     redis_cache = None
     try:
         import redis
+
         redis_cache = redis.Redis(
             host=args.redis_host,
             port=args.redis_port,
@@ -1093,22 +1160,22 @@ def main():
     except Exception as e:
         logger.warning(f"Could not connect to Redis: {e}")
         logger.info("Continuing without Redis cache...")
-    
+
     # Create processor
     processor = UnifiedForecastProcessor(
         redis_cache=redis_cache,
         metrics_file=args.metrics_file,
         model_type=args.model_type,
     )
-    
+
     logger.info("=" * 80)
     logger.info("Starting Unified ML Forecasting Job")
     logger.info("=" * 80)
-    
+
     # Parse horizons if provided
     horizons = None
-    if getattr(args, 'horizons', None):
-        horizons = [h.strip().upper() for h in args.horizons.split(',') if h.strip()]
+    if getattr(args, "horizons", None):
+        horizons = [h.strip().upper() for h in args.horizons.split(",") if h.strip()]
 
     # Process
     if args.symbol:
@@ -1136,5 +1203,5 @@ def main():
     db.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

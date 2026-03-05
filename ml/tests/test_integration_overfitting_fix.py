@@ -250,7 +250,7 @@ class TestCalibrationDivergenceIntegration:
 
         if divergence > threshold:
             # Revert to equal weights
-            reverted_weights = np.array([1/3, 1/3, 1/3])
+            reverted_weights = np.array([1 / 3, 1 / 3, 1 / 3])
         else:
             reverted_weights = None
 

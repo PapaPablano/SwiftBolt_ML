@@ -99,8 +99,12 @@ class XGBoostForecaster:
 
         # Target distribution (bullish=1, bearish=0)
         print(f"\nTarget distribution:")
-        print(f"  Positive (bullish): {(y == 'bullish').sum()} ({(y == 'bullish').mean()*100:.1f}%)")
-        print(f"  Negative (bearish): {(y == 'bearish').sum()} ({(y == 'bearish').mean()*100:.1f}%)")
+        print(
+            f"  Positive (bullish): {(y == 'bullish').sum()} ({(y == 'bullish').mean()*100:.1f}%)"
+        )
+        print(
+            f"  Negative (bearish): {(y == 'bearish').sum()} ({(y == 'bearish').mean()*100:.1f}%)"
+        )
 
         # NaN check
         nan_in_X = X.isna().sum().sum()
@@ -143,12 +147,9 @@ class XGBoostForecaster:
     ) -> None:
         """Train XGBoost on numeric features with early stopping. Encodes bullish=1, bearish=0."""
         if min_samples is not None and len(X) < min_samples:
-            raise ValueError(
-                f"Insufficient training data: {len(X)} < {min_samples}"
-            )
+            raise ValueError(f"Insufficient training data: {len(X)} < {min_samples}")
         numeric_cols = [
-            c for c in X.columns
-            if X[c].dtype in ("float64", "float32", "int64", "int32")
+            c for c in X.columns if X[c].dtype in ("float64", "float32", "int64", "int32")
         ]
         if not numeric_cols:
             numeric_cols = X.select_dtypes(include=["number"]).columns.tolist()
@@ -159,7 +160,8 @@ class XGBoostForecaster:
         y_bin = np.where(np.asarray(y_arr) == "bullish", 1, 0)
         # Split for early stopping (80% train, 20% val), stratified for balance
         X_tr, X_es, y_tr, y_es = train_test_split(
-            X_scaled, y_bin,
+            X_scaled,
+            y_bin,
             test_size=0.2,
             stratify=y_bin,
             random_state=42,

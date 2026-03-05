@@ -154,7 +154,7 @@ class ForecastSynthesizer:
 
         # Scale ATR-based moves by horizon length
         horizon_scale = np.sqrt(horizon_days)  # Volatility scales with sqrt(time)
-        
+
         result = self._generate_base_forecast(
             current_price=current_price,
             df=df,
@@ -166,11 +166,11 @@ class ForecastSynthesizer:
             symbol=symbol,
             recent_residuals=recent_residuals,
         )
-        
+
         # Update horizon metadata
         result.horizon = self._format_horizon(horizon_days)
         result.symbol = symbol
-        
+
         return result
 
     def generate_1d_forecast(
@@ -580,10 +580,18 @@ class ForecastSynthesizer:
         # Moving averages
         ma_levels = sr_response.get("movingAverages", [])
         if is_support:
-            ma_candidates = [lvl["level"] for lvl in ma_levels if lvl.get("level") and lvl["level"] < current_price]
+            ma_candidates = [
+                lvl["level"]
+                for lvl in ma_levels
+                if lvl.get("level") and lvl["level"] < current_price
+            ]
             ma_val = max(ma_candidates) if ma_candidates else None
         else:
-            ma_candidates = [lvl["level"] for lvl in ma_levels if lvl.get("level") and lvl["level"] > current_price]
+            ma_candidates = [
+                lvl["level"]
+                for lvl in ma_levels
+                if lvl.get("level") and lvl["level"] > current_price
+            ]
             ma_val = min(ma_candidates) if ma_candidates else None
 
         # Fibonacci
@@ -596,7 +604,9 @@ class ForecastSynthesizer:
             fib_val = min(fib_candidates) if fib_candidates else None
 
         # Ichimoku
-        ichimoku_levels = [lvl.get("level") for lvl in sr_response.get("ichimoku", {}).get("levels", [])]
+        ichimoku_levels = [
+            lvl.get("level") for lvl in sr_response.get("ichimoku", {}).get("levels", [])
+        ]
         ichimoku_levels = [lvl for lvl in ichimoku_levels if isinstance(lvl, (int, float))]
         if is_support:
             ichimoku_candidates = [lvl for lvl in ichimoku_levels if lvl < current_price]
@@ -621,7 +631,10 @@ class ForecastSynthesizer:
         if total_weight <= 0:
             return pivot
 
-        weighted = sum(method_values[key] * weight for key, weight in active_weights.items()) / total_weight
+        weighted = (
+            sum(method_values[key] * weight for key, weight in active_weights.items())
+            / total_weight
+        )
         return float(weighted)
 
     def _normalize_sr_response(self, sr_response: Dict, current_price: float) -> Dict:
@@ -638,7 +651,9 @@ class ForecastSynthesizer:
                 "supportSlope": poly_in.get("support_slope", 0),
                 "resistanceSlope": poly_in.get("resistance_slope", 0),
                 "supportTrend": "rising" if poly_in.get("support_slope", 0) > 0 else "falling",
-                "resistanceTrend": "rising" if poly_in.get("resistance_slope", 0) > 0 else "falling",
+                "resistanceTrend": (
+                    "rising" if poly_in.get("resistance_slope", 0) > 0 else "falling"
+                ),
                 "forecastSupport": poly_in.get("forecast_support", []),
                 "forecastResistance": poly_in.get("forecast_resistance", []),
                 "isDiverging": poly_in.get("is_diverging", False),
@@ -688,15 +703,19 @@ class ForecastSynthesizer:
                 "nearestSupport": sr_response.get("nearest_support", current_price * 0.95),
                 "nearestResistance": sr_response.get("nearest_resistance", current_price * 1.05),
                 "anchorZones": sr_response.get("anchor_zones", indicators.get("anchor_zones", {})),
-                "movingAverages": (sr_response.get("moving_averages") or {}).get("levels")
-                if isinstance(sr_response.get("moving_averages"), dict)
-                else sr_response.get("moving_averages")
-                or indicators.get("moving_averages", {}).get("levels", []),
+                "movingAverages": (
+                    (sr_response.get("moving_averages") or {}).get("levels")
+                    if isinstance(sr_response.get("moving_averages"), dict)
+                    else sr_response.get("moving_averages")
+                    or indicators.get("moving_averages", {}).get("levels", [])
+                ),
                 "fibonacci": sr_response.get("fibonacci", indicators.get("fibonacci", {})),
                 "ichimoku": sr_response.get("ichimoku", indicators.get("ichimoku", {})),
             }
 
-        normalized.setdefault("anchorZones", {"support_zones": [], "resistance_zones": [], "zones": []})
+        normalized.setdefault(
+            "anchorZones", {"support_zones": [], "resistance_zones": [], "zones": []}
+        )
         normalized.setdefault("movingAverages", [])
         normalized.setdefault("fibonacci", {"levels": {}})
         normalized.setdefault("ichimoku", {"levels": []})
@@ -855,7 +874,9 @@ class ForecastSynthesizer:
             elif level > current_price:
                 resistances.append(float(level))
 
-        ichimoku_levels = [lvl.get("level") for lvl in sr_response.get("ichimoku", {}).get("levels", [])]
+        ichimoku_levels = [
+            lvl.get("level") for lvl in sr_response.get("ichimoku", {}).get("levels", [])
+        ]
         for level in ichimoku_levels:
             if level is None:
                 continue
@@ -910,7 +931,11 @@ class ForecastSynthesizer:
 
         # Anchor zones
         anchor_zones = sr_response.get("anchorZones", {})
-        anchor_values = [z.get("price") for z in anchor_zones.get("support_zones", []) + anchor_zones.get("resistance_zones", [])]
+        anchor_values = [
+            z.get("price")
+            for z in anchor_zones.get("support_zones", [])
+            + anchor_zones.get("resistance_zones", [])
+        ]
         anchor_values = [v for v in anchor_values if isinstance(v, (int, float))]
         if anchor_values:
             method_total += 1
@@ -933,7 +958,9 @@ class ForecastSynthesizer:
                 method_hits += 1
 
         # Ichimoku
-        ichimoku_values = [lvl.get("level") for lvl in sr_response.get("ichimoku", {}).get("levels", [])]
+        ichimoku_values = [
+            lvl.get("level") for lvl in sr_response.get("ichimoku", {}).get("levels", [])
+        ]
         ichimoku_values = [v for v in ichimoku_values if isinstance(v, (int, float))]
         if ichimoku_values:
             method_total += 1
@@ -1022,8 +1049,12 @@ class ForecastSynthesizer:
         if st_bias == -1 and support_room > 0.02:
             st_weight += 0.1
 
-        total_bullish = (1 if st_bias == 1 else 0) * st_weight + (1 if ml_bias == 1 else 0) * ml_weight
-        total_bearish = (1 if st_bias == -1 else 0) * st_weight + (1 if ml_bias == -1 else 0) * ml_weight
+        total_bullish = (1 if st_bias == 1 else 0) * st_weight + (
+            1 if ml_bias == 1 else 0
+        ) * ml_weight
+        total_bearish = (1 if st_bias == -1 else 0) * st_weight + (
+            1 if ml_bias == -1 else 0
+        ) * ml_weight
 
         if total_bullish > total_bearish + 0.1:
             return "BULLISH"
@@ -1209,7 +1240,7 @@ class ForecastSynthesizer:
     ) -> ForecastResult:
         """
         Generate base forecast with horizon scaling applied.
-        
+
         This is the core forecast logic extracted from generate_1d_forecast
         with horizon_scale applied to ATR-based moves.
         """

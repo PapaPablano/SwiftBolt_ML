@@ -27,27 +27,30 @@ class TestWalkForwardOnHistoricalData:
 
         # Simulate realistic price movement with trend + noise
         trend = np.linspace(100, 150, n_days)  # Long-term uptrend
-        noise = np.random.randn(n_days) * 5   # Random daily noise
+        noise = np.random.randn(n_days) * 5  # Random daily noise
         close_prices = trend + noise
 
         # Create OHLC data
-        data = pd.DataFrame({
-            "open": close_prices + np.random.randn(n_days) * 0.5,
-            "high": close_prices + np.abs(np.random.randn(n_days) * 2),
-            "low": close_prices - np.abs(np.random.randn(n_days) * 2),
-            "close": close_prices,
-            "volume": np.random.randint(1000000, 100000000, n_days),
-        }, index=dates)
+        data = pd.DataFrame(
+            {
+                "open": close_prices + np.random.randn(n_days) * 0.5,
+                "high": close_prices + np.abs(np.random.randn(n_days) * 2),
+                "low": close_prices - np.abs(np.random.randn(n_days) * 2),
+                "close": close_prices,
+                "volume": np.random.randint(1000000, 100000000, n_days),
+            },
+            index=dates,
+        )
 
         return data
 
     def test_window_creation_on_five_years(self, five_year_data):
         """Test creating walk-forward windows on 5 years of data."""
         optimizer = WalkForwardOptimizer(
-            train_days=500,   # ~2 years of training
-            val_days=100,     # ~4 months validation
-            test_days=100,    # ~4 months test
-            step_size=20,     # 20-day rolling window
+            train_days=500,  # ~2 years of training
+            val_days=100,  # ~4 months validation
+            test_days=100,  # ~4 months test
+            step_size=20,  # 20-day rolling window
         )
 
         windows = optimizer.create_windows(five_year_data)
@@ -74,8 +77,9 @@ class TestWalkForwardOnHistoricalData:
             next_train_start = windows[i + 1].train_start
 
             # Next window should start after current window (rolling forward)
-            assert next_train_start > current_train_start, \
-                f"Window {i} starts at {current_train_start}, but window {i+1} starts at {next_train_start}"
+            assert (
+                next_train_start > current_train_start
+            ), f"Window {i} starts at {current_train_start}, but window {i+1} starts at {next_train_start}"
 
     def test_no_data_leakage_between_windows(self, five_year_data):
         """Test that train/val/test splits don't leak data."""
@@ -90,10 +94,12 @@ class TestWalkForwardOnHistoricalData:
 
         for window in windows:
             # Train should not overlap with val or test
-            assert window.train_end <= window.val_start, \
-                f"Train ({window.train_start} to {window.train_end}) overlaps with val"
-            assert window.val_end <= window.test_start, \
-                f"Val ({window.val_start} to {window.val_end}) overlaps with test"
+            assert (
+                window.train_end <= window.val_start
+            ), f"Train ({window.train_start} to {window.train_end}) overlaps with val"
+            assert (
+                window.val_end <= window.test_start
+            ), f"Val ({window.val_start} to {window.val_end}) overlaps with test"
 
             # Test dates should be in data range
             assert window.train_start >= five_year_data.index.min()
@@ -110,9 +116,9 @@ class TestWalkForwardOnHistoricalData:
         windows = optimizer.create_windows(five_year_data)
 
         for window in windows:
-            train_data = five_year_data.loc[window.train_start:window.train_end]
-            val_data = five_year_data.loc[window.val_start:window.val_end]
-            test_data = five_year_data.loc[window.test_start:window.test_end]
+            train_data = five_year_data.loc[window.train_start : window.train_end]
+            val_data = five_year_data.loc[window.val_start : window.val_end]
+            test_data = five_year_data.loc[window.test_start : window.test_end]
 
             # Each split should have data
             assert len(train_data) > 0
@@ -120,8 +126,9 @@ class TestWalkForwardOnHistoricalData:
             assert len(test_data) > 0
 
             # Should be close to expected days (accounting for weekends/holidays)
-            assert len(train_data) >= 150, \
-                f"Train window {window.window_id} has only {len(train_data)} samples"
+            assert (
+                len(train_data) >= 150
+            ), f"Train window {window.window_id} has only {len(train_data)} samples"
 
     def test_window_size_consistency(self, five_year_data):
         """Test that windows maintain consistent structure."""
@@ -138,8 +145,9 @@ class TestWalkForwardOnHistoricalData:
 
         for window in windows:
             actual_total = (window.test_end - window.train_start).days
-            assert abs(actual_total - total_per_window) <= acceptable_variance, \
-                f"Window {window.window_id} has {actual_total} days, expected ~{total_per_window}"
+            assert (
+                abs(actual_total - total_per_window) <= acceptable_variance
+            ), f"Window {window.window_id} has {actual_total} days, expected ~{total_per_window}"
 
     def test_divergence_tracking_across_windows(self, five_year_data):
         """Test that divergence can be calculated across windows."""
@@ -202,9 +210,7 @@ class TestWalkForwardOnSmallDataset:
     def test_insufficient_data_returns_empty_windows(self):
         """Test that insufficient data results in no windows."""
         dates = pd.date_range(start="2024-01-01", periods=100, freq="D")
-        small_data = pd.DataFrame({
-            "close": np.random.randn(100).cumsum() + 100
-        }, index=dates)
+        small_data = pd.DataFrame({"close": np.random.randn(100).cumsum() + 100}, index=dates)
 
         optimizer = WalkForwardOptimizer(
             train_days=500,  # Need 500 days but only have 100
@@ -219,9 +225,7 @@ class TestWalkForwardOnSmallDataset:
     def test_minimal_viable_windows(self):
         """Test window creation with minimal viable data."""
         dates = pd.date_range(start="2024-01-01", periods=500, freq="D")
-        data = pd.DataFrame({
-            "close": np.random.randn(500).cumsum() + 100
-        }, index=dates)
+        data = pd.DataFrame({"close": np.random.randn(500).cumsum() + 100}, index=dates)
 
         optimizer = WalkForwardOptimizer(
             train_days=200,

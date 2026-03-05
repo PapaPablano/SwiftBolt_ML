@@ -226,7 +226,10 @@ class ForecastExplainer:
         # ADX: strength only; direction needs +DI/-DI. Strong trend >25, weak <20
         if "adx" in name_lower:
             if value > 40:
-                return "neutral", f"ADX at {value:.1f} indicates very strong trend (check +DI/-DI for direction)"
+                return (
+                    "neutral",
+                    f"ADX at {value:.1f} indicates very strong trend (check +DI/-DI for direction)",
+                )
             if value > 25:
                 return "neutral", f"ADX at {value:.1f} indicates clear trend"
             if value >= 20:
@@ -255,9 +258,15 @@ class ForecastExplainer:
         # Volume ratio: direction matters; without price we describe level only
         if "volume_ratio" in name_lower:
             if value > 2.0:
-                return "neutral", f"Volume {value:.1f}x average (very high – confirm with price direction)"
+                return (
+                    "neutral",
+                    f"Volume {value:.1f}x average (very high – confirm with price direction)",
+                )
             if value > 1.5:
-                return "neutral", f"Volume {value:.1f}x average (high – confirm with price direction)"
+                return (
+                    "neutral",
+                    f"Volume {value:.1f}x average (high – confirm with price direction)",
+                )
             if value < 0.5:
                 return "neutral", f"Volume {value:.1f}x average (low activity)"
             return "neutral", f"Volume at {value:.1f}x average"

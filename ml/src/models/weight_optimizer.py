@@ -102,10 +102,9 @@ class WeightOptimizer:
 
         # Limit to lookback window
         if len(actuals) > self.lookback_window:
-            actuals = actuals[-self.lookback_window:]
+            actuals = actuals[-self.lookback_window :]
             predictions_dict = {
-                name: preds[-self.lookback_window:]
-                for name, preds in predictions_dict.items()
+                name: preds[-self.lookback_window :] for name, preds in predictions_dict.items()
             }
 
         try:

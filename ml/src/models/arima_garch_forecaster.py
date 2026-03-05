@@ -376,9 +376,7 @@ class ArimaGarchForecaster:
                 garch_volatility = np.sqrt(float(garch_variance) * steps)
         except Exception:
             # Fallback to simple volatility, scaled by sqrt(steps)
-            base_vol = (
-                float(self._train_returns.std()) if self._train_returns is not None else 0.02
-            )
+            base_vol = float(self._train_returns.std()) if self._train_returns is not None else 0.02
             garch_volatility = base_vol * np.sqrt(steps)
 
         # Classify using horizon-scaled thresholds (e.g. 2% per day -> 10% for 5D)
@@ -543,7 +541,9 @@ class ArimaGarchForecaster:
             # forecast_return is cumulative over horizon_days; scale to day i
             cumulative_return = forecast_return * (i / horizon_days) if horizon_days else 0
             # Volatility scales with sqrt(time)
-            cumulative_volatility = forecast_volatility * (np.sqrt(i) / np.sqrt(horizon_days)) if horizon_days else 0
+            cumulative_volatility = (
+                forecast_volatility * (np.sqrt(i) / np.sqrt(horizon_days)) if horizon_days else 0
+            )
 
             forecast_value = float(last_close) * (1 + cumulative_return)
 
@@ -649,9 +649,7 @@ class ARIMAGARCHForecaster:
         """
         horizon_int = max(1, int(np.ceil(horizon_days)))
         returns = df["close"].pct_change().dropna()
-        forward_returns = (
-            df["close"].pct_change(periods=horizon_int).shift(-horizon_int)
-        )
+        forward_returns = df["close"].pct_change(periods=horizon_int).shift(-horizon_int)
         # Align and filter significant moves
         common = returns.index.intersection(forward_returns.dropna().index)
         returns = returns.loc[common].dropna()
@@ -752,7 +750,11 @@ class ARIMAGARCHForecaster:
         n_train = self._train_size
         window_size = min(252, n_train)
         predictions = []
-        logger.info("ARIMA-GARCH: Rolling one-step-ahead forecast for %s validation samples (window=%s)...", n_val, window_size)
+        logger.info(
+            "ARIMA-GARCH: Rolling one-step-ahead forecast for %s validation samples (window=%s)...",
+            n_val,
+            window_size,
+        )
         for i in range(n_val):
             train_start = max(0, n_train + i - window_size)
             train_end = n_train + i
@@ -765,7 +767,9 @@ class ARIMAGARCHForecaster:
                 fitted = arima.fit(disp=0)
                 f = fitted.get_forecast(steps=1)
                 pred_mean = f.predicted_mean
-                pred_return = float(pred_mean.iloc[0]) if hasattr(pred_mean, "iloc") else float(pred_mean[0])
+                pred_return = (
+                    float(pred_mean.iloc[0]) if hasattr(pred_mean, "iloc") else float(pred_mean[0])
+                )
             except Exception:
                 pred_return = float(train_data.tail(20).mean())
             predictions.append("bullish" if pred_return > 0 else "bearish")

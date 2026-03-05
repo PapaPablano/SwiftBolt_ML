@@ -36,6 +36,7 @@ class UnifiedPredictionStore:
         self.validator = validator or UnifiedValidator()
         # Lazy import to avoid database connection at module load time
         from data.db import get_db
+
         self.db = get_db()
 
     def store_prediction(
@@ -290,14 +291,16 @@ class UnifiedPredictionStore:
                         severity = drift.get("severity", "none")
 
                         if severity_order.index(severity) >= min_idx:
-                            alerts.append({
-                                "symbol": symbol,
-                                "confidence": row[1],
-                                "drift_severity": severity,
-                                "drift_magnitude": drift.get("magnitude", 0),
-                                "explanation": drift.get("explanation", ""),
-                                "run_at": row[3],
-                            })
+                            alerts.append(
+                                {
+                                    "symbol": symbol,
+                                    "confidence": row[1],
+                                    "drift_severity": severity,
+                                    "drift_magnitude": drift.get("magnitude", 0),
+                                    "explanation": drift.get("explanation", ""),
+                                    "run_at": row[3],
+                                }
+                            )
 
         return alerts
 

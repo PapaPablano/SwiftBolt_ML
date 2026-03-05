@@ -99,7 +99,7 @@ class BaselineForecaster:
         # Min lookback for lags/supertrend; sma_200 uses min_periods=1 so valid from row 0
         start_idx = BASELINE_START_IDX
         end_idx = len(df) - horizon_days_int
-        
+
         logger.debug(
             "Training data range: start_idx=%d, end_idx=%d, df_len=%d, horizon=%.3f (int=%d)",
             start_idx,
@@ -108,7 +108,7 @@ class BaselineForecaster:
             horizon_days,
             horizon_days_int,
         )
-        
+
         for idx in range(start_idx, end_idx):
             features = engineer.add_features_to_point(df, idx)
             try:
@@ -173,14 +173,12 @@ class BaselineForecaster:
         df = compute_simplified_features(df, sentiment_series=sentiment_series, add_volatility=True)
         if add_simple_regime:
             from src.features.regime_features_simple import add_all_simple_regime_features
+
             df = add_all_simple_regime_features(df)
 
         horizon_days_int = max(1, int(np.ceil(horizon_days)))
         forward_returns = (
-            df["close"]
-            .pct_change(periods=horizon_days_int)
-            .shift(-horizon_days_int)
-            .copy()
+            df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int).copy()
         )
         if horizon_days_int > 0:
             forward_returns.iloc[-horizon_days_int:] = np.nan
@@ -236,7 +234,7 @@ class BaselineForecaster:
     def train(self, X: pd.DataFrame, y: pd.Series, min_samples: Optional[int] = None) -> None:
         """
         Train the forecaster model with enhanced metrics logging.
-        
+
         Args:
             X: Feature DataFrame
             y: Label Series
@@ -245,9 +243,7 @@ class BaselineForecaster:
         """
         min_required = min_samples if min_samples is not None else settings.min_bars_for_training
         if len(X) < min_required:
-            raise ValueError(
-                f"Insufficient training data: {len(X)} < {min_required}"
-            )
+            raise ValueError(f"Insufficient training data: {len(X)} < {min_required}")
 
         # Exclude non-numeric columns (e.g., timestamps)
         numeric_cols = X.select_dtypes(include=["number"]).columns.tolist()
@@ -332,23 +328,23 @@ class BaselineForecaster:
     def fit(self, df: pd.DataFrame, horizon_days: int = 1) -> "BaselineForecaster":
         """
         Fit the model on OHLC dataframe (compatible with ensemble interface).
-        
+
         This method provides compatibility with EnsembleForecaster interface.
         It prepares features and trains the model in one step.
-        
+
         Args:
             df: DataFrame with OHLC + technical indicators
             horizon_days: Forecast horizon in days (1, 5, 20, etc.)
-        
+
         Returns:
             self (for method chaining)
         """
         # Store df for later predict calls
         self._last_df = df.copy()
-        
+
         # Prepare training data
         X, y = self.prepare_training_data(df, horizon_days=horizon_days)
-        
+
         # Train model
         if len(X) >= settings.min_bars_for_training:
             self.train(X, y)
@@ -356,7 +352,7 @@ class BaselineForecaster:
             logger.warning(
                 f"Insufficient data for training: {len(X)} < {settings.min_bars_for_training}"
             )
-        
+
         return self
 
     def predict(self, X: pd.DataFrame | None = None, horizon_days: int = 1) -> dict[str, Any]:
@@ -366,7 +362,7 @@ class BaselineForecaster:
         This method has dual interfaces:
         1. Called with X (features DataFrame) - original interface for internal use
         2. Called with df (OHLC DataFrame) - ensemble-compatible interface
-        
+
         Args:
             X: Feature DataFrame (single row or multiple rows) OR OHLC DataFrame
             horizon_days: Forecast horizon (used if X is OHLC data)

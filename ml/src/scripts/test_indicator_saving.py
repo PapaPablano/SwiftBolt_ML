@@ -51,10 +51,13 @@ def test_indicator_saving(symbol: str, timeframe: str = "h1"):
     try:
         df = add_technical_features(df)
         print(f"✅ Indicators added")
-        print(f"   Indicator columns: {[c for c in df.columns if c not in ['open', 'high', 'low', 'close', 'volume', 'ts']]}")
+        print(
+            f"   Indicator columns: {[c for c in df.columns if c not in ['open', 'high', 'low', 'close', 'volume', 'ts']]}"
+        )
     except Exception as e:
         print(f"❌ Failed to add indicators: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -104,6 +107,7 @@ def test_indicator_saving(symbol: str, timeframe: str = "h1"):
     except Exception as e:
         print(f"❌ Failed to prepare records: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -119,11 +123,15 @@ def test_indicator_saving(symbol: str, timeframe: str = "h1"):
 
         # Verify it was saved
         print(f"\n5️⃣  Verifying saved data...")
-        query = db.client.table("indicator_values").select(
-            "symbol_id,timeframe,created_at,rsi_14,macd"
-        ).eq("symbol_id", symbol_id).eq("timeframe", timeframe).order(
-            "created_at", desc=True
-        ).limit(1).execute()
+        query = (
+            db.client.table("indicator_values")
+            .select("symbol_id,timeframe,created_at,rsi_14,macd")
+            .eq("symbol_id", symbol_id)
+            .eq("timeframe", timeframe)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
 
         if query.data:
             saved = query.data[0]
@@ -141,13 +149,16 @@ def test_indicator_saving(symbol: str, timeframe: str = "h1"):
     except Exception as e:
         print(f"❌ Failed to save indicators: {e}")
         import traceback
+
         traceback.print_exc()
 
         # Try to provide more details
         print(f"\n   Debugging info:")
         print(f"   - Database connected: {db.client is not None}")
         print(f"   - First indicator record keys: {list(indicator_records[0].keys())}")
-        print(f"   - Sample values: ts={indicator_records[0]['ts']}, close={indicator_records[0]['close']}")
+        print(
+            f"   - Sample values: ts={indicator_records[0]['ts']}, close={indicator_records[0]['close']}"
+        )
 
         return False
 
@@ -158,9 +169,9 @@ def main():
     parser.add_argument("--timeframe", type=str, default="h1", help="Timeframe (m15, h1, h4, d1)")
     args = parser.parse_args()
 
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("INDICATOR SNAPSHOT SAVING TEST")
-    print("="*70)
+    print("=" * 70)
 
     success = test_indicator_saving(args.symbol, args.timeframe)
 
@@ -175,7 +186,7 @@ def main():
         print("2. Type conversion (e.g., JSON vs JSONB)")
         print("3. Required fields missing")
         print("4. Database permissions")
-    print("="*70)
+    print("=" * 70)
 
     return 0 if success else 1
 

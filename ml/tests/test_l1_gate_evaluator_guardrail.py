@@ -53,12 +53,13 @@ def test_l1_gate_evaluator_never_writes_to_supabase(synthetic_m15_df):
 
     def fail_on_write(*args, **kwargs):
         raise AssertionError(
-            "L1 gate evaluator must not write to Supabase; "
-            "evaluation harness must be read-only"
+            "L1 gate evaluator must not write to Supabase; " "evaluation harness must be read-only"
         )
 
-    with patch.object(db, "insert_intraday_forecast", side_effect=fail_on_write), \
-         patch.object(db, "save_indicator_snapshot", side_effect=fail_on_write):
+    with (
+        patch.object(db, "insert_intraday_forecast", side_effect=fail_on_write),
+        patch.object(db, "save_indicator_snapshot", side_effect=fail_on_write),
+    ):
         from src.evaluation.l1_gate_evaluator import L1GateEvaluator
 
         evaluator = L1GateEvaluator(
@@ -83,8 +84,10 @@ def test_l1_gate_index_alignment(synthetic_m15_df):
     def noop(*args, **kwargs):
         pass
 
-    with patch.object(db, "insert_intraday_forecast", side_effect=noop), \
-         patch.object(db, "save_indicator_snapshot", side_effect=noop):
+    with (
+        patch.object(db, "insert_intraday_forecast", side_effect=noop),
+        patch.object(db, "save_indicator_snapshot", side_effect=noop),
+    ):
         evaluator = L1GateEvaluator(
             train_bars=120,
             test_bars=20,

@@ -32,7 +32,9 @@ class ForwardVolResult:
     sigma_near: float  # ATM IV at near expiry
     sigma_far: float  # ATM IV at far expiry
     forward_vol: float  # sqrt(max(0, (T2*v2 - T1*v1)/(T2-T1)))
-    term_structure_regime: Literal["contango", "backwardation", "flat"]  # contango = front low, backwardation = front high, flat = within epsilon
+    term_structure_regime: Literal[
+        "contango", "backwardation", "flat"
+    ]  # contango = front low, backwardation = front high, flat = within epsilon
     low_confidence: bool  # True when raw variance numerator < 0 (noise/data issues)
     T_near_years: float  # T1 in years
     T_far_years: float  # T2 in years
@@ -173,6 +175,7 @@ def compute_forward_vol(
             return atm_iv_by_expiry[ts_str]
         # Try date string from ts
         from datetime import datetime
+
         d = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d")
         if d in atm_iv_by_expiry:
             return atm_iv_by_expiry[d]
@@ -197,7 +200,8 @@ def compute_forward_vol(
         sorted_items = sorted(
             atm_iv_by_expiry.items(),
             key=lambda x: (
-                pd.Timestamp(x[0]).timestamp() if isinstance(x[0], str) and "-" in str(x[0])
+                pd.Timestamp(x[0]).timestamp()
+                if isinstance(x[0], str) and "-" in str(x[0])
                 else float(x[0]) if str(x[0]).replace(".", "").isdigit() else 0
             ),
         )
@@ -221,8 +225,8 @@ def compute_forward_vol(
     if T2 <= T1 or T1 < 0:
         return None
 
-    v1 = T1 * (sigma1 ** 2)
-    v2 = T2 * (sigma2 ** 2)
+    v1 = T1 * (sigma1**2)
+    v2 = T2 * (sigma2**2)
     numerator = v2 - v1
     low_confidence = numerator < 0
 
@@ -352,8 +356,8 @@ def compute_forward_vol_from_chain(
     if T2 <= T1 or T1 < 0:
         return None
 
-    v1 = T1 * (sigma1 ** 2)
-    v2 = T2 * (sigma2 ** 2)
+    v1 = T1 * (sigma1**2)
+    v2 = T2 * (sigma2**2)
     numerator = v2 - v1
     low_confidence = numerator < 0
     if numerator < 0:

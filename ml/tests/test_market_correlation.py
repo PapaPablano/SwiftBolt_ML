@@ -26,10 +26,12 @@ class TestMarketCorrelationFeatures:
         n = 250
         prices = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
 
-        return pd.DataFrame({
-            "ts": pd.date_range("2024-01-01", periods=n, freq="D"),
-            "close": prices,
-        })
+        return pd.DataFrame(
+            {
+                "ts": pd.date_range("2024-01-01", periods=n, freq="D"),
+                "close": prices,
+            }
+        )
 
     @pytest.fixture
     def symbol_data(self):
@@ -42,15 +44,16 @@ class TestMarketCorrelationFeatures:
 
         # Add some idiosyncratic movement (0.7 correlation)
         noise = np.random.randn(n) * 0.01
-        prices = 50 * np.exp(np.cumsum(
-            0.7 * np.diff(np.log(spy_like), prepend=np.log(spy_like[0])) +
-            0.3 * noise
-        ))
+        prices = 50 * np.exp(
+            np.cumsum(0.7 * np.diff(np.log(spy_like), prepend=np.log(spy_like[0])) + 0.3 * noise)
+        )
 
-        return pd.DataFrame({
-            "ts": pd.date_range("2024-01-01", periods=n, freq="D"),
-            "close": prices,
-        })
+        return pd.DataFrame(
+            {
+                "ts": pd.date_range("2024-01-01", periods=n, freq="D"),
+                "close": prices,
+            }
+        )
 
     def test_initialization(self, spy_data):
         """Test calculator initialization."""
@@ -93,7 +96,9 @@ class TestMarketCorrelationFeatures:
         beta = result["market_beta_60d"].dropna()
         assert len(beta) > 0
         assert all(b > 0 for b in beta)  # Beta should be positive
-        print(f"✓ Beta features: 60d avg={beta.mean():.3f}, range=[{beta.min():.2f}, {beta.max():.2f}]")
+        print(
+            f"✓ Beta features: 60d avg={beta.mean():.3f}, range=[{beta.min():.2f}, {beta.max():.2f}]"
+        )
 
     def test_relative_strength(self, spy_data, symbol_data):
         """Test relative strength features."""
@@ -108,7 +113,9 @@ class TestMarketCorrelationFeatures:
 
         rs = result["market_rs_20d"].dropna()
         assert len(rs) > 0
-        print(f"✓ Relative strength: 20d avg={rs.mean():.4f}, percentile avg={result['market_rs_percentile'].mean():.2%}")
+        print(
+            f"✓ Relative strength: 20d avg={rs.mean():.4f}, percentile avg={result['market_rs_percentile'].mean():.2%}"
+        )
 
     def test_momentum_spread(self, spy_data, symbol_data):
         """Test momentum spread features."""
@@ -129,10 +136,12 @@ class TestMarketCorrelationFeatures:
 
     def test_placeholder_features(self):
         """Test placeholder feature generation when SPY data unavailable."""
-        symbol_data = pd.DataFrame({
-            "ts": pd.date_range("2024-01-01", periods=100, freq="D"),
-            "close": np.linspace(100, 105, 100),
-        })
+        symbol_data = pd.DataFrame(
+            {
+                "ts": pd.date_range("2024-01-01", periods=100, freq="D"),
+                "close": np.linspace(100, 105, 100),
+            }
+        )
 
         calc = MarketCorrelationFeatures(spy_data=None)
         result = calc.calculate_features(symbol_data)
@@ -157,11 +166,21 @@ class TestMarketCorrelationFeatures:
 
         # Should add 15 features
         expected_features = {
-            "spy_correlation_20d", "spy_correlation_60d", "spy_correlation_120d",
+            "spy_correlation_20d",
+            "spy_correlation_60d",
+            "spy_correlation_120d",
             "spy_correlation_change",
-            "market_beta_20d", "market_beta_60d", "market_beta_momentum", "market_beta_regime",
-            "market_rs_20d", "market_rs_60d", "market_rs_trend", "market_rs_percentile",
-            "momentum_spread_5d", "momentum_spread_20d", "momentum_alignment",
+            "market_beta_20d",
+            "market_beta_60d",
+            "market_beta_momentum",
+            "market_beta_regime",
+            "market_rs_20d",
+            "market_rs_60d",
+            "market_rs_trend",
+            "market_rs_percentile",
+            "momentum_spread_5d",
+            "momentum_spread_20d",
+            "momentum_alignment",
         }
 
         assert expected_features.issubset(new_cols)

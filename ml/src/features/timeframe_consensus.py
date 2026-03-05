@@ -84,9 +84,9 @@ class TimeframeConsensus:
     TIMEFRAMES = ["m15", "h1", "h4", "d1"]
     TIMEFRAME_WEIGHTS = {
         "m15": 0.10,  # Low weight - noisy
-        "h1": 0.20,   # Medium weight
-        "h4": 0.30,   # Higher weight - reliable
-        "d1": 0.40,   # Highest weight - primary trend
+        "h1": 0.20,  # Medium weight
+        "h4": 0.30,  # Higher weight - reliable
+        "d1": 0.40,  # Highest weight - primary trend
     }
 
     def __init__(
@@ -176,19 +176,27 @@ class TimeframeConsensus:
         try:
             # Try intraday table for m15, h1
             if timeframe in ("m15", "h1"):
-                result = db.client.table("ml_forecasts_intraday").select(
-                    "overall_label", "confidence", "forecast_return", "created_at"
-                ).eq("symbol_id", symbol_id).eq("timeframe", timeframe).order(
-                    "created_at", desc=True
-                ).limit(1).execute()
+                result = (
+                    db.client.table("ml_forecasts_intraday")
+                    .select("overall_label", "confidence", "forecast_return", "created_at")
+                    .eq("symbol_id", symbol_id)
+                    .eq("timeframe", timeframe)
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
             else:
                 # Try main forecasts table for h4, d1
                 horizon = "4H" if timeframe == "h4" else "1D"
-                result = db.client.table("ml_forecasts").select(
-                    "overall_label", "confidence", "forecast_return", "created_at"
-                ).eq("symbol_id", symbol_id).eq("horizon", horizon).order(
-                    "created_at", desc=True
-                ).limit(1).execute()
+                result = (
+                    db.client.table("ml_forecasts")
+                    .select("overall_label", "confidence", "forecast_return", "created_at")
+                    .eq("symbol_id", symbol_id)
+                    .eq("horizon", horizon)
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                )
 
             if result.data and len(result.data) > 0:
                 return result.data[0]
@@ -246,7 +254,11 @@ class TimeframeConsensus:
 
         # Find agreeing/conflicting timeframes
         agreeing = [tf for tf, sig in signals.items() if sig.direction == consensus_direction]
-        conflicting = [tf for tf, sig in signals.items() if sig.direction != consensus_direction and sig.direction != "neutral"]
+        conflicting = [
+            tf
+            for tf, sig in signals.items()
+            if sig.direction != consensus_direction and sig.direction != "neutral"
+        ]
 
         # Calculate alignment score
         alignment_score = self._calculate_alignment_score(signals, consensus_direction)
@@ -275,11 +287,7 @@ class TimeframeConsensus:
         elif signals:
             original_confidence = np.mean([s.confidence for s in signals.values()])
 
-        adjusted_confidence = np.clip(
-            original_confidence + confidence_adjustment,
-            0.1,
-            0.95
-        )
+        adjusted_confidence = np.clip(original_confidence + confidence_adjustment, 0.1, 0.95)
 
         # Generate recommendation
         recommendation = self._generate_recommendation(

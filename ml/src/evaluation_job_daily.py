@@ -89,7 +89,9 @@ class DailyForecastEvaluator:
                 deduped[key] = f
 
         deduped_list = list(deduped.values())
-        logger.info(f"After de-duplication: {len(deduped_list)}/{len(forecasts)} pending {horizon} evaluations")
+        logger.info(
+            f"After de-duplication: {len(deduped_list)}/{len(forecasts)} pending {horizon} evaluations"
+        )
         return deduped_list
 
     def classify_return(self, return_pct: float) -> str:

@@ -19,9 +19,7 @@ from xgboost import XGBClassifier
 logger = logging.getLogger(__name__)
 
 
-def _log_feature_drift(
-    forecaster: "GradientBoostingForecaster", got_columns: pd.Index
-) -> None:
+def _log_feature_drift(forecaster: "GradientBoostingForecaster", got_columns: pd.Index) -> None:
     """Log when predict-time columns differ from training to catch pipeline drift."""
     if forecaster.feature_names is None:
         return
@@ -83,7 +81,9 @@ class GradientBoostingForecaster:
         self.model: XGBClassifier | None = None
         self.is_trained = False
         self.feature_names: List[str] | None = None
-        self.feature_medians_: Dict[str, float] = {}  # per-column median for predict-time imputation
+        self.feature_medians_: Dict[str, float] = (
+            {}
+        )  # per-column median for predict-time imputation
         self.training_stats: Dict = {}
 
     def _build_model(self) -> XGBClassifier:
@@ -168,7 +168,8 @@ class GradientBoostingForecaster:
         min_required = 50  # Intraday (15m/1h) typically 70-90; scikit-learn: lower for small data
         if features_df.shape[0] < min_required:
             raise ValueError(
-                "Insufficient training data: " f"{features_df.shape[0]} rows (need >= {min_required})"
+                "Insufficient training data: "
+                f"{features_df.shape[0]} rows (need >= {min_required})"
             )
 
         # Impute: forward-fill (preserves time continuity), then median, then 0 for all-missing

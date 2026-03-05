@@ -27,19 +27,18 @@ from src.data.supabase_db import SupabaseDatabase
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
 async def test_validation_service():
     """Test ValidationService with a real symbol."""
-    
-    print("\n" + "="*80)
+
+    print("\n" + "=" * 80)
     print("TESTING VALIDATION SERVICE (Phase 1)")
-    print("="*80 + "\n")
-    
+    print("=" * 80 + "\n")
+
     # Initialize service
     print("1. Initializing ValidationService...")
     try:
@@ -49,14 +48,14 @@ async def test_validation_service():
     except Exception as e:
         print(f"   ❌ Failed to initialize: {e}\n")
         return False
-    
+
     # Test symbol
     test_symbol = "AAPL"
     test_direction = "BULLISH"
-    
+
     print(f"2. Testing with symbol: {test_symbol} ({test_direction})")
     print("-" * 80)
-    
+
     # Test backtesting score
     print("\n   a) Fetching backtesting score...")
     try:
@@ -65,7 +64,7 @@ async def test_validation_service():
     except Exception as e:
         print(f"      ⚠️  Warning: {e}")
         backtest_score = 0.55
-    
+
     # Test walk-forward score
     print("\n   b) Fetching walk-forward score...")
     try:
@@ -74,7 +73,7 @@ async def test_validation_service():
     except Exception as e:
         print(f"      ⚠️  Warning: {e}")
         walkforward_score = 0.60
-    
+
     # Test live score
     print("\n   c) Fetching live score...")
     try:
@@ -83,7 +82,7 @@ async def test_validation_service():
     except Exception as e:
         print(f"      ⚠️  Warning: {e}")
         live_score = 0.50
-    
+
     # Test multi-TF scores
     print("\n   d) Fetching multi-timeframe scores...")
     try:
@@ -94,18 +93,20 @@ async def test_validation_service():
     except Exception as e:
         print(f"      ⚠️  Warning: {e}")
         multi_tf_scores = {}
-    
+
     # Test unified validation
     print(f"\n3. Running unified validation for {test_symbol} ({test_direction})...")
     print("-" * 80)
     try:
         result = await service.get_live_validation(test_symbol, test_direction)
-        
+
         print("\n   ✅ VALIDATION SUCCESSFUL!")
         print("\n   Unified Prediction:")
         print(f"      Symbol: {result.symbol}")
         print(f"      Direction: {result.direction}")
-        print(f"      Unified Confidence: {result.unified_confidence:.1%} {result.get_status_emoji()}")
+        print(
+            f"      Unified Confidence: {result.unified_confidence:.1%} {result.get_status_emoji()}"
+        )
         print(f"\n   Component Scores:")
         print(f"      Backtesting: {result.backtesting_score:.1%}")
         print(f"      Walk-forward: {result.walkforward_score:.1%}")
@@ -124,31 +125,32 @@ async def test_validation_service():
         print(f"      Retraining Required: {result.retraining_trigger}")
         if result.retraining_trigger:
             print(f"      Reason: {result.retraining_reason}")
-        
-        print("\n" + "="*80)
+
+        print("\n" + "=" * 80)
         print("✅ PHASE 1 TEST PASSED")
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
         return True
-        
+
     except Exception as e:
         print(f"\n   ❌ VALIDATION FAILED: {e}")
         import traceback
+
         traceback.print_exc()
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print("❌ PHASE 1 TEST FAILED")
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
         return False
 
 
 async def test_database_tables():
     """Verify required database tables exist."""
-    
-    print("\n" + "="*80)
+
+    print("\n" + "=" * 80)
     print("VERIFYING DATABASE TABLES")
-    print("="*80 + "\n")
-    
+    print("=" * 80 + "\n")
+
     db = SupabaseDatabase()
-    
+
     required_tables = [
         "symbols",
         "model_validation_stats",
@@ -156,9 +158,9 @@ async def test_database_tables():
         "indicator_values",
         "validation_results",
     ]
-    
+
     all_exist = True
-    
+
     for table in required_tables:
         try:
             result = db.client.table(table).select("*").limit(1).execute()
@@ -166,29 +168,29 @@ async def test_database_tables():
         except Exception as e:
             print(f"   ❌ Table '{table}' missing or inaccessible: {e}")
             all_exist = False
-    
+
     print()
     if all_exist:
         print("✅ All required tables exist\n")
     else:
         print("⚠️  Some tables are missing. You may need to run migrations.\n")
-    
+
     return all_exist
 
 
 async def main():
     """Run all tests."""
-    
+
     # Test database tables
     tables_ok = await test_database_tables()
-    
+
     if not tables_ok:
         print("⚠️  Warning: Not all tables exist. Continuing with validation test anyway...")
         print("   (Default values will be used for missing data)\n")
-    
+
     # Test validation service
     success = await test_validation_service()
-    
+
     if success:
         print("\n🎉 Phase 1 implementation is working correctly!")
         print("\nNext steps:")

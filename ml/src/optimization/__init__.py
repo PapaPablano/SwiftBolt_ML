@@ -7,12 +7,12 @@ from .efficient_frontier import EfficientFrontier
 from .position_sizing import PositionSizer
 
 __all__ = [
-    'WalkForwardOptimizer',
-    'WalkForwardResults',
-    'ParameterOptimizer',
-    'OptimizationResult',
-    'PortfolioOptimizer',
-    'PortfolioAllocation',
-    'EfficientFrontier',
-    'PositionSizer'
+    "WalkForwardOptimizer",
+    "WalkForwardResults",
+    "ParameterOptimizer",
+    "OptimizationResult",
+    "PortfolioOptimizer",
+    "PortfolioAllocation",
+    "EfficientFrontier",
+    "PositionSizer",
 ]

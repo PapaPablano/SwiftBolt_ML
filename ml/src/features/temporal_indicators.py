@@ -144,13 +144,17 @@ def add_volatility_features(df: pd.DataFrame) -> pd.DataFrame:
     # atr_normalized and bb_width come from TechnicalIndicatorsCorrect; ensure if missing
     if "atr_normalized" not in df.columns and "atr_14" in df.columns:
         df["atr_normalized"] = df["atr_14"] / df["close"]
-    if "bb_width" not in df.columns and "bb_upper" in df.columns and "bb_middle" in df.columns and "bb_lower" in df.columns:
+    if (
+        "bb_width" not in df.columns
+        and "bb_upper" in df.columns
+        and "bb_middle" in df.columns
+        and "bb_lower" in df.columns
+    ):
         df["bb_width"] = (df["bb_upper"] - df["bb_lower"]) / df["bb_middle"].replace(0, np.nan)
     hv = df["historical_volatility_20d"]
     # Volatility regime: 0=low (<20%), 1=medium (20–40%), 2=high (>40%)
-    df["volatility_regime"] = np.select(
-        [hv < 0.20, hv < 0.40], [0, 1], default=2
-    )
+    df["volatility_regime"] = np.select([hv < 0.20, hv < 0.40], [0, 1], default=2)
+
     # Percentile of current vol vs last 252 days (0–100)
     def _pct(w) -> float:
         s = pd.Series(w).dropna()
@@ -175,7 +179,7 @@ def add_volatility_features(df: pd.DataFrame) -> pd.DataFrame:
             ),
         )
         atr = tr.rolling(14).mean()
-        df["vix_proxy_atr"] = (atr / df["close"].replace(0, np.nan) * 100 * np.sqrt(252))
+        df["vix_proxy_atr"] = atr / df["close"].replace(0, np.nan) * 100 * np.sqrt(252)
 
     # Rate-of-change (trend strength complement to ADX)
     df["roc_5d"] = df["close"].pct_change(5)
@@ -213,9 +217,11 @@ def compute_simplified_features(
         df = add_volatility_features(df)
     # Simple regime columns (defaults so SIMPLIFIED_FEATURES selection never misses)
     from src.features.regime_features_simple import add_simple_regime_defaults
+
     df = add_simple_regime_defaults(df)
     # Old regime columns (SPY/VIX) with defaults so SIMPLIFIED_FEATURES selection never misses
     from src.features.regime_features import add_regime_defaults
+
     df = add_regime_defaults(df)
     return df
 
@@ -372,7 +378,9 @@ class TemporalFeatureEngineer:
         close_last = close[-1]
         supertrend_value = basic_lower if close_last > basic_upper else basic_upper
         supertrend_trend = 1 if close_last > supertrend_value else 0
-        distance_norm = float(abs(close_last - supertrend_value) / close_last) if close_last else np.nan
+        distance_norm = (
+            float(abs(close_last - supertrend_value) / close_last) if close_last else np.nan
+        )
 
         return {
             "supertrend_value": float(supertrend_value),

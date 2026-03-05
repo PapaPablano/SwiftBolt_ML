@@ -44,7 +44,11 @@ def test_attach_indicators_returns_ohlc_and_indicators():
         assert p["ohlc"]["open"] <= p["ohlc"]["high"] and p["ohlc"]["low"] <= p["ohlc"]["close"]
         assert "indicators" in p
         # RSI/MACD/BB/KDJ should be present after 100 bars
-        assert "rsi_14" in p["indicators"] or "macd" in p["indicators"] or "bb_upper" in p["indicators"]
+        assert (
+            "rsi_14" in p["indicators"]
+            or "macd" in p["indicators"]
+            or "bb_upper" in p["indicators"]
+        )
     assert out[0]["value"] == 101.0 and out[1]["value"] == 102.0
 
 

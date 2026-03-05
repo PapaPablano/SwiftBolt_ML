@@ -152,10 +152,7 @@ def _blend_xgb_into_ensemble_pred(
     for k in ("bullish", "neutral", "bearish"):
         E[k] = float(E.get(k, 0.0))
     X = {"bullish": p, "bearish": 1.0 - p, "neutral": 0.0}
-    P_blend = {
-        k: (1.0 - w) * E[k] + w * X[k]
-        for k in ("bullish", "neutral", "bearish")
-    }
+    P_blend = {k: (1.0 - w) * E[k] + w * X[k] for k in ("bullish", "neutral", "bearish")}
     total = sum(P_blend.values())
     if total <= 0:
         return
@@ -235,7 +232,9 @@ def _blend_kalman_into_ensemble_pred(
     agreement_old = float(ensemble_pred.get("agreement", 0.0))
 
     kalman_label = str(kalman_pred.get("label", "neutral")).lower()
-    kalman_label = "neutral" if kalman_label not in ("bullish", "bearish", "neutral") else kalman_label
+    kalman_label = (
+        "neutral" if kalman_label not in ("bullish", "bearish", "neutral") else kalman_label
+    )
     kalman_agrees = 1.0 if kalman_label == label_key else 0.0
     agreement_new = (agreement_old * n_models_base + kalman_agrees) / (n_models_base + 1)
 
@@ -257,7 +256,7 @@ def _blend_kalman_into_ensemble_pred(
 def _aggregate_h4_to_h8(h4_df: pd.DataFrame) -> pd.DataFrame:
     """
     Aggregate 4-hour bars into 8-hour bars.
-    
+
     Groups every 2 consecutive h4 bars into 1 h8 bar:
     - open: first bar's open
     - high: max of both bars' highs
@@ -265,45 +264,49 @@ def _aggregate_h4_to_h8(h4_df: pd.DataFrame) -> pd.DataFrame:
     - close: last bar's close
     - volume: sum of both bars' volumes
     - ts: first bar's timestamp
-    
+
     Args:
         h4_df: DataFrame with h4 OHLC bars (must have ts, open, high, low, close, volume)
-    
+
     Returns:
         DataFrame with h8 OHLC bars
     """
     if len(h4_df) < 2:
         return pd.DataFrame()
-    
+
     # Ensure ts is datetime
     if "ts" in h4_df.columns:
         h4_df = h4_df.copy()
         if not pd.api.types.is_datetime64_any_dtype(h4_df["ts"]):
             h4_df["ts"] = pd.to_datetime(h4_df["ts"])
         h4_df = h4_df.sort_values("ts").reset_index(drop=True)
-    
+
     h8_rows = []
     for i in range(0, len(h4_df) - 1, 2):  # Process pairs
         bar1 = h4_df.iloc[i]
         bar2 = h4_df.iloc[i + 1]
-        
-        h8_rows.append({
-            "ts": bar1["ts"],
-            "open": float(bar1["open"]),
-            "high": max(float(bar1["high"]), float(bar2["high"])),
-            "low": min(float(bar1["low"]), float(bar2["low"])),
-            "close": float(bar2["close"]),
-            "volume": float(bar1.get("volume", 0) or 0) + float(bar2.get("volume", 0) or 0),
-        })
-    
+
+        h8_rows.append(
+            {
+                "ts": bar1["ts"],
+                "open": float(bar1["open"]),
+                "high": max(float(bar1["high"]), float(bar2["high"])),
+                "low": min(float(bar1["low"]), float(bar2["low"])),
+                "close": float(bar2["close"]),
+                "volume": float(bar1.get("volume", 0) or 0) + float(bar2.get("volume", 0) or 0),
+            }
+        )
+
     if not h8_rows:
         return pd.DataFrame()
-    
+
     h8_df = pd.DataFrame(h8_rows)
     return h8_df
 
 
-def get_weight_source_for_intraday(symbol: str, symbol_id: str, horizon: str, use_feedback: bool) -> tuple:
+def get_weight_source_for_intraday(
+    symbol: str, symbol_id: str, horizon: str, use_feedback: bool
+) -> tuple:
     """
     Get forecast layer weights with optional feedback loop integration.
 
@@ -318,7 +321,7 @@ def get_weight_source_for_intraday(symbol: str, symbol_id: str, horizon: str, us
     """
     if not use_feedback:
         # For 15m/1h: always use defaults (they're for calibration)
-        return get_default_weights(), 'default'
+        return get_default_weights(), "default"
 
     try:
         # For 4h/8h/1D: use IntradayDailyFeedback priority system
@@ -328,7 +331,7 @@ def get_weight_source_for_intraday(symbol: str, symbol_id: str, horizon: str, us
         return weights_obj, source
     except Exception as e:
         logger.warning(f"IntradayDailyFeedback failed for {symbol} {horizon}: {e}. Using defaults.")
-        return get_default_weights(), 'default (fallback)'
+        return get_default_weights(), "default (fallback)"
 
 
 def build_intraday_short_points(
@@ -493,14 +496,16 @@ def canonicalize_intraday_points(
                 ts_iso = ts_raw
         else:
             ts_iso = ""
-        result.append({
-            "ts": ts_iso,
-            "value": p["value"],
-            "lower": p["lower"],
-            "upper": p["upper"],
-            "timeframe": timeframe,
-            "step": i + 1,
-        })
+        result.append(
+            {
+                "ts": ts_iso,
+                "value": p["value"],
+                "lower": p["lower"],
+                "upper": p["upper"],
+                "timeframe": timeframe,
+                "step": i + 1,
+            }
+        )
     return result
 
 
@@ -705,8 +710,8 @@ def validate_ensemble_with_walk_forward(
                 "symbol": symbol,
                 "horizon": horizon,
                 "validation_date": datetime.now(timezone.utc).isoformat(),
-                "window_id": getattr(result, 'window_id', 0),
-                "train_rmse": getattr(result, 'train_rmse', None),
+                "window_id": getattr(result, "window_id", 0),
+                "train_rmse": getattr(result, "train_rmse", None),
                 "val_rmse": result.val_rmse,
                 "test_rmse": result.test_rmse,
                 "divergence": result.divergence,
@@ -714,10 +719,10 @@ def validate_ensemble_with_walk_forward(
                 "is_overfitting": overfitting_detected,
                 "model_count": 2,  # 2-model ensemble
                 "models_used": ["LSTM", "ARIMA_GARCH"],
-                "n_train_samples": getattr(result, 'n_train_samples', len(df) * 0.6),
-                "n_val_samples": getattr(result, 'n_val_samples', len(df) * 0.2),
-                "n_test_samples": getattr(result, 'n_test_samples', len(df) * 0.2),
-                "data_span_days": getattr(result, 'data_span_days', len(df) // 252),
+                "n_train_samples": getattr(result, "n_train_samples", len(df) * 0.6),
+                "n_val_samples": getattr(result, "n_val_samples", len(df) * 0.2),
+                "n_test_samples": getattr(result, "n_test_samples", len(df) * 0.2),
+                "data_span_days": getattr(result, "data_span_days", len(df) // 252),
             }
 
             # Insert into ensemble_validation_metrics table
@@ -790,11 +795,7 @@ def run_intraday_forecast_in_memory(
         return None
 
     timeframe = config["timeframe"]
-    min_bars = (
-        min_bars_override
-        if min_bars_override is not None
-        else config["min_training_bars"]
-    )
+    min_bars = min_bars_override if min_bars_override is not None else config["min_training_bars"]
     lookahead_bars = int(config.get("forecast_bars", 1))
 
     # Slice to data available at cutoff_ts (no lookahead)
@@ -907,9 +908,9 @@ def run_intraday_forecast_in_memory(
                         if 0 < xgb_weight < 1 and min_xgb_per_class >= 1:
                             try:
                                 y_binary = y.map(
-                                    lambda v: "bullish"
-                                    if str(v).lower() == "bullish"
-                                    else "bearish"
+                                    lambda v: (
+                                        "bullish" if str(v).lower() == "bullish" else "bearish"
+                                    )
                                 )
                                 n_bull = int((y_binary == "bullish").sum())
                                 n_bear = int((y_binary == "bearish").sum())
@@ -947,10 +948,13 @@ def run_intraday_forecast_in_memory(
             }
 
         kalman_weight = float(config.get("kalman_weight", 0.0) or 0.0)
-        enable_kalman = (
-            os.environ.get("ENABLE_KALMAN_INTRADAY", "true").strip().lower()
-            in {"1", "true", "yes", "y", "on"}
-        )
+        enable_kalman = os.environ.get("ENABLE_KALMAN_INTRADAY", "true").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "y",
+            "on",
+        }
         if ensemble_pred and 0.0 < kalman_weight < 1.0 and enable_kalman:
             try:
                 if "garch_vol_regime" in df.columns and df["garch_vol_regime"].notna().any():
@@ -988,8 +992,8 @@ def run_intraday_forecast_in_memory(
             except Exception:
                 pass
 
-        recent_residuals = [] if dry_run else db.get_recent_intraday_residuals(
-            symbol_id, horizon, limit=20
+        recent_residuals = (
+            [] if dry_run else db.get_recent_intraday_residuals(symbol_id, horizon, limit=20)
         )
 
         synthesizer = ForecastSynthesizer(weights=weights)
@@ -1051,13 +1055,22 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
         fetch_limit = max(fetch_limit, 240)
 
     logger.info("Processing %s intraday forecast for %s", horizon, symbol)
-    logger.info("%s %s: fetch_limit=%d (min_bars=%d, lookahead=%d)", symbol, timeframe, fetch_limit, min_bars, lookahead_bars)
+    logger.info(
+        "%s %s: fetch_limit=%d (min_bars=%d, lookahead=%d)",
+        symbol,
+        timeframe,
+        fetch_limit,
+        min_bars,
+        lookahead_bars,
+    )
 
     try:
         # Fetch intraday bars
         df = db.fetch_ohlc_bars(symbol, timeframe=timeframe, limit=fetch_limit)
         n_ohlc = len(df)
-        n_returns = len(df["close"].pct_change().dropna()) if n_ohlc > 0 and "close" in df.columns else 0
+        n_returns = (
+            len(df["close"].pct_change().dropna()) if n_ohlc > 0 and "close" in df.columns else 0
+        )
         logger.info(
             "%s %s: OHLC rows=%d, post-pct_change returns=%d (min_bars=%d)",
             symbol,
@@ -1075,9 +1088,13 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
             if len(h4_df) >= 2:
                 # Aggregate 2 h4 bars into 1 h8 bar
                 df = _aggregate_h4_to_h8(h4_df)
-                logger.info("Aggregated %d h4 bars to %d h8 bars for %s", len(h4_df), len(df), symbol)
+                logger.info(
+                    "Aggregated %d h4 bars to %d h8 bars for %s", len(h4_df), len(df), symbol
+                )
             else:
-                logger.warning("Insufficient h4 data to aggregate h8 for %s: %d bars", symbol, len(h4_df))
+                logger.warning(
+                    "Insufficient h4 data to aggregate h8 for %s: %d bars", symbol, len(h4_df)
+                )
 
         if len(df) < min_bars:
             logger.warning(
@@ -1173,19 +1190,11 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                     "supertrend_factor": row.get("supertrend_factor")
                     or row.get("supertrend_adaptive_factor")
                     or row.get("target_factor"),
-                    "supertrend_performance_index": row.get(
-                        "supertrend_performance_index"
-                    ),
-                    "supertrend_signal_strength": row.get(
-                        "supertrend_signal_strength"
-                    ),
+                    "supertrend_performance_index": row.get("supertrend_performance_index"),
+                    "supertrend_signal_strength": row.get("supertrend_signal_strength"),
                     "signal_confidence": row.get("signal_confidence"),
-                    "supertrend_confidence_norm": row.get(
-                        "supertrend_confidence_norm"
-                    ),
-                    "supertrend_distance_norm": row.get(
-                        "supertrend_distance_norm"
-                    ),
+                    "supertrend_confidence_norm": row.get("supertrend_confidence_norm"),
+                    "supertrend_distance_norm": row.get("supertrend_distance_norm"),
                     "perf_ama": row.get("perf_ama"),
                 }
 
@@ -1203,20 +1212,14 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                     record["supertrend_metrics"] = adaptive_signal["metrics"]
                 elif "supertrend" in df.columns:
                     record["supertrend_value"] = row.get("supertrend")
-                    record["supertrend_trend"] = (
-                        1 if row.get("supertrend_signal", 0) > 0 else 0
-                    )
+                    record["supertrend_trend"] = 1 if row.get("supertrend_signal", 0) > 0 else 0
 
                 indicator_records.append(record)
 
             # Add S/R levels to most recent record
             if indicator_records and sr_levels:
-                indicator_records[-1]["nearest_support"] = sr_levels.get(
-                    "nearest_support"
-                )
-                indicator_records[-1]["nearest_resistance"] = sr_levels.get(
-                    "nearest_resistance"
-                )
+                indicator_records[-1]["nearest_support"] = sr_levels.get("nearest_support")
+                indicator_records[-1]["nearest_resistance"] = sr_levels.get("nearest_resistance")
                 indicator_records[-1]["support_distance_pct"] = sr_levels.get(
                     "support_distance_pct"
                 )
@@ -1233,9 +1236,7 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
             )
 
         except Exception as e:
-            logger.warning(
-                "Failed to save intraday indicator snapshot for %s: %s", symbol, e
-            )
+            logger.warning("Failed to save intraday indicator snapshot for %s: %s", symbol, e)
 
         # Determine if we use advanced ensemble based on horizon config
         use_advanced = config.get("use_advanced_ensemble", False)
@@ -1346,9 +1347,9 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                         if 0 < xgb_weight < 1 and min_xgb_per_class >= 1:
                             try:
                                 y_binary = y.map(
-                                    lambda v: "bullish"
-                                    if str(v).lower() == "bullish"
-                                    else "bearish"
+                                    lambda v: (
+                                        "bullish" if str(v).lower() == "bullish" else "bearish"
+                                    )
                                 )
                                 n_bull = int((y_binary == "bullish").sum())
                                 n_bear = int((y_binary == "bearish").sum())
@@ -1362,9 +1363,7 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                                     proba = xgb_forecaster.predict_proba(last_features)
                                     if proba is not None and len(proba) > 0:
                                         p = float(proba[0])
-                                        _blend_xgb_into_ensemble_pred(
-                                            ensemble_pred, p, xgb_weight
-                                        )
+                                        _blend_xgb_into_ensemble_pred(ensemble_pred, p, xgb_weight)
                                         logger.debug(
                                             "%s %s: XGB blend p=%.3f w=%.2f -> %s (%.0f%%)",
                                             symbol,
@@ -1426,7 +1425,13 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
             kalman_weight = float(config.get("kalman_weight", 0.0) or 0.0)
         except Exception:
             kalman_weight = 0.0
-        enable_kalman = os.environ.get("ENABLE_KALMAN_INTRADAY", "true").strip().lower() in {"1", "true", "yes", "y", "on"}
+        enable_kalman = os.environ.get("ENABLE_KALMAN_INTRADAY", "true").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "y",
+            "on",
+        }
         if ensemble_pred and 0.0 < kalman_weight < 1.0 and enable_kalman:
             try:
                 if "garch_vol_regime" in df.columns and df["garch_vol_regime"].notna().any():
@@ -1464,7 +1469,9 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
                         exog_ok = exog_missing_rate <= 0.20  # heavy ffill/bfill = stale exog
                         effective_weight = kalman_weight if (converged and exog_ok) else 0.0
                         if effective_weight > 0:
-                            _blend_kalman_into_ensemble_pred(ensemble_pred, kalman_pred, effective_weight)
+                            _blend_kalman_into_ensemble_pred(
+                                ensemble_pred, kalman_pred, effective_weight
+                            )
                         kalman_debug = {
                             "drift": kalman_pred.get("kalman_drift"),
                             "forecast_return": kalman_pred.get("forecast_return"),
@@ -1584,9 +1591,13 @@ def process_symbol_intraday(symbol: str, horizon: str, *, generate_paths: bool) 
         if use_advanced:
             try:
                 forecast_dict = add_consensus_to_forecast(forecast_dict, symbol_id)
-                consensus_direction = forecast_dict.get('consensus_direction', synth_result.direction.lower())
-                alignment_score = forecast_dict.get('alignment_score', 0.0)
-                adjusted_confidence = forecast_dict.get('adjusted_confidence', synth_result.confidence)
+                consensus_direction = forecast_dict.get(
+                    "consensus_direction", synth_result.direction.lower()
+                )
+                alignment_score = forecast_dict.get("alignment_score", 0.0)
+                adjusted_confidence = forecast_dict.get(
+                    "adjusted_confidence", synth_result.confidence
+                )
                 logger.debug(
                     f"Consensus for {symbol} {horizon}: "
                     f"{consensus_direction} "
@@ -1734,7 +1745,9 @@ def _log_forecast_verification(horizon: str) -> None:
                 dict(counts),
             )
         else:
-            logger.warning("Post-write verification: no ml_forecasts_intraday rows in last 15m for %s", horizon)
+            logger.warning(
+                "Post-write verification: no ml_forecasts_intraday rows in last 15m for %s", horizon
+            )
     except Exception as e:
         logger.debug("Forecast verification query failed: %s", e)
 
