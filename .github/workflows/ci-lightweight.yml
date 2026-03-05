@@ -279,9 +279,8 @@ jobs:
     - name: Run unit tests
       working-directory: ml
       env:
-        # Dummy values for pydantic-settings; tests/conftest.py patches supabase.create_client.
-        SUPABASE_URL: "https://placeholder.supabase.co"
-        SUPABASE_KEY: "placeholder-key-for-ci"
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: |
         pytest tests/ -m "not integration" \
           --cov=src \
@@ -344,8 +343,8 @@ jobs:
       working-directory: ml
       continue-on-error: true
       env:
-        SUPABASE_URL: "https://placeholder.supabase.co"
-        SUPABASE_KEY: "placeholder-key-for-ci"
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: |
         pytest tests/ -m integration --continue-on-collection-errors -v --tb=short
 

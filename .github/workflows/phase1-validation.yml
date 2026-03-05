@@ -30,11 +30,9 @@ on:
       - 'ml/tests/**'
       - 'supabase/functions/**'
 
-# Provide minimal env for pydantic Settings() which requires SUPABASE_URL + SUPABASE_KEY at import time.
-# These are test-only placeholder values — no real credentials needed.
 env:
-  SUPABASE_URL: https://test.supabase.co
-  SUPABASE_KEY: placeholder-key-for-ci
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
 
 jobs:
   # Test Black-Scholes Options Pricing
