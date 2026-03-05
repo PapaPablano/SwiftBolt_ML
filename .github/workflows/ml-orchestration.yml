@@ -436,14 +436,14 @@ jobs:
               d1) DAYS=365 ;;
               *) DAYS=120 ;;
             esac;
-            PAYLOAD=$(printf '{"symbol":"%s","timeframe":"%s","days":%s}' "$SYMBOL" "$TF_TRIMMED" "$DAYS");
             RESPONSE=$(curl -sS \
               -H "apikey: ${SUPABASE_KEY}" \
               -H "Authorization: Bearer ${SUPABASE_KEY}" \
-              -H "Content-Type: application/json" \
-              -X POST \
-              -d "$PAYLOAD" \
-              "${SUPABASE_URL}/functions/v1/chart-data-v2" 2>&1) || RESPONSE="";
+              -G \
+              --data-urlencode "symbol=${SYMBOL}" \
+              --data-urlencode "timeframe=${TF_TRIMMED}" \
+              --data-urlencode "days=${DAYS}" \
+              "${SUPABASE_URL}/functions/v1/chart" 2>&1) || RESPONSE="";
             
             # Check for errors in response
             if [ -z "$RESPONSE" ]; then

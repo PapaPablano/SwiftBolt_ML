@@ -187,6 +187,8 @@ jobs:
         echo "Calling: $CHART_URL"
 
         HTTP_CODE=$(curl -s -o /tmp/chart_response.json -w "%{http_code}" \
+          -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+          -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
           --max-time 30 \
           "$CHART_URL")
 

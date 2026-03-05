@@ -78,6 +78,11 @@ jobs:
         fi
 
     - name: Run unit tests with coverage
+      # Dummy Supabase creds prevent pydantic-settings ValidationError at import time.
+      # Real credentials are NOT needed — unit tests mock all Supabase calls.
+      env:
+        SUPABASE_URL: "https://placeholder.supabase.co"
+        SUPABASE_KEY: "placeholder-key-for-ci"
       run: |
         cd ml
         # Exclude integration tests from coverage to avoid "No data collected" when they skip
