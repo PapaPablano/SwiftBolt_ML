@@ -30,7 +30,7 @@ interface Condition {
 
 interface StrategyRow {
   id: string;
-  user_id: string;
+  user_id: string | null;
   name: string;
   description: string | null;
   config: StrategyConfig;
@@ -55,14 +55,16 @@ serve(async (req) => {
 
   const supabase = getSupabaseClient();
 
+  // Auth is optional — authenticated users own their strategies, anon users
+  // get user_id = null (covered by anon RLS policies).
   const authHeader = req.headers.get("Authorization") ?? "";
-  const { data: { user }, error: authError } = await supabase.auth.getUser(
-    authHeader.replace("Bearer ", ""),
-  );
-  if (authError || !user) {
-    return errorResponse("Authentication required", 401, origin);
+  let userId: string | null = null;
+  if (authHeader) {
+    const { data: { user } } = await supabase.auth.getUser(
+      authHeader.replace("Bearer ", ""),
+    );
+    if (user) userId = user.id;
   }
-  const userId = user.id;
 
   const url = new URL(req.url);
   const strategyId = url.searchParams.get("id");
@@ -94,19 +96,25 @@ serve(async (req) => {
   }
 });
 
+/** Apply user_id filter: IS NULL for anon, = userId for authenticated. */
+function applyUserFilter(
+  query: ReturnType<ReturnType<typeof getSupabaseClient>["from"]>,
+  userId: string | null,
+) {
+  return userId ? query.eq("user_id", userId) : query.is("user_id", null);
+}
+
 async function handleGet(
   supabase: ReturnType<typeof getSupabaseClient>,
-  userId: string,
+  userId: string | null,
   id: string | null,
   url: URL,
 ) {
   if (id) {
-    const { data, error } = await supabase
-      .from("strategy_user_strategies")
-      .select("*")
-      .eq("id", id)
-      .eq("user_id", userId)
-      .single();
+    const { data, error } = await applyUserFilter(
+      supabase.from("strategy_user_strategies").select("*").eq("id", id),
+      userId,
+    ).single();
 
     if (error || !data) {
       return errorResponse("Strategy not found", 404);
@@ -116,15 +124,17 @@ async function handleGet(
 
   // List strategies with pagination (excludes large config JSONB)
   const offset = parseInt(url.searchParams.get("offset") ?? "0", 10) || 0;
-  const { data, error } = await supabase
-    .from("strategy_user_strategies")
-    .select(
-      "id, name, is_active, paper_trading_enabled, live_trading_enabled, live_trading_paused, created_at, updated_at",
-    )
-    .eq("user_id", userId)
-    .order("updated_at", { ascending: false })
-    .range(offset, offset + 49)
-    .limit(50);
+  const { data, error } = await applyUserFilter(
+    supabase
+      .from("strategy_user_strategies")
+      .select(
+        "id, name, is_active, paper_trading_enabled, live_trading_enabled, live_trading_paused, created_at, updated_at",
+      )
+      .order("updated_at", { ascending: false })
+      .range(offset, offset + 49)
+      .limit(50),
+    userId,
+  );
 
   if (error) {
     console.error("[strategies] DB error listing strategies:", error);
@@ -136,7 +146,7 @@ async function handleGet(
 
 async function handleCreate(
   supabase: ReturnType<typeof getSupabaseClient>,
-  userId: string,
+  userId: string | null,
   req: Request,
 ) {
   const body = await req.json();
@@ -174,7 +184,7 @@ async function handleCreate(
 
 async function handleUpdate(
   supabase: ReturnType<typeof getSupabaseClient>,
-  userId: string,
+  userId: string | null,
   req: Request,
   id: string | null,
 ) {
@@ -211,13 +221,13 @@ async function handleUpdate(
     updates.live_trading_paused = body.live_trading_paused;
   }
 
-  const { data, error } = await supabase
-    .from("strategy_user_strategies")
-    .update(updates)
-    .eq("id", id)
-    .eq("user_id", userId)
-    .select()
-    .single();
+  const { data, error } = await applyUserFilter(
+    supabase
+      .from("strategy_user_strategies")
+      .update(updates)
+      .eq("id", id),
+    userId,
+  ).select().single();
 
   if (error) {
     console.error("[strategies] DB error updating strategy:", error);
@@ -233,18 +243,20 @@ async function handleUpdate(
 
 async function handleDelete(
   supabase: ReturnType<typeof getSupabaseClient>,
-  userId: string,
+  userId: string | null,
   id: string | null,
 ) {
   if (!id) {
     return errorResponse("Strategy ID is required");
   }
 
-  const { error } = await supabase
-    .from("strategy_user_strategies")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", userId);
+  const { error } = await applyUserFilter(
+    supabase
+      .from("strategy_user_strategies")
+      .delete()
+      .eq("id", id),
+    userId,
+  );
 
   if (error) {
     console.error("[strategies] DB error deleting strategy:", error);
@@ -256,7 +268,7 @@ async function handleDelete(
 
 async function handleDuplicate(
   supabase: ReturnType<typeof getSupabaseClient>,
-  userId: string,
+  userId: string | null,
   req: Request,
 ) {
   const body = await req.json();
@@ -267,12 +279,13 @@ async function handleDuplicate(
   }
 
   // Get source strategy
-  const { data: source, error: fetchError } = await supabase
-    .from("strategy_user_strategies")
-    .select("*")
-    .eq("id", sourceId)
-    .eq("user_id", userId)
-    .single();
+  const { data: source, error: fetchError } = await applyUserFilter(
+    supabase
+      .from("strategy_user_strategies")
+      .select("*")
+      .eq("id", sourceId),
+    userId,
+  ).single();
 
   if (fetchError || !source) {
     return errorResponse("Source strategy not found", 404);
