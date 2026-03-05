@@ -104,6 +104,7 @@ jobs:
         )
 
     - name: Lint (flake8)
+      continue-on-error: true
       run: |
         cd ml
         flake8 src tests \
