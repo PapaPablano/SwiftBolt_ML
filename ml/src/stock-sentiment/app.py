@@ -1,21 +1,20 @@
-import streamlit as st
-from urllib.request import urlopen, Request
-from bs4 import BeautifulSoup
-import pandas as pd
-import plotly
-import plotly.express as px
 import json  # for graph plotting in website
+from urllib.request import Request, urlopen
 
 # NLTK VADER for sentiment analysis
 import nltk
+import pandas as pd
+import plotly
+import plotly.express as px
+import streamlit as st
+from bs4 import BeautifulSoup
 
 nltk.downloader.download("vader_lexicon")
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
-
-import subprocess
-import os
-
 import datetime
+import os
+import subprocess
+
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
 
 st.set_page_config(page_title="Bohmian's Stock News Sentiment Analyzer", layout="wide")
 

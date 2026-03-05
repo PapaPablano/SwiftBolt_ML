@@ -10,6 +10,7 @@ Verifies:
 
 import numpy as np
 import pytest
+
 from src.features.sr_polynomial import SRPolynomialRegressor
 
 

@@ -1,8 +1,8 @@
 """Automated strategy discovery using genetic algorithms."""
 
+from .fitness_evaluator import FitnessEvaluator, FitnessMetrics
 from .genetic_optimizer import GeneticOptimizer, OptimizationConfig
 from .strategy_dna import StrategyDNA, StrategyGene
-from .fitness_evaluator import FitnessEvaluator, FitnessMetrics
 
 __all__ = [
     "GeneticOptimizer",

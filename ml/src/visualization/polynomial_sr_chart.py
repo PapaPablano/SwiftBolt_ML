@@ -19,8 +19,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.patches import Rectangle
 from matplotlib.lines import Line2D
+from matplotlib.patches import Rectangle
 
 logger = logging.getLogger(__name__)
 

@@ -2,8 +2,9 @@
 
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List
 from datetime import datetime
+from typing import Dict, List
+
 import pandas as pd
 
 logger = logging.getLogger(__name__)

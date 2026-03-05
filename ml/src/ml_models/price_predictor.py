@@ -29,10 +29,10 @@ logger = logging.getLogger(__name__)
 
 # Try to import ML libraries
 try:
-    from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+    from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
     from sklearn.linear_model import LinearRegression, Ridge
+    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
     from sklearn.preprocessing import StandardScaler
-    from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 
     SKLEARN_AVAILABLE = True
 except ImportError:

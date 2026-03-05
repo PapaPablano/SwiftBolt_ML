@@ -11,15 +11,16 @@ Tests the complete pipeline:
 Validates that all components work together correctly.
 """
 
-import pytest
-import numpy as np
-import pandas as pd
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-from src.training.walk_forward_optimizer import WalkForwardOptimizer
+import numpy as np
+import pandas as pd
+import pytest
+
 from src.models.enhanced_ensemble_integration import get_production_ensemble
 from src.monitoring.divergence_monitor import DivergenceMonitor
+from src.training.walk_forward_optimizer import WalkForwardOptimizer
 
 
 class TestEnsembleCreationIntegration:

@@ -3,6 +3,7 @@
 import logging
 from dataclasses import dataclass
 from typing import Dict, List
+
 import numpy as np
 from scipy.optimize import minimize
 

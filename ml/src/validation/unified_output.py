@@ -11,9 +11,9 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from validation.unified_framework import (
+    UnifiedPrediction,
     UnifiedValidator,
     ValidationScores,
-    UnifiedPrediction,
 )
 
 logger = logging.getLogger(__name__)

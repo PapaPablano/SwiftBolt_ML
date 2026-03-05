@@ -28,10 +28,10 @@ from src.models.forward_vol import (  # noqa: E402
     ForwardVolResult,
     compute_forward_vol_from_chain,
 )
-from src.models.menthorq_features import (  # noqa: E402
+from src.models.menthorq_features import (
     compute_menthorq_features,
-    to_dict as menthorq_to_dict,
 )
+from src.models.menthorq_features import to_dict as menthorq_to_dict  # noqa: E402
 from src.models.options_momentum_ranker import (  # noqa: E402
     CalibratedMomentumRanker,
     IVStatistics,

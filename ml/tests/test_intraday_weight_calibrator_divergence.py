@@ -5,11 +5,12 @@ Tests the 3-way train/val/test split implementation and overfitting detection
 via divergence monitoring from Phase 3.1.
 """
 
-import pytest
-import numpy as np
-import pandas as pd
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pandas as pd
+import pytest
 
 # Tests for divergence concepts and calculations
 # Don't import the actual classes to avoid dependency issues

@@ -9,8 +9,8 @@ import sys
 from pathlib import Path
 
 from src.data.supabase_db import SupabaseDatabase
-from src.training.ensemble_training_job import train_ensemble_for_symbol_timeframe
 from src.models.ensemble_loader import EnsembleLoader, EnsemblePredictor
+from src.training.ensemble_training_job import train_ensemble_for_symbol_timeframe
 
 logger = logging.getLogger(__name__)
 

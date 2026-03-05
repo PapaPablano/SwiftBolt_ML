@@ -5,11 +5,12 @@ Tests database schema, insertion, and querying of divergence monitoring data.
 This validates Phase 5 (Database & Monitoring) implementation.
 """
 
-import pytest
-import numpy as np
-import pandas as pd
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
+
+import numpy as np
+import pandas as pd
+import pytest
 
 from src.monitoring.divergence_monitor import DivergenceMonitor
 

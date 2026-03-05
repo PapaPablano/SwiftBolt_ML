@@ -2,8 +2,9 @@
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, List
 from datetime import datetime, timedelta
+from typing import Dict, List
+
 import numpy as np
 
 logger = logging.getLogger(__name__)

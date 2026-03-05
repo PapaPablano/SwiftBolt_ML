@@ -24,10 +24,10 @@ from src.data.data_validator import (  # noqa: E402
     ValidationResult,
 )
 from src.data.supabase_db import db  # noqa: E402
+from src.features.feature_cache import fetch_or_build_features  # noqa: E402
 from src.features.support_resistance_detector import (  # noqa: E402
     SupportResistanceDetector,
 )
-from src.features.feature_cache import fetch_or_build_features  # noqa: E402
 from src.forecast_synthesizer import (  # noqa: E402
     ForecastResult,
     ForecastSynthesizer,

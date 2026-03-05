@@ -9,19 +9,19 @@ Tests cover:
 - Edge cases
 """
 
-import pytest
-from datetime import datetime, timedelta
-
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
+
+import pytest
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from validation.unified_framework import (
+    UnifiedPrediction,
     UnifiedValidator,
     ValidationScores,
-    UnifiedPrediction,
     validate_prediction,
 )
 

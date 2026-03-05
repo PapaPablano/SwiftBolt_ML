@@ -5,10 +5,11 @@ Tests simplified forecast synthesis with 2-3 model configurations
 to validate Phase 4.3 implementation.
 """
 
-import pytest
+from datetime import datetime, timedelta
+
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
+import pytest
 
 
 class TestEnsembleAgreementCalculation:

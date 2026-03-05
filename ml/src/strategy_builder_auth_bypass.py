@@ -8,7 +8,7 @@ causing issues in the current setup.
 
 import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 # Create a mock environment for the Trade Station strategy builder

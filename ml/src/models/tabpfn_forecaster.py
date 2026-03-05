@@ -3,8 +3,8 @@ TabPFN-based forecasting module for SwiftBolt ML.
 Standalone implementation using zero-shot transformer-based predictions.
 """
 
-import os
 import logging
+import os
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 

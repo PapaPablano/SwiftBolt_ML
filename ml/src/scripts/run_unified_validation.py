@@ -12,7 +12,7 @@ Usage:
 import argparse
 import asyncio
 import sys
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 # Add src to path for imports
 sys.path.insert(0, "src")

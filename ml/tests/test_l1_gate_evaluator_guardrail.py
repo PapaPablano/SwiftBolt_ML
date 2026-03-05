@@ -15,10 +15,11 @@ The evaluator does not import db; these patches catch writes from any transitive
 dependency in the evaluation call chain.
 """
 
+from unittest.mock import patch
+
 import numpy as np
 import pandas as pd
 import pytest
-from unittest.mock import patch
 
 
 @pytest.fixture
@@ -79,7 +80,7 @@ def test_l1_gate_index_alignment(synthetic_m15_df):
     Prevents off-by-one bugs from reindexing that could look like "performance."
     """
     from src.data.supabase_db import db
-    from src.evaluation.l1_gate_evaluator import L1GateEvaluator, LOOKAHEAD_BARS
+    from src.evaluation.l1_gate_evaluator import LOOKAHEAD_BARS, L1GateEvaluator
 
     def noop(*args, **kwargs):
         pass

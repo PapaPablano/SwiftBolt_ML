@@ -48,11 +48,10 @@ from src.models.tabpfn_forecaster import TabPFNForecaster, is_tabpfn_available
 from src.monitoring.confidence_calibrator import ConfidenceCalibrator
 from src.monitoring.forecast_quality import ForecastQualityMonitor
 from src.monitoring.forecast_validator import ForecastValidator
-from src.strategies.supertrend_ai import SuperTrendAI
-
 from src.strategies.adaptive_supertrend_adapter import (  # noqa: E402
     get_adaptive_supertrend_adapter,
 )
+from src.strategies.supertrend_ai import SuperTrendAI
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),

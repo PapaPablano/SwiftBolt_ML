@@ -6,13 +6,13 @@ Identifies why ensemble.train() is failing for specific symbols,
 causing fallback to 40% confidence predictions.
 """
 
+import logging
 import os
 import sys
 from argparse import ArgumentParser
-import logging
 
-from dotenv import load_dotenv
 import pandas as pd
+from dotenv import load_dotenv
 
 load_dotenv()
 

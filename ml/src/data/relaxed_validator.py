@@ -3,9 +3,10 @@
 Uses looser thresholds than OHLCValidator: gaps/outliers are often real market moves.
 """
 
-import pandas as pd
+from typing import Any, Dict, Tuple
+
 import numpy as np
-from typing import Tuple, Dict, Any
+import pandas as pd
 
 
 class RelaxedOHLCValidator:

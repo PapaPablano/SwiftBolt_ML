@@ -154,7 +154,7 @@ class ModelTrainer:
 
             # Test set evaluation
             test_pred = self.model.predict(X_test)
-            from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+            from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
             test_metrics = {
                 "test_rmse": np.sqrt(mean_squared_error(y_test, test_pred)),

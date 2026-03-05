@@ -28,7 +28,7 @@ except ImportError:
     PLOTLY_AVAILABLE = False
     logging.warning("Plotly not available. Install with: pip install plotly")
 
-from .portfolio_optimizer import PortfolioOptimizer, PortfolioAllocation
+from .portfolio_optimizer import PortfolioAllocation, PortfolioOptimizer
 
 logger = logging.getLogger(__name__)
 

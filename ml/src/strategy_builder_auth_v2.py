@@ -6,10 +6,10 @@ compatibility with the existing configuration system. It handles edge cases
 and provides appropriate logging for debugging.
 """
 
-import os
 import logging
+import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 # Set up logging
 logger = logging.getLogger(__name__)

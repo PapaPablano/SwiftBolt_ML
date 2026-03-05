@@ -10,9 +10,9 @@ import argparse
 import logging
 from typing import Dict, Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
 from src.data.supabase_db import SupabaseDatabase
 from src.training.data_preparation import collect_training_data

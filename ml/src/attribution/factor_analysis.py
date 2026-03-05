@@ -3,8 +3,9 @@
 import logging
 from dataclasses import dataclass
 from typing import Dict, List
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 from sklearn.linear_model import LinearRegression
 
 logger = logging.getLogger(__name__)

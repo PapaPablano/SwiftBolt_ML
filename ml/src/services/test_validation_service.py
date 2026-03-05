@@ -22,8 +22,8 @@ from pathlib import Path
 ml_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(ml_dir))
 
-from src.services.validation_service import ValidationService
 from src.data.supabase_db import SupabaseDatabase
+from src.services.validation_service import ValidationService
 
 # Configure logging
 logging.basicConfig(

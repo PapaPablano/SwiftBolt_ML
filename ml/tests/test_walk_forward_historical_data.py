@@ -7,10 +7,11 @@ historical time series data spanning multiple years.
 This validates Phase 2.3 (Walk-Forward Validation on Historical Data).
 """
 
-import pytest
-import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
+
+import numpy as np
+import pandas as pd
+import pytest
 
 from src.training.walk_forward_optimizer import WalkForwardOptimizer, WindowConfig
 

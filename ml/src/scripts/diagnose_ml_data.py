@@ -2,8 +2,8 @@
 """Diagnostic script to check ML data freshness and identify issues."""
 
 import sys
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))

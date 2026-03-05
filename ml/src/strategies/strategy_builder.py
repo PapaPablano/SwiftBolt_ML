@@ -31,7 +31,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from ..visualization.payoff_diagrams import PayoffDiagram, OptionLeg
+from ..visualization.payoff_diagrams import OptionLeg, PayoffDiagram
 
 logger = logging.getLogger(__name__)
 

@@ -40,7 +40,7 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 from scipy.interpolate import CubicSpline, RectBivariateSpline
-from scipy.optimize import minimize, differential_evolution
+from scipy.optimize import differential_evolution, minimize
 
 logger = logging.getLogger(__name__)
 

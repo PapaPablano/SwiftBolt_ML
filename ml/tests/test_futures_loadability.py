@@ -1,5 +1,6 @@
 import os
 from datetime import date, timedelta
+
 import requests
 
 BASE = os.getenv("FASTAPI_BASE_URL", "http://localhost:8000")

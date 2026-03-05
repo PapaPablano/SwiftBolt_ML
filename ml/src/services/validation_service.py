@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional
 
 from src.data.supabase_db import SupabaseDatabase
-from src.validation import UnifiedValidator, ValidationScores, UnifiedPrediction
+from src.validation import UnifiedPrediction, UnifiedValidator, ValidationScores
 
 logger = logging.getLogger(__name__)
 

@@ -2,8 +2,8 @@
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, List
 from dataclasses import dataclass
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 

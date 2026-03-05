@@ -5,10 +5,11 @@ Tests weight calibration with divergence detection on realistic multi-symbol
 datasets to validate Phase 3.2 implementation.
 """
 
-import pytest
+from datetime import datetime, timedelta
+
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
+import pytest
 
 from src.monitoring.divergence_monitor import DivergenceMonitor
 

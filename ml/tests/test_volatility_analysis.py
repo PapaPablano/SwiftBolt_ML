@@ -8,9 +8,9 @@ Run tests:
     pytest tests/test_volatility_analysis.py -v --cov=src/features/volatility_analysis
 """
 
-import pytest
 import numpy as np
 import pandas as pd
+import pytest
 
 from src.features.volatility_analysis import (
     VolatilityAnalyzer,

@@ -8,8 +8,8 @@ Run tests:
     pytest tests/test_options_pricing.py -v --cov=src/models/options_pricing
 """
 
-import pytest
 import numpy as np
+import pytest
 
 from src.models.options_pricing import (
     BlackScholesModel,

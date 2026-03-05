@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from src.scripts.universe_utils import get_symbol_universe, format_env_exports
+from src.scripts.universe_utils import format_env_exports, get_symbol_universe
 
 
 def parse_args() -> argparse.Namespace:

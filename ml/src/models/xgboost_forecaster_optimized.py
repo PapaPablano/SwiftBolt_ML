@@ -10,9 +10,9 @@ from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
+from xgboost import XGBClassifier
 
 from src.models.xgboost_forecaster import XGBoostForecaster
-from xgboost import XGBClassifier
 
 logger = logging.getLogger(__name__)
 

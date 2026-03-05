@@ -9,10 +9,10 @@ feature source (e.g., daily/hourly sentiment aggregates) or for dashboards/API.
 import datetime
 import logging
 from typing import Any, Optional, Union
+from urllib.request import Request, urlopen
 
 import pandas as pd
 from bs4 import BeautifulSoup
-from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +249,7 @@ def get_historical_sentiment_series(
     db_series: pd.Series | None = None
     try:
         from supabase import create_client
+
         from config.settings import settings
 
         client = create_client(

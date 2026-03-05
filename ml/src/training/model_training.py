@@ -6,9 +6,9 @@ Trains individual ML models (Random Forest, Gradient Boosting) with proper valid
 import logging
 from typing import Dict, List
 
-import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+import pandas as pd
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 
 logger = logging.getLogger(__name__)
