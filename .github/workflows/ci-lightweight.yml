@@ -275,7 +275,7 @@ jobs:
     - name: Run unit tests
       working-directory: ml
       env:
-        # Dummy values prevent module-level Supabase client init from crashing at collection time
+        # Dummy values for pydantic-settings; tests/conftest.py patches supabase.create_client.
         SUPABASE_URL: "https://placeholder.supabase.co"
         SUPABASE_KEY: "placeholder-key-for-ci"
       run: |
@@ -283,8 +283,6 @@ jobs:
           --cov=src \
           --cov-report=xml \
           --cov-report=term-missing \
-          --ignore=tests/test_canonical_intraday_points.py \
-          --ignore=tests/test_forecast_validator.py \
           --ignore=tests/test_unified_validator.py \
           --ignore=tests/test_futures_loadability.py \
           --ignore=tests/test_intraday_daily_feedback.py \
