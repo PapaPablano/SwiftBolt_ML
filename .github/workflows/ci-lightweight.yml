@@ -80,7 +80,7 @@ jobs:
         cd ml
         python -m pip install --upgrade pip
         # Only install linting tools - NOT the full ML stack
-        pip install black mypy flake8 isort bandit safety
+        pip install "black==26.1.0" mypy flake8 isort bandit safety
 
     - name: Check formatting (Black)
       run: |

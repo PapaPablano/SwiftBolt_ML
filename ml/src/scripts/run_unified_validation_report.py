@@ -27,7 +27,6 @@ sys.path.insert(0, "src")
 
 from src.services.validation_service import ValidationService
 
-
 DEFAULT_SYMBOLS = ["AAPL", "NVDA", "MSFT", "TSLA", "META", "AMD", "CRWD", "GOOGL", "AMZN"]
 
 

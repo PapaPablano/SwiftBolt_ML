@@ -262,15 +262,13 @@ class UnifiedPredictionStore:
 
         with self.db.get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
+                cur.execute("""
                     SELECT s.ticker, f.confidence, f.points, f.run_at
                     FROM ml_forecasts f
                     JOIN symbols s ON f.symbol_id = s.id
                     WHERE f.horizon = 'unified'
                     ORDER BY f.run_at DESC
-                    """
-                )
+                    """)
                 rows = cur.fetchall()
 
                 seen_symbols = set()

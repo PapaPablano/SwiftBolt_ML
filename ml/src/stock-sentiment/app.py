@@ -153,9 +153,7 @@ try:
 		The table below gives each of the most recent headlines of the stock and the negative, neutral, positive and an aggregated sentiment score.
 		The news headlines are obtained from the FinViz website.
 		Sentiments are given by the nltk.sentiment.vader Python library.
-		""".format(
-        ticker
-    )
+		""".format(ticker)
 
     st.write(description)
     st.table(parsed_and_scored_news)

@@ -272,8 +272,7 @@ if __name__ == "__main__":
         print("Install with: pip install websocket-client")
         print("\nShowing example usage:")
 
-        print(
-            """
+        print("""
 # Example usage:
 from src.streaming.websocket_client import WebSocketClient
 
@@ -297,8 +296,7 @@ client.start()
 
 # Stop streaming
 client.stop()
-        """
-        )
+        """)
     else:
         print("\n✅ websocket-client available")
         print("\nWebSocket client can connect to real-time data feeds")
