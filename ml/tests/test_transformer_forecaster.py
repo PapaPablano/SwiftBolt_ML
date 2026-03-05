@@ -26,14 +26,16 @@ class TestTransformerForecaster:
         n = 300
         prices = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
 
-        df = pd.DataFrame({
-            "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
-            "open": prices * 0.995,
-            "high": prices * 1.01,
-            "low": prices * 0.99,
-            "close": prices,
-            "volume": np.random.randint(1e6, 1e7, n).astype(float),
-        })
+        df = pd.DataFrame(
+            {
+                "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
+                "open": prices * 0.995,
+                "high": prices * 1.01,
+                "low": prices * 0.99,
+                "close": prices,
+                "volume": np.random.randint(1e6, 1e7, n).astype(float),
+            }
+        )
         return df
 
     def test_initialization(self):
@@ -68,9 +70,11 @@ class TestTransformerForecaster:
         assert forecaster.is_trained is True
         # Accept either TensorFlow mode or fallback mode
         assert forecaster.training_stats
-        assert ("epochs_trained" in forecaster.training_stats or
-                "fallback_mode" in forecaster.training_stats or
-                "n_samples" in forecaster.training_stats)
+        assert (
+            "epochs_trained" in forecaster.training_stats
+            or "fallback_mode" in forecaster.training_stats
+            or "n_samples" in forecaster.training_stats
+        )
         print("✓ Training successful")
 
     def test_prediction(self, sample_data):
@@ -115,7 +119,9 @@ class TestTransformerForecaster:
             assert "1D" in horizons
             assert "5D" in horizons
             assert "20D" in horizons
-            print(f"✓ Multi-horizon predictions: 1D={horizons['1D']:.4f}, 5D={horizons['5D']:.4f}, 20D={horizons['20D']:.4f}")
+            print(
+                f"✓ Multi-horizon predictions: 1D={horizons['1D']:.4f}, 5D={horizons['5D']:.4f}, 20D={horizons['20D']:.4f}"
+            )
         else:
             # Fallback mode - at least has basic prediction
             assert "forecast_return" in prediction
@@ -142,7 +148,9 @@ class TestTransformerForecaster:
             assert "all_aligned" in agreement
             assert "directions" in agreement
             assert 0 <= agreement["agreement_score"] <= 1
-            print(f"✓ Timeframe agreement: {agreement['agreement_score']:.2%}, aligned={agreement['all_aligned']}")
+            print(
+                f"✓ Timeframe agreement: {agreement['agreement_score']:.2%}, aligned={agreement['all_aligned']}"
+            )
         else:
             # Fallback mode - at least has basic prediction
             assert "label" in prediction
@@ -167,7 +175,9 @@ class TestTransformerForecaster:
         assert "points" in forecast
         assert len(forecast["points"]) > 0
         assert forecast["model_type"] == "Transformer"
-        print(f"✓ Forecast generation: {len(forecast['points'])} points, confidence={forecast['confidence']:.2%}")
+        print(
+            f"✓ Forecast generation: {len(forecast['points'])} points, confidence={forecast['confidence']:.2%}"
+        )
 
     def test_model_info(self, sample_data):
         """Test model info retrieval."""

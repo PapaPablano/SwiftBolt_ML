@@ -35,7 +35,11 @@ TIMEFRAME_CONFIGS = {
     "m15": {"bars": 500, "horizon": 5, "threshold": 0.002},
     "h1": {"bars": 500, "horizon": 5, "threshold": 0.003},
     "h4": {"bars": 300, "horizon": 3, "threshold": 0.005},
-    "d1": {"bars": 500, "horizon": 5, "threshold": 0.009},  # Optimized for SPY (0.9%), NVDA will use 2.8% in symbol-specific override
+    "d1": {
+        "bars": 500,
+        "horizon": 5,
+        "threshold": 0.009,
+    },  # Optimized for SPY (0.9%), NVDA will use 2.8% in symbol-specific override
 }
 
 # Consistent label order for confusion matrices
@@ -88,6 +92,8 @@ def _log_classifier_diagnostics(
     )
 
     return acc
+
+
 def train_ensemble_for_symbol_timeframe(
     db: SupabaseDatabase,
     symbol: str,
@@ -96,26 +102,26 @@ def train_ensemble_for_symbol_timeframe(
 ) -> Dict:
     """
     Train complete ensemble for a symbol/timeframe combination.
-    
+
     Args:
         db: Database connection
         symbol: Ticker (e.g., "AAPL")
         timeframe: Timeframe identifier (e.g., "m15", "h1", "d1")
         lookback_days: Historical data window
-    
+
     Returns:
         Training results dictionary
     """
-    
+
     logger.info("=" * 80)
     logger.info(f"Training ensemble for {symbol}/{timeframe}")
     logger.info(f"Lookback: {lookback_days} days")
     logger.info("=" * 80)
-    
+
     try:
         # Get timeframe config
         config = TIMEFRAME_CONFIGS.get(timeframe, {"bars": 500, "horizon": 5, "threshold": 0.002})
-        
+
         # Step 1: Collect data
         logger.info("Step 1: Collecting training data...")
         data_map = collect_training_data(
@@ -124,19 +130,19 @@ def train_ensemble_for_symbol_timeframe(
             timeframes={timeframe: config["bars"]},
             lookback_days=lookback_days,
         )
-        
+
         if timeframe not in data_map or symbol not in data_map[timeframe]:
             logger.error(f"No data for {symbol}/{timeframe}")
             return {"error": f"No data for {symbol}/{timeframe}", "success": False}
-        
+
         df = data_map[timeframe][symbol]
-        
+
         if len(df) < 100:
             logger.warning(f"Insufficient  {len(df)} rows")
             return {"error": f"Insufficient  {len(df)} rows", "success": False}
-        
+
         logger.info(f"  Collected {len(df)} bars")
-        
+
         # Step 2: Create labels
         logger.info("Step 2: Creating labels...")
         features_raw, labels = create_labels(
@@ -144,18 +150,18 @@ def train_ensemble_for_symbol_timeframe(
             prediction_horizon_bars=config["horizon"],
             threshold=config["threshold"],
         )
-        
+
         # Step 3: Select features
         logger.info("Step 3: Selecting features...")
         features = select_features_for_training(features_raw)
-        
+
         logger.info(f"  Features shape: {features.shape}")
         logger.info(f"  Label distribution: {labels.value_counts().to_dict()}")
-        
+
         # Step 4: Train/validation split
         logger.info("Step 4: Creating time-ordered train/validation split...")
-        train_features, valid_features, train_labels, valid_labels = (
-            prepare_train_validation_split(features, labels, train_fraction=0.7)
+        train_features, valid_features, train_labels, valid_labels = prepare_train_validation_split(
+            features, labels, train_fraction=0.7
         )
 
         # Step 4b: Baseline diagnostics (majority-class baseline)
@@ -205,10 +211,10 @@ def train_ensemble_for_symbol_timeframe(
 
         optimizer = EnsembleWeightOptimizer(alpha=1.0)
         weights = optimizer.optimize_weights(model_predictions, valid_labels)
-        
+
         # Step 7: Calculate ensemble performance
         logger.info("Step 7: Calculating ensemble performance...")
-        
+
         # Get predictions for all models
         ensemble_preds = []
         for i in range(len(valid_features)):
@@ -219,7 +225,7 @@ def train_ensemble_for_symbol_timeframe(
                     weight = weights[model_name]
                     pred_val = {"BEARISH": -1, "NEUTRAL": 0, "BULLISH": 1}.get(pred, 0)
                     weighted_score += weight * pred_val
-            
+
             # Convert score to label
             if weighted_score > 0.33:
                 ensemble_preds.append("BULLISH")
@@ -227,10 +233,10 @@ def train_ensemble_for_symbol_timeframe(
                 ensemble_preds.append("BEARISH")
             else:
                 ensemble_preds.append("NEUTRAL")
-        
-        ensemble_accuracy = sum(
-            p == a for p, a in zip(ensemble_preds, valid_labels)
-        ) / len(valid_labels)
+
+        ensemble_accuracy = sum(p == a for p, a in zip(ensemble_preds, valid_labels)) / len(
+            valid_labels
+        )
 
         logger.info(f"  Ensemble Validation Accuracy: {ensemble_accuracy:.1%}")
         logger.info("Step 7b: Ensemble diagnostics...")
@@ -243,13 +249,13 @@ def train_ensemble_for_symbol_timeframe(
             "  Ensemble vs baseline delta: %+0.1f%%",
             (ensemble_accuracy - baseline_accuracy) * 100,
         )
-        
+
         # Step 8: Save models to disk
         logger.info("Step 8: Saving models to disk...")
-        
+
         timestamp = datetime.utcnow().strftime("%Y%m%d")
         model_file = MODELS_DIR / f"{symbol}_{timeframe}_{timestamp}.pkl"
-        
+
         artifact = {
             "symbol": symbol,
             "timeframe": timeframe,
@@ -262,15 +268,15 @@ def train_ensemble_for_symbol_timeframe(
             "n_features": len(features.columns),
             "feature_names": features.columns.tolist(),
         }
-        
+
         with open(model_file, "wb") as f:
             pickle.dump(artifact, f)
-        
+
         logger.info(f"  Saved to {model_file}")
-        
+
         # Step 9: Store performance in database
         logger.info("Step 9: Recording performance metrics...")
-        
+
         try:
             # Get symbol_id
             symbol_response = (
@@ -281,24 +287,26 @@ def train_ensemble_for_symbol_timeframe(
                 .execute()
             )
             symbol_id = symbol_response.data["id"]
-            
-            db.client.table("training_runs").insert({
-                "symbol_id": symbol_id,
-                "timeframe": timeframe,
-                "run_date": datetime.utcnow().isoformat(),
-                "lookback_days": lookback_days,
-                "n_training_samples": len(train_features),
-                "n_validation_samples": len(valid_features),
-                "ensemble_validation_accuracy": float(ensemble_accuracy),
-                "model_performances": model_perfs,
-                "weights": weights,
-                "models_artifact_path": str(model_file),
-            }).execute()
-            
+
+            db.client.table("training_runs").insert(
+                {
+                    "symbol_id": symbol_id,
+                    "timeframe": timeframe,
+                    "run_date": datetime.utcnow().isoformat(),
+                    "lookback_days": lookback_days,
+                    "n_training_samples": len(train_features),
+                    "n_validation_samples": len(valid_features),
+                    "ensemble_validation_accuracy": float(ensemble_accuracy),
+                    "model_performances": model_perfs,
+                    "weights": weights,
+                    "models_artifact_path": str(model_file),
+                }
+            ).execute()
+
             logger.info("  Metrics stored in database")
         except Exception as e:
             logger.warning(f"Failed to store metrics: {e}")
-        
+
         return {
             "symbol": symbol,
             "timeframe": timeframe,
@@ -310,12 +318,9 @@ def train_ensemble_for_symbol_timeframe(
             "models_path": str(model_file),
             "success": True,
         }
-        
+
     except Exception as e:
-        logger.error(
-            f"Training failed for {symbol}/{timeframe}: {e}",
-            exc_info=True
-        )
+        logger.error(f"Training failed for {symbol}/{timeframe}: {e}", exc_info=True)
         return {"error": str(e), "success": False}
 
 
@@ -326,30 +331,30 @@ def train_all_timeframes_all_symbols(
 ) -> Dict:
     """
     Full training pipeline: Train ensemble for all symbols × timeframes.
-    
+
     Args:
         db: Database connection
         symbols: List of symbols to train (defaults to settings.symbols_to_process)
         timeframes: List of timeframes to train (defaults to all configured)
-    
+
     Returns:
         Training results summary
     """
-    
+
     logger.info("=" * 80)
     logger.info("FULL ENSEMBLE TRAINING RUN")
     logger.info(f"Timestamp: {datetime.utcnow().isoformat()}")
     logger.info("=" * 80)
-    
+
     if symbols is None:
         symbols = settings.symbols_to_process
-    
+
     if timeframes is None:
         timeframes = list(TIMEFRAME_CONFIGS.keys())
-    
+
     logger.info(f"Symbols: {symbols}")
     logger.info(f"Timeframes: {timeframes}")
-    
+
     results = {
         "timestamp": datetime.utcnow().isoformat(),
         "symbols": symbols,
@@ -357,41 +362,39 @@ def train_all_timeframes_all_symbols(
         "trained": {},
         "failed": {},
     }
-    
+
     for symbol in symbols:
         results["trained"][symbol] = {}
         results["failed"][symbol] = {}
-        
+
         for timeframe in timeframes:
             logger.info(f"\nTraining {symbol} / {timeframe}...")
-            
-            result = train_ensemble_for_symbol_timeframe(
-                db, symbol, timeframe, lookback_days=90
-            )
-            
+
+            result = train_ensemble_for_symbol_timeframe(db, symbol, timeframe, lookback_days=90)
+
             if result.get("success", False):
                 results["trained"][symbol][timeframe] = result
             else:
                 results["failed"][symbol][timeframe] = result.get("error", "Unknown error")
-    
+
     # Summary
     total_trained = sum(len(v) for v in results["trained"].values())
     total_failed = sum(len(v) for v in results["failed"].values())
-    
+
     logger.info("\n" + "=" * 80)
     logger.info("TRAINING RUN COMPLETE")
     logger.info("=" * 80)
     logger.info(f"Trained: {total_trained} configurations")
     logger.info(f"Failed: {total_failed} configurations")
-    
+
     if total_failed > 0:
         logger.warning("Failed configurations:")
         for symbol, timeframes_dict in results["failed"].items():
             for tf, error in timeframes_dict.items():
                 logger.warning(f"  {symbol}/{tf}: {error}")
-    
+
     logger.info("=" * 80)
-    
+
     return results
 
 
@@ -401,15 +404,15 @@ if __name__ == "__main__":
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
-    
+
     # Initialize database
     db = SupabaseDatabase()
-    
+
     # Run full training
     results = train_all_timeframes_all_symbols(db)
-    
+
     # Exit with error code if any failed
     if results["failed"]:
         sys.exit(1)
-    
+
     sys.exit(0)

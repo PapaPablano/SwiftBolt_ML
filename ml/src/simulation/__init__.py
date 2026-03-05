@@ -2,4 +2,4 @@
 
 from .monte_carlo import MonteCarloSimulator, PathGenerator
 
-__all__ = ['MonteCarloSimulator', 'PathGenerator']
+__all__ = ["MonteCarloSimulator", "PathGenerator"]

@@ -2,8 +2,8 @@
 """Diagnostic script to check ML data freshness and identify issues."""
 
 import sys
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -60,11 +60,7 @@ def check_ohlc_bars():
 
     # Get a sample symbol
     symbol_result = (
-        db.client.table("symbols")
-        .select("id, ticker")
-        .eq("ticker", "AAPL")
-        .single()
-        .execute()
+        db.client.table("symbols").select("id, ticker").eq("ticker", "AAPL").single().execute()
     )
 
     if not symbol_result.data:
@@ -151,7 +147,9 @@ def check_evaluations():
 
     if recent:
         correct = sum(1 for e in recent if e.get("was_correct"))
-        print(f"Accuracy (last {len(recent)}): {correct}/{len(recent)} = {100*correct/len(recent):.1f}%")
+        print(
+            f"Accuracy (last {len(recent)}): {correct}/{len(recent)} = {100*correct/len(recent):.1f}%"
+        )
 
 
 def check_data_refresh_jobs():

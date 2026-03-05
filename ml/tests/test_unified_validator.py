@@ -9,19 +9,19 @@ Tests cover:
 - Edge cases
 """
 
-import pytest
-from datetime import datetime, timedelta
-
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
+
+import pytest
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from validation.unified_framework import (
+    UnifiedPrediction,
     UnifiedValidator,
     ValidationScores,
-    UnifiedPrediction,
     validate_prediction,
 )
 
@@ -233,10 +233,10 @@ class TestMultiTimeframeReconciliation:
             live_score=0.70,
             multi_tf_scores={
                 "M15": -0.48,  # BEARISH (weight 0.05)
-                "H1": -0.40,   # BEARISH (weight 0.10)
-                "H4": -0.35,   # BEARISH (weight 0.20)
-                "D1": 0.60,    # BULLISH (weight 0.30)
-                "W1": 0.70,    # BULLISH (weight 0.35)
+                "H1": -0.40,  # BEARISH (weight 0.10)
+                "H4": -0.35,  # BEARISH (weight 0.20)
+                "D1": 0.60,  # BULLISH (weight 0.30)
+                "W1": 0.70,  # BULLISH (weight 0.35)
             },
         )
 
@@ -253,11 +253,11 @@ class TestMultiTimeframeReconciliation:
             walkforward_score=0.75,
             live_score=0.70,
             multi_tf_scores={
-                "M15": 0.10,   # NEUTRAL
-                "H1": 0.15,    # NEUTRAL
-                "H4": -0.40,   # BEARISH
-                "D1": 0.40,    # BULLISH
-                "W1": 0.05,    # NEUTRAL
+                "M15": 0.10,  # NEUTRAL
+                "H1": 0.15,  # NEUTRAL
+                "H4": -0.40,  # BEARISH
+                "D1": 0.40,  # BULLISH
+                "W1": 0.05,  # NEUTRAL
             },
         )
 
@@ -309,9 +309,7 @@ class TestRetrainingTrigger:
 
     def setup_method(self):
         # Set last retraining to 10 days ago
-        self.validator = UnifiedValidator(
-            last_retraining_date=datetime.now() - timedelta(days=10)
-        )
+        self.validator = UnifiedValidator(last_retraining_date=datetime.now() - timedelta(days=10))
 
     def test_no_retrain_within_schedule(self):
         """Test no retraining trigger when within schedule."""
@@ -342,9 +340,7 @@ class TestRetrainingTrigger:
 
     def test_retrain_on_schedule(self):
         """Test retraining triggered on 30-day schedule."""
-        validator = UnifiedValidator(
-            last_retraining_date=datetime.now() - timedelta(days=35)
-        )
+        validator = UnifiedValidator(last_retraining_date=datetime.now() - timedelta(days=35))
 
         scores = ValidationScores(
             backtesting_score=0.80,

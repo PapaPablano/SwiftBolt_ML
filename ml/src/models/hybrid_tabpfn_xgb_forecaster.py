@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 try:
     from tabpfn import TabPFNClassifier
     from tabpfn.constants import ModelVersion
+
     TABPFN_AVAILABLE = True
 except ImportError:
     TABPFN_AVAILABLE = False
@@ -45,9 +46,7 @@ class HybridTabPFN_XGBForecaster:
 
     def __init__(self, alpha: float = 0.5, tabpfn_ensemble: int = 8) -> None:
         if not TABPFN_AVAILABLE:
-            raise ImportError(
-                "TabPFN not installed. Install with: pip install tabpfn"
-            )
+            raise ImportError("TabPFN not installed. Install with: pip install tabpfn")
         self.alpha = alpha
         self.tabpfn_ensemble = tabpfn_ensemble
         self.xgb = XGBoostForecaster()
@@ -81,9 +80,7 @@ class HybridTabPFN_XGBForecaster:
     ) -> None:
         """Train both XGBoost and TabPFN on the same (X, y)."""
         if min_samples is not None and len(X) < min_samples:
-            raise ValueError(
-                f"Insufficient training data: {len(X)} < {min_samples}"
-            )
+            raise ValueError(f"Insufficient training data: {len(X)} < {min_samples}")
         # Train XGBoost (sets xgb.feature_columns)
         self.xgb.train(X, y, min_samples=min_samples, feature_names=feature_names)
         self.feature_columns = self.xgb.feature_columns

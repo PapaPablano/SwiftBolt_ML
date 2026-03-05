@@ -1,7 +1,31 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { TrendingUp, TrendingDown, DollarSign, Target, AlertCircle, RefreshCw, XCircle } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertCircle, RefreshCw, XCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { liveTradingApi } from '../api/strategiesApi';
+
+// ============================================================================
+// STALE INDICATOR
+// ============================================================================
+
+function StaleIndicator({ lastUpdatedAt }: { lastUpdatedAt: Date | null }) {
+  const [age, setAge] = useState(0);
+
+  useEffect(() => {
+    if (!lastUpdatedAt) return;
+    const timer = setInterval(
+      () => setAge(Math.floor((Date.now() - lastUpdatedAt.getTime()) / 1000)),
+      1000
+    );
+    return () => clearInterval(timer);
+  }, [lastUpdatedAt]);
+
+  if (!lastUpdatedAt) return null;
+  return (
+    <span className={`text-[9px] ${age > 30 ? 'text-yellow-400' : 'text-gray-500'}`}>
+      {age < 5 ? 'Live' : `${age}s ago`}
+    </span>
+  );
+}
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -79,6 +103,7 @@ export const LiveTradingDashboard: React.FC<LiveTradingDashboardProps> = ({ onBa
   const [loading, setLoading] = useState(true);
   const [closingId, setClosingId] = useState<string | null>(null);
   const [tab, setTab] = useState<'positions' | 'trades'>('positions');
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const visibleRef = useRef(true);
 
   const fetchAll = useCallback(async () => {
@@ -94,6 +119,7 @@ export const LiveTradingDashboard: React.FC<LiveTradingDashboardProps> = ({ onBa
       setTrades(trd ?? []);
       setSummary(sum ?? null);
       setBroker(brk ?? null);
+      setLastUpdatedAt(new Date());
     } catch (err) {
       console.error('[LiveTradingDashboard] Fetch failed:', err);
     } finally {
@@ -172,6 +198,7 @@ export const LiveTradingDashboard: React.FC<LiveTradingDashboardProps> = ({ onBa
           <span className="text-[10px] text-gray-500">
             {broker?.connected ? `${broker.provider ?? 'Connected'}` : 'Not connected'}
           </span>
+          <StaleIndicator lastUpdatedAt={lastUpdatedAt} />
         </div>
         <button
           onClick={fetchAll}
@@ -270,7 +297,7 @@ export const LiveTradingDashboard: React.FC<LiveTradingDashboardProps> = ({ onBa
                         </span>
                       )}
                     </div>
-                    {pos.status === 'open' && (
+                    {(pos.status === 'open' || pos.status === 'pending_bracket') && (
                       <button
                         onClick={() => handleClose(pos.id)}
                         disabled={closingId === pos.id}

@@ -316,8 +316,8 @@ def isolate_earnings_jump(
     if np.isnan(iv1) or np.isnan(iv2) or iv1 <= 0 or iv2 <= 0:
         return None
 
-    v1 = T1 * (iv1 ** 2)
-    v2 = T2 * (iv2 ** 2)
+    v1 = T1 * (iv1**2)
+    v2 = T2 * (iv2**2)
     numerator = v2 - v1
     if numerator < 0:
         numerator = 0.0
@@ -325,11 +325,11 @@ def isolate_earnings_jump(
 
     N_base = (T2 - T1) * ACT_365
     if realized_vol is not None and np.isfinite(realized_vol) and realized_vol > 0:
-        v_base = (realized_vol ** 2) / 252
+        v_base = (realized_vol**2) / 252
     else:
-        v_base = (sigma_f ** 2) / 30
+        v_base = (sigma_f**2) / 30
 
-    total_var = (T2 - T1) * (sigma_f ** 2)
+    total_var = (T2 - T1) * (sigma_f**2)
     v_event = max(0.0, total_var - N_base * v_base)
 
     event_1sigma = spot * np.sqrt(v_event) if v_event > 0 else 0.0

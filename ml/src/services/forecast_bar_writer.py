@@ -117,21 +117,9 @@ def upsert_forecast_bars(
                 "is_forecast": True,
                 "data_status": status,
                 "fetched_at": _to_iso_z(now),
-                "confidence_score": (
-                    float(conf_score)
-                    if conf_score is not None
-                    else None
-                ),
-                "upper_band": (
-                    float(upper_band)
-                    if upper_band is not None
-                    else None
-                ),
-                "lower_band": (
-                    float(lower_band)
-                    if lower_band is not None
-                    else None
-                ),
+                "confidence_score": (float(conf_score) if conf_score is not None else None),
+                "upper_band": (float(upper_band) if upper_band is not None else None),
+                "lower_band": (float(lower_band) if lower_band is not None else None),
             }
         )
 

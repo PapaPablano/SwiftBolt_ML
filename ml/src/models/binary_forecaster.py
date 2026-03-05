@@ -32,7 +32,7 @@ class BinaryForecaster:
     Binary forecaster using XGBoost to predict price direction (up/down).
 
     Predicts: Up (return >= 0%), Down (return < 0%)
-    
+
     Simpler than 3-class, achieves ~48% accuracy vs 33% for 3-class.
     """
 
@@ -66,12 +66,12 @@ class BinaryForecaster:
     ) -> tuple[pd.DataFrame, pd.Series]:
         """
         Prepare training data for BINARY classification (up/down).
-        
+
         Args:
             df: DataFrame with OHLCV
             horizon_days: Forecast horizon
             sentiment_series: Optional sentiment data
-            
+
         Returns:
             (X, y) where y is ['up', 'down']
         """
@@ -94,7 +94,7 @@ class BinaryForecaster:
 
         start_idx = 50
         end_idx = len(df) - horizon_days_int
-        
+
         logger.debug(
             "Training data range: start_idx=%d, end_idx=%d, df_len=%d, horizon=%.3f (int=%d)",
             start_idx,
@@ -103,7 +103,7 @@ class BinaryForecaster:
             horizon_days,
             horizon_days_int,
         )
-        
+
         for idx in range(start_idx, end_idx):
             features = engineer.add_features_to_point(df, idx)
             try:
@@ -141,13 +141,13 @@ class BinaryForecaster:
         )
         if len(y) > 0:
             logger.info("Label distribution (binary): %s", y.value_counts().to_dict())
-        
+
         return X, y
 
     def train(self, X: pd.DataFrame, y: pd.Series, min_samples: int = 100) -> None:
         """
         Train the model.
-        
+
         Args:
             X: Features
             y: Labels ['up', 'down']
@@ -155,78 +155,78 @@ class BinaryForecaster:
         """
         if len(X) < min_samples:
             raise ValueError(f"Insufficient training samples: {len(X)} < {min_samples}")
-        
+
         # Use only numeric columns (exclude datetime like 'ts' so scaler doesn't fail)
         X = X.select_dtypes(include=[np.number])
         if X.empty or len(X.columns) == 0:
             raise ValueError("No numeric feature columns for training")
         self.feature_columns = X.columns.tolist()
-        
+
         # Encode labels to numeric
         label_map = {"down": 0, "up": 1}
         y_numeric = y.map(label_map)
-        
+
         # Scale features
         X_scaled = self.scaler.fit_transform(X)
-        
+
         # Train
         self.model.fit(
             X_scaled,
             y_numeric,
             verbose=0,
         )
-        
+
         self.is_trained = True
         logger.info(f"Model trained with {len(X)} samples")
-    
+
     def predict(self, df: pd.DataFrame, horizon_days: int = 1) -> dict:
         """
         Make prediction for the last row of df.
-        
+
         Args:
             df: DataFrame with OHLCV (will use last row for prediction)
             horizon_days: Forecast horizon
-            
+
         Returns:
             Dict with 'label' and 'confidence'
         """
         if not self.is_trained:
             raise ValueError("Model not trained. Call train() first.")
-        
+
         df = df.copy()
         df = compute_simplified_features(df)
-        
+
         engineer = TemporalFeatureEngineer()
-        
+
         # Use last row for prediction
         idx = len(df) - 1
         if idx < 50:  # Need minimum lookback
             raise ValueError(f"Insufficient data for prediction: {idx} < 50")
-        
+
         features_dict = engineer.add_features_to_point(df, idx)
         features_df = pd.DataFrame([features_dict])
         # Use same numeric columns as training (exclude datetime)
         features_df = features_df[self.feature_columns]
-        
+
         # Scale using same scaler
         features_scaled = self.scaler.transform(features_df)
-        
+
         # Predict
         pred_numeric = self.model.predict(features_scaled)[0]
         pred_proba = self.model.predict_proba(features_scaled)[0]
-        
+
         label = self._label_decode[pred_numeric]
         confidence = float(max(pred_proba))
-        
+
         return {
-            'label': label,
-            'confidence': confidence,
-            'probabilities': {
-                'down': float(pred_proba[0]),
-                'up': float(pred_proba[1]),
+            "label": label,
+            "confidence": confidence,
+            "probabilities": {
+                "down": float(pred_proba[0]),
+                "up": float(pred_proba[1]),
             },
         }
-    
+
     def validate(
         self,
         df: pd.DataFrame,
@@ -236,57 +236,59 @@ class BinaryForecaster:
     ) -> pd.DataFrame:
         """
         Validate model on held-out data.
-        
+
         Returns:
             DataFrame with predictions and actuals
         """
         results = []
-        
+
         # Get training data (before holdout_start)
-        train_df = df[df['ts'] < holdout_start].copy()
+        train_df = df[df["ts"] < holdout_start].copy()
         if len(train_df) < 100:
             raise ValueError(f"Insufficient training  {len(train_df)} < 100")
-        
+
         # Prepare and train
         X, y = self.prepare_training_data(train_df, horizon_days=horizon_days)
         self.train(X, y)
-        
+
         # Test on holdout period
-        test_dates = df[(df['ts'] >= holdout_start) & (df['ts'] <= holdout_end)]['ts'].unique()
-        
+        test_dates = df[(df["ts"] >= holdout_start) & (df["ts"] <= holdout_end)]["ts"].unique()
+
         for test_date in test_dates:
             # Get data up to test_date
-            df_up_to_test = df[df['ts'] <= test_date].copy()
-            
+            df_up_to_test = df[df["ts"] <= test_date].copy()
+
             try:
                 pred = self.predict(df_up_to_test, horizon_days=horizon_days)
             except:
                 continue
-            
+
             # Get actual return
-            test_row = df[df['ts'] == test_date]
+            test_row = df[df["ts"] == test_date]
             if len(test_row) == 0:
                 continue
-            
+
             target_date = test_date + pd.Timedelta(days=horizon_days)
-            target_row = df[df['ts'] >= target_date].head(1)
+            target_row = df[df["ts"] >= target_date].head(1)
             if len(target_row) == 0:
                 continue
-            
-            test_price = test_row['close'].iloc[0]
-            target_price = target_row['close'].iloc[0]
+
+            test_price = test_row["close"].iloc[0]
+            target_price = target_row["close"].iloc[0]
             actual_return = (target_price - test_price) / test_price
-            
+
             actual_label = "up" if actual_return >= 0 else "down"
-            
-            results.append({
-                'test_date': test_date,
-                'horizon_days': horizon_days,
-                'predicted_label': pred['label'],
-                'predicted_confidence': pred['confidence'],
-                'actual_label': actual_label,
-                'actual_return': actual_return,
-                'correct': pred['label'] == actual_label,
-            })
-        
+
+            results.append(
+                {
+                    "test_date": test_date,
+                    "horizon_days": horizon_days,
+                    "predicted_label": pred["label"],
+                    "predicted_confidence": pred["confidence"],
+                    "actual_label": actual_label,
+                    "actual_return": actual_return,
+                    "correct": pred["label"] == actual_label,
+                }
+            )
+
         return pd.DataFrame(results)

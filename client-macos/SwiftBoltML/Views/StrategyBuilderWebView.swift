@@ -15,6 +15,52 @@ enum WebViewLoadState: Equatable {
     }
 }
 
+// MARK: - Strategy Platform Tab
+
+/// Typed tab identifiers for the unified React Strategy Platform.
+/// Using an enum (not String) prevents URL injection and makes invalid tabs
+/// a compile error rather than a runtime fallback.
+enum StrategyPlatformTab: String, CaseIterable {
+    case strategies   = "strategies"
+    case builder      = "builder"
+    case backtest     = "backtest"
+    case paperTrading = "paper-trading"
+    case liveTrading  = "live-trading"
+}
+
+// MARK: - Strategy Platform WebView
+
+/// Embeds the unified React Strategy Platform via WKWebView.
+/// `initialTab` controls which tab is active on load via the `?tab=` query param.
+///
+/// IMPORTANT: `.id(path)` is applied to force WKWebView recreation when the tab
+/// changes — without it, `updateNSView` only injects the symbol and does NOT reload
+/// the URL, causing the React app to stay on whichever tab was last shown.
+struct StrategyPlatformWebView: View {
+    let symbol: String?
+    var initialTab: StrategyPlatformTab = .builder
+
+    private var path: String {
+        // URLComponents handles encoding. Tab rawValues are ASCII alphanumerics + hyphens.
+        var components = URLComponents()
+        components.path = "/strategy-platform"
+        components.queryItems = [URLQueryItem(name: "tab", value: initialTab.rawValue)]
+        return components.url?.absoluteString
+            ?? "/strategy-platform?tab=\(initialTab.rawValue)"
+    }
+
+    var body: some View {
+        FrontendWebEmbedView(
+            path: path,
+            messageName: "strategyPlatform",
+            navigationTitle: "Strategy Platform",
+            loadingLabel: "Loading Strategy Platform…",
+            symbol: symbol
+        )
+        .id(path)  // CRITICAL: forces WKWebView teardown+recreation on tab change
+    }
+}
+
 // MARK: - Strategy Builder WebView
 
 /// Embeds the React Strategy Condition Builder via WKWebView.
@@ -107,8 +153,8 @@ private struct FrontendWebViewRepresentable: NSViewRepresentable {
         // WKUserContentController holds script handlers strongly.
         let proxy = WeakScriptHandler(context.coordinator)
         config.userContentController.add(proxy, name: messageName)
-        // Prevent the WebView from navigating outside app-bound domains
-        config.limitsNavigationsToAppBoundDomains = true
+        // Register bundled frontend scheme handler (no-op when dev server is active).
+        config.setURLSchemeHandler(BundledFrontendSchemeHandler(), forURLScheme: "frontend")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
@@ -138,6 +184,8 @@ private struct FrontendWebViewRepresentable: NSViewRepresentable {
         private let logger: Logger
         /// Tracks the most recent symbol so it can be re-injected after page load.
         var currentSymbol: String?
+        /// Supabase session token injected into the React app for live trading auth.
+        var sessionToken: String?
 
         init(messageName: String, loadState: Binding<WebViewLoadState>) {
             self.messageName = messageName
@@ -157,6 +205,10 @@ private struct FrontendWebViewRepresentable: NSViewRepresentable {
             if let symbol = currentSymbol {
                 injectSymbol(symbol, into: webView)
             }
+            // Inject the current Supabase session token for live trading auth.
+            if let token = sessionToken {
+                injectSession(token, into: webView)
+            }
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -169,15 +221,23 @@ private struct FrontendWebViewRepresentable: NSViewRepresentable {
             loadState = .failed(error.localizedDescription)
         }
 
-        /// Restrict navigation to localhost / 127.0.0.1 only.
+        /// Restrict navigation to localhost / 127.0.0.1 and the bundled frontend scheme.
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
-            guard let host = navigationAction.request.url?.host,
-                  allowedHosts.contains(host) else {
-                logger.warning("Blocked navigation to: \(navigationAction.request.url?.absoluteString ?? "unknown", privacy: .public)")
+            guard let url = navigationAction.request.url else {
+                decisionHandler(.cancel)
+                return
+            }
+            // Allow bundled frontend custom scheme — always safe, served from app bundle.
+            if url.scheme == "frontend" {
+                decisionHandler(.allow)
+                return
+            }
+            guard let host = url.host, allowedHosts.contains(host) else {
+                logger.warning("Blocked navigation to: \(url.absoluteString, privacy: .public)")
                 decisionHandler(.cancel)
                 return
             }
@@ -293,6 +353,15 @@ private func injectSymbol(_ symbol: String, into webView: WKWebView) {
     webView.evaluateJavaScript("window.postMessage(\(json), '*');")
 }
 
+/// Injects a Supabase session JWT into the React app via window.postMessage.
+/// Enables LiveTradingDashboard to authenticate without a browser-based login flow.
+private func injectSession(_ token: String, into webView: WKWebView) {
+    let payload: [String: Any] = ["type": "sessionToken", "token": token]
+    guard let data = try? JSONSerialization.data(withJSONObject: payload),
+          let json = String(data: data, encoding: .utf8) else { return }
+    webView.evaluateJavaScript("window.postMessage(\(json), '*');")
+}
+
 /// Returns the validated frontend base URL + path.
 /// Reads FRONTEND_URL from env; validates scheme and host; falls back to localhost:5173.
 private func frontendURL(path: String) -> String {
@@ -306,5 +375,6 @@ private func frontendURL(path: String) -> String {
         let base = env.hasSuffix("/") ? String(env.dropLast()) : env
         return base + path
     }
-    return "http://localhost:5173" + path
+    // Bundled mode: serve React SPA from FrontendDist/ via custom scheme.
+    return "frontend://localhost" + path
 }

@@ -229,6 +229,7 @@ class TradierClient:
         Returns:
             DataFrame with filtered option set
         """
+
         def _to_date(e) -> str:
             if isinstance(e, (int, float)) and e > 1e9:
                 return datetime.utcfromtimestamp(e).strftime("%Y-%m-%d")

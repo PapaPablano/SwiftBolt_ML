@@ -76,7 +76,7 @@ class TestIntradayDailyFeedback:
             current_weights={"st": 0.3, "sr": 0.3, "ens": 0.4},
         )
 
-        with patch.object(feedback, 'get_feedback_status', return_value=status):
+        with patch.object(feedback, "get_feedback_status", return_value=status):
             needs_recal = feedback.needs_recalibration("AAPL")
             assert needs_recal is False
             print("✓ Fresh calibration doesn't trigger recalibration")
@@ -96,7 +96,7 @@ class TestIntradayDailyFeedback:
             current_weights={"st": 0.3, "sr": 0.3, "ens": 0.4},
         )
 
-        with patch.object(feedback, 'get_feedback_status', return_value=status):
+        with patch.object(feedback, "get_feedback_status", return_value=status):
             needs_recal = feedback.needs_recalibration("AAPL")
             assert needs_recal is True
             print("✓ Stale calibration triggers recalibration")
@@ -116,7 +116,7 @@ class TestIntradayDailyFeedback:
             current_weights={"st": 0.33, "sr": 0.33, "ens": 0.34},
         )
 
-        with patch.object(feedback, 'get_feedback_status', return_value=status):
+        with patch.object(feedback, "get_feedback_status", return_value=status):
             needs_recal = feedback.needs_recalibration("AAPL")
             assert needs_recal is True
             print("✓ Missing weights trigger calibration")
@@ -124,10 +124,11 @@ class TestIntradayDailyFeedback:
     def test_get_best_weights_fresh(self, feedback):
         """Test getting fresh calibrated weights."""
         with patch.object(
-            feedback, '_get_current_weights',
-            return_value=({"st": 0.3, "sr": 0.3, "ens": 0.4}, "intraday_calibrated (fresh)")
+            feedback,
+            "_get_current_weights",
+            return_value=({"st": 0.3, "sr": 0.3, "ens": 0.4}, "intraday_calibrated (fresh)"),
         ):
-            with patch('src.intraday_daily_feedback.db') as mock_db:
+            with patch("src.intraday_daily_feedback.db") as mock_db:
                 mock_db.get_symbol_id.return_value = "test-id"
 
                 weights, source = feedback.get_best_weights("AAPL", "1D")
@@ -140,10 +141,11 @@ class TestIntradayDailyFeedback:
     def test_get_best_weights_default(self, feedback):
         """Test getting default weights when none available."""
         with patch.object(
-            feedback, '_get_current_weights',
-            return_value=({"st": 0.33, "sr": 0.33, "ens": 0.34}, "default")
+            feedback,
+            "_get_current_weights",
+            return_value=({"st": 0.33, "sr": 0.33, "ens": 0.34}, "default"),
         ):
-            with patch('src.intraday_daily_feedback.db') as mock_db:
+            with patch("src.intraday_daily_feedback.db") as mock_db:
                 mock_db.get_symbol_id.return_value = "test-id"
 
                 weights, source = feedback.get_best_weights("AAPL", "1D")
@@ -154,8 +156,8 @@ class TestIntradayDailyFeedback:
     def test_recalibration_history_tracking(self, feedback):
         """Test that recalibration history is tracked."""
         # Simulate a recalibration
-        with patch.object(feedback.calibrator, 'calibrate_symbol', return_value=None):
-            with patch.object(feedback.calibrator, 'calibrate_and_save', return_value=False):
+        with patch.object(feedback.calibrator, "calibrate_symbol", return_value=None):
+            with patch.object(feedback.calibrator, "calibrate_and_save", return_value=False):
                 feedback.run_recalibration("AAPL")
 
         # History should be updated
@@ -180,8 +182,10 @@ class TestIntradayDailyFeedback:
 
     def test_evaluation_counting(self, feedback):
         """Test evaluation counting logic."""
-        with patch('src.intraday_daily_feedback.db') as mock_db:
-            mock_db.client.table.return_value.select.return_value.eq.return_value.execute.return_value.count = 50
+        with patch("src.intraday_daily_feedback.db") as mock_db:
+            mock_db.client.table.return_value.select.return_value.eq.return_value.execute.return_value.count = (
+                50
+            )
 
             count = feedback._count_evaluations("test-id")
             assert count == 50

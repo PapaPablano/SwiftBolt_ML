@@ -11,9 +11,9 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from validation.unified_framework import (
+    UnifiedPrediction,
     UnifiedValidator,
     ValidationScores,
-    UnifiedPrediction,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,7 @@ class UnifiedPredictionStore:
         self.validator = validator or UnifiedValidator()
         # Lazy import to avoid database connection at module load time
         from data.db import get_db
+
         self.db = get_db()
 
     def store_prediction(
@@ -261,15 +262,13 @@ class UnifiedPredictionStore:
 
         with self.db.get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
+                cur.execute("""
                     SELECT s.ticker, f.confidence, f.points, f.run_at
                     FROM ml_forecasts f
                     JOIN symbols s ON f.symbol_id = s.id
                     WHERE f.horizon = 'unified'
                     ORDER BY f.run_at DESC
-                    """
-                )
+                    """)
                 rows = cur.fetchall()
 
                 seen_symbols = set()
@@ -290,14 +289,16 @@ class UnifiedPredictionStore:
                         severity = drift.get("severity", "none")
 
                         if severity_order.index(severity) >= min_idx:
-                            alerts.append({
-                                "symbol": symbol,
-                                "confidence": row[1],
-                                "drift_severity": severity,
-                                "drift_magnitude": drift.get("magnitude", 0),
-                                "explanation": drift.get("explanation", ""),
-                                "run_at": row[3],
-                            })
+                            alerts.append(
+                                {
+                                    "symbol": symbol,
+                                    "confidence": row[1],
+                                    "drift_severity": severity,
+                                    "drift_magnitude": drift.get("magnitude", 0),
+                                    "explanation": drift.get("explanation", ""),
+                                    "run_at": row[3],
+                                }
+                            )
 
         return alerts
 

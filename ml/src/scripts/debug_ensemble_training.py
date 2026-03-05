@@ -6,21 +6,18 @@ Identifies why ensemble.train() is failing for specific symbols,
 causing fallback to 40% confidence predictions.
 """
 
+import logging
 import os
 import sys
 from argparse import ArgumentParser
-import logging
 
-from dotenv import load_dotenv
 import pandas as pd
+from dotenv import load_dotenv
 
 load_dotenv()
 
 # Set up logging to see all warnings
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(levelname)s: %(message)s"
-)
+logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 from config.settings import settings
@@ -62,7 +59,7 @@ def debug_ensemble_training(symbol: str, horizon: str = "1D"):
 
         # Check for NaN/Inf in features
         nan_count = df.isna().sum().sum()
-        inf_count = df.isin([float('inf'), float('-inf')]).sum().sum()
+        inf_count = df.isin([float("inf"), float("-inf")]).sum().sum()
         print(f"   NaN values: {nan_count}")
         print(f"   Inf values: {inf_count}")
 
@@ -71,6 +68,7 @@ def debug_ensemble_training(symbol: str, horizon: str = "1D"):
     except Exception as e:
         print(f"❌ Feature addition failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -100,11 +98,14 @@ def debug_ensemble_training(symbol: str, horizon: str = "1D"):
             return False
 
         if len(X_train) < settings.min_bars_for_training:
-            print(f"⚠️  Insufficient training data: {len(X_train)} < {settings.min_bars_for_training}")
+            print(
+                f"⚠️  Insufficient training data: {len(X_train)} < {settings.min_bars_for_training}"
+            )
 
     except Exception as e:
         print(f"❌ Training data prep failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -150,6 +151,7 @@ def debug_ensemble_training(symbol: str, horizon: str = "1D"):
     except Exception as e:
         print(f"❌ Ensemble training failed: {e}")
         import traceback
+
         traceback.print_exc()
 
         print(f"\n   Falling back to BaselineForecaster...")
@@ -157,7 +159,9 @@ def debug_ensemble_training(symbol: str, horizon: str = "1D"):
             baseline_forecaster = BaselineForecaster()
             baseline_forecaster.fit(df, horizon_days=horizon_days)
             ml_pred = baseline_forecaster.predict(df, horizon_days=horizon_days)
-            print(f"   ✅ Baseline prediction: {ml_pred.get('label', 'unknown')} ({ml_pred.get('confidence', 0):.0%})")
+            print(
+                f"   ✅ Baseline prediction: {ml_pred.get('label', 'unknown')} ({ml_pred.get('confidence', 0):.0%})"
+            )
             return False  # Return False because ensemble failed (even though baseline worked)
         except Exception as e2:
             print(f"   ❌ Even baseline failed: {e2}")
@@ -171,9 +175,9 @@ def main():
     parser.add_argument("--all-intraday", action="store_true", help="Test all intraday_symbols")
     args = parser.parse_args()
 
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("ENSEMBLE TRAINING DEBUG")
-    print("="*70)
+    print("=" * 70)
 
     if args.all_intraday:
         symbols = settings.intraday_symbols

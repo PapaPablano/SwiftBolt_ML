@@ -27,14 +27,17 @@ sys.path.insert(0, "src")
 
 from src.services.validation_service import ValidationService
 
-
 DEFAULT_SYMBOLS = ["AAPL", "NVDA", "MSFT", "TSLA", "META", "AMD", "CRWD", "GOOGL", "AMZN"]
 
 
 def main():
     parser = ArgumentParser(description="Run unified ML validation report")
-    parser.add_argument("--symbols", type=str, default=None, help="Comma-separated symbols to validate")
-    parser.add_argument("--workers", type=int, default=4, help="Number of parallel validation workers")
+    parser.add_argument(
+        "--symbols", type=str, default=None, help="Comma-separated symbols to validate"
+    )
+    parser.add_argument(
+        "--workers", type=int, default=4, help="Number of parallel validation workers"
+    )
     args = parser.parse_args()
 
     if args.symbols:
@@ -65,9 +68,9 @@ def main():
 
                 # Check if using default scores (indicates missing data)
                 using_defaults = (
-                    result.live_score == 0.50 and
-                    result.backtesting_score == 0.55 and
-                    result.walkforward_score == 0.60
+                    result.live_score == 0.50
+                    and result.backtesting_score == 0.55
+                    and result.walkforward_score == 0.60
                 )
 
                 status = result.get_status_emoji()
@@ -80,12 +83,14 @@ def main():
                     print(f"   ℹ️  Using default scores (live_predictions table empty)")
 
                 if result.drift_detected:
-                    drift_alerts.append({
-                        "symbol": symbol,
-                        "severity": result.drift_severity,
-                        "magnitude": result.drift_magnitude,
-                        "recommendation": result.recommendation,
-                    })
+                    drift_alerts.append(
+                        {
+                            "symbol": symbol,
+                            "severity": result.drift_severity,
+                            "magnitude": result.drift_magnitude,
+                            "recommendation": result.recommendation,
+                        }
+                    )
 
                 if result.retraining_trigger:
                     print(f"   ⚠️ RETRAINING TRIGGERED: {result.retraining_reason}")

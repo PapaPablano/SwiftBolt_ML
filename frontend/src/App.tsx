@@ -5,7 +5,7 @@
  * Root component for SwiftBolt Forecast Charts.
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ChartWithIndicators } from './components/ChartWithIndicators';
 import type { BacktestResult } from './types/strategyBacktest';
 import { RecommendationsPanel } from './components/RecommendationsPanel';
@@ -15,6 +15,8 @@ import EquityCurveChart from './components/EquityCurveChart';
 import { PaperTradingDashboard } from './components/PaperTradingDashboard';
 import { LiveTradingDashboard } from './components/LiveTradingDashboard';
 import type { Condition } from './components/StrategyConditionBuilder';
+import { StrategyPlatform, isPlatformTab } from './components/StrategyPlatform';
+import { useEmbeddedSymbol } from './hooks/useEmbeddedSymbol';
 
 // ---------------------------------------------------------------------------
 // Embedded-mode helpers (macOS WKWebView integration)
@@ -24,23 +26,6 @@ const DEFAULT_INDICATORS = [
   'RSI', 'MACD', 'SMA', 'EMA', 'VWAP', 'Bollinger Bands',
   'ATR', 'Stochastic', 'Volume', 'Close', 'Open', 'High', 'Low',
 ];
-
-/** Listens for `window.postMessage({ type: 'symbolChanged', symbol })` from the macOS native bridge. */
-function useEmbeddedSymbol(fallback = 'AAPL'): string {
-  const [symbol, setSymbol] = useState(fallback);
-
-  useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      if (e.data?.type === 'symbolChanged' && typeof e.data.symbol === 'string') {
-        setSymbol(e.data.symbol);
-      }
-    };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
-  }, []);
-
-  return symbol;
-}
 
 // ---------------------------------------------------------------------------
 // Standalone embedded views (rendered at /strategy-builder & /backtesting)
@@ -90,6 +75,12 @@ type AppTab = 'charts' | 'recommendations' | 'paper-trading' | 'live-trading';
 function App() {
   // Pathname-based routing for macOS WKWebView embedded views
   const pathname = window.location.pathname;
+  if (pathname === '/strategy-platform') {
+    const params = new URLSearchParams(window.location.search);
+    const rawTab = params.get('tab') ?? '';
+    const initialTab = isPlatformTab(rawTab) ? rawTab : undefined;
+    return <StrategyPlatform initialTab={initialTab} />;
+  }
   if (pathname === '/strategy-builder') return <EmbeddedConditionBuilder />;
   if (pathname === '/backtesting') return <EmbeddedBacktesting />;
   const [activeTab, setActiveTab] = useState<AppTab>('charts');

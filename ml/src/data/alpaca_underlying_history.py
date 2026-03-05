@@ -329,9 +329,7 @@ class AlpacaUnderlyingHistoryClient:
                     ) as response:
                         if response.status == 429:
                             # Rate limited - apply backoff
-                            logger.warning(
-                                f"Rate limited for {symbol}, backing off {backoff}s"
-                            )
+                            logger.warning(f"Rate limited for {symbol}, backing off {backoff}s")
                             await asyncio.sleep(backoff)
                             backoff = min(backoff * 2, MAX_BACKOFF_SECONDS)
                             retries += 1

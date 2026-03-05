@@ -273,11 +273,13 @@ class EnhancedForecaster:
 
         # Filter to available features and ensure only numeric columns
         available_features = [col for col in feature_cols if col in df_clean.columns]
-        
+
         # Exclude non-numeric columns (e.g., datetime columns that might slip through)
-        numeric_cols = df_clean[available_features].select_dtypes(include=["number"]).columns.tolist()
+        numeric_cols = (
+            df_clean[available_features].select_dtypes(include=["number"]).columns.tolist()
+        )
         available_features = [col for col in available_features if col in numeric_cols]
-        
+
         self.feature_columns = available_features
 
         X = df_clean[available_features].copy()
@@ -377,22 +379,24 @@ class EnhancedForecaster:
 
         # Filter to numeric columns first, then ensure features match training
         numeric_cols = X.select_dtypes(include=["number"]).columns.tolist()
-        available_cols = [col for col in self.feature_columns if col in numeric_cols and col in X.columns]
-        
+        available_cols = [
+            col for col in self.feature_columns if col in numeric_cols and col in X.columns
+        ]
+
         if not available_cols:
             raise ValueError(
                 f"No matching features found. Expected: {self.feature_columns[:5]}..., "
                 f"Got: {list(X.columns)[:5]}..."
             )
-        
+
         # Use only available features, fill missing with 0
         X_filtered = X[available_cols].copy()
-        
+
         # Add missing features as zeros
         missing_features = [col for col in self.feature_columns if col not in available_cols]
         for col in missing_features:
             X_filtered[col] = 0
-        
+
         # Reorder to match training order
         X_filtered = X_filtered[self.feature_columns]
         X_filtered = X_filtered.ffill().fillna(0)
@@ -685,7 +689,9 @@ class EnhancedForecaster:
 
         # Calculate forward returns (convert to int for pandas operations)
         horizon_days_int = max(1, int(np.ceil(horizon_days)))
-        df["forward_return"] = df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int)
+        df["forward_return"] = (
+            df["close"].pct_change(periods=horizon_days_int).shift(-horizon_days_int)
+        )
 
         # Create labels with horizon- and ATR-aware thresholds (not fixed ±2%)
         low_thresh, high_thresh = AdaptiveThresholds.compute_thresholds_horizon(

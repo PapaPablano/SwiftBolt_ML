@@ -168,9 +168,7 @@ def generate_multi_horizon_forecasts(
     # Placeholder: rely on local timeframe data.
     # Cross-timeframe cache integration pending.
     handoff_confidence = {
-        horizon: forecasts[horizon].confidence
-        for horizon in horizons
-        if horizon in forecasts
+        horizon: forecasts[horizon].confidence for horizon in horizons if horizon in forecasts
     }
 
     forecast = MultiHorizonForecast(
@@ -209,10 +207,7 @@ def process_symbol_all_timeframes(
 
     # Fetch features for all timeframes
     timeframes = list(TIMEFRAME_HORIZONS.keys())
-    limits = {
-        tf: TIMEFRAME_HORIZONS[tf]["training_bars"]
-        for tf in timeframes
-    }
+    limits = {tf: TIMEFRAME_HORIZONS[tf]["training_bars"] for tf in timeframes}
 
     try:
         features_by_tf = fetch_or_build_features(
@@ -263,9 +258,7 @@ def process_symbol_all_timeframes(
                 if horizon in current_mh.extended_horizons
                 else 0
             )
-            horizon_days = TIMEFRAME_HORIZONS[current_tf]["horizon_days"][
-                horizon_idx
-            ]
+            horizon_days = TIMEFRAME_HORIZONS[current_tf]["horizon_days"][horizon_idx]
 
             handoff = calculate_handoff_confidence(
                 current_mh.forecasts[horizon],
@@ -289,9 +282,7 @@ def build_consensus_forecasts(
         Dictionary of horizon -> consensus forecast dict
     """
     all_horizons = {
-        horizon
-        for mh_forecast in all_forecasts.values()
-        for horizon in mh_forecast.forecasts
+        horizon for mh_forecast in all_forecasts.values() for horizon in mh_forecast.forecasts
     }
 
     consensus_forecasts = {}
@@ -333,9 +324,7 @@ def store_multi_horizon_forecasts(
                     "upper_band": forecast_result.upper_band,
                     "lower_band": forecast_result.lower_band,
                     "is_base_horizon": horizon == mh_forecast.base_horizon,
-                    "handoff_confidence": mh_forecast.handoff_confidence.get(
-                        horizon
-                    ),
+                    "handoff_confidence": mh_forecast.handoff_confidence.get(horizon),
                     "consensus_weight": mh_forecast.consensus_weights.get(
                         horizon,
                         0.0,
@@ -343,13 +332,9 @@ def store_multi_horizon_forecasts(
                     "key_drivers": forecast_result.key_drivers,
                     "layers_agreeing": forecast_result.layers_agreeing,
                     "reasoning": forecast_result.reasoning,
-                    "ensemble_weights": mh_forecast.metadata.get(
-                        "ensemble_weights"
-                    ),
+                    "ensemble_weights": mh_forecast.metadata.get("ensemble_weights"),
                     "training_stats": {
-                        "ensemble_is_trained": mh_forecast.metadata.get(
-                            "ensemble_is_trained"
-                        )
+                        "ensemble_is_trained": mh_forecast.metadata.get("ensemble_is_trained")
                     },
                     "model_agreement": None,
                 }
@@ -382,9 +367,7 @@ def store_multi_horizon_forecasts(
                 "target_price": consensus["target"],
                 "upper_band": consensus["upper_band"],
                 "lower_band": consensus["lower_band"],
-                "contributing_timeframes": consensus[
-                    "contributing_timeframes"
-                ],
+                "contributing_timeframes": consensus["contributing_timeframes"],
                 "agreement_score": consensus["agreement_score"],
                 "handoff_quality": consensus["handoff_quality"],
             }

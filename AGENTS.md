@@ -109,9 +109,19 @@ docker compose up --build    # ML backend API on port 8000
 
 ## CI/CD
 
-- **`ci-lightweight.yml`** — Runs on every push/PR. Detects changed components (ml/edge functions/migrations) and runs only relevant checks: Black, isort, flake8, mypy for ML; deno lint/fmt/check for Edge Functions; migration naming validation.
+- **`ci-lightweight.yml`** — Runs on every push/PR. Detects changed components (ml/edge functions/migrations) and runs relevant checks: Black, isort, flake8, mypy for ML; unit tests (Python 3.10 + 3.11) when `ml/` changes; deno lint/fmt/check for Edge Functions; migration naming validation.
 - **`ml-validation.yml`** — Comprehensive ML tests. Runs weekly (Monday 2:00 UTC), on demand, or when `requirements*.txt` changes. Runs pytest with coverage on Python 3.10 and 3.11. Enforces diff coverage >=90%.
-- **`deploy-supabase.yml`** — Deploys Edge Functions and migrations.
+- **`deploy-supabase.yml`** — Deploys Edge Functions and migrations. Triggered via `workflow_run` after `CI - Lightweight (Code Quality)` passes on main/master. Includes a post-deploy smoke test calling `GET /chart?symbol=AAPL&timeframe=1D`.
+
+### Branch Protection (master)
+
+Required status checks on `master` (configured in GitHub repo → Settings → Branches):
+- `CI Summary` — aggregate result from ci-lightweight.yml
+- `ML Unit Tests (Python 3.10)` — unit test matrix job
+- `ML Unit Tests (Python 3.11)` — unit test matrix job
+
+To update required checks: GitHub repo → Settings → Branches → Branch protection rules → `master`.
+**Note:** Status check names must exactly match job `name:` fields in the YAML. Run CI once on a branch to confirm displayed names before adding to branch protection.
 
 ## Code Conventions
 

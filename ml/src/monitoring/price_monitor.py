@@ -65,14 +65,10 @@ class PriceMonitor:
         self.last_atrs: Dict[str, float] = {}
         self.last_check: Dict[str, datetime] = {}
         self.move_threshold_atr = (
-            move_threshold_atr
-            if move_threshold_atr is not None
-            else self.MOVE_THRESHOLD_ATR
+            move_threshold_atr if move_threshold_atr is not None else self.MOVE_THRESHOLD_ATR
         )
         self.move_threshold_pct = (
-            move_threshold_pct
-            if move_threshold_pct is not None
-            else self.MOVE_THRESHOLD_PCT
+            move_threshold_pct if move_threshold_pct is not None else self.MOVE_THRESHOLD_PCT
         )
 
     def check_for_triggers(
@@ -261,9 +257,7 @@ class PriceMonitor:
             created_at = forecast.get("created_at") or forecast.get("run_at")
             if created_at:
                 if isinstance(created_at, str):
-                    created_at = datetime.fromisoformat(
-                        created_at.replace("Z", "+00:00")
-                    )
+                    created_at = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
                 age_hours = (now - created_at).total_seconds() / 3600
                 if age_hours > max_age_hours:
                     stale.append(symbol)

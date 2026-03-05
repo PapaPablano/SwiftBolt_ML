@@ -161,7 +161,14 @@ class Database:
                         forecast_return = EXCLUDED.forecast_return,
                         run_at = EXCLUDED.run_at
                     """,
-                    (symbol_id, horizon_key, overall_label, confidence, json.dumps(points), forecast_return),
+                    (
+                        symbol_id,
+                        horizon_key,
+                        overall_label,
+                        confidence,
+                        json.dumps(points),
+                        forecast_return,
+                    ),
                 )
                 conn.commit()
                 logger.info(

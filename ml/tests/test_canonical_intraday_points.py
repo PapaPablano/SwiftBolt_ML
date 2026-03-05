@@ -109,6 +109,6 @@ def test_short_points_anchor_not_persisted_first_point_in_future():
         "first stored point must be strictly after current bar (anchor removed); "
         f"got first_ts_sec={first_ts_sec}, base_ts_sec={base_ts_sec}"
     )
-    assert first_ts_sec == base_ts_sec + interval_sec, (
-        "first stored point should be base_ts_sec + interval_sec (first future bar)"
-    )
+    assert (
+        first_ts_sec == base_ts_sec + interval_sec
+    ), "first stored point should be base_ts_sec + interval_sec (first future bar)"

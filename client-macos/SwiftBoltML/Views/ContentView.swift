@@ -4,6 +4,7 @@ enum StrategyPlatformSection: Hashable {
     case builder
     case paperTrading
     case backtesting
+    case liveTrading
 }
 
 enum SidebarSection: Hashable {
@@ -45,11 +46,25 @@ struct ContentView: View {
                     case .tradestation:
                         IntegratedStrategyBuilder()
                     case .strategyPlatform(.builder):
-                        StrategyBuilderWebView(symbol: appViewModel.selectedSymbol?.ticker)
+                        StrategyPlatformWebView(
+                            symbol: appViewModel.selectedSymbol?.ticker,
+                            initialTab: .builder
+                        )
                     case .strategyPlatform(.paperTrading):
-                        PaperTradingDashboardView()
+                        StrategyPlatformWebView(
+                            symbol: appViewModel.selectedSymbol?.ticker,
+                            initialTab: .paperTrading
+                        )
                     case .strategyPlatform(.backtesting):
-                        BacktestResultsWebView(symbol: appViewModel.selectedSymbol?.ticker)
+                        StrategyPlatformWebView(
+                            symbol: appViewModel.selectedSymbol?.ticker,
+                            initialTab: .backtest
+                        )
+                    case .strategyPlatform(.liveTrading):
+                        StrategyPlatformWebView(
+                            symbol: appViewModel.selectedSymbol?.ticker,
+                            initialTab: .liveTrading
+                        )
                     case .stocks:
                         DetailView()
                             .environmentObject(appViewModel)
@@ -109,13 +124,16 @@ struct SidebarView: View {
 
                 Section {
                     NavigationLink(value: SidebarSection.strategyPlatform(.builder)) {
-                        Label("Condition Builder", systemImage: "checklist")
+                        Label("Strategy Builder", systemImage: "checklist")
                     }
                     NavigationLink(value: SidebarSection.strategyPlatform(.paperTrading)) {
                         Label("Paper Trading", systemImage: "dollarsign.circle")
                     }
                     NavigationLink(value: SidebarSection.strategyPlatform(.backtesting)) {
                         Label("Backtesting", systemImage: "clock.arrow.2.circlepath")
+                    }
+                    NavigationLink(value: SidebarSection.strategyPlatform(.liveTrading)) {
+                        Label("Live Trading", systemImage: "bolt.fill")
                     }
                 } header: {
                     Text("Strategy Platform")

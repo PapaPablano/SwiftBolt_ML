@@ -155,7 +155,10 @@ class IntradayDailyFeedback:
             return False
 
         # Need calibration if stale and have enough new data
-        if status.calibration_stale and status.new_evaluations_since_calibration >= self.min_new_evaluations:
+        if (
+            status.calibration_stale
+            and status.new_evaluations_since_calibration >= self.min_new_evaluations
+        ):
             logger.info(
                 "%s needs recalibration: stale (%.1f hours) with %d new evaluations",
                 symbol,
@@ -207,11 +210,13 @@ class IntradayDailyFeedback:
                 )
 
                 # Track history
-                self.recalibration_history.append({
-                    "symbol": symbol,
-                    "timestamp": datetime.now(),
-                    "result": result,
-                })
+                self.recalibration_history.append(
+                    {
+                        "symbol": symbol,
+                        "timestamp": datetime.now(),
+                        "result": result,
+                    }
+                )
 
                 return result
 
@@ -257,9 +262,19 @@ class IntradayDailyFeedback:
     def _get_calibration_info(self, symbol_id: str) -> Dict[str, Any]:
         """Get calibration metadata for a symbol."""
         try:
-            result = db.client.table("symbol_weight_overrides").select(
-                "updated_at", "calibration_source", "calibration_accuracy", "calibration_samples"
-            ).eq("symbol_id", symbol_id).eq("horizon", "1D").single().execute()
+            result = (
+                db.client.table("symbol_weight_overrides")
+                .select(
+                    "updated_at",
+                    "calibration_source",
+                    "calibration_accuracy",
+                    "calibration_samples",
+                )
+                .eq("symbol_id", symbol_id)
+                .eq("horizon", "1D")
+                .single()
+                .execute()
+            )
 
             if result.data:
                 data = result.data
@@ -275,9 +290,12 @@ class IntradayDailyFeedback:
     def _count_evaluations(self, symbol_id: str) -> int:
         """Count total evaluation samples for a symbol."""
         try:
-            result = db.client.table("ml_forecast_evaluations_intraday").select(
-                "id", count="exact"
-            ).eq("symbol_id", symbol_id).execute()
+            result = (
+                db.client.table("ml_forecast_evaluations_intraday")
+                .select("id", count="exact")
+                .eq("symbol_id", symbol_id)
+                .execute()
+            )
             return result.count or 0
         except Exception as e:
             logger.debug("Error counting evaluations: %s", e)
@@ -293,11 +311,13 @@ class IntradayDailyFeedback:
             return self._count_evaluations(symbol_id)
 
         try:
-            result = db.client.table("ml_forecast_evaluations_intraday").select(
-                "id", count="exact"
-            ).eq("symbol_id", symbol_id).gte(
-                "evaluated_at", since.isoformat()
-            ).execute()
+            result = (
+                db.client.table("ml_forecast_evaluations_intraday")
+                .select("id", count="exact")
+                .eq("symbol_id", symbol_id)
+                .gte("evaluated_at", since.isoformat())
+                .execute()
+            )
             return result.count or 0
         except Exception as e:
             logger.debug("Error counting new evaluations: %s", e)
@@ -380,24 +400,30 @@ def run_feedback_loop(symbols: Optional[List[str]] = None) -> Dict[str, Any]:
             result = feedback.run_recalibration(symbol)
             if result:
                 results["recalibrated"] += 1
-                results["details"].append({
-                    "symbol": symbol,
-                    "action": "recalibrated",
-                    "accuracy": result.direction_accuracy,
-                })
+                results["details"].append(
+                    {
+                        "symbol": symbol,
+                        "action": "recalibrated",
+                        "accuracy": result.direction_accuracy,
+                    }
+                )
             else:
                 results["failed"] += 1
-                results["details"].append({
-                    "symbol": symbol,
-                    "action": "failed",
-                })
+                results["details"].append(
+                    {
+                        "symbol": symbol,
+                        "action": "failed",
+                    }
+                )
         else:
             results["skipped"] += 1
-            results["details"].append({
-                "symbol": symbol,
-                "action": "skipped",
-                "reason": "not stale or insufficient new data",
-            })
+            results["details"].append(
+                {
+                    "symbol": symbol,
+                    "action": "skipped",
+                    "reason": "not stale or insufficient new data",
+                }
+            )
 
     logger.info(
         "Feedback loop complete: %d checked, %d recalibrated, %d skipped, %d failed",
@@ -452,7 +478,11 @@ if __name__ == "__main__":
 
         print(f"\n{symbol}:")
         print(f"  Last calibration: {status.last_calibration}")
-        print(f"  Calibration age: {status.calibration_age_hours:.1f}h" if status.calibration_age_hours else "  Calibration age: N/A")
+        print(
+            f"  Calibration age: {status.calibration_age_hours:.1f}h"
+            if status.calibration_age_hours
+            else "  Calibration age: N/A"
+        )
         print(f"  Total evaluations: {status.evaluation_count}")
         print(f"  New evaluations: {status.new_evaluations_since_calibration}")
         print(f"  Stale: {status.calibration_stale}")

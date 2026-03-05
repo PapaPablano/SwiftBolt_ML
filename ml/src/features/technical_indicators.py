@@ -86,7 +86,7 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
     # This is the LuxAlgo-inspired version with much higher predictive power
     try:
         from src.strategies.supertrend_ai import SuperTrendAI
-        
+
         st_ai = SuperTrendAI(
             df,
             atr_length=10,
@@ -94,10 +94,10 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
             max_mult=5.0,
             step=0.5,
             perf_alpha=10,
-            from_cluster="Best"
+            from_cluster="Best",
         )
         df, st_info = st_ai.calculate()
-        
+
         # SuperTrend AI adds these columns automatically:
         # - supertrend: Adaptive SuperTrend value
         # - supertrend_trend: Trend direction (1=bull, 0=bear)
@@ -106,7 +106,7 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
         # - atr: ATR values
         # - supertrend_signal: Signal changes (1=buy, -1=sell, 0=hold)
         # - signal_confidence: Per-bar confidence (0-10)
-        
+
         # Add ML-specific features from SuperTrend AI
         df["supertrend_performance_index"] = st_info["performance_index"]
         df["supertrend_signal_strength"] = st_info["signal_strength"]  # 0-10
@@ -115,20 +115,18 @@ def add_technical_features(df: pd.DataFrame) -> pd.DataFrame:
         # Map to DB column names for caching/persistence
         df["supertrend_value"] = df["supertrend"]
         df["supertrend_factor"] = st_info["target_factor"]
-        
+
         # Create normalized versions for ML (0-1 scale)
         df["supertrend_confidence_norm"] = df["signal_confidence"] / 10.0
-        df["supertrend_distance_norm"] = (
-            (df["close"] - df["supertrend"]) / df["close"]
-        ).abs()
+        df["supertrend_distance_norm"] = ((df["close"] - df["supertrend"]) / df["close"]).abs()
         # perf_ama is produced by SuperTrendAI and retained in df for persistence
-        
+
         logger.info(
             f"SuperTrend AI: factor={st_info['target_factor']:.2f}, "
             f"perf={st_info['performance_index']:.3f}, "
             f"strength={st_info['signal_strength']}/10"
         )
-        
+
     except Exception as exc:  # noqa: BLE001
         # Fallback to basic SuperTrend if AI version fails
         logger.warning(f"SuperTrend AI failed ({exc}), using basic SuperTrend")

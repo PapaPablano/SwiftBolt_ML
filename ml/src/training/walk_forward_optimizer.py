@@ -164,8 +164,7 @@ class WalkForwardOptimizer:
 
             if test_end > end_date:
                 logger.info(
-                    "Reached end of data at window %d "
-                    "(test_end %s > end_date %s)",
+                    "Reached end of data at window %d " "(test_end %s > end_date %s)",
                     window_id,
                     test_end.date(),
                     end_date.date(),
@@ -241,9 +240,7 @@ class WalkForwardOptimizer:
         )
 
         # Tune hyperparameters on validation data only
-        best_params = self._tune_hyperparameters(
-            train_data, val_data, param_grid, ensemble
-        )
+        best_params = self._tune_hyperparameters(train_data, val_data, param_grid, ensemble)
 
         # Train ensemble on train + validation combined with best hyperparams
         try:
@@ -265,7 +262,9 @@ class WalkForwardOptimizer:
         # Evaluate on held-out test set (final performance)
         try:
             test_pred = ensemble.predict(test_data)
-            test_rmse = self._calculate_rmse(test_pred, test_data.get("actual", test_data.iloc[:, 0]))
+            test_rmse = self._calculate_rmse(
+                test_pred, test_data.get("actual", test_data.iloc[:, 0])
+            )
         except Exception as e:
             logger.warning("Test prediction failed: %s", e)
             test_rmse = np.inf
@@ -433,9 +432,7 @@ class WalkForwardOptimizer:
         values = param_grid.values()
         return [dict(zip(keys, combo)) for combo in product(*values)]
 
-    def _calculate_rmse(
-        self, predictions: np.ndarray, actuals: np.ndarray
-    ) -> float:
+    def _calculate_rmse(self, predictions: np.ndarray, actuals: np.ndarray) -> float:
         """
         Calculate root mean squared error.
 
@@ -451,9 +448,9 @@ class WalkForwardOptimizer:
 
         try:
             # Handle Series or array
-            if hasattr(actuals, 'values'):
+            if hasattr(actuals, "values"):
                 actuals = actuals.values
-            if hasattr(predictions, 'values'):
+            if hasattr(predictions, "values"):
                 predictions = predictions.values
 
             # Ensure same length
@@ -489,8 +486,12 @@ class WalkForwardOptimizer:
                 f"val_end={window.val_end} test_start={window.test_start}"
             )
         if not (
-            window.train_start < window.train_end < window.val_start < window.val_end
-            < window.test_start < window.test_end
+            window.train_start
+            < window.train_end
+            < window.val_start
+            < window.val_end
+            < window.test_start
+            < window.test_end
         ):
             raise ValueError(
                 "Window boundaries out of order: "
@@ -635,14 +636,10 @@ class WalkForwardOptimizer:
             "max_divergence": float(np.max(divergences)),
             "min_divergence": float(np.min(divergences)),
             "std_divergence": float(np.std(divergences)),
-            "n_overfitting_windows": int(
-                np.sum(divergences > self.divergence_threshold)
-            ),
+            "n_overfitting_windows": int(np.sum(divergences > self.divergence_threshold)),
             "total_windows": len(divergences),
             "divergence_threshold": self.divergence_threshold,
-            "pct_overfitting": float(
-                np.mean(divergences > self.divergence_threshold) * 100
-            ),
+            "pct_overfitting": float(np.mean(divergences > self.divergence_threshold) * 100),
         }
 
     def run_backtest(
@@ -680,16 +677,18 @@ class WalkForwardOptimizer:
 
         # Compile results
         summary = self.get_divergence_summary()
-        summary.update({
-            "total_windows": len(self.window_results),
-            "mean_test_rmse": float(
-                np.mean([r.test_rmse for r in self.window_results if r.test_rmse < np.inf])
-            ),
-            "mean_val_rmse": float(
-                np.mean([r.val_rmse for r in self.window_results if r.val_rmse < np.inf])
-            ),
-            "window_results": self.window_results,
-        })
+        summary.update(
+            {
+                "total_windows": len(self.window_results),
+                "mean_test_rmse": float(
+                    np.mean([r.test_rmse for r in self.window_results if r.test_rmse < np.inf])
+                ),
+                "mean_val_rmse": float(
+                    np.mean([r.val_rmse for r in self.window_results if r.val_rmse < np.inf])
+                ),
+                "window_results": self.window_results,
+            }
+        )
 
         logger.info("Walk-forward backtest complete: %s", summary)
         return summary

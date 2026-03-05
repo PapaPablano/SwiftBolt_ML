@@ -216,7 +216,9 @@ class SupportResistanceDetector:
         resistance_zones = [z for z in zones if z["price"] > current_price]
 
         support_zones = sorted(support_zones, key=lambda z: z["strength"], reverse=True)[:max_zones]
-        resistance_zones = sorted(resistance_zones, key=lambda z: z["strength"], reverse=True)[:max_zones]
+        resistance_zones = sorted(resistance_zones, key=lambda z: z["strength"], reverse=True)[
+            :max_zones
+        ]
 
         return {
             "support_zones": support_zones,
@@ -780,7 +782,9 @@ class SupportResistanceDetector:
         current_price = float(df["close"].iloc[-1])
 
         if use_new_indicators:
-            return self._find_levels_with_new_indicators(df, current_price, fib_lookback=fib_lookback)
+            return self._find_levels_with_new_indicators(
+                df, current_price, fib_lookback=fib_lookback
+            )
         else:
             # Legacy mode for backwards compatibility
             warnings.warn(
@@ -952,7 +956,7 @@ class SupportResistanceDetector:
         if "ts" in df.columns and len(df["ts"]):
             computed_at = pd.to_datetime(df["ts"].iloc[-1])
         else:
-            computed_at = pd.Timestamp.now('UTC')
+            computed_at = pd.Timestamp.now("UTC")
 
         support_hold_prob = self._extract_hold_probability(
             logistic_result.get("support_levels", [])
@@ -1124,8 +1128,7 @@ class SupportResistanceDetector:
         return sum(
             1
             for candidate in candidate_levels
-            if isinstance(candidate, (int, float))
-            and abs(candidate - nearest_level) <= tolerance
+            if isinstance(candidate, (int, float)) and abs(candidate - nearest_level) <= tolerance
         )
 
     def _compute_pivot_confidence(
@@ -1658,7 +1661,6 @@ class SupportResistanceDetector:
 
         return df
 
-
     def find_all_levels(
         self,
         df: pd.DataFrame,
@@ -1671,12 +1673,12 @@ class SupportResistanceDetector:
     ) -> Dict[str, Any]:
         """
         Find all support and resistance levels using 3 modern indicators.
-        
+
         This is the main method that orchestrates all 3 indicators:
         1. Pivot Levels (multi-timeframe)
         2. Polynomial Regression (trending S/R with forecasts)
         3. Logistic Regression (ML-based probability levels)
-        
+
         Args:
             df: DataFrame with OHLC data
             zigzag_threshold: Deprecated, ignored (kept for API compatibility).
@@ -1685,7 +1687,7 @@ class SupportResistanceDetector:
             fib_lookback: Deprecated, ignored.
             use_new_indicators: Unused; modern indicators always used.
             **kwargs: Ignored for backward compatibility.
-            
+
         Returns:
             Dict containing:
             - nearest_support: Closest support level below current price
@@ -1709,32 +1711,35 @@ class SupportResistanceDetector:
                 "all_resistances": [],
                 "indicators": {},
             }
-        
+
         current_price = float(df["close"].iloc[-1])
         logger.info(f"[SR] Finding all levels for price ${current_price:.2f}")
-        
+
         # Calculate all 3 indicators
         pivot_result = self.calculate_pivot_levels(df)
         poly_result = self.calculate_polynomial_sr(df)
         logistic_result = self.calculate_logistic_sr(df)
-        
+
         # Aggregate all support levels
         all_supports = []
         all_resistances = []
-        
+
         # Add pivot levels
         for pivot in pivot_result.get("pivot_levels", []):
             if pivot.get("level_low") and pivot["level_low"] < current_price:
                 all_supports.append(pivot["level_low"])
             if pivot.get("level_high") and pivot["level_high"] > current_price:
                 all_resistances.append(pivot["level_high"])
-        
+
         # Add polynomial levels
         if poly_result.get("current_support") and poly_result["current_support"] < current_price:
             all_supports.append(poly_result["current_support"])
-        if poly_result.get("current_resistance") and poly_result["current_resistance"] > current_price:
+        if (
+            poly_result.get("current_resistance")
+            and poly_result["current_resistance"] > current_price
+        ):
             all_resistances.append(poly_result["current_resistance"])
-        
+
         # Add logistic levels
         for level_data in logistic_result.get("support_levels", []):
             level = level_data.get("level")
@@ -1744,21 +1749,21 @@ class SupportResistanceDetector:
             level = level_data.get("level")
             if level and level > current_price:
                 all_resistances.append(level)
-        
+
         # Find nearest levels
         nearest_support = max(all_supports) if all_supports else None
         nearest_resistance = min(all_resistances) if all_resistances else None
-        
+
         # Calculate distances
         support_distance_pct = None
         resistance_distance_pct = None
-        
+
         if nearest_support:
             support_distance_pct = abs(current_price - nearest_support) / current_price * 100
-        
+
         if nearest_resistance:
             resistance_distance_pct = abs(nearest_resistance - current_price) / current_price * 100
-        
+
         # Determine bias (technical summary: 0.8 proximity factor for clear bias)
         bias = "neutral"
         if support_distance_pct and resistance_distance_pct:
@@ -1773,11 +1778,11 @@ class SupportResistanceDetector:
             bias = "bullish"
         elif nearest_resistance and not nearest_support:
             bias = "bearish"
-        
+
         # Calculate trend from polynomial slopes
         support_slope = poly_result.get("support_slope", 0)
         resistance_slope = poly_result.get("resistance_slope", 0)
-        
+
         # Determine trends
         def get_trend(slope: float) -> str:
             if slope > 0.001:
@@ -1786,10 +1791,10 @@ class SupportResistanceDetector:
                 return "falling"
             else:
                 return "flat"
-        
+
         support_trend = get_trend(support_slope)
         resistance_trend = get_trend(resistance_slope)
-        
+
         support_str = f"{nearest_support:.2f}" if nearest_support else "0"
         resistance_str = f"{nearest_resistance:.2f}" if nearest_resistance else "0"
         support_dist_str = f"{support_distance_pct:.1f}" if support_distance_pct else "0"
@@ -1800,13 +1805,17 @@ class SupportResistanceDetector:
             f"Resistance: ${resistance_str} ({resistance_dist_str}%), "
             f"Bias: {bias}"
         )
-        
+
         return {
             "current_price": current_price,
             "nearest_support": nearest_support,
             "nearest_resistance": nearest_resistance,
-            "support_distance_pct": round(support_distance_pct, 2) if support_distance_pct else None,
-            "resistance_distance_pct": round(resistance_distance_pct, 2) if resistance_distance_pct else None,
+            "support_distance_pct": (
+                round(support_distance_pct, 2) if support_distance_pct else None
+            ),
+            "resistance_distance_pct": (
+                round(resistance_distance_pct, 2) if resistance_distance_pct else None
+            ),
             "bias": bias,
             "all_supports": sorted(list(set(all_supports)), reverse=True),
             "all_resistances": sorted(list(set(all_resistances))),

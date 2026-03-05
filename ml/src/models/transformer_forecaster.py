@@ -103,10 +103,12 @@ class PositionalEncoding(layers.Layer if TF_AVAILABLE else object):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            "max_len": self.max_len,
-            "d_model": self.d_model,
-        })
+        config.update(
+            {
+                "max_len": self.max_len,
+                "d_model": self.d_model,
+            }
+        )
         return config
 
 
@@ -121,7 +123,7 @@ class TransformerBlock(layers.Layer if TF_AVAILABLE else object):
         num_heads: int = 4,
         ff_dim: int = 128,
         dropout: float = 0.1,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(**kwargs)
         self.d_model = d_model
@@ -133,10 +135,12 @@ class TransformerBlock(layers.Layer if TF_AVAILABLE else object):
             num_heads=num_heads,
             key_dim=d_model // num_heads,
         )
-        self.ffn = keras.Sequential([
-            layers.Dense(ff_dim, activation="relu"),
-            layers.Dense(d_model),
-        ])
+        self.ffn = keras.Sequential(
+            [
+                layers.Dense(ff_dim, activation="relu"),
+                layers.Dense(d_model),
+            ]
+        )
         self.layernorm1 = layers.LayerNormalization(epsilon=1e-6)
         self.layernorm2 = layers.LayerNormalization(epsilon=1e-6)
         self.dropout1 = layers.Dropout(dropout)
@@ -144,9 +148,7 @@ class TransformerBlock(layers.Layer if TF_AVAILABLE else object):
 
     def call(self, inputs, training=False, return_attention=False):
         # Multi-head self-attention
-        attn_output, attn_weights = self.attention(
-            inputs, inputs, return_attention_scores=True
-        )
+        attn_output, attn_weights = self.attention(inputs, inputs, return_attention_scores=True)
         attn_output = self.dropout1(attn_output, training=training)
         out1 = self.layernorm1(inputs + attn_output)
 
@@ -161,12 +163,14 @@ class TransformerBlock(layers.Layer if TF_AVAILABLE else object):
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            "d_model": self.d_model,
-            "num_heads": self.num_heads,
-            "ff_dim": self.ff_dim,
-            "dropout": self.dropout_rate,
-        })
+        config.update(
+            {
+                "d_model": self.d_model,
+                "num_heads": self.num_heads,
+                "ff_dim": self.ff_dim,
+                "dropout": self.dropout_rate,
+            }
+        )
         return config
 
 
@@ -193,7 +197,7 @@ class MultiTimeframeTransformerModel(keras.Model):
         dropout: float = 0.1,
         max_len: int = 500,
         n_timeframes: int = 1,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(**kwargs)
         self.d_model = d_model
@@ -209,8 +213,7 @@ class MultiTimeframeTransformerModel(keras.Model):
 
         # Transformer blocks
         self.transformer_blocks = [
-            TransformerBlock(d_model, num_heads, ff_dim, dropout)
-            for _ in range(num_layers)
+            TransformerBlock(d_model, num_heads, ff_dim, dropout) for _ in range(num_layers)
         ]
 
         # Cross-timeframe attention (if multiple timeframes)
@@ -331,9 +334,7 @@ class TransformerForecaster:
 
     def _parse_horizon(self, horizon: str) -> int:
         """Parse horizon string to number of trading days."""
-        return {
-            "1D": 1, "1W": 5, "2W": 10, "1M": 21, "2M": 42, "3M": 63
-        }.get(horizon, 1)
+        return {"1D": 1, "1W": 5, "2W": 10, "1M": 21, "2M": 42, "3M": 63}.get(horizon, 1)
 
     def _build_model(self, n_features: int) -> None:
         """Build Transformer model architecture."""
@@ -357,9 +358,7 @@ class TransformerForecaster:
 
         self.model = keras.Model(inputs=inputs, outputs=outputs)
         self.model.compile(
-            optimizer=keras.optimizers.Adam(learning_rate=0.001),
-            loss="mse",
-            metrics=["mae"]
+            optimizer=keras.optimizers.Adam(learning_rate=0.001), loss="mse", metrics=["mae"]
         )
 
         logger.info(
@@ -389,7 +388,7 @@ class TransformerForecaster:
         max_horizon = max(horizon_days)
 
         for i in range(self.lookback, len(data) - max_horizon):
-            X.append(data[i - self.lookback:i])
+            X.append(data[i - self.lookback : i])
             # Multi-task targets: returns for each horizon
             targets = []
             for h in horizon_days:
@@ -623,10 +622,12 @@ class TransformerForecaster:
         try:
             # Prepare input sequence
             features = self._prepare_features(df)
-            features_recent = features[-self.lookback:]
+            features_recent = features[-self.lookback :]
 
             if len(features_recent) < self.lookback:
-                return self._null_prediction(f"Insufficient data: {len(features_recent)} < {self.lookback}")
+                return self._null_prediction(
+                    f"Insufficient data: {len(features_recent)} < {self.lookback}"
+                )
 
             scaled = self.scaler.transform(features_recent)
             X = scaled.reshape(1, self.lookback, -1)
@@ -736,7 +737,7 @@ class TransformerForecaster:
         same_direction = (dir_1d == dir_5d) + (dir_5d == dir_20d) + (dir_1d == dir_20d)
         agreement_score = same_direction / 3.0
 
-        all_aligned = (dir_1d == dir_5d == dir_20d)
+        all_aligned = dir_1d == dir_5d == dir_20d
 
         return {
             "agreement_score": float(agreement_score),
@@ -882,12 +883,14 @@ class TransformerForecaster:
             lower_bound = forecast_value * (1 - z_score * cumulative_volatility)
             upper_bound = forecast_value * (1 + z_score * cumulative_volatility)
 
-            points.append({
-                "ts": int(forecast_ts.timestamp()),
-                "value": round(forecast_value, 2),
-                "lower": round(lower_bound, 2),
-                "upper": round(upper_bound, 2),
-            })
+            points.append(
+                {
+                    "ts": int(forecast_ts.timestamp()),
+                    "value": round(forecast_value, 2),
+                    "lower": round(lower_bound, 2),
+                    "upper": round(upper_bound, 2),
+                }
+            )
 
         return points
 
@@ -949,14 +952,16 @@ if __name__ == "__main__":
     n = 300
     prices = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
 
-    df = pd.DataFrame({
-        "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
-        "open": prices * 0.995,
-        "high": prices * 1.01,
-        "low": prices * 0.99,
-        "close": prices,
-        "volume": np.random.randint(1e6, 1e7, n).astype(float),
-    })
+    df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2023-01-01", periods=n, freq="D"),
+            "open": prices * 0.995,
+            "high": prices * 1.01,
+            "low": prices * 0.99,
+            "close": prices,
+            "volume": np.random.randint(1e6, 1e7, n).astype(float),
+        }
+    )
 
     print("\nTesting Transformer Forecaster...")
 

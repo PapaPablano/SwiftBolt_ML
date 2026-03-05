@@ -2,8 +2,9 @@
 TabPFN-based forecasting module for SwiftBolt ML.
 Standalone implementation using zero-shot transformer-based predictions.
 """
-import os
+
 import logging
+import os
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 # Check TabPFN availability
 try:
     from tabpfn import TabPFNRegressor
+
     TABPFN_AVAILABLE = True
 except ImportError:
     TABPFN_AVAILABLE = False
@@ -54,7 +56,7 @@ class TabPFNForecaster:
 
     def __init__(
         self,
-        device: str = 'cpu',
+        device: str = "cpu",
         n_estimators: int = 16,  # TabPFN ensemble size (lower for faster inference)
     ):
         """
@@ -172,6 +174,7 @@ class TabPFNForecaster:
         df = compute_simplified_features(df, sentiment_series=sentiment_series, add_volatility=True)
         if add_simple_regime:
             from src.features.regime_features_simple import add_all_simple_regime_features
+
             df = add_all_simple_regime_features(df)
 
         horizon_days_int = max(1, int(np.ceil(horizon_days)))
@@ -213,12 +216,7 @@ class TabPFNForecaster:
         )
         return X, y, dates
 
-    def train(
-        self,
-        X: pd.DataFrame,
-        y: pd.Series,
-        min_samples: Optional[int] = None
-    ) -> None:
+    def train(self, X: pd.DataFrame, y: pd.Series, min_samples: Optional[int] = None) -> None:
         """
         Train TabPFN model (actually just preprocessing - TabPFN is zero-shot).
 
@@ -230,9 +228,7 @@ class TabPFNForecaster:
         min_required = min_samples if min_samples is not None else settings.min_bars_for_training
 
         if len(X) < min_required:
-            raise ValueError(
-                f"Insufficient training data for TabPFN: {len(X)} < {min_required}"
-            )
+            raise ValueError(f"Insufficient training data for TabPFN: {len(X)} < {min_required}")
 
         # TabPFN has sample limits (typically 10k for pretraining compatibility)
         max_samples = 1000  # Conservative limit for stability
@@ -336,10 +332,7 @@ class TabPFNForecaster:
         return self
 
     def predict(
-        self,
-        X: Optional[pd.DataFrame] = None,
-        horizon_days: int = 1,
-        return_intervals: bool = True
+        self, X: Optional[pd.DataFrame] = None, horizon_days: int = 1, return_intervals: bool = True
     ) -> Dict[str, Any]:
         """
         Make prediction with uncertainty quantification.
@@ -356,7 +349,7 @@ class TabPFNForecaster:
             raise ValueError("TabPFN model must be trained before prediction")
 
         # Handle OHLC data input
-        if X is not None and 'close' in X.columns:
+        if X is not None and "close" in X.columns:
             df = X
             engineer = TemporalFeatureEngineer()
             last_idx = len(df) - 1
@@ -497,8 +490,8 @@ class TabPFNForecaster:
         prediction = self.predict(df, horizon_days=horizon_days)
 
         # Apply calibration if provided
-        if calibrator is not None and hasattr(calibrator, 'calibrate'):
-            prediction['confidence'] = calibrator.calibrate(prediction['confidence'])
+        if calibrator is not None and hasattr(calibrator, "calibrate"):
+            prediction["confidence"] = calibrator.calibrate(prediction["confidence"])
 
         return prediction
 
@@ -506,18 +499,19 @@ class TabPFNForecaster:
     def _parse_horizon(horizon: str) -> int:
         """Parse horizon string to days."""
         horizon = horizon.upper().strip()
-        if horizon == '1D':
+        if horizon == "1D":
             return 1
-        elif horizon == '5D' or horizon == '1W':
+        elif horizon == "5D" or horizon == "1W":
             return 5
-        elif horizon == '10D':
+        elif horizon == "10D":
             return 10
-        elif horizon == '20D' or horizon == '1M':
+        elif horizon == "20D" or horizon == "1M":
             return 20
         else:
             # Try to extract number
             import re
-            match = re.search(r'(\d+)', horizon)
+
+            match = re.search(r"(\d+)", horizon)
             if match:
                 return int(match.group(1))
             return 1

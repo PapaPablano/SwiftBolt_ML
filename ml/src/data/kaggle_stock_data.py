@@ -134,7 +134,9 @@ def load_symbol_ohlcv(
                         rename[c] = new
                         break
     if not rename:
-        logger.warning("Expected columns (Date, Open, High, Low, Close, Volume) not found in %s", file_path)
+        logger.warning(
+            "Expected columns (Date, Open, High, Low, Close, Volume) not found in %s", file_path
+        )
         return None
 
     df = df.rename(columns=rename)

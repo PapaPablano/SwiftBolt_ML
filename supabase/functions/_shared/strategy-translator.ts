@@ -94,6 +94,7 @@ const OPERATOR_FROM_WORKER: Record<string, string> = {
 
 /** Canonical indicator names (PascalCase, as used by executor cache). */
 const INDICATOR_CANONICAL: Record<string, string> = {
+  // ── Core momentum / oscillators ──
   rsi: "RSI",
   macd: "MACD",
   macd_signal: "MACD",
@@ -101,22 +102,68 @@ const INDICATOR_CANONICAL: Record<string, string> = {
   stochastic: "STOCH",
   stoch: "STOCH",
   cci: "CCI",
+  mfi: "MFI",
+  williams_r: "Williams %R",
+  // ── Volume ──
   volume: "Volume",
-  volume_ratio: "Volume",
+  volume_ratio: "Volume Ratio",
   volume_ma: "Volume_MA",
+  obv: "OBV",
+  volume_spike: "Volume Spike",
+  // ── Price (raw) ──
   close: "Close",
   open: "Open",
   high: "High",
   low: "Low",
+  // ── Trend / moving averages ──
   sma: "Close",
   ema: "Close",
-  sma_cross: "Close",
-  ema_cross: "Close",
-  adx: "RSI", // ADX uses similar range
-  bb: "Close",
-  bb_upper: "Close",
-  bb_lower: "Close",
-  atr: "Close",
+  sma_cross: "SMA Cross",
+  ema_cross: "EMA Cross",
+  adx: "ADX",
+  plus_di: "Plus DI",
+  minus_di: "Minus DI",
+  price_above_sma: "Price Above SMA",
+  price_above_ema: "Price Above EMA",
+  price_vs_sma: "Price vs SMA20",
+  price_vs_sma20: "Price vs SMA20",
+  price_vs_sma50: "Price vs SMA50",
+  // ── Volatility ──
+  bb: "BB Middle",
+  bb_upper: "BB Upper",
+  bb_lower: "BB Lower",
+  atr: "ATR",
+  supertrend_trend: "SuperTrend Trend",
+  supertrend_signal: "SuperTrend Signal",
+  supertrend_factor: "SuperTrend Factor",
+  // ── Price breakout ──
+  price_breakout: "Price Breakout",
+  // ── indicatorBible.ts extended indicators (on-demand in executor) ──
+  tema: "TEMA",
+  stoch_rsi: "Stochastic RSI",
+  parabolic_sar: "Parabolic SAR",
+  momentum: "Momentum",
+  awesome_oscillator: "Awesome Oscillator",
+  vwap: "VWAP",
+  accumulation_distribution: "Accumulation/Distribution",
+  linear_regression_slope: "Linear Regression Slope",
+  vortex_plus: "Vortex +VI",
+  vortex_minus: "Vortex -VI",
+  keltner_upper: "Keltner Upper",
+  keltner_lower: "Keltner Lower",
+  standard_deviation: "Standard Deviation",
+  // ── KDJ oscillator family ──
+  kdj_k: "KDJ K",
+  kdj_d: "KDJ D",
+  kdj_j: "KDJ J",
+  kdj_j_divergence: "KDJ J-D Divergence",
+  // ── Returns & volatility ──
+  returns_1d: "Returns 1D",
+  returns_5d: "Returns 5D",
+  returns_20d: "Returns 20D",
+  volatility_20d: "Volatility 20D",
+  // ── ML forecast stub ──
+  ml_signal: "ML Signal",
 };
 
 /**
