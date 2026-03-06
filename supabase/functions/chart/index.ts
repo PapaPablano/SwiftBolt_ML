@@ -31,6 +31,9 @@ import {
   type BarInput,
   recomputePartialIndicators,
 } from "../_shared/indicators.ts";
+import { AlpacaClient } from "../_shared/providers/alpaca-client.ts";
+import { TokenBucketRateLimiter } from "../_shared/rate-limiter/token-bucket.ts";
+import { MemoryCache } from "../_shared/cache/memory-cache.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -312,13 +315,21 @@ function aggregateWeeklyBars(bars: OHLCBar[]): OHLCBar[] {
 // ---------------------------------------------------------------------------
 
 /** Compute the period-start UTC timestamp for the current in-progress bar. */
-function getPartialPeriodStart(tf: "d1" | "h1" | "h4", now: Date): Date {
+function getPartialPeriodStart(
+  tf: "d1" | "h1" | "h4" | "m15",
+  now: Date,
+): Date {
   const y = now.getUTCFullYear();
   const mo = now.getUTCMonth();
   const d = now.getUTCDate();
   const h = now.getUTCHours();
+  const m = now.getUTCMinutes();
   if (tf === "d1") return new Date(Date.UTC(y, mo, d));
   if (tf === "h1") return new Date(Date.UTC(y, mo, d, h));
+  if (tf === "m15") {
+    // Floor to nearest 15-minute block within the current UTC hour
+    return new Date(Date.UTC(y, mo, d, h, Math.floor(m / 15) * 15));
+  }
   // h4: floor to nearest 4-hour block from midnight UTC
   return new Date(Date.UTC(y, mo, d, Math.floor(h / 4) * 4));
 }
@@ -326,7 +337,7 @@ function getPartialPeriodStart(tf: "d1" | "h1" | "h4", now: Date): Date {
 /** Aggregate 1-minute BarRows into a single in-progress OHLCBar. */
 function synthesizePartialBar(
   m1Rows: BarRow[],
-  tf: "d1" | "h1" | "h4",
+  tf: "d1" | "h1" | "h4" | "m15",
   now: Date,
 ): OHLCBar | null {
   const periodStart = getPartialPeriodStart(tf, now);
@@ -684,9 +695,10 @@ serve(async (req: Request): Promise<Response> => {
         .in("status", ["queued", "running"])
         .limit(1),
 
-      // 8. m1 bars for partial candle synthesis (d1/w1/h1/h4 only)
-      // Fetch up to 8h back so all four timeframes are covered.
-      ["d1", "w1", "h1", "h4"].includes(timeframe)
+      // 8. m1 bars for partial candle synthesis (d1/w1/h1/h4/m15)
+      // Fetch up to 8h back so all timeframes are covered (m15 only needs 15m but
+      // the filter in synthesizePartialBar slices to the current period).
+      ["d1", "w1", "h1", "h4", "m15"].includes(timeframe)
         ? supabase
           .from("ohlc_bars_v2")
           .select("ts, open, high, low, close, volume")
@@ -753,7 +765,7 @@ serve(async (req: Request): Promise<Response> => {
     // ── Partial candle synthesis (before weekly aggregation) ─────────────────
     // When the market is open and m1 bars exist, synthesize the in-progress bar
     // for the current period and append it as the last bar.
-    const PARTIAL_CANDLE_TFS = ["d1", "w1", "h1", "h4"];
+    const PARTIAL_CANDLE_TFS = ["d1", "w1", "h1", "h4", "m15"];
     if (
       isMarketOpen &&
       PARTIAL_CANDLE_TFS.includes(timeframe) &&
@@ -761,11 +773,13 @@ serve(async (req: Request): Promise<Response> => {
       m1BarsResult.data.length > 0
     ) {
       const m1Rows = m1BarsResult.data as BarRow[];
-      // For w1: synthesize a d1 partial bar — weekly aggregation below will roll it up
+      // For w1: synthesize a d1 partial bar — weekly aggregation below will roll it up.
+      // For all others (including m15): synthesize directly.
       const synthTf = (timeframe === "w1" ? "d1" : timeframe) as
         | "d1"
         | "h1"
-        | "h4";
+        | "h4"
+        | "m15";
       const partialBar = synthesizePartialBar(m1Rows, synthTf, now);
       if (partialBar) {
         const partialTsMs = new Date(partialBar.ts).getTime();
@@ -774,6 +788,64 @@ serve(async (req: Request): Promise<Response> => {
           (b) => new Date(b.ts).getTime() !== partialTsMs,
         );
         allBars.push(partialBar);
+      }
+    }
+
+    // ── On-demand snapshot fallback for non-watchlist symbols ─────────────────
+    // If the symbol has no m1 bars in DB (not in watchlist_items or ingest hasn't
+    // run yet), fetch a single Alpaca snapshot to get the current minuteBar.
+    // Fail-open: any error → no partial bar appended (silent fallback).
+    const noM1Data = !m1BarsResult.data || m1BarsResult.data.length === 0;
+    const lastBarIsPartial = allBars.length > 0 &&
+      allBars[allBars.length - 1].is_partial === true;
+    if (
+      isMarketOpen &&
+      noM1Data &&
+      !lastBarIsPartial &&
+      PARTIAL_CANDLE_TFS.includes(timeframe)
+    ) {
+      try {
+        const snapshotRateLimiter = new TokenBucketRateLimiter({
+          alpaca: { maxPerSecond: 200, maxPerMinute: 10000 },
+          finnhub: { maxPerSecond: 10, maxPerMinute: 600 },
+          massive: { maxPerSecond: 10, maxPerMinute: 600 },
+          yahoo: { maxPerSecond: 10, maxPerMinute: 600 },
+          tradier: { maxPerSecond: 10, maxPerMinute: 600 },
+        });
+        const alpaca = new AlpacaClient(
+          Deno.env.get("ALPACA_API_KEY")!,
+          Deno.env.get("ALPACA_API_SECRET")!,
+          snapshotRateLimiter,
+          new MemoryCache(10),
+        );
+        const minuteBar = await alpaca.getSnapshot(resolvedSymbol);
+        if (minuteBar) {
+          // minuteBar.t is the start of the current 1-minute period
+          const synthTf = (timeframe === "w1" ? "d1" : timeframe) as
+            | "d1"
+            | "h1"
+            | "h4"
+            | "m15";
+          const periodStart = getPartialPeriodStart(synthTf, now);
+          const snapshotBar: OHLCBar = {
+            ts: periodStart.toISOString(),
+            open: minuteBar.o,
+            high: minuteBar.h,
+            low: minuteBar.l,
+            close: minuteBar.c,
+            volume: minuteBar.v,
+            provider: "alpaca",
+            is_forecast: false,
+            is_partial: true,
+          };
+          const partialTsMs = periodStart.getTime();
+          allBars = allBars.filter(
+            (b) => new Date(b.ts).getTime() !== partialTsMs,
+          );
+          allBars.push(snapshotBar);
+        }
+      } catch {
+        // Snapshot fetch failed — chart ends at last closed bar (acceptable)
       }
     }
 

@@ -103,6 +103,8 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
   const indicatorSeriesRefs = useRef<Map<string, ISeriesApi<any>>>(new Map());
   const signalSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const tradeRegionsRef = useRef<TradeRegionManager | null>(null);
+  // Tracks symbol:horizon:daysBack to distinguish poll-tick refreshes from initial loads
+  const dataKeyRef = useRef<string>('');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -331,20 +333,55 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
 
         console.log(`[Chart] Loaded ${bars?.length || 0} bars from Supabase`);
 
-        // Format bars for TradingView
-        const formattedBars = bars?.map((bar: any) => ({
-          time: Math.floor(new Date(bar.ts).getTime() / 1000) as any,
-          open: bar.open,
-          high: bar.high,
-          low: bar.low,
-          close: bar.close,
-        })) || [];
+        // Format bars for TradingView; partial bars get amber color treatment
+        const formattedBars = bars?.map((bar: any) => {
+          const base = {
+            time: Math.floor(new Date(bar.ts).getTime() / 1000) as any,
+            open: bar.open,
+            high: bar.high,
+            low: bar.low,
+            close: bar.close,
+          };
+          if (bar.is_partial) {
+            return {
+              ...base,
+              color: 'rgba(255, 165, 0, 0.5)',
+              borderColor: 'rgba(255, 165, 0, 0.8)',
+              wickColor: 'rgba(255, 165, 0, 0.6)',
+            };
+          }
+          return base;
+        }) || [];
 
-        // Update candle series
+        // Update candle series; use update() on poll ticks to avoid chart flash
         if (candleSeriesRef.current && formattedBars.length > 0) {
-          candleSeriesRef.current.setData(formattedBars);
+          const dataKey = `${symbol}:${horizon}:${daysBack}`;
+          const isPollTick = dataKeyRef.current === dataKey;
+          dataKeyRef.current = dataKey;
+
+          if (isPollTick) {
+            candleSeriesRef.current.update(formattedBars[formattedBars.length - 1]);
+          } else {
+            candleSeriesRef.current.setData(formattedBars);
+          }
+
           const lastBar = formattedBars[formattedBars.length - 1];
           setLatestPrice(lastBar.close);
+
+          // LIVE marker above partial (in-progress) candle
+          const partialBar = bars?.find((b: any) => b.is_partial);
+          if (partialBar) {
+            candleSeriesRef.current.setMarkers([{
+              time: Math.floor(new Date(partialBar.ts).getTime() / 1000) as any,
+              position: 'aboveBar',
+              color: '#FFA500',
+              shape: 'circle',
+              text: 'LIVE',
+              size: 0.8,
+            }]);
+          } else {
+            candleSeriesRef.current.setMarkers([]);
+          }
         } else {
           console.log('[Chart] No bars returned from Supabase, using mock data');
           throw new Error('No bars returned');

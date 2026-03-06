@@ -1805,9 +1805,8 @@ final class ChartViewModel: ObservableObject {
                 continue
             }
             
-            // During market hours, d1/w1/h1/h4 refresh every 60s for partial candle synthesis.
-            // m15 keeps its 15-minute window; daily/weekly off-hours keep their normal cadence.
-            let partialCandleTimeframes: Set<Timeframe> = [.d1, .w1, .h1, .h4]
+            // During market hours, m15/h1/h4/d1/w1 refresh every 60s for partial candle synthesis.
+            let partialCandleTimeframes: Set<Timeframe> = [.m15, .h1, .h4, .d1, .w1]
             let isPartialCandleTf = partialCandleTimeframes.contains(currentTimeframe)
             let effectiveMinRefreshSeconds: Double = isPartialCandleTf && marketOpen
                 ? 60.0

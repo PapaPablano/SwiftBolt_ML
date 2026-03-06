@@ -216,6 +216,27 @@ export class AlpacaClient implements DataProviderAbstraction {
   }
 
   /**
+   * Get the current in-progress 1-minute bar for a single symbol via snapshot.
+   * Used to synthesize a partial candle for non-watchlist symbols that have no
+   * m1 rows in ohlc_bars_v2. Returns null on any error (fail-open).
+   * maxRetries=0 — must complete within the /chart latency budget (~200ms).
+   */
+  async getSnapshot(symbol: string): Promise<AlpacaBar | null> {
+    try {
+      await this.rateLimiter.acquire("alpaca");
+      const url = `${this.baseUrl}/stocks/snapshots?symbols=${
+        encodeURIComponent(symbol)
+      }&feed=iex`;
+      const response = await fetch(url, { headers: this.getHeaders() });
+      if (!response.ok) return null;
+      const data = await response.json() as Record<string, AlpacaSnapshot>;
+      return data[symbol]?.minuteBar ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Get historical bars (OHLCV data)
    * Supports multiple timeframes and date ranges
    * Automatically handles pagination for large result sets
