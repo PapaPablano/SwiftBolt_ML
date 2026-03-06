@@ -1564,6 +1564,8 @@ struct NewStrategyDialog: View {
 struct Strategy: Identifiable, Hashable {
     var id: String = UUID().uuidString
     var userId: String? = nil
+    /// Supabase row ID — set when this strategy has been saved to/loaded from the database.
+    var supabaseId: String? = nil
     var name: String
     var description: String?
     var entryGroups: [ConditionGroup] = []
