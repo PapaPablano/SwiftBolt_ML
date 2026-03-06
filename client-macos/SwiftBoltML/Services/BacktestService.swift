@@ -44,12 +44,11 @@ final class BacktestService {
 
         let body: [String: Any] = [
             "symbol": symbol.uppercased(),
-            "strategy": "custom",
             "startDate": startDate,
             "endDate": endDate,
             "timeframe": timeframe,
             "initialCapital": initialCapital,
-            "config": configJSON
+            "strategy_config": configJSON
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
