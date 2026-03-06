@@ -35,8 +35,15 @@ struct OHLCBarRealtime: Codable {
     let low: Double
     let close: Double
     let volume: Double?
-    
-    /// Convert to LightweightCandle for chart display
+    let isPartial: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case time, open, high, low, close, volume
+        case isPartial = "is_partial"
+    }
+
+    /// Convert to LightweightCandle for chart display.
+    /// Partial bars (in-progress candles) get the same amber overlay used by the main chart path.
     func toLightweightCandle() -> LightweightCandle {
         return LightweightCandle(
             time: time,
@@ -44,7 +51,7 @@ struct OHLCBarRealtime: Codable {
             high: high,
             low: low,
             close: close,
-            color: nil
+            color: (isPartial ?? false) ? "#FFA50080" : nil
         )
     }
 }
