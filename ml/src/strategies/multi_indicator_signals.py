@@ -82,14 +82,14 @@ class MultiIndicatorSignalGenerator:
             return 0.0
 
         if rsi > 70:
-            return 1.0   # Strong Bullish (strong uptrend momentum)
+            return 1.0  # Strong Bullish (strong uptrend momentum)
         if rsi > 60:
-            return 0.6   # Bullish
+            return 0.6  # Bullish
         if rsi > 40:
-            return 0.0   # Neutral
+            return 0.0  # Neutral
         if rsi > 30:
             return -0.6  # Bearish
-        return -1.0       # Strong Bearish
+        return -1.0  # Strong Bearish
 
     def _score_macd(self, df: pd.DataFrame) -> float:
         """
@@ -128,14 +128,14 @@ class MultiIndicatorSignalGenerator:
             return 0.0
 
         if j < 0:
-            return 1.0   # Strong Bullish (oversold)
+            return 1.0  # Strong Bullish (oversold)
         if j < 20:
-            return 0.5   # Bullish
+            return 0.5  # Bullish
         if j <= 80:
-            return 0.0   # Neutral
+            return 0.0  # Neutral
         if j <= 100:
             return -0.5  # Bearish
-        return -1.0       # Strong Bearish (overbought)
+        return -1.0  # Strong Bearish (overbought)
 
     def _score_adx(self, df: pd.DataFrame) -> float:
         """
@@ -161,7 +161,7 @@ class MultiIndicatorSignalGenerator:
             return 0.0  # Weak trend forming
         if adx > 40:
             if di_spread > 5:
-                return 1.0   # Strong Bullish
+                return 1.0  # Strong Bullish
             if di_spread < -5:
                 return -1.0  # Strong Bearish
             return 0.5 if di_spread > 0 else -0.5
@@ -206,27 +206,27 @@ class MultiIndicatorSignalGenerator:
         # Above upper band
         if close > bb_upper:
             if volume_ratio > 1.5:
-                return 1.0   # Breakout with volume confirmation
-            return -0.5      # Overbought rejection likely
+                return 1.0  # Breakout with volume confirmation
+            return -0.5  # Overbought rejection likely
 
         # Below lower band
         if close < bb_lower:
             if volume_ratio > 1.5:
                 return -1.0  # Breakdown with volume
-            return 0.5       # Oversold bounce likely
+            return 0.5  # Oversold bounce likely
 
         # Within bands: use %B thresholds with MFI confirmation (Bollinger framework)
         if pct_b > 0.80 and mfi > 80:
-            return 0.8   # Uptrend confirmed (Bollinger: %B>0.80 + MFI>80)
+            return 0.8  # Uptrend confirmed (Bollinger: %B>0.80 + MFI>80)
         if pct_b < 0.20 and mfi < 20:
             return -0.8  # Downtrend confirmed
 
         # Zone-based fallback
         if pct_b > 0.70:
-            return 0.5   # Upper zone = Bullish
+            return 0.5  # Upper zone = Bullish
         if pct_b > 0.30:
-            return 0.0   # Middle = Neutral
-        return -0.5       # Lower zone = Bearish
+            return 0.0  # Middle = Neutral
+        return -0.5  # Lower zone = Bearish
 
     def _score_volume(self, df: pd.DataFrame) -> float:
         """
@@ -253,13 +253,13 @@ class MultiIndicatorSignalGenerator:
 
         if vol_ratio > 2.0:
             if price_change > 0:
-                return 1.0   # Strong Bullish
+                return 1.0  # Strong Bullish
             if price_change < 0:
                 return -1.0  # Strong Bearish
             return 0.0
         if vol_ratio > 1.5:
             if price_change > 0:
-                return 0.5   # Bullish
+                return 0.5  # Bullish
             if price_change < 0:
                 return -0.5  # Bearish
         return 0.0  # Average or low volume

@@ -521,9 +521,7 @@ def get_production_ensemble(
 
     else:
         # Invalid model count - fall back to 2-model default
-        logger.warning(
-            "Invalid ENSEMBLE_MODEL_COUNT=%d. Using 2-model default.", model_count
-        )
+        logger.warning("Invalid ENSEMBLE_MODEL_COUNT=%d. Using 2-model default.", model_count)
         return EnhancedEnsembleForecaster(
             horizon=horizon,
             symbol_id=symbol_id,

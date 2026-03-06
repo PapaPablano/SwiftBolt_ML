@@ -121,8 +121,10 @@ class MarketCorrelationFeatures:
             if col in df_aligned.columns:
                 df_aligned = df_aligned.drop(columns=[col])
 
-        logger.info("Added %d market correlation features",
-                   len([c for c in df_aligned.columns if c.startswith("spy_") or c.startswith("market_")]))
+        logger.info(
+            "Added %d market correlation features",
+            len([c for c in df_aligned.columns if c.startswith("spy_") or c.startswith("market_")]),
+        )
 
         return df_aligned
 
@@ -173,8 +175,7 @@ class MarketCorrelationFeatures:
             short_window = self.correlation_windows[0]
             long_window = self.correlation_windows[-1]
             df["spy_correlation_change"] = (
-                df[f"spy_correlation_{short_window}d"] -
-                df[f"spy_correlation_{long_window}d"]
+                df[f"spy_correlation_{short_window}d"] - df[f"spy_correlation_{long_window}d"]
             )
 
         return df
@@ -203,15 +204,13 @@ class MarketCorrelationFeatures:
             df[f"market_beta_{window}d"] = beta.fillna(1.0)  # Fill with market-neutral
 
         # Beta momentum (is beta increasing or decreasing?)
-        df["market_beta_momentum"] = (
-            df["market_beta_20d"] - df["market_beta_60d"]
-        )
+        df["market_beta_momentum"] = df["market_beta_20d"] - df["market_beta_60d"]
 
         # Beta regime (categorical)
         df["market_beta_regime"] = pd.cut(
             df["market_beta_60d"],
             bins=[-np.inf, 0.5, 1.0, 1.5, np.inf],
-            labels=[0, 1, 2, 3]  # defensive, neutral, aggressive, very aggressive
+            labels=[0, 1, 2, 3],  # defensive, neutral, aggressive, very aggressive
         ).astype(float)
 
         return df
@@ -232,21 +231,17 @@ class MarketCorrelationFeatures:
 
         for window in [20, 60]:
             # Cumulative returns over window
-            symbol_cum = (1 + symbol_returns).rolling(window).apply(
-                lambda x: x.prod() - 1, raw=True
+            symbol_cum = (
+                (1 + symbol_returns).rolling(window).apply(lambda x: x.prod() - 1, raw=True)
             )
-            spy_cum = (1 + spy_returns).rolling(window).apply(
-                lambda x: x.prod() - 1, raw=True
-            )
+            spy_cum = (1 + spy_returns).rolling(window).apply(lambda x: x.prod() - 1, raw=True)
 
             # Relative strength (ratio of cumulative returns)
             # Positive = outperforming, Negative = underperforming
             df[f"market_rs_{window}d"] = symbol_cum - spy_cum
 
         # RS trend (momentum of relative strength)
-        df["market_rs_trend"] = (
-            df["market_rs_20d"] - df["market_rs_60d"]
-        )
+        df["market_rs_trend"] = df["market_rs_20d"] - df["market_rs_60d"]
 
         # RS percentile (where does current RS rank historically?)
         df["market_rs_percentile"] = (
@@ -378,22 +373,28 @@ if __name__ == "__main__":
 
     # Create synthetic SPY data
     spy_prices = 100 * np.exp(np.cumsum(np.random.randn(n) * 0.01))
-    spy_df = pd.DataFrame({
-        "ts": pd.date_range("2024-01-01", periods=n, freq="D"),
-        "close": spy_prices,
-    })
+    spy_df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2024-01-01", periods=n, freq="D"),
+            "close": spy_prices,
+        }
+    )
 
     # Create synthetic symbol data (correlated with SPY)
     noise = np.random.randn(n) * 0.01
-    symbol_prices = 50 * np.exp(np.cumsum(
-        0.7 * np.diff(np.log(spy_prices), prepend=np.log(spy_prices[0])) +
-        0.3 * noise +
-        0.002  # slight outperformance
-    ))
-    symbol_df = pd.DataFrame({
-        "ts": pd.date_range("2024-01-01", periods=n, freq="D"),
-        "close": symbol_prices,
-    })
+    symbol_prices = 50 * np.exp(
+        np.cumsum(
+            0.7 * np.diff(np.log(spy_prices), prepend=np.log(spy_prices[0]))
+            + 0.3 * noise
+            + 0.002  # slight outperformance
+        )
+    )
+    symbol_df = pd.DataFrame(
+        {
+            "ts": pd.date_range("2024-01-01", periods=n, freq="D"),
+            "close": symbol_prices,
+        }
+    )
 
     print("Testing MarketCorrelationFeatures...")
 

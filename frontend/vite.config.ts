@@ -10,6 +10,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  appType: 'spa', // Serves index.html for all unmatched routes (SPA fallback for /strategy-builder, /backtesting)
   server: {
     port: 8081,
     proxy: {

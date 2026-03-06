@@ -266,14 +266,22 @@ class SRPolynomialRegressor:
 
         # Extract support features
         if support_coeffs is not None:
-            result["polynomial_support"] = self.predict_level(support_coeffs, current_idx, curve_type="support")
-            result["support_slope"] = self.compute_slope(support_coeffs, at_x=1.0, curve_type="support")
+            result["polynomial_support"] = self.predict_level(
+                support_coeffs, current_idx, curve_type="support"
+            )
+            result["support_slope"] = self.compute_slope(
+                support_coeffs, at_x=1.0, curve_type="support"
+            )
             result["support_curve_valid"] = True
 
         # Extract resistance features
         if resistance_coeffs is not None:
-            result["polynomial_resistance"] = self.predict_level(resistance_coeffs, current_idx, curve_type="resistance")
-            result["resistance_slope"] = self.compute_slope(resistance_coeffs, at_x=1.0, curve_type="resistance")
+            result["polynomial_resistance"] = self.predict_level(
+                resistance_coeffs, current_idx, curve_type="resistance"
+            )
+            result["resistance_slope"] = self.compute_slope(
+                resistance_coeffs, at_x=1.0, curve_type="resistance"
+            )
             result["resistance_curve_valid"] = True
 
         # Log results

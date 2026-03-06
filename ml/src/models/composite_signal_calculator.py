@@ -161,13 +161,13 @@ class CompositeSignalCalculator:
             return 0.0
 
         if bb_width_pct < 10:
-            return 0.3   # Extreme squeeze - breakout likely
+            return 0.3  # Extreme squeeze - breakout likely
         elif bb_width_pct < 25:
-            return 0.2   # Tight - early compression
+            return 0.2  # Tight - early compression
         elif bb_width_pct < 75:
-            return 0.0   # Normal
+            return 0.0  # Normal
         elif bb_width_pct < 90:
-            return 0.2   # Expansion - trend continuation
+            return 0.2  # Expansion - trend continuation
         else:
             return -0.3  # Extreme volatility - move ending
 

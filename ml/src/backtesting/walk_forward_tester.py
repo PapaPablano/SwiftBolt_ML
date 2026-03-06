@@ -144,7 +144,7 @@ class WalkForwardBacktester:
         # Walk forward through time
         # Fix: Should account for test_window in calculation
         n_windows = (len(df) - self.train_window - self.test_window) // self.step_size + 1
-        
+
         if n_windows < 1:
             raise ValueError(
                 f"Insufficient data for walk-forward: {len(df)} bars, "
@@ -168,14 +168,24 @@ class WalkForwardBacktester:
             test_df = df.iloc[end_train:end_test].copy()
             combined_df = pd.concat([train_df, test_df], ignore_index=True)
             feature_engineer = TemporalFeatureEngineer()
-            
+
             # Track test period dates for API response
             date_col = "date" if "date" in df.columns else "ts"
             if len(test_df) > 0:
-                test_periods_list.append({
-                    "start": test_df[date_col].iloc[0].isoformat() if hasattr(test_df[date_col].iloc[0], 'isoformat') else str(test_df[date_col].iloc[0]),
-                    "end": test_df[date_col].iloc[-1].isoformat() if hasattr(test_df[date_col].iloc[-1], 'isoformat') else str(test_df[date_col].iloc[-1])
-                })
+                test_periods_list.append(
+                    {
+                        "start": (
+                            test_df[date_col].iloc[0].isoformat()
+                            if hasattr(test_df[date_col].iloc[0], "isoformat")
+                            else str(test_df[date_col].iloc[0])
+                        ),
+                        "end": (
+                            test_df[date_col].iloc[-1].isoformat()
+                            if hasattr(test_df[date_col].iloc[-1], "isoformat")
+                            else str(test_df[date_col].iloc[-1])
+                        ),
+                    }
+                )
 
             # Create a fresh forecaster instance for each window to avoid state issues
             # This ensures scaler and model are reset for each training window
@@ -201,12 +211,12 @@ class WalkForwardBacktester:
                         min_required,
                     )
                     continue
-                
+
                 X_train, y_train = window_forecaster.prepare_training_data(
                     train_df,
                     horizon_days=horizon_days,
                 )
-                
+
                 # Check if we got any training samples
                 if len(X_train) == 0 or len(y_train) == 0:
                     training_failures += 1
@@ -219,10 +229,12 @@ class WalkForwardBacktester:
                         horizon_days,
                     )
                     continue
-                
+
                 # Check if we have enough samples for training
                 # For walk-forward, we can use a lower threshold since windows are smaller
-                min_samples_for_walkforward = max(20, len(X_train) // 2)  # At least 20, or half of available
+                min_samples_for_walkforward = max(
+                    20, len(X_train) // 2
+                )  # At least 20, or half of available
                 if len(X_train) < min_samples_for_walkforward:
                     training_failures += 1
                     logger.debug(
@@ -232,7 +244,7 @@ class WalkForwardBacktester:
                         min_samples_for_walkforward,
                     )
                     continue
-                
+
                 # Train with relaxed minimum for walk-forward (use 20 as minimum instead of 100)
                 window_forecaster.train(X_train, y_train, min_samples=20)
             except Exception as exc:  # noqa: BLE001
@@ -246,8 +258,11 @@ class WalkForwardBacktester:
                     len(train_df),
                 )
                 import traceback
+
                 if window_idx < 3:  # Only log full traceback for first few failures
-                    logger.debug("Full traceback for window %s: %s", window_idx, traceback.format_exc())
+                    logger.debug(
+                        "Full traceback for window %s: %s", window_idx, traceback.format_exc()
+                    )
                 continue
 
             # Test on test window
@@ -278,7 +293,9 @@ class WalkForwardBacktester:
                         window_predictions += 1
                 except Exception as exc:  # noqa: BLE001
                     prediction_failures += 1
-                    logger.debug(f"Prediction failed in window {window_idx}, test_idx {test_idx}: {exc}")
+                    logger.debug(
+                        f"Prediction failed in window {window_idx}, test_idx {test_idx}: {exc}"
+                    )
                     continue
 
         if not all_predictions:

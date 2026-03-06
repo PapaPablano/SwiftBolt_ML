@@ -17,6 +17,7 @@ load_dotenv()
 from src.data.supabase_db import db
 from src.scripts.universe_utils import get_symbol_universe
 
+
 def diagnose_symbol_forecasts(symbol: str):
     """Diagnose forecast issues for a single symbol."""
     print(f"\n{'='*70}")
@@ -32,17 +33,23 @@ def diagnose_symbol_forecasts(symbol: str):
     # Check recent indicator data
     print(f"\n1️⃣  INDICATOR DATA (last 2 hours)")
     try:
-        indicators = db.client.table("indicator_values").select(
-            "created_at,timeframe,rsi_14,macd,adx,atr_14"
-        ).eq("symbol_id", symbol_id).gte(
-            "created_at", (datetime.utcnow() - timedelta(hours=2)).isoformat()
-        ).order("created_at", desc=True).limit(20).execute()
+        indicators = (
+            db.client.table("indicator_values")
+            .select("created_at,timeframe,rsi_14,macd,adx,atr_14")
+            .eq("symbol_id", symbol_id)
+            .gte("created_at", (datetime.utcnow() - timedelta(hours=2)).isoformat())
+            .order("created_at", desc=True)
+            .limit(20)
+            .execute()
+        )
 
         if indicators.data:
             timeframes_with_data = set()
             for ind in indicators.data:
                 timeframes_with_data.add(ind.get("timeframe"))
-                print(f"  ✅ {ind['timeframe']}: {ind['created_at']} (RSI={ind.get('rsi_14')}, MACD={ind.get('macd')})")
+                print(
+                    f"  ✅ {ind['timeframe']}: {ind['created_at']} (RSI={ind.get('rsi_14')}, MACD={ind.get('macd')})"
+                )
             print(f"  ➜ Timeframes with data: {', '.join(sorted(timeframes_with_data))}")
         else:
             print(f"  ❌ No indicators found in last 2 hours")
@@ -66,18 +73,24 @@ def diagnose_symbol_forecasts(symbol: str):
     # Check recent forecasts
     print(f"\n3️⃣  RECENT FORECASTS (ml_forecasts table, last 24h)")
     try:
-        forecasts = db.client.table("ml_forecasts").select(
-            "horizon,overall_label,confidence,model_agreement,quality_score,run_at"
-        ).eq("symbol_id", symbol_id).gte(
-            "run_at", (datetime.utcnow() - timedelta(hours=24)).isoformat()
-        ).order("run_at", desc=True).limit(10).execute()
+        forecasts = (
+            db.client.table("ml_forecasts")
+            .select("horizon,overall_label,confidence,model_agreement,quality_score,run_at")
+            .eq("symbol_id", symbol_id)
+            .gte("run_at", (datetime.utcnow() - timedelta(hours=24)).isoformat())
+            .order("run_at", desc=True)
+            .limit(10)
+            .execute()
+        )
 
         if forecasts.data:
             for fc in forecasts.data:
                 conf_pct = float(fc.get("confidence", 0)) * 100
                 qa_score = fc.get("quality_score", "N/A")
                 agreement = fc.get("model_agreement", "NULL")
-                print(f"  📊 {fc['horizon']}: {fc['overall_label'].upper():8} | Conf={conf_pct:5.1f}% | QA={qa_score:>4} | Agree={agreement}")
+                print(
+                    f"  📊 {fc['horizon']}: {fc['overall_label'].upper():8} | Conf={conf_pct:5.1f}% | QA={qa_score:>4} | Agree={agreement}"
+                )
         else:
             print(f"  ❌ No forecasts found in last 24h")
     except Exception as e:
@@ -86,17 +99,23 @@ def diagnose_symbol_forecasts(symbol: str):
     # Check intraday forecasts
     print(f"\n4️⃣  INTRADAY FORECASTS (ml_forecasts_intraday, last 24h)")
     try:
-        intraday = db.client.table("ml_forecasts_intraday").select(
-            "horizon,overall_label,confidence,ensemble_label,run_at"
-        ).eq("symbol_id", symbol_id).gte(
-            "run_at", (datetime.utcnow() - timedelta(hours=24)).isoformat()
-        ).order("run_at", desc=True).limit(10).execute()
+        intraday = (
+            db.client.table("ml_forecasts_intraday")
+            .select("horizon,overall_label,confidence,ensemble_label,run_at")
+            .eq("symbol_id", symbol_id)
+            .gte("run_at", (datetime.utcnow() - timedelta(hours=24)).isoformat())
+            .order("run_at", desc=True)
+            .limit(10)
+            .execute()
+        )
 
         if intraday.data:
             for fc in intraday.data:
                 conf_pct = float(fc.get("confidence", 0)) * 100
                 ensemble_label = fc.get("ensemble_label", "unknown")
-                print(f"  📊 {fc['horizon']}: {fc['overall_label'].upper():8} | Conf={conf_pct:5.1f}% | Ensemble={ensemble_label}")
+                print(
+                    f"  📊 {fc['horizon']}: {fc['overall_label'].upper():8} | Conf={conf_pct:5.1f}% | Ensemble={ensemble_label}"
+                )
         else:
             print(f"  ❌ No intraday forecasts found in last 24h")
     except Exception as e:
@@ -126,9 +145,9 @@ def diagnose_symbol_forecasts(symbol: str):
 
 def main():
     """Main diagnostics."""
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("INTRADAY FORECAST DIAGNOSTICS")
-    print("="*70)
+    print("=" * 70)
 
     # Get symbols to diagnose
     try:
@@ -148,7 +167,7 @@ def main():
     # Summary
     print(f"\n{'='*70}")
     print("DIAGNOSTICS COMPLETE")
-    print("="*70)
+    print("=" * 70)
     print("\nCommon Issues:")
     print("1. ❌ 40% confidence everywhere  → Ensemble failing silently")
     print("2. ❌ NULL model_agreement       → Ensemble models not running")

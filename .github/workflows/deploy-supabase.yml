@@ -1,40 +1,91 @@
 name: Deploy Supabase Functions
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'supabase/functions/**'
-      - 'supabase/migrations/**'
-      - '.github/workflows/deploy-supabase.yml'
+  # Primary trigger: runs after CI Lightweight completes successfully on main/master.
+  # This ensures no untested code reaches production.
+  workflow_run:
+    workflows: ["CI - Lightweight (Code Quality)"]
+    types: [completed]
+    branches: [main, master]
+  # Manual trigger: allows deployment without waiting for CI (use with caution)
   workflow_dispatch:
 
 jobs:
+  # ===========================================================================
+  # DEPLOYMENT SCOPE — skip if no Supabase files changed
+  # ===========================================================================
+  check-deploy-needed:
+    name: Check Deployment Scope
+    runs-on: ubuntu-latest
+    # Only proceed if CI passed (or manual dispatch)
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    outputs:
+      deploy_needed: ${{ steps.check.outputs.deploy_needed }}
+
+    steps:
+    - name: Check if Supabase files changed
+      id: check
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "deploy_needed=true" >> $GITHUB_OUTPUT
+          echo "Manual dispatch — deploying unconditionally"
+          exit 0
+        fi
+
+        HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
+        echo "Checking files changed in commit: $HEAD_SHA"
+
+        # Use GitHub API to get files changed in this commit
+        CHANGED=$(gh api "repos/${{ github.repository }}/commits/${HEAD_SHA}" \
+          --jq '[.files[].filename] | join("\n")' 2>/dev/null || echo "unknown")
+
+        echo "Changed files:"
+        echo "$CHANGED"
+
+        if echo "$CHANGED" | grep -qE "^supabase/(functions|migrations)/|^\.github/workflows/deploy-supabase\.yml"; then
+          echo "deploy_needed=true" >> $GITHUB_OUTPUT
+          echo "✅ Supabase files changed — deploy needed"
+        else
+          echo "deploy_needed=false" >> $GITHUB_OUTPUT
+          echo "⏭️ No Supabase files changed — skipping deploy"
+        fi
+      env:
+        GH_TOKEN: ${{ github.token }}
+
+  # ===========================================================================
+  # DEPLOY EDGE FUNCTIONS
+  # ===========================================================================
   deploy-functions:
     name: Deploy Edge Functions
     runs-on: ubuntu-latest
-    
+    needs: check-deploy-needed
+    if: needs.check-deploy-needed.outputs.deploy_needed == 'true'
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+      with:
+        ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
     - name: Setup Supabase CLI
       uses: supabase/setup-cli@v1
       with:
         version: latest
-    
+
     - name: Link to Supabase project
       run: |
         supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
       env:
         SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-    
+
     - name: Deploy all functions
       run: |
         supabase functions deploy
       env:
         SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-    
+
     - name: Set function secrets
       run: |
         supabase secrets set \
@@ -45,6 +96,9 @@ jobs:
       env:
         SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
+  # ===========================================================================
+  # APPLY DATABASE MIGRATIONS
+  # ===========================================================================
   deploy-migrations:
     name: Apply Database Migrations
     runs-on: ubuntu-latest
@@ -53,6 +107,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
     - name: Setup Supabase CLI
       uses: supabase/setup-cli@v1
@@ -113,3 +169,54 @@ jobs:
         echo "## Migrations Applied Successfully ✅" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "All database migrations have been applied." >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # POST-DEPLOY SMOKE TEST — verify /chart endpoint is callable
+  # ===========================================================================
+  smoke-test:
+    name: Post-Deploy Smoke Test
+    runs-on: ubuntu-latest
+    needs: deploy-migrations
+    # Run smoke test even if migrations had a history mismatch (functions still deployed)
+    if: always() && needs.deploy-migrations.result != 'skipped'
+
+    steps:
+    - name: Test /chart endpoint returns HTTP 200
+      run: |
+        CHART_URL="${{ secrets.SUPABASE_URL }}/functions/v1/chart?symbol=AAPL&timeframe=1D"
+        echo "Calling: $CHART_URL"
+
+        HTTP_CODE=$(curl -s -o /tmp/chart_response.json -w "%{http_code}" \
+          -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+          -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+          --max-time 30 \
+          "$CHART_URL")
+
+        echo "HTTP status: $HTTP_CODE"
+
+        if [ "$HTTP_CODE" != "200" ]; then
+          echo "❌ Smoke test failed: /chart returned HTTP $HTTP_CODE"
+          echo "Response body:"
+          cat /tmp/chart_response.json
+          exit 1
+        fi
+
+        echo "✅ HTTP 200 received"
+
+    - name: Validate OHLCV data is non-empty
+      run: |
+        OHLCV_LEN=$(jq '.ohlcv | length // 0' /tmp/chart_response.json 2>/dev/null || echo 0)
+
+        if [ "$OHLCV_LEN" -lt 1 ]; then
+          echo "❌ Smoke test failed: ohlcv array is empty or missing"
+          echo "Response body:"
+          jq '.' /tmp/chart_response.json
+          exit 1
+        fi
+
+        echo "✅ ohlcv has $OHLCV_LEN bars — deploy verified"
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🟢 Post-Deploy Smoke Test Passed" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **/chart endpoint**: HTTP 200 ✅" >> $GITHUB_STEP_SUMMARY
+        echo "- **OHLCV bars**: $OHLCV_LEN bars returned ✅" >> $GITHUB_STEP_SUMMARY

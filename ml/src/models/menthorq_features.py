@@ -40,6 +40,7 @@ class MenthorQFeatures:
 def _get_dte(row: pd.Series, reference_ts: float | None = None) -> int:
     """Compute DTE from expiration (Unix seconds or date string)."""
     import time as _time
+
     ref = reference_ts or _time.time()
     exp = row.get("expiration") or row.get("expiry")
     if exp is None or pd.isna(exp):
@@ -82,7 +83,7 @@ def compute_gex_dex(
         )
 
     df["dte"] = df.apply(lambda r: _get_dte(r, reference_ts), axis=1)
-    df["gex"] = df[oi_col].fillna(0) * df.get("gamma", 0).fillna(0) * 100 * (spot ** 2)
+    df["gex"] = df[oi_col].fillna(0) * df.get("gamma", 0).fillna(0) * 100 * (spot**2)
     df["dex"] = df[oi_col].fillna(0) * df.get("delta", 0).fillna(0) * 100 * spot
 
     gex: dict[str, float] = {"0_7": 0.0, "8_30": 0.0, "30_90": 0.0}
@@ -176,7 +177,11 @@ def compute_menthorq_features(
     iv_col = "iv" if "iv" in options_df.columns else "impliedVolatility"
     if iv_col not in options_df.columns:
         iv_col = "implied_vol"
-    iv_avg = float(options_df[iv_col].mean()) if iv_col in options_df.columns and len(options_df) > 0 else 0.0
+    iv_avg = (
+        float(options_df[iv_col].mean())
+        if iv_col in options_df.columns and len(options_df) > 0
+        else 0.0
+    )
     rv = realized_vol if realized_vol is not None and np.isfinite(realized_vol) else 0.0
     vrp = compute_vrp(iv_avg, rv)
 

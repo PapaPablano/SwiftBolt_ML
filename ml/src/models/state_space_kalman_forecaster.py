@@ -176,9 +176,7 @@ class StateSpaceKalmanForecaster:
 
         returns = df["close"].pct_change().dropna()
         if len(returns) < self.min_bars:
-            raise ValueError(
-                f"StateSpaceKalman: need >= {self.min_bars} bars, got {len(returns)}"
-            )
+            raise ValueError(f"StateSpaceKalman: need >= {self.min_bars} bars, got {len(returns)}")
 
         built = _build_exog(df.loc[returns.index], exog_cols, return_missing_rate=True)
         exog_raw, self._exog_missing_rate = built
@@ -189,9 +187,7 @@ class StateSpaceKalmanForecaster:
 
         common = returns.index.intersection(exog_scaled.index)
         if len(common) < self.min_bars:
-            raise ValueError(
-                f"StateSpaceKalman: aligned data too short ({len(common)} bars)"
-            )
+            raise ValueError(f"StateSpaceKalman: aligned data too short ({len(common)} bars)")
         endog = returns.loc[common]
         exog_aligned = exog_scaled.loc[common]
 
@@ -220,12 +216,20 @@ class StateSpaceKalmanForecaster:
             self._model = model
             self.is_trained = True
             mle = getattr(self._results, "mle_retvals", None)
-            self._fit_converged = bool(mle.get("converged", False)) if isinstance(mle, dict) else False
+            self._fit_converged = (
+                bool(mle.get("converged", False)) if isinstance(mle, dict) else False
+            )
             self._fit_nobs = len(endog)
 
-            if hasattr(self._results, "predicted_state") and self._results.predicted_state is not None:
+            if (
+                hasattr(self._results, "predicted_state")
+                and self._results.predicted_state is not None
+            ):
                 self._last_state = np.array(self._results.predicted_state[:, -1])
-            if hasattr(self._results, "predicted_state_covariance") and self._results.predicted_state_covariance is not None:
+            if (
+                hasattr(self._results, "predicted_state_covariance")
+                and self._results.predicted_state_covariance is not None
+            ):
                 cov = self._results.predicted_state_covariance
                 self._last_state_cov = cov[:, :, -1] if cov.ndim == 3 else cov
 

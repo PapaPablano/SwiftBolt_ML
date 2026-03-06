@@ -73,9 +73,7 @@ class YahooFuturesClient:
         yahoo_symbol = YAHOO_FUTURES_MAP.get(root.upper())
         if not yahoo_symbol:
             logger.warning(f"Unknown futures root: {root}")
-            return pd.DataFrame(
-                columns=["timestamp", "open", "high", "low", "close", "volume"]
-            )
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
         return self._fetch_bars(
             symbol=yahoo_symbol,
@@ -102,13 +100,9 @@ class YahooFuturesClient:
 
         for base, full in YAHOO_FUTURES_MAP.items():
             if root.startswith(base):
-                return self.get_continuous_contract(
-                    base, resolution, start_date, end_date
-                )
+                return self.get_continuous_contract(base, resolution, start_date, end_date)
 
-        return pd.DataFrame(
-            columns=["timestamp", "open", "high", "low", "close", "volume"]
-        )
+        return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
     def _fetch_bars(
         self,
@@ -146,9 +140,7 @@ class YahooFuturesClient:
 
             if df.empty:
                 logger.warning(f"No data returned for {symbol}")
-                return pd.DataFrame(
-                    columns=["timestamp", "open", "high", "low", "close", "volume"]
-                )
+                return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
             df = df.reset_index()
             df = df.rename(columns={"Date": "timestamp"})
@@ -176,9 +168,7 @@ class YahooFuturesClient:
 
         except Exception as e:
             logger.error(f"Error fetching {symbol} from Yahoo Finance: {e}")
-            return pd.DataFrame(
-                columns=["timestamp", "open", "high", "low", "close", "volume"]
-            )
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
 
     def get_futures_roots(self) -> list[str]:
         """Return list of supported futures roots."""

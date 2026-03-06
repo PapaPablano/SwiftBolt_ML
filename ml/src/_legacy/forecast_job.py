@@ -24,10 +24,10 @@ from src.data.data_validator import (  # noqa: E402
     ValidationResult,
 )
 from src.data.supabase_db import db  # noqa: E402
+from src.features.feature_cache import fetch_or_build_features  # noqa: E402
 from src.features.support_resistance_detector import (  # noqa: E402
     SupportResistanceDetector,
 )
-from src.features.feature_cache import fetch_or_build_features  # noqa: E402
 from src.forecast_synthesizer import (  # noqa: E402
     ForecastResult,
     ForecastSynthesizer,
@@ -68,78 +68,82 @@ _metrics: dict | None = None
 
 class ProcessingMetrics:
     """Metrics collector for baseline performance measurement."""
-    
+
     def __init__(self):
         self.metrics = {
-            'start_time': datetime.now().isoformat(),
-            'symbols_processed': 0,
-            'feature_cache_hits': 0,
-            'feature_cache_misses': 0,
-            'feature_rebuild_times': [],
-            'forecast_times': [],
-            'weight_source': [],
-            'db_writes': 0,
-            'errors': []
+            "start_time": datetime.now().isoformat(),
+            "symbols_processed": 0,
+            "feature_cache_hits": 0,
+            "feature_cache_misses": 0,
+            "feature_rebuild_times": [],
+            "forecast_times": [],
+            "weight_source": [],
+            "db_writes": 0,
+            "errors": [],
         }
-    
+
     def log_feature_access(self, symbol: str, cache_hit: bool, rebuild_time: float | None = None):
         """Log feature cache access."""
         if cache_hit:
-            self.metrics['feature_cache_hits'] += 1
+            self.metrics["feature_cache_hits"] += 1
         else:
-            self.metrics['feature_cache_misses'] += 1
+            self.metrics["feature_cache_misses"] += 1
             if rebuild_time is not None:
-                self.metrics['feature_rebuild_times'].append({
-                    'symbol': symbol,
-                    'time_seconds': rebuild_time,
-                    'timestamp': datetime.now().isoformat()
-                })
-    
+                self.metrics["feature_rebuild_times"].append(
+                    {
+                        "symbol": symbol,
+                        "time_seconds": rebuild_time,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                )
+
     def log_weight_source(self, symbol: str, horizon: str, source: str):
         """Log which weight source was used."""
-        self.metrics['weight_source'].append({
-            'symbol': symbol,
-            'horizon': horizon,
-            'source': source,
-            'timestamp': datetime.now().isoformat()
-        })
-    
+        self.metrics["weight_source"].append(
+            {
+                "symbol": symbol,
+                "horizon": horizon,
+                "source": source,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+
     def log_db_write(self, symbol: str, table: str):
         """Log database write operation."""
-        self.metrics['db_writes'] += 1
-    
+        self.metrics["db_writes"] += 1
+
     def log_error(self, symbol: str, error: str):
         """Log processing error."""
-        self.metrics['errors'].append({
-            'symbol': symbol,
-            'error': error,
-            'timestamp': datetime.now().isoformat()
-        })
-    
+        self.metrics["errors"].append(
+            {"symbol": symbol, "error": error, "timestamp": datetime.now().isoformat()}
+        )
+
     def log_forecast_time(self, symbol: str, horizon: str, time_seconds: float):
         """Log forecast generation time."""
-        self.metrics['forecast_times'].append({
-            'symbol': symbol,
-            'horizon': horizon,
-            'time_seconds': time_seconds,
-            'timestamp': datetime.now().isoformat()
-        })
-    
+        self.metrics["forecast_times"].append(
+            {
+                "symbol": symbol,
+                "horizon": horizon,
+                "time_seconds": time_seconds,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+
     def save_to_file(self, filename: str | None = None):
         """Save metrics to JSON file."""
         if filename is None:
             filename = f'forecast_job_metrics_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
-        
+
         # Ensure metrics directory exists
-        metrics_dir = Path(__file__).parent.parent.parent / 'metrics' / 'baseline'
+        metrics_dir = Path(__file__).parent.parent.parent / "metrics" / "baseline"
         metrics_dir.mkdir(parents=True, exist_ok=True)
-        
+
         filepath = metrics_dir / filename
-        self.metrics['end_time'] = datetime.now().isoformat()
-        
-        with open(filepath, 'w') as f:
+        self.metrics["end_time"] = datetime.now().isoformat()
+
+        with open(filepath, "w") as f:
             json.dump(self.metrics, f, indent=2, default=str)
-        
+
         logger.info(f"Metrics saved to {filepath}")
         return filepath
 
@@ -171,9 +175,7 @@ def get_calibrator() -> ConfidenceCalibrator:
                 )
                 for result in results:
                     try:
-                        bucket_parts = (
-                            result.bucket.replace("%", "").split("-")
-                        )
+                        bucket_parts = result.bucket.replace("%", "").split("-")
                         bucket_low = float(bucket_parts[0]) / 100
                         bucket_high = float(bucket_parts[1]) / 100
                         db.upsert_confidence_calibration(
@@ -192,10 +194,7 @@ def get_calibrator() -> ConfidenceCalibrator:
                             exc,
                         )
             else:
-                logger.info(
-                    "Insufficient historical data for calibration, "
-                    "using raw confidence"
-                )
+                logger.info("Insufficient historical data for calibration, " "using raw confidence")
         except Exception as e:
             logger.warning("Could not load calibration data: %s", e)
     return _calibrator
@@ -225,9 +224,7 @@ def _get_forecast_cache_window() -> timedelta:
 
 def _get_metric_thresholds() -> dict[str, float]:
     try:
-        min_direction_accuracy = float(
-            os.getenv("ALERT_DIRECTION_ACCURACY_MIN", "0.55")
-        )
+        min_direction_accuracy = float(os.getenv("ALERT_DIRECTION_ACCURACY_MIN", "0.55"))
     except Exception:
         min_direction_accuracy = 0.55
 
@@ -298,9 +295,10 @@ def _log_forecast_run_metrics(
     if validation_metrics:
         direction_accuracy = validation_metrics.get("direction_accuracy")
         edge_gap = validation_metrics.get("edge_gap")
-        if direction_accuracy is not None and direction_accuracy < thresholds[
-            "min_direction_accuracy"
-        ]:
+        if (
+            direction_accuracy is not None
+            and direction_accuracy < thresholds["min_direction_accuracy"]
+        ):
             db.insert_forecast_alert(
                 symbol_id=symbol_id,
                 horizon=horizon,
@@ -393,7 +391,7 @@ def _should_skip_forecast(symbol_id: str, horizons: list[str]) -> bool:
         return False
 
     window = _get_forecast_cache_window()
-    since_ts = pd.Timestamp.now('UTC') - window
+    since_ts = pd.Timestamp.now("UTC") - window
     recent = db.fetch_recent_forecast_horizons(symbol_id, since_ts)
     if not recent:
         return False
@@ -836,8 +834,7 @@ def _build_sr_correlation_inputs(
     logistic_levels = [
         lvl.get("level")
         for lvl in (
-            logistic_in.get("support_levels", [])
-            + logistic_in.get("resistance_levels", [])
+            logistic_in.get("support_levels", []) + logistic_in.get("resistance_levels", [])
         )
     ]
 
@@ -1120,7 +1117,7 @@ def process_symbol(symbol: str) -> None:
         symbol: Stock ticker symbol
     """
     logger.info(f"Processing {symbol}...")
-    
+
     metrics = get_metrics()
     symbol_start_time = time.time()
 
@@ -1134,11 +1131,13 @@ def process_symbol(symbol: str) -> None:
         )
         feature_time = time.time() - feature_start
         df = features_by_tf.get("d1", pd.DataFrame())
-        
+
         # Estimate cache hit: if feature fetch was very fast (< 0.5s), likely cache hit
         # This is approximate - we'll improve in Phase 2 with Redis
         cache_hit = feature_time < 0.5
-        metrics.log_feature_access(symbol, cache_hit, rebuild_time=feature_time if not cache_hit else None)
+        metrics.log_feature_access(
+            symbol, cache_hit, rebuild_time=feature_time if not cache_hit else None
+        )
 
         if len(df) < settings.min_bars_for_training:
             logger.warning(
@@ -1334,23 +1333,15 @@ def process_symbol(symbol: str) -> None:
                 # Add SuperTrend if calculated successfully
                 if supertrend_data and "supertrend" in df.columns:
                     record["supertrend_value"] = row.get("supertrend")
-                    record["supertrend_trend"] = (
-                        1 if row.get("supertrend_signal", 0) > 0 else 0
-                    )
-                    record["supertrend_factor"] = supertrend_data.get(
-                        "supertrend_factor"
-                    )
+                    record["supertrend_trend"] = 1 if row.get("supertrend_signal", 0) > 0 else 0
+                    record["supertrend_factor"] = supertrend_data.get("supertrend_factor")
 
                 indicator_records.append(record)
 
             # Add S/R levels to the most recent record
             if indicator_records and sr_levels:
-                indicator_records[-1]["nearest_support"] = sr_levels.get(
-                    "nearest_support"
-                )
-                indicator_records[-1]["nearest_resistance"] = sr_levels.get(
-                    "nearest_resistance"
-                )
+                indicator_records[-1]["nearest_support"] = sr_levels.get("nearest_support")
+                indicator_records[-1]["nearest_resistance"] = sr_levels.get("nearest_resistance")
                 indicator_records[-1]["support_distance_pct"] = sr_levels.get(
                     "support_distance_pct"
                 )
@@ -1376,11 +1367,7 @@ def process_symbol(symbol: str) -> None:
             poly_series,
             logistic_series,
         ) = _build_sr_correlation_inputs(sr_levels)
-        if (
-            len(pivot_series) >= 10
-            and len(poly_series) >= 10
-            and len(logistic_series) >= 10
-        ):
+        if len(pivot_series) >= 10 and len(poly_series) >= 10 and len(logistic_series) >= 10:
             sr_correlation_result = weights.adjust_sr_weights_for_correlation(
                 pivot_series,
                 poly_series,
@@ -1485,7 +1472,7 @@ def process_symbol(symbol: str) -> None:
                 weight_start = time.time()
                 lw = _get_symbol_layer_weights(symbol_id=symbol_id, horizon=horizon)
                 weight_time = time.time() - weight_start
-                
+
                 # Determine weight source based on priority order
                 # Priority 1: Intraday-calibrated
                 # Priority 2: Symbol-specific daily
@@ -1506,16 +1493,18 @@ def process_symbol(symbol: str) -> None:
                         if calibrated is not None:
                             weight_source = "intraday_calibrated"
                         elif _bool_env("ENABLE_SYMBOL_WEIGHTS", default=False):
-                            row = db.fetch_symbol_model_weights(symbol_id=symbol_id, horizon=horizon)
+                            row = db.fetch_symbol_model_weights(
+                                symbol_id=symbol_id, horizon=horizon
+                            )
                             if row is not None:
                                 weight_source = "daily_symbol"
                     elif _bool_env("ENABLE_SYMBOL_WEIGHTS", default=False):
                         row = db.fetch_symbol_model_weights(symbol_id=symbol_id, horizon=horizon)
                         if row is not None:
                             weight_source = "daily_symbol"
-                
+
                 metrics.log_weight_source(symbol, horizon, weight_source)
-                
+
                 if lw is not None:
                     try:
                         old_target = float(synth_result.target)
@@ -1813,7 +1802,7 @@ def process_symbol(symbol: str) -> None:
                 confidence_source=forecast.get("confidence_source"),
             )
             metrics.log_db_write(symbol, "ml_forecasts")
-            
+
             # Log forecast generation time
             forecast_time = time.time() - symbol_start_time
             metrics.log_forecast_time(symbol, forecast["horizon"], forecast_time)
@@ -1905,11 +1894,11 @@ def main() -> None:
     logger.info(f"Processed: {symbols_processed}")
     logger.info(f"Failed: {symbols_failed}")
     logger.info("=" * 80)
-    
+
     # Save metrics
     metrics = get_metrics()
-    metrics.metrics['symbols_processed'] = symbols_processed
-    metrics.metrics['symbols_failed'] = symbols_failed
+    metrics.metrics["symbols_processed"] = symbols_processed
+    metrics.metrics["symbols_failed"] = symbols_failed
     metrics.save_to_file()
 
     # Export monitoring metrics if enhanced ensemble was used

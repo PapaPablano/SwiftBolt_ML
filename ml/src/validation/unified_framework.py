@@ -180,9 +180,7 @@ class UnifiedValidator:
         self.WALKFORWARD_WEIGHT = walkforward_weight / total
         self.LIVE_WEIGHT = live_weight / total
 
-        self.last_retraining_date = last_retraining_date or (
-            datetime.now() - timedelta(days=30)
-        )
+        self.last_retraining_date = last_retraining_date or (datetime.now() - timedelta(days=30))
 
     def validate(
         self,
@@ -207,13 +205,11 @@ class UnifiedValidator:
         unified_conf = self._calculate_unified_confidence(scores)
 
         # Step 2: Detect drift
-        drift_detected, drift_mag, drift_severity, drift_explain = self._detect_drift(
-            scores
-        )
+        drift_detected, drift_mag, drift_severity, drift_explain = self._detect_drift(scores)
 
         # Step 3: Reconcile multi-timeframe
-        tf_conflict, conflict_explain, consensus_dir, weights = (
-            self._reconcile_timeframes(scores.multi_tf_scores)
+        tf_conflict, conflict_explain, consensus_dir, weights = self._reconcile_timeframes(
+            scores.multi_tf_scores
         )
 
         # Step 4: Apply adjustments
@@ -231,8 +227,8 @@ class UnifiedValidator:
         recommendation = self._generate_recommendation(adjusted_conf, adjustments)
 
         # Step 6: Check retraining trigger
-        retrain_trigger, retrain_reason, next_retrain_date = (
-            self._check_retraining_trigger(drift_mag, adjusted_conf)
+        retrain_trigger, retrain_reason, next_retrain_date = self._check_retraining_trigger(
+            drift_mag, adjusted_conf
         )
 
         return UnifiedPrediction(
@@ -273,9 +269,7 @@ class UnifiedValidator:
         )
         return min(1.0, max(0.0, unified))
 
-    def _detect_drift(
-        self, scores: ValidationScores
-    ) -> Tuple[bool, float, str, str]:
+    def _detect_drift(self, scores: ValidationScores) -> Tuple[bool, float, str, str]:
         """
         Detect model drift by comparing live vs backtesting performance.
 
@@ -341,19 +335,13 @@ class UnifiedValidator:
 
         # Calculate weighted votes
         bullish_weight = sum(
-            self.TF_HIERARCHY.get(tf, 0.05)
-            for tf, pred in predictions.items()
-            if pred == "BULLISH"
+            self.TF_HIERARCHY.get(tf, 0.05) for tf, pred in predictions.items() if pred == "BULLISH"
         )
         bearish_weight = sum(
-            self.TF_HIERARCHY.get(tf, 0.05)
-            for tf, pred in predictions.items()
-            if pred == "BEARISH"
+            self.TF_HIERARCHY.get(tf, 0.05) for tf, pred in predictions.items() if pred == "BEARISH"
         )
         neutral_weight = sum(
-            self.TF_HIERARCHY.get(tf, 0.05)
-            for tf, pred in predictions.items()
-            if pred == "NEUTRAL"
+            self.TF_HIERARCHY.get(tf, 0.05) for tf, pred in predictions.items() if pred == "NEUTRAL"
         )
 
         total_weight = bullish_weight + bearish_weight + neutral_weight
@@ -369,7 +357,9 @@ class UnifiedValidator:
         elif abs(bullish_weight - bearish_weight) / total_weight < 0.15:
             # Close call (within 15% of each other)
             conflict_detected = True
-            explanation = f"Weak consensus ({abs(bullish_weight - bearish_weight) / total_weight:.0%} margin)"
+            explanation = (
+                f"Weak consensus ({abs(bullish_weight - bearish_weight) / total_weight:.0%} margin)"
+            )
             consensus_dir = "BULLISH" if bullish_weight > bearish_weight else "BEARISH"
         else:
             conflict_detected = False
@@ -381,7 +371,9 @@ class UnifiedValidator:
         bearish_tfs = [tf for tf, pred in predictions.items() if pred == "BEARISH"]
 
         if conflict_detected and bullish_tfs and bearish_tfs:
-            explanation += f" (Bullish: {', '.join(bullish_tfs)}; Bearish: {', '.join(bearish_tfs)})"
+            explanation += (
+                f" (Bullish: {', '.join(bullish_tfs)}; Bearish: {', '.join(bearish_tfs)})"
+            )
 
         return conflict_detected, explanation, consensus_dir, self.TF_HIERARCHY
 

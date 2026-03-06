@@ -24,7 +24,9 @@ pytestmark = pytest.mark.integration
 
 # Current bar (anchor) time: 15:15 UTC. First stored point must be strictly after this (short-points path slices off anchor).
 CURRENT_BAR_TS_ISO = "2026-02-10T15:15:00Z"
-CURRENT_BAR_TS_SEC = int(datetime.fromisoformat(CURRENT_BAR_TS_ISO.replace("Z", "+00:00")).timestamp())
+CURRENT_BAR_TS_SEC = int(
+    datetime.fromisoformat(CURRENT_BAR_TS_ISO.replace("Z", "+00:00")).timestamp()
+)
 
 DIAGNOSTIC_POINTS = [
     {
@@ -66,6 +68,7 @@ def _insert_row():
     """Insert diagnostic row; return (symbol_id, row_id) or (None, None)."""
     try:
         from dotenv import load_dotenv
+
         load_dotenv()
     except ImportError:
         pass
@@ -79,6 +82,7 @@ def _insert_row():
     if not url or not key:
         return None, None
     from supabase import create_client
+
     client = create_client(url, key)
     r = client.table("symbols").select("id").eq("ticker", "AAPL").limit(1).execute()
     if not r.data:
@@ -113,6 +117,7 @@ def _delete_row(row_id):
         return
     try:
         from dotenv import load_dotenv
+
         load_dotenv()
     except ImportError:
         pass
@@ -126,13 +131,16 @@ def _delete_row(row_id):
     if not url or not key:
         return
     from supabase import create_client
+
     client = create_client(url, key)
     client.table("ml_forecasts_intraday").delete().eq("id", row_id).execute()
 
 
 def _call_chart(base_url: str, anon_key: str) -> dict:
     url = f"{base_url}/functions/v1/chart?symbol=AAPL&timeframe=m15&include_forecast=true"
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {anon_key}", "Content-Type": "application/json"})
+    req = urllib.request.Request(
+        url, headers={"Authorization": f"Bearer {anon_key}", "Content-Type": "application/json"}
+    )
     with urllib.request.urlopen(req, timeout=15) as resp:
         return json.loads(resp.read().decode())
 
@@ -140,7 +148,12 @@ def _call_chart(base_url: str, anon_key: str) -> dict:
 def _call_chart_data_v2(base_url: str, anon_key: str) -> dict:
     url = f"{base_url}/functions/v1/chart-data-v2"
     data = json.dumps({"symbol": "AAPL", "timeframe": "m15", "includeForecast": True}).encode()
-    req = urllib.request.Request(url, data=data, method="POST", headers={"Authorization": f"Bearer {anon_key}", "Content-Type": "application/json"})
+    req = urllib.request.Request(
+        url,
+        data=data,
+        method="POST",
+        headers={"Authorization": f"Bearer {anon_key}", "Content-Type": "application/json"},
+    )
     with urllib.request.urlopen(req, timeout=15) as resp:
         return json.loads(resp.read().decode())
 
@@ -171,7 +184,9 @@ def test_chart_roundtrip_iso_and_extended_fields():
         p0 = pts[0]
         assert p0.get("value") == 246.123456, "chart must return diagnostic value"
         assert isinstance(p0.get("ts"), str), "chart must keep ts as ISO string"
-        assert "ohlc" in p0 and "indicators" in p0, "chart must preserve ohlc and indicators (no truncation)"
+        assert (
+            "ohlc" in p0 and "indicators" in p0
+        ), "chart must preserve ohlc and indicators (no truncation)"
         # Anchor-removal contract: first stored point must be strictly after current bar time
         first_ts_str = p0.get("ts")
         first_ts_sec = int(datetime.fromisoformat(first_ts_str.replace("Z", "+00:00")).timestamp())
@@ -187,8 +202,12 @@ def test_chart_roundtrip_iso_and_extended_fields():
             pytest.skip("chart-data-v2 returned no forecast points")
         v2_0 = v2_pts[0]
         assert v2_0.get("value") == 246.123456
-        assert isinstance(v2_0.get("ts"), int), "chart-data-v2 must return ts as integer (unix seconds)"
-        assert "ohlc" in v2_0 and "indicators" in v2_0, "chart-data-v2 must preserve extended fields"
+        assert isinstance(
+            v2_0.get("ts"), int
+        ), "chart-data-v2 must return ts as integer (unix seconds)"
+        assert (
+            "ohlc" in v2_0 and "indicators" in v2_0
+        ), "chart-data-v2 must preserve extended fields"
         # Same anchor-removal contract for v2 response
         first_ts_int = v2_0.get("ts")
         assert first_ts_int > CURRENT_BAR_TS_SEC, (
@@ -196,6 +215,8 @@ def test_chart_roundtrip_iso_and_extended_fields():
             f"got first_ts={first_ts_int}, current_bar_sec={CURRENT_BAR_TS_SEC}"
         )
         if len(v2_pts) >= 2:
-            assert v2_pts[1].get("timeframe") == "h4", "chart-data-v2 must normalize 4h_trading → h4"
+            assert (
+                v2_pts[1].get("timeframe") == "h4"
+            ), "chart-data-v2 must normalize 4h_trading → h4"
     finally:
         _delete_row(row_id)

@@ -164,15 +164,10 @@ class ForecastValidator:
         logger.info(f"Validating {len(matched)} matched forecasts")
 
         # Direction accuracy
-        if (
-            "direction_correct" in matched.columns
-            and matched["direction_correct"].notna().any()
-        ):
+        if "direction_correct" in matched.columns and matched["direction_correct"].notna().any():
             direction_correct = matched["direction_correct"].fillna(False)
         else:
-            direction_correct = (
-                matched["predicted_direction"] == matched["actual_direction"]
-            )
+            direction_correct = matched["predicted_direction"] == matched["actual_direction"]
         direction_accuracy = direction_correct.mean()
 
         # Target precision
@@ -297,10 +292,14 @@ class ForecastValidator:
 
             try:
                 # Handle ISO8601 format with timezone info
-                forecast_date = pd.to_datetime(forecast[date_col], format='ISO8601', errors='coerce')
+                forecast_date = pd.to_datetime(
+                    forecast[date_col], format="ISO8601", errors="coerce"
+                )
                 if pd.isna(forecast_date):
                     # Fallback to mixed format if ISO8601 fails
-                    forecast_date = pd.to_datetime(forecast[date_col], format='mixed', errors='coerce')
+                    forecast_date = pd.to_datetime(
+                        forecast[date_col], format="mixed", errors="coerce"
+                    )
                 if pd.isna(forecast_date):
                     continue
             except Exception:
@@ -316,14 +315,16 @@ class ForecastValidator:
             if "date" in symbol_actuals.columns:
                 # Use ISO8601 format to handle various timestamp formats
                 try:
-                    actuals_dates = pd.to_datetime(symbol_actuals["date"], format='ISO8601', errors='coerce')
+                    actuals_dates = pd.to_datetime(
+                        symbol_actuals["date"], format="ISO8601", errors="coerce"
+                    )
                 except Exception:
                     # Fallback to mixed format if ISO8601 fails
-                    actuals_dates = pd.to_datetime(symbol_actuals["date"], format='mixed', errors='coerce')
-                
-                outcome = symbol_actuals[
-                    actuals_dates >= outcome_date
-                ].head(1)
+                    actuals_dates = pd.to_datetime(
+                        symbol_actuals["date"], format="mixed", errors="coerce"
+                    )
+
+                outcome = symbol_actuals[actuals_dates >= outcome_date].head(1)
             else:
                 continue
 

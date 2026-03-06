@@ -5,10 +5,11 @@ Tests weight calibration with divergence detection on realistic multi-symbol
 datasets to validate Phase 3.2 implementation.
 """
 
-import pytest
+from datetime import datetime, timedelta
+
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
+import pytest
 
 from src.monitoring.divergence_monitor import DivergenceMonitor
 
@@ -98,7 +99,7 @@ class TestCalibratorWithSyntheticSymbolData:
 
             if divergence > threshold:
                 # Revert to equal weights (3-layer: ST, SR, Ensemble)
-                weights = np.array([1/3, 1/3, 1/3])
+                weights = np.array([1 / 3, 1 / 3, 1 / 3])
             else:
                 # Optimized weights (example)
                 weights = np.array([0.30, 0.35, 0.35])
@@ -106,16 +107,18 @@ class TestCalibratorWithSyntheticSymbolData:
             symbol_weights[symbol] = weights
 
         # Verify weight distributions
-        assert np.allclose(symbol_weights["AAPL"].sum(), 1.0)  # Equal (overfitting detected - 15.6%)
+        assert np.allclose(
+            symbol_weights["AAPL"].sum(), 1.0
+        )  # Equal (overfitting detected - 15.6%)
         assert np.allclose(symbol_weights["MSFT"].sum(), 1.0)  # Optimized (below threshold)
-        assert np.allclose(symbol_weights["SPY"].sum(), 1.0)   # Equal (overfitting detected)
-        assert np.allclose(symbol_weights["GLD"].sum(), 1.0)   # Equal (overfitting detected)
+        assert np.allclose(symbol_weights["SPY"].sum(), 1.0)  # Equal (overfitting detected)
+        assert np.allclose(symbol_weights["GLD"].sum(), 1.0)  # Equal (overfitting detected)
         assert np.allclose(symbol_weights["NVDA"].sum(), 1.0)  # Optimized (below threshold)
 
         # AAPL, SPY, and GLD should have equal weights
-        assert np.allclose(symbol_weights["AAPL"], [1/3, 1/3, 1/3])
-        assert np.allclose(symbol_weights["SPY"], [1/3, 1/3, 1/3])
-        assert np.allclose(symbol_weights["GLD"], [1/3, 1/3, 1/3])
+        assert np.allclose(symbol_weights["AAPL"], [1 / 3, 1 / 3, 1 / 3])
+        assert np.allclose(symbol_weights["SPY"], [1 / 3, 1 / 3, 1 / 3])
+        assert np.allclose(symbol_weights["GLD"], [1 / 3, 1 / 3, 1 / 3])
 
     def test_calibration_data_quality_check(self, symbol_validation_data):
         """Test validation of calibration data quality."""
@@ -124,25 +127,24 @@ class TestCalibratorWithSyntheticSymbolData:
 
         # Simulate sample counts
         sample_counts = {
-            "AAPL": 250,   # Good
-            "MSFT": 200,   # Good
-            "SPY": 180,    # Good
-            "NVDA": 150,   # Good
-            "GLD": 80,     # Insufficient
+            "AAPL": 250,  # Good
+            "MSFT": 200,  # Good
+            "SPY": 180,  # Good
+            "NVDA": 150,  # Good
+            "GLD": 80,  # Insufficient
         }
 
         span_days = {
-            "AAPL": 365,   # Good
-            "MSFT": 300,   # Good
-            "SPY": 250,    # Good
-            "NVDA": 200,   # Good
-            "GLD": 15,     # Insufficient
+            "AAPL": 365,  # Good
+            "MSFT": 300,  # Good
+            "SPY": 250,  # Good
+            "NVDA": 200,  # Good
+            "GLD": 15,  # Insufficient
         }
 
         valid_calibrations = {}
         for symbol in symbol_validation_data.keys():
-            is_valid = (sample_counts[symbol] >= min_samples and
-                       span_days[symbol] >= min_span_days)
+            is_valid = sample_counts[symbol] >= min_samples and span_days[symbol] >= min_span_days
             valid_calibrations[symbol] = is_valid
 
         assert valid_calibrations["AAPL"] is True

@@ -1,4 +1,5 @@
 """Supabase-based database access layer for SwiftBolt ML pipeline."""
+
 # flake8: noqa
 
 import logging
@@ -176,7 +177,7 @@ class SupabaseDatabase:
                     if effective_limit and len(all_rows) >= effective_limit:
                         break
 
-                df = pd.DataFrame(all_rows[: effective_limit] if effective_limit else all_rows)
+                df = pd.DataFrame(all_rows[:effective_limit] if effective_limit else all_rows)
                 df.attrs["provider"] = provider or "any"
                 last_df = df
 
@@ -417,7 +418,7 @@ class SupabaseDatabase:
             "adjustment_factor": adjustment_factor,
             "n_samples": n_samples,
             "is_calibrated": is_calibrated,
-            "updated_at": pd.Timestamp.now('UTC').isoformat(),
+            "updated_at": pd.Timestamp.now("UTC").isoformat(),
         }
         try:
             self.client.table("ml_confidence_calibration").upsert(
@@ -444,9 +445,7 @@ class SupabaseDatabase:
                 )
                 .gte(
                     "evaluation_date",
-                    (
-                        pd.Timestamp.now() - pd.Timedelta(days=lookback_days)
-                    ).isoformat(),
+                    (pd.Timestamp.now() - pd.Timedelta(days=lookback_days)).isoformat(),
                 )
                 .limit(limit)
                 .execute()
@@ -480,10 +479,7 @@ class SupabaseDatabase:
                     {
                         "symbol": symbol,
                         "horizon": horizon,
-                        "label": (
-                            forecast_meta.get("overall_label")
-                            or predicted_label
-                        ),
+                        "label": (forecast_meta.get("overall_label") or predicted_label),
                         "confidence": forecast_meta.get("confidence"),
                         "target": target,
                         "upper_band": upper,
@@ -586,7 +582,7 @@ class SupabaseDatabase:
             payload: dict[str, Any] = {
                 "symbol_id": symbol_id,
                 "horizon": horizon,
-                "last_updated": pd.Timestamp.now('UTC').isoformat(),
+                "last_updated": pd.Timestamp.now("UTC").isoformat(),
             }
             if rf_weight is not None:
                 payload["rf_weight"] = float(rf_weight)
@@ -900,7 +896,8 @@ class SupabaseDatabase:
                 "run_at": pd.Timestamp.now().isoformat(),
                 "updated_at": pd.Timestamp.now().isoformat(),
                 "timeframe": timeframe_value,
-                "model_type": model_type or "xgboost",  # Default to xgboost for backwards compatibility
+                "model_type": model_type
+                or "xgboost",  # Default to xgboost for backwards compatibility
             }
 
             # Add SuperTrend AI data if available
@@ -987,7 +984,7 @@ class SupabaseDatabase:
             return
 
         payload: list[dict[str, Any]] = []
-        now_iso = pd.Timestamp.now('UTC').isoformat()
+        now_iso = pd.Timestamp.now("UTC").isoformat()
 
         for raw_forecast in forecasts:
             forecast = {**raw_forecast}
@@ -1060,7 +1057,7 @@ class SupabaseDatabase:
             return
 
         payload = []
-        now_iso = pd.Timestamp.now('UTC').isoformat()
+        now_iso = pd.Timestamp.now("UTC").isoformat()
 
         for forecast in forecasts:
             horizon_key = str(forecast.get("horizon", "")).upper()
@@ -2011,8 +2008,12 @@ class SupabaseDatabase:
                 forecast_data["synthesis_data"] = synthesis_data
 
             try:
-                response = self.client.table("ml_forecasts_intraday").insert(forecast_data).execute()
-            except Exception as insert_err:  # PGRST204 when synthesis_data column missing (schema rollout)
+                response = (
+                    self.client.table("ml_forecasts_intraday").insert(forecast_data).execute()
+                )
+            except (
+                Exception
+            ) as insert_err:  # PGRST204 when synthesis_data column missing (schema rollout)
                 err_str = str(insert_err).lower()
                 err_code = getattr(insert_err, "code", None) or ""
                 _schema_cache_missing_col = (
@@ -2033,7 +2034,9 @@ class SupabaseDatabase:
                         insert_err,
                     )
                     forecast_data.pop("synthesis_data", None)
-                    response = self.client.table("ml_forecasts_intraday").insert(forecast_data).execute()
+                    response = (
+                        self.client.table("ml_forecasts_intraday").insert(forecast_data).execute()
+                    )
                 else:
                     raise
 
@@ -2110,10 +2113,14 @@ class SupabaseDatabase:
                 forecast_data["synthesis_data"] = synthesis_data
 
             try:
-                response = self.client.table("ml_forecasts_intraday").upsert(
-                    forecast_data,
-                    on_conflict="symbol_id,horizon,created_at",
-                ).execute()
+                response = (
+                    self.client.table("ml_forecasts_intraday")
+                    .upsert(
+                        forecast_data,
+                        on_conflict="symbol_id,horizon,created_at",
+                    )
+                    .execute()
+                )
             except Exception as upsert_err:  # PGRST204 when synthesis_data column missing
                 err_str = str(upsert_err).lower()
                 err_code = getattr(upsert_err, "code", None) or ""
@@ -2135,10 +2142,14 @@ class SupabaseDatabase:
                         upsert_err,
                     )
                     forecast_data.pop("synthesis_data", None)
-                    response = self.client.table("ml_forecasts_intraday").upsert(
-                        forecast_data,
-                        on_conflict="symbol_id,horizon,created_at",
-                    ).execute()
+                    response = (
+                        self.client.table("ml_forecasts_intraday")
+                        .upsert(
+                            forecast_data,
+                            on_conflict="symbol_id,horizon,created_at",
+                        )
+                        .execute()
+                    )
                 else:
                     raise
 
@@ -2269,15 +2280,19 @@ class SupabaseDatabase:
                     .limit(max(1, min(limit, 100)))
                     .execute()
                 )
-                for row in (fe.data or []):
-                    out.append({
-                        "price_error": row.get("price_error"),
-                        "price_error_pct": row.get("price_error_pct"),
-                        "direction_correct": row.get("direction_correct"),
-                        "evaluated_at": row.get("evaluation_date"),
-                    })
+                for row in fe.data or []:
+                    out.append(
+                        {
+                            "price_error": row.get("price_error"),
+                            "price_error_pct": row.get("price_error_pct"),
+                            "direction_correct": row.get("direction_correct"),
+                            "evaluated_at": row.get("evaluation_date"),
+                        }
+                    )
         except Exception as e:
-            logger.debug("Error fetching recent intraday residuals for %s %s: %s", symbol_id, horizon, e)
+            logger.debug(
+                "Error fetching recent intraday residuals for %s %s: %s", symbol_id, horizon, e
+            )
         return out[:limit]
 
     def save_intraday_evaluation(
@@ -2756,20 +2771,14 @@ class SupabaseDatabase:
                         "supertrend_distance_norm": _safe_float(
                             ind.get("supertrend_distance_norm")
                         ),
-                        "supertrend_distance_pct": _safe_float(
-                            ind.get("supertrend_distance_pct")
-                        ),
+                        "supertrend_distance_pct": _safe_float(ind.get("supertrend_distance_pct")),
                         "supertrend_metrics": ind.get("supertrend_metrics"),
                         "perf_ama": _safe_float(ind.get("perf_ama")),
                         # S/R
                         "nearest_support": _safe_float(ind.get("nearest_support")),
                         "nearest_resistance": _safe_float(ind.get("nearest_resistance")),
-                        "support_distance_pct": _safe_float(
-                            ind.get("support_distance_pct")
-                        ),
-                        "resistance_distance_pct": _safe_float(
-                            ind.get("resistance_distance_pct")
-                        ),
+                        "support_distance_pct": _safe_float(ind.get("support_distance_pct")),
+                        "resistance_distance_pct": _safe_float(ind.get("resistance_distance_pct")),
                         # Additional
                         "adx": _safe_float(ind.get("adx")),
                         "atr_14": _safe_float(ind.get("atr_14")),
@@ -3011,13 +3020,15 @@ class SupabaseDatabase:
                 key = (row["strike"], row["expiry"], row["option_type"])
                 if key not in seen:
                     seen.add(key)
-                    unique_options.append({
-                        "strike": row["strike"],
-                        "expiry": row["expiry"],
-                        "side": row["option_type"],
-                        "leg_id": row["id"],
-                        "strategy_id": row["strategy_id"],
-                    })
+                    unique_options.append(
+                        {
+                            "strike": row["strike"],
+                            "expiry": row["expiry"],
+                            "side": row["option_type"],
+                            "leg_id": row["id"],
+                            "strategy_id": row["strategy_id"],
+                        }
+                    )
 
             logger.info(
                 "Found %d unique active strategy options for symbol %s",

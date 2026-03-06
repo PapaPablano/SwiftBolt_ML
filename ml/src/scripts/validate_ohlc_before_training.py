@@ -25,7 +25,9 @@ from src.data.supabase_db import db
 from src.scripts.universe_utils import get_symbol_universe
 
 
-def validate_symbol(symbol: str, validator: OHLCValidator, critical_keywords: list, output_lock: Lock):
+def validate_symbol(
+    symbol: str, validator: OHLCValidator, critical_keywords: list, output_lock: Lock
+):
     """Validate a single symbol (thread-safe)."""
     symbol = symbol.strip()
     if not symbol:
@@ -77,7 +79,9 @@ def validate_symbol(symbol: str, validator: OHLCValidator, critical_keywords: li
 
 def main():
     parser = ArgumentParser(description="Validate OHLC data before ML training")
-    parser.add_argument("--symbols", type=str, default=None, help="Comma-separated symbols to validate")
+    parser.add_argument(
+        "--symbols", type=str, default=None, help="Comma-separated symbols to validate"
+    )
     parser.add_argument("--limit", type=int, default=10, help="Limit number of symbols to check")
     parser.add_argument("--workers", type=int, default=4, help="Number of parallel workers")
     args = parser.parse_args()
@@ -114,7 +118,9 @@ def main():
     # Use parallel processing for symbol validation
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {
-            executor.submit(validate_symbol, symbol, validator, critical_keywords, output_lock): symbol
+            executor.submit(
+                validate_symbol, symbol, validator, critical_keywords, output_lock
+            ): symbol
             for symbol in symbols_to_check
         }
 
@@ -132,7 +138,9 @@ def main():
         for error in critical_errors:
             print(f"  - {error}")
         print("")
-        print("::error::Critical OHLC data quality issues detected. ML training may produce unreliable results.")
+        print(
+            "::error::Critical OHLC data quality issues detected. ML training may produce unreliable results."
+        )
         sys.exit(1)
 
     # Show warnings but don't fail
@@ -142,7 +150,9 @@ def main():
         for warning in warnings:
             print(f"  - {warning}")
         print("")
-        print("::warning::Some OHLC data quality warnings detected (outliers/gaps). These are common in real market data.")
+        print(
+            "::warning::Some OHLC data quality warnings detected (outliers/gaps). These are common in real market data."
+        )
 
     print("")
     print("✅ OHLC validation passed for all checked symbols (critical checks only)")

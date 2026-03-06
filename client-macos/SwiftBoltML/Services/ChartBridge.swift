@@ -705,6 +705,25 @@ final class ChartBridge: NSObject, ObservableObject {
         send(.setMarkers(seriesId: seriesId, markers: markers))
     }
 
+    /// Send backtest trade data to chart.js so it draws buy/sell markers on candles.
+    /// Trades come as raw dictionaries from the React→Swift bridge.
+    func setBacktestTrades(_ trades: [[String: Any]]) {
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: trades, options: [])
+            guard let jsonString = String(data: jsonData, encoding: .utf8) else { return }
+            let js = "window.chartApi && window.chartApi.setBacktestTrades(\(jsonString));"
+            enqueueJS(js)
+        } catch {
+            #if DEBUG
+            print("[ChartBridge] setBacktestTrades JSON error: \(error.localizedDescription)")
+            #endif
+        }
+    }
+
+    func clearBacktestTrades() {
+        enqueueJS("window.chartApi && window.chartApi.setBacktestTrades([]);")
+    }
+
     /// Add support/resistance price lines
     func setSRLevels(support: Double?, resistance: Double?) {
         if let support = support {

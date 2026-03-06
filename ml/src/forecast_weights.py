@@ -151,6 +151,7 @@ class ForecastWeights:
         else:
             # Default to 2-model if invalid count
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(f"Unsupported model_count={model_count}, using 2-model default")
             return self.get_ensemble_weights_for_model_count(2)

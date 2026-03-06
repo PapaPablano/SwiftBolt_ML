@@ -16,9 +16,7 @@ class MultiHorizonForecast:
     extended_horizons: List[str]  # Additional horizons
     forecasts: Dict[str, ForecastResult]  # horizon -> ForecastResult
     consensus_weights: Dict[str, float]  # horizon -> weight in consensus
-    handoff_confidence: Dict[
-        str, float
-    ]  # horizon -> confidence in next timeframe
+    handoff_confidence: Dict[str, float]  # horizon -> confidence in next timeframe
 
     # Metadata
     generated_at: Optional[str] = None
@@ -32,10 +30,7 @@ class MultiHorizonForecast:
             "symbol": self.symbol,
             "base_horizon": self.base_horizon,
             "extended_horizons": self.extended_horizons,
-            "forecasts": {
-                horizon: result.to_dict()
-                for horizon, result in self.forecasts.items()
-            },
+            "forecasts": {horizon: result.to_dict() for horizon, result in self.forecasts.items()},
             "consensus_weights": self.consensus_weights,
             "handoff_confidence": self.handoff_confidence,
             "generated_at": self.generated_at,
@@ -118,26 +113,20 @@ def calculate_handoff_confidence(
         return current_forecast.confidence
 
     # Start with average of both confidences
-    base_confidence = (
-        current_forecast.confidence + next_timeframe_forecast.confidence
-    ) / 2
+    base_confidence = (current_forecast.confidence + next_timeframe_forecast.confidence) / 2
 
     # Boost if directions agree
     direction_bonus = 0.0
     if current_forecast.direction == next_timeframe_forecast.direction:
         direction_bonus = 0.15
-    elif (
-        current_forecast.direction == "NEUTRAL"
-        or next_timeframe_forecast.direction == "NEUTRAL"
-    ):
+    elif current_forecast.direction == "NEUTRAL" or next_timeframe_forecast.direction == "NEUTRAL":
         direction_bonus = 0.05
 
     # Boost if targets are aligned (within 10%)
     target_alignment = 0.0
     if current_forecast.target > 0 and next_timeframe_forecast.target > 0:
         target_diff_pct = (
-            abs(current_forecast.target - next_timeframe_forecast.target)
-            / current_forecast.target
+            abs(current_forecast.target - next_timeframe_forecast.target) / current_forecast.target
         )
 
         if target_diff_pct < 0.05:  # Within 5%
@@ -147,20 +136,13 @@ def calculate_handoff_confidence(
 
     # Penalty if confidence levels diverge significantly
     confidence_penalty = 0.0
-    confidence_diff = abs(
-        current_forecast.confidence - next_timeframe_forecast.confidence
-    )
+    confidence_diff = abs(current_forecast.confidence - next_timeframe_forecast.confidence)
     if confidence_diff > 0.30:
         confidence_penalty = -0.10
     elif confidence_diff > 0.20:
         confidence_penalty = -0.05
 
-    handoff = (
-        base_confidence
-        + direction_bonus
-        + target_alignment
-        + confidence_penalty
-    )
+    handoff = base_confidence + direction_bonus + target_alignment + confidence_penalty
     return max(0.0, min(1.0, handoff))
 
 
@@ -197,9 +179,7 @@ def calculate_consensus_weights(
         if total_confidence > 0:
             remaining_weight = 0.50 if base_horizon in forecasts else 1.0
             for horizon, forecast in extended.items():
-                weights[horizon] = (
-                    forecast.confidence / total_confidence
-                ) * remaining_weight
+                weights[horizon] = (forecast.confidence / total_confidence) * remaining_weight
 
     # Normalize to ensure sum = 1.0
     total_weight = sum(weights.values())
@@ -230,9 +210,7 @@ def build_cascading_consensus(
     horizon_forecasts = {}
     for timeframe, mh_forecast in all_forecasts.items():
         if target_horizon in mh_forecast.forecasts:
-            horizon_forecasts[timeframe] = mh_forecast.forecasts[
-                target_horizon
-            ]
+            horizon_forecasts[timeframe] = mh_forecast.forecasts[target_horizon]
 
     if not horizon_forecasts:
         return None
@@ -257,9 +235,7 @@ def build_cascading_consensus(
 
     # Normalize weights
     if total_weight > 0:
-        effective_weights = {
-            tf: w / total_weight for tf, w in effective_weights.items()
-        }
+        effective_weights = {tf: w / total_weight for tf, w in effective_weights.items()}
 
     # Calculate weighted consensus across directions
     bullish_weight = 0.0
@@ -289,16 +265,10 @@ def build_cascading_consensus(
         weighted_confidence += forecast.confidence * weight
 
     # Determine consensus direction (require 20% threshold)
-    if (
-        bullish_weight > bearish_weight * 1.2
-        and bullish_weight > neutral_weight
-    ):
+    if bullish_weight > bearish_weight * 1.2 and bullish_weight > neutral_weight:
         direction = "BULLISH"
         agreement_score = bullish_weight
-    elif (
-        bearish_weight > bullish_weight * 1.2
-        and bearish_weight > neutral_weight
-    ):
+    elif bearish_weight > bullish_weight * 1.2 and bearish_weight > neutral_weight:
         direction = "BEARISH"
         agreement_score = bearish_weight
     else:
@@ -310,9 +280,7 @@ def build_cascading_consensus(
         all_forecasts[tf].handoff_confidence.get(target_horizon, 0.5)
         for tf in horizon_forecasts.keys()
     ]
-    handoff_quality = (
-        sum(handoff_scores) / len(handoff_scores) if handoff_scores else 0.5
-    )
+    handoff_quality = sum(handoff_scores) / len(handoff_scores) if handoff_scores else 0.5
 
     return CascadingConsensus(
         horizon=target_horizon,

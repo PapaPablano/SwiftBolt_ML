@@ -153,8 +153,8 @@ private struct FrontendWebViewRepresentable: NSViewRepresentable {
         // WKUserContentController holds script handlers strongly.
         let proxy = WeakScriptHandler(context.coordinator)
         config.userContentController.add(proxy, name: messageName)
-        // Prevent the WebView from navigating outside app-bound domains
-        config.limitsNavigationsToAppBoundDomains = true
+        // Register bundled frontend scheme handler (no-op when dev server is active).
+        config.setURLSchemeHandler(BundledFrontendSchemeHandler(), forURLScheme: "frontend")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
@@ -221,15 +221,23 @@ private struct FrontendWebViewRepresentable: NSViewRepresentable {
             loadState = .failed(error.localizedDescription)
         }
 
-        /// Restrict navigation to localhost / 127.0.0.1 only.
+        /// Restrict navigation to localhost / 127.0.0.1 and the bundled frontend scheme.
         func webView(
             _ webView: WKWebView,
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
         ) {
-            guard let host = navigationAction.request.url?.host,
-                  allowedHosts.contains(host) else {
-                logger.warning("Blocked navigation to: \(navigationAction.request.url?.absoluteString ?? "unknown", privacy: .public)")
+            guard let url = navigationAction.request.url else {
+                decisionHandler(.cancel)
+                return
+            }
+            // Allow bundled frontend custom scheme — always safe, served from app bundle.
+            if url.scheme == "frontend" {
+                decisionHandler(.allow)
+                return
+            }
+            guard let host = url.host, allowedHosts.contains(host) else {
+                logger.warning("Blocked navigation to: \(url.absoluteString, privacy: .public)")
                 decisionHandler(.cancel)
                 return
             }
@@ -261,6 +269,15 @@ private struct FrontendWebViewRepresentable: NSViewRepresentable {
                             userInfo: ["strategyId": strategyId]
                         )
                     }
+                case "backtestComplete":
+                    // Forward trade data to native chart so it can draw buy/sell markers
+                    let trades = body["trades"] as? [[String: Any]] ?? []
+                    let symbol = body["symbol"] as? String ?? ""
+                    NotificationCenter.default.post(
+                        name: .backtestTradesUpdated,
+                        object: nil,
+                        userInfo: ["trades": trades, "symbol": symbol]
+                    )
                 default:
                     break
                 }
@@ -328,6 +345,7 @@ struct WebViewFallbackView: View {
 extension Notification.Name {
     static let strategyConditionsUpdated = Notification.Name("strategyConditionsUpdated")
     static let backtestRequested = Notification.Name("backtestRequested")
+    static let backtestTradesUpdated = Notification.Name("backtestTradesUpdated")
 }
 
 // MARK: - Helpers
@@ -355,7 +373,7 @@ private func injectSession(_ token: String, into webView: WKWebView) {
 }
 
 /// Returns the validated frontend base URL + path.
-/// Reads FRONTEND_URL from env; validates scheme and host; falls back to localhost:5173.
+/// Reads FRONTEND_URL from env; validates scheme and host; falls back to localhost:8081.
 private func frontendURL(path: String) -> String {
     if let env = ProcessInfo.processInfo.environment["FRONTEND_URL"],
        !env.isEmpty,
@@ -367,5 +385,6 @@ private func frontendURL(path: String) -> String {
         let base = env.hasSuffix("/") ? String(env.dropLast()) : env
         return base + path
     }
-    return "http://localhost:5173" + path
+    // Bundled mode: serve React SPA from FrontendDist/ via custom scheme.
+    return "frontend://localhost" + path
 }

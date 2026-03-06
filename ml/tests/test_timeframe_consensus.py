@@ -52,7 +52,9 @@ class TestTimeframeConsensus:
         assert len(result.agreeing_timeframes) == 4
         assert len(result.conflicting_timeframes) == 0
         assert result.alignment_score > 0.7
-        print(f"✓ Full bullish consensus: alignment={result.alignment_score:.2%}, strength={result.consensus_strength}")
+        print(
+            f"✓ Full bullish consensus: alignment={result.alignment_score:.2%}, strength={result.consensus_strength}"
+        )
 
     def test_moderate_consensus(self, consensus_calc):
         """Test moderate consensus (3/4 agree)."""
@@ -69,7 +71,9 @@ class TestTimeframeConsensus:
         assert result.consensus_strength == "moderate"
         assert len(result.agreeing_timeframes) == 3
         assert len(result.conflicting_timeframes) == 1
-        print(f"✓ Moderate consensus: {len(result.agreeing_timeframes)}/4 agree, strength={result.consensus_strength}")
+        print(
+            f"✓ Moderate consensus: {len(result.agreeing_timeframes)}/4 agree, strength={result.consensus_strength}"
+        )
 
     def test_conflicted_signals(self, consensus_calc):
         """Test conflicted signals (split opinion)."""

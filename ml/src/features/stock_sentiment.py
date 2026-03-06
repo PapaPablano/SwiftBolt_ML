@@ -9,10 +9,10 @@ feature source (e.g., daily/hourly sentiment aggregates) or for dashboards/API.
 import datetime
 import logging
 from typing import Any, Optional, Union
+from urllib.request import Request, urlopen
 
 import pandas as pd
 from bs4 import BeautifulSoup
-from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +116,9 @@ def parse_news(news_table: Any) -> pd.DataFrame:
     df = pd.DataFrame(parsed_news, columns=["date", "time", "headline", "url"])
     df["date"] = df["date"].replace("Today", today_string)
     try:
-        df["datetime"] = pd.to_datetime(df["date"] + " " + df["time"], format="mixed", dayfirst=False)
+        df["datetime"] = pd.to_datetime(
+            df["date"] + " " + df["time"], format="mixed", dayfirst=False
+        )
     except TypeError:
         df["datetime"] = pd.to_datetime(df["date"] + " " + df["time"])
     return df
@@ -133,9 +135,7 @@ def score_news(parsed_news_df: pd.DataFrame) -> pd.DataFrame:
         DataFrame indexed by datetime with headline, url, neg, neu, pos, sentiment_score.
     """
     if parsed_news_df.empty:
-        out = pd.DataFrame(
-            columns=["headline", "url", "neg", "neu", "pos", "sentiment_score"]
-        )
+        out = pd.DataFrame(columns=["headline", "url", "neg", "neu", "pos", "sentiment_score"])
         out.index.name = "datetime"
         return out
 
@@ -150,9 +150,7 @@ def score_news(parsed_news_df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def get_sentiment_items_for_api(
-    ticker: str, limit: int = 50
-) -> list[dict[str, Any]]:
+def get_sentiment_items_for_api(ticker: str, limit: int = 50) -> list[dict[str, Any]]:
     """
     Return FinViz news items with links and sentiment in API shape for the news tab.
 
@@ -177,15 +175,17 @@ def get_sentiment_items_for_api(
         headline = str(row.get("headline", "") or "")
         pub_iso = pd.Timestamp(dt).isoformat() if hasattr(dt, "isoformat") else str(dt)
         item_id = f"finviz-{ticker.upper()}-{idx}-{hash(url) % 2**32}"
-        items.append({
-            "id": item_id,
-            "title": headline,
-            "url": url or "#",
-            "source": "FinViz",
-            "publishedAt": pub_iso,
-            "summary": f"Sentiment: {row.get('sentiment_score', 0):.2f}",
-            "sentiment_score": float(row.get("sentiment_score", 0)),
-        })
+        items.append(
+            {
+                "id": item_id,
+                "title": headline,
+                "url": url or "#",
+                "source": "FinViz",
+                "publishedAt": pub_iso,
+                "summary": f"Sentiment: {row.get('sentiment_score', 0):.2f}",
+                "sentiment_score": float(row.get("sentiment_score", 0)),
+            }
+        )
     return items
 
 
@@ -249,7 +249,9 @@ def get_historical_sentiment_series(
     db_series: pd.Series | None = None
     try:
         from supabase import create_client
+
         from config.settings import settings
+
         client = create_client(
             settings.supabase_url,
             settings.supabase_key or settings.supabase_service_role_key or "",
@@ -324,7 +326,9 @@ def validate_sentiment_variance(
         from src.data.supabase_db import SupabaseDatabase
         from src.features.temporal_indicators import compute_simplified_features
     except ImportError:
-        logger.warning("validate_sentiment_variance: missing deps (supabase_db, temporal_indicators)")
+        logger.warning(
+            "validate_sentiment_variance: missing deps (supabase_db, temporal_indicators)"
+        )
         return False
 
     db = SupabaseDatabase()
@@ -369,9 +373,7 @@ def validate_sentiment_variance(
     return passed
 
 
-def plot_hourly_sentiment(
-    scored_df: pd.DataFrame, ticker: str
-) -> "Optional[Any]":
+def plot_hourly_sentiment(scored_df: pd.DataFrame, ticker: str) -> "Optional[Any]":
     """
     Return a Plotly bar figure of hourly mean sentiment (optional dependency).
 
@@ -395,9 +397,7 @@ def plot_hourly_sentiment(
     return fig
 
 
-def plot_daily_sentiment(
-    scored_df: pd.DataFrame, ticker: str
-) -> "Optional[Any]":
+def plot_daily_sentiment(scored_df: pd.DataFrame, ticker: str) -> "Optional[Any]":
     """
     Return a Plotly bar figure of daily mean sentiment (optional dependency).
 

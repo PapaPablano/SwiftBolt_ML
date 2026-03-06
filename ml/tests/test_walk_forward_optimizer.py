@@ -6,16 +6,17 @@ from research on LSTM-ARIMA hybrid models.
 """
 
 import logging
-import pytest
-import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+import pandas as pd
+import pytest
+
 from src.training.walk_forward_optimizer import (
+    WalkForwardOptimizer,
     WindowConfig,
     WindowResult,
-    WalkForwardOptimizer,
 )
 
 
@@ -157,15 +158,9 @@ class TestCreateWindows:
         first_window = windows[0]
         assert first_window.window_id == 0
         assert first_window.train_start == data.index.min()
-        assert (
-            first_window.train_end - first_window.train_start
-        ).days + 1 == optimizer.train_days
-        assert (
-            first_window.val_end - first_window.val_start
-        ).days + 1 == optimizer.val_days
-        assert (
-            first_window.test_end - first_window.test_start
-        ).days + 1 == optimizer.test_days
+        assert (first_window.train_end - first_window.train_start).days + 1 == optimizer.train_days
+        assert (first_window.val_end - first_window.val_start).days + 1 == optimizer.val_days
+        assert (first_window.test_end - first_window.test_start).days + 1 == optimizer.test_days
 
     def test_create_windows_no_overlap(self):
         """Test that windows have no temporal overlap."""

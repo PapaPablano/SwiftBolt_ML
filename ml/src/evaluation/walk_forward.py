@@ -29,9 +29,7 @@ def _load_ohlcv(symbol: str, limit: int) -> pd.DataFrame | None:
     return None
 
 
-def _load_sentiment(
-    symbol: str, start_date: Any, end_date: Any
-) -> pd.Series | None:
+def _load_sentiment(symbol: str, start_date: Any, end_date: Any) -> pd.Series | None:
     """Load daily sentiment for symbol over [start_date, end_date]."""
     try:
         from src.features.stock_sentiment import get_historical_sentiment_series
@@ -61,6 +59,7 @@ def _predict_batch_binary(forecaster: Any, X_test: pd.DataFrame, use_tabpfn: boo
     decode = getattr(forecaster, "_label_decode", None)
     if not decode:
         from src.models.baseline_forecaster import LABEL_DECODE
+
         decode = LABEL_DECODE
     return np.array([decode.get(int(p), "neutral") for p in pred_encoded])
 
@@ -81,6 +80,7 @@ def _predict_batch(forecaster: Any, X_test: pd.DataFrame) -> np.ndarray:
         decode = getattr(forecaster, "_label_decode", None)
         if not decode:
             from src.models.baseline_forecaster import LABEL_DECODE
+
             decode = LABEL_DECODE
         return np.array([decode.get(int(p), "neutral") for p in pred_encoded])
 
@@ -170,9 +170,7 @@ def walk_forward_validate(
         if len(dates) != len(X):
             dates = dates.iloc[: len(X)]
     else:
-        X, y = prep.prepare_training_data(
-            df, horizon_days=horizon_days, sentiment_series=sentiment
-        )
+        X, y = prep.prepare_training_data(df, horizon_days=horizon_days, sentiment_series=sentiment)
         horizon_int = max(1, int(np.ceil(horizon_days)))
         start_idx = 200
         end_idx = len(df) - horizon_int
@@ -207,9 +205,7 @@ def walk_forward_validate(
         if binary_mode:
             y_pred = _predict_batch_binary(model, X_test, use_tabpfn)
             if use_tabpfn and np.issubdtype(y_test.dtype, np.floating):
-                y_test_labels = np.where(
-                    np.asarray(y_test) > 0, "bullish", "bearish"
-                )
+                y_test_labels = np.where(np.asarray(y_test) > 0, "bullish", "bearish")
             else:
                 y_test_labels = y_test
             acc = accuracy_score(y_test_labels, y_pred)
@@ -226,20 +222,20 @@ def walk_forward_validate(
                 acc = accuracy_score(y_test, y_pred)
                 actuals_for_df = y_test
 
-        windows.append({
-            "train_start": dates.iloc[0],
-            "train_end": dates.iloc[split_idx - 1],
-            "test_start": test_dates.iloc[0],
-            "test_end": test_dates.iloc[-1],
-            "train_size": len(X_train),
-            "test_size": len(X_test),
-            "accuracy": acc,
-        })
+        windows.append(
+            {
+                "train_start": dates.iloc[0],
+                "train_end": dates.iloc[split_idx - 1],
+                "test_start": test_dates.iloc[0],
+                "test_end": test_dates.iloc[-1],
+                "train_size": len(X_train),
+                "test_size": len(X_test),
+                "accuracy": acc,
+            }
+        )
         all_predictions.extend(y_pred.tolist())
         all_actuals.extend(
-            actuals_for_df.tolist()
-            if hasattr(actuals_for_df, "tolist")
-            else list(actuals_for_df)
+            actuals_for_df.tolist() if hasattr(actuals_for_df, "tolist") else list(actuals_for_df)
         )
         all_dates.extend(test_dates.tolist())
 
@@ -260,11 +256,13 @@ def walk_forward_validate(
     std_acc = float(np.std(accuracies)) if len(accuracies) > 1 else 0.0
     overall_acc = accuracy_score(all_actuals, all_predictions)
 
-    predictions_df = pd.DataFrame({
-        "date": all_dates,
-        "actual": all_actuals,
-        "predicted": all_predictions,
-    })
+    predictions_df = pd.DataFrame(
+        {
+            "date": all_dates,
+            "actual": all_actuals,
+            "predicted": all_predictions,
+        }
+    )
 
     logger.info(
         "WALK-FORWARD %s: windows=%s, mean_acc=%.1f%% ± %.1f%%, overall=%.1f%%",
@@ -320,9 +318,7 @@ def walk_forward_rolling(
 
     forecaster_cls = TabPFNForecaster if use_tabpfn else BaselineForecaster
     prep = forecaster_cls()
-    X, y = prep.prepare_training_data(
-        df, horizon_days=horizon_days, sentiment_series=sentiment
-    )
+    X, y = prep.prepare_training_data(df, horizon_days=horizon_days, sentiment_series=sentiment)
 
     horizon_int = max(1, int(np.ceil(horizon_days)))
     start_idx = 200
@@ -352,29 +348,27 @@ def walk_forward_rolling(
 
         y_pred = _predict_batch(model, X_test)
         if use_tabpfn and np.issubdtype(y_test.dtype, np.floating):
-            y_test_labels = _returns_to_labels(
-                y_test, model._bearish_thresh, model._bullish_thresh
-            )
+            y_test_labels = _returns_to_labels(y_test, model._bearish_thresh, model._bullish_thresh)
             acc = accuracy_score(y_test_labels, y_pred)
             actuals_for_df = y_test_labels
         else:
             acc = accuracy_score(y_test, y_pred)
             actuals_for_df = y_test
 
-        windows.append({
-            "train_start": dates.iloc[split_start],
-            "train_end": dates.iloc[train_end - 1],
-            "test_start": test_dates.iloc[0],
-            "test_end": test_dates.iloc[-1],
-            "train_size": len(X_train),
-            "test_size": len(X_test),
-            "accuracy": acc,
-        })
+        windows.append(
+            {
+                "train_start": dates.iloc[split_start],
+                "train_end": dates.iloc[train_end - 1],
+                "test_start": test_dates.iloc[0],
+                "test_end": test_dates.iloc[-1],
+                "train_size": len(X_train),
+                "test_size": len(X_test),
+                "accuracy": acc,
+            }
+        )
         all_predictions.extend(y_pred.tolist())
         all_actuals.extend(
-            actuals_for_df.tolist()
-            if hasattr(actuals_for_df, "tolist")
-            else list(actuals_for_df)
+            actuals_for_df.tolist() if hasattr(actuals_for_df, "tolist") else list(actuals_for_df)
         )
         all_dates.extend(test_dates.tolist())
 
@@ -395,11 +389,13 @@ def walk_forward_rolling(
     std_acc = float(np.std(accuracies)) if len(accuracies) > 1 else 0.0
     overall_acc = accuracy_score(all_actuals, all_predictions)
 
-    predictions_df = pd.DataFrame({
-        "date": all_dates,
-        "actual": all_actuals,
-        "predicted": all_predictions,
-    })
+    predictions_df = pd.DataFrame(
+        {
+            "date": all_dates,
+            "actual": all_actuals,
+            "predicted": all_predictions,
+        }
+    )
 
     return {
         "symbol": symbol,

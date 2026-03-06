@@ -418,13 +418,15 @@ class PivotLevelsDetector:
                 if price_above:
                     # Price is above the resistance level
                     level.high_status = (
-                        PivotStatus.ACTIVE if distance <= self._current_atr
+                        PivotStatus.ACTIVE
+                        if distance <= self._current_atr
                         else PivotStatus.INACTIVE
                     )
                 else:
                     # Price is below the resistance level
                     level.high_status = (
-                        PivotStatus.ACTIVE if distance <= self._current_atr
+                        PivotStatus.ACTIVE
+                        if distance <= self._current_atr
                         else PivotStatus.RESISTANCE
                     )
 
@@ -436,13 +438,13 @@ class PivotLevelsDetector:
                 if price_above:
                     # Price is above the support level
                     level.low_status = (
-                        PivotStatus.ACTIVE if distance <= self._current_atr
-                        else PivotStatus.SUPPORT
+                        PivotStatus.ACTIVE if distance <= self._current_atr else PivotStatus.SUPPORT
                     )
                 else:
                     # Price is below the support level
                     level.low_status = (
-                        PivotStatus.ACTIVE if distance <= self._current_atr
+                        PivotStatus.ACTIVE
+                        if distance <= self._current_atr
                         else PivotStatus.INACTIVE
                     )
 

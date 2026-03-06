@@ -10,9 +10,10 @@ Validates that 2-3 model ensemble changes maintain compatibility with:
 This validates Phase 6.2 (Test backward compatibility with existing forecasts).
 """
 
-import pytest
 import os
 from unittest.mock import patch
+
+import pytest
 
 
 class TestLegacyEnsembleCompatibility:
@@ -64,10 +65,7 @@ class TestEnvironmentVariableBackwardCompatibility:
         """Test that missing ENSEMBLE_MODEL_COUNT defaults to 2."""
         from src.models.enhanced_ensemble_integration import get_production_ensemble
 
-        env_vars = {
-            k: v for k, v in os.environ.items()
-            if k not in ["ENSEMBLE_MODEL_COUNT"]
-        }
+        env_vars = {k: v for k, v in os.environ.items() if k not in ["ENSEMBLE_MODEL_COUNT"]}
 
         with patch.dict(os.environ, env_vars, clear=True):
             ensemble = get_production_ensemble(horizon="1D")

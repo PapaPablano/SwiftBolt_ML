@@ -178,9 +178,7 @@ def _predict_at_origin(
 
         if XGB_WEIGHT > 0 and XGB_WEIGHT < 1:
             try:
-                y_binary = y.map(
-                    lambda v: "bullish" if str(v).lower() == "bullish" else "bearish"
-                )
+                y_binary = y.map(lambda v: "bullish" if str(v).lower() == "bullish" else "bearish")
                 n_bull = int((y_binary == "bullish").sum())
                 n_bear = int((y_binary == "bearish").sum())
                 if (
@@ -277,9 +275,7 @@ class L1GateEvaluator:
 
         min_len = self.train_bars + self.test_bars + LOOKAHEAD_BARS
         if len(df) < min_len:
-            logger.warning(
-                "%s: insufficient data %d < %d", symbol, len(df), min_len
-            )
+            logger.warning("%s: insufficient data %d < %d", symbol, len(df), min_len)
             return pd.DataFrame()
 
         # Compute indicators once for full df (slice per origin; no leakage)
@@ -307,9 +303,7 @@ class L1GateEvaluator:
 
                 df_slice = df_featured.iloc[: t + 1].copy()
 
-                pred_4 = _predict_at_origin(
-                    df_slice, symbol=symbol, pre_featured=True
-                )
+                pred_4 = _predict_at_origin(df_slice, symbol=symbol, pre_featured=True)
                 if pred_4 is None:
                     continue
 

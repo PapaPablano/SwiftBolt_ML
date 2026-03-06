@@ -1,8 +1,9 @@
 """Standardized data cleaning for all OHLC sources (Supabase, Kaggle, etc.)."""
 
-import pandas as pd
-import numpy as np
 from typing import Optional
+
+import numpy as np
+import pandas as pd
 
 
 class DataCleaner:
@@ -152,6 +153,7 @@ def clean_supabase_data(
 if __name__ == "__main__":
     import sys
     from pathlib import Path
+
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     print("Testing DataCleaner on Supabase NVDA data...")
     df_clean = clean_supabase_data("NVDA", limit=600)

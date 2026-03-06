@@ -514,9 +514,7 @@ class MultiTimeframeFeatures:
             if dropped > 0:
                 logger.info(f"Dropped {dropped} rows with NaN values")
             if result.empty and original_len > 0:
-                logger.warning(
-                    "All rows dropped after NaN filtering; applying fill fallback."
-                )
+                logger.warning("All rows dropped after NaN filtering; applying fill fallback.")
                 result = features_df[keep_cols].copy()
                 result = result.ffill().bfill().fillna(0)
 

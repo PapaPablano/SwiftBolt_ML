@@ -25,11 +25,7 @@ def _extract_tickers(rows: Iterable[dict]) -> list[str]:
     tickers: set[str] = set()
     for row in rows:
         symbol_info = row.get("symbol_id") if isinstance(row, dict) else None
-        ticker = (
-            symbol_info.get("ticker")
-            if isinstance(symbol_info, dict)
-            else None
-        )
+        ticker = symbol_info.get("ticker") if isinstance(symbol_info, dict) else None
         if ticker:
             tickers.add(ticker.upper())
     return sorted(tickers)
@@ -60,12 +56,8 @@ def fetch_watchlist_symbols() -> list[str]:
             except Exception:
                 # If neither exists, fetch without ordering
                 logger.debug("No timestamp column available, fetching without order")
-                response = (
-                    db.client.table("watchlist_items")
-                    .select("symbol_id(ticker)")
-                    .execute()
-                )
-        
+                response = db.client.table("watchlist_items").select("symbol_id(ticker)").execute()
+
         rows = response.data or []
         if not rows:
             logger.info("No watchlist rows returned; falling back to defaults")

@@ -10,6 +10,7 @@ Verifies:
 
 import numpy as np
 import pytest
+
 from src.features.sr_polynomial import SRPolynomialRegressor
 
 
@@ -187,7 +188,9 @@ class TestSlopeScaling:
         ]
 
         regressor.fit_resistance_curve(resistance_pivots)
-        slope = regressor.compute_slope(regressor.resistance_coeffs, at_x=1.0, curve_type="resistance")
+        slope = regressor.compute_slope(
+            regressor.resistance_coeffs, at_x=1.0, curve_type="resistance"
+        )
 
         # Should be 0.2 (price per bar)
         assert 0.19 < slope < 0.21
@@ -217,8 +220,12 @@ class TestSlopeScaling:
         regressor.fit_support_curve(support_pivots)
         regressor.fit_resistance_curve(resistance_pivots)
 
-        support_slope = regressor.compute_slope(regressor.support_coeffs, at_x=1.0, curve_type="support")
-        resistance_slope = regressor.compute_slope(regressor.resistance_coeffs, at_x=1.0, curve_type="resistance")
+        support_slope = regressor.compute_slope(
+            regressor.support_coeffs, at_x=1.0, curve_type="support"
+        )
+        resistance_slope = regressor.compute_slope(
+            regressor.resistance_coeffs, at_x=1.0, curve_type="resistance"
+        )
 
         # Both slopes should be 0.5 (5 price units / 10 bars)
         # NOT different values due to normalization
@@ -284,12 +291,15 @@ class TestDataPointTranslation:
 
         # Create minimal DataFrame
         import pandas as pd
-        df = pd.DataFrame({
-            'open': [100] * 101,
-            'high': [110] * 101,
-            'low': [100] * 101,
-            'close': [105] * 101,
-        })
+
+        df = pd.DataFrame(
+            {
+                "open": [100] * 101,
+                "high": [110] * 101,
+                "low": [100] * 101,
+                "close": [105] * 101,
+            }
+        )
 
         result = regressor.fit_and_extract(df, pivots)
 
@@ -350,12 +360,15 @@ class TestEdgeCases:
         regressor = SRPolynomialRegressor(degree=2, min_points=3)
 
         import pandas as pd
-        df = pd.DataFrame({
-            'open': [100] * 101,
-            'high': [110] * 101,
-            'low': [100] * 101,
-            'close': [105] * 101,
-        })
+
+        df = pd.DataFrame(
+            {
+                "open": [100] * 101,
+                "high": [110] * 101,
+                "low": [100] * 101,
+                "close": [105] * 101,
+            }
+        )
 
         result = regressor.fit_and_extract(df, [])
 
@@ -395,7 +408,9 @@ class TestSlopeSignInterpretation:
         ]
 
         regressor.fit_resistance_curve(resistance_pivots)
-        slope = regressor.compute_slope(regressor.resistance_coeffs, at_x=1.0, curve_type="resistance")
+        slope = regressor.compute_slope(
+            regressor.resistance_coeffs, at_x=1.0, curve_type="resistance"
+        )
 
         assert slope < 0
 

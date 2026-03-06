@@ -58,16 +58,16 @@ logger = logging.getLogger(__name__)
 
 class RankingMode(Enum):
     """Ranking optimization modes for different trading phases."""
-    
-    ENTRY = "entry"      # Optimized for finding undervalued opportunities (Value 40%, Catalyst 35%, Greeks 25%)
-    EXIT = "exit"        # Optimized for profit-taking and decay detection (Profit 50%, Deterioration 30%, Time 20%)
+
+    ENTRY = "entry"  # Optimized for finding undervalued opportunities (Value 40%, Catalyst 35%, Greeks 25%)
+    EXIT = "exit"  # Optimized for profit-taking and decay detection (Profit 50%, Deterioration 30%, Time 20%)
     MONITOR = "monitor"  # Balanced view for general screening (Momentum 40%, Value 35%, Greeks 25%)
 
 
 class StrategyIntent(Enum):
     """Strategy intent for dual-intent scoring (long vs short premium)."""
 
-    LONG_PREMIUM = "long_premium"    # Buyer: favor low IV, backwardation, negative VRP
+    LONG_PREMIUM = "long_premium"  # Buyer: favor low IV, backwardation, negative VRP
     SHORT_PREMIUM = "short_premium"  # Seller: favor high IV, contango, positive VRP
 
 
@@ -253,16 +253,16 @@ class OptionsMomentumRanker:
 
     # ENTRY mode weights - optimized for finding undervalued opportunities
     ENTRY_MODE_WEIGHTS = {
-        "value": 0.40,      # Is it cheap? (IV percentile, discount, spread)
-        "catalyst": 0.35,   # Why will it move? (momentum, volume surge, OI build)
-        "greeks": 0.25,     # Is it positioned right? (delta, gamma, vega, theta)
+        "value": 0.40,  # Is it cheap? (IV percentile, discount, spread)
+        "catalyst": 0.35,  # Why will it move? (momentum, volume surge, OI build)
+        "greeks": 0.25,  # Is it positioned right? (delta, gamma, vega, theta)
     }
-    
+
     # EXIT mode weights - optimized for profit-taking and decay detection
     EXIT_MODE_WEIGHTS = {
         "profit_protection": 0.50,  # Have I made enough? (P&L, IV expansion, targets)
-        "deterioration": 0.30,      # Is momentum fading? (decay, volume drop, OI stall)
-        "time_urgency": 0.20,       # Am I running out of time? (DTE, theta burn)
+        "deterioration": 0.30,  # Is momentum fading? (decay, volume drop, OI stall)
+        "time_urgency": 0.20,  # Am I running out of time? (DTE, theta burn)
     }
 
     # Momentum sub-weights
@@ -398,8 +398,13 @@ class OptionsMomentumRanker:
         intent = strategy_intent
         if intent is None:
             import os
+
             env_val = (os.getenv("RANKER_STRATEGY_INTENT") or "long_premium").lower()
-            intent = StrategyIntent.SHORT_PREMIUM if env_val == "short_premium" else StrategyIntent.LONG_PREMIUM
+            intent = (
+                StrategyIntent.SHORT_PREMIUM
+                if env_val == "short_premium"
+                else StrategyIntent.LONG_PREMIUM
+            )
         df["_strategy_intent"] = intent.value
 
         # Mode-specific ranking calculation
@@ -408,52 +413,63 @@ class OptionsMomentumRanker:
             logger.info("Calculating ENTRY ranking (Value 40%, Catalyst 35%, Greeks 25%)")
             df = self._rank_for_entry(df, iv_stats, options_history)
             # Also calculate monitor rank for comparison
-            df = self._calculate_value_scores(df, iv_stats, strategy_intent=intent, menthorq_features=menthorq_features)
+            df = self._calculate_value_scores(
+                df, iv_stats, strategy_intent=intent, menthorq_features=menthorq_features
+            )
             df = self._calculate_momentum_scores(df, options_history)
             df = self._calculate_greeks_scores(df, underlying_trend)
             df["composite_rank"] = (
-                df["momentum_score"] * self.MOMENTUM_WEIGHT +
-                df["value_score"] * self.VALUE_WEIGHT +
-                df["greeks_score"] * self.GREEKS_WEIGHT
+                df["momentum_score"] * self.MOMENTUM_WEIGHT
+                + df["value_score"] * self.VALUE_WEIGHT
+                + df["greeks_score"] * self.GREEKS_WEIGHT
             ).clip(0, 100)
-            
+
         elif mode == RankingMode.EXIT:
             # EXIT MODE: Profit 50%, Deterioration 30%, Time 20%
             logger.info("Calculating EXIT ranking (Profit 50%, Deterioration 30%, Time 20%)")
             df = self._rank_for_exit(df, options_history, entry_data)
             # Also calculate monitor rank for comparison
-            df = self._calculate_value_scores(df, iv_stats, strategy_intent=intent, menthorq_features=menthorq_features)
+            df = self._calculate_value_scores(
+                df, iv_stats, strategy_intent=intent, menthorq_features=menthorq_features
+            )
             df = self._calculate_momentum_scores(df, options_history)
             df = self._calculate_greeks_scores(df, underlying_trend)
             df["composite_rank"] = (
-                df["momentum_score"] * self.MOMENTUM_WEIGHT +
-                df["value_score"] * self.VALUE_WEIGHT +
-                df["greeks_score"] * self.GREEKS_WEIGHT
+                df["momentum_score"] * self.MOMENTUM_WEIGHT
+                + df["value_score"] * self.VALUE_WEIGHT
+                + df["greeks_score"] * self.GREEKS_WEIGHT
             ).clip(0, 100)
-            
+
         else:  # MONITOR MODE (default)
             # MONITOR MODE: Momentum 40%, Value 35%, Greeks 25%
             logger.info("Calculating MONITOR ranking (Momentum 40%, Value 35%, Greeks 25%)")
-            df = self._calculate_value_scores(df, iv_stats, strategy_intent=intent, menthorq_features=menthorq_features)
+            df = self._calculate_value_scores(
+                df, iv_stats, strategy_intent=intent, menthorq_features=menthorq_features
+            )
             df = self._calculate_momentum_scores(df, options_history)
             df = self._calculate_greeks_scores(df, underlying_trend)
-            
+
             # Integrate 7-day underlying metrics into momentum score
             if underlying_metrics is not None:
-                vol_7d = underlying_metrics.get("vol_7d", self.DEFAULT_VOLATILITY_7D) or self.DEFAULT_VOLATILITY_7D
+                vol_7d = (
+                    underlying_metrics.get("vol_7d", self.DEFAULT_VOLATILITY_7D)
+                    or self.DEFAULT_VOLATILITY_7D
+                )
                 vol_regime = "low" if vol_7d < 20.0 else "normal" if vol_7d < 40.0 else "high"
-                df = self._integrate_underlying_metrics(df, underlying_metrics, underlying_trend, vol_regime)
-            
+                df = self._integrate_underlying_metrics(
+                    df, underlying_metrics, underlying_trend, vol_regime
+                )
+
             # Apply IV staleness penalty if applicable
             if iv_stats and iv_stats.is_stale:
                 staleness_penalty = iv_stats.staleness_penalty
                 logger.warning(f"IV data is stale, applying {staleness_penalty:.1%} penalty")
                 df["value_score"] = (df["value_score"] * (1 - staleness_penalty)).clip(0, 100)
-            
+
             df["composite_rank"] = (
-                df["momentum_score"] * self.MOMENTUM_WEIGHT +
-                df["value_score"] * self.VALUE_WEIGHT +
-                df["greeks_score"] * self.GREEKS_WEIGHT
+                df["momentum_score"] * self.MOMENTUM_WEIGHT
+                + df["value_score"] * self.VALUE_WEIGHT
+                + df["greeks_score"] * self.GREEKS_WEIGHT
             ).clip(0, 100)
 
         df["composite_rank"] = df["composite_rank"].clip(0, 100)
@@ -496,9 +512,7 @@ class OptionsMomentumRanker:
         for idx, row in current.iterrows():
             # FIX: Include expiration in fallback key to prevent cross-expiry collisions
             expiration = row.get("expiration", "")
-            contract_id = row.get(
-                "contract_symbol", f"{row['strike']}_{row['side']}_{expiration}"
-            )
+            contract_id = row.get("contract_symbol", f"{row['strike']}_{row['side']}_{expiration}")
 
             # Find previous momentum score
             if "contract_symbol" in previous.columns:
@@ -536,17 +550,17 @@ class OptionsMomentumRanker:
                     weights = self.EXIT_MODE_WEIGHTS
                     # EXIT uses different component names
                     composite = (
-                        row.get("profit_protection_score", 0) * weights["profit_protection"] +
-                        row.get("deterioration_score", 0) * weights["deterioration"] +
-                        row.get("time_urgency_score", 0) * weights["time_urgency"]
+                        row.get("profit_protection_score", 0) * weights["profit_protection"]
+                        + row.get("deterioration_score", 0) * weights["deterioration"]
+                        + row.get("time_urgency_score", 0) * weights["time_urgency"]
                     )
                 elif mode == "entry":
                     # For ENTRY mode: value + catalyst + greeks
                     weights = self.ENTRY_MODE_WEIGHTS
                     composite = (
-                        row.get("entry_value_score", 0) * weights["value"] +
-                        row.get("catalyst_score", 0) * weights["catalyst"] +
-                        row.get("greeks_score", 0) * weights["greeks"]
+                        row.get("entry_value_score", 0) * weights["value"]
+                        + row.get("catalyst_score", 0) * weights["catalyst"]
+                        + row.get("greeks_score", 0) * weights["greeks"]
                     )
                 else:
                     # MONITOR mode: momentum + value + greeks
@@ -659,9 +673,7 @@ class OptionsMomentumRanker:
         for idx, row in current.iterrows():
             # FIX: Include expiration in fallback key for consistent matching
             expiration = row.get("expiration", "")
-            contract_id = row.get(
-                "contract_symbol", f"{row['strike']}_{row['side']}_{expiration}"
-            )
+            contract_id = row.get("contract_symbol", f"{row['strike']}_{row['side']}_{expiration}")
 
             if "contract_symbol" in previous.columns:
                 prev_match = previous[previous["contract_symbol"] == contract_id]
@@ -754,7 +766,9 @@ class OptionsMomentumRanker:
             if intent == StrategyIntent.SHORT_PREMIUM:
                 df["value_score"] = (df["value_score"] * 0.90 + vrp_score * 0.10).clip(0, 100)
             else:
-                df["value_score"] = (df["value_score"] * 0.90 + (100 - vrp_score) * 0.10).clip(0, 100)
+                df["value_score"] = (df["value_score"] * 0.90 + (100 - vrp_score) * 0.10).clip(
+                    0, 100
+                )
 
         return df
 
@@ -823,13 +837,13 @@ class OptionsMomentumRanker:
         """Calculate spread score from spread percentage.
 
         UPDATED 2026-01-23: Exponential penalty curve to more heavily penalize wide spreads
-        
+
         Formula (exponential curve):
             if spread ≤ 2%: penalty = spread × 2
             elif spread ≤ 5%: penalty = 4 + (spread - 2) × 4
             elif spread ≤ 10%: penalty = 16 + (spread - 5) × 5
             else: penalty = min(41 + (spread - 10) × 2, 50)
-            
+
             spread_score = 100 - penalty
 
         Examples:
@@ -840,6 +854,7 @@ class OptionsMomentumRanker:
             - 10% spread → penalty 41 → score 59  (was 80 with linear)
             - 15%+ spread → penalty 50 → score 50 (capped)
         """
+
         def calculate_penalty(spread):
             if spread <= 2.0:
                 return spread * 2
@@ -849,82 +864,84 @@ class OptionsMomentumRanker:
                 return 16.0 + (spread - 5.0) * 5.0
             else:
                 return min(41.0 + (spread - 10.0) * 2.0, 50.0)
-        
+
         spread_penalty = spread_pct.apply(calculate_penalty)
         return 100 - spread_penalty
 
     # =========================================================================
     # ENHANCED VALUE SCORING FOR ENTRY MODE
     # =========================================================================
-    
+
     def _calculate_iv_percentile(
         self,
         df: pd.DataFrame,
         iv_stats: Optional[IVStatistics] = None,
     ) -> pd.Series:
         """Calculate IV Percentile: what % of days had higher IV?
-        
+
         More robust than IV Rank as it's based on distribution, not just high/low.
-        
+
         Returns:
             Percentile 0-100, where low percentile = cheap IV
         """
         if "iv" not in df.columns:
             logger.warning("No IV column found for percentile calculation")
             return pd.Series(50.0, index=df.index)
-        
-        if iv_stats and hasattr(iv_stats, 'iv_percentile'):
+
+        if iv_stats and hasattr(iv_stats, "iv_percentile"):
             # If we have pre-calculated percentile from stats
             return pd.Series(iv_stats.iv_percentile, index=df.index)
-        
+
         # Fallback: approximate from IV rank
         # IV Rank is close to percentile for uniform distributions
         iv_rank = self._calculate_iv_rank(df, iv_stats)
         return iv_rank.clip(0, 100)
-    
+
     def _calculate_iv_historical_discount(
         self,
         df: pd.DataFrame,
         options_history: Optional[pd.DataFrame] = None,
     ) -> pd.Series:
         """Calculate how discounted current IV is vs contract's own history.
-        
+
         Formula:
             discount_pct = (avg_iv_20d - current_iv) / avg_iv_20d × 100
             score = max(0, discount_pct × 5)  # 20% discount = 100 score
-        
+
         Returns:
             Score 0-100, where 100 = deeply discounted IV
         """
         if options_history is None or options_history.empty:
             return pd.Series(50.0, index=df.index)
-        
+
         if "contract_symbol" not in df.columns:
             return pd.Series(50.0, index=df.index)
-        
+
         # Get average IV per contract from history
         # Handle both 'iv' and 'impliedVolatility' column names
-        iv_col = 'iv' if 'iv' in options_history.columns else 'impliedVolatility'
+        iv_col = "iv" if "iv" in options_history.columns else "impliedVolatility"
         if iv_col not in options_history.columns:
-            logger.warning("No IV column found in options_history, returning default discount score")
+            logger.warning(
+                "No IV column found in options_history, returning default discount score"
+            )
             return pd.Series(50.0, index=df.index)
-        
-        hist_iv_avg = options_history.groupby('contract_symbol')[iv_col].mean()
-        
+
+        hist_iv_avg = options_history.groupby("contract_symbol")[iv_col].mean()
+
         # Map to current contracts
-        current_iv = df.get('iv', pd.Series(np.nan, index=df.index))
-        hist_avg = df['contract_symbol'].map(hist_iv_avg)
-        
+        current_iv = df.get("iv", pd.Series(np.nan, index=df.index))
+        hist_avg = df["contract_symbol"].map(hist_iv_avg)
+
         # Calculate discount percentage
         discount_pct = np.where(
             (hist_avg > 0) & np.isfinite(hist_avg) & np.isfinite(current_iv),
             ((hist_avg - current_iv) / hist_avg) * 100,
-            0.0
+            0.0,
         )
-        
+
         # Score: 20% discount = 100 score, 10% = 50, 0% = 0
         score = np.clip(discount_pct * 5, 0, 100)
-        
+
         return pd.Series(score, index=df.index)
 
     # =========================================================================
@@ -1041,7 +1058,10 @@ class OptionsMomentumRanker:
 
         # Extract metrics with defaults
         ret_7d = underlying_metrics.get("ret_7d", 0.0) or 0.0
-        vol_7d = underlying_metrics.get("vol_7d", self.DEFAULT_VOLATILITY_7D) or self.DEFAULT_VOLATILITY_7D
+        vol_7d = (
+            underlying_metrics.get("vol_7d", self.DEFAULT_VOLATILITY_7D)
+            or self.DEFAULT_VOLATILITY_7D
+        )
         drawdown_7d = underlying_metrics.get("drawdown_7d", 0.0) or 0.0
         gap_count = underlying_metrics.get("gap_count", 0) or 0
 
@@ -1094,10 +1114,7 @@ class OptionsMomentumRanker:
         # Combine scores with weights from config
         # Default weights: return=0.40, volatility=0.30, drawdown=0.20, gaps=0.10
         combined_score = (
-            return_score * 0.40
-            + vol_score * 0.30
-            + drawdown_score * 0.20
-            + gap_score * 0.10
+            return_score * 0.40 + vol_score * 0.30 + drawdown_score * 0.20 + gap_score * 0.10
         )
 
         # Apply regime multipliers if in specific regime
@@ -1162,8 +1179,7 @@ class OptionsMomentumRanker:
         # Default blend: 80% option momentum + 20% underlying momentum
         underlying_weight = 0.20
         df["momentum_score"] = (
-            df["momentum_score"] * (1 - underlying_weight)
-            + underlying_score * underlying_weight
+            df["momentum_score"] * (1 - underlying_weight) + underlying_score * underlying_weight
         ).clip(0, 100)
 
         return df
@@ -1282,18 +1298,18 @@ class OptionsMomentumRanker:
     # =========================================================================
     # CATALYST SCORING FOR ENTRY MODE
     # =========================================================================
-    
+
     def _calculate_volume_surge(
         self,
         df: pd.DataFrame,
         options_history: Optional[pd.DataFrame] = None,
     ) -> pd.Series:
         """Calculate volume surge as ratio vs historical average.
-        
+
         Formula:
             vol_ratio = current_vol / avg_vol_20d
             score: 1× = 50, 2× = 75, 4× = 100, >4× = 100
-        
+
         Returns:
             Score 0-100, where 100 = 4× average volume (strong surge)
         """
@@ -1301,61 +1317,57 @@ class OptionsMomentumRanker:
             # No history, use vol/OI as proxy
             vol_oi = self._calculate_vol_oi_ratio(df)
             return self._score_vol_oi(vol_oi)
-        
+
         if "contract_symbol" not in df.columns:
             return pd.Series(50.0, index=df.index)
-        
+
         # Get 20-day average volume per contract
-        hist_vol_avg = options_history.groupby('contract_symbol')['volume'].mean()
-        
-        current_vol = df.get('volume', pd.Series(0, index=df.index))
-        avg_vol = df['contract_symbol'].map(hist_vol_avg).fillna(10)  # Assume 10 if no history
-        
+        hist_vol_avg = options_history.groupby("contract_symbol")["volume"].mean()
+
+        current_vol = df.get("volume", pd.Series(0, index=df.index))
+        avg_vol = df["contract_symbol"].map(hist_vol_avg).fillna(10)  # Assume 10 if no history
+
         # Volume surge ratio
         vol_ratio = current_vol / avg_vol.clip(lower=1)
-        
+
         # Score: 1× = 50, 2× = 75, 4× = 100, >4× = 100
         score = np.where(
-            vol_ratio >= 4.0, 100,
-            np.where(vol_ratio >= 2.0, 50 + (vol_ratio - 2.0) * 12.5,
-                     50 + (vol_ratio - 1.0) * 25)
+            vol_ratio >= 4.0,
+            100,
+            np.where(vol_ratio >= 2.0, 50 + (vol_ratio - 2.0) * 12.5, 50 + (vol_ratio - 1.0) * 25),
         )
-        
+
         return pd.Series(score, index=df.index).clip(0, 100)
-    
+
     def _calculate_catalyst_score(
         self,
         df: pd.DataFrame,
         options_history: Optional[pd.DataFrame] = None,
     ) -> pd.Series:
         """Calculate catalyst score: why will this option move?
-        
+
         Components:
         - Price Momentum (40%): Directional move in underlying
         - Volume Surge (35%): Unusual activity = information flow
         - OI Build (25%): Smart money accumulation
-        
+
         Returns:
             Score 0-100, where 100 = strong catalyst present
         """
         # Price Momentum (40%)
         price_mom = self._calculate_price_momentum(df, options_history)
         price_mom_score = self._normalize_momentum(price_mom)
-        
+
         # Volume Surge (35%)
         volume_surge_score = self._calculate_volume_surge(df, options_history)
-        
+
         # OI Build (25%)
         oi_growth = self._calculate_oi_growth(df, options_history)
         oi_build_score = self._normalize_oi_growth(oi_growth)
-        
+
         # Combined catalyst score
-        catalyst_score = (
-            price_mom_score * 0.40 +
-            volume_surge_score * 0.35 +
-            oi_build_score * 0.25
-        )
-        
+        catalyst_score = price_mom_score * 0.40 + volume_surge_score * 0.35 + oi_build_score * 0.25
+
         return catalyst_score.clip(0, 100)
 
     # =========================================================================
@@ -1404,14 +1416,14 @@ class OptionsMomentumRanker:
         """Score delta based on distance from optimal target.
 
         UPDATED 2026-01-23: Dynamic delta target based on DTE
-        
+
         Formula:
             Target delta varies by DTE:
             - DTE > 45: target = 0.50 (longer-term, lower delta)
             - DTE 21-45: target = 0.55 (sweet spot)
             - DTE 7-21: target = 0.60 (near-term, higher delta)
             - DTE < 7: target = 0.65 (very short-term, deeper ITM)
-            
+
             delta_score = 100 - 100 × |Δ - target|
 
         Examples for calls with 30 DTE (target 0.55):
@@ -1426,10 +1438,10 @@ class OptionsMomentumRanker:
         for idx, row in df.iterrows():
             delta = row.get("delta", 0.5)
             side = row.get("side", "call")
-            
+
             # Get DTE (days to expiration)
             dte = row.get("dte", row.get("days_to_expiry", 30))
-            
+
             # Dynamic target based on DTE
             if dte > 45:
                 base_target = 0.50
@@ -1491,11 +1503,11 @@ class OptionsMomentumRanker:
         """Calculate theta decay penalty.
 
         UPDATED 2026-01-23: Dynamic penalty cap based on DTE
-        
+
         Formula:
             θ% = (θ / mid) × 100 (daily decay as % of price)
             theta_penalty = min(|θ%| × 10, cap)
-            
+
             Cap varies by DTE:
             - DTE > 45: cap = 25 (less sensitive for long-term)
             - DTE 21-45: cap = 40 (standard)
@@ -1504,13 +1516,13 @@ class OptionsMomentumRanker:
         Examples with 30 DTE (cap = 40):
             - θ = -$0.02, mid = $2.00 → θ% = -1% → penalty = 10
             - θ = -$0.05, mid = $1.00 → θ% = -5% → penalty = 40 (capped)
-            
+
         Examples with 10 DTE (cap = 50):
             - θ = -$0.05, mid = $1.00 → θ% = -5% → penalty = 50 (capped)
         """
         theta = df.get("theta", pd.Series(-0.10, index=df.index)).abs()
         mid_price = df.get("mid", df.get("mark", pd.Series(1.0, index=df.index)))
-        
+
         # Get DTE (days to expiration)
         dte = df.get("dte", df.get("days_to_expiry", pd.Series(30, index=df.index)))
 
@@ -1522,7 +1534,7 @@ class OptionsMomentumRanker:
                 return 40.0
             else:
                 return 50.0
-        
+
         # Calculate cap per row
         if isinstance(dte, pd.Series):
             theta_cap = dte.apply(get_theta_cap)
@@ -1593,7 +1605,7 @@ class OptionsMomentumRanker:
     # =========================================================================
     # ENTRY MODE RANKING (Value 40%, Catalyst 35%, Greeks 25%)
     # =========================================================================
-    
+
     def _calculate_entry_value_score(
         self,
         df: pd.DataFrame,
@@ -1601,12 +1613,12 @@ class OptionsMomentumRanker:
         options_history: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
         """Calculate entry-optimized value score.
-        
+
         Components:
         - IV Percentile (40%): Is IV low relative to history?
         - IV Historical Discount (30%): Is it cheaper than usual?
         - Spread Quality (30%): Can you enter/exit profitably?
-        
+
         Returns:
             DataFrame with entry_value_score column (0-100)
         """
@@ -1615,26 +1627,24 @@ class OptionsMomentumRanker:
         iv_percentile_score = 100 - iv_percentile  # Low percentile = high score
         df["iv_percentile"] = iv_percentile
         df["iv_percentile_score"] = iv_percentile_score
-        
+
         # IV Historical Discount (30%)
         iv_discount_score = self._calculate_iv_historical_discount(df, options_history)
         df["iv_discount_score"] = iv_discount_score
-        
+
         # Spread Quality (30%)
         if "spread_pct" not in df.columns:
             df["spread_pct"] = self._calculate_spread_pct(df)
         spread_score = self._calculate_spread_score(df["spread_pct"])
         df["spread_score"] = spread_score
-        
+
         # Combined entry value score
         df["entry_value_score"] = (
-            iv_percentile_score * 0.40 +
-            iv_discount_score * 0.30 +
-            spread_score * 0.30
+            iv_percentile_score * 0.40 + iv_discount_score * 0.30 + spread_score * 0.30
         ).clip(0, 100)
-        
+
         return df
-    
+
     def _rank_for_entry(
         self,
         df: pd.DataFrame,
@@ -1642,114 +1652,120 @@ class OptionsMomentumRanker:
         options_history: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
         """Calculate entry-optimized ranking.
-        
+
         Weights:
         - Value: 40% (is it cheap?)
         - Catalyst: 35% (why will it move?)
         - Greeks: 25% (is it positioned right?)
-        
+
         Returns:
             DataFrame with entry_rank column (0-100)
         """
         # Entry Value Score (40%)
         df = self._calculate_entry_value_score(df, iv_stats, options_history)
-        
+
         # Catalyst Score (35%)
         df["catalyst_score"] = self._calculate_catalyst_score(df, options_history)
-        
+
         # Greeks Score (25%) - reuse existing method
         if "greeks_score" not in df.columns:
             df = self._calculate_greeks_scores(df)
-        
+
         # Combined entry rank
         df["entry_rank"] = (
-            df["entry_value_score"] * self.ENTRY_MODE_WEIGHTS["value"] +
-            df["catalyst_score"] * self.ENTRY_MODE_WEIGHTS["catalyst"] +
-            df["greeks_score"] * self.ENTRY_MODE_WEIGHTS["greeks"]
+            df["entry_value_score"] * self.ENTRY_MODE_WEIGHTS["value"]
+            + df["catalyst_score"] * self.ENTRY_MODE_WEIGHTS["catalyst"]
+            + df["greeks_score"] * self.ENTRY_MODE_WEIGHTS["greeks"]
         ).clip(0, 100)
-        
+
         return df
 
     # =========================================================================
     # EXIT MODE RANKING (Profit 50%, Deterioration 30%, Time 20%)
     # =========================================================================
-    
+
     def _calculate_profit_protection_score(
         self,
         df: pd.DataFrame,
         entry_data: Optional[dict] = None,
     ) -> pd.Series:
         """Calculate profit protection score: have I made enough?
-        
+
         Components:
         - P&L % vs entry (50%): Profit achieved
         - IV Expansion (30%): Did IV expand as expected?
         - Price Target Hit (20%): Is underlying at target?
-        
+
         Note: entry_data can be passed with fields:
             - entry_price: Position entry price
             - entry_iv: IV at entry
             - price_target: Target price for underlying
-        
+
         Returns:
             Score 0-100, where 100 = strong exit signal (take profit!)
         """
         # Get entry price (if available, else estimate)
-        if entry_data and 'entry_price' in entry_data:
-            entry_price = entry_data['entry_price']
+        if entry_data and "entry_price" in entry_data:
+            entry_price = entry_data["entry_price"]
         else:
             # Estimate: assume 30% gain if at current price
-            entry_price = df.get('mid', 1.0) * 0.70
-        
-        current_price = df.get('mid', pd.Series(1.0, index=df.index))
-        
+            entry_price = df.get("mid", 1.0) * 0.70
+
+        current_price = df.get("mid", pd.Series(1.0, index=df.index))
+
         # Calculate P&L %
         pnl_pct = ((current_price - entry_price) / entry_price) * 100
-        
+
         # Score thresholds: <10%: 20, 25%: 60, 50%: 80, 100%: 95, >100%: 100
         pnl_score = np.where(
-            pnl_pct >= 100, 100,
-            np.where(pnl_pct >= 50, 80 + (pnl_pct - 50) * 0.3,
-            np.where(pnl_pct >= 25, 60 + (pnl_pct - 25) * 0.8,
-            np.where(pnl_pct >= 10, 40 + (pnl_pct - 10) * 1.33,
-                     20 + pnl_pct * 2)))
+            pnl_pct >= 100,
+            100,
+            np.where(
+                pnl_pct >= 50,
+                80 + (pnl_pct - 50) * 0.3,
+                np.where(
+                    pnl_pct >= 25,
+                    60 + (pnl_pct - 25) * 0.8,
+                    np.where(pnl_pct >= 10, 40 + (pnl_pct - 10) * 1.33, 20 + pnl_pct * 2),
+                ),
+            ),
         )
-        
+
         # IV expansion bonus (30% of score)
-        if entry_data and 'entry_iv' in entry_data:
-            entry_iv = entry_data['entry_iv']
+        if entry_data and "entry_iv" in entry_data:
+            entry_iv = entry_data["entry_iv"]
         else:
-            entry_iv = df.get('iv', 0.30) * 0.9  # Assume IV expanded 10%
-        
-        current_iv = df.get('iv', pd.Series(0.30, index=df.index))
+            entry_iv = df.get("iv", 0.30) * 0.9  # Assume IV expanded 10%
+
+        current_iv = df.get("iv", pd.Series(0.30, index=df.index))
         iv_expansion = ((current_iv - entry_iv) / entry_iv) * 100
         iv_bonus = np.clip(iv_expansion * 2, 0, 30)
-        
+
         # Price target hit bonus (20% of score)
-        if entry_data and 'price_target' in entry_data:
-            price_target = entry_data['price_target']
-            underlying_price = df.get('underlying_price', 0)
+        if entry_data and "price_target" in entry_data:
+            price_target = entry_data["price_target"]
+            underlying_price = df.get("underlying_price", 0)
             target_bonus = np.where(underlying_price >= price_target, 20, 0)
         else:
             target_bonus = 0
-        
+
         # Combined profit protection score
         total_score = pnl_score * 0.50 + iv_bonus * 0.30 + target_bonus * 0.20
-        
+
         return pd.Series(total_score, index=df.index).clip(0, 100)
-    
+
     def _calculate_deterioration_score(
         self,
         df: pd.DataFrame,
         options_history: Optional[pd.DataFrame] = None,
     ) -> pd.Series:
         """Calculate deterioration score: is momentum fading?
-        
+
         Components:
         - Momentum Level (40%): Low momentum = deteriorating
         - Volume Drying Up (30%): Volume decreasing from average
         - OI Stalling (30%): OI growth slowing/negative
-        
+
         Returns:
             Score 0-100, where 100 = strong deterioration (exit now!)
         """
@@ -1763,69 +1779,69 @@ class OptionsMomentumRanker:
             price_mom = self._calculate_price_momentum(df, options_history)
             mom_score = self._normalize_momentum(price_mom)
             decay_score = 100 - mom_score
-        
+
         # Volume Drying Up (30%)
         volume_surge = self._calculate_volume_surge(df, options_history)
         # Invert: low volume surge = high deterioration score
         volume_score = 100 - volume_surge
-        
+
         # OI Stalling (30%)
         oi_growth = self._calculate_oi_growth(df, options_history)
         oi_growth_score = self._normalize_oi_growth(oi_growth)
         # Invert: low OI growth = high deterioration
         oi_score = 100 - oi_growth_score
-        
+
         # Combined deterioration score
-        deterioration = (
-            decay_score * 0.40 +
-            volume_score * 0.30 +
-            oi_score * 0.30
-        )
-        
+        deterioration = decay_score * 0.40 + volume_score * 0.30 + oi_score * 0.30
+
         return deterioration.clip(0, 100)
-    
+
     def _calculate_time_urgency_score(self, df: pd.DataFrame) -> pd.Series:
         """Calculate time urgency score: am I running out of time?
-        
+
         Components:
         - DTE Urgency (60%): Days remaining until expiration
         - Theta Burn Rate (40%): Daily decay as % of position value
-        
+
         Returns:
             Score 0-100, where 100 = urgent exit (expiration soon!)
         """
         # DTE Urgency (60%)
-        dte = df.get('dte', df.get('days_to_expiry', pd.Series(30, index=df.index)))
-        
+        dte = df.get("dte", df.get("days_to_expiry", pd.Series(30, index=df.index)))
+
         # DTE score: >30: 20, 14-30: 40, 7-14: 70, <7: 95
         dte_score = np.where(
-            dte < 7, 95,
-            np.where(dte < 14, 70 + (14 - dte) * 3.57,
-            np.where(dte < 30, 40 + (30 - dte) * 1.875,
-                     20))
+            dte < 7,
+            95,
+            np.where(
+                dte < 14, 70 + (14 - dte) * 3.57, np.where(dte < 30, 40 + (30 - dte) * 1.875, 20)
+            ),
         )
-        
+
         # Theta Burn Rate (40%)
-        theta = df.get('theta', pd.Series(-0.10, index=df.index)).abs()
-        mid_price = df.get('mid', pd.Series(1.0, index=df.index))
+        theta = df.get("theta", pd.Series(-0.10, index=df.index)).abs()
+        mid_price = df.get("mid", pd.Series(1.0, index=df.index))
         theta_pct = (theta / mid_price.clip(lower=0.01)) * 100  # Daily decay %
-        
+
         # Theta score: >3%: 100, 2-3%: 80, 1-2%: 60, <1%: 30
         theta_score = np.where(
-            theta_pct >= 3.0, 100,
-            np.where(theta_pct >= 2.0, 80 + (theta_pct - 2.0) * 20,
-            np.where(theta_pct >= 1.0, 60 + (theta_pct - 1.0) * 20,
-                     30 + theta_pct * 30))
+            theta_pct >= 3.0,
+            100,
+            np.where(
+                theta_pct >= 2.0,
+                80 + (theta_pct - 2.0) * 20,
+                np.where(theta_pct >= 1.0, 60 + (theta_pct - 1.0) * 20, 30 + theta_pct * 30),
+            ),
         )
-        
+
         # Combined time urgency score
         time_urgency = (
-            pd.Series(dte_score, index=df.index) * 0.60 +
-            pd.Series(theta_score, index=df.index) * 0.40
+            pd.Series(dte_score, index=df.index) * 0.60
+            + pd.Series(theta_score, index=df.index) * 0.40
         )
-        
+
         return time_urgency.clip(0, 100)
-    
+
     def _rank_for_exit(
         self,
         df: pd.DataFrame,
@@ -1833,35 +1849,35 @@ class OptionsMomentumRanker:
         entry_data: Optional[dict] = None,
     ) -> pd.DataFrame:
         """Calculate exit-optimized ranking.
-        
+
         Weights:
         - Profit Protection: 50% (have I made enough?)
         - Deterioration: 30% (is momentum fading?)
         - Time Urgency: 20% (am I running out of time?)
-        
+
         Returns:
             DataFrame with exit_rank column (0-100)
         """
         # Calculate momentum score if needed for deterioration detection
         if "momentum_score" not in df.columns:
             df = self._calculate_momentum_scores(df, options_history)
-        
+
         # Profit Protection Score (50%)
         df["profit_protection_score"] = self._calculate_profit_protection_score(df, entry_data)
-        
+
         # Deterioration Score (30%) - relies on momentum_score
         df["deterioration_score"] = self._calculate_deterioration_score(df, options_history)
-        
+
         # Time Urgency Score (20%)
         df["time_urgency_score"] = self._calculate_time_urgency_score(df)
-        
+
         # Combined exit rank
         df["exit_rank"] = (
-            df["profit_protection_score"] * self.EXIT_MODE_WEIGHTS["profit_protection"] +
-            df["deterioration_score"] * self.EXIT_MODE_WEIGHTS["deterioration"] +
-            df["time_urgency_score"] * self.EXIT_MODE_WEIGHTS["time_urgency"]
+            df["profit_protection_score"] * self.EXIT_MODE_WEIGHTS["profit_protection"]
+            + df["deterioration_score"] * self.EXIT_MODE_WEIGHTS["deterioration"]
+            + df["time_urgency_score"] * self.EXIT_MODE_WEIGHTS["time_urgency"]
         ).clip(0, 100)
-        
+
         return df
 
     # =========================================================================

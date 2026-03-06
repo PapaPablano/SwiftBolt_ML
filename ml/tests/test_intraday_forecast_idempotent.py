@@ -18,9 +18,7 @@ pytestmark = pytest.mark.integration
 
 def _env_ok():
     """Return (ok, has_url, has_key). No secret values—only booleans—so debug prints can't leak them."""
-    has_url = bool(
-        os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
-    )
+    has_url = bool(os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL"))
     has_key = bool(
         os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
         or os.environ.get("SUPABASE_SERVICE_KEY")
@@ -53,12 +51,14 @@ def symbol_id():
     """Resolve AAPL symbol_id for integration test. Returns uuid or None (test skips on None)."""
     try:
         from dotenv import load_dotenv
+
         load_dotenv()
     except ImportError:
         pass
     if not _env_ok()[0]:
         return None
     from src.data.supabase_db import db
+
     row = db.client.table("symbols").select("id").eq("ticker", "AAPL").limit(1).execute()
     if not row.data:
         return None
@@ -117,7 +117,9 @@ def test_upsert_intraday_forecast_idempotent_two_calls_one_row_updated_synthesis
     )
     assert row.data is not None
     data = row.data
-    assert data.get("synthesis_data") == synthesis_b, "synthesis_data must be replaced by second call (run 2)"
+    assert (
+        data.get("synthesis_data") == synthesis_b
+    ), "synthesis_data must be replaced by second call (run 2)"
     assert data["synthesis_data"].get("ensemble_result", {}).get("xgb_prob") == 0.7
     assert data["synthesis_data"].get("ensemble_result", {}).get("run") == 2
 
