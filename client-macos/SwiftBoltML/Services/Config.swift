@@ -33,7 +33,9 @@ class Config {
             return url
         }
 
-        // If no environment value, try to get from keychain or plist as fallback
+        // If no environment value, try to get from keychain or plist as fallback.
+        // Secrets.xcconfig stores host-only (xcconfig can't embed // in values),
+        // so prepend https:// when no scheme is present.
         let rawValue = loadOrStoreConfigValue(for: supabaseURLKey)
         let urlString = ensureScheme(rawValue)
         guard let url = URL(string: urlString) else {

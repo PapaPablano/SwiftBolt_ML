@@ -39,6 +39,10 @@ def create_supertrend_ai_strategy(df: pd.DataFrame, params: dict):
     max_mult = params.get("max_mult", 5.0)
     step = params.get("step", 0.5)
     
+    # Debug logging
+    logger.warning(f"[BACKTEST DEBUG] SuperTrend params received: {params}")
+    logger.warning(f"[BACKTEST DEBUG] Using atr_length={atr_length}, min_mult={min_mult}, max_mult={max_mult}, step={step}")
+    
     # Calculate SuperTrend AI
     supertrend = SuperTrendAI(
         df=df,
@@ -282,10 +286,39 @@ def run_backtest(
             df['date'] = df['date'].dt.tz_localize(None)
         df = df.sort_values('date').reset_index(drop=True)
         
+        # Debug logging for OHLC data
+        logger.warning(f"[BACKTEST DEBUG] Date range: {start_date} to {end_date}")
+        logger.warning(f"[BACKTEST DEBUG] Bars in range: {len(df)}")
+        if len(df) > 0:
+            logger.warning(f"[BACKTEST DEBUG] First close: {df['close'].iloc[0]:.2f}, Last close: {df['close'].iloc[-1]:.2f}")
+            logger.warning(f"[BACKTEST DEBUG] Price change: {((df['close'].iloc[-1] / df['close'].iloc[0]) - 1) * 100:.2f}%")
+        
         # Create strategy function
         strategy_params = strategy_params or {}
         if strategy_name == "supertrend_ai":
             strategy_func = create_supertrend_ai_strategy(df, strategy_params)
+            
+            # Validate strategy generates signals
+            test_idx = min(20, len(df) - 1)
+            test_data = {
+                'date': df.iloc[test_idx]['date'],
+                'ohlc': {
+                    'close': df.iloc[test_idx]['close'],
+                    'high': df.iloc[test_idx]['high'],
+                    'low': df.iloc[test_idx]['low'],
+                    'open': df.iloc[test_idx]['open']
+                },
+                'cash': 10000,
+                'positions': []
+            }
+            try:
+                test_signals = strategy_func(test_data)
+                logger.warning(f"[BACKTEST DEBUG] Test strategy call at index {test_idx} returned {len(test_signals)} signals")
+                if len(test_signals) > 0:
+                    logger.warning(f"[BACKTEST DEBUG] First signal: {test_signals[0]}")
+            except Exception as e:
+                logger.error(f"[BACKTEST DEBUG] Strategy test failed: {e}")
+                
         elif strategy_name == "sma_crossover":
             strategy_func = create_sma_crossover_strategy(df, strategy_params)
         elif strategy_name == "buy_and_hold":

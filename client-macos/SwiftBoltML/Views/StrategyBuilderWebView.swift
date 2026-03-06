@@ -269,6 +269,15 @@ private struct FrontendWebViewRepresentable: NSViewRepresentable {
                             userInfo: ["strategyId": strategyId]
                         )
                     }
+                case "backtestComplete":
+                    // Forward trade data to native chart so it can draw buy/sell markers
+                    let trades = body["trades"] as? [[String: Any]] ?? []
+                    let symbol = body["symbol"] as? String ?? ""
+                    NotificationCenter.default.post(
+                        name: .backtestTradesUpdated,
+                        object: nil,
+                        userInfo: ["trades": trades, "symbol": symbol]
+                    )
                 default:
                     break
                 }
@@ -336,6 +345,7 @@ struct WebViewFallbackView: View {
 extension Notification.Name {
     static let strategyConditionsUpdated = Notification.Name("strategyConditionsUpdated")
     static let backtestRequested = Notification.Name("backtestRequested")
+    static let backtestTradesUpdated = Notification.Name("backtestTradesUpdated")
 }
 
 // MARK: - Helpers
@@ -363,7 +373,7 @@ private func injectSession(_ token: String, into webView: WKWebView) {
 }
 
 /// Returns the validated frontend base URL + path.
-/// Reads FRONTEND_URL from env; validates scheme and host; falls back to localhost:5173.
+/// Reads FRONTEND_URL from env; validates scheme and host; falls back to localhost:8081.
 private func frontendURL(path: String) -> String {
     if let env = ProcessInfo.processInfo.environment["FRONTEND_URL"],
        !env.isEmpty,

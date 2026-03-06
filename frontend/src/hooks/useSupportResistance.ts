@@ -89,6 +89,8 @@ export function useSupportResistance(symbol: string, timeframe: string): Support
       setPivotLevels(
         rawPivots.map((level) => ({
           ...level,
+          high_status: level.high_status as PivotLevelData['high_status'],
+          low_status: level.low_status as PivotLevelData['low_status'],
           label: `P${level.period}`,
           color: PERIOD_COLORS[level.period] || '#808080',
         }))
