@@ -108,9 +108,44 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [latestPrice, setLatestPrice] = useState<number | null>(null);
   const [latestForecast, setLatestForecast] = useState<ForecastOverlay | null>(null);
+  // Bumped every 60s during market hours to trigger partial-candle re-fetch
+  const [pollTick, setPollTick] = useState(0);
 
   // WebSocket for real-time updates
   const { isConnected, lastUpdate, error: wsError } = useWebSocket(symbol, horizon);
+
+  // ── Partial candle polling ────────────────────────────────────────────────
+  // During market hours, re-fetch every 60s so d1/w1/h1/h4 show the
+  // in-progress partial candle synthesized by the /chart Edge Function.
+  // Also refreshes immediately when the tab regains visibility.
+  useEffect(() => {
+    const PARTIAL_CANDLE_HORIZONS = ['15m', '1h', '4h', '1D'];
+    if (!PARTIAL_CANDLE_HORIZONS.includes(horizon)) return;
+
+    const isMarketHours = (): boolean => {
+      const now = new Date();
+      const day = now.getUTCDay(); // 0=Sun, 6=Sat
+      if (day === 0 || day === 6) return false;
+      const minutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+      // 13:30-21:00 UTC covers full session in both EDT and EST
+      return minutes >= 13 * 60 + 30 && minutes <= 21 * 60;
+    };
+
+    const tick = () => {
+      if (isMarketHours()) setPollTick((n) => n + 1);
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    const intervalId = setInterval(tick, 60_000);
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [horizon]);
 
   // Initialize chart
   useEffect(() => {
@@ -336,7 +371,9 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
     };
 
     fetchData();
-  }, [symbol, horizon, daysBack]);
+  // pollTick drives periodic re-fetch during market hours (partial candle refresh)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, horizon, daysBack, pollTick]);
 
   // Generate mock data for demo
   const generateMockData = (sym: string, days: number) => {

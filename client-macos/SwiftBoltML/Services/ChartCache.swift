@@ -29,10 +29,13 @@ enum ChartCache {
 
     static func saveBars(symbol: String, timeframe: Timeframe, bars: [OHLCBar]) {
         guard let url = fileURL(symbol: symbol, timeframe: timeframe) else { return }
+        // Never persist partial candles — they represent in-progress periods and will
+        // be re-synthesized on the next refresh from live m1 data.
+        let persistable = bars.filter { !($0.isPartial ?? false) }
         do {
-            let data = try JSONEncoder().encode(bars)
+            let data = try JSONEncoder().encode(persistable)
             try data.write(to: url, options: .atomic)
-            print("[ChartCache] Saved \(bars.count) bars to \(url.lastPathComponent)")
+            print("[ChartCache] Saved \(persistable.count) bars to \(url.lastPathComponent)")
         } catch {
             print("[ChartCache] Save error: \(error)")
         }

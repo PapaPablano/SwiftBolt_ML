@@ -27,6 +27,10 @@ import type {
   OHLCBar,
   UnifiedChartResponse,
 } from "../_shared/chart-types.ts";
+import {
+  type BarInput,
+  recomputePartialIndicators,
+} from "../_shared/indicators.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -304,6 +308,51 @@ function aggregateWeeklyBars(bars: OHLCBar[]): OHLCBar[] {
 }
 
 // ---------------------------------------------------------------------------
+// Partial candle synthesis helpers
+// ---------------------------------------------------------------------------
+
+/** Compute the period-start UTC timestamp for the current in-progress bar. */
+function getPartialPeriodStart(tf: "d1" | "h1" | "h4", now: Date): Date {
+  const y = now.getUTCFullYear();
+  const mo = now.getUTCMonth();
+  const d = now.getUTCDate();
+  const h = now.getUTCHours();
+  if (tf === "d1") return new Date(Date.UTC(y, mo, d));
+  if (tf === "h1") return new Date(Date.UTC(y, mo, d, h));
+  // h4: floor to nearest 4-hour block from midnight UTC
+  return new Date(Date.UTC(y, mo, d, Math.floor(h / 4) * 4));
+}
+
+/** Aggregate 1-minute BarRows into a single in-progress OHLCBar. */
+function synthesizePartialBar(
+  m1Rows: BarRow[],
+  tf: "d1" | "h1" | "h4",
+  now: Date,
+): OHLCBar | null {
+  const periodStart = getPartialPeriodStart(tf, now);
+  const inPeriod = m1Rows.filter((b) => new Date(b.ts) >= periodStart);
+  if (inPeriod.length === 0) return null;
+
+  const open = Number(inPeriod[0].open);
+  const close = Number(inPeriod[inPeriod.length - 1].close);
+  const high = Math.max(...inPeriod.map((b) => Number(b.high)));
+  const low = Math.min(...inPeriod.map((b) => Number(b.low)));
+  const volume = inPeriod.reduce((s, b) => s + Number(b.volume ?? 0), 0);
+
+  return {
+    ts: periodStart.toISOString(),
+    open,
+    high,
+    low,
+    close,
+    volume,
+    provider: "alpaca",
+    is_forecast: false,
+    is_partial: true,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Build forecast targets helper (from chart-data-v2)
 // ---------------------------------------------------------------------------
 
@@ -564,6 +613,7 @@ serve(async (req: Request): Promise<Response> => {
       marketStatusResult,
       corporateActionsResult,
       activeJobsResult,
+      m1BarsResult,
     ] = await Promise.all([
       // 1. OHLC bars via get_chart_data_v2 RPC (provider-aware)
       // The RPC now accepts p_limit to enforce the cap inside Postgres,
@@ -633,7 +683,38 @@ serve(async (req: Request): Promise<Response> => {
         .eq("timeframe", timeframe)
         .in("status", ["queued", "running"])
         .limit(1),
+
+      // 8. m1 bars for partial candle synthesis (d1/w1/h1/h4 only)
+      // Fetch up to 8h back so all four timeframes are covered.
+      ["d1", "w1", "h1", "h4"].includes(timeframe)
+        ? supabase
+          .from("ohlc_bars_v2")
+          .select("ts, open, high, low, close, volume")
+          .eq("symbol_id", symbolId)
+          .eq("timeframe", "m1")
+          .eq("is_intraday", true)
+          .eq("is_forecast", false)
+          .gte(
+            "ts",
+            new Date(now.getTime() - 8 * 60 * 60 * 1000).toISOString(),
+          )
+          .order("ts", { ascending: true })
+          .limit(600)
+        : Promise.resolve({ data: null, error: null }),
     ]);
+
+    // ── Extract market status early (needed for partial candle synthesis) ─────
+    let isMarketOpen = false;
+    try {
+      isMarketOpen = marketStatusResult.data ?? false;
+    } catch {
+      const hour = now.getUTCHours();
+      const dow = now.getUTCDay();
+      isMarketOpen = dow >= MARKET_WEEKDAY_START &&
+        dow <= MARKET_WEEKDAY_END &&
+        hour >= MARKET_OPEN_HOUR_UTC &&
+        hour < MARKET_CLOSE_HOUR_UTC;
+    }
 
     // -------------------------------------------------------------------------
     // Step 4 — Process bars + weekly aggregation
@@ -669,10 +750,47 @@ serve(async (req: Request): Promise<Response> => {
       is_forecast: bar.is_forecast === true,
     }));
 
+    // ── Partial candle synthesis (before weekly aggregation) ─────────────────
+    // When the market is open and m1 bars exist, synthesize the in-progress bar
+    // for the current period and append it as the last bar.
+    const PARTIAL_CANDLE_TFS = ["d1", "w1", "h1", "h4"];
+    if (
+      isMarketOpen &&
+      PARTIAL_CANDLE_TFS.includes(timeframe) &&
+      m1BarsResult.data &&
+      m1BarsResult.data.length > 0
+    ) {
+      const m1Rows = m1BarsResult.data as BarRow[];
+      // For w1: synthesize a d1 partial bar — weekly aggregation below will roll it up
+      const synthTf = (timeframe === "w1" ? "d1" : timeframe) as
+        | "d1"
+        | "h1"
+        | "h4";
+      const partialBar = synthesizePartialBar(m1Rows, synthTf, now);
+      if (partialBar) {
+        const partialTsMs = new Date(partialBar.ts).getTime();
+        // Remove existing bar at the same period boundary (replace with partial)
+        allBars = allBars.filter(
+          (b) => new Date(b.ts).getTime() !== partialTsMs,
+        );
+        allBars.push(partialBar);
+      }
+    }
+
     // Weekly aggregation: w1 is fetched as d1 then aggregated here
+    // (includes the partial d1 bar above when market is open)
     if (timeframe === "w1") {
       const historicalOnly = allBars.filter((b) => !b.is_forecast);
       allBars = aggregateWeeklyBars(historicalOnly);
+      // Mark the last weekly bar as partial if market is open and it covers today
+      if (isMarketOpen && allBars.length > 0) {
+        const lastW1 = allBars[allBars.length - 1];
+        const weekStart = new Date(lastW1.ts).getTime();
+        const weekEnd = weekStart + 7 * 24 * 60 * 60 * 1000;
+        if (now.getTime() >= weekStart && now.getTime() < weekEnd) {
+          allBars[allBars.length - 1] = { ...lastW1, is_partial: true };
+        }
+      }
     }
 
     // Apply pagination (offset + limit, both capped)
@@ -725,21 +843,7 @@ serve(async (req: Request): Promise<Response> => {
       ? "stale"
       : "fresh";
 
-    // -------------------------------------------------------------------------
-    // Step 6 — Market status
-    // -------------------------------------------------------------------------
-    let isMarketOpen = false;
-    try {
-      isMarketOpen = marketStatusResult.data ?? false;
-    } catch {
-      // Rough fallback
-      const hour = now.getUTCHours();
-      const dow = now.getUTCDay();
-      isMarketOpen = dow >= MARKET_WEEKDAY_START &&
-        dow <= MARKET_WEEKDAY_END &&
-        hour >= MARKET_OPEN_HOUR_UTC &&
-        hour < MARKET_CLOSE_HOUR_UTC;
-    }
+    // Step 6 — Market status extracted earlier (see early extraction block above)
 
     // -------------------------------------------------------------------------
     // Step 7 — ML enrichment: mlSummary + indicators
@@ -1094,6 +1198,54 @@ serve(async (req: Request): Promise<Response> => {
       }
 
       bars.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    }
+
+    // ── Partial candle: recompute price-derived indicators ────────────────────
+    // If the last bar is synthetic (is_partial=true), update RSI and MACD
+    // histogram using the live price so the indicator panel reflects today's move.
+    const lastBar = bars.length > 0 ? bars[bars.length - 1] : null;
+    if (lastBar?.is_partial) {
+      try {
+        const closedBars = bars.filter((b) => !b.is_partial && !b.is_forecast);
+        if (closedBars.length >= 14) {
+          const barInput: BarInput = {
+            closes: [...closedBars.map((b) => b.close), lastBar.close],
+            highs: [...closedBars.map((b) => b.high), lastBar.high],
+            lows: [...closedBars.map((b) => b.low), lastBar.low],
+            volumes: [...closedBars.map((b) => b.volume), lastBar.volume],
+            opens: [...closedBars.map((b) => b.open), lastBar.open],
+          };
+          const recomputed = recomputePartialIndicators(barInput);
+          if (indicators !== null) {
+            indicators = {
+              ...indicators,
+              rsi: recomputed.rsi ?? indicators.rsi,
+              macdHistogram: recomputed.macdHistogram ??
+                indicators.macdHistogram,
+            };
+          } else if (
+            recomputed.rsi !== null || recomputed.macdHistogram !== null
+          ) {
+            indicators = {
+              supertrendFactor: null,
+              supertrendSignal: null,
+              trendLabel: null,
+              trendConfidence: null,
+              stopLevel: null,
+              trendDurationBars: null,
+              rsi: recomputed.rsi,
+              adx: null,
+              macdHistogram: recomputed.macdHistogram,
+              kdjJ: null,
+            };
+          }
+        }
+      } catch (indicatorErr) {
+        console.warn(
+          "[chart] Partial indicator recompute failed:",
+          indicatorErr,
+        );
+      }
     }
 
     // -------------------------------------------------------------------------

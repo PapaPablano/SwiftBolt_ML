@@ -10,6 +10,9 @@ export interface OHLCBar {
   volume: number;
   is_forecast?: boolean;
   provider?: string;
+  /** True when this bar represents an in-progress (not-yet-closed) candle
+   *  synthesized from m1 data. Clients should not persist partial bars to disk. */
+  is_partial?: boolean;
 }
 
 export interface ForecastPoint {

@@ -1805,36 +1805,44 @@ final class ChartViewModel: ObservableObject {
                 continue
             }
             
-            // Only auto-refresh during market hours for intraday timeframes
+            // During market hours, d1/w1/h1/h4 refresh every 60s for partial candle synthesis.
+            // m15 keeps its 15-minute window; daily/weekly off-hours keep their normal cadence.
+            let partialCandleTimeframes: Set<Timeframe> = [.d1, .w1, .h1, .h4]
+            let isPartialCandleTf = partialCandleTimeframes.contains(currentTimeframe)
+            let effectiveMinRefreshSeconds: Double = isPartialCandleTf && marketOpen
+                ? 60.0
+                : currentTimeframe.minRefreshSeconds
+
             let shouldRefresh: Bool
             if currentTimeframe.isIntraday {
                 shouldRefresh = marketOpen
             } else {
-                // For daily/weekly, refresh less frequently (check once per hour)
+                // d1/w1: always evaluate; gated by effectiveMinRefreshSeconds below
                 shouldRefresh = true
             }
-            
+
             if shouldRefresh {
                 // Check if enough time has passed since last refresh
-                // Only calculate if lastChartRefreshTime has been set (not .distantPast)
                 let timeSinceLastRefresh: TimeInterval
                 if lastChartRefreshTime == .distantPast {
                     // First refresh - allow it immediately
-                    timeSinceLastRefresh = currentTimeframe.minRefreshSeconds
+                    timeSinceLastRefresh = effectiveMinRefreshSeconds
                 } else {
                     timeSinceLastRefresh = Date().timeIntervalSince(lastChartRefreshTime)
                 }
-                
-                if timeSinceLastRefresh >= currentTimeframe.minRefreshSeconds {
+
+                if timeSinceLastRefresh >= effectiveMinRefreshSeconds {
                     // Update timestamp BEFORE calling loadChart to prevent concurrent refresh calls
                     lastChartRefreshTime = Date()
                     print("[DEBUG] 🔄 Auto-refreshing chart for \(currentTimeframe.displayName) (last refresh: \(Int(timeSinceLastRefresh))s ago)")
                     await loadChart()
                 }
             }
-            
-            // Sleep for the timeframe interval
-            let sleepInterval = currentTimeframe.chartRefreshInterval
+
+            // Sleep: 60s during market hours for partial-candle timeframes; else use timeframe cadence
+            let sleepInterval: UInt64 = isPartialCandleTf && marketOpen
+                ? 60 * 1_000_000_000
+                : currentTimeframe.chartRefreshInterval
             do {
                 try await Task.sleep(nanoseconds: sleepInterval)
             } catch { break }
