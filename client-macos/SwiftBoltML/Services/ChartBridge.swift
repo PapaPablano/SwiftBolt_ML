@@ -260,6 +260,8 @@ struct LightweightCandle: Encodable {
     let high: Double
     let low: Double
     let close: Double
+    /// Hex color string (with alpha) for per-bar color override; nil = series default
+    let color: String?
 }
 
 /// Generic data point for line series
@@ -592,7 +594,8 @@ final class ChartBridge: NSObject, ObservableObject {
                 open: bar.open,
                 high: bar.high,
                 low: bar.low,
-                close: bar.close
+                close: bar.close,
+                color: (bar.isPartial ?? false) ? "#FFA50080" : nil
             )
         }
 
@@ -857,7 +860,8 @@ final class ChartBridge: NSObject, ObservableObject {
                 open: bar.open,
                 high: bar.high,
                 low: bar.low,
-                close: bar.close
+                close: bar.close,
+                color: nil
             )
         }
 
@@ -882,10 +886,11 @@ final class ChartBridge: NSObject, ObservableObject {
                 open: bar.open,
                 high: bar.high,
                 low: bar.low,
-                close: bar.close
+                close: bar.close,
+                color: nil
             )
         }
-        
+
         let firstClose = sortedBars.first?.close ?? 0
         let lastClose = sortedBars.last?.close ?? 0
         let direction = lastClose >= firstClose ? "bullish" : "bearish"

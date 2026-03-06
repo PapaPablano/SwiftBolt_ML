@@ -103,14 +103,51 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
   const indicatorSeriesRefs = useRef<Map<string, ISeriesApi<any>>>(new Map());
   const signalSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const tradeRegionsRef = useRef<TradeRegionManager | null>(null);
+  // Tracks symbol:horizon:daysBack to distinguish poll-tick refreshes from initial loads
+  const dataKeyRef = useRef<string>('');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [latestPrice, setLatestPrice] = useState<number | null>(null);
   const [latestForecast, setLatestForecast] = useState<ForecastOverlay | null>(null);
+  // Bumped every 60s during market hours to trigger partial-candle re-fetch
+  const [pollTick, setPollTick] = useState(0);
 
   // WebSocket for real-time updates
   const { isConnected, lastUpdate, error: wsError } = useWebSocket(symbol, horizon);
+
+  // ── Partial candle polling ────────────────────────────────────────────────
+  // During market hours, re-fetch every 60s so d1/w1/h1/h4 show the
+  // in-progress partial candle synthesized by the /chart Edge Function.
+  // Also refreshes immediately when the tab regains visibility.
+  useEffect(() => {
+    const PARTIAL_CANDLE_HORIZONS = ['15m', '1h', '4h', '1D'];
+    if (!PARTIAL_CANDLE_HORIZONS.includes(horizon)) return;
+
+    const isMarketHours = (): boolean => {
+      const now = new Date();
+      const day = now.getUTCDay(); // 0=Sun, 6=Sat
+      if (day === 0 || day === 6) return false;
+      const minutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+      // 13:30-21:00 UTC covers full session in both EDT and EST
+      return minutes >= 13 * 60 + 30 && minutes <= 21 * 60;
+    };
+
+    const tick = () => {
+      if (isMarketHours()) setPollTick((n) => n + 1);
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    const intervalId = setInterval(tick, 60_000);
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [horizon]);
 
   // Initialize chart
   useEffect(() => {
@@ -296,20 +333,55 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
 
         console.log(`[Chart] Loaded ${bars?.length || 0} bars from Supabase`);
 
-        // Format bars for TradingView
-        const formattedBars = bars?.map((bar: any) => ({
-          time: Math.floor(new Date(bar.ts).getTime() / 1000) as any,
-          open: bar.open,
-          high: bar.high,
-          low: bar.low,
-          close: bar.close,
-        })) || [];
+        // Format bars for TradingView; partial bars get amber color treatment
+        const formattedBars = bars?.map((bar: any) => {
+          const base = {
+            time: Math.floor(new Date(bar.ts).getTime() / 1000) as any,
+            open: bar.open,
+            high: bar.high,
+            low: bar.low,
+            close: bar.close,
+          };
+          if (bar.is_partial) {
+            return {
+              ...base,
+              color: 'rgba(255, 165, 0, 0.5)',
+              borderColor: 'rgba(255, 165, 0, 0.8)',
+              wickColor: 'rgba(255, 165, 0, 0.6)',
+            };
+          }
+          return base;
+        }) || [];
 
-        // Update candle series
+        // Update candle series; use update() on poll ticks to avoid chart flash
         if (candleSeriesRef.current && formattedBars.length > 0) {
-          candleSeriesRef.current.setData(formattedBars);
+          const dataKey = `${symbol}:${horizon}:${daysBack}`;
+          const isPollTick = dataKeyRef.current === dataKey;
+          dataKeyRef.current = dataKey;
+
+          if (isPollTick) {
+            candleSeriesRef.current.update(formattedBars[formattedBars.length - 1]);
+          } else {
+            candleSeriesRef.current.setData(formattedBars);
+          }
+
           const lastBar = formattedBars[formattedBars.length - 1];
           setLatestPrice(lastBar.close);
+
+          // LIVE marker above partial (in-progress) candle
+          const partialBar = bars?.find((b: any) => b.is_partial);
+          if (partialBar) {
+            candleSeriesRef.current.setMarkers([{
+              time: Math.floor(new Date(partialBar.ts).getTime() / 1000) as any,
+              position: 'aboveBar',
+              color: '#FFA500',
+              shape: 'circle',
+              text: 'LIVE',
+              size: 0.8,
+            }]);
+          } else {
+            candleSeriesRef.current.setMarkers([]);
+          }
         } else {
           console.log('[Chart] No bars returned from Supabase, using mock data');
           throw new Error('No bars returned');
@@ -336,7 +408,9 @@ export const TradingViewChart: React.FC<TradingViewChartProps> = ({
     };
 
     fetchData();
-  }, [symbol, horizon, daysBack]);
+  // pollTick drives periodic re-fetch during market hours (partial candle refresh)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, horizon, daysBack, pollTick]);
 
   // Generate mock data for demo
   const generateMockData = (sym: string, days: number) => {
