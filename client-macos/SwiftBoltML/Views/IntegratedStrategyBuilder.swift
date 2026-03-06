@@ -117,10 +117,10 @@ struct IntegratedStrategyBuilder: View {
                             do {
                                 let full = try await StrategyService.shared.getStrategy(id: supabaseStrategy.id)
                                 var strategy = Strategy(name: full.name)
-                                strategy.supabaseId = full.id
+                                strategy.supabaseId = full.id.uuidString
                                 strategy.description = full.description
-                                strategy.entryConditions = full.config.entryConditions.map { fromSupabaseCondition($0) }
-                                strategy.exitConditions = full.config.exitConditions.map { fromSupabaseCondition($0) }
+                                strategy.entryGroups = [ConditionGroup(conditions: full.config.entryConditions.map { fromSupabaseCondition($0) })]
+                                strategy.exitGroups = [ConditionGroup(conditions: full.config.exitConditions.map { fromSupabaseCondition($0) })]
                                 strategy.isActive = full.isActive
                                 if let p = full.config.parameters["stop_loss"], case .double(let v) = p { strategy.stopLoss = v }
                                 if let p = full.config.parameters["take_profit"], case .double(let v) = p { strategy.takeProfit = v }
@@ -134,7 +134,7 @@ struct IntegratedStrategyBuilder: View {
                 }
                 if let selected = selectedStrategy,
                    let id = selected.supabaseId,
-                   let existing = strategyListVM.strategies.first(where: { $0.id == id }) {
+                   let existing = strategyListVM.strategies.first(where: { $0.id.uuidString == id }) {
                     Divider()
                     Button(role: .destructive) {
                         Task {
@@ -239,7 +239,7 @@ struct IntegratedStrategyBuilder: View {
             ]
         )
         if let id = strategy.supabaseId,
-           let existing = strategyListVM.strategies.first(where: { $0.id == id }) {
+           let existing = strategyListVM.strategies.first(where: { $0.id.uuidString == id }) {
             await strategyListVM.updateStrategy(existing, name: strategy.name, config: config)
         } else {
             await strategyListVM.createStrategy(

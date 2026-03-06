@@ -43,7 +43,8 @@ struct OHLCBarRealtime: Codable {
             open: open,
             high: high,
             low: low,
-            close: close
+            close: close,
+            color: nil
         )
     }
 }
