@@ -537,8 +537,12 @@ serve(async (req: Request): Promise<Response> => {
     let resolvedSymbol = symbol;
     let futuresMetadata: FuturesMetadata | null = null;
 
-    if (FUTURES_PATTERN.test(symbol)) {
-      console.log(`[chart] Detected futures symbol: ${symbol}`);
+    const futuresMatch = FUTURES_PATTERN.exec(symbol);
+    if (futuresMatch) {
+      // futuresMatch[1] = root (e.g. "ES"), futuresMatch[2] = suffix (e.g. "1!" or "H26")
+      const futuresRoot = futuresMatch[1].toUpperCase();
+      const isContinuousSuffix = /^\d+!$/.test(futuresMatch[2]); // e.g. "1!", "2!"
+      console.log(`[chart] Detected futures symbol: ${symbol} (root=${futuresRoot})`);
       try {
         const { data: resolved, error: resolveError } = await supabase.rpc(
           "resolve_futures_symbol",
@@ -559,13 +563,31 @@ serve(async (req: Request): Promise<Response> => {
           };
           console.log(`[chart] Resolved ${symbol} → ${resolvedSymbol}`);
         } else {
+          // RPC unavailable or returned nothing — fall back to the root symbol.
+          // "ES1!" → "ES", "GCZ25" → "GC"
+          resolvedSymbol = futuresRoot;
+          futuresMetadata = {
+            requested_symbol: symbol,
+            resolved_symbol: resolvedSymbol,
+            is_continuous: isContinuousSuffix,
+            root_id: null,
+            expiry_info: null,
+          };
           console.log(
-            `[chart] Could not resolve futures symbol ${symbol}, using as-is`,
+            `[chart] resolve_futures_symbol unavailable, falling back to root: ${resolvedSymbol}`,
           );
         }
       } catch (err) {
         console.error(`[chart] Error resolving futures symbol:`, err);
-        // Fall back to using original symbol
+        // Fall back to root symbol
+        resolvedSymbol = futuresRoot;
+        futuresMetadata = {
+          requested_symbol: symbol,
+          resolved_symbol: resolvedSymbol,
+          is_continuous: isContinuousSuffix,
+          root_id: null,
+          expiry_info: null,
+        };
       }
     }
 

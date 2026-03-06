@@ -180,11 +180,13 @@ final class AppViewModel: ObservableObject {
 
         print("[DEBUG] - Loading news and options (chart loads via didSet)...")
 
+        let isFutures = selectedSymbol?.assetType == "future"
+
         // Chart loading is handled by chartViewModel.selectedSymbol.didSet
-        // Only load news and options here to avoid duplicate chart requests
+        // Options chain and ranker are equity/ETF-only — skip for futures
         async let newsLoad: () = newsViewModel.loadNews(for: selectedSymbol?.ticker)
-        async let optionsLoad: () = optionsChainViewModel.loadOptionsChain(for: selectedSymbol?.ticker ?? "")
-        async let rankerLoad: () = optionsRankerViewModel.ensureLoaded(for: selectedSymbol?.ticker ?? "")
+        async let optionsLoad: () = isFutures ? () : optionsChainViewModel.loadOptionsChain(for: selectedSymbol?.ticker ?? "")
+        async let rankerLoad: () = isFutures ? () : optionsRankerViewModel.ensureLoaded(for: selectedSymbol?.ticker ?? "")
 
         _ = await (newsLoad, optionsLoad, rankerLoad)
         print("[DEBUG] AppViewModel.refreshData() COMPLETED")
