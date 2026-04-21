@@ -112,6 +112,12 @@ struct SidebarView: View {
     @EnvironmentObject var appViewModel: AppViewModel
     @Binding var activeSection: SidebarSection
 
+    @StateObject private var marketService = MarketStatusService(
+        supabaseURL: Config.supabaseURL.absoluteString,
+        supabaseKey: Config.supabaseAnonKey
+    )
+    @StateObject private var paperTradingService = PaperTradingService()
+
     @AppStorage("sidebar.research.expanded") private var researchExpanded = true
     @AppStorage("sidebar.buildAndTest.expanded") private var buildAndTestExpanded = true
     @AppStorage("sidebar.trade.expanded") private var tradeExpanded = true
@@ -129,6 +135,14 @@ struct SidebarView: View {
             WatchlistView()
                 .environmentObject(appViewModel)
                 .frame(maxHeight: .infinity)
+
+            Divider()
+
+            // Status bar: active symbol + market status + connectivity
+            SidebarStatusBar(
+                appViewModel: appViewModel,
+                marketService: marketService
+            )
 
             Divider()
 
@@ -164,7 +178,15 @@ struct SidebarView: View {
 
                 DisclosureGroup(isExpanded: $tradeExpanded) {
                     NavigationLink(value: SidebarSection.trade(.paperTrading)) {
-                        Label("Paper Trading", systemImage: "dollarsign.circle")
+                        HStack {
+                            Label("Paper Trading", systemImage: "dollarsign.circle")
+                            Spacer()
+                            if !paperTradingService.openPositions.isEmpty {
+                                Circle()
+                                    .fill(DesignTokens.Colors.success)
+                                    .frame(width: 8, height: 8)
+                            }
+                        }
                     }
                     NavigationLink(value: SidebarSection.trade(.liveTrading)) {
                         Label("Live Trading", systemImage: "bolt.fill")
@@ -194,6 +216,9 @@ struct SidebarView: View {
             .frame(minHeight: 220)
         }
         .navigationTitle("SwiftBolt ML")
+        .onDisappear {
+            marketService.stopMonitoring()
+        }
     }
 }
 
