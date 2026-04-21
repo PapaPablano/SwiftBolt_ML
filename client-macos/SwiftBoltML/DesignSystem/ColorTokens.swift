@@ -40,10 +40,10 @@ enum DesignTokens {
         // Chart: Pivot Period colors (from PivotPeriodManager)
         static let periodMicro = Color(light: Color(red: 0.8, green: 0.8, blue: 0.8),
                                        dark: Color(red: 0.6, green: 0.6, blue: 0.6))
-        static let periodShort = Color(light: Color(red: 0.2, green: 0.5, blue: 1.0),
-                                       dark: Color(red: 0.3, green: 0.6, blue: 1.0))
-        static let periodMedium = Color(light: Color(red: 0.0, green: 0.8, blue: 0.8),
-                                        dark: Color(red: 0.1, green: 0.9, blue: 0.9))
+        static let periodShort = Color(light: Color(red: 0.2, green: 0.7, blue: 1.0),
+                                       dark: Color(red: 0.3, green: 0.8, blue: 1.0))
+        static let periodMedium = Color(light: Color(red: 0.2, green: 1.0, blue: 0.8),
+                                        dark: Color(red: 0.3, green: 1.0, blue: 0.9))
         static let periodLong = Color(light: Color(red: 1.0, green: 0.8, blue: 0.2),
                                       dark: Color(red: 1.0, green: 0.85, blue: 0.3))
 
@@ -56,6 +56,10 @@ enum DesignTokens {
         // Backgrounds
         static let surfacePrimary = Color(nsColor: .windowBackgroundColor)
         static let surfaceSecondary = Color(nsColor: .controlBackgroundColor)
+
+        // Card gradients (forecast horizons collapsed card)
+        static let surfaceCardTop = Color(red: 0.16, green: 0.23, blue: 0.42)
+        static let surfaceCardBottom = Color(red: 0.09, green: 0.14, blue: 0.28)
     }
 }
 
