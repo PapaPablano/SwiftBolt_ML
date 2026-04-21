@@ -1,27 +1,38 @@
 import SwiftUI
 
-enum StrategyPlatformSection: Hashable {
-    case builder
-    case paperTrading
+// MARK: - Sidebar Section Models
+
+enum ResearchSection: Hashable {
+    case chartsAndAnalysis
+    case predictions
+}
+
+enum BuildSection: Hashable {
+    case strategyBuilder
     case backtesting
+    case multiLeg
+}
+
+enum TradeSection: Hashable {
+    case paperTrading
     case liveTrading
+    case portfolio
 }
 
 enum SidebarSection: Hashable {
-    case stocks
-    case portfolio
-    case multileg
-    case predictions
-    case tradestation
-    case strategyPlatform(StrategyPlatformSection)
+    case research(ResearchSection)
+    case buildAndTest(BuildSection)
+    case trade(TradeSection)
     #if DEBUG
     case devtools
     #endif
 }
 
+// MARK: - Content View
+
 struct ContentView: View {
     @StateObject private var appViewModel = AppViewModel()
-    @State private var activeSection: SidebarSection = .stocks
+    @State private var activeSection: SidebarSection = .research(.chartsAndAnalysis)
 
     var body: some View {
         NavigationSplitView {
@@ -40,34 +51,33 @@ struct ContentView: View {
                     // Chart (always mounted, hidden when another section is active)
                     DetailView()
                         .environmentObject(appViewModel)
-                        .opacity(activeSection == .stocks ? 1 : 0)
-                        .allowsHitTesting(activeSection == .stocks)
+                        .opacity(activeSection == .research(.chartsAndAnalysis) ? 1 : 0)
+                        .allowsHitTesting(activeSection == .research(.chartsAndAnalysis))
 
-                    // Strategy Builder: conditionally mounted (no WKWebView JS runtime to preserve)
-                    if activeSection == .tradestation {
+                    // Strategy Builder: single canonical entry point
+                    if activeSection == .buildAndTest(.strategyBuilder) {
                         IntegratedStrategyBuilder(symbol: appViewModel.selectedSymbol?.ticker)
                     }
 
-                    // Other sections: only mounted when active
-                    if activeSection == .predictions {
+                    if activeSection == .research(.predictions) {
                         PredictionsView()
                             .environmentObject(appViewModel)
                     }
-                    if activeSection == .portfolio {
+                    if activeSection == .trade(.portfolio) {
                         Text("Portfolio")
                     }
-                    if activeSection == .multileg {
+                    if activeSection == .buildAndTest(.multiLeg) {
                         MultiLegStrategyListView()
                             .environmentObject(appViewModel)
                     }
-                    if activeSection == .strategyPlatform(.builder) {
-                        StrategyBuilderWebView(symbol: appViewModel.selectedSymbol?.ticker)
-                    }
-                    if activeSection == .strategyPlatform(.paperTrading) {
+                    if activeSection == .trade(.paperTrading) {
                         PaperTradingDashboardView()
                     }
-                    if activeSection == .strategyPlatform(.backtesting) {
+                    if activeSection == .buildAndTest(.backtesting) {
                         BacktestResultsWebView(symbol: appViewModel.selectedSymbol?.ticker)
+                    }
+                    if activeSection == .trade(.liveTrading) {
+                        Text("Live Trading")
                     }
                     #if DEBUG
                     if activeSection == .devtools {
@@ -83,8 +93,7 @@ struct ContentView: View {
             await appViewModel.checkSupabaseConnectivity()
         }
         .onChange(of: appViewModel.selectedSymbol) { _, _ in
-            // Defer to avoid publishing changes from within view updates
-            DispatchQueue.main.async { activeSection = .stocks }
+            DispatchQueue.main.async { activeSection = .research(.chartsAndAnalysis) }
         }
         #if DEBUG
         .onAppear {
@@ -97,9 +106,18 @@ struct ContentView: View {
     }
 }
 
+// MARK: - Sidebar View
+
 struct SidebarView: View {
     @EnvironmentObject var appViewModel: AppViewModel
     @Binding var activeSection: SidebarSection
+
+    @AppStorage("sidebar.research.expanded") private var researchExpanded = true
+    @AppStorage("sidebar.buildAndTest.expanded") private var buildAndTestExpanded = true
+    @AppStorage("sidebar.trade.expanded") private var tradeExpanded = true
+    #if DEBUG
+    @AppStorage("sidebar.devtools.expanded") private var devtoolsExpanded = true
+    #endif
 
     var body: some View {
         VStack(spacing: 0) {
@@ -115,64 +133,77 @@ struct SidebarView: View {
             Divider()
 
             List(selection: $activeSection) {
-                Section {
-                    NavigationLink(value: SidebarSection.tradestation) {
-                        Label("Strategy Builder", systemImage: "chart.line.uptrend.xyaxis")
+                DisclosureGroup(isExpanded: $researchExpanded) {
+                    NavigationLink(value: SidebarSection.research(.chartsAndAnalysis)) {
+                        Label("Charts & Analysis", systemImage: "chart.line.uptrend.xyaxis")
                     }
-                } header: {
-                    Text("Strategy")
-                }
-
-                Section {
-                    NavigationLink(value: SidebarSection.strategyPlatform(.builder)) {
-                        Label("Strategy Builder", systemImage: "checklist")
-                    }
-                    NavigationLink(value: SidebarSection.strategyPlatform(.paperTrading)) {
-                        Label("Paper Trading", systemImage: "dollarsign.circle")
-                    }
-                    NavigationLink(value: SidebarSection.strategyPlatform(.backtesting)) {
-                        Label("Backtesting", systemImage: "clock.arrow.2.circlepath")
-                    }
-                    NavigationLink(value: SidebarSection.strategyPlatform(.liveTrading)) {
-                        Label("Live Trading", systemImage: "bolt.fill")
-                    }
-                } header: {
-                    Text("Strategy Platform")
-                }
-
-                Section("Navigation") {
-                    NavigationLink(value: SidebarSection.portfolio) {
-                        Label("Portfolio", systemImage: "chart.pie.fill")
-                    }
-                    NavigationLink(value: SidebarSection.multileg) {
-                        Label("Multi-Leg", systemImage: "square.stack.3d.up")
-                    }
-                    NavigationLink(value: SidebarSection.predictions) {
+                    NavigationLink(value: SidebarSection.research(.predictions)) {
                         Label("Predictions", systemImage: "waveform.path.ecg")
                     }
+                } label: {
+                    Text("Research")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                DisclosureGroup(isExpanded: $buildAndTestExpanded) {
+                    NavigationLink(value: SidebarSection.buildAndTest(.strategyBuilder)) {
+                        Label("Strategy Builder", systemImage: "chart.line.uptrend.xyaxis")
+                    }
+                    NavigationLink(value: SidebarSection.buildAndTest(.backtesting)) {
+                        Label("Backtesting", systemImage: "clock.arrow.2.circlepath")
+                    }
+                    NavigationLink(value: SidebarSection.buildAndTest(.multiLeg)) {
+                        Label("Multi-Leg", systemImage: "square.stack.3d.up")
+                    }
+                } label: {
+                    Text("Build & Test")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                DisclosureGroup(isExpanded: $tradeExpanded) {
+                    NavigationLink(value: SidebarSection.trade(.paperTrading)) {
+                        Label("Paper Trading", systemImage: "dollarsign.circle")
+                    }
+                    NavigationLink(value: SidebarSection.trade(.liveTrading)) {
+                        Label("Live Trading", systemImage: "bolt.fill")
+                    }
+                    NavigationLink(value: SidebarSection.trade(.portfolio)) {
+                        Label("Portfolio", systemImage: "chart.pie.fill")
+                    }
+                } label: {
+                    Text("Trade")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
 
                 #if DEBUG
-                Section("Development") {
+                DisclosureGroup(isExpanded: $devtoolsExpanded) {
                     NavigationLink(value: SidebarSection.devtools) {
                         Label("Dev Tools", systemImage: "wrench.and.screwdriver.fill")
                     }
+                } label: {
+                    Text("Development")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
                 #endif
             }
             .listStyle(.sidebar)
-            .frame(minHeight: 180)
+            .frame(minHeight: 220)
         }
         .navigationTitle("SwiftBolt ML")
     }
 }
+
+// MARK: - Detail View
 
 struct DetailView: View {
     @EnvironmentObject var appViewModel: AppViewModel
 
     var body: some View {
         if appViewModel.selectedSymbol != nil {
-            // Horizontal split: Chart on left, News/Options/Analysis on right
             HSplitView {
                 ChartView()
                     .environmentObject(appViewModel)
@@ -180,15 +211,17 @@ struct DetailView: View {
 
                 NavigationStack {
                     VStack(spacing: 0) {
-                        Picker("", selection: deferredBinding(get: { appViewModel.selectedDetailTab }, set: { appViewModel.selectedDetailTab = $0 })) {
+                        Picker("", selection: deferredBinding(
+                            get: { appViewModel.selectedDetailTab },
+                            set: { appViewModel.selectedDetailTab = $0 }
+                        )) {
                             Text("News").tag(0)
                             Text("Options").tag(1)
                             Text("Analysis").tag(2)
-                            Text("Strategy Builder").tag(3)
                         }
-                        .pickerStyle(.menu)
-                        .padding()
-                        .frame(minWidth: 160)
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, DesignTokens.Spacing.lg)
+                        .padding(.vertical, DesignTokens.Spacing.sm)
 
                         if appViewModel.selectedDetailTab == 0 {
                             NewsListView()
@@ -196,11 +229,9 @@ struct DetailView: View {
                         } else if appViewModel.selectedDetailTab == 1 {
                             OptionsChainView()
                                 .environmentObject(appViewModel)
-                        } else if appViewModel.selectedDetailTab == 2 {
+                        } else {
                             AnalysisView()
                                 .environmentObject(appViewModel)
-                        } else {
-                            IntegratedStrategyBuilder(symbol: appViewModel.selectedSymbol?.ticker)
                         }
                     }
                 }
@@ -211,6 +242,8 @@ struct DetailView: View {
         }
     }
 }
+
+// MARK: - Empty State
 
 struct EmptyStateView: View {
     var body: some View {
@@ -229,7 +262,8 @@ struct EmptyStateView: View {
     }
 }
 
-/// Shown when Supabase host can't resolve (DNS -1003). Explains offline mode and offers retry.
+// MARK: - Connectivity Banner
+
 struct SupabaseConnectivityBanner: View {
     @EnvironmentObject var appViewModel: AppViewModel
 
