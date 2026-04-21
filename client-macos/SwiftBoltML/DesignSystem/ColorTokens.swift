@@ -58,8 +58,10 @@ enum DesignTokens {
         static let surfaceSecondary = Color(nsColor: .controlBackgroundColor)
 
         // Card gradients (forecast horizons collapsed card)
-        static let surfaceCardTop = Color(red: 0.16, green: 0.23, blue: 0.42)
-        static let surfaceCardBottom = Color(red: 0.09, green: 0.14, blue: 0.28)
+        static let surfaceCardTop = Color(light: Color(red: 0.16, green: 0.23, blue: 0.42),
+                                          dark: Color(red: 0.20, green: 0.27, blue: 0.48))
+        static let surfaceCardBottom = Color(light: Color(red: 0.09, green: 0.14, blue: 0.28),
+                                             dark: Color(red: 0.12, green: 0.18, blue: 0.34))
     }
 }
 

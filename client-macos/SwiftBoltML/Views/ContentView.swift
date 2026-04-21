@@ -90,6 +90,10 @@ struct ContentView: View {
         }
         .frame(minWidth: 1200, minHeight: 800)
         .task {
+            // Clamp stale selectedDetailTab values from the old 4-tab layout
+            if appViewModel.selectedDetailTab > 2 {
+                appViewModel.selectedDetailTab = 0
+            }
             await appViewModel.checkSupabaseConnectivity()
         }
         .onChange(of: appViewModel.selectedSymbol) { _, _ in
@@ -248,13 +252,14 @@ struct DetailView: View {
                         .padding(.horizontal, DesignTokens.Spacing.lg)
                         .padding(.vertical, DesignTokens.Spacing.sm)
 
-                        if appViewModel.selectedDetailTab == 0 {
+                        switch appViewModel.selectedDetailTab {
+                        case 0:
                             NewsListView()
                                 .environmentObject(appViewModel)
-                        } else if appViewModel.selectedDetailTab == 1 {
+                        case 1:
                             OptionsChainView()
                                 .environmentObject(appViewModel)
-                        } else {
+                        default:
                             AnalysisView()
                                 .environmentObject(appViewModel)
                         }
