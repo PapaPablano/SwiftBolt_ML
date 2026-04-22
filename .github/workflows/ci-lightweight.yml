@@ -1,3 +1,11 @@
+# =============================================================================
+# GROUP: 1: Lint/Test
+# PURPOSE: Runs change-detection, ML linting, Edge Function checks, migration
+#          validation, unit tests, contract tests, and integration tests on PRs.
+# TRIGGERS: push to master/main/develop, pull_request to same, workflow_dispatch
+# COMPONENTS: ml/, supabase/functions/, supabase/migrations/, client-macos/
+# SECRETS: SUPABASE_URL, SUPABASE_KEY
+# =============================================================================
 name: CI - Lightweight (Code Quality)
 
 # Trigger on pushes and PRs to main branches

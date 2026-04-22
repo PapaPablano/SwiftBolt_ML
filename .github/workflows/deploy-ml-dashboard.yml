@@ -1,3 +1,13 @@
+# =============================================================================
+# GROUP: 2: Deploy
+# PURPOSE: Deploys the ml-dashboard Supabase Edge Function when its source or
+#          shared dependencies change on main/master.
+# TRIGGERS: push to main/master (paths: backend/supabase/functions/ml-dashboard,
+#           _shared, config.toml), workflow_dispatch
+# COMPONENTS: backend/supabase/functions/ml-dashboard/,
+#             backend/supabase/functions/_shared/
+# SECRETS: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF
+# =============================================================================
 ---
 name: Deploy ml-dashboard
 

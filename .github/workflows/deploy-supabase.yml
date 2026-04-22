@@ -1,3 +1,13 @@
+# =============================================================================
+# GROUP: 2: Deploy
+# PURPOSE: Deploys Supabase Edge Functions and applies DB migrations after CI
+#          passes on main/master, with a post-deploy smoke test on /chart.
+# TRIGGERS: workflow_run (after CI - Lightweight succeeds on main/master),
+#           workflow_dispatch
+# COMPONENTS: supabase/functions/, supabase/migrations/
+# SECRETS: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, SUPABASE_URL,
+#          SUPABASE_SERVICE_ROLE_KEY, ALPACA_API_KEY, ALPACA_API_SECRET
+# =============================================================================
 name: Deploy Supabase Functions
 
 on:
