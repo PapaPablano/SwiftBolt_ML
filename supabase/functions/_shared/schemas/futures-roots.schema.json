@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "futures-roots.schema.json",
+  "title": "FuturesRootsResponse",
+  "description": "Response from GET /futures-roots — returns available futures root contracts with metadata, optionally filtered by sector.",
+  "type": "object",
+  "required": ["success", "count", "roots"],
+  "additionalProperties": true,
+  "properties": {
+    "success": {
+      "type": "boolean",
+      "description": "Always true on a successful response"
+    },
+    "count": {
+      "type": "integer",
+      "description": "Number of root contracts returned"
+    },
+    "sector": {
+      "type": "string",
+      "description": "Sector filter that was applied, if any (e.g. 'indices', 'metals')"
+    },
+    "roots": {
+      "type": "array",
+      "description": "Futures root contracts ordered by symbol",
+      "items": { "$ref": "#/definitions/FuturesRoot" }
+    }
+  },
+  "definitions": {
+    "FuturesRoot": {
+      "type": "object",
+      "description": "A single futures root contract definition",
+      "required": [
+        "id",
+        "symbol",
+        "name",
+        "exchange",
+        "sector",
+        "tick_size",
+        "point_value",
+        "currency"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string", "description": "UUID primary key" },
+        "symbol": { "type": "string", "description": "Root symbol (e.g. 'ES', 'NQ', 'GC')" },
+        "name": { "type": "string", "description": "Human-readable contract name" },
+        "exchange": { "type": "string", "description": "Exchange code (e.g. 'CME', 'COMEX')" },
+        "sector": { "type": "string", "description": "Sector classification (e.g. 'indices', 'metals', 'energy')" },
+        "tick_size": { "type": "number", "description": "Minimum price increment" },
+        "point_value": { "type": "number", "description": "Dollar value per full point move" },
+        "currency": { "type": "string", "description": "Settlement currency (e.g. 'USD')" },
+        "session_template": { "type": "string", "description": "Trading session template identifier" }
+      }
+    }
+  }
+}

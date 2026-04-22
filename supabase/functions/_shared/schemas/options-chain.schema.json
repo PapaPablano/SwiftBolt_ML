@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "options-chain.schema.json",
+  "title": "OptionsChainResponse",
+  "description": "Response from GET /options-chain — returns calls and puts for a given underlying symbol, with optional Greeks.",
+  "type": "object",
+  "required": ["underlying", "timestamp", "expirations", "calls", "puts"],
+  "additionalProperties": true,
+  "properties": {
+    "underlying": {
+      "type": "string",
+      "description": "Uppercase ticker of the underlying asset (e.g. 'AAPL')"
+    },
+    "timestamp": {
+      "type": "number",
+      "description": "Unix timestamp (seconds) of the data snapshot"
+    },
+    "expirations": {
+      "type": "array",
+      "description": "Available expiration timestamps (Unix seconds)",
+      "items": { "type": "number" }
+    },
+    "calls": {
+      "type": "array",
+      "description": "Call option contracts",
+      "items": { "$ref": "#/definitions/OptionContract" }
+    },
+    "puts": {
+      "type": "array",
+      "description": "Put option contracts",
+      "items": { "$ref": "#/definitions/OptionContract" }
+    }
+  },
+  "definitions": {
+    "OptionContract": {
+      "type": "object",
+      "description": "A single option contract with pricing and optional Greeks",
+      "required": [
+        "symbol",
+        "underlying",
+        "strike",
+        "expiration",
+        "type",
+        "bid",
+        "ask",
+        "last",
+        "mark",
+        "volume",
+        "openInterest"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "symbol": { "type": "string", "description": "OCC option symbol" },
+        "underlying": { "type": "string" },
+        "strike": { "type": "number" },
+        "expiration": { "type": "number", "description": "Expiration as Unix timestamp (seconds)" },
+        "type": {
+          "type": "string",
+          "enum": ["call", "put"]
+        },
+        "bid": { "type": "number" },
+        "ask": { "type": "number" },
+        "last": { "type": "number", "description": "Last trade price" },
+        "mark": { "type": "number", "description": "Mid-point of bid/ask" },
+        "volume": { "type": "number" },
+        "openInterest": { "type": "number" },
+        "delta": { "type": "number" },
+        "gamma": { "type": "number" },
+        "theta": { "type": "number" },
+        "vega": { "type": "number" },
+        "rho": { "type": "number" },
+        "impliedVolatility": { "type": "number" },
+        "lastTradeTime": { "type": "number", "description": "Unix timestamp of the last trade" },
+        "changePercent": { "type": "number" },
+        "change": { "type": "number" }
+      }
+    }
+  }
+}

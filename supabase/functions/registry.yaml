@@ -1,0 +1,433 @@
+# Supabase Edge Functions API Registry
+# Auto-generated manifest cataloging every deployed Edge Function.
+# Updated: 2026-04-21
+#
+# Auth types:
+#   anon            - verify_jwt=false, called with anon key
+#   gateway-key     - verify_jwt=false, authenticated via X-SB-Gateway-Key header
+#   jwt             - verify_jwt=true (default), requires Authorization bearer token
+#   optional-bearer - verify_jwt=false, optional Authorization header
+#
+# Consumer types:
+#   client   - macOS SwiftUI app or React frontend
+#   cron     - scheduled job / external trigger
+#   internal - called by other Edge Functions
+
+functions:
+  # ── Core Chart & Market Data ──────────────────────────────────────────
+
+  - name: chart
+    method: GET
+    auth: anon
+    consumers: client
+    schema: _shared/schemas/chart.schema.json
+    description: "OHLCV chart data with ML enrichment, indicators, forecasts, and accuracy badges"
+
+  - name: quotes
+    method: GET,POST
+    auth: anon
+    consumers: client
+    schema: _shared/schemas/quotes.schema.json
+    description: "Real-time and snapshot equity quotes with rate limiting"
+
+  - name: market-status
+    method: GET
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Current market open/close status and trading hours"
+
+  - name: symbols-search
+    method: GET
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Search symbols by name or ticker"
+
+  # ── Options ───────────────────────────────────────────────────────────
+
+  - name: options-chain
+    method: GET
+    auth: anon
+    consumers: client
+    schema: _shared/schemas/options-chain.schema.json
+    description: "Full options chain for a given underlying symbol"
+
+  - name: options-quotes
+    method: GET,POST
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Quotes for specific option contracts"
+
+  - name: greeks-surface
+    method: POST
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Greeks computation surface for options pricing"
+
+  - name: volatility-surface
+    method: POST
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Implied volatility surface data for options analysis"
+
+  # ── Futures ───────────────────────────────────────────────────────────
+
+  - name: futures-roots
+    method: GET
+    auth: anon
+    consumers: client
+    schema: _shared/schemas/futures-roots.schema.json
+    description: "List available futures root symbols and metadata"
+
+  - name: futures-chain
+    method: GET
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Futures contract chain for a given root symbol"
+
+  - name: futures-continuous
+    method: GET
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Continuous futures contract OHLCV data"
+
+  - name: seed-futures
+    method: POST
+    auth: anon
+    consumers: internal
+    schema: null
+    description: "One-time seed of futures root metadata (temporary)"
+
+  - name: sync-futures-bars
+    method: POST
+    auth: anon
+    consumers: cron
+    schema: null
+    description: "Sync futures OHLCV bars from Alpaca"
+
+  - name: sync-futures-data
+    method: POST
+    auth: anon
+    consumers: cron
+    schema: null
+    description: "Sync futures contract metadata and rolls"
+
+  - name: apply-futures-migration
+    method: POST
+    auth: anon
+    consumers: internal
+    schema: null
+    description: "Apply futures-related schema migrations"
+
+  - name: test-alpaca-futures
+    method: POST
+    auth: anon
+    consumers: internal
+    schema: null
+    description: "Test Alpaca futures API connectivity (diagnostic)"
+
+  # ── Strategies ────────────────────────────────────────────────────────
+
+  - name: strategies
+    method: GET,POST,PUT,DELETE
+    auth: optional-bearer
+    consumers: client
+    schema: _shared/schemas/strategies.schema.json
+    description: "CRUD for user-defined trading strategies"
+
+  - name: ts-strategies
+    method: GET,POST,PUT,PATCH,DELETE
+    auth: jwt
+    consumers: client
+    schema: null
+    description: "TradeStation-specific strategy management"
+
+  - name: ga-strategy
+    method: GET,POST
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Genetic algorithm strategy optimization"
+
+  # ── Backtesting ───────────────────────────────────────────────────────
+
+  - name: backtest-strategy
+    method: GET,POST,PATCH
+    auth: gateway-key
+    consumers: internal
+    schema: null
+    description: "Run and manage strategy backtests with gateway-key auth"
+
+  - name: strategy-backtest
+    method: GET,POST
+    auth: optional-bearer
+    consumers: client
+    schema: null
+    description: "Client-facing backtest submission and result retrieval"
+
+  - name: strategy-backtest-worker
+    method: POST
+    auth: gateway-key
+    consumers: internal
+    schema: null
+    description: "Background worker that executes backtest computations"
+
+  - name: walk-forward-optimize
+    method: POST
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Walk-forward optimization for strategy parameter tuning"
+
+  # ── Paper & Live Trading ──────────────────────────────────────────────
+
+  - name: paper-trading-executor
+    method: GET,POST
+    auth: optional-bearer
+    consumers: client
+    schema: null
+    description: "Paper trading execution engine with position management"
+
+  - name: live-trading-executor
+    method: GET,POST
+    auth: jwt
+    consumers: client
+    schema: null
+    description: "Live trading execution via TradeStation with position management"
+
+  # ── Multi-Leg Options ─────────────────────────────────────────────────
+
+  - name: multi-leg-create
+    method: POST
+    auth: jwt
+    consumers: client
+    schema: null
+    description: "Create a multi-leg options strategy position"
+
+  - name: multi-leg-list
+    method: GET
+    auth: jwt
+    consumers: client
+    schema: null
+    description: "List multi-leg options positions for a user"
+
+  - name: multi-leg-detail
+    method: GET
+    auth: jwt
+    consumers: client
+    schema: null
+    description: "Get detailed view of a specific multi-leg position"
+
+  - name: multi-leg-update
+    method: PATCH
+    auth: jwt
+    consumers: client
+    schema: null
+    description: "Update a multi-leg options position"
+
+  - name: multi-leg-delete
+    method: DELETE,POST
+    auth: jwt
+    consumers: client
+    schema: null
+    description: "Delete a multi-leg options position"
+
+  - name: multi-leg-close-leg
+    method: POST
+    auth: jwt
+    consumers: client
+    schema: null
+    description: "Close a single leg of a multi-leg position"
+
+  - name: multi-leg-close-strategy
+    method: POST
+    auth: jwt
+    consumers: client
+    schema: null
+    description: "Close all legs of a multi-leg strategy"
+
+  - name: multi-leg-evaluate
+    method: POST
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Evaluate P&L and greeks for a multi-leg position"
+
+  - name: multi-leg-templates
+    method: GET
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Pre-built multi-leg strategy templates (iron condor, spread, etc.)"
+
+  # ── Portfolio & Analysis ──────────────────────────────────────────────
+
+  - name: portfolio-optimize
+    method: POST
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Mean-variance portfolio optimization"
+
+  - name: stress-test
+    method: POST
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Portfolio stress testing with scenario analysis"
+
+  - name: technical-indicators
+    method: GET
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Compute technical indicators for a symbol"
+
+  # ── ML Forecasts & Validation ─────────────────────────────────────────
+
+  - name: get-multi-horizon-forecasts
+    method: GET
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Multi-horizon ML forecasts (1D, 5D, 10D, 20D)"
+
+  - name: get-unified-validation
+    method: GET
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Unified forecast validation metrics and accuracy"
+
+  - name: forecast-quality
+    method: POST
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Forecast quality assessment for a symbol"
+
+  - name: log-validation-audit
+    method: POST
+    auth: anon
+    consumers: internal
+    schema: null
+    description: "Log forecast validation audit records"
+
+  # ── Data Ingestion & Sync (Gateway-Key Protected) ─────────────────────
+
+  - name: ingest-live
+    method: POST
+    auth: gateway-key
+    consumers: cron
+    schema: null
+    description: "Ingest live OHLCV bars from Alpaca into ohlc_bars_v2"
+
+  - name: intraday-live-refresh
+    method: POST
+    auth: gateway-key
+    consumers: cron
+    schema: null
+    description: "Refresh intraday bars for watchlist symbols"
+
+  - name: run-backfill-worker
+    method: POST
+    auth: gateway-key
+    consumers: cron
+    schema: null
+    description: "Background worker for historical data backfill"
+
+  - name: train-model
+    method: POST
+    auth: gateway-key
+    consumers: cron
+    schema: null
+    description: "Trigger ML model training pipeline"
+
+  - name: trigger-backfill
+    method: POST
+    auth: anon
+    consumers: internal
+    schema: null
+    description: "Trigger historical data backfill via gateway-key worker"
+
+  - name: trigger-ranking-job
+    method: POST
+    auth: anon
+    consumers: cron
+    schema: null
+    description: "Trigger the symbol ranking and scoring job"
+
+  # ── Data Maintenance ──────────────────────────────────────────────────
+
+  - name: data-health
+    method: GET
+    auth: anon
+    consumers: client
+    schema: null
+    description: "Data freshness and health dashboard metrics"
+
+  - name: ensure-coverage
+    method: POST
+    auth: anon
+    consumers: internal
+    schema: null
+    description: "Ensure OHLCV data coverage for requested symbols/timeframes"
+
+  - name: symbol-backfill
+    method: POST
+    auth: anon
+    consumers: internal
+    schema: null
+    description: "Backfill historical data for a specific symbol"
+
+  - name: sync-corporate-actions
+    method: POST
+    auth: anon
+    consumers: cron
+    schema: null
+    description: "Sync corporate actions (splits, dividends) from Alpaca"
+
+  - name: sync-market-calendar
+    method: POST
+    auth: anon
+    consumers: cron
+    schema: null
+    description: "Sync market calendar and trading holidays"
+
+  - name: adjust-bars-for-splits
+    method: POST
+    auth: anon
+    consumers: internal
+    schema: null
+    description: "Retroactively adjust OHLCV bars for stock splits"
+
+  - name: apply-h1-fix
+    method: POST
+    auth: anon
+    consumers: internal
+    schema: null
+    description: "Apply 1-hour bar aggregation fix"
+
+  # ── User Management ───────────────────────────────────────────────────
+
+  - name: user-refresh
+    method: POST
+    auth: jwt
+    consumers: client
+    schema: null
+    description: "Refresh user session and sync profile data"
+
+  # ── Diagnostics (non-production) ──────────────────────────────────────
+
+  - name: test-polygon
+    method: POST
+    auth: anon
+    consumers: internal
+    schema: null
+    description: "Test Polygon.io API connectivity (diagnostic)"

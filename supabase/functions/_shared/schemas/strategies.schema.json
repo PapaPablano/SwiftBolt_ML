@@ -1,0 +1,150 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "strategies.schema.json",
+  "title": "StrategiesResponse",
+  "description": "Response from GET /strategies. Returns either a list of strategy summaries or a single full strategy.",
+  "oneOf": [
+    { "$ref": "#/definitions/StrategyListResponse" },
+    { "$ref": "#/definitions/SingleStrategyResponse" },
+    { "$ref": "#/definitions/StrategyDeletedResponse" }
+  ],
+  "definitions": {
+    "StrategyListResponse": {
+      "type": "object",
+      "description": "GET /strategies (no id param) — paginated list of strategy summaries",
+      "required": ["strategies"],
+      "additionalProperties": true,
+      "properties": {
+        "strategies": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/StrategySummary" }
+        }
+      }
+    },
+    "SingleStrategyResponse": {
+      "type": "object",
+      "description": "GET /strategies?id=xxx, POST, or PUT — single full strategy",
+      "required": ["strategy"],
+      "additionalProperties": true,
+      "properties": {
+        "strategy": { "$ref": "#/definitions/StrategyRow" }
+      }
+    },
+    "StrategyDeletedResponse": {
+      "type": "object",
+      "description": "DELETE /strategies?id=xxx — confirmation message",
+      "required": ["message"],
+      "additionalProperties": true,
+      "properties": {
+        "message": { "type": "string" }
+      }
+    },
+    "StrategySummary": {
+      "type": "object",
+      "description": "Lightweight strategy record returned in list queries (excludes large config JSONB)",
+      "required": [
+        "id",
+        "name",
+        "is_active",
+        "paper_trading_enabled",
+        "live_trading_enabled",
+        "live_trading_paused",
+        "created_at",
+        "updated_at"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string", "description": "UUID primary key" },
+        "name": { "type": "string" },
+        "is_active": { "type": "boolean" },
+        "paper_trading_enabled": { "type": "boolean" },
+        "live_trading_enabled": { "type": "boolean" },
+        "live_trading_paused": { "type": "boolean" },
+        "created_at": { "type": "string", "description": "ISO 8601 timestamp" },
+        "updated_at": { "type": "string", "description": "ISO 8601 timestamp" }
+      }
+    },
+    "StrategyRow": {
+      "type": "object",
+      "description": "Full strategy record including config",
+      "required": [
+        "id",
+        "user_id",
+        "name",
+        "description",
+        "config",
+        "is_active",
+        "paper_trading_enabled",
+        "live_trading_enabled",
+        "live_risk_pct",
+        "live_daily_loss_limit_pct",
+        "live_max_positions",
+        "live_max_position_pct",
+        "live_trading_paused",
+        "created_at",
+        "updated_at"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string", "description": "UUID primary key" },
+        "user_id": { "type": ["string", "null"], "description": "Owner user ID (null for anonymous)" },
+        "name": { "type": "string" },
+        "description": { "type": ["string", "null"] },
+        "config": { "$ref": "#/definitions/StrategyConfig" },
+        "is_active": { "type": "boolean" },
+        "paper_trading_enabled": { "type": "boolean" },
+        "live_trading_enabled": { "type": "boolean" },
+        "live_risk_pct": { "type": "number" },
+        "live_daily_loss_limit_pct": { "type": "number" },
+        "live_max_positions": { "type": "integer" },
+        "live_max_position_pct": { "type": "number" },
+        "live_trading_paused": { "type": "boolean" },
+        "created_at": { "type": "string", "description": "ISO 8601 timestamp" },
+        "updated_at": { "type": "string", "description": "ISO 8601 timestamp" }
+      }
+    },
+    "StrategyConfig": {
+      "type": "object",
+      "required": ["entry_conditions", "exit_conditions", "filters", "parameters"],
+      "additionalProperties": true,
+      "properties": {
+        "entry_conditions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Condition" }
+        },
+        "exit_conditions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Condition" }
+        },
+        "filters": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Condition" }
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "Condition": {
+      "type": "object",
+      "required": ["type", "name"],
+      "additionalProperties": true,
+      "properties": {
+        "type": { "type": "string" },
+        "name": { "type": "string" },
+        "operator": { "type": "string" },
+        "value": {
+          "oneOf": [
+            { "type": "number" },
+            { "type": "string" }
+          ]
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}
