@@ -20,6 +20,7 @@ The SwiftUI client never calls data vendors directly — all market data and for
 - **`client-macos/`** — SwiftUI macOS app. Xcode project at `client-macos/SwiftBoltML.xcodeproj`. Uses async/await, Combine, actors for thread safety.
 - **`frontend/`** — React + TradingView Lightweight Charts dashboard (Vite + TypeScript + Tailwind).
 - **`backend/`** — Wrapper around Supabase Edge Functions with deployment scripts.
+- **`docs/solutions/`** — Documented solutions to past problems (bugs, best practices, integration fixes), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when debugging or implementing in documented areas.
 
 ### ML pipeline architecture
 
