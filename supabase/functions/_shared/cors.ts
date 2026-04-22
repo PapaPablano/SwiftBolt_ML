@@ -131,6 +131,7 @@ export const corsResponse = (
     status,
     headers: {
       "Content-Type": "application/json",
+      "X-API-Version": "1",
       ...corsHeaders,
       ...additionalHeaders,
     },
@@ -188,6 +189,7 @@ export const errorResponse = (
     status,
     headers: {
       "Content-Type": "application/json",
+      "X-API-Version": "1",
       ...getCorsHeaders(origin),
     },
   });

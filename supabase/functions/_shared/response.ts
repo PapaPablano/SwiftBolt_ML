@@ -15,7 +15,7 @@ export function jsonOk(
 ): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+    headers: { ...getCorsHeaders(origin), "Content-Type": "application/json", "X-API-Version": "1" },
   });
 }
 
@@ -33,7 +33,7 @@ export function jsonError(
   if (code) body.code = code;
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...getCorsHeaders(origin), "Content-Type": "application/json" },
+    headers: { ...getCorsHeaders(origin), "Content-Type": "application/json", "X-API-Version": "1" },
   });
 }
 
