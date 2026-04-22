@@ -210,9 +210,11 @@ class LSTMForecaster:
         logger.info("Training LSTM model...")
 
         try:
-            # Scale data
+            # Scale data — fit scaler on TRAIN slice only to prevent leakage
             prices = df["close"].values.reshape(-1, 1)
-            scaled_data = self.scaler.fit_transform(prices).flatten()
+            train_size = int(len(prices) * (1 - validation_split))
+            self.scaler.fit(prices[:train_size])
+            scaled_data = self.scaler.transform(prices).flatten()
 
             # Prepare sequences
             X, y = self._prepare_sequences(scaled_data)

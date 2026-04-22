@@ -702,11 +702,11 @@ class UnifiedForecastProcessor:
                             base_return = (model_target - current_price_value) / current_price_value
                         base_return = float(base_return or 0.0)
 
-                        horizon_days = self._horizon_to_days(horizon_key)
-                        horizon_weight = min(horizon_days / 20.0, 1.0)
+                        h_days_synthesis = self._horizon_to_days(horizon_key)
+                        horizon_weight = min(h_days_synthesis / 20.0, 1.0)
 
                         # Multi-timeframe consensus adjustment
-                        dominant_tf, secondary_tf = self._dominant_timeframes(horizon_days)
+                        dominant_tf, secondary_tf = self._dominant_timeframes(h_days_synthesis)
                         dominant_signal = mtf_signals.get(dominant_tf, {})
                         dominant_trend = dominant_signal.get("supertrend_trend")
                         if dominant_trend is None:
