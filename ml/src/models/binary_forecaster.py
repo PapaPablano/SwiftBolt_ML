@@ -1,3 +1,4 @@
+# DEPRECATED: Not used in active production paths. Kept for potential future use.
 """Binary ML forecaster using XGBoost for up/down prediction.
 
 Simpler than 3-class (bullish/neutral/bearish).

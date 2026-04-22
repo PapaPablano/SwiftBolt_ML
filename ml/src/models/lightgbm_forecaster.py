@@ -1,3 +1,4 @@
+# DEPRECATED: Not used in active production paths. Kept for potential future use.
 """
 LightGBM Forecaster with linear_tree=True for time series extrapolation.
 

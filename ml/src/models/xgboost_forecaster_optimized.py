@@ -1,3 +1,4 @@
+# DEPRECATED: Not used in active production paths. Kept for potential future use.
 """
 XGBoost forecaster with automatic top-k feature selection to reduce overfitting.
 

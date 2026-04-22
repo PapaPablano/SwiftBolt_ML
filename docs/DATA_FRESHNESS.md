@@ -1,52 +1,79 @@
 # Data Freshness Architecture
 
-How OHLCV data flows from market data providers to clients, and how staleness is detected.
+How OHLCV data and ML forecasts flow from providers to clients.
 
 ## Ingestion Paths
 
-### m1 Bars (Real-Time)
-- **Mechanism:** `pg_cron` triggers `ingest-live` Edge Function every 1 minute during market hours
-- **Source:** Alpaca API (last 5-minute window of m1 bars)
-- **Destination:** `ohlc_bars_v2` via UPSERT with `data_status: 'live'`
+### m1 + m15 Bars (Real-Time via pg_cron)
+- **Mechanism:** `pg_cron` triggers `ingest-live` Edge Function every 1 minute during market hours (Mon-Fri 13:00-20:59 UTC)
+- **Source:** Alpaca API
+- **Pass 1 (m1):** Last 5-minute window of 1-minute bars → `ohlc_bars_v2` with `data_status: 'live'`
+- **Pass 2 (m15):** Last 20-minute window of 15-minute bars → `ohlc_bars_v2` with `data_status: 'live'`
+- **Pass 3 (Kalman):** Adjusts cached intraday forecast target prices based on price movement (see Forecast Pipeline below)
 - **Max staleness:** ~2 minutes (1-minute cron + processing)
-- **Used by:** Partial candle synthesis (m1 bars aggregated into higher timeframes client-side)
+- **Symbol universe:** Watchlist-driven via `watchlist_items` table
 
-### m15/h1/d1 Bars (Near-Real-Time)
-- **Mechanism:** GitHub Actions `intraday-ingestion.yml` runs Python scripts every 5 minutes during market hours (9AM-5PM ET)
-- **Source:** Alpaca API via Python ML pipeline (`src/scripts/resolve_universe`)
-- **Destination:** `ohlc_bars_v2` via Python ingestion scripts
-- **Max staleness:** ~10 minutes (5-minute cron + processing)
+### m15/h1/d1 Bars (Backup via GitHub Actions)
+- **Mechanism:** `schedule-intraday-ingestion.yml` runs Python scripts every 5 minutes during market hours
+- **Source:** Alpaca API via Python ML pipeline
+- **Note:** GitHub Actions cron is **unreliable** for sub-10-minute intervals on low-activity repos. pg_cron is the primary path; GH Actions is a backup.
 
 ### Daily/Weekly Bars (End-of-Day)
 - **Mechanism:** Same GitHub Actions workflow, after-hours runs
 - **Destination:** `ohlc_bars_v2` with `data_status: 'verified'` after market close
 
+## Forecast Pipeline
+
+### Training (Weekly)
+- **Mechanism:** `schedule-intraday-forecast.yml` runs Monday 4 AM UTC (or on-demand via `workflow_dispatch`)
+- **Models:** LSTM + ARIMA-GARCH ensemble (2-model production)
+- **Output:** Forecast points persisted to `ml_forecasts` / `ml_forecasts_intraday`
+- **Symbol universe:** Watchlist-driven via `resolve_symbol_list()` in `ml/src/scripts/universe_utils.py`
+
+### Live Adjustment (Every Minute)
+- **Mechanism:** Third pass in `ingest-live` Edge Function (pg_cron)
+- **Method:** Kalman filter adjustment with gain=0.15
+- **Horizons:** 15m, 1h, 4h (short-term only; daily+ horizons update only on training)
+- **Formula:** `adjusted_target = target_price + 0.15 * (actual_close - forecast_base_price)`
+- **Effect:** Forecasts stay fresh between weekly training runs
+
+### Evaluation (Daily)
+- **Mechanism:** `ml/src/evaluation_job_daily.py` (scheduled or manual)
+- **Output:** Walk-forward accuracy metrics, signal quality scores
+- **Signal quality:** 0-100 score (50% accuracy + 30% confidence tightness + 20% regime alignment) written to `ml_forecasts.signal_quality`
+
 ## Staleness Detection (Chart Endpoint)
 
-The `chart` Edge Function (`supabase/functions/chart/index.ts`) computes staleness for every response:
+The `chart` Edge Function computes staleness for every response:
 
-1. Finds the most recent actual (non-forecast) bar's timestamp (`lastActualBarTs`)
+1. Finds the most recent actual bar's timestamp (`lastActualBarTs`)
 2. Computes age: `ageMinutes = (now - lastActualBarTs) / 60_000`
-3. Looks up the SLA for the requested timeframe from `FRESHNESS_SLA_MINUTES`
+3. Looks up the SLA from `FRESHNESS_SLA_MINUTES`
 4. Sets `isStale = ageMinutes > slaMinutes`
 
 ### SLA Thresholds
 
 | Timeframe | SLA (minutes) | Rationale |
 |-----------|--------------|-----------|
-| m15 | 10 | 2x the 5-minute GH Actions cron interval |
+| m15 | 15 | 3x the pg_cron interval (conservative) |
 | m30 | 60 | 1 hour tolerance |
 | h1 | 120 | 2 hours |
 | h4 | 480 | 8 hours |
 | d1 | 1440 | 24 hours |
 | w1 | 10080 | 1 week |
 
-Note: m1 is not a valid chart timeframe (`VALID_TIMEFRAMES` does not include it). m1 bars are consumed by the partial candle synthesis path, not served directly.
+### Data Status Values
 
-## Chart Response Freshness Fields
+| Value | Meaning |
+|-------|---------|
+| `fresh` | Data within SLA |
+| `stale` | Data beyond SLA, backfill triggered |
+| `no_data` | Zero bars exist for this symbol/timeframe |
+| `updating` | Active backfill in progress |
 
-The `freshness` object in the chart response includes:
+## Chart Response Fields
 
+### Freshness Object
 | Field | Type | Description |
 |-------|------|-------------|
 | `ageMinutes` | number/null | Minutes since most recent bar |
@@ -57,15 +84,43 @@ The `freshness` object in the chart response includes:
 | `ageSeconds` | number/null | Seconds since most recent bar |
 | `slaSeconds` | number | SLA threshold in seconds |
 
-## Database Schema
+### Signal Quality (per forecast horizon in mlSummary)
+| Field | Type | Description |
+|-------|------|-------------|
+| `signalQuality` | number/null | 0-100 composite score |
+| `calibrationLabel` | string/null | "well-calibrated" / "moderate" / "uncalibrated" |
+| `accuracyPct` | number/null | Walk-forward accuracy percentage |
 
-`ohlc_bars_v2` includes freshness-relevant columns:
-- `fetched_at` (TIMESTAMP) — when data was fetched from the provider
-- `updated_at` (TIMESTAMP) — auto-updated by trigger on any change
-- `data_status` (VARCHAR) — `live`, `verified`, or `provisional`
+## Infrastructure
 
-Note: The `get_chart_data_v2` RPC does not return `fetched_at` or `updated_at`. The chart endpoint uses bar `ts` as the freshness timestamp.
+### pg_cron Jobs (Reliable Path)
+| Job | Schedule | Target |
+|-----|----------|--------|
+| `ingest-live` | `* 13-20 * * 1-5` | m1 + m15 bars + Kalman adjustment |
+| `intraday-live-refresh` | `*/15 13-20 * * 1-5` | Additional intraday refresh |
+| `backfill-worker` | `* * * * *` | Process backfill queue |
 
-## Stale Data Recovery
+### GitHub Actions (Backup/Training)
+| Workflow | Schedule | Purpose |
+|----------|----------|---------|
+| `schedule-intraday-ingestion` | `*/5 market hours` | Backup m15/h1 ingestion |
+| `schedule-intraday-forecast` | `Weekly Mon 4AM UTC` | Full ensemble training |
+| `schedule-ml-orchestration` | `Daily 4AM UTC` | Daily forecasting + evaluation |
 
-When data is stale (`ageMinutes > slaMinutes`), the chart endpoint triggers a background backfill job (if no active job exists for that symbol). The response is returned immediately with the stale data and `isStale: true` — the endpoint never blocks on a refresh.
+### Key Diagnostic Queries
+
+Check if pg_cron jobs are actually succeeding at the Edge Function level (not just the HTTP call level):
+```sql
+-- pg_cron "succeeded" only means net.http_post returned — check actual HTTP status in Edge Function logs
+SELECT j.jobname, jrd.status, jrd.start_time
+FROM cron.job_run_details jrd
+JOIN cron.job j ON j.jobid = jrd.jobid
+WHERE jrd.start_time > now() - interval '5 minutes'
+ORDER BY jrd.start_time DESC;
+```
+
+Check vault secret alignment:
+```sql
+SELECT name FROM vault.decrypted_secrets ORDER BY name;
+-- Cross-reference with: SELECT jobname, command FROM cron.job WHERE command LIKE '%vault%';
+```
