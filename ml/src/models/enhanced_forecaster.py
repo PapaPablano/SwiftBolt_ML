@@ -1,3 +1,4 @@
+# DEPRECATED: Not used in active production paths. Kept for potential future use.
 """
 Enhanced Forecaster with full technical indicator integration.
 

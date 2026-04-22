@@ -1,3 +1,4 @@
+# DEPRECATED: Not used in active production paths. Kept for potential future use.
 """
 CORRECTED Composite Signal Calculation
 ======================================

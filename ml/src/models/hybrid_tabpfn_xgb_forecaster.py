@@ -1,3 +1,4 @@
+# DEPRECATED: Not used in active production paths. Kept for potential future use.
 """
 Hybrid TabPFN + XGBoost forecaster: meta-model ensemble for binary (bullish/bearish) prediction.
 

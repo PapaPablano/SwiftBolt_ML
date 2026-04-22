@@ -1,3 +1,4 @@
+# DEPRECATED: Not used in active production paths (only referenced in _legacy/ and training tests). Kept for potential future use.
 """
 Ensemble Loader - Load trained models from disk for production.
 Provides EnsemblePredictor wrapper for easy integration.

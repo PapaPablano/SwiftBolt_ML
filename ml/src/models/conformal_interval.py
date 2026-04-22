@@ -1,3 +1,4 @@
+# DEPRECATED: Not used in active production paths (only referenced in _legacy/). Kept for potential future use.
 import math
 from dataclasses import dataclass
 

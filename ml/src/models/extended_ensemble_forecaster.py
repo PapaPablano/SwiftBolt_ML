@@ -1,3 +1,4 @@
+# DEPRECATED: Not used in active production paths. Kept for potential future use.
 """
 Extended Ensemble Forecaster: RF + GB + ARIMA-GARCH
 ====================================================
