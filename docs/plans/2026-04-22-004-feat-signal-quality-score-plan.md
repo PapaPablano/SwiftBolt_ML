@@ -1,7 +1,7 @@
 ---
 title: "feat: Signal quality score + calibration badge"
 type: feat
-status: active
+status: completed
 date: 2026-04-22
 origin: docs/brainstorms/2026-04-22-signal-quality-score-brainstorm.md
 ---
@@ -27,7 +27,7 @@ Add a per-symbol, per-horizon signal quality score (0-100) to forecasts and surf
 
 ## Implementation Units
 
-- [ ] **Unit 1: Add signal_quality column and compute score in evaluation job**
+- [x] **Unit 1: Add signal_quality column and compute score in evaluation job**
 
 **Goal:** Compute and persist the signal quality score during ML evaluation.
 
@@ -56,7 +56,7 @@ Add a per-symbol, per-horizon signal quality score (0-100) to forecasts and surf
 
 ---
 
-- [ ] **Unit 2: Add signal quality to chart response**
+- [x] **Unit 2: Add signal quality to chart response**
 
 **Goal:** Include the score in the chart endpoint's mlSummary.
 
@@ -79,7 +79,7 @@ Add a per-symbol, per-horizon signal quality score (0-100) to forecasts and surf
 
 ---
 
-- [ ] **Unit 3: Add calibration badge to SwiftUI ForecastHorizonsView**
+- [x] **Unit 3: Add calibration badge to SwiftUI ForecastHorizonsView**
 
 **Goal:** Display colored calibration badge next to each forecast horizon.
 
