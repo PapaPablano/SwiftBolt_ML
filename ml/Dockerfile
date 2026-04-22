@@ -11,11 +11,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     python3-venv \
+    python3-dev \
     gcc \
     g++ \
     cmake \
     make \
     libpq-dev \
+    gfortran \
+    libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -24,6 +27,7 @@ COPY requirements-docker.txt .
 # Use a venv to satisfy PEP 668 (externally-managed-environment) on Ubuntu 26.04
 RUN python3 -m venv /app/venv && \
     /app/venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /app/venv/bin/pip install --no-cache-dir cython numpy && \
     /app/venv/bin/pip install --no-cache-dir -r requirements-docker.txt
 
 # Production stage
