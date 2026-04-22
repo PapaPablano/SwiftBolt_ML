@@ -17,9 +17,10 @@ name: Intraday Ingestion
 
 on:
   schedule:
-    # Run every 15 minutes during extended market hours (9:00 AM - 5:00 PM ET)
+    # Run every 5 minutes during extended market hours (9:00 AM - 5:00 PM ET)
     # Cron is in UTC: ET is UTC-5 (winter) or UTC-4 (DST)
-    - cron: '*/15 13-22 * * 1-5'  # Every 15 min, 1PM-10PM UTC, Mon-Fri
+    # Reduced from */15 to */5 to improve chart data freshness (max ~5min staleness)
+    - cron: '*/5 13-22 * * 1-5'  # Every 5 min, 1PM-10PM UTC, Mon-Fri
   workflow_dispatch:
     inputs:
       symbols:
