@@ -64,5 +64,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
     CMD curl -f -X GET http://127.0.0.1:8000/health || exit 1
 
-# Run FastAPI server without reload for stable production behavior (use venv path explicitly)
-CMD ["/app/venv/bin/uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run FastAPI server with 2 workers for concurrent ML requests
+# --workers=2: handles concurrent backtesting/Greeks requests without blocking
+# --timeout-keep-alive=30: close idle connections faster to free memory
+# --limit-concurrency=10: prevent overload from too many simultaneous heavy requests
+CMD ["/app/venv/bin/uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--timeout-keep-alive", "30", "--limit-concurrency", "10"]

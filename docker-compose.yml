@@ -21,6 +21,14 @@ services:
     # volumes:
     #   - ./ml:/app
     restart: unless-stopped
+    # Resource limits — prevent ML compute from consuming all host memory/CPU
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2.0"
+        reservations:
+          memory: 512M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
       interval: 30s
