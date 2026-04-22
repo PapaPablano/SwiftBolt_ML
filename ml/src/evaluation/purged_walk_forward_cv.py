@@ -75,10 +75,8 @@ class PurgedWalkForwardCV:
             embargo_start = test_end
             embargo_end = min(embargo_start + self.embargo_days, n_samples)
 
-            # Training indices: before test + after embargo
-            train_indices = np.concatenate(
-                [np.arange(0, test_start), np.arange(embargo_end, n_samples)]
-            )
+            # Training indices: only data BEFORE the test fold (no future data)
+            train_indices = np.arange(0, test_start)
 
             # Test indices
             test_indices = np.arange(test_start, test_end)

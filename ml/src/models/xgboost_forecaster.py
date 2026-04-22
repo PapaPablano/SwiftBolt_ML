@@ -10,7 +10,6 @@ from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import RobustScaler
 from xgboost import XGBClassifier
 
@@ -158,14 +157,11 @@ class XGBoostForecaster:
         X_scaled = self.scaler.fit_transform(X_num)
         y_arr = np.asarray(y).ravel()
         y_bin = np.where(np.asarray(y_arr) == "bullish", 1, 0)
-        # Split for early stopping (80% train, 20% val), stratified for balance
-        X_tr, X_es, y_tr, y_es = train_test_split(
-            X_scaled,
-            y_bin,
-            test_size=0.2,
-            stratify=y_bin,
-            random_state=42,
-        )
+        # Temporal split for early stopping (80% train, 20% val) — no shuffle
+        split_idx = int(len(X_scaled) * 0.8)
+        split_idx = max(1, min(split_idx, len(X_scaled) - 1))  # ensure non-empty splits
+        X_tr, X_es = X_scaled[:split_idx], X_scaled[split_idx:]
+        y_tr, y_es = y_bin[:split_idx], y_bin[split_idx:]
         logger.info("Training XGBoost with early stopping...")
         self.model.fit(
             X_tr,
