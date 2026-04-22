@@ -43,6 +43,8 @@ type CascadeForecastRow = {
   handoff_confidence: number | null;
   is_consensus: boolean;
   created_at: string;
+  /** The horizon this cascade row was fetched for (added during collection). */
+  horizon?: string;
 };
 
 type TimeframeGroup = {
@@ -340,7 +342,7 @@ function buildConsensusGroups(
       : [];
 
     const cascade = cascadeRows
-      .filter((c) => c.is_consensus || c.source === row.horizon)
+      .filter((c) => c.horizon === row.horizon)
       .map((c) => ({
         source: c.source,
         direction: c.direction,
@@ -460,16 +462,19 @@ async function loadCascadeRows(
   );
 
   const collected: CascadeForecastRow[] = [];
-  for (const { data, error } of results) {
+  for (let i = 0; i < results.length; i++) {
+    const { data, error } = results[i];
     if (error) {
       return { data: [], error };
     }
 
+    const sourceHorizon = horizons[i];
     const rows = (data ?? []) as CascadeForecastRow[];
     rows.forEach((row) => {
       collected.push({
         ...row,
         source: row.is_consensus ? "consensus" : row.source,
+        horizon: sourceHorizon,
       });
     });
   }

@@ -1049,6 +1049,7 @@ serve(async (req: Request): Promise<Response> => {
               .eq("symbol_id", symbolId)
               .in("horizon", [...DAILY_FORECAST_HORIZONS])
               .order("created_at", { ascending: false })
+              .limit(10)
             : Promise.resolve({ data: [], error: null }),
         ]);
 
