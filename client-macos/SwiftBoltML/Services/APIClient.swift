@@ -597,10 +597,13 @@ final class APIClient {
     /// - Parameter root: The futures root symbol (e.g., "GC", "ES")
     /// - Returns: Array of futures contracts
     func fetchFuturesChain(root: String) async throws -> [FuturesContract] {
-        guard var components = URLComponents(url: functionURL("futures-chain"), resolvingAgainstBaseURL: false) else {
+        guard var components = URLComponents(url: functionURL("futures"), resolvingAgainstBaseURL: false) else {
             throw APIError.invalidURL
         }
-        components.queryItems = [URLQueryItem(name: "root", value: root)]
+        components.queryItems = [
+            URLQueryItem(name: "type", value: "chain"),
+            URLQueryItem(name: "root", value: root),
+        ]
         
         guard let url = components.url else {
             throw APIError.invalidURL
@@ -667,9 +670,8 @@ final class APIClient {
     }
 
     func fetchChartReadPage(symbol: String, timeframe: String = "d1", before: Int, pageSize: Int = 400) async throws -> ChartResponse {
-        // NOTE: fetchChartReadPage still calls chart-read for pagination; update separately when the
-        // unified chart function gains cursor-based pagination support.
-        var urlComponents = URLComponents(url: functionURL("chart-read"), resolvingAgainstBaseURL: false)!
+        // Migrated from retired chart-read to the unified chart function with cursor pagination.
+        var urlComponents = URLComponents(url: functionURL("chart"), resolvingAgainstBaseURL: false)!
         let cacheBuster = Int(Date().timeIntervalSince1970)
         urlComponents.queryItems = [
             URLQueryItem(name: "t", value: "\(cacheBuster)"),
