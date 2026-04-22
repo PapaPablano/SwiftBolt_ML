@@ -199,6 +199,16 @@ struct ForecastSeries: Codable, Equatable {
     let horizon: String
     let points: [ForecastPoint]
     let targets: ForecastTargets?
+    var signalQuality: Int? = nil
+    var calibrationLabel: String? = nil
+    var accuracyPct: Double? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case horizon, points, targets
+        case signalQuality = "signal_quality"
+        case calibrationLabel = "calibration_label"
+        case accuracyPct = "accuracy_pct"
+    }
 }
 
 struct ForecastTargets: Codable, Equatable {

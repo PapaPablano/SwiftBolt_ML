@@ -34,7 +34,10 @@ struct ForecastHorizonsView: View {
                     target: lastPoint.value,
                     currentPrice: currentPrice
                 ),
-                timelinePosition: timelinePosition
+                timelinePosition: timelinePosition,
+                signalQuality: series.signalQuality,
+                calibrationLabel: series.calibrationLabel,
+                accuracyPct: series.accuracyPct
             )
         }
         .sorted { $0.timelinePosition < $1.timelinePosition }
@@ -417,6 +420,10 @@ private struct ForecastHorizonCard: View {
                 }
             }
 
+            if series.signalQuality != nil {
+                CalibrationBadge(series: series)
+            }
+
             if let delta = series.deltaPct {
                 Text(delta.asPercentString)
                     .font(.caption)
@@ -729,6 +736,30 @@ private struct HorizonConfidenceBadge: View {
     }
 }
 
+// MARK: - Calibration Badge
+
+private struct CalibrationBadge: View {
+    let series: ForecastDisplayData
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(series.calibrationColor)
+                .frame(width: 7, height: 7)
+
+            if let accuracy = series.accuracyPct, let label = series.calibrationLabel {
+                Text("\(Int(accuracy))% \u{00B7} \(label)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else if let label = series.calibrationLabel {
+                Text(label)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
 // MARK: - Models & Helpers
 
 private struct ForecastDisplayData: Identifiable {
@@ -744,6 +775,9 @@ private struct ForecastDisplayData: Identifiable {
     let deltaPct: Double?
     let timelinePosition: Double
     var normalizedTimelinePosition: Double = 0
+    let signalQuality: Int?
+    let calibrationLabel: String?
+    let accuracyPct: Double?
 
     var formattedTarget: String {
         guard let target else { return "—" }
@@ -765,6 +799,16 @@ private struct ForecastDisplayData: Identifiable {
         guard let lower, let upper else { return nil }
         let spreadPct = (upper - lower) / ((upper + lower) / 2)
         return String(format: "%.2f%%", spreadPct * 100)
+    }
+
+    var calibrationColor: Color {
+        guard let label = calibrationLabel?.lowercased() else { return .clear }
+        switch label {
+        case "well-calibrated": return DesignTokens.Colors.success
+        case "moderate": return DesignTokens.Colors.warning
+        case "uncalibrated": return DesignTokens.Colors.error
+        default: return DesignTokens.Colors.warning
+        }
     }
 
     var shortHorizonLabel: String {
