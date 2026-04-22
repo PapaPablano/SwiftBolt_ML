@@ -1,3 +1,13 @@
+# =============================================================================
+# GROUP: 2: Deploy
+# PURPOSE: Deploys Supabase Edge Functions and applies DB migrations after CI
+#          passes on main/master, with a post-deploy smoke test on /chart.
+# TRIGGERS: workflow_run (after CI - Lightweight succeeds on main/master),
+#           workflow_dispatch
+# COMPONENTS: supabase/functions/, supabase/migrations/
+# SECRETS: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF, SUPABASE_URL,
+#          SUPABASE_SERVICE_ROLE_KEY, ALPACA_API_KEY, ALPACA_API_SECRET
+# =============================================================================
 name: Deploy Supabase Functions
 
 on:
@@ -169,6 +179,26 @@ jobs:
         echo "## Migrations Applied Successfully ✅" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "All database migrations have been applied." >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # CONTRACT TEST GATE (placeholder — activate when PR #34 schemas merge)
+  # ===========================================================================
+  # TODO: Activate when supabase/functions/_shared/schemas/ exists on master.
+  # This step validates no breaking schema change was deployed.
+  #
+  # contract-gate:
+  #   name: Contract Schema Validation
+  #   runs-on: ubuntu-latest
+  #   needs: check-deploy-needed
+  #   if: needs.check-deploy-needed.outputs.deploy_needed == 'true'
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: npm install -g ajv-cli ajv-formats
+  #     - name: Validate response schemas
+  #       run: |
+  #         for schema in supabase/functions/_shared/schemas/*.schema.json; do
+  #           ajv compile --spec=draft7 -s "$schema" || exit 1
+  #         done
 
   # ===========================================================================
   # POST-DEPLOY SMOKE TEST — verify /chart endpoint is callable

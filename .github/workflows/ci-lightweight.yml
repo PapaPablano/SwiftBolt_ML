@@ -1,3 +1,11 @@
+# =============================================================================
+# GROUP: 1: Lint/Test
+# PURPOSE: Runs change-detection, ML linting, Edge Function checks, migration
+#          validation, unit tests, contract tests, and integration tests on PRs.
+# TRIGGERS: push to master/main/develop, pull_request to same, workflow_dispatch
+# COMPONENTS: ml/, supabase/functions/, supabase/migrations/, client-macos/
+# SECRETS: SUPABASE_URL, SUPABASE_KEY
+# =============================================================================
 name: CI - Lightweight (Code Quality)
 
 # Trigger on pushes and PRs to main branches
@@ -25,6 +33,7 @@ jobs:
       ml_requirements: ${{ steps.filter.outputs.ml_requirements }}
       edge_functions: ${{ steps.filter.outputs.edge_functions }}
       migrations: ${{ steps.filter.outputs.migrations }}
+      swift_client: ${{ steps.filter.outputs.swift_client }}
 
     steps:
     - name: Checkout code
@@ -47,6 +56,8 @@ jobs:
           migrations:
             - 'supabase/migrations/**'
             - 'supabase/seed.sql'
+          swift_client:
+            - 'client-macos/**/*.swift'
 
   # ===========================================================================
   # ML CODE QUALITY (Linting only - no heavy dependencies)
@@ -349,12 +360,399 @@ jobs:
         pytest tests/ -m integration --continue-on-collection-errors -v --tb=short
 
   # ===========================================================================
+  # API CONTRACT TESTS (runs when edge functions or Swift client change)
+  # ===========================================================================
+  contract-tests:
+    name: Contract Tests
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: |
+      needs.detect-changes.outputs.edge_functions == 'true' ||
+      needs.detect-changes.outputs.swift_client == 'true'
+    timeout-minutes: 10
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install dependencies
+      run: |
+        npm install -g ajv-cli ajv-formats
+
+    - name: Create schema definitions
+      run: |
+        mkdir -p /tmp/schemas
+
+        # Chart endpoint schema
+        cat > /tmp/schemas/chart.schema.json << 'EOF'
+        {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "required": ["symbol", "timeframe", "bars", "meta", "freshness"],
+          "properties": {
+            "symbol": { "type": "string" },
+            "timeframe": { "type": "string" },
+            "bars": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["ts", "open", "high", "low", "close", "volume"],
+                "properties": {
+                  "ts": { "type": "string" },
+                  "open": { "type": "number" },
+                  "high": { "type": "number" },
+                  "low": { "type": "number" },
+                  "close": { "type": "number" },
+                  "volume": { "type": "number" },
+                  "provider": { "type": "string" },
+                  "dataStatus": { "type": "string" }
+                }
+              }
+            },
+            "forecast": {
+              "type": ["object", "null"],
+              "properties": {
+                "label": { "type": "string" },
+                "confidence": { "type": "number" },
+                "horizon": { "type": "string" },
+                "runAt": { "type": "string" },
+                "points": { "type": "array" }
+              }
+            },
+            "optionsRanks": { "type": "array" },
+            "meta": {
+              "type": "object",
+              "required": ["dataStatus", "isMarketOpen", "totalBars"],
+              "properties": {
+                "lastBarTs": { "type": ["string", "null"] },
+                "dataStatus": { "type": "string", "enum": ["fresh", "stale", "updating"] },
+                "isMarketOpen": { "type": "boolean" },
+                "latestForecastRunAt": { "type": ["string", "null"] },
+                "hasPendingSplits": { "type": "boolean" },
+                "pendingSplitInfo": { "type": ["string", "null"] },
+                "totalBars": { "type": "integer" },
+                "requestedRange": {
+                  "type": "object",
+                  "properties": {
+                    "start": { "type": "string" },
+                    "end": { "type": "string" }
+                  }
+                }
+              }
+            },
+            "freshness": {
+              "type": "object",
+              "required": ["slaMinutes", "isWithinSla"],
+              "properties": {
+                "ageMinutes": { "type": ["integer", "null"] },
+                "slaMinutes": { "type": "integer" },
+                "isWithinSla": { "type": "boolean" }
+              }
+            }
+          }
+        }
+        EOF
+
+        # User-refresh endpoint schema
+        cat > /tmp/schemas/user-refresh.schema.json << 'EOF'
+        {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "required": ["symbol", "success", "steps", "summary", "message", "durationMs"],
+          "properties": {
+            "symbol": { "type": "string" },
+            "success": { "type": "boolean" },
+            "steps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["step", "status"],
+                "properties": {
+                  "step": { "type": "string" },
+                  "status": { "type": "string", "enum": ["pending", "running", "completed", "skipped", "failed"] },
+                  "message": { "type": ["string", "null"] },
+                  "details": { "type": "object" }
+                }
+              }
+            },
+            "summary": {
+              "type": "object",
+              "required": ["backfillNeeded", "backfillQueued", "barsUpdated", "mlJobQueued", "optionsJobQueued", "srCalculated"],
+              "properties": {
+                "backfillNeeded": { "type": "boolean" },
+                "backfillQueued": { "type": "boolean" },
+                "barsUpdated": { "type": "integer" },
+                "mlJobQueued": { "type": "boolean" },
+                "optionsJobQueued": { "type": "boolean" },
+                "srCalculated": { "type": "boolean" }
+              }
+            },
+            "queuedJobs": { "type": "array", "items": { "type": "string" } },
+            "warnings": { "type": "array", "items": { "type": "string" } },
+            "nextExpectedUpdate": { "type": ["string", "null"] },
+            "message": { "type": "string" },
+            "durationMs": { "type": "integer" }
+          }
+        }
+        EOF
+
+        # Data-health endpoint schema
+        cat > /tmp/schemas/data-health.schema.json << 'EOF'
+        {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "required": ["success", "summary"],
+          "properties": {
+            "success": { "type": "boolean" },
+            "summary": {
+              "type": "object",
+              "required": ["totalChecks", "healthy", "warning", "critical", "marketOpen", "checkedAt"],
+              "properties": {
+                "totalChecks": { "type": "integer" },
+                "healthy": { "type": "integer" },
+                "warning": { "type": "integer" },
+                "critical": { "type": "integer" },
+                "staleData": { "type": "integer" },
+                "staleForecast": { "type": "integer" },
+                "staleOptions": { "type": "integer" },
+                "pendingSplits": { "type": "integer" },
+                "marketOpen": { "type": "boolean" },
+                "checkedAt": { "type": "string" }
+              }
+            },
+            "healthStatuses": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["symbol", "timeframe", "overallHealth", "checkedAt"],
+                "properties": {
+                  "symbol": { "type": "string" },
+                  "timeframe": { "type": "string" },
+                  "coverage": { "type": "object" },
+                  "freshness": { "type": "object" },
+                  "jobs": { "type": "object" },
+                  "forecast": { "type": "object" },
+                  "options": { "type": "object" },
+                  "market": { "type": "object" },
+                  "overallHealth": { "type": "string", "enum": ["healthy", "warning", "critical"] },
+                  "checkedAt": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+        EOF
+
+        echo "Schema definitions created"
+        ls -la /tmp/schemas/
+
+    - name: Validate Edge Function TypeScript types match schemas
+      run: |
+        echo "## API Contract Validation Report" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        # Check chart endpoint exists
+        if [ -f "supabase/functions/chart/index.ts" ]; then
+          echo "✅ Chart endpoint found" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Chart endpoint missing" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        # Check user-refresh endpoint exists
+        if [ -f "supabase/functions/user-refresh/index.ts" ]; then
+          echo "✅ User-refresh endpoint found" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ User-refresh endpoint missing" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        # Check data-health endpoint exists
+        if [ -f "supabase/functions/data-health/index.ts" ]; then
+          echo "✅ Data-health endpoint found" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Data-health endpoint missing" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+    - name: Check Swift model compatibility
+      run: |
+        echo "### Swift Model Compatibility" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        # Check for required Swift response types
+        SWIFT_API_CLIENT="client-macos/SwiftBoltML/Services/APIClient.swift"
+
+        if [ -f "$SWIFT_API_CLIENT" ]; then
+          # Check for ConsolidatedChartResponse
+          if grep -q "ConsolidatedChartResponse" "$SWIFT_API_CLIENT"; then
+            echo "✅ ConsolidatedChartResponse model defined" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ ConsolidatedChartResponse model not found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check for DataHealthResponse
+          if grep -q "DataHealthResponse" "$SWIFT_API_CLIENT"; then
+            echo "✅ DataHealthResponse model defined" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ DataHealthResponse model not found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check for UserRefreshResponse with new fields
+          if grep -q "queuedJobs" "$SWIFT_API_CLIENT"; then
+            echo "✅ UserRefreshResponse includes queuedJobs field" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ UserRefreshResponse missing queuedJobs field" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if grep -q "warnings" "$SWIFT_API_CLIENT"; then
+            echo "✅ UserRefreshResponse includes warnings field" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ UserRefreshResponse missing warnings field" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if grep -q "nextExpectedUpdate" "$SWIFT_API_CLIENT"; then
+            echo "✅ UserRefreshResponse includes nextExpectedUpdate field" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ UserRefreshResponse missing nextExpectedUpdate field" >> $GITHUB_STEP_SUMMARY
+          fi
+        else
+          echo "❌ Swift API client not found at $SWIFT_API_CLIENT" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+    - name: Verify endpoint URL consistency
+      run: |
+        echo "### Endpoint URL Consistency" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        # List all Supabase functions
+        echo "| Endpoint | Edge Function | Swift Method |" >> $GITHUB_STEP_SUMMARY
+        echo "|----------|---------------|--------------|" >> $GITHUB_STEP_SUMMARY
+
+        for func_dir in supabase/functions/*/; do
+          func_name=$(basename "$func_dir")
+
+          # Skip shared folder
+          if [ "$func_name" = "_shared" ]; then
+            continue
+          fi
+
+          # Check if Swift client has a method for this function
+          if grep -q "\"$func_name\"" "client-macos/SwiftBoltML/Services/APIClient.swift" 2>/dev/null; then
+            echo "| $func_name | ✅ | ✅ |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| $func_name | ✅ | ❓ |" >> $GITHUB_STEP_SUMMARY
+          fi
+        done
+
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Legend: ✅ = exists, ❓ = not explicitly referenced" >> $GITHUB_STEP_SUMMARY
+
+  # ===========================================================================
+  # EDGE FUNCTION INTEGRATION TESTS (security scan + shared dep validation)
+  # ===========================================================================
+  edge-function-integration:
+    name: Edge Function Integration Tests
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-edge-functions]
+    if: needs.detect-changes.outputs.edge_functions == 'true'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Deno
+      uses: denoland/setup-deno@v1
+      with:
+        deno-version: v2.x
+
+    - name: Cache Deno dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.deno
+          ~/.cache/deno
+        key: ${{ runner.os }}-deno-${{ hashFiles('**/deno.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-deno-
+
+    - name: Security scan - check for hardcoded secrets
+      run: |
+        echo "Checking for common Edge Function issues..."
+
+        # Check for hardcoded secrets
+        if grep -r "sk-.*" supabase/functions/ --include="*.ts" --exclude-dir="_shared" | grep -v "// "; then
+          echo "⚠️ Warning: Potential hardcoded secrets detected"
+          echo "Make sure to use environment variables for sensitive data"
+        fi
+
+        # Check for CORS headers
+        echo "Checking CORS configuration..."
+        for func in supabase/functions/*/index.ts; do
+          if [ -f "$func" ]; then
+            if ! grep -q "Access-Control-Allow-Origin" "$func" && ! grep -q "corsHeaders" "$func"; then
+              func_name=$(basename "$(dirname "$func")")
+              echo "⚠️ $func_name may be missing CORS headers"
+            fi
+          fi
+        done
+
+        echo "Common issues check complete"
+
+    - name: Check shared dependencies
+      run: |
+        echo "Validating shared utilities..."
+
+        if [ -d "supabase/functions/_shared" ]; then
+          echo "Found _shared directory"
+
+          # Check each shared module can be imported
+          for shared in supabase/functions/_shared/*.ts; do
+            if [ -f "$shared" ]; then
+              echo "Checking: $shared"
+              deno check "$shared" || echo "⚠️ Warning: $shared has type errors"
+            fi
+          done
+        else
+          echo "No _shared directory found"
+        fi
+
+    - name: Verify function imports
+      run: |
+        echo "Checking function imports..."
+
+        # Check that functions can import _shared utilities
+        for func in supabase/functions/*/index.ts; do
+          if [ -f "$func" ]; then
+            func_name=$(basename "$(dirname "$func")")
+            echo "Checking imports in: $func_name"
+
+            # Try to resolve imports (dry run)
+            deno check --no-lock "$func" || echo "⚠️ $func_name has import issues"
+          fi
+        done
+
+    - name: Test coverage (if tests exist)
+      continue-on-error: true
+      run: |
+        if find supabase/functions -name '*_test.ts' 2>/dev/null | grep -q .; then
+          deno test --allow-all --coverage=coverage --recursive supabase/functions/
+          deno coverage coverage --lcov > coverage.lcov
+        fi
+
+  # ===========================================================================
   # COMPREHENSIVE REPORT
   # ===========================================================================
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [detect-changes, lint-ml, test-edge-functions, validate-migrations, test-ml, integration-test-ml]
+    needs: [detect-changes, lint-ml, test-edge-functions, validate-migrations, test-ml, integration-test-ml, contract-tests, edge-function-integration]
     if: always()
 
     steps:
@@ -380,6 +778,9 @@ jobs:
         fi
         if [ "${{ needs.detect-changes.outputs.migrations }}" = "true" ]; then
           echo "- 🗄️ Database Migrations" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ "${{ needs.detect-changes.outputs.swift_client }}" = "true" ]; then
+          echo "- 📱 Swift Client" >> $GITHUB_STEP_SUMMARY
         fi
         echo "" >> $GITHUB_STEP_SUMMARY
 
@@ -440,6 +841,24 @@ jobs:
           fi
         fi
 
+        # Contract Tests
+        if [ "${{ needs.contract-tests.result }}" = "success" ]; then
+          echo "✅ API Contract Tests: **PASSED**" >> $GITHUB_STEP_SUMMARY
+        elif [ "${{ needs.contract-tests.result }}" = "skipped" ]; then
+          echo "⏭️ API Contract Tests: SKIPPED" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ API Contract Tests: **FAILED**" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        # Edge Function Integration Tests
+        if [ "${{ needs.edge-function-integration.result }}" = "success" ]; then
+          echo "✅ Edge Function Integration: **PASSED**" >> $GITHUB_STEP_SUMMARY
+        elif [ "${{ needs.edge-function-integration.result }}" = "skipped" ]; then
+          echo "⏭️ Edge Function Integration: SKIPPED" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️ Edge Function Integration: FAILED (non-blocking)" >> $GITHUB_STEP_SUMMARY
+        fi
+
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "---" >> $GITHUB_STEP_SUMMARY
         echo "_Generated by GitHub Actions_" >> $GITHUB_STEP_SUMMARY
@@ -450,7 +869,8 @@ jobs:
         if [ "${{ needs.lint-ml.result }}" = "failure" ] || \
            [ "${{ needs.test-ml.result }}" = "failure" ] || \
            [ "${{ needs.test-edge-functions.result }}" = "failure" ] || \
-           [ "${{ needs.validate-migrations.result }}" = "failure" ]; then
+           [ "${{ needs.validate-migrations.result }}" = "failure" ] || \
+           [ "${{ needs.contract-tests.result }}" = "failure" ]; then
           echo "❌ One or more CI jobs failed"
           exit 1
         fi

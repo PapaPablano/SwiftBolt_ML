@@ -1,3 +1,12 @@
+# =============================================================================
+# GROUP: 3: ML Pipeline
+# PURPOSE: Comprehensive ML test suite with coverage, code quality, security
+#          scanning, and integration tests across Python 3.10 and 3.11.
+# TRIGGERS: schedule (weekly Monday 2:00 UTC), push/PR to master/main/develop
+#           when ml/requirements*.txt changes, workflow_dispatch
+# COMPONENTS: ml/
+# SECRETS: SUPABASE_URL, SUPABASE_KEY, CODECOV_TOKEN
+# =============================================================================
 name: ML Validation - Comprehensive Tests
 
 # Comprehensive ML testing: unit tests, coverage, integration tests

@@ -1,3 +1,12 @@
+# =============================================================================
+# GROUP: 4: Data Ingestion
+# PURPOSE: Daily incremental OHLC refresh across all timeframes (m15-w1) with
+#          optional full backfill, gap detection, and data quality validation.
+# TRIGGERS: schedule (cron 0 6 * * *, daily 6:00 UTC), workflow_dispatch
+# COMPONENTS: ml/
+# SECRETS: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, DATABASE_URL,
+#          ALPACA_API_KEY, ALPACA_API_SECRET
+# =============================================================================
 name: Daily Data Refresh
 
 # =============================================================================

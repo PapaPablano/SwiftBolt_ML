@@ -1,3 +1,13 @@
+# =============================================================================
+# GROUP: 4: Data Ingestion
+# PURPOSE: Canary forecast validation -- runs 15m predictions on canary symbols,
+#          hourly accuracy summaries, and end-of-day predicted-vs-realized reports.
+# TRIGGERS: schedule (three crons: 5,20,35,50 15-22 predict; 40 15-20 hourly
+#           summary; 10 21 EOD summary, all Mon-Fri UTC), workflow_dispatch
+# COMPONENTS: ml/
+# SECRETS: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, DATABASE_URL,
+#          ALPACA_API_KEY, ALPACA_API_SECRET
+# =============================================================================
 name: Hourly Canary (15m->1h)
 
 on:
