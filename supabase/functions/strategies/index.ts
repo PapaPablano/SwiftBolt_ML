@@ -4,6 +4,18 @@
 // POST /strategies - Create new strategy
 // PUT /strategies - Update strategy
 // DELETE /strategies?id=xxx - Delete strategy
+//
+// AUTH MODEL (documented 2026-04-21):
+// - verify_jwt = false in config.toml (allows anon-key access)
+// - Auth is OPTIONAL: Bearer token extracts user_id; absent token → user_id = null
+// - Uses service-role client (bypasses RLS) — auth scoping is application-level
+// - Anon strategies (user_id IS NULL) are shared/public by design
+//
+// KNOWN LIMITATION: RLS policies (migration 20260222150000) allow ANY anon caller
+// to UPDATE/DELETE ANY row where user_id IS NULL. There is no session or device
+// token to scope anon ownership. Anon strategy data is intentionally ephemeral
+// and unowned — treat as demo/scratch data, not user-owned state.
+// Future improvement: add session_token column for anon row scoping.
 
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import {
