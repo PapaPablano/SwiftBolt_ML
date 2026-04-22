@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings  # noqa: E402
 from src.data.supabase_db import db  # noqa: E402
+from src.evaluation.signal_quality import compute_signal_quality  # noqa: E402
 from src.models.enhanced_ensemble_integration import (  # noqa: E402
     export_monitoring_metrics,
     record_forecast_outcome,
@@ -374,12 +375,14 @@ def run_daily_evaluation_job() -> dict[str, Any]:
 
         horizon_correct = 0
         horizon_total = 0
+        evaluated_forecast_ids: list[str] = []
 
         for forecast in pending:
             evaluation = evaluator.evaluate_forecast(forecast)
             if evaluation:
                 if evaluator.save_evaluation(evaluation):
                     horizon_total += 1
+                    evaluated_forecast_ids.append(evaluation["forecast_id"])
                     if evaluation["direction_correct"]:
                         horizon_correct += 1
 
@@ -403,6 +406,25 @@ def run_daily_evaluation_job() -> dict[str, Any]:
 
         # Update performance history
         evaluator.update_performance_history(horizon)
+
+        # Update signal quality scores on evaluated ml_forecasts rows
+        if horizon_total > 0 and evaluated_forecast_ids:
+            horizon_acc = horizon_correct / horizon_total
+            score, label, acc_pct = compute_signal_quality(horizon_acc)
+            try:
+                db.client.table("ml_forecasts").update(
+                    {
+                        "signal_quality": score,
+                        "calibration_label": label,
+                        "accuracy_pct": float(acc_pct),
+                    }
+                ).in_("id", evaluated_forecast_ids).execute()
+                logger.info(
+                    f"Updated signal quality for {len(evaluated_forecast_ids)} "
+                    f"{horizon} forecasts: score={score} label={label}"
+                )
+            except Exception as e:
+                logger.error(f"Error updating signal quality for {horizon}: {e}")
 
         acc = horizon_correct / horizon_total if horizon_total > 0 else 0
         results["horizons_processed"].append(

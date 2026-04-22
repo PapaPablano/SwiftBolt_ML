@@ -1102,6 +1102,17 @@ serve(async (req: Request): Promise<Response> => {
                 horizon: intradayForecastData.horizon ??
                   (timeframe === "m15" ? "15m" : "1h"),
                 points: pts,
+                ...(typeof intradayForecastData.signal_quality === "number"
+                  ? { signalQuality: intradayForecastData.signal_quality }
+                  : {}),
+                ...(typeof intradayForecastData.calibration_label === "string"
+                  ? {
+                    calibrationLabel: intradayForecastData.calibration_label,
+                  }
+                  : {}),
+                ...(intradayForecastData.accuracy_pct != null
+                  ? { accuracyPct: Number(intradayForecastData.accuracy_pct) }
+                  : {}),
               });
             }
           }
@@ -1163,6 +1174,15 @@ serve(async (req: Request): Promise<Response> => {
                   horizon,
                   points: pts,
                   ...(targets ? { targets } : {}),
+                  ...(typeof row["signal_quality"] === "number"
+                    ? { signalQuality: row["signal_quality"] }
+                    : {}),
+                  ...(typeof row["calibration_label"] === "string"
+                    ? { calibrationLabel: row["calibration_label"] }
+                    : {}),
+                  ...(row["accuracy_pct"] != null
+                    ? { accuracyPct: Number(row["accuracy_pct"]) }
+                    : {}),
                 });
               }
 
@@ -1210,6 +1230,15 @@ serve(async (req: Request): Promise<Response> => {
                 horizon,
                 points: pts,
                 ...(targets ? { targets } : {}),
+                ...(typeof row["signal_quality"] === "number"
+                  ? { signalQuality: row["signal_quality"] }
+                  : {}),
+                ...(typeof row["calibration_label"] === "string"
+                  ? { calibrationLabel: row["calibration_label"] }
+                  : {}),
+                ...(row["accuracy_pct"] != null
+                  ? { accuracyPct: Number(row["accuracy_pct"]) }
+                  : {}),
               });
 
               // Pick the row with highest confidence as the best overall row
@@ -1289,6 +1318,15 @@ serve(async (req: Request): Promise<Response> => {
                 horizons: [{
                   horizon: dailyForecastData.horizon ?? "1D",
                   points: pts,
+                  ...(typeof dailyForecastData.signal_quality === "number"
+                    ? { signalQuality: dailyForecastData.signal_quality }
+                    : {}),
+                  ...(typeof dailyForecastData.calibration_label === "string"
+                    ? { calibrationLabel: dailyForecastData.calibration_label }
+                    : {}),
+                  ...(dailyForecastData.accuracy_pct != null
+                    ? { accuracyPct: Number(dailyForecastData.accuracy_pct) }
+                    : {}),
                 }],
                 srLevels: dailyForecastData.sr_levels ?? null,
                 srDensity: dailyForecastData.sr_density ?? null,

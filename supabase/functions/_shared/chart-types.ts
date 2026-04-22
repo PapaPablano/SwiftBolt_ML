@@ -26,6 +26,9 @@ export interface HorizonForecast {
   horizon: string;
   points: ForecastPoint[];
   targets?: Record<string, number | null>;
+  signalQuality?: number; // 0-100
+  calibrationLabel?: string; // "well-calibrated" | "moderate" | "uncalibrated"
+  accuracyPct?: number;
 }
 
 export interface MLSummary {
