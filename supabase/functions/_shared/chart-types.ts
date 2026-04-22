@@ -16,7 +16,7 @@ export interface OHLCBar {
 }
 
 export interface ForecastPoint {
-  ts: number; // Unix ms timestamp
+  ts: number; // Unix seconds timestamp
   value: number;
   lower?: number;
   upper?: number;
