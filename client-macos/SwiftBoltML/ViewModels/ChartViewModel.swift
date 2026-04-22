@@ -20,7 +20,19 @@ final class ChartViewModel: ObservableObject {
                 stopHydrationPoller()
                 stopCoverageCheck()
                 hydrationBanner = nil
-                
+
+                // R10: Clear forecast selection state immediately on symbol switch
+                selectedForecastHorizon = nil
+                _cachedSelectedForecastBars = nil
+
+                // R12: Clear chart data immediately so stale data from previous symbol is never shown
+                chartDataV2 = nil
+                chartData = nil
+
+                // R16: Cancel in-flight multi-timeframe task
+                multiTimeframeTask?.cancel()
+                multiTimeframeTask = nil
+
                 // Cancel any pending load task
                 loadTask?.cancel()
                 
@@ -254,6 +266,7 @@ final class ChartViewModel: ObservableObject {
     private var hydrationPollTask: Task<Void, Never>?
     private var coverageCheckTask: Task<Void, Never>?
     private var chartRefreshTask: Task<Void, Never>?
+    private var multiTimeframeTask: Task<Void, Never>?
 
     private var isLoadingHistoryPage: Bool = false
     private var lastHistoryRequestBefore: Int?
@@ -492,6 +505,13 @@ final class ChartViewModel: ObservableObject {
         // Update chartDataV2 forecast layer when horizon changes (Fix A continuation)
         // Skip when symbol mismatch (mid–symbol switch) or chartData has no ML (cache warm-load):
         // otherwise we overwrite chartDataV2 with a hybrid that has mlSummary nil and trigger 0-forecast flicker.
+        //
+        // R13 WARNING: This function reads from both chartData (v1) and chartDataV2 (v2) and
+        // mutates chartDataV2 using data from chartData. If chartData and chartDataV2 are sourced
+        // from different fetch cycles (e.g., one stale, one fresh), the forecast layer can contain
+        // data from the wrong cycle. A full fix requires a single-source-of-truth refactor where
+        // forecast bars are derived from one canonical response object. Deferred — the symbol-match
+        // guard below mitigates the worst case (cross-symbol contamination).
         if let existingV2 = chartDataV2,
            let chartResponse = chartData,
            existingV2.symbol == chartResponse.symbol,
@@ -1142,6 +1162,7 @@ final class ChartViewModel: ObservableObject {
     /// Loads forecasts for all multi-timeframe periods (m15/h1/h4/d1/w1) in parallel
     func loadMultiTimeframeForecasts() async {
         guard let symbol = selectedSymbol else { return }
+        let capturedSymbolId = symbol.id
 
         isLoadingMultiTimeframe = true
         var results: [String: ChartResponse] = [:]
@@ -1170,6 +1191,13 @@ final class ChartViewModel: ObservableObject {
             }
         }
 
+        // R16: Validate symbol hasn't changed during async work
+        guard selectedSymbol?.id == capturedSymbolId else {
+            print("[MultiTF] Symbol changed during load, discarding results")
+            isLoadingMultiTimeframe = false
+            return
+        }
+
         multiTimeframeForecasts = results
         isLoadingMultiTimeframe = false
         print("[MultiTF] Loaded \(results.count)/\(Self.multiTimeframes.count) timeframes")
@@ -1179,7 +1207,11 @@ final class ChartViewModel: ObservableObject {
     func toggleMultiTimeframeMode() async {
         isMultiTimeframeMode.toggle()
         if isMultiTimeframeMode && multiTimeframeForecasts.isEmpty {
-            await loadMultiTimeframeForecasts()
+            multiTimeframeTask?.cancel()
+            multiTimeframeTask = Task { @MainActor in
+                await loadMultiTimeframeForecasts()
+            }
+            await multiTimeframeTask?.value
         }
     }
 
@@ -1227,8 +1259,10 @@ final class ChartViewModel: ObservableObject {
         guard !historical.isEmpty else {
             // No historical bars - aggregate intraday into single today bar
             guard !intraday.isEmpty else { return [] }
-            let todayBar = aggregateIntradayToday(intraday, date: todayStart)
-            return [todayBar]
+            if let todayBar = aggregateIntradayToday(intraday, date: todayStart) {
+                return [todayBar]
+            }
+            return []
         }
 
         let lastHistorical = historical.last!
@@ -1240,10 +1274,9 @@ final class ChartViewModel: ObservableObject {
                 calendar.startOfDay(for: bar.ts) == todayStart
             }
 
-            if !todayBars.isEmpty {
+            if !todayBars.isEmpty, let todayBar = aggregateIntradayToday(intraday, date: todayStart) {
                 // Remove today's historical bar and replace with aggregated intraday bar
                 let historicalWithoutToday = Array(historical.dropLast())
-                let todayBar = aggregateIntradayToday(intraday, date: todayStart)
 
                 let result = (historicalWithoutToday + [todayBar]).sorted(by: { $0.ts < $1.ts })
                 print("[DEBUG] 📊 Daily timeframe: \(historicalWithoutToday.count) past days + 1 updated bar for today")
@@ -1261,9 +1294,8 @@ final class ChartViewModel: ObservableObject {
                 calendar.startOfDay(for: bar.ts) == todayStart
             }
 
-            if !todayBars.isEmpty {
+            if !todayBars.isEmpty, let todayBar = aggregateIntradayToday(intraday, date: todayStart) {
                 // Last bar is from past, but we have intraday data from today - append aggregated today bar
-                let todayBar = aggregateIntradayToday(intraday, date: todayStart)
                 let result = (historical + [todayBar]).sorted(by: { $0.ts < $1.ts })
                 print("[DEBUG] 📊 Daily timeframe: \(historical.count) past days + 1 new bar for today")
                 return result
@@ -1282,7 +1314,9 @@ final class ChartViewModel: ObservableObject {
     /// - High: highest hour's high
     /// - Low: lowest hour's low
     /// - Close: latest hour's close
-    private func aggregateIntradayToday(_ intraday: [OHLCBar], date: Date) -> OHLCBar {
+    /// R11: Returns nil when no intraday bars exist for the given date,
+    /// preventing zero-priced candles from appearing on the chart.
+    private func aggregateIntradayToday(_ intraday: [OHLCBar], date: Date) -> OHLCBar? {
         let calendar = Calendar.current
         let todayStart = calendar.startOfDay(for: date)
         let tomorrowStart = calendar.date(byAdding: .day, value: 1, to: todayStart)!
@@ -1294,11 +1328,15 @@ final class ChartViewModel: ObservableObject {
 
         let sorted = todayBars.sorted(by: { $0.ts < $1.ts })
 
-        // When no intraday data exists for today, all OHLC values should default to 0 (not infinity)
-        let open = sorted.first?.open ?? 0
-        let high = sorted.map { $0.high }.max() ?? 0
-        let low = sorted.map { $0.low }.min() ?? 0
-        let close = sorted.last?.close ?? 0
+        guard !sorted.isEmpty else {
+            print("[DEBUG] aggregateIntradayToday: No bars for \(date.ISO8601Format()), returning nil")
+            return nil
+        }
+
+        let open = sorted.first!.open
+        let high = sorted.map { $0.high }.max()!
+        let low = sorted.map { $0.low }.min()!
+        let close = sorted.last!.close
         let volume = sorted.map { $0.volume }.reduce(0, +)
 
         print("[DEBUG] aggregateIntradayToday: Found \(todayBars.count) bars for \(date.ISO8601Format()), O:\(open) H:\(high) L:\(low) C:\(close)")

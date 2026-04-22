@@ -101,6 +101,15 @@ struct ForecastHorizonsView: View {
                 selectedHorizon = horizons.first?.horizon
             }
         }
+        // R15: Re-default selectedHorizon when the horizon list changes
+        // (e.g., after symbol switch loads different available horizons)
+        .onChange(of: horizons.map(\.horizon)) { _, newHorizonKeys in
+            if let current = selectedHorizon, !newHorizonKeys.contains(current) {
+                selectedHorizon = newHorizonKeys.first
+            } else if selectedHorizon == nil {
+                selectedHorizon = newHorizonKeys.first
+            }
+        }
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
