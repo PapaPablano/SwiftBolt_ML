@@ -1,7 +1,7 @@
 ---
 title: "fix: Remaining deferred items from session audit"
 type: fix
-status: active
+status: completed
 date: 2026-04-22
 ---
 
@@ -28,7 +28,7 @@ Address the 6 remaining deferred items from the full-stack audit and backend rat
 
 ## Implementation Units
 
-- [ ] **Unit 1: Restore user-refresh and data-health schemas (D1)**
+- [x] **Unit 1: Restore user-refresh and data-health schemas (D1)**
 
 **Goal:** Restore contract test coverage for 2 endpoints removed during CI consolidation.
 
@@ -51,7 +51,7 @@ Address the 6 remaining deferred items from the full-stack audit and backend rat
 
 ---
 
-- [ ] **Unit 2: Document SB_GATEWAY_KEY rotation procedure (D2)**
+- [x] **Unit 2: Document SB_GATEWAY_KEY rotation procedure (D2)**
 
 **Goal:** Document how to rotate the shared gateway key without downtime.
 
@@ -70,7 +70,7 @@ Address the 6 remaining deferred items from the full-stack audit and backend rat
 
 ---
 
-- [ ] **Unit 3: Restrict anon strategy mutations (D3)**
+- [x] **Unit 3: Restrict anon strategy mutations (D3)**
 
 **Goal:** Prevent anonymous callers from mutating other anonymous users' strategies.
 
@@ -93,7 +93,7 @@ Address the 6 remaining deferred items from the full-stack audit and backend rat
 
 ---
 
-- [ ] **Unit 4: Guard rebuildSelectedForecastBars against hybrid mixing (D4)**
+- [x] **Unit 4: Guard rebuildSelectedForecastBars against hybrid mixing (D4)**
 
 **Goal:** Prevent creating a chartDataV2 with bars from one fetch and mlSummary from another.
 
@@ -114,7 +114,7 @@ Address the 6 remaining deferred items from the full-stack audit and backend rat
 
 ---
 
-- [ ] **Unit 5: Return "no_data" status for zero-bar symbols (D5)**
+- [x] **Unit 5: Return "no_data" status for zero-bar symbols (D5)**
 
 **Goal:** Distinguish "fresh data" from "no data exists" in the chart response.
 
@@ -136,7 +136,7 @@ Address the 6 remaining deferred items from the full-stack audit and backend rat
 
 ---
 
-- [ ] **Unit 6: Fix HorizonRangeBand degenerate range (D6)**
+- [x] **Unit 6: Fix HorizonRangeBand degenerate range (D6)**
 
 **Goal:** Prevent all bands collapsing to center when forecasts converge.
 
