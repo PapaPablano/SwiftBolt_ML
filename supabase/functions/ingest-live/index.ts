@@ -304,10 +304,80 @@ serve(async (req) => {
     }
   }
 
+  // ── Third pass: Kalman forecast adjustment ───────────────────────────────
+  // Adjusts cached intraday forecast target_prices based on actual price
+  // movement since the forecast was generated. Keeps forecasts fresh between
+  // weekly full-ensemble training runs.
+  const KALMAN_GAIN = 0.15; // matches ml/src/intraday_forecast_job.py kalman_weight
+  const ADJUSTMENT_HORIZONS = ["15m", "1h", "4h"];
+  let forecastsAdjusted = 0;
+
+  if (!hitDeadline) {
+    for (const { ticker, symbolId } of symbols) {
+      if (Date.now() - functionStart > DEADLINE_MS) {
+        console.warn("[ingest-live] Deadline during forecast adjustment");
+        hitDeadline = true;
+        break;
+      }
+
+      try {
+        // Get the latest m15 close price for this symbol (just written above)
+        const { data: latestBar } = await supabase
+          .from("ohlc_bars_v2")
+          .select("close")
+          .eq("symbol_id", symbolId)
+          .eq("timeframe", "m15")
+          .eq("is_forecast", false)
+          .order("ts", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!latestBar?.close) continue;
+        const actualClose = Number(latestBar.close);
+
+        // For each intraday horizon, adjust the latest non-expired forecast
+        for (const horizon of ADJUSTMENT_HORIZONS) {
+          const { data: forecast } = await supabase
+            .from("ml_forecasts_intraday")
+            .select("id, target_price, current_price")
+            .eq("symbol_id", symbolId)
+            .eq("horizon", horizon)
+            .gte("expires_at", new Date().toISOString())
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .single();
+
+          if (!forecast?.target_price || !forecast?.current_price) continue;
+
+          const targetPrice = Number(forecast.target_price);
+          const forecastBasePrice = Number(forecast.current_price);
+
+          // Kalman adjustment: shift target by gain * (actual movement since forecast)
+          const priceMovement = actualClose - forecastBasePrice;
+          const adjustedTarget = targetPrice + KALMAN_GAIN * priceMovement;
+
+          const { error: updateError } = await supabase
+            .from("ml_forecasts_intraday")
+            .update({
+              target_price: adjustedTarget,
+              current_price: actualClose,
+            })
+            .eq("id", forecast.id);
+
+          if (!updateError) forecastsAdjusted++;
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[ingest-live] Forecast adjust error for ${ticker}:`, msg);
+      }
+    }
+  }
+
   const result = {
     processed: symbols.length,
     totalUpserted,
     m15Upserted,
+    forecastsAdjusted,
     errors: errors.length,
     errorDetails: errors.slice(0, 10),
     errorsTruncated: errors.length > 10,
