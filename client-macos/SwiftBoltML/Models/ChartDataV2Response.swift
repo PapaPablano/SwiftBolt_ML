@@ -221,7 +221,7 @@ struct ChartMetadata: Codable, Equatable {
 struct DataQuality: Codable, Equatable {
     let dataAgeHours: Int?
     let isStale: Bool
-    // Legacy fields from chart-data-v2 / chart-read (optional for backward compat)
+    // Optional fields (may be absent in some responses)
     let hasRecentData: Bool?
     let historicalDepthDays: Int?
     // New field from unified /chart endpoint
