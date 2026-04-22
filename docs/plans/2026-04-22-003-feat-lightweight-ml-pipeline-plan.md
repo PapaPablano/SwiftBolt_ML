@@ -1,7 +1,7 @@
 ---
 title: "feat: Hybrid ML pipeline — weekly training + live Kalman adjustment"
 type: feat
-status: active
+status: completed
 date: 2026-04-22
 origin: docs/brainstorms/2026-04-22-lightweight-ml-pipeline-brainstorm.md
 ---
@@ -171,7 +171,7 @@ Units 3-5. Once the Kalman adjustment is proven in production, reduce the intrad
 
 ---
 
-- [ ] **Unit 4: Remove dead model code**
+- [x] **Unit 4: Remove dead model code**
 
 **Goal:** Remove unused model paths to reduce maintenance surface.
 
@@ -202,7 +202,7 @@ Units 3-5. Once the Kalman adjustment is proven in production, reduce the intrad
 
 ---
 
-- [ ] **Unit 5: Update DATA_FRESHNESS.md and docs**
+- [x] **Unit 5: Update DATA_FRESHNESS.md and docs**
 
 **Goal:** Document the new pipeline architecture.
 
