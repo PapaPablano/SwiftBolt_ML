@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "UserRefreshResponse",
+  "description": "Response from POST /user-refresh — orchestrates all data updates for a symbol",
+  "type": "object",
+  "required": [
+    "symbol",
+    "success",
+    "steps",
+    "summary",
+    "queuedJobs",
+    "warnings",
+    "nextExpectedUpdate",
+    "message",
+    "durationMs"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "symbol": {
+      "type": "string",
+      "description": "Uppercased ticker symbol"
+    },
+    "success": {
+      "type": "boolean",
+      "description": "True when no steps failed"
+    },
+    "steps": {
+      "type": "array",
+      "description": "Ordered list of refresh steps with their outcomes",
+      "items": {
+        "type": "object",
+        "required": ["step", "status"],
+        "additionalProperties": true,
+        "properties": {
+          "step": {
+            "type": "string",
+            "description": "Step identifier (e.g. lookup_symbol, check_backfill, fetch_bars, queue_ml_job, queue_options_job, calculate_sr)"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "running", "completed", "skipped", "failed"]
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "backfillNeeded",
+        "backfillQueued",
+        "barsUpdated",
+        "mlJobQueued",
+        "optionsJobQueued",
+        "srCalculated"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "backfillNeeded": {
+          "type": "boolean",
+          "description": "True when fewer than 100 d1 bars exist"
+        },
+        "backfillQueued": {
+          "type": "boolean",
+          "description": "True when a new backfill job was inserted"
+        },
+        "barsUpdated": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total new OHLCV bars upserted across all timeframes"
+        },
+        "mlJobQueued": {
+          "type": "boolean",
+          "description": "True when ML forecast job was queued"
+        },
+        "optionsJobQueued": {
+          "type": "boolean",
+          "description": "True when options ranking job was queued"
+        },
+        "srCalculated": {
+          "type": "boolean",
+          "description": "True when support/resistance levels were computed"
+        }
+      }
+    },
+    "queuedJobs": {
+      "type": "array",
+      "description": "Human-readable list of queued background jobs",
+      "items": {
+        "type": "string",
+        "enum": ["backfill", "ml_forecast", "options_ranking"]
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "description": "Warnings from failed steps (format: 'step: message')",
+      "items": {
+        "type": "string"
+      }
+    },
+    "nextExpectedUpdate": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "ISO-8601 timestamp of next expected data update (null outside market hours)"
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable summary of actions taken"
+    },
+    "durationMs": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Wall-clock duration of the refresh in milliseconds"
+    }
+  }
+}

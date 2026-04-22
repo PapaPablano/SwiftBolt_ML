@@ -273,6 +273,8 @@ final class ChartViewModel: ObservableObject {
     private var hasReachedHistoryStart: Bool = false
     private var lastHistoryFetchTime: Date = .distantPast
     private var currentLoadId: UUID = UUID()
+    private var fetchCycleId: Int = 0
+    private var chartDataV2FetchCycle: Int = 0
     private let liveQuoteInterval: UInt64 = 5 * 1_000_000_000  // 5 seconds for streaming price updates
     private var lastChartRefreshTime: Date = .distantPast
     private let marketTimeZone = TimeZone(identifier: "America/New_York") ?? .current
@@ -512,6 +514,10 @@ final class ChartViewModel: ObservableObject {
         // data from the wrong cycle. A full fix requires a single-source-of-truth refactor where
         // forecast bars are derived from one canonical response object. Deferred — the symbol-match
         // guard below mitigates the worst case (cross-symbol contamination).
+        // D4: Guard against hybrid fetch-cycle mixing — if chartDataV2 was stamped
+        // by a different fetch cycle than the current one, the two sources are out of sync.
+        guard chartDataV2FetchCycle == fetchCycleId else { return }
+
         if let existingV2 = chartDataV2,
            let chartResponse = chartData,
            existingV2.symbol == chartResponse.symbol,
@@ -882,6 +888,7 @@ final class ChartViewModel: ObservableObject {
 
         let loadId = UUID()
         currentLoadId = loadId
+        fetchCycleId += 1
 
         print("[DEBUG] ========================================")
         print("[DEBUG] ChartViewModel.loadChart() CALLED")
@@ -1004,6 +1011,7 @@ final class ChartViewModel: ObservableObject {
                 // Build WebChart V2 layer structure for AdvancedChartView / WebChartView
                 if indicatorConfig.useWebChart {
                     chartDataV2 = convertToV2Response(chartData!)
+                    chartDataV2FetchCycle = fetchCycleId
                 } else {
                     chartDataV2 = nil
                 }
@@ -1063,6 +1071,7 @@ final class ChartViewModel: ObservableObject {
                     updateSelectedForecastHorizon(from: nil)
                     if indicatorConfig.useWebChart {
                         chartDataV2 = convertToV2Response(chartData!)
+                        chartDataV2FetchCycle = fetchCycleId
                     } else {
                         chartDataV2 = nil
                     }

@@ -568,10 +568,22 @@ private struct HorizonRangeBand: View {
     }
 
     private func normalized(_ value: Double) -> Double {
-        guard scaleRange.upperBound != scaleRange.lowerBound else { return 0.5 }
+        // D6: When range is degenerate (zero width), expand to center ± 1% so the band
+        // is narrow but visible instead of collapsing everything to the 0.5 midpoint.
+        let lower: Double
+        let upper: Double
+        if scaleRange.upperBound == scaleRange.lowerBound {
+            let center = scaleRange.lowerBound
+            let spread = max(abs(center) * 0.01, 0.01) // 1% or minimum 0.01
+            lower = center - spread
+            upper = center + spread
+        } else {
+            lower = scaleRange.lowerBound
+            upper = scaleRange.upperBound
+        }
         return min(
             max(
-                (value - scaleRange.lowerBound) / (scaleRange.upperBound - scaleRange.lowerBound),
+                (value - lower) / (upper - lower),
                 0
             ),
             1

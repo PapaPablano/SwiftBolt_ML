@@ -369,7 +369,7 @@ functions:
     method: GET
     auth: anon
     consumers: client
-    schema: null
+    schema: _shared/schemas/data-health.schema.json
     description: "Data freshness and health dashboard metrics"
 
   - name: ensure-coverage
@@ -420,8 +420,8 @@ functions:
     method: POST
     auth: jwt
     consumers: client
-    schema: null
-    description: "Refresh user session and sync profile data"
+    schema: _shared/schemas/user-refresh.schema.json
+    description: "Comprehensive data refresh triggered by user for a symbol"
 
   # ── Diagnostics (non-production) ──────────────────────────────────────
 
