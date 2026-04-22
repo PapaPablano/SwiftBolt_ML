@@ -1,0 +1,185 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DataHealthResponse",
+  "description": "Response from GET /data-health — unified health snapshot for data freshness monitoring",
+  "type": "object",
+  "required": ["success", "summary", "healthStatuses"],
+  "additionalProperties": true,
+  "properties": {
+    "success": {
+      "type": "boolean"
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "totalChecks",
+        "healthy",
+        "warning",
+        "critical",
+        "staleData",
+        "staleForecast",
+        "staleOptions",
+        "pendingSplits",
+        "marketOpen",
+        "checkedAt"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "totalChecks": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of symbol/timeframe combinations checked"
+        },
+        "healthy": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "critical": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "staleData": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Count of checks where OHLCV data exceeds freshness SLA"
+        },
+        "staleForecast": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Count of checks where ML forecast is older than 24h"
+        },
+        "staleOptions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Count of checks where options snapshot is older than 4h during market hours"
+        },
+        "pendingSplits": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Count of unique symbols with unadjusted stock splits"
+        },
+        "marketOpen": {
+          "type": "boolean",
+          "description": "Whether the market is currently open"
+        },
+        "checkedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "healthStatuses": {
+      "type": "array",
+      "description": "Per symbol/timeframe health records (capped at 50 unless filtered)",
+      "items": {
+        "type": "object",
+        "required": [
+          "symbol",
+          "timeframe",
+          "coverage",
+          "freshness",
+          "jobs",
+          "forecast",
+          "options",
+          "market",
+          "overallHealth",
+          "checkedAt"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "symbol": {
+            "type": "string"
+          },
+          "timeframe": {
+            "type": "string",
+            "enum": ["m15", "h1", "h4", "d1", "w1"]
+          },
+          "coverage": {
+            "type": "object",
+            "required": [
+              "hasCoverage",
+              "fromTs",
+              "toTs",
+              "lastSuccessAt",
+              "lastRowsWritten",
+              "lastProvider"
+            ],
+            "additionalProperties": true,
+            "properties": {
+              "hasCoverage": { "type": "boolean" },
+              "fromTs": { "type": ["string", "null"], "format": "date-time" },
+              "toTs": { "type": ["string", "null"], "format": "date-time" },
+              "lastSuccessAt": { "type": ["string", "null"], "format": "date-time" },
+              "lastRowsWritten": { "type": ["integer", "null"] },
+              "lastProvider": { "type": ["string", "null"] }
+            }
+          },
+          "freshness": {
+            "type": "object",
+            "required": ["isStale", "ageHours", "slaHours", "lastBarTs"],
+            "additionalProperties": true,
+            "properties": {
+              "isStale": { "type": "boolean" },
+              "ageHours": { "type": ["number", "null"], "description": "Hours since last bar, rounded to 1 decimal" },
+              "slaHours": { "type": "number", "description": "Freshness SLA threshold in hours for this timeframe" },
+              "lastBarTs": { "type": ["string", "null"], "format": "date-time" }
+            }
+          },
+          "jobs": {
+            "type": "object",
+            "required": ["latestStatus", "latestRunAt", "pendingJobs", "failedJobsLast24h"],
+            "additionalProperties": true,
+            "properties": {
+              "latestStatus": { "type": ["string", "null"] },
+              "latestRunAt": { "type": ["string", "null"], "format": "date-time" },
+              "pendingJobs": { "type": "integer", "minimum": 0 },
+              "failedJobsLast24h": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "forecast": {
+            "type": "object",
+            "required": ["latestRunAt", "isStale", "ageHours"],
+            "additionalProperties": true,
+            "properties": {
+              "latestRunAt": { "type": ["string", "null"], "format": "date-time" },
+              "isStale": { "type": "boolean" },
+              "ageHours": { "type": ["number", "null"] }
+            }
+          },
+          "options": {
+            "type": "object",
+            "required": ["latestSnapshotAt", "isStale", "ageHours"],
+            "additionalProperties": true,
+            "properties": {
+              "latestSnapshotAt": { "type": ["string", "null"], "format": "date-time" },
+              "isStale": { "type": "boolean" },
+              "ageHours": { "type": ["number", "null"] }
+            }
+          },
+          "market": {
+            "type": "object",
+            "required": ["isOpen", "hasPendingSplits", "pendingSplitCount"],
+            "additionalProperties": true,
+            "properties": {
+              "isOpen": { "type": "boolean" },
+              "hasPendingSplits": { "type": "boolean" },
+              "pendingSplitCount": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "overallHealth": {
+            "type": "string",
+            "enum": ["healthy", "warning", "critical"]
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  }
+}

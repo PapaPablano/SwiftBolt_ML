@@ -81,6 +81,39 @@ All functions not listed in `supabase/config.toml` default to `verify_jwt = true
 
 ## Security Notes
 
-- **SB_GATEWAY_KEY** is a single shared secret across all gateway-key-protected functions. Compromise of any caller grants access to all protected functions. Key rotation is not yet implemented — tracked as future work.
+- **SB_GATEWAY_KEY** is a single shared secret across all gateway-key-protected functions. Compromise of any caller grants access to all protected functions. See "Key Rotation Procedure" below.
 - **Strategies anon RLS gap**: The `user_id IS NULL` RLS policy on `strategy_user_strategies` allows any anon caller to UPDATE/DELETE any null-user_id row. Anon data is intentionally ephemeral. Future fix: add `session_token` column for anon row scoping.
 - **Internal functions with verify_jwt=true**: Functions like `ingest-live`, `train-model`, and `trigger-backfill` use JWT verification. Their callers must send a valid service-role JWT. If called from GitHub Actions, the workflow must use `SUPABASE_SERVICE_ROLE_KEY` as the Bearer token.
+
+## Key Rotation Procedure
+
+The `SB_GATEWAY_KEY` secret protects all gateway-key-authenticated Edge Functions (`run-backfill-worker`, `ga-strategy`, `strategy-backtest-worker`, `intraday-live-refresh`, `backtest-strategy`, `ingest-live`, `train-model`). Follow these steps to rotate it:
+
+1. **Generate a new key.** Use a cryptographically random string (minimum 32 bytes, base64-encoded):
+   ```bash
+   openssl rand -base64 32
+   ```
+
+2. **Update the Edge Function secret.** In the Supabase Dashboard, go to Project Settings > Edge Functions > Secrets and set `SB_GATEWAY_KEY` to the new value. Alternatively, use the CLI:
+   ```bash
+   supabase secrets set SB_GATEWAY_KEY="<new-key>"
+   ```
+
+3. **Update the Vault secret (for pg_cron callers).** Functions triggered by `pg_cron` read the key from `vault.secrets`. Run this SQL against the production database:
+   ```sql
+   UPDATE vault.secrets
+   SET secret = '<new-key>', updated_at = now()
+   WHERE name = 'sb_gateway_key';
+   ```
+
+4. **Update GitHub Actions secrets.** If any GitHub Actions workflows pass the gateway key (e.g., `deploy-supabase.yml`, backfill workflows), update the repository secret `SB_GATEWAY_KEY` in GitHub > Settings > Secrets and variables > Actions.
+
+5. **Verify cron jobs succeed.** After rotation, monitor the next scheduled execution of each gateway-key-protected function. Check Edge Function logs in the Supabase Dashboard for 401/403 errors that would indicate the old key is still being used somewhere.
+
+### Blast radius
+
+All gateway-key-protected functions share **one** key. Rotating the key affects every caller simultaneously — there is no way to rotate for a single function without impacting the others.
+
+### Future improvement
+
+Migrate to **per-function keys** (e.g., `SB_GATEWAY_KEY_BACKFILL`, `SB_GATEWAY_KEY_INGEST`) so that compromise or rotation of one key does not affect unrelated functions. This also enables independent rotation schedules per function.

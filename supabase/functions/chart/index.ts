@@ -991,7 +991,7 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
-    const dataStatus: "fresh" | "stale" | "refreshing" = hasActiveJob
+    let dataStatus: "fresh" | "stale" | "refreshing" | "no_data" = hasActiveJob
       ? "refreshing"
       : isStale
       ? "stale"
@@ -1433,6 +1433,12 @@ serve(async (req: Request): Promise<Response> => {
     // Step 11 — DataQuality block (from chart-read)
     // -------------------------------------------------------------------------
     const paginatedActualBars = bars.filter((b) => !b.is_forecast);
+
+    // Override dataStatus when no actual bars exist for this symbol
+    if (paginatedActualBars.length === 0) {
+      dataStatus = "no_data";
+    }
+
     const newestActualBarTs = paginatedActualBars.length > 0
       ? paginatedActualBars[paginatedActualBars.length - 1].ts
       : null;

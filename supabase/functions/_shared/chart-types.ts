@@ -51,7 +51,7 @@ export interface ChartIndicators {
 
 export interface ChartMeta {
   lastBarTs: string | null;
-  dataStatus: "fresh" | "stale" | "refreshing";
+  dataStatus: "fresh" | "stale" | "refreshing" | "no_data";
   isMarketOpen: boolean;
   totalBars: number;
   requestedRange: { start: string; end: string };
