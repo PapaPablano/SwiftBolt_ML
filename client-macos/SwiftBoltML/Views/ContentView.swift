@@ -1,32 +1,6 @@
 import SwiftUI
 
-// MARK: - Sidebar Section Models
-
-enum ResearchSection: Hashable {
-    case chartsAndAnalysis
-    case predictions
-}
-
-enum BuildSection: Hashable {
-    case strategyBuilder
-    case backtesting
-    case multiLeg
-}
-
-enum TradeSection: Hashable {
-    case paperTrading
-    case liveTrading
-    case portfolio
-}
-
-enum SidebarSection: Hashable {
-    case research(ResearchSection)
-    case buildAndTest(BuildSection)
-    case trade(TradeSection)
-    #if DEBUG
-    case devtools
-    #endif
-}
+// Sidebar section enums are in SidebarModels.swift
 
 // MARK: - Content View
 
@@ -98,6 +72,9 @@ struct ContentView: View {
                 appViewModel.selectedDetailTab = 0
             }
             await appViewModel.checkSupabaseConnectivity()
+            // Load paper trading positions eagerly so sidebar green dot
+            // shows immediately, not only after navigating to Paper Trading
+            await paperTradingService.loadPositions()
         }
         .onChange(of: appViewModel.selectedSymbol) { _, _ in
             DispatchQueue.main.async { activeSection = .research(.chartsAndAnalysis) }
@@ -227,9 +204,10 @@ struct SidebarView: View {
             .frame(minHeight: 220)
         }
         .navigationTitle("SwiftBolt ML")
-        .onDisappear {
-            marketService.stopMonitoring()
-        }
+        // MarketStatusService polls every 60s for the app's lifetime — intentionally
+        // no onDisappear cleanup because SidebarView in NavigationSplitView never
+        // disappears (the column hides but the view stays in the hierarchy).
+        // The Timer is invalidated in deinit when the app terminates.
     }
 }
 
