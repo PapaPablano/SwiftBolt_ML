@@ -46,11 +46,18 @@ The current ML forecast pipeline runs 5 models (LSTM, ARIMA-GARCH, XGBoost, TabP
 - **Kalman filter for adjustment:** Already partially implemented in `intraday_forecast_job.py` (`kalman_weight` config). Move this logic to TypeScript in `ingest-live` for simpler execution.
 - **Weekly training, not daily:** Market regime changes are slow enough that weekly retraining with daily evaluation catches degradation. On-demand retrain covers breaking events.
 
+## Symbol Universe Decision
+
+**Watchlist-driven (keep current pattern).** Symbols are sourced from `watchlist_items` table via `ml/src/scripts/universe_utils.py:resolve_symbol_list()`. Both training and live adjustment use the same universe. The `ingest-live` Edge Function already reads from `watchlist_items` for its symbol list — no change needed.
+
+Resolution priority: `INPUT_SYMBOLS` env var → `watchlist_items` table → hardcoded fallback (`AAPL, MSFT, NVDA, TSLA, SPY, QQQ`).
+
 ## Dependencies / Assumptions
 
 - `ingest-live` Edge Function (already running every minute via pg_cron) is the natural host for the adjustment layer
 - The Kalman filter adjustment is simple enough to implement in TypeScript (no Python dependency needed for inference)
 - `ml_forecasts` and `ml_forecasts_intraday` tables support UPSERT for the adjustment writes
+- Symbol universe stays watchlist-driven — same source for training and live adjustment
 
 ## Outstanding Questions
 
