@@ -1,7 +1,8 @@
 // supabase/functions/ingest-live/index.ts
-// Ingest 1-minute bars for all watchlist symbols during market hours.
+// Ingest m1 + m15 bars for all watchlist symbols during market hours.
 // Called by pg_cron every minute on weekdays 9:30–16:00 ET.
-// Stored as timeframe='m1' in ohlc_bars_v2 for partial-candle synthesis.
+// m1 bars: stored for partial-candle synthesis.
+// m15 bars: stored for chart display (replaces unreliable GH Actions cron).
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
@@ -235,9 +236,78 @@ serve(async (req) => {
     }
   }
 
+  // ── Second pass: m15 bars (every run, same symbols) ──────────────────────
+  // This ensures m15 chart data stays fresh via reliable pg_cron instead of
+  // depending on unreliable GitHub Actions scheduled workflows.
+  let m15Upserted = 0;
+  if (!hitDeadline) {
+    const m15Window = new Date(now.getTime() - 20 * 60 * 1000); // last 20 min
+    const m15Start = Math.floor(m15Window.getTime() / 1000);
+
+    for (let i = 0; i < symbols.length; i += MULTI_SYMBOL_BATCH_SIZE) {
+      if (Date.now() - functionStart > DEADLINE_MS) {
+        console.warn("[ingest-live] Approaching deadline during m15 pass");
+        hitDeadline = true;
+        break;
+      }
+
+      const batch = symbols.slice(i, i + MULTI_SYMBOL_BATCH_SIZE);
+
+      try {
+        const tickers = batch.map((s) => s.ticker);
+        const barsBySymbol = await alpaca.getMultiSymbolBars({
+          symbols: tickers,
+          timeframe: "m15",
+          start: m15Start,
+          end: endTs,
+        });
+
+        const m15Rows: Array<Record<string, unknown>> = [];
+        for (const { ticker, symbolId } of batch) {
+          const bars = barsBySymbol[ticker] ?? [];
+          for (const b of bars) {
+            m15Rows.push({
+              symbol_id: symbolId,
+              timeframe: "m15",
+              ts: new Date(b.timestamp * 1000).toISOString(),
+              open: b.open,
+              high: b.high,
+              low: b.low,
+              close: b.close,
+              volume: b.volume,
+              provider: "alpaca",
+              is_forecast: false,
+              is_intraday: true,
+              data_status: "live",
+            });
+          }
+        }
+
+        if (m15Rows.length === 0) continue;
+
+        const { error: m15Error } = await supabase
+          .from("ohlc_bars_v2")
+          .upsert(m15Rows, {
+            onConflict: "symbol_id,timeframe,ts,provider,is_forecast",
+            ignoreDuplicates: false,
+          });
+
+        if (m15Error) {
+          console.error("[ingest-live] m15 upsert error:", m15Error);
+        } else {
+          m15Upserted += m15Rows.length;
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[ingest-live] m15 batch error:", msg);
+      }
+    }
+  }
+
   const result = {
     processed: symbols.length,
     totalUpserted,
+    m15Upserted,
     errors: errors.length,
     errorDetails: errors.slice(0, 10),
     errorsTruncated: errors.length > 10,
