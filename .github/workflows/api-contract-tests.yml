@@ -1,16 +1,16 @@
 name: API Contract Tests
 
 # Validates the response schemas of key endpoints to prevent breaking the SwiftUI app
-# Runs on PRs and pushes to main/develop
+# Runs on PRs and pushes to main/master/develop
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, master, develop]
     paths:
       - 'supabase/functions/**'
       - 'client-macos/**/*.swift'
   pull_request:
-    branches: [main, develop]
+    branches: [main, master, develop]
     paths:
       - 'supabase/functions/**'
       - 'client-macos/**/*.swift'
@@ -51,26 +51,35 @@ jobs:
           echo "## API Registry Validation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Check every function directory has a registry entry
+          # Forward check: every function directory has a registry entry
           MISSING=0
           for func_dir in supabase/functions/*/; do
             func_name=$(basename "$func_dir")
-            # Skip non-function directories
             if [ "$func_name" = "_shared" ] || [ "$func_name" = "tests" ]; then
               continue
             fi
-            if ! grep -q "name: $func_name" supabase/functions/registry.yaml 2>/dev/null; then
+            if ! grep -q "^  - name: ${func_name}$" supabase/functions/registry.yaml 2>/dev/null; then
               echo "❌ Function '$func_name' not found in registry.yaml" >> $GITHUB_STEP_SUMMARY
               MISSING=$((MISSING + 1))
             fi
           done
 
-          if [ "$MISSING" -gt 0 ]; then
+          # Reverse check: every registry entry has a function directory
+          ORPHANS=0
+          for reg_name in $(grep "^  - name:" supabase/functions/registry.yaml | sed 's/^  - name: //'); do
+            if [ ! -d "supabase/functions/$reg_name" ]; then
+              echo "❌ Registry entry '$reg_name' has no function directory" >> $GITHUB_STEP_SUMMARY
+              ORPHANS=$((ORPHANS + 1))
+            fi
+          done
+
+          TOTAL_ISSUES=$((MISSING + ORPHANS))
+          if [ "$TOTAL_ISSUES" -gt 0 ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**$MISSING function(s) missing from registry.yaml**" >> $GITHUB_STEP_SUMMARY
+            echo "**$MISSING unregistered function(s), $ORPHANS orphaned registry entries**" >> $GITHUB_STEP_SUMMARY
             exit 1
           else
-            echo "✅ All function directories have registry entries" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Registry and function directories are in sync" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
 
