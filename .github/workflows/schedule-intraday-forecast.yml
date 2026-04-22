@@ -1,9 +1,8 @@
 # =============================================================================
-# GROUP: 4: Data Ingestion
-# PURPOSE: Generates intraday ML forecasts (15m/1h/4h/8h/1D) during market
-#          hours, evaluates accuracy, and calibrates ensemble layer weights.
-# TRIGGERS: schedule (cron 5,20,35,50 13-22 * * 1-5, offset from ingestion),
-#           workflow_dispatch
+# GROUP: 3: ML Pipeline
+# PURPOSE: Full ensemble training for intraday forecasts (15m/1h/4h/8h/1D).
+#          Between runs, ingest-live's Kalman adjustment keeps forecasts fresh.
+# TRIGGERS: schedule (weekly Monday 4 AM UTC), workflow_dispatch for on-demand
 # COMPONENTS: ml/
 # SECRETS: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, DATABASE_URL,
 #          ALPACA_API_KEY, ALPACA_API_SECRET
@@ -23,7 +22,7 @@ name: Intraday Forecast
 on:
   # Backup schedule (offset from ingestion to ensure data freshness)
   schedule:
-    - cron: '5,20,35,50 13-22 * * 1-5'  # 5 minutes after each ingestion run
+    - cron: '0 4 * * 1'  # Weekly Monday 4 AM UTC. Kalman adjustment in ingest-live handles real-time updates.
   workflow_dispatch:
     inputs:
       symbol:
