@@ -266,11 +266,14 @@ extension ChartDataV2Response {
     }
     
     var isDataFresh: Bool {
-        dataQuality?.hasRecentData ?? !(dataQuality?.isStale ?? true)
+        dataQuality?.hasRecentData ?? !(dataQuality?.isStale ?? false)
     }
     
     var isDataStale: Bool {
-        dataQuality?.isStale ?? true
+        // R14: Default to false — missing dataQuality means we don't know staleness,
+        // not that data is definitely stale. Defaulting to true caused unnecessary
+        // stale-data warnings on every symbol switch before data loaded.
+        dataQuality?.isStale ?? false
     }
     
     var dataAgeDescription: String {
