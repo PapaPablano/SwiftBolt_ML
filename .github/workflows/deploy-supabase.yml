@@ -181,6 +181,26 @@ jobs:
         echo "All database migrations have been applied." >> $GITHUB_STEP_SUMMARY
 
   # ===========================================================================
+  # CONTRACT TEST GATE (placeholder — activate when PR #34 schemas merge)
+  # ===========================================================================
+  # TODO: Activate when supabase/functions/_shared/schemas/ exists on master.
+  # This step validates no breaking schema change was deployed.
+  #
+  # contract-gate:
+  #   name: Contract Schema Validation
+  #   runs-on: ubuntu-latest
+  #   needs: check-deploy-needed
+  #   if: needs.check-deploy-needed.outputs.deploy_needed == 'true'
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: npm install -g ajv-cli ajv-formats
+  #     - name: Validate response schemas
+  #       run: |
+  #         for schema in supabase/functions/_shared/schemas/*.schema.json; do
+  #           ajv compile --spec=draft7 -s "$schema" || exit 1
+  #         done
+
+  # ===========================================================================
   # POST-DEPLOY SMOKE TEST — verify /chart endpoint is callable
   # ===========================================================================
   smoke-test:
