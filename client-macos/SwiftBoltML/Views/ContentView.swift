@@ -74,7 +74,7 @@ struct ContentView: View {
             await appViewModel.checkSupabaseConnectivity()
             // Load paper trading positions eagerly so sidebar green dot
             // shows immediately, not only after navigating to Paper Trading
-            await paperTradingService.loadPositions()
+            await paperTradingService.loadData()
         }
         .onChange(of: appViewModel.selectedSymbol) { _, _ in
             DispatchQueue.main.async { activeSection = .research(.chartsAndAnalysis) }
