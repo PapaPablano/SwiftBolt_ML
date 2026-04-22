@@ -32,12 +32,14 @@ enum SidebarSection: Hashable {
 
 struct ContentView: View {
     @StateObject private var appViewModel = AppViewModel()
+    @StateObject private var paperTradingService = PaperTradingService()
     @State private var activeSection: SidebarSection = .research(.chartsAndAnalysis)
 
     var body: some View {
         NavigationSplitView {
             SidebarView(activeSection: $activeSection)
                 .environmentObject(appViewModel)
+                .environmentObject(paperTradingService)
         } detail: {
             VStack(spacing: 0) {
                 if appViewModel.supabaseUnreachable {
@@ -72,6 +74,7 @@ struct ContentView: View {
                     }
                     if activeSection == .trade(.paperTrading) {
                         PaperTradingDashboardView()
+                            .environmentObject(paperTradingService)
                     }
                     if activeSection == .buildAndTest(.backtesting) {
                         BacktestResultsWebView(symbol: appViewModel.selectedSymbol?.ticker)
@@ -114,13 +117,13 @@ struct ContentView: View {
 
 struct SidebarView: View {
     @EnvironmentObject var appViewModel: AppViewModel
+    @EnvironmentObject var paperTradingService: PaperTradingService
     @Binding var activeSection: SidebarSection
 
     @StateObject private var marketService = MarketStatusService(
         supabaseURL: Config.supabaseURL.absoluteString,
         supabaseKey: Config.supabaseAnonKey
     )
-    @StateObject private var paperTradingService = PaperTradingService()
 
     @AppStorage("sidebar.research.expanded") private var researchExpanded = true
     @AppStorage("sidebar.buildAndTest.expanded") private var buildAndTestExpanded = true
@@ -163,6 +166,7 @@ struct SidebarView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
+                .selectionDisabled()
 
                 DisclosureGroup(isExpanded: $buildAndTestExpanded) {
                     NavigationLink(value: SidebarSection.buildAndTest(.strategyBuilder)) {
@@ -179,6 +183,7 @@ struct SidebarView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
+                .selectionDisabled()
 
                 DisclosureGroup(isExpanded: $tradeExpanded) {
                     NavigationLink(value: SidebarSection.trade(.paperTrading)) {
@@ -203,6 +208,7 @@ struct SidebarView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
+                .selectionDisabled()
 
                 #if DEBUG
                 DisclosureGroup(isExpanded: $devtoolsExpanded) {
@@ -214,6 +220,7 @@ struct SidebarView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
+                .selectionDisabled()
                 #endif
             }
             .listStyle(.sidebar)
