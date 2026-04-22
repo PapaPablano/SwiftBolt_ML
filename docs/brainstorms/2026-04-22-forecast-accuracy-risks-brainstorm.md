@@ -50,3 +50,15 @@ Three forecast accuracy risks were identified during the full-stack pipeline aud
 ## Next Steps
 
 -> `/ce:plan` to investigate and fix confirmed issues
+
+## Investigation Results (2026-04-22)
+
+All 3 risks investigated and resolved as **false alarms**:
+
+1. **horizon_days label mismatch — FALSE ALARM**: Intraday path uses `lookahead_bars` (integer bar count) for training labels, not `horizon_days`. The 0.0417 value is only consumed by `ForecastSynthesizer.generate_forecast()` for ATR time-scaling. Comment at line 1257 confirms: "baseline expects bar-count as horizon_days."
+
+2. **ARIMA-GARCH datetime synthesis — FALSE ALARM**: ARIMA-GARCH is only used in `build_intraday_path_points()` for synthetic price paths (confidence scoring), not for model training. The `freq="B"` issue only affects daily forecasts where business-day frequency is correct.
+
+3. **h4 fallback — BY DESIGN**: `HORIZON_CONFIG` includes "4h" with proper config. The chart endpoint's `h4→h1` mapping is a fallback when h4 data hasn't been generated yet, not the normal serving path.
+
+**Status: CLOSED — no fixes needed.**
