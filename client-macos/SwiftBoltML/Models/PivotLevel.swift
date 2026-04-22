@@ -116,10 +116,12 @@ enum PivotExtendMode: String, CaseIterable {
 ///   colorSup = color.rgb(30, 214, 125)    // Green
 ///   colorRes = #eb7c14                     // Orange
 ///   colorActive = color.rgb(27, 133, 255)  // Blue
-struct PivotColors {
-    static let support = Color(red: 30/255, green: 214/255, blue: 125/255)     // #1ED67D Green
-    static let resistance = Color(red: 235/255, green: 124/255, blue: 20/255)  // #EB7C14 Orange
-    static let active = Color(red: 27/255, green: 133/255, blue: 255/255)      // #1B85FF Blue
+/// Backward-compatible typealias — callers use PivotColors.support etc.
+/// Backed by centralized DesignTokens. Remove once all callers migrate.
+enum PivotColors {
+    static var support: Color { DesignTokens.Colors.chartSupport }
+    static var resistance: Color { DesignTokens.Colors.chartResistance }
+    static var active: Color { DesignTokens.Colors.chartActive }
 }
 
 // MARK: - Period Configuration

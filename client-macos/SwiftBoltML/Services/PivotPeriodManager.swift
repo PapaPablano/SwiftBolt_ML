@@ -220,13 +220,13 @@ struct PeriodConfig: Identifiable, Codable, Equatable {
         // Assign colors based on period size for visual hierarchy
         switch length {
         case 1...5:
-            return Color(red: 0.8, green: 0.8, blue: 0.8)  // Light gray (micro)
+            return DesignTokens.Colors.periodMicro
         case 6...25:
-            return Color(red: 0.2, green: 0.7, blue: 1.0)  // Blue (short-term)
+            return DesignTokens.Colors.periodShort
         case 26...75:
-            return Color(red: 0.2, green: 1.0, blue: 0.8)  // Cyan (medium-term)
+            return DesignTokens.Colors.periodMedium
         default:
-            return Color(red: 1.0, green: 0.8, blue: 0.2)  // Gold (long-term)
+            return DesignTokens.Colors.periodLong
         }
     }
 

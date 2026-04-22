@@ -121,8 +121,8 @@ struct ForecastHorizonsView: View {
     private var collapsedGradient: LinearGradient {
         LinearGradient(
             colors: [
-                Color(red: 0.16, green: 0.23, blue: 0.42),
-                Color(red: 0.09, green: 0.14, blue: 0.28)
+                DesignTokens.Colors.surfaceCardTop,
+                DesignTokens.Colors.surfaceCardBottom
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
