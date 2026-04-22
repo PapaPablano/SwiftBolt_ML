@@ -597,10 +597,13 @@ final class APIClient {
     /// - Parameter root: The futures root symbol (e.g., "GC", "ES")
     /// - Returns: Array of futures contracts
     func fetchFuturesChain(root: String) async throws -> [FuturesContract] {
-        guard var components = URLComponents(url: functionURL("futures-chain"), resolvingAgainstBaseURL: false) else {
+        guard var components = URLComponents(url: functionURL("futures"), resolvingAgainstBaseURL: false) else {
             throw APIError.invalidURL
         }
-        components.queryItems = [URLQueryItem(name: "root", value: root)]
+        components.queryItems = [
+            URLQueryItem(name: "type", value: "chain"),
+            URLQueryItem(name: "root", value: root),
+        ]
         
         guard let url = components.url else {
             throw APIError.invalidURL
@@ -667,9 +670,8 @@ final class APIClient {
     }
 
     func fetchChartReadPage(symbol: String, timeframe: String = "d1", before: Int, pageSize: Int = 400) async throws -> ChartResponse {
-        // NOTE: fetchChartReadPage still calls chart-read for pagination; update separately when the
-        // unified chart function gains cursor-based pagination support.
-        var urlComponents = URLComponents(url: functionURL("chart-read"), resolvingAgainstBaseURL: false)!
+        // Migrated from retired chart-read to the unified chart function with cursor pagination.
+        var urlComponents = URLComponents(url: functionURL("chart"), resolvingAgainstBaseURL: false)!
         let cacheBuster = Int(Date().timeIntervalSince1970)
         urlComponents.queryItems = [
             URLQueryItem(name: "t", value: "\(cacheBuster)"),
@@ -709,7 +711,6 @@ final class APIClient {
     }
     
     func fetchChartV2(symbol: String, timeframe: String = "d1", days: Int = 60, includeForecast: Bool = true, forecastDays: Int = 10, forecastSteps: Int? = nil) async throws -> ChartDataV2Response {
-        // Redirected from retired chart-data-v2 to the unified chart function.
         // Build URL with cache-buster to bypass CDN caching (for all timeframes)
         var urlComponents = URLComponents(url: functionURL("chart"), resolvingAgainstBaseURL: false)!
         let cacheBuster = Int(Date().timeIntervalSince1970)
@@ -744,7 +745,7 @@ final class APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         request.httpBody = bodyData
-        print("[DEBUG] 📊 chart (was chart-data-v2) request: method=\(request.httpMethod ?? "nil"), bodyBytes=\(bodyData.count)")
+        print("[DEBUG] 📊 chart request: method=\(request.httpMethod ?? "nil"), bodyBytes=\(bodyData.count)")
 
         // Bypass network cache for all requests to ensure fresh data
         request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -758,8 +759,7 @@ final class APIClient {
 
     /// Fetch chart data from the unified GET /chart endpoint.
     ///
-    /// This is the single canonical chart read path — a one-round-trip replacement for the
-    /// three-function fallback chain (chart-data-v2 → chart-read → chart).
+    /// This is the single canonical chart read path (unified chart endpoint).
     ///
     /// - Parameters:
     ///   - symbol: Ticker symbol (e.g. "AAPL", "/ES", "AAPL240119C00150000")

@@ -522,11 +522,43 @@ serve(async (req: Request): Promise<Response> => {
       ? Math.min(MAX_BAR_LIMIT, Math.max(1, Number(barLimitParam)))
       : MAX_BAR_LIMIT;
 
+    // ── Cursor-based backward pagination ──────────────────────────────────
+    // When `before` is present the caller wants the N most-recent bars
+    // whose timestamp is strictly less than `before`.  `pageSize` controls
+    // how many bars to return (default 400, max 1000).
+    const beforeParam = url.searchParams.get("before");
+    const pageSizeParam = url.searchParams.get("pageSize");
+    const pageSize = pageSizeParam
+      ? Math.min(1000, Math.max(1, Number(pageSizeParam)))
+      : 400;
+
+    // Parse `before` as either a unix-epoch integer (seconds) or ISO 8601.
+    let beforeDate: Date | null = null;
+    if (beforeParam) {
+      const asNum = Number(beforeParam);
+      if (Number.isFinite(asNum) && asNum > 1_000_000_000) {
+        // Treat numbers > 1e9 as unix seconds; smaller values are ambiguous.
+        beforeDate = new Date(
+          asNum > 1e12 ? asNum : asNum * 1000, // auto-detect ms vs s
+        );
+      } else {
+        const parsed = new Date(beforeParam);
+        if (!Number.isNaN(parsed.getTime())) beforeDate = parsed;
+      }
+    }
+    const isCursorMode = beforeDate !== null;
+
     const now = new Date();
     const todayStr = now.toISOString().split("T")[0];
 
-    const endDate = endParam ? new Date(endParam) : now;
-    const startDate = startParam
+    const endDate = isCursorMode
+      ? beforeDate!
+      : endParam
+      ? new Date(endParam)
+      : now;
+    const startDate = isCursorMode
+      ? new Date(0) // fetch as far back as needed; the LIMIT caps the count
+      : startParam
       ? new Date(startParam)
       : new Date(endDate.getTime() - rawDays * 24 * 60 * 60 * 1000);
 
@@ -542,7 +574,9 @@ serve(async (req: Request): Promise<Response> => {
       // futuresMatch[1] = root (e.g. "ES"), futuresMatch[2] = suffix (e.g. "1!" or "H26")
       const futuresRoot = futuresMatch[1].toUpperCase();
       const isContinuousSuffix = /^\d+!$/.test(futuresMatch[2]); // e.g. "1!", "2!"
-      console.log(`[chart] Detected futures symbol: ${symbol} (root=${futuresRoot})`);
+      console.log(
+        `[chart] Detected futures symbol: ${symbol} (root=${futuresRoot})`,
+      );
       try {
         const { data: resolved, error: resolveError } = await supabase.rpc(
           "resolve_futures_symbol",
@@ -651,13 +685,20 @@ serve(async (req: Request): Promise<Response> => {
       // 1. OHLC bars via get_chart_data_v2 RPC (provider-aware)
       // The RPC now accepts p_limit to enforce the cap inside Postgres,
       // bypassing the PostgREST default 1000-row limit on RPC results.
-      supabase.rpc("get_chart_data_v2", {
-        p_symbol_id: symbolId,
-        p_timeframe: timeframe === "w1" ? "d1" : timeframe, // weekly: fetch d1 then aggregate
-        p_start_date: startDate.toISOString(),
-        p_end_date: endDate.toISOString(),
-        p_limit: barLimit,
-      }),
+      // In cursor mode we skip the RPC (it doesn't support strict-less-than
+      // + DESC ordering) and go straight to the fallback path below.
+      isCursorMode
+        ? Promise.resolve({
+          data: null,
+          error: { message: "cursor_mode_skip" },
+        })
+        : supabase.rpc("get_chart_data_v2", {
+          p_symbol_id: symbolId,
+          p_timeframe: timeframe === "w1" ? "d1" : timeframe, // weekly: fetch d1 then aggregate
+          p_start_date: startDate.toISOString(),
+          p_end_date: endDate.toISOString(),
+          p_limit: barLimit,
+        }),
 
       // 2. Options ranks
       includeOptions
@@ -755,19 +796,38 @@ serve(async (req: Request): Promise<Response> => {
     // -------------------------------------------------------------------------
     let barsData: BarRow[] = [];
     if (barsResult.error) {
-      console.error("[chart] Bars RPC error:", barsResult.error);
-      // Fallback: direct table query
-      const { data: fallbackBars } = await supabase
-        .from("ohlc_bars_v2")
-        .select("ts, open, high, low, close, volume, provider, data_status")
-        .eq("symbol_id", symbolId)
-        .eq("timeframe", timeframe === "w1" ? "d1" : timeframe)
-        .eq("is_forecast", false)
-        .gte("ts", startDate.toISOString())
-        .lte("ts", endDate.toISOString())
-        .order("ts", { ascending: true })
-        .limit(MAX_BAR_LIMIT);
-      barsData = (fallbackBars ?? []) as BarRow[];
+      if (!isCursorMode) {
+        console.error("[chart] Bars RPC error:", barsResult.error);
+      }
+      if (isCursorMode) {
+        // Cursor-based backward pagination: fetch `pageSize` bars with ts < before,
+        // ordered DESC so we get the most recent page, then reverse to ascending.
+        const effectiveTf = timeframe === "w1" ? "d1" : timeframe;
+        const { data: cursorBars } = await supabase
+          .from("ohlc_bars_v2")
+          .select("ts, open, high, low, close, volume, provider, data_status")
+          .eq("symbol_id", symbolId)
+          .eq("timeframe", effectiveTf)
+          .eq("is_forecast", false)
+          .lt("ts", beforeDate!.toISOString())
+          .order("ts", { ascending: false })
+          .limit(pageSize);
+        // Reverse to ascending order so response shape is consistent
+        barsData = ((cursorBars ?? []) as BarRow[]).reverse();
+      } else {
+        // Standard fallback: direct table query
+        const { data: fallbackBars } = await supabase
+          .from("ohlc_bars_v2")
+          .select("ts, open, high, low, close, volume, provider, data_status")
+          .eq("symbol_id", symbolId)
+          .eq("timeframe", timeframe === "w1" ? "d1" : timeframe)
+          .eq("is_forecast", false)
+          .gte("ts", startDate.toISOString())
+          .lte("ts", endDate.toISOString())
+          .order("ts", { ascending: true })
+          .limit(MAX_BAR_LIMIT);
+        barsData = (fallbackBars ?? []) as BarRow[];
+      }
     } else {
       barsData = (barsResult.data ?? []) as BarRow[];
     }
@@ -1415,10 +1475,15 @@ serve(async (req: Request): Promise<Response> => {
       dataStatus,
       isMarketOpen,
       totalBars: bars.length,
-      requestedRange: {
-        start: startDate.toISOString(),
-        end: endDate.toISOString(),
-      },
+      requestedRange: isCursorMode
+        ? {
+          start: bars.length > 0 ? bars[0].ts : beforeDate!.toISOString(),
+          end: beforeDate!.toISOString(),
+        }
+        : {
+          start: startDate.toISOString(),
+          end: endDate.toISOString(),
+        },
       latestForecastRunAt,
       hasPendingSplits,
     };
