@@ -1,4 +1,9 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
+import {
+  errorResponse,
+  handleCorsOptions,
+  jsonResponse,
+} from "../_shared/cors.ts";
 import { getSupabaseClient } from "../_shared/supabase-client.ts";
 
 type ValidationType = "backtest" | "walkforward";
@@ -19,22 +24,22 @@ interface ValidationResponse {
 }
 
 serve(async (req: Request) => {
+  const origin = req.headers.get("origin");
+
+  if (req.method === "OPTIONS") {
+    return handleCorsOptions(origin);
+  }
+
   try {
     if (req.method !== "GET") {
-      return new Response(
-        JSON.stringify({ error: "Method not allowed" }),
-        { status: 405, headers: { "Content-Type": "application/json" } },
-      );
+      return errorResponse("Method not allowed", 405, origin);
     }
 
     const url = new URL(req.url);
     const symbolParam = url.searchParams.get("symbol");
 
     if (!symbolParam) {
-      return new Response(
-        JSON.stringify({ error: "symbol parameter required" }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
-      );
+      return errorResponse("symbol parameter required", 400, origin);
     }
 
     const symbol = symbolParam.trim().toUpperCase();
@@ -51,17 +56,11 @@ serve(async (req: Request) => {
         "[get-unified-validation] symbol lookup error",
         symbolError,
       );
-      return new Response(
-        JSON.stringify({ error: "Failed to resolve symbol" }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
-      );
+      return errorResponse("Failed to resolve symbol", 500, origin);
     }
 
     if (!symbolRow) {
-      return new Response(
-        JSON.stringify({ error: `Symbol ${symbol} not found` }),
-        { status: 404, headers: { "Content-Type": "application/json" } },
-      );
+      return errorResponse(`Symbol ${symbol} not found`, 404, origin);
     }
 
     const symbolId = symbolRow.id as string;
@@ -81,10 +80,7 @@ serve(async (req: Request) => {
         "[get-unified-validation] validation stats error",
         validationError,
       );
-      return new Response(
-        JSON.stringify({ error: "Failed to fetch validation stats" }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
-      );
+      return errorResponse("Failed to fetch validation stats", 500, origin);
     }
 
     const validationScores = new Map<ValidationType, number>();
@@ -107,10 +103,7 @@ serve(async (req: Request) => {
 
     if (liveError) {
       console.error("[get-unified-validation] live score error", liveError);
-      return new Response(
-        JSON.stringify({ error: "Failed to fetch live score" }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
-      );
+      return errorResponse("Failed to fetch live score", 500, origin);
     }
 
     const timeframeSignals = new Map<string, string>();
@@ -129,9 +122,10 @@ serve(async (req: Request) => {
           `[get-unified-validation] ${timeframe} signal error`,
           tfError,
         );
-        return new Response(
-          JSON.stringify({ error: "Failed to fetch timeframe signals" }),
-          { status: 500, headers: { "Content-Type": "application/json" } },
+        return errorResponse(
+          "Failed to fetch timeframe signals",
+          500,
+          origin,
         );
       }
 
@@ -159,16 +153,10 @@ serve(async (req: Request) => {
 
     const normalizedResponse = withDefaults(response);
 
-    return new Response(JSON.stringify(normalizedResponse), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonResponse(normalizedResponse, 200, req.headers);
   } catch (error) {
     console.error("[get-unified-validation] unexpected error", error);
-    return new Response(
-      JSON.stringify({ error: "Unexpected server error" }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
+    return errorResponse("Unexpected server error", 500, origin);
   }
 });
 

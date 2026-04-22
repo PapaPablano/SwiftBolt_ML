@@ -8,12 +8,22 @@ import {
   type BackfillBar,
   fetchIntradayForDay,
 } from "../_shared/backfill-adapter.ts";
+import { getCorsHeaders } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-sb-gateway-key",
-};
+/**
+ * Build CORS headers for this function, merging the shared allowlist-based
+ * headers with the extra `x-sb-gateway-key` header that the backfill worker
+ * requires for gateway-key authentication.
+ */
+function buildCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("origin");
+  const shared = getCorsHeaders(origin);
+  // Append x-sb-gateway-key to the shared Allow-Headers value
+  const allowHeaders = shared["Access-Control-Allow-Headers"]
+    ? `${shared["Access-Control-Allow-Headers"]}, x-sb-gateway-key`
+    : "x-sb-gateway-key";
+  return { ...shared, "Access-Control-Allow-Headers": allowHeaders };
+}
 
 interface BackfillChunk {
   id: string;
@@ -26,9 +36,11 @@ interface BackfillChunk {
 }
 
 serve(async (req) => {
+  const corsHeaders = buildCorsHeaders(req);
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
 
   // Enforce gateway key when verify_jwt is false (only service/cron should call this)

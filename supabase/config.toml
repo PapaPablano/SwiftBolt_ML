@@ -10,15 +10,16 @@ project_id = "cygflaemtmwiwaviclks"
 verify_jwt = false
 
 # ga-strategy: Triggered by cron automation only, not user-facing.
-# Auth enforced at the job queue level. verify_jwt disabled for performance.
+# Auth enforced inside function via X-SB-Gateway-Key (SB_GATEWAY_KEY).
 [functions.ga-strategy]
 verify_jwt = false
 
 [functions.options-chain]
 verify_jwt = false
 
+# Client-facing. JWT verified by Supabase platform.
 [functions.get-unified-validation]
-verify_jwt = false
+verify_jwt = true
 
 [functions.strategies]
 verify_jwt = false
