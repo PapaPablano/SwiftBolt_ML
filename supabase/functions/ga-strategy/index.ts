@@ -154,25 +154,13 @@ serve(async (req: Request): Promise<Response> => {
   const expectedKey = Deno.env.get("SB_GATEWAY_KEY");
   if (!expectedKey || expectedKey.length === 0) {
     console.error("[GA Strategy] SB_GATEWAY_KEY is not set");
-    return new Response(
-      JSON.stringify({ error: "Gateway key not configured" }),
-      {
-        status: 503,
-        headers: { "Content-Type": "application/json" },
-      },
-    );
+    return errorResponse("Gateway key not configured", 503, origin);
   }
   const providedKey = req.headers.get("x-sb-gateway-key") ??
     req.headers.get("X-SB-Gateway-Key") ?? "";
   if (providedKey !== expectedKey) {
     console.warn("[GA Strategy] Invalid or missing X-SB-Gateway-Key");
-    return new Response(
-      JSON.stringify({ error: "Unauthorized" }),
-      {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      },
-    );
+    return errorResponse("Unauthorized", 401, origin);
   }
 
   const supabase = getSupabaseClient();
