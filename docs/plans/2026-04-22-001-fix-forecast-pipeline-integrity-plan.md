@@ -1,7 +1,7 @@
 ---
 title: "fix: Forecast pipeline temporal integrity and data flow fixes"
 type: fix
-status: active
+status: completed
 date: 2026-04-22
 origin: docs/brainstorms/2026-04-22-forecast-pipeline-integrity-brainstorm.md
 ---
@@ -47,7 +47,7 @@ All 3 phases are independent and can execute in parallel.
 
 ### Phase A: ML Pipeline
 
-- [ ] **Unit 1: Fix XGBoost temporal split (R1)**
+- [x] **Unit 1: Fix XGBoost temporal split (R1)**
 
 **Goal:** Replace random shuffle train_test_split with temporal split for early-stopping eval set.
 
@@ -68,7 +68,7 @@ All 3 phases are independent and can execute in parallel.
 
 ---
 
-- [ ] **Unit 2: Fix PurgedWalkForwardCV (R2)**
+- [x] **Unit 2: Fix PurgedWalkForwardCV (R2)**
 
 **Goal:** Remove future data from training folds.
 
@@ -90,7 +90,7 @@ All 3 phases are independent and can execute in parallel.
 
 ---
 
-- [ ] **Unit 3: Fix LSTM scaler + lookahead guards + ensemble + horizon_days (R3-R6)**
+- [x] **Unit 3: Fix LSTM scaler + lookahead guards + ensemble + horizon_days (R3-R6)**
 
 **Goal:** Fix remaining 4 ML P2 issues in a single unit since they're independent one-line fixes.
 
@@ -115,7 +115,7 @@ All 3 phases are independent and can execute in parallel.
 
 ---
 
-- [ ] **Unit 4: Fix ForecastPoint.ts type contract (R7)**
+- [x] **Unit 4: Fix ForecastPoint.ts type contract (R7)**
 
 **Goal:** Align the type declaration with actual delivered data (Unix seconds).
 
@@ -130,7 +130,7 @@ All 3 phases are independent and can execute in parallel.
 
 ---
 
-- [ ] **Unit 5: Fix cascade horizon scoping + ml_forecasts limit (R8, R9)**
+- [x] **Unit 5: Fix cascade horizon scoping + ml_forecasts limit (R8, R9)**
 
 **Goal:** Fix cascade row bleed and unbounded query.
 
@@ -152,7 +152,7 @@ All 3 phases are independent and can execute in parallel.
 
 ---
 
-- [ ] **Unit 6: Fix symbol-switch stale state (R10, R12, R14)**
+- [x] **Unit 6: Fix symbol-switch stale state (R10, R12, R14)**
 
 **Goal:** Clear all forecast state immediately on symbol switch.
 
@@ -174,7 +174,7 @@ All 3 phases are independent and can execute in parallel.
 
 ---
 
-- [ ] **Unit 7: Fix aggregateIntradayToday + rebuildSelectedForecastBars + horizon picker + task cancellation (R11, R13, R15, R16)**
+- [x] **Unit 7: Fix aggregateIntradayToday + rebuildSelectedForecastBars + horizon picker + task cancellation (R11, R13, R15, R16)**
 
 **Goal:** Fix remaining Swift P1+P2 issues.
 
