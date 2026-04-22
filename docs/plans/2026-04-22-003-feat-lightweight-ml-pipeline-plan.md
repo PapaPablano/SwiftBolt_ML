@@ -78,7 +78,7 @@ Units 3-5. Once the Kalman adjustment is proven in production, reduce the intrad
 
 ## Implementation Units
 
-- [ ] **Unit 1: Add Kalman forecast adjustment to ingest-live**
+- [x] **Unit 1: Add Kalman forecast adjustment to ingest-live**
 
 **Goal:** After writing m1+m15 bars, adjust cached intraday forecast points based on price movement.
 
@@ -117,7 +117,7 @@ Units 3-5. Once the Kalman adjustment is proven in production, reduce the intrad
 
 ---
 
-- [ ] **Unit 2: Deploy and validate Kalman adjustment**
+- [x] **Unit 2: Deploy and validate Kalman adjustment**
 
 **Goal:** Deploy updated ingest-live and validate adjustments are flowing through to the chart.
 
@@ -143,7 +143,7 @@ Units 3-5. Once the Kalman adjustment is proven in production, reduce the intrad
 
 ---
 
-- [ ] **Unit 3: Change intraday forecast schedule from every-15-min to weekly**
+- [x] **Unit 3: Change intraday forecast schedule from every-15-min to weekly**
 
 **Goal:** Reduce the expensive full-ensemble intraday forecast job from every 15 minutes to weekly.
 
