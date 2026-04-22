@@ -43,7 +43,7 @@ const VALID_TIMEFRAMES = ["m15", "h1", "h4", "d1", "w1"] as const;
 type Timeframe = typeof VALID_TIMEFRAMES[number];
 
 const FRESHNESS_SLA_MINUTES: Record<string, number> = {
-  m15: 10,   // tightened from 30 — GH Actions ingestion runs every 5min
+  m15: 15,   // 3x the 5-minute GH Actions ingestion cron interval
   m30: 60,
   h1: 120,
   h4: 480,
@@ -1384,7 +1384,7 @@ serve(async (req: Request): Promise<Response> => {
             (1000 * 60 * 60),
         )
         : null,
-      isStale,
+      isStale, // also in freshness.isStale — kept here for backward compatibility with DataQuality contract
       slaHours,
       sufficientForML: paginatedActualBars.length >= 250,
       barCount: paginatedActualBars.length,
@@ -1401,7 +1401,9 @@ serve(async (req: Request): Promise<Response> => {
       // Enriched freshness metadata for client staleness indicators
       lastUpdated: lastActualBarTs ?? null,
       isStale: ageMinutes !== null ? ageMinutes > slaMinutes : false,
-      ageSeconds: ageMinutes !== null ? Math.round(ageMinutes * 60) : null,
+      ageSeconds: lastActualBarTs
+        ? Math.round((Date.now() - new Date(lastActualBarTs).getTime()) / 1000)
+        : null,
       slaSeconds: slaMinutes * 60,
     };
 
