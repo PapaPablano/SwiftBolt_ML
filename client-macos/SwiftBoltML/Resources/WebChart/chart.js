@@ -2163,6 +2163,143 @@
         },
 
         /**
+         * Render quantile probability bands on the chart.
+         * Draws two shaded areas (outer q10-q90, inner q25-q75) using candlestick series
+         * for band fill, plus a dashed q50 median line from the last bar to the target.
+         *
+         * cmd = { lastTime, targetTime, currentPrice, q10, q25, q50, q75, q90, color }
+         */
+        setQuantileBands: function(cmd) {
+            if (!state.chart) {
+                console.warn('[ChartJS] setQuantileBands: chart not initialized');
+                return;
+            }
+
+            var lastTime = cmd.lastTime;
+            var targetTime = cmd.targetTime;
+            if (!lastTime || !targetTime || targetTime <= lastTime) {
+                console.warn('[ChartJS] setQuantileBands: invalid time range');
+                return;
+            }
+
+            // Remove previous quantile series
+            this.removeSeries('quantile-outer');
+            this.removeSeries('quantile-inner');
+            this.removeSeries('quantile-median');
+
+            // Parse base color for rgba
+            var baseHex = (cmd.color || '#ffbf00').replace('#', '');
+            var r = parseInt(baseHex.substring(0, 2), 16) || 255;
+            var g = parseInt(baseHex.substring(2, 4), 16) || 191;
+            var b = parseInt(baseHex.substring(4, 6), 16) || 0;
+
+            var outerFill = 'rgba(' + r + ',' + g + ',' + b + ',0.10)';
+            var innerFill = 'rgba(' + r + ',' + g + ',' + b + ',0.20)';
+            var medianColor = 'rgba(' + r + ',' + g + ',' + b + ',0.70)';
+
+            var currentPrice = cmd.currentPrice;
+
+            // Generate intermediate points for smoother band spread from currentPrice to quantile targets.
+            // Using 3 points: start, midpoint, end — so the band fans out gradually.
+            var midTime = Math.round((lastTime + targetTime) / 2);
+
+            function interpolate(start, end) {
+                return start + (end - start) * 0.5;
+            }
+
+            // Outer band (q10-q90): use candlestick series with transparent wicks/borders
+            // open/close = upper/lower bounds to create filled rectangle
+            state.series['quantile-outer'] = state.chart.addCandlestickSeries({
+                upColor: outerFill,
+                downColor: outerFill,
+                borderUpColor: 'transparent',
+                borderDownColor: 'transparent',
+                wickUpColor: 'transparent',
+                wickDownColor: 'transparent',
+                priceLineVisible: false,
+                lastValueVisible: false,
+                autoscaleInfoProvider: function() { return null; }
+            });
+            state.series['quantile-outer'].setData([
+                {
+                    time: lastTime,
+                    open: currentPrice,
+                    high: currentPrice,
+                    low: currentPrice,
+                    close: currentPrice
+                },
+                {
+                    time: midTime,
+                    open: interpolate(currentPrice, cmd.q90),
+                    high: interpolate(currentPrice, cmd.q90),
+                    low: interpolate(currentPrice, cmd.q10),
+                    close: interpolate(currentPrice, cmd.q10)
+                },
+                {
+                    time: targetTime,
+                    open: cmd.q90,
+                    high: cmd.q90,
+                    low: cmd.q10,
+                    close: cmd.q10
+                }
+            ]);
+
+            // Inner band (q25-q75): denser fill layered on top
+            state.series['quantile-inner'] = state.chart.addCandlestickSeries({
+                upColor: innerFill,
+                downColor: innerFill,
+                borderUpColor: 'transparent',
+                borderDownColor: 'transparent',
+                wickUpColor: 'transparent',
+                wickDownColor: 'transparent',
+                priceLineVisible: false,
+                lastValueVisible: false,
+                autoscaleInfoProvider: function() { return null; }
+            });
+            state.series['quantile-inner'].setData([
+                {
+                    time: lastTime,
+                    open: currentPrice,
+                    high: currentPrice,
+                    low: currentPrice,
+                    close: currentPrice
+                },
+                {
+                    time: midTime,
+                    open: interpolate(currentPrice, cmd.q75),
+                    high: interpolate(currentPrice, cmd.q75),
+                    low: interpolate(currentPrice, cmd.q25),
+                    close: interpolate(currentPrice, cmd.q25)
+                },
+                {
+                    time: targetTime,
+                    open: cmd.q75,
+                    high: cmd.q75,
+                    low: cmd.q25,
+                    close: cmd.q25
+                }
+            ]);
+
+            // Median line (q50): dashed line from current price to q50 target
+            state.series['quantile-median'] = state.chart.addLineSeries({
+                color: medianColor,
+                lineWidth: 2,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                priceLineVisible: false,
+                lastValueVisible: false,
+                crosshairMarkerVisible: false,
+                autoscaleInfoProvider: function() { return null; }
+            });
+            state.series['quantile-median'].setData([
+                { time: lastTime, value: currentPrice },
+                { time: targetTime, value: cmd.q50 }
+            ]);
+
+            console.log('[ChartJS] Quantile bands set: q10=' + cmd.q10 + ' q25=' + cmd.q25 +
+                ' q50=' + cmd.q50 + ' q75=' + cmd.q75 + ' q90=' + cmd.q90);
+        },
+
+        /**
          * Set forecast as overlay candlestick series (intraday-specific)
          */
         setForecastCandles: function(data, direction) {
@@ -3199,6 +3336,9 @@
                         break;
                     case 'setIndicatorConfig':
                         this.setIndicatorConfig(cmd.config);
+                        break;
+                    case 'setQuantileBands':
+                        this.setQuantileBands(cmd);
                         break;
                     default:
                         console.warn('[ChartJS] Unknown command type:', cmd.type);

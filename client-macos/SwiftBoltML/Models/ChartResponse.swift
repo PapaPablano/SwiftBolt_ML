@@ -203,6 +203,8 @@ struct ForecastSeries: Codable, Equatable {
     var calibrationLabel: String? = nil
     var accuracyPct: Double? = nil
     var suppressed: Bool? = nil
+    var quantiles: ForecastQuantiles? = nil
+    var conviction: Double? = nil
 
     enum CodingKeys: String, CodingKey {
         case horizon, points, targets
@@ -210,7 +212,17 @@ struct ForecastSeries: Codable, Equatable {
         case calibrationLabel = "calibration_label"
         case accuracyPct = "accuracy_pct"
         case suppressed
+        case quantiles, conviction
     }
+}
+
+/// Quantile probability bands for forecast uncertainty visualization
+struct ForecastQuantiles: Codable, Equatable {
+    let q10: Double
+    let q25: Double
+    let q50: Double
+    let q75: Double
+    let q90: Double
 }
 
 struct ForecastTargets: Codable, Equatable {
