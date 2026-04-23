@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings  # noqa: E402
 from src.data.supabase_db import db  # noqa: E402
+from src.evaluation.calibration import compute_calibration_metrics  # noqa: E402
 from src.evaluation.signal_quality import compute_signal_quality  # noqa: E402
 from src.models.enhanced_ensemble_integration import (  # noqa: E402
     export_monitoring_metrics,
@@ -346,6 +347,79 @@ class DailyForecastEvaluator:
             logger.error(f"Error updating performance history: {e}", exc_info=True)
 
 
+def _run_calibration_evaluation(results: dict[str, Any]) -> None:
+    """
+    Fetch evaluated forecasts that have quantile columns and compute
+    calibration metrics.  Results are attached to *results* dict and logged.
+    """
+    q_keys = ["q10", "q25", "q50", "q75", "q90"]
+
+    try:
+        rows = (
+            db.client.table("forecast_evaluations")
+            .select("realized_price,forecast_id")
+            .not_.is_("realized_price", "null")
+            .order("evaluation_date", desc=True)
+            .limit(500)
+            .execute()
+        )
+        eval_rows = rows.data or []
+    except Exception as e:
+        logger.warning(f"Could not fetch evaluations for calibration: {e}")
+        return
+
+    if not eval_rows:
+        logger.info("No evaluated forecasts available for calibration.")
+        return
+
+    # Look up quantile predictions from ml_forecasts for the same forecast_ids
+    forecast_ids = [r["forecast_id"] for r in eval_rows if r.get("forecast_id")]
+    if not forecast_ids:
+        return
+
+    try:
+        fc_rows = (
+            db.client.table("ml_forecasts")
+            .select("id,q10,q25,q50,q75,q90")
+            .in_("id", forecast_ids)
+            .execute()
+        )
+        fc_data = {r["id"]: r for r in (fc_rows.data or [])}
+    except Exception as e:
+        logger.info(f"Quantile columns not available in ml_forecasts: {e}")
+        return
+
+    # Build aligned lists — only include rows where all quantile columns are non-null
+    actuals: list[float] = []
+    predictions: dict[str, list[float]] = {k: [] for k in q_keys}
+
+    for ev in eval_rows:
+        fid = ev.get("forecast_id")
+        fc = fc_data.get(fid)
+        if fc is None:
+            continue
+        if any(fc.get(k) is None for k in q_keys):
+            continue
+
+        actuals.append(float(ev["realized_price"]))
+        for k in q_keys:
+            predictions[k].append(float(fc[k]))
+
+    if not actuals:
+        logger.info("No forecasts with quantile columns found — skipping calibration.")
+        return
+
+    cal = compute_calibration_metrics(actuals, predictions)
+    if cal is None:
+        logger.info("Calibration returned None (too few samples).")
+        return
+
+    results["quantile_calibration"] = cal
+    logger.info("Quantile calibration results (%d samples):", len(actuals))
+    for key, val in cal.items():
+        logger.info("  %s: %.4f", key, val)
+
+
 def run_daily_evaluation_job() -> dict[str, Any]:
     """
     Run daily evaluation job for framework horizons.
@@ -437,6 +511,15 @@ def run_daily_evaluation_job() -> dict[str, Any]:
         )
         results["total_evaluated"] += horizon_total
         results["total_correct"] += horizon_correct
+
+    # ------------------------------------------------------------------
+    # Quantile calibration evaluation
+    # ------------------------------------------------------------------
+    logger.info("\n--- Quantile Calibration Evaluation ---")
+    try:
+        _run_calibration_evaluation(results)
+    except Exception as e:
+        logger.warning(f"Quantile calibration evaluation failed: {e}", exc_info=True)
 
     # Trigger weight update
     logger.info("\n--- Updating Model Weights ---")

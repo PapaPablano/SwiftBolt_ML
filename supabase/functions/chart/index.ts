@@ -1184,6 +1184,25 @@ serve(async (req: Request): Promise<Response> => {
                   ...(row["accuracy_pct"] != null
                     ? { accuracyPct: Number(row["accuracy_pct"]) }
                     : {}),
+                  ...(row["q10"] != null ? {
+                    quantiles: {
+                      q10: Number(row["q10"]),
+                      q25: Number(row["q25"]),
+                      q50: Number(row["q50"]),
+                      q75: Number(row["q75"]),
+                      q90: Number(row["q90"]),
+                    },
+                  } : {}),
+                  ...(row["q50"] != null && row["q25"] != null &&
+                      row["q75"] != null
+                    ? {
+                      conviction: Math.round(
+                        (1 -
+                          (Number(row["q75"]) - Number(row["q25"])) /
+                            Number(row["q50"])) * 100,
+                      ) / 100,
+                    }
+                    : {}),
                 });
               }
 
@@ -1253,6 +1272,25 @@ serve(async (req: Request): Promise<Response> => {
                   : {}),
                 ...(row["accuracy_pct"] != null
                   ? { accuracyPct: Number(row["accuracy_pct"]) }
+                  : {}),
+                ...(row["q10"] != null ? {
+                  quantiles: {
+                    q10: Number(row["q10"]),
+                    q25: Number(row["q25"]),
+                    q50: Number(row["q50"]),
+                    q75: Number(row["q75"]),
+                    q90: Number(row["q90"]),
+                  },
+                } : {}),
+                ...(row["q50"] != null && row["q25"] != null &&
+                    row["q75"] != null
+                  ? {
+                    conviction: Math.round(
+                      (1 -
+                        (Number(row["q75"]) - Number(row["q25"])) /
+                          Number(row["q50"])) * 100,
+                    ) / 100,
+                  }
                   : {}),
               });
 

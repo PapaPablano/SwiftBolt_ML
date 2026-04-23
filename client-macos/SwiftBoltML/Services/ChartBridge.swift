@@ -40,6 +40,7 @@ enum ChartCommand: Encodable {
     case setTechnicalIndicatorsOverlay(indicators: [TechnicalIndicatorOverlay])
     case setBinaryForecastMarkers(baseTime: Int, basePrice: Double, items: [BinaryForecastMarkerItem])
     case setRealtimeConfig(supabaseURL: String, anonKey: String, symbolId: String, timeframe: String, modelType: String)
+    case setQuantileBands(lastTime: Int, targetTime: Int, currentPrice: Double, q10: Double, q25: Double, q50: Double, q75: Double, q90: Double, color: String)
 
     // Custom encoding to match JS API
     private enum CodingKeys: String, CodingKey {
@@ -51,6 +52,7 @@ enum ChartCommand: Encodable {
         case line, signal, histogram, kData, dData, jData, adxData, plusDI, minusDI, panel
         case trendData, strengthData, resistance, support, levels, category
         case config, indicators
+        case lastTime, targetTime, currentPrice, q10, q25, q50, q75, q90, color
     }
 
     func encode(to encoder: Encoder) throws {
@@ -174,6 +176,17 @@ enum ChartCommand: Encodable {
             try container.encode(symbolId, forKey: .symbolId)
             try container.encode(timeframe, forKey: .timeframe)
             try container.encode(modelType, forKey: .modelType)
+        case .setQuantileBands(let lastTime, let targetTime, let currentPrice, let q10, let q25, let q50, let q75, let q90, let color):
+            try container.encode("setQuantileBands", forKey: .type)
+            try container.encode(lastTime, forKey: .lastTime)
+            try container.encode(targetTime, forKey: .targetTime)
+            try container.encode(currentPrice, forKey: .currentPrice)
+            try container.encode(q10, forKey: .q10)
+            try container.encode(q25, forKey: .q25)
+            try container.encode(q50, forKey: .q50)
+            try container.encode(q75, forKey: .q75)
+            try container.encode(q90, forKey: .q90)
+            try container.encode(color, forKey: .color)
         }
     }
 }
@@ -722,6 +735,27 @@ final class ChartBridge: NSObject, ObservableObject {
 
     func clearBacktestTrades() {
         enqueueJS("window.chartApi && window.chartApi.setBacktestTrades([]);")
+    }
+
+    /// Set quantile probability bands on the chart (q10-q90 outer, q25-q75 inner, q50 median)
+    func setQuantileBands(
+        lastTime: Int,
+        targetTime: Int,
+        currentPrice: Double,
+        quantiles: ForecastQuantiles,
+        color: String
+    ) {
+        send(.setQuantileBands(
+            lastTime: lastTime,
+            targetTime: targetTime,
+            currentPrice: currentPrice,
+            q10: quantiles.q10,
+            q25: quantiles.q25,
+            q50: quantiles.q50,
+            q75: quantiles.q75,
+            q90: quantiles.q90,
+            color: color
+        ))
     }
 
     /// Add support/resistance price lines

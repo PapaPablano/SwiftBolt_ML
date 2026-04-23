@@ -30,6 +30,14 @@ export interface HorizonForecast {
   calibrationLabel?: string; // "well-calibrated" | "moderate" | "uncalibrated"
   accuracyPct?: number;
   suppressed?: boolean; // true when all forecasts for this horizon were suppressed
+  quantiles?: {
+    q10: number;
+    q25: number;
+    q50: number;
+    q75: number;
+    q90: number;
+  };
+  conviction?: number; // 1 - (q75 - q25) / q50 — higher when range is narrow
 }
 
 export interface MLSummary {

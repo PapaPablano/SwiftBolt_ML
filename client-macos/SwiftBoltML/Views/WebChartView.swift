@@ -692,6 +692,19 @@ struct WebChartView: NSViewRepresentable {
             // Use simplified forecast visualization: dots + line + horizontal price line
             let currentPrice = parent.viewModel.bars.last?.close
             parent.bridge.setSimpleForecast(from: forecastBars, currentPrice: currentPrice)
+
+            // Render quantile bands if available from the selected horizon
+            if let summary = summary,
+               let lastBar = parent.viewModel.bars.last {
+                let lastTime = Int(lastBar.ts.timeIntervalSince1970)
+                let baseColor = forecastColorHex(for: summary.overallLabel)
+                applyQuantileBands(
+                    horizons: summary.horizons,
+                    lastTime: lastTime,
+                    currentPrice: lastBar.close,
+                    baseColor: baseColor
+                )
+            }
         }
 
         private func applyLegacyForecastOverlay(with data: ChartResponse) {
@@ -1119,7 +1132,40 @@ struct WebChartView: NSViewRepresentable {
                 parent.bridge.send(.setLine(id: seriesId, data: lineData, options: options))
             }
 
+            // Render quantile probability bands for horizons that include them
+            applyQuantileBands(horizons: horizons, lastTime: lastTime, currentPrice: currentPrice, baseColor: baseColor)
+
             return true
+        }
+
+        /// Render quantile probability bands (q10-q90 outer, q25-q75 inner, q50 median dashed line)
+        private func applyQuantileBands(
+            horizons: [ForecastSeries],
+            lastTime: Int,
+            currentPrice: Double,
+            baseColor: String
+        ) {
+            // Remove previous quantile band series
+            parent.bridge.send(.removeSeries(id: "quantile-outer"))
+            parent.bridge.send(.removeSeries(id: "quantile-inner"))
+            parent.bridge.send(.removeSeries(id: "quantile-median"))
+
+            for series in horizons {
+                guard let quantiles = series.quantiles else { continue }
+                // Find target time from the last point in the series
+                guard let targetPoint = series.points.max(by: { $0.ts < $1.ts }),
+                      targetPoint.ts > 0 else { continue }
+
+                parent.bridge.setQuantileBands(
+                    lastTime: lastTime,
+                    targetTime: targetPoint.ts,
+                    currentPrice: currentPrice,
+                    quantiles: quantiles,
+                    color: baseColor
+                )
+                // Only render bands for the first horizon with quantiles to avoid overlapping
+                break
+            }
         }
 
         private func applyForecastTargetLine(
