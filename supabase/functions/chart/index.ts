@@ -1047,6 +1047,7 @@ serve(async (req: Request): Promise<Response> => {
               .from("ml_forecasts")
               .select("*")
               .eq("symbol_id", symbolId)
+              .eq("suppressed", false)
               .in("horizon", [...DAILY_FORECAST_HORIZONS])
               .order("created_at", { ascending: false })
               .limit(10)
@@ -1186,6 +1187,20 @@ serve(async (req: Request): Promise<Response> => {
                 });
               }
 
+              // Add suppressed markers for daily horizons filtered out
+              const presentDailyHorizons = new Set(
+                dailySeries.map((h) => h.horizon),
+              );
+              for (const h of DAILY_FORECAST_HORIZONS) {
+                if (!presentDailyHorizons.has(h)) {
+                  dailySeries.push({
+                    horizon: h,
+                    points: [],
+                    suppressed: true,
+                  });
+                }
+              }
+
               if (dailySeries.length > 0) {
                 const existingHorizons = new Set(
                   mlSummary.horizons.map((h) => h.horizon.toUpperCase()),
@@ -1248,6 +1263,20 @@ serve(async (req: Request): Promise<Response> => {
                   clampNumber(bestForecastRow["confidence"], -1)
               ) {
                 bestForecastRow = row;
+              }
+            }
+
+            // Add suppressed markers for horizons that were filtered out
+            const presentHorizons = new Set(
+              horizonSeries.map((h) => h.horizon),
+            );
+            for (const h of DAILY_FORECAST_HORIZONS) {
+              if (!presentHorizons.has(h)) {
+                horizonSeries.push({
+                  horizon: h,
+                  points: [],
+                  suppressed: true,
+                });
               }
             }
 

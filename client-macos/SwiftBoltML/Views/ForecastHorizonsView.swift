@@ -13,6 +13,28 @@ struct ForecastHorizonsView: View {
 
     private var displaySeries: [ForecastDisplayData] {
         horizons.compactMap { series in
+            let timelinePosition = ForecastDisplayData.tradingDayEstimate(for: series.horizon)
+
+            // Suppressed horizons have no points — show placeholder card
+            if series.suppressed == true || (series.signalQuality.map { $0 < 40 } ?? false) {
+                return ForecastDisplayData(
+                    horizon: series.horizon,
+                    target: nil,
+                    lower: nil,
+                    upper: nil,
+                    confidence: 0,
+                    qualityScore: nil,
+                    points: [],
+                    color: .gray,
+                    deltaPct: nil,
+                    timelinePosition: timelinePosition,
+                    signalQuality: series.signalQuality,
+                    calibrationLabel: series.calibrationLabel,
+                    accuracyPct: series.accuracyPct,
+                    suppressed: true
+                )
+            }
+
             guard let lastPoint = series.points.last else { return nil }
             let confidence = ForecastDisplayData.confidenceScore(for: lastPoint)
             let qualityScore = series.targets?.qualityScore
@@ -20,7 +42,6 @@ struct ForecastHorizonsView: View {
                 target: lastPoint.value,
                 currentPrice: currentPrice
             )
-            let timelinePosition = ForecastDisplayData.tradingDayEstimate(for: series.horizon)
             return ForecastDisplayData(
                 horizon: series.horizon,
                 target: lastPoint.value,
@@ -37,7 +58,8 @@ struct ForecastHorizonsView: View {
                 timelinePosition: timelinePosition,
                 signalQuality: series.signalQuality,
                 calibrationLabel: series.calibrationLabel,
-                accuracyPct: series.accuracyPct
+                accuracyPct: series.accuracyPct,
+                suppressed: series.suppressed
             )
         }
         .sorted { $0.timelinePosition < $1.timelinePosition }
@@ -391,80 +413,100 @@ private struct ForecastHorizonCard: View {
         return "$\(String(format: "%.2f", lower)) – $\(String(format: "%.2f", upper))"
     }
 
+    /// True when the forecast was suppressed due to low confidence
+    private var isSuppressed: Bool {
+        if series.suppressed == true { return true }
+        if let sq = series.signalQuality, sq < 40 { return true }
+        return false
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
+            if isSuppressed {
+                // Suppressed horizon — show minimal placeholder card
+                VStack(spacing: 8) {
                     Text(series.horizon.uppercased())
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
-                    Text(targetText)
-                        .font(.system(size: 22, weight: .semibold, design: .rounded))
-                        .foregroundStyle(series.color)
-                }
-
-                Spacer()
-
-                HorizonConfidenceBadge(
-                    label: "Confidence",
-                    percent: series.confidence,
-                    color: series.color
-                )
-
-                if let qualityPercent = series.qualityPercent {
-                    HorizonConfidenceBadge(
-                        label: "Quality",
-                        percent: qualityPercent,
-                        color: series.color.opacity(0.8)
-                    )
-                }
-            }
-
-            if series.signalQuality != nil {
-                CalibrationBadge(series: series)
-            }
-
-            if let delta = series.deltaPct {
-                Text(delta.asPercentString)
-                    .font(.caption)
-                    .foregroundStyle(delta >= 0 ? Color.green : Color.red)
-            } else {
-                Text("Δ vs price unavailable")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-
-            HorizonRangeBand(
-                series: series,
-                scaleRange: scaleRange,
-                currentPrice: currentPrice
-            )
-            .frame(height: 28)
-
-            HStack(spacing: 12) {
-                Label(rangeText, systemImage: "chart.bar.xaxis")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if let upper = series.upper, let lower = series.lower {
-                    Text(String(format: "Spread %.2f%%", (upper - lower) / ((upper + lower) / 2) * 100))
-                        .font(.caption2)
+                    Text("Insufficient confidence")
+                        .font(DesignTokens.Typography.caption)
                         .foregroundStyle(.secondary)
                 }
-            }
+                .frame(maxWidth: .infinity, minHeight: 60, alignment: .center)
+            } else {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(series.horizon.uppercased())
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                        Text(targetText)
+                            .font(.system(size: 22, weight: .semibold, design: .rounded))
+                            .foregroundStyle(series.color)
+                    }
 
-            if series.points.count > 1 {
-                ForecastSparkline(points: series.points, tint: series.color)
-                    .frame(height: 70)
+                    Spacer()
+
+                    HorizonConfidenceBadge(
+                        label: "Confidence",
+                        percent: series.confidence,
+                        color: series.color
+                    )
+
+                    if let qualityPercent = series.qualityPercent {
+                        HorizonConfidenceBadge(
+                            label: "Quality",
+                            percent: qualityPercent,
+                            color: series.color.opacity(0.8)
+                        )
+                    }
+                }
+
+                if series.signalQuality != nil {
+                    CalibrationBadge(series: series)
+                }
+
+                if let delta = series.deltaPct {
+                    Text(delta.asPercentString)
+                        .font(.caption)
+                        .foregroundStyle(delta >= 0 ? Color.green : Color.red)
+                } else {
+                    Text("Δ vs price unavailable")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+
+                HorizonRangeBand(
+                    series: series,
+                    scaleRange: scaleRange,
+                    currentPrice: currentPrice
+                )
+                .frame(height: 28)
+
+                HStack(spacing: 12) {
+                    Label(rangeText, systemImage: "chart.bar.xaxis")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if let upper = series.upper, let lower = series.lower {
+                        Text(String(format: "Spread %.2f%%", (upper - lower) / ((upper + lower) / 2) * 100))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if series.points.count > 1 {
+                    ForecastSparkline(points: series.points, tint: series.color)
+                        .frame(height: 70)
+                }
             }
         }
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(series.color.opacity(0.08))
+                .fill(isSuppressed ? Color.gray.opacity(0.05) : series.color.opacity(0.08))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(series.color.opacity(0.3), lineWidth: 1)
+                        .stroke(isSuppressed ? Color.gray.opacity(0.15) : series.color.opacity(0.3), lineWidth: 1)
                 )
         )
         // Improvement 2: Forecast UX consistency - tooltip with confidence + time delta
@@ -778,6 +820,7 @@ private struct ForecastDisplayData: Identifiable {
     let signalQuality: Int?
     let calibrationLabel: String?
     let accuracyPct: Double?
+    let suppressed: Bool?
 
     var formattedTarget: String {
         guard let target else { return "—" }

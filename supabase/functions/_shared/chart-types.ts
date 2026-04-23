@@ -29,6 +29,7 @@ export interface HorizonForecast {
   signalQuality?: number; // 0-100
   calibrationLabel?: string; // "well-calibrated" | "moderate" | "uncalibrated"
   accuracyPct?: number;
+  suppressed?: boolean; // true when all forecasts for this horizon were suppressed
 }
 
 export interface MLSummary {
