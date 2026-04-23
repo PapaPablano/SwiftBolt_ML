@@ -202,12 +202,14 @@ struct ForecastSeries: Codable, Equatable {
     var signalQuality: Int? = nil
     var calibrationLabel: String? = nil
     var accuracyPct: Double? = nil
+    var suppressed: Bool? = nil
 
     enum CodingKeys: String, CodingKey {
         case horizon, points, targets
         case signalQuality = "signal_quality"
         case calibrationLabel = "calibration_label"
         case accuracyPct = "accuracy_pct"
+        case suppressed
     }
 }
 

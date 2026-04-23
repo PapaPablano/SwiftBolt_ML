@@ -37,6 +37,7 @@ from src.features.lookahead_checks import (
     assert_truncation_stable,
     run_synthetic_feature_guard,
 )
+from src.features.market_regime import MarketRegimeDetector
 from src.features.support_resistance_detector import SupportResistanceDetector
 from src.features.timeframe_consensus import add_consensus_to_forecast
 from src.forecast_synthesizer import ForecastSynthesizer
@@ -216,6 +217,110 @@ class UnifiedForecastProcessor:
                 self.metrics["weight_sources"].get("default", 0) + 1
             )
             return defaults, "default (fallback)"
+
+    @staticmethod
+    def _detect_regime_label(df: pd.DataFrame) -> str:
+        """
+        Classify the current market regime using HMM on the OHLC data.
+
+        Returns one of: 'trending', 'mean_reverting', 'unknown'.
+        The label is determined by mapping the last HMM state to the state
+        with the highest mean absolute return (trending) vs the lowest
+        (mean-reverting / choppy).
+        """
+        try:
+            if df is None or len(df) < 60:
+                return "unknown"
+
+            detector = MarketRegimeDetector(n_states=3)
+            regimes, _ = detector.transform(df)
+            if not detector.is_fitted:
+                return "unknown"
+
+            current_regime = int(regimes[-1])
+
+            # Compute mean absolute return per regime to label states
+            returns = df["close"].pct_change().fillna(0.0).values
+            regime_abs_ret: dict[int, float] = {}
+            for state in range(detector.n_states):
+                mask = regimes == state
+                if mask.sum() > 0:
+                    regime_abs_ret[state] = float(np.mean(np.abs(returns[mask])))
+                else:
+                    regime_abs_ret[state] = 0.0
+
+            sorted_states = sorted(regime_abs_ret, key=regime_abs_ret.get)  # type: ignore[arg-type]
+            trending_state = sorted_states[-1]  # highest abs return
+            mean_rev_state = sorted_states[0]  # lowest abs return
+
+            if current_regime == trending_state:
+                return "trending"
+            elif current_regime == mean_rev_state:
+                return "mean_reverting"
+            else:
+                return "unknown"
+        except Exception as exc:
+            logger.warning("Regime detection failed: %s", exc)
+            return "unknown"
+
+    @staticmethod
+    def _apply_regime_weight_adjustment(
+        weights: "ForecastWeights",
+        regime: str,
+        horizon_days: int,
+    ) -> "ForecastWeights":
+        """
+        Adjust ensemble model weights based on detected market regime.
+
+        Only applies to 5D and 10D horizons where regime signal is actionable.
+        Boost factor is 20% relative to the model's current weight.
+
+        - trending: boost LSTM weight (captures momentum)
+        - mean_reverting / choppy: boost ARIMA-GARCH weight (better for reversion)
+        - unknown: no adjustment
+
+        Returns a *new* ForecastWeights instance (original is not mutated).
+        """
+        if horizon_days not in (5, 10):
+            return weights
+        if regime == "unknown":
+            return weights
+
+        from copy import deepcopy
+
+        adjusted = deepcopy(weights)
+
+        # Read current model-level weights
+        model_w = adjusted.get_ensemble_weights_for_model_count(2)
+        lstm_w = model_w.get("lstm_confidence", 0.50)
+        arima_w = model_w.get("arima_confidence", 0.50)
+
+        boost = 0.20  # 20% relative boost
+
+        if regime == "trending":
+            lstm_w *= 1.0 + boost
+        elif regime == "mean_reverting":
+            arima_w *= 1.0 + boost
+
+        # Re-normalise so they sum to 1.0
+        total = lstm_w + arima_w
+        lstm_w /= total
+        arima_w /= total
+
+        # Patch the ensemble_weights dict on the adjusted object
+        adjusted.ensemble_weights = {
+            "base_confidence": lstm_w,
+            "agreement_bonus": arima_w,
+        }
+
+        logger.info(
+            "Regime-adjusted ensemble weights (regime=%s, horizon=%dD): " "LSTM=%.2f, ARIMA=%.2f",
+            regime,
+            horizon_days,
+            lstm_w,
+            arima_w,
+        )
+        return adjusted
 
     def process_symbol(
         self,
@@ -578,6 +683,19 @@ class UnifiedForecastProcessor:
                     # Get layer weights with explicit source tracking (using IntradayDailyFeedback)
                     weights, weight_source = self._get_weight_source(symbol, symbol_id, horizon_key)
                     result["weight_source"][horizon_key] = weight_source
+
+                    # Regime-conditioned weight adjustment for 5D/10D horizons
+                    if horizon_days in (5, 10):
+                        regime_label = self._detect_regime_label(df)
+                        weights = self._apply_regime_weight_adjustment(
+                            weights, regime_label, horizon_days
+                        )
+                        logger.info(
+                            "Regime for %s %s: %s",
+                            symbol,
+                            horizon_key,
+                            regime_label,
+                        )
 
                     # Create synthesizer
                     synthesizer = ForecastSynthesizer(weights=weights)
